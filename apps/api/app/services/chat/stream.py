@@ -42,6 +42,7 @@ from app.models.stream_events import (
     MainResponseCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -62,6 +63,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
+from app.utils.message_breaks import strip_partial_message_break
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
@@ -256,6 +258,27 @@ async def _run_chat_stream(
         )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
+
+        # The turn reached a terminal state: capture the milestone. Cancelled
+        # turns finish the same happy path (the driver ends the stream with a
+        # `cancelled` nostream marker), so branch on the flag the loop recorded.
+        if user_id:
+            event_props: dict[str, Any] = {
+                "conversation_id": conversation_id,
+                "voice_mode": body.voice_mode,
+                "is_new_conversation": is_new_conversation,
+            }
+            if source:
+                event_props["source"] = source
+            capture_event(
+                user_id,
+                (
+                    AnalyticsEvents.CHAT_MESSAGE_CANCELLED
+                    if state.is_cancelled
+                    else AnalyticsEvents.CHAT_MESSAGE_COMPLETED
+                ),
+                event_props,
+            )
 
     except Exception as e:  # surface to client + flag the stream
         # Persist the SAME user-facing text we stream (friendly for a recursion
@@ -562,12 +585,16 @@ async def _consume_agent_stream(
 
 
 def _parse_complete_message(chunk: str) -> tuple[str, bool]:
-    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker."""
+    """Pull ``(complete_message, cancelled)`` out of a ``nostream: {...}`` marker.
+
+    A run cut short mid-sentinel leaves a truncated ``<NEW_MESSAGE_B`` on the
+    end; it must never reach the persisted turn, where every reader (web, bots,
+    the next turn's history) would render it as literal text.
+    """
     nostream_json = json.loads(chunk.removeprefix("nostream: "))
     if isinstance(nostream_json, dict):
-        return str(nostream_json.get("complete_message", "")), bool(
-            nostream_json.get("cancelled", False)
-        )
+        message = strip_partial_message_break(str(nostream_json.get("complete_message", "")))
+        return message, bool(nostream_json.get("cancelled", False))
     return "", False
 
 

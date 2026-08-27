@@ -29,6 +29,7 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
@@ -146,6 +147,9 @@ class TodoService:
                 "user_id": user_id,
             },
         )
+        # Whether the caller filed the todo into a project themselves — read
+        # before the Inbox default below makes project_id unconditionally set.
+        project_chosen = todo.project_id is not None
         if not todo.project_id:
             todo.project_id = await cls._get_inbox_id(user_id)
         else:
@@ -177,7 +181,10 @@ class TodoService:
 
         # Queue workflow generation as fire-and-forget (does not block response)
         try:
-            from app.services.workflow.queue_service import WorkflowQueueService
+            # Deferred import: workflow/ARQ enqueue stack loads only when generation is actually queued
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                WorkflowQueueService,
+            )
 
             spawn_logged_task(
                 "todo_workflow_generation",
@@ -201,6 +208,18 @@ class TodoService:
             log.warning("todo.index_failed", error=str(e))
 
         schedule_user_todos_sync(user_id)
+        capture_event(
+            user_id,
+            AnalyticsEvents.TODO_CREATED,
+            {
+                "priority": created.priority.value,
+                "has_due_date": created.due_date is not None,
+                "has_description": bool(created.description),
+                "labels_count": len(created.labels),
+                "subtasks_count": len(created.subtasks),
+                "has_project": project_chosen,
+            },
+        )
         return TodoResponse.from_document(created)
 
     @classmethod
@@ -289,7 +308,9 @@ class TodoService:
             existing = await todo_repository.get(todo_id, user_id=user_id)
             if existing and existing.vfs_path:
                 try:
-                    from app.services.tracked_todo_service import tracked_todo_service
+                    from app.services.tracked_todo_service import (  # noqa: PLC0415 -- tracked_todo_service imports this module at module level, so a top-level import back would be circular
+                        tracked_todo_service,
+                    )
 
                     await tracked_todo_service.complete_tracked_todo(
                         todo_id, user_id, summary="Completed via UI"
@@ -313,6 +334,32 @@ class TodoService:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        if updates.completed is not None:
+            # Toggle semantics: fires for both completing and un-completing,
+            # tracked or plain.
+            capture_event(
+                user_id,
+                AnalyticsEvents.TODO_TOGGLED,
+                {
+                    "completed": updates.completed,
+                    "todo_id": todo_id,
+                    "priority": updated.priority.value,
+                    "has_due_date": updated.due_date is not None,
+                },
+            )
+        elif update.model_fields_set:
+            capture_event(
+                user_id,
+                AnalyticsEvents.TODO_UPDATED,
+                {
+                    "changed_field_count": len(update.model_fields_set),
+                    "changed_fields": sorted(update.model_fields_set),
+                    "todo_id": todo_id,
+                    "priority": updated.priority.value,
+                    "has_due_date": updated.due_date is not None,
+                    "has_subtasks": bool(updated.subtasks),
+                },
+            )
         return TodoResponse.from_document(updated)
 
     @classmethod
@@ -340,6 +387,7 @@ class TodoService:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
         schedule_user_todos_sync(user_id)
+        capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"todo_id": todo_id})
 
     # Bulk Operations
     @classmethod
@@ -391,6 +439,7 @@ class TodoService:
                 except Exception as e:
                     log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
             schedule_user_todos_sync(user_id)
+            capture_event(user_id, AnalyticsEvents.TODO_DELETED, {"count": deleted})
 
         return BulkOperationResponse(
             success=todo_ids[:deleted],

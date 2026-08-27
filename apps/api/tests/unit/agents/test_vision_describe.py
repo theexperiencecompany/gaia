@@ -41,9 +41,11 @@ class TestTheDescriberCanSee:
         text-only model this fails here instead of silently blanking every image."""
         config = {
             "configurable": {
-                "provider": VISION_MODEL_PROVIDER,
+                "lane": {
+                    "provider": VISION_MODEL_PROVIDER,
+                    "model": VISION_MODEL_NAME,
+                },
                 "model": VISION_MODEL_NAME,
-                "model_name": VISION_MODEL_NAME,
             }
         }
 

@@ -42,7 +42,7 @@ vi.mock("@slack/bolt", () => ({
 // Mock @gaia/shared
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", async () => {
+vi.mock("@gaia/shared/bots", async () => {
   const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
   const base = makeGaiaSharedMock("slack", {
     streamingDefaults: {
@@ -70,7 +70,7 @@ vi.mock("@gaia/shared", async () => {
 // Import adapter after mocks are in place
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat } from "@gaia/shared/bots";
 import { SlackAdapter } from "../../slack/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -371,7 +371,9 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -691,7 +693,9 @@ describe("SlackAdapter - app_mention event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -776,7 +780,9 @@ describe("SlackAdapter - DM message event handling", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "slack" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 

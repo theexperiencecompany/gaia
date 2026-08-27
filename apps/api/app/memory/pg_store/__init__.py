@@ -29,8 +29,11 @@ from app.memory.pg_store.maintenance import (
     get_overview_counts,
 )
 from app.memory.pg_store.memories import (
+    SweptMemory,
+    backfill_agenda_expiry,
     count_live_memories,
     fts_search,
+    get_agenda_memories,
     get_all_live_memories,
     get_chain,
     get_facts_for_consolidation,
@@ -43,15 +46,18 @@ from app.memory.pg_store.memories import (
     list_memories,
     mark_forgotten,
     supersede_memory,
+    sweep_expired_memories,
 )
 
 __all__ = [
     "EpisodeEntry",
     "MemoryOverviewCounts",
+    "SweptMemory",
     "append_episode_entries",
     "count_live_memories",
     "delete_all_memories",
     "fts_search",
+    "get_agenda_memories",
     "get_all_live_memories",
     "get_document",
     "get_documents",
@@ -77,6 +83,8 @@ __all__ = [
     "search_episode_entries",
     "set_episode_summary",
     "supersede_memory",
+    "backfill_agenda_expiry",
+    "sweep_expired_memories",
     "upsert_document",
     "upsert_entities",
 ]

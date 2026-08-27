@@ -37,7 +37,7 @@ GAIA's agent runtime is a **three-tier system**:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The whole thing is reachable from four surfaces: the **web/mobile UI**, the **voice agent** (LiveKit worker), the **bots** (Telegram / WhatsApp / Discord / Slack), and **workflows** (scheduled / triggered runs).
+The whole thing is reachable from four surfaces: the **web/mobile UI**, the **voice agent** (LiveKit worker), the **bots** (Telegram / WhatsApp / Discord / Slack / iMessage), and **workflows** (scheduled / triggered runs).
 
 ---
 
@@ -49,7 +49,7 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 - `apps/api/app/agents/core/agent.py` — entry points `call_agent()` (live SSE stream) and `call_agent_silent()` (background/workflow).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
-- `apps/api/app/agents/core/state.py` — `State` Pydantic model: `query`, `intent`, `messages`, `memory_user_id`, `memories`, `active_todo_id`, `execution_mode` (interactive/background).
+- `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
 - `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
 - `apps/api/app/agents/core/graph_manager.py` — `GraphManager.get_graph(name)` resolves graphs via lazy providers.
 
@@ -97,7 +97,7 @@ The worker tier. Has access to **everything** that does work.
 
 - `apps/api/app/agents/core/nodes/filter_messages.py` — `filter_messages_node` trims history.
 - `apps/api/app/agents/core/nodes/manage_system_prompts.py` — `manage_system_prompts_node` collapses repeat system messages for cache-prefix stability.
-- `apps/api/app/agents/core/nodes/memory_node.py` — `memory_node` end-graph hook on every subagent + comms turn for passive durable-memory learning.
+- `apps/api/app/agents/core/nodes/memory_node.py` — `memory_node` end-graph hook on the **comms** turn only, for passive durable-memory learning. It ingests the delta since the thread's high-water mark, labels the transcript `user`/`gaia`/`tool`, and skips system-generated conversations.
 - `apps/api/app/agents/core/nodes/follow_up_actions_node.py` — **comms-only** end hook for proactive suggestions.
 
 ### Helper layer
@@ -117,11 +117,25 @@ Every integration is a `CompiledStateGraph` of its own. The executor hands off t
 - `apps/api/app/agents/core/subagents/__init__.py`
 - `apps/api/app/agents/core/subagents/registry.py` — `all_subagents()` and `get_subagent_by_id()`. **Single source of truth** that combines OAuth-derived subagents + builtins. Process-lifetime `@cache`'d.
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
-- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires the per-integration graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, end-hook `[memory_node]`, checkpointer, and the three pre-model hooks.
+- `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires the per-integration graph: scoped tool dict, `SubagentMiddleware`, todo tools, MCP/Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (non-auth MCP) and `create_subagent_for_user()` (per-user auth MCP; rebuilt on every handoff, no memoization). `register_subagent_providers()` registers lazy loaders.
 - `apps/api/app/agents/core/subagents/handoff_tools.py` — `@tool handoff(subagent_id, task, config, background=False)`. Resolves the subagent via `_resolve_subagent()`, builds a `SubagentExecutionContext`, then runs blocking (`_run_blocking_handoff`) or fires `run_subagent_background()`. Includes `_get_subagent_by_id` (Redis cached at `SUBAGENT_CACHE_PREFIX`), `_sanitize_task_user_reference` (replaces Gaia display name with service username), and `index_custom_mcp_as_subagent` (ChromaDB indexing for semantic search). Also exports `check_integration_connection()`.
-- `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (builds `[static_system, dynamic_context, current_time, human_task]` triplet for cache stability), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
-- `apps/api/app/agents/core/subagents/subagent_helpers.py` — `create_subagent_system_message` (provider-specific prompt + integration instructions), `create_agent_context_message` (dynamic context block: user_name, memories, skills, integration metadata).
+- `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (seeds `[static_system, dynamic_stable, memory_recall?, human_task, current_time]` in canonical slot order — see §Context assembly), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
+- `apps/api/app/agents/core/subagents/subagent_helpers.py` — `build_subagent_system_prompt` / `create_subagent_system_message`: the STATIC per-integration prompt only. Byte-identical across users so the implicit prompt cache hits; everything per-user is assembled separately (below).
+
+### Context assembly (all five tiers)
+
+One module builds the per-run context for comms, the executor, provider subagents, spawned subagents and the workflow author. Tier differences are rows in a table, not divergent code paths.
+
+- `apps/api/app/agents/context/slots.py` — `PromptSlot`, the canonical message order `[static, dynamic_stable, onboarding, todo_context, background_executor, executor_status, memory_recall, …conversation…, time]`, plus the marker read/write helpers. The two constraints that fix this order (Gemini's leading-contiguous system block; longest-common-prefix cache matching) are documented there.
+- `apps/api/app/agents/context/tiers.py` — `AgentTier`, the closed set of tiers a section declares applicability against.
+- `apps/api/app/agents/context/section_context.py` — `SectionContext`, the closed shape every section reads from. Its own module so the fetchers can take it without importing the table that calls them.
+- `apps/api/app/agents/context/sections.py` — `Section(id, slot, applies_to, order, fetch)` and the section × tier table. A row points straight at its body in `fetchers.py`; the private functions here are only the sections that genuinely branch before rendering.
+- `apps/api/app/agents/context/fetchers.py` — the section bodies (memory recall, core memory, GAIA knowledge, tracked todos, connected-integrations manifest, run banners). Each takes the whole `SectionContext`, declines to render when the context it needs is absent, and degrades to `""` rather than raising.
+- `apps/api/app/agents/context/assemble.py` — `assemble_context`: gathers the applicable sections concurrently and emits the stable + volatile system messages, degrading to an empty stable block if the gather itself fails.
+- `apps/api/app/agents/core/nodes/pre_model_hooks.py` — the hook chains each graph runs before every LLM call. `manage_system_prompts_node` runs LAST and places every message by `PromptSlot`.
+
+Tests: `apps/api/tests/_harness/context_chain.py` produces the *effective* array (post-hook, pre-LLM) in-process for any tier, with no graph, checkpointer or LLM; `apps/api/tests/unit/agents/context/` asserts the slot, cache-prefix and user-independence invariants against it.
 
 ### OAuth integration definitions (source of subagent configs)
 
@@ -160,9 +174,9 @@ Every integration is a `CompiledStateGraph` of its own. The executor hands off t
 
 ---
 
-## 5. Bots (Telegram, WhatsApp, Discord, Slack)
+## 5. Bots (Telegram, WhatsApp, Discord, Slack, iMessage)
 
-All four bots live in `apps/bots/`, share a unified command system in `libs/shared/ts/`, and use the **adapter pattern** — each platform implements `BaseBotAdapter`.
+All five bots live in `apps/bots/`, share a unified command system in `libs/shared/ts/`, and use the **adapter pattern** — each platform implements `BaseBotAdapter`.
 
 ### Per-bot source (TypeScript, bundled with `tsup`)
 
@@ -170,6 +184,7 @@ All four bots live in `apps/bots/`, share a unified command system in `libs/shar
 - `apps/bots/discord/` — `src/index.ts`, `src/adapter.ts` (discord.js), `src/deploy-commands.ts`. Slash-command bot.
 - `apps/bots/slack/` — `src/index.ts`, `src/adapter.ts` (Slack Bolt, Socket Mode).
 - `apps/bots/whatsapp/` — `src/index.ts`, `src/adapter.ts`, `src/webhook.ts` (Kapso signature verification, media extraction), `src/webhook.types.ts`, `src/constants.ts`. Webhook-driven via Kapso.
+- `apps/bots/imessage/` — `src/index.ts`, `src/adapter.ts` (Photon Spectrum SDK), `src/constants.ts`. Webhook-driven via Photon Spectrum Cloud; SDK verifies signatures and owns outbound sends. Linking is Pro-gated (`require_platform_plan`).
 - `apps/bots/` — root `package.json`, `project.json`, `CLAUDE.md`, `Dockerfile`, `tsconfig.test.json`, `vitest.config.ts`, `__tests__/`.
 
 ### Shared bot framework
@@ -300,7 +315,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 
 ### Active learning
 
-`memory_node` (`apps/api/app/agents/core/nodes/memory_node.py`) is the end-graph hook on every comms + subagent turn. It runs LLM-based memory extraction passively, so conversational disclosures become durable memories without explicit `add_memory` calls.
+`memory_node` (`apps/api/app/agents/core/nodes/memory_node.py`) is the end-graph hook on the comms turn. It runs LLM-based memory extraction passively, so conversational disclosures become durable memories without explicit `add_memory` calls. Subagents do NOT run it — they see the same thread comms already ingested.
 
 ### Frontend types
 

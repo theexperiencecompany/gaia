@@ -1,5 +1,6 @@
 """Tests for tiered rate limiter middleware."""
 
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,6 +15,7 @@ from app.config.rate_limits import FeatureInfo, RateLimitPeriod
 from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
+from app.services.limit_upsell import LimitHitOrigin
 
 
 def _noop_create_task(coro, **kwargs):
@@ -33,26 +35,26 @@ class TestRateLimitExceededException:
     def test_basic_exception(self) -> None:
         exc = RateLimitExceededException("file_upload")
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]
-        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]
-        assert "plan_required" not in exc.detail  # type: ignore[operator]
-        assert "reset_time" not in exc.detail  # type: ignore[operator]
+        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert exc.detail["feature"] == "file_upload"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert "plan_required" not in exc.detail
+        assert "reset_time" not in exc.detail
 
     def test_with_plan_required(self) -> None:
         exc = RateLimitExceededException("file_upload", plan_required="pro")
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
-        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert "Upgrade to Pro" in exc.detail["message"]  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
     def test_with_reset_time(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", reset_time=reset)
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
     def test_with_all_fields(self) -> None:
         reset = datetime(2026, 4, 1, tzinfo=UTC)
         exc = RateLimitExceededException("file_upload", plan_required="pro", reset_time=reset)
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
-        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]
+        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
+        assert exc.detail["reset_time"] == reset.isoformat()  # type: ignore[index]  # HTTPException.detail is typed str upstream but carries a dict here
 
 
 # ---------------------------------------------------------------------------
@@ -345,7 +347,7 @@ class TestSyncUsageRealTime:
             limit=0,
             reset_time=datetime(2026, 4, 1, tzinfo=UTC),
         )
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
         await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
@@ -359,7 +361,7 @@ class TestSyncUsageRealTime:
         new_callable=AsyncMock,
     )
     async def test_no_usage_means_no_snapshot(self, mock_save: AsyncMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
 
         await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
@@ -367,7 +369,7 @@ class TestSyncUsageRealTime:
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.log")
     async def test_error_logged_not_raised(self, mock_log: MagicMock) -> None:
-        self.limiter._collect_feature_usage = AsyncMock(  # type: ignore[method-assign]
+        self.limiter._collect_feature_usage = AsyncMock(  # type: ignore[method-assign]  # test monkeypatches the limiter method with an AsyncMock
             side_effect=RuntimeError("boom")
         )
 
@@ -510,7 +512,7 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         result = await my_endpoint(user={"user_id": "u1"})
@@ -547,7 +549,7 @@ class TestTieredRateLimitDecorator:
         from fastapi import HTTPException
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         with pytest.raises(HTTPException) as exc_info:
@@ -565,9 +567,67 @@ class TestTieredRateLimitDecorator:
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
-        async def my_endpoint(user: dict = None) -> str:  # type: ignore[assignment]
+        async def my_endpoint(user: dict = None) -> str:
             return "ok"
 
         await my_endpoint(user={"user_id": "u1"})
         call_args = mock_limiter.check_and_increment.call_args
         assert call_args.kwargs["user_plan"] == PlanType.FREE
+
+
+# ---------------------------------------------------------------------------
+# Upsell side effects on exceed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestUpsellOnExceed:
+    """The exceed seam must reach the real upsell with the caller's identity."""
+
+    def setup_method(self) -> None:
+        self.limiter = TieredRateLimiter()
+        self.limiter.redis = AsyncMock()
+
+    async def _exceed(self, **kwargs: LimitHitOrigin) -> tuple[MagicMock, AsyncMock, AsyncMock]:
+        """Trip the plan gate for a FREE user, run the spawned upsell inline."""
+        from app.config.rate_limits import RateLimitConfig
+
+        spawned: list[Coroutine[object, object, None]] = []
+        with (
+            patch(
+                "app.api.v1.middleware.tiered_rate_limiter.get_limits_for_plan",
+                return_value=RateLimitConfig(day=0, month=0),
+            ),
+            patch(
+                "app.services.limit_upsell.spawn_background_task",
+                side_effect=spawned.append,
+            ),
+            patch("app.services.limit_upsell.capture_event") as capture,
+            patch("app.services.limit_upsell.send_limit_reached_email") as upsell_email,
+            patch("app.services.limit_upsell.send_workflows_paused_email") as paused_email,
+        ):
+            with pytest.raises(RateLimitExceededException):
+                await self.limiter.check_and_increment(
+                    "user1", "chat_messages", PlanType.FREE, **kwargs
+                )
+            for coro in spawned:
+                await coro
+        return capture, upsell_email, paused_email
+
+    async def test_interactive_exceed_sends_upsell_for_this_user(self) -> None:
+        capture, upsell_email, paused_email = await self._exceed()
+
+        capture.assert_called_once_with(
+            "user1", "rate_limit_hit", {"feature": "chat_messages", "origin": "interactive"}
+        )
+        upsell_email.assert_awaited_once_with("user1", "chat_messages")
+        paused_email.assert_not_awaited()
+
+    async def test_background_exceed_sends_workflows_paused_note(self) -> None:
+        capture, upsell_email, paused_email = await self._exceed(origin=LimitHitOrigin.BACKGROUND)
+
+        capture.assert_called_once_with(
+            "user1", "rate_limit_hit", {"feature": "chat_messages", "origin": "background"}
+        )
+        paused_email.assert_awaited_once_with("user1")
+        upsell_email.assert_not_awaited()

@@ -10,6 +10,7 @@ import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
@@ -37,13 +38,17 @@ export function NotificationCenter({
     useNotifications(notificationOptions);
 
   const handleMarkAsRead = async (notificationId: string) => {
+    trackEvent(ANALYTICS_EVENTS.NOTIFICATION_VIEWED, {
+      notification_id: notificationId,
+      source: "popover",
+    });
     await markAsRead(notificationId);
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications
-      .filter((n) => n.status === NotificationStatus.DELIVERED)
-      .map((n) => n.id);
+    const unreadIds = notifications.flatMap((n) =>
+      n.status === NotificationStatus.DELIVERED ? [n.id] : [],
+    );
     if (unreadIds.length === 0) return;
     setIsMarkingAllRead(true);
     try {
@@ -77,7 +82,7 @@ export function NotificationCenter({
                 aria-label="Notifications"
                 tooltip="Notifications"
               >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
               </SidebarHeaderButton>
             </Badge>
           </div>

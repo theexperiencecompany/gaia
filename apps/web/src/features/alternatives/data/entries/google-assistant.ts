@@ -34,7 +34,7 @@ export const entry: AlternativeData = {
     "self-hosted AI assistant",
   ],
   whyPeopleLook:
-    "Google Assistant is being phased out in favor of Gemini, leaving many users looking for alternatives — particularly those who relied on it for reminders, calendar management, and smart home control. For professional productivity, Google Assistant was always limited: it could set timers and read calendar events, but could not triage email, manage complex task lists, or run multi-step workflows. GAIA fills the professional productivity gap with deep email and calendar integration, graph-based memory, and proactive automation that Google Assistant never attempted.",
+    "Google Assistant is being phased out in favor of Gemini, leaving many users looking for alternatives, particularly those who relied on it for reminders, calendar management, and smart home control. For professional productivity, Google Assistant was always limited: it could set timers and read calendar events, but could not triage email, manage complex task lists, or run multi-step workflows. GAIA fills the professional productivity gap with deep email and calendar integration, graph-based memory, and proactive automation that Google Assistant never attempted.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Calendar event creation and scheduling via natural language",
@@ -44,7 +44,7 @@ export const entry: AlternativeData = {
     "Cross-platform assistant available on mobile, desktop, and bots",
   ],
   gaiaAdvantages: [
-    "Not being deprecated — open-source and actively developed",
+    "Not being deprecated: open-source and actively developed",
     "Professional productivity focus beyond voice commands",
     "Proactive monitoring of email and calendar without asking",
     "Self-hostable for complete privacy and data control",
@@ -71,7 +71,7 @@ export const entry: AlternativeData = {
       question:
         "Is GAIA a good replacement now that Google Assistant is being retired?",
       answer:
-        "For professional productivity tasks — email, calendar, tasks, and workflow automation — GAIA is a strong replacement. For smart home control, you would still need a Google Home hub or separate smart home platform.",
+        "For professional productivity tasks (email, calendar, tasks, and workflow automation), GAIA is a strong replacement. For smart home control, you would still need a Google Home hub or separate smart home platform.",
     },
     {
       question: "Does GAIA respect privacy better than Google Assistant?",

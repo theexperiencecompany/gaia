@@ -194,3 +194,55 @@ class ComposioWebhookEvent(BaseModel):
         if isinstance(v, str):
             return v.upper()
         return v
+
+
+class ComposioConnectionToolkit(BaseModel):
+    """Toolkit reference on a connection-lifecycle event."""
+
+    slug: str
+
+
+class ComposioConnectionAuthConfig(BaseModel):
+    """Auth config reference on a connection-lifecycle event."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+
+
+class ComposioConnectionData(BaseModel):
+    """``data`` of a Composio connection-lifecycle event.
+
+    Composio delivers the raw snake_case ``SingleConnectedAccountDetailedResponse``
+    (mirroring ``GET /api/v3/connected_accounts/{id}``). Only the fields GAIA acts
+    on are declared; the rest — including the ``state`` blob carrying access and
+    refresh tokens — is accepted and never read or logged.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    user_id: str
+    status: str
+    status_reason: str | None = None
+    toolkit: ComposioConnectionToolkit
+    auth_config: ComposioConnectionAuthConfig
+
+
+class ComposioConnectionEvent(BaseModel):
+    """Composio connection-lifecycle event, e.g. ``composio.connected_account.expired``.
+
+    Deliberately separate from :class:`ComposioWebhookEvent`: connection events
+    carry none of the trigger identifiers that model requires, and its ``type``
+    validator uppercases the event name so it could never match the lowercase
+    literal the SDK's type guards compare against. The envelope's own ``id`` and
+    ``timestamp`` are optional because GAIA only logs them — a webhook-version
+    drift there must not reject an event GAIA can still act on.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    data: ComposioConnectionData
+    id: str | None = None
+    timestamp: str | None = None

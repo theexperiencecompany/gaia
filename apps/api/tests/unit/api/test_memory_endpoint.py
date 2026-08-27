@@ -13,8 +13,23 @@ import pytest
 from app.api.v1.endpoints.memory import _require_user_id
 from app.constants.general import MAX_PAGE_NUMBER
 from app.models.memory_models import MemoryListResponse
+from app.services.analytics_service import AnalyticsEvents
 
 MEMORY_ENDPOINT = "app.api.v1.endpoints.memory"
+ANALYTICS_PATCH = "app.api.v1.endpoints.memory.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
 
 
 class TestRequireUserId:
@@ -54,3 +69,38 @@ class TestListMemories:
         list_memories.assert_awaited_once_with(
             "507f1f77bcf86cd799439011", page=1, page_size=20, category=None
         )
+
+
+class TestMemoryAnalytics:
+    """Analytics captures on memory mutation endpoints."""
+
+    async def test_delete_memory_captures_item_deleted(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{MEMORY_ENDPOINT}.memory_engine.forget_memory",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.delete("/api/v1/memory/507f1f77-bcf8-6cd7-9943-9011aaaaaaaa")
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.MEMORY_ITEM_DELETED,
+            {"memory_id": "507f1f77-bcf8-6cd7-9943-9011aaaaaaaa"},
+        )
+
+    async def test_clear_all_captures_memory_cleared(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                f"{MEMORY_ENDPOINT}.memory_engine.delete_all",
+                new_callable=AsyncMock,
+                return_value=12,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            resp = await client.delete("/api/v1/memory")
+
+        assert resp.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.MEMORY_CLEARED, {"deleted_count": 12})

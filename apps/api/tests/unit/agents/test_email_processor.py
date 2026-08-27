@@ -770,7 +770,7 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
         assert [e["labelIds"] for e in emails] == [["SENT"], ["INBOX"]]
 
         with patch(
-            "app.services.onboarding.social_profile_service.get_default_llm",
+            "app.services.onboarding.social_profile_service.get_helper_llm",
             side_effect=LLMNotConfiguredError("no llm"),
         ):
             profiles = await extract_social_profiles_from_emails(emails, "Octo Cat", None)
@@ -785,7 +785,7 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
             [self._composio_message("m1", ["INBOX"], "link https://github.com/octocat")]
         )
         with patch(
-            "app.services.onboarding.social_profile_service.get_default_llm",
+            "app.services.onboarding.social_profile_service.get_helper_llm",
             side_effect=LLMNotConfiguredError("no llm"),
         ):
             profiles = await extract_social_profiles_from_emails(emails, "Octo Cat", None)

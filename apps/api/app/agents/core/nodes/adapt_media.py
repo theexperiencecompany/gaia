@@ -23,7 +23,7 @@ async def adapt_media_node(
     # Unused here, but execute_hooks() calls every pre-model hook as
     # (state, config, store) — the 3-arg signature is mandatory, so dropping
     # this would be a runtime TypeError, not a cleanup.
-    store: BaseStore,  # NOSONAR python:S1172
+    store: BaseStore,  # NOSONAR python:S1172  # noqa: ARG001 -- framework contract
 ) -> T:
     messages = state["messages"]
     adapted = await adapt_media_for_model(messages, config)

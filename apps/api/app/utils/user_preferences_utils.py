@@ -9,6 +9,21 @@ from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
+def onboarding_preferences(
+    onboarding: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """The ``(preferences, writing_style)`` pair off a raw ``onboarding`` blob.
+
+    Every root call site that hands a user's onboarding data to
+    ``build_agent_config`` or a comms ``SectionContext`` reads the same two keys
+    off the same shape (``UserDocument.onboarding`` / ``AuthenticatedUser.onboarding``)
+    — pulled out once so that reading doesn't drift between call sites.
+    """
+    if not onboarding:
+        return None, None
+    return onboarding.get("preferences"), onboarding.get("writing_style")
+
+
 def format_response_style_instruction(response_style: str) -> str:
     """Map a user's response-style preference to an agent instruction."""
     style_map = {

@@ -1,3 +1,4 @@
+import { TODO_ENDPOINTS } from "@shared/api/todosApi";
 import { createTodoApi, type HttpAdapter } from "@shared/todos";
 import { apiService } from "@/lib/api/service";
 
@@ -10,3 +11,10 @@ const httpAdapter: HttpAdapter = {
 };
 
 export const todoApi = createTodoApi(httpAdapter);
+
+export const getTodoCanvas = async (
+  todoId: string,
+): Promise<{ content: string }> =>
+  apiService.get<{ content: string }>(TODO_ENDPOINTS.canvas(todoId), {
+    silent: true,
+  });

@@ -31,6 +31,16 @@ SUBSCRIPTION_PLAN_CACHE_TTL = FIVE_MINUTES_TTL
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
 ALL_PLANS_CACHE_KEY = "plans:all"
 PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
+# A minted Dodo checkout session, per user and billing cycle. Reused rather than
+# re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
+# doesn't leave a trail of abandoned sessions in Dodo.
+UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
+UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
+# The tracked-todo summary injected into comms context. Deliberately short: the
+# list changes as the agent works, and a stale pin is worse than the lookup it
+# saves. Keyed by user alone, so only the unpinned summary may use it.
+TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
+TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -168,3 +178,7 @@ ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
 # answer before sending [DONE] anyway. Real action turns resolve in a few
 # seconds; on timeout the answer still reaches the user via the WebSocket push.
 VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
+
+# One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
+# so a degraded pro user is told once per month, not once per turn.
+COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"

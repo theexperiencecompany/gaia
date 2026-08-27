@@ -4,6 +4,69 @@ description: "Version history and changelog for the GAIA API backend, including 
 icon: "server"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
+
+### Features
+- **Approvals Before Destructive Actions**: GAIA now pauses and asks you first before running a tool that deletes, sends, or overwrites something, and remembers the per-tool permissions you set.
+- **Device Bridge**: A secure local bridge lets GAIA reach MCP servers and files on your own machine, so it can work with what's actually on your computer.
+- **Documents Read In-House**: Text-based PDFs, plus DOCX, XLSX, PPTX, and CSV files, are now extracted on our own servers rather than sent to a cloud parser, so attachments process faster. Scanned and image-based PDFs are the exception — they still go to a third-party OCR service, because reading them requires it.
+- **Images and Screenshots**: GAIA reads images natively, keeps the screenshots it takes, and can download files from a URL to work with them.
+- **Gmail Inbox Summary**: A dedicated tool summarizes your inbox, with cleaner email bodies so long threads read properly.
+- **Plans and Usage Limits**: Free accounts now have clear daily caps and Pro runs on cost-based limits, with usage tracked per turn instead of guessed.
+- **Upgrade From the Conversation**: Ask GAIA to upgrade and it hands you a real checkout link for Pro, instead of pointing you at a pricing page.
+- **Ask About Your Own Billing**: GAIA can now answer "am I on Pro?", what you pay, when you renew, and what you were recently charged, from your live subscription rather than a canned pricing link — it will never cancel, refund, or discount anything on its own.
+- **iMessage as a Platform**: Link your number and talk to GAIA over iMessage like any other chat platform, included with Pro.
+- **A Faster Default Model**: DeepSeek V4 Flash 0731 is the new default model on every tier.
+- **Lifecycle Emails**: A new email engine sends onboarding and nurture sequences, built on a provider-agnostic email service.
+- **Better Workflow Creation**: Creating a workflow now runs through a structured pipeline that discovers the integrations it needs instead of guessing at them.
+
+### Improvements
+- **Model Failover That Holds Context**: Each turn resolves one model lane up front, so a provider failure now falls over cleanly without dropping your queued messages or a pending approval.
+- **Replies That Sound Less Like AI**: GAIA's writing is scored against a list of AI tells — em dashes, the "it's not X, it's Y" construction — and the prompt no longer models the habits it tells the model to avoid.
+- **Fresher Trigger Catalog**: Every app trigger's schema and slug is back in sync with the live Composio catalog, so event-based workflows fire on the right shape of data, and removing a trigger that's already gone no longer errors.
+- **Dormant Workflows Pause Themselves**: A daily sweep pauses active workflows for accounts that have gone quiet, so nothing keeps firing in the background months after you stopped using it. They resume automatically the next time you log in.
+- **New License**: GAIA is now licensed under PolyForm Noncommercial 1.0.0 instead of PolyForm Strict.
+
+### Bug Fixes
+- **Reminders Search**: Searching your reminders failed on every call; it works again.
+- **Email Triggers Don't Stampede**: A busy inbox now batches into a single agent run instead of one run per message, which previously burned a day's usage in minutes.
+- **Quiet Background Runs**: Scheduled workflow runs no longer email you about hitting a limit, and no longer run before you've finished onboarding.
+- **Workflow Reset**: Resetting a system workflow to its default now actually uses the new prompt instead of quietly running the old one.
+- **Reliable Scheduled Workflows**: Scheduled runs reschedule correctly and no longer fail on tool results that couldn't be serialized.
+- **Failed Runs Are Reported as Failed**: A workflow run that errored used to be recorded as a success, which meant broken workflows kept firing forever instead of being retired.
+- **No More Stray Markers in Replies**: The internal marker GAIA uses to split a long answer into separate messages sometimes reached you as literal text; every outbound path now runs through one parser.
+- **The Worker Acts on What You Asked**: Longer tasks are handed to the background agent using your original wording, instead of a paraphrase that could drift from the request.
+- **Unconnected Integrations**: Asking about an app you haven't connected now returns a clear message instead of an error.
+- **Calendars With Special Characters**: Calendar and event IDs are URL-encoded everywhere, fixing 404s on calendars whose IDs contain special characters.
+- **Sandbox Resume**: Resuming a code sandbox that had been evicted no longer 404s.
+- **Memory Hygiene**: A memory is only retired when a newer one genuinely restates it, so facts about you stop disappearing.
+- **No Internal Paths in Replies**: GAIA no longer leaks internal server file paths into its answers.
+- **Platform Results Are Continuable**: Results delivered to a linked platform are now recorded in the conversation, so you can reply and keep going.
+- **Security Fixes**: Audited SSRF, IDOR, auth, and webhook findings across the codebase were remediated, along with 192 of 196 outstanding dependency advisories.
+
+### Performance
+- **Cheaper, Faster Turns**: The prompt prefix is now stable across a conversation, so follow-up turns hit the provider's cache instead of re-paying for the whole history.
+- **Leaner Tool Results**: Large tool outputs are compacted into a digest before they reach the model, keeping long tool chains fast.
+- **Long Conversations Stay Light**: Saved conversation state no longer stacks a fresh copy of the system prompt on every run, which had been quietly growing the cost of every follow-up.
+- **Steadier Memory Search**: Embedding and vector writes are now bounded, fixing the file-handle exhaustion that could stall memory lookups under load.
+
+### Infrastructure
+- **Safer Deploys**: Every build now gets a permanent tag, so rolling back means returning to an exact known-good version. If a build never makes it to production, we get alerted instead of never noticing.
+- **A Faster CI Gate**: Checks on a pull request dropped from 13.4 to 8.9 minutes. Five of them had been quietly measuring an easier thing than they claimed to; they now measure the real one.
+- **One Branch**: The `develop` branch is gone. Everything merges straight to `master`.
+- **Silenced Warnings Have to Explain Themselves**: Every ignored lint or type error now records why it's there, and the cleanup removed all the stale ones nobody could account for.
+- **Everything Logs the Same Way**: API, bots, and background workers now share one logging format, and the alerts were rewritten so that when one fires, it says what actually broke.
+- **Tests That Run the Real Agent**: We can now drive the agent end to end and get the same result every time, so tests exercise real behaviour instead of stand-ins.
+- **A Typed Database Layer**: All 33 collections go through typed code now, and model pricing moved into the codebase instead of a table that could quietly drift out of date.
+- **Easier Self-Hosting**: Simpler local setup, a configurable sandbox region for EU deployments, and one identity for all secrets.
+
+### Documentation
+- **Privacy Policy and Terms**: Both rewritten from scratch to describe what GAIA actually stores, processes, and shares.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [API v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.21.0)

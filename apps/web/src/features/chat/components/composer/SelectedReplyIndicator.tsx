@@ -63,9 +63,11 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   const { isSlashCommandDropdownOpen } = useComposerUI();
 
   const onRemoveRef = useRef(onRemove);
-  onRemoveRef.current = onRemove;
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
-  isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  useEffect(() => {
+    onRemoveRef.current = onRemove;
+    isSlashCommandOpenRef.current = isSlashCommandDropdownOpen;
+  });
 
   // Handle Escape key to close the indicator
   useEffect(() => {
@@ -93,8 +95,9 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   if (isDisplayOnly && replyToMessage) {
     return (
       <div className="relative mr-6">
-        <div
-          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-zinc-700 border-2 hover:bg-zinc-700/50 transition-colors max-w-70"
+        <button
+          type="button"
+          className="flex w-full cursor-pointer items-center gap-2 rounded-2xl border-zinc-700 border-2 px-2.5 py-1.5 text-left transition-colors hover:bg-zinc-700/50 max-w-70"
           onClick={handleClick}
         >
           <div className="shrink-0 text-zinc-400">
@@ -109,7 +112,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               {truncateContent(replyToMessage.content, 40)}
             </span>
           </div>
-        </div>
+        </button>
         {!hideConnector && <ReplyConnectorLine />}
       </div>
     );
@@ -127,7 +130,6 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               type: "spring",
               damping: 20,
               stiffness: 300,
-              duration: 0.2,
             }}
             className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border-1.5 group overflow-hidden"
             onClick={handleClick}

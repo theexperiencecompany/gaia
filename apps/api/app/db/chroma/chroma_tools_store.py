@@ -374,18 +374,10 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     )
     tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
 
-    # Check Redis cache BEFORE expensive ChromaDB operations
-    # Single source of truth for cache keys: always namespace-based
+    # Single source of truth for cache keys: always namespace-based. The hash is
+    # read here but CANNOT short-circuit on its own — see the verified check below.
     cache_key = f"chroma:indexed:{namespace}"
     cached_hash = await get_cache(cache_key)
-    if cached_hash == tools_hash:
-        log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT, skipping reindex of tools",
-            namespace=namespace,
-            tools_hash=tools_hash,
-            input_count=input_count,
-        )
-        return
 
     raw_store = await providers.aget("chroma_tools_store")
     if raw_store is None:
@@ -419,6 +411,25 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
         existing_tools_count=len(existing_tools),
         namespace=namespace,
     )
+
+    # The Redis hash only proves some past process BELIEVED it indexed this
+    # namespace — never that ChromaDB still holds the docs. Trusting it alone made
+    # a wiped/recreated Chroma permanent: the guard hit forever, the namespace was
+    # never re-indexed, and tool discovery silently returned nothing. Require both.
+    if cached_hash == tools_hash and existing_tools:
+        log.info(
+            f"{LogTag.CHROMA} index_tools_to_store: namespace cache HIT (verified against store), skipping reindex",
+            namespace=namespace,
+            tools_hash=tools_hash,
+            input_count=input_count,
+        )
+        return
+    if cached_hash == tools_hash and not existing_tools:
+        log.warning(
+            f"{LogTag.CHROMA} index_tools_to_store: Redis says namespace is indexed but ChromaDB holds 0 docs — store was wiped behind the cache; reindexing",
+            namespace=namespace,
+            input_count=input_count,
+        )
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
     log.set_ns("vector", embedded_count=len(tools_to_upsert))

@@ -290,6 +290,20 @@ class TestBuildCommsGraph:
 
             deps["mocks"][f"{_MOD}.init_llm"].assert_called_once()
 
+    async def test_comms_middleware_receives_the_chat_llm(self):
+        """build_comms_graph must forward chat_llm into the middleware stack —
+        the summarizer inside comms rides the conversation's model."""
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_comms_graph
+
+            async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
+                pass
+
+            mock_cm = deps["mocks"][f"{_MOD}.create_comms_middleware"]
+            mock_cm.assert_called_once()
+            assert mock_cm.call_args.kwargs["chat_llm"] is deps["llm"]
+
     async def test_create_agent_called_with_comms_params(self):
         with ExitStack() as stack:
             deps = _apply_patches(stack)
@@ -382,6 +396,24 @@ class TestBuildExecutorGraph:
                 chat_llm=deps["llm"], in_memory_checkpointer=True
             ) as graph:
                 assert graph is deps["compiled"]
+
+    async def test_executor_is_built_with_the_completion_guard_and_skill_tool(self):
+        """Two things the executor cannot lose. ``require_finish_to_end`` is what
+        opts it into the harness-owned completion check — without it a plain-text
+        stop is taken at face value and the guard is inert. ``save_learned_skill``
+        is bound up front rather than retrieved, so a renamed id silently drops the
+        tool from the executor's initial set."""
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert kwargs["require_finish_to_end"] is True
+        assert "save_learned_skill" in kwargs["initial_tool_ids"]
 
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")

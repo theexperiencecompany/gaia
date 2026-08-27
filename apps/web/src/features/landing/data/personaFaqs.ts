@@ -2,7 +2,7 @@ export const FOUNDERS_FAQS = [
   {
     question: "How does GAIA help startup founders save time?",
     answer:
-      "GAIA acts as a proactive AI chief of staff — it monitors your email, Slack, GitHub, and CRM around the clock, handles repetitive operational tasks, and delivers concise briefings. Founders typically save 8-12 hours per week on investor updates, pipeline reviews, and team communication.",
+      "GAIA acts as a proactive AI chief of staff. It monitors your email, Slack, GitHub, and CRM around the clock, handles repetitive operational tasks, and delivers concise briefings. Founders typically save 8-12 hours per week on investor updates, pipeline reviews, and team communication.",
   },
   {
     question: "Can GAIA write investor updates automatically?",
@@ -17,17 +17,17 @@ export const FOUNDERS_FAQS = [
   {
     question: "Is GAIA a replacement for hiring an EA or chief of staff?",
     answer:
-      "GAIA handles the operational and information work that an EA would manage — briefings, updates, follow-ups, monitoring — at a fraction of the cost. It's ideal for early-stage founders who need operational leverage without the overhead of a full-time hire.",
+      "GAIA handles the operational and information work that an EA would manage (briefings, updates, follow-ups, monitoring) at a fraction of the cost. It's ideal for early-stage founders who need operational leverage without the overhead of a full-time hire.",
   },
   {
     question: "How does GAIA's morning briefing work for founders?",
     answer:
-      "Every morning at your chosen time, GAIA scans your inbox, calendar events, Slack activity, and GitHub notifications from the past 24 hours and delivers one crisp summary. No tabs to check, no scramble — just the context you need to start your day focused.",
+      "Every morning at your chosen time, GAIA scans your inbox, calendar events, Slack activity, and GitHub notifications from the past 24 hours and delivers one crisp summary. No tabs to check, no scramble. Just the context you need to start your day focused.",
   },
   {
     question: "Can GAIA monitor my sales pipeline without me asking?",
     answer:
-      "Yes — GAIA's proactive mode watches your HubSpot or Salesforce pipeline continuously. When a deal shows signs of going cold (no activity, no response), GAIA alerts you and drafts a follow-up email automatically.",
+      "Yes. GAIA's proactive mode watches your HubSpot or Salesforce pipeline continuously. When a deal shows signs of going cold (no activity, no response), GAIA alerts you and drafts a follow-up email automatically.",
   },
   {
     question: "Is GAIA open source?",
@@ -50,7 +50,7 @@ export const SOFTWARE_DEV_FAQS = [
   {
     question: "How does GAIA help with GitHub PR triage?",
     answer:
-      "GAIA monitors your GitHub notifications, prioritizes PRs that need your attention, summarizes review comments, and surfaces critical issues — so you check GitHub once a day with full context instead of constantly.",
+      "GAIA monitors your GitHub notifications, prioritizes PRs that need your attention, summarizes review comments, and surfaces critical issues, so you check GitHub once a day with full context instead of constantly.",
   },
   {
     question: "What integrations does GAIA have for software developers?",
@@ -60,7 +60,7 @@ export const SOFTWARE_DEV_FAQS = [
   {
     question: "Does GAIA help reduce context switching for developers?",
     answer:
-      "That's its primary purpose for developers. Instead of checking GitHub, Linear, Slack, and email separately throughout the day, GAIA aggregates what matters and surfaces it in one briefing — protecting your deep work time.",
+      "That's its primary purpose for developers. Instead of checking GitHub, Linear, Slack, and email separately throughout the day, GAIA aggregates what matters and surfaces it in one briefing, protecting your deep work time.",
   },
   {
     question: "Can GAIA monitor production incidents and alert me?",
@@ -70,12 +70,12 @@ export const SOFTWARE_DEV_FAQS = [
   {
     question: "Is GAIA useful for solo developers or only for teams?",
     answer:
-      "Both. Solo developers use GAIA to manage their GitHub and project tools without distraction. Teams use GAIA via the Slack bot — team members can ask @GAIA questions and get instant answers from GitHub, Linear, and docs.",
+      "Both. Solo developers use GAIA to manage their GitHub and project tools without distraction. Teams use GAIA via the Slack bot: team members can ask @GAIA questions and get instant answers from GitHub, Linear, and docs.",
   },
   {
     question: "How does GAIA's Slack bot work for dev teams?",
     answer:
-      "Your team asks @GAIA anything in Slack — PR status, ticket context, deployment details — and GAIA answers from your connected GitHub, Linear, and Notion. No more pulling the senior dev into every thread.",
+      "Your team asks @GAIA anything in Slack (PR status, ticket context, deployment details) and GAIA answers from your connected GitHub, Linear, and Notion. No more pulling the senior dev into every thread.",
   },
   {
     question:
@@ -94,7 +94,7 @@ export const SALES_FAQS = [
   {
     question: "Can GAIA prepare me for sales calls automatically?",
     answer:
-      "Yes. Before each call, GAIA pulls deal history, recent activity, company news, and contact context from your CRM and LinkedIn — and delivers a concise brief so you walk in prepared, every time.",
+      "Yes. Before each call, GAIA pulls deal history, recent activity, company news, and contact context from your CRM and LinkedIn, and delivers a concise brief so you walk in prepared, every time.",
   },
   {
     question: "Does GAIA integrate with HubSpot and Salesforce?",
@@ -114,12 +114,12 @@ export const SALES_FAQS = [
   {
     question: "Does GAIA update my CRM automatically?",
     answer:
-      "Yes. After calls and email exchanges, GAIA can log activity, update deal stages, and add notes to your CRM — keeping your records current without you touching them manually.",
+      "Yes. After calls and email exchanges, GAIA can log activity, update deal stages, and add notes to your CRM, keeping your records current without you touching them manually.",
   },
   {
     question: "Can GAIA help me prioritize which deals to focus on?",
     answer:
-      "Yes. GAIA analyzes your pipeline for deal velocity, engagement signals, and inactivity — then surfaces a prioritized list of deals that need your attention each morning.",
+      "Yes. GAIA analyzes your pipeline for deal velocity, engagement signals, and inactivity, then surfaces a prioritized list of deals that need your attention each morning.",
   },
 ];
 
@@ -132,7 +132,7 @@ export const PM_FAQS = [
   {
     question: "Can GAIA triage feature requests from multiple channels?",
     answer:
-      "Yes. GAIA monitors Slack, email, and Intercom for feature requests, categorizes them by theme, and surfaces the most-requested items — giving you a prioritized backlog without manual triage.",
+      "Yes. GAIA monitors Slack, email, and Intercom for feature requests, categorizes them by theme, and surfaces the most-requested items, giving you a prioritized backlog without manual triage.",
   },
   {
     question: "Does GAIA integrate with Linear for product managers?",
@@ -147,7 +147,7 @@ export const PM_FAQS = [
   {
     question: "How does GAIA help PMs prepare for planning meetings?",
     answer:
-      "GAIA aggregates open feature requests, in-progress tickets, engineering blockers, and customer feedback threads — and delivers a pre-meeting brief so you walk into planning with full context.",
+      "GAIA aggregates open feature requests, in-progress tickets, engineering blockers, and customer feedback threads, then delivers a pre-meeting brief so you walk into planning with full context.",
   },
   {
     question: "Can GAIA help me write product briefs and PRDs?",
@@ -157,7 +157,7 @@ export const PM_FAQS = [
   {
     question: "What tools does GAIA connect to for product managers?",
     answer:
-      "GAIA integrates with Linear, GitHub, Notion, Slack, Jira, Confluence, Intercom, and Google Workspace — the core stack for most product teams.",
+      "GAIA integrates with Linear, GitHub, Notion, Slack, Jira, Confluence, Intercom, and Google Workspace: the core stack for most product teams.",
   },
 ];
 
@@ -165,12 +165,12 @@ export const EM_FAQS = [
   {
     question: "How does GAIA help engineering managers prepare for 1:1s?",
     answer:
-      "Before each 1:1, GAIA prepares a brief with the engineer's recent PR activity, Linear ticket progress, blockers, and Slack context — so you walk in with full situational awareness and can focus on the conversation, not status collection.",
+      "Before each 1:1, GAIA prepares a brief with the engineer's recent PR activity, Linear ticket progress, blockers, and Slack context, so you walk in with full situational awareness and can focus on the conversation, not status collection.",
   },
   {
     question: "Can GAIA track team velocity and PR cycle times automatically?",
     answer:
-      "Yes. GAIA monitors GitHub and Linear continuously, tracking PR cycle times, review turnaround, merge rates, and sprint velocity — and surfaces anomalies before they become problems.",
+      "Yes. GAIA monitors GitHub and Linear continuously, tracking PR cycle times, review turnaround, merge rates, and sprint velocity, then surfaces anomalies before they become problems.",
   },
   {
     question: "Does GAIA help with sprint reporting for engineering managers?",
@@ -180,22 +180,22 @@ export const EM_FAQS = [
   {
     question: "How does GAIA surface blockers for engineering managers?",
     answer:
-      "GAIA monitors PRs sitting in review too long, tickets blocked with no activity, and Slack threads that haven't been resolved — and proactively surfaces these in your daily briefing so you can unblock your team.",
+      "GAIA monitors PRs sitting in review too long, tickets blocked with no activity, and Slack threads that haven't been resolved, then proactively surfaces these in your daily briefing so you can unblock your team.",
   },
   {
     question: "Can GAIA help me stay technical while managing a team?",
     answer:
-      "Yes. GAIA keeps you informed on code quality, PR reviews, and architecture decisions across your team's repos — giving you enough technical context to contribute meaningfully without reading every line.",
+      "Yes. GAIA keeps you informed on code quality, PR reviews, and architecture decisions across your team's repos, giving you enough technical context to contribute meaningfully without reading every line.",
   },
   {
     question: "What integrations does GAIA have for engineering managers?",
     answer:
-      "GAIA integrates with GitHub, Linear, Jira, Slack, Notion, and Confluence — covering the full EM workflow from team communication to sprint tracking to documentation.",
+      "GAIA integrates with GitHub, Linear, Jira, Slack, Notion, and Confluence, covering the full EM workflow from team communication to sprint tracking to documentation.",
   },
   {
     question: "How does GAIA's Slack bot help engineering teams?",
     answer:
-      "Team members ask @GAIA in Slack for PR status, deployment context, or ticket details — and get instant answers from your connected GitHub, Linear, and docs. This reduces interruptions to you and senior engineers.",
+      "Team members ask @GAIA in Slack for PR status, deployment context, or ticket details, and get instant answers from your connected GitHub, Linear, and docs. This reduces interruptions to you and senior engineers.",
   },
 ];
 
@@ -203,7 +203,7 @@ export const AGENCY_FAQS = [
   {
     question: "How does GAIA help agency owners manage multiple clients?",
     answer:
-      "GAIA monitors all your client projects across ClickUp, Asana, or Notion simultaneously, generating weekly status reports, flagging at-risk deliverables, and keeping your pipeline active — automatically.",
+      "GAIA monitors all your client projects across ClickUp, Asana, or Notion simultaneously, generating weekly status reports, flagging at-risk deliverables, and keeping your pipeline active, automatically.",
   },
   {
     question: "Can GAIA write client status reports automatically?",
@@ -213,18 +213,18 @@ export const AGENCY_FAQS = [
   {
     question: "Does GAIA integrate with ClickUp and Asana for agencies?",
     answer:
-      "Yes. GAIA integrates with ClickUp, Asana, Monday.com, and Notion — the most popular project management tools used by digital agencies.",
+      "Yes. GAIA integrates with ClickUp, Asana, Monday.com, and Notion: the most popular project management tools used by digital agencies.",
   },
   {
     question: "How does GAIA help with agency business development?",
     answer:
-      "GAIA monitors your BD pipeline in your CRM, alerts you to deals going cold, and drafts outreach messages for warm leads — so you never let a potential client slip through the cracks.",
+      "GAIA monitors your BD pipeline in your CRM, alerts you to deals going cold, and drafts outreach messages for warm leads, so you never let a potential client slip through the cracks.",
   },
   {
     question:
       "Can GAIA help me scale my agency without hiring more project managers?",
     answer:
-      "Yes. The operational work that typically requires a project manager — status reports, client updates, timeline monitoring, risk alerts — GAIA handles automatically. Agencies run 10+ clients with the same overhead as managing 5.",
+      "Yes. The operational work that typically requires a project manager, like status reports, client updates, timeline monitoring, and risk alerts, GAIA handles automatically. Agencies run 10+ clients with the same overhead as managing 5.",
   },
   {
     question: "How does GAIA monitor client project health?",

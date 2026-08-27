@@ -11,7 +11,7 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { truncateResponse } from "../utils";
+import { sendChunked } from "../utils";
 import { handleConversationList } from "../utils/commands";
 
 /** `/conversations` command definition. */
@@ -56,7 +56,6 @@ export const conversationsCommand: BotCommand = {
     }
 
     const response = await handleConversationList(gaia, ctx, page);
-    const truncated = truncateResponse(response, target.platform);
-    await target.sendEphemeral(truncated);
+    await sendChunked(target.sendEphemeral, response, target.platform);
   },
 };

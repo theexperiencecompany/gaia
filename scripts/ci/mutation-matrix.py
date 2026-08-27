@@ -9,13 +9,16 @@ when any test file imports it, imports from it, or names it in a string
 literal (patch target).
 
 Input:  changed app module paths on stdin (one per line, repo-root-relative).
-Output: {"modules": [{"module": ..., "testfile": ...}, ...]}
+Output: [{"module": ..., "testfiles": [...], "changed_lines": [...]}, ...]
+        Every test file referencing the module, not one — see with_unit_mirror.
 Exit 1 with a ::error message when a changed module has no test file.
 """
 
 from __future__ import annotations
 
 import ast
+from collections.abc import Sequence
+from functools import cache
 import io
 import json
 import os
@@ -116,8 +119,16 @@ def _is_comment_only_change(module_path: str, merge_base: str) -> bool:
     return old_tokens == new_tokens
 
 
-def _module_refs(path: Path) -> set[str]:
+@cache
+def _module_refs(path: Path) -> frozenset[str]:
     """Every app.* dotted name a test file references.
+
+    Memoized, and returning an immutable set so a shared cached value cannot be
+    mutated by a caller. Every changed module used to re-parse every test file
+    AND (via the consumer fallback) every app file: on a whole-tree diff — 427
+    modules against ~1500 files — that is hundreds of thousands of AST parses,
+    and the plan step hit the lane's 10-minute ceiling and was cancelled, so
+    nothing downstream got a gate at all. Each file is now parsed once.
 
     Two reference forms are trusted:
     - import statements (import X / from X import Y)
@@ -132,7 +143,7 @@ def _module_refs(path: Path) -> set[str]:
     try:
         tree = ast.parse(path.read_text())
     except (SyntaxError, UnicodeDecodeError):
-        return refs
+        return frozenset()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
@@ -148,7 +159,7 @@ def _module_refs(path: Path) -> set[str]:
                 _collect_module_strings(refs, keyword.value)
         elif isinstance(node, ast.Assign):
             _collect_module_strings(refs, node.value)
-    return refs
+    return frozenset(refs)
 
 
 def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
@@ -179,16 +190,23 @@ def _is_bare_module_path(candidate: str) -> bool:
     return all(part.isidentifier() for part in candidate.split("."))
 
 
-def _matches(module: str, module_py: str, refs: set[str]) -> bool:
+def _matches(module: str, module_py: str, refs: frozenset[str]) -> bool:
     """Whether ``refs`` reference ``module`` exactly or as a prefix."""
     return module in refs or module_py in refs or any(ref.startswith(f"{module}.") for ref in refs)
 
 
-def _importers_of(module: str) -> list[str]:
+@cache
+def _py_files(root: Path) -> tuple[Path, ...]:
+    """Sorted *.py under root, walked once — the rglob itself was repeated per module."""
+    return tuple(sorted(root.rglob("*.py")))
+
+
+@cache
+def _importers_of(module: str) -> tuple[str, ...]:
     """App modules that import ``module`` (one level of consumer following)."""
     module_py = f"{module}.py"
     importers: set[str] = set()
-    for path in sorted(APP_DIR.rglob("*.py")):
+    for path in _py_files(APP_DIR):
         if _matches(module, module_py, _module_refs(path)):
             relative = path.relative_to(APP_DIR).with_suffix("")
             importers.add(f"app.{relative.as_posix().replace('/', '.')}")
@@ -206,7 +224,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     module = f"app.{module_rel.replace('/', '.')}"
     module_py = f"{module}.py"
     hits: list[str] = []
-    for path in sorted(tests_dir.rglob("*.py")):
+    for path in _py_files(tests_dir):
         # Only actual test files qualify: conftest.py defines fixtures and
         # helper modules (store.py, llm.py, ...) support them — running one
         # as the module's test file would prove nothing and mask the real
@@ -228,6 +246,44 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
             hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir))
     hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits
+
+
+def with_unit_mirror(
+    module_rel: str, hits: Sequence[str], repo_root: Path = TESTS_DIR.parent
+) -> list[str]:
+    """Every test file for a module, its unit mirror first — the gate's full set.
+
+    The mirror used to short-circuit the scan instead of joining it: a module
+    that had one was measured against ONLY that file, and a module without one
+    against whichever hit sorted first. Either way the rest were discarded, so
+    mutants covered only by a discarded file were reported as "no covering
+    test" — informational, failing nothing. ``app/agents/tools/executor_tool.py``
+    is the extreme case: measured against the file the sort picked, all 65 of
+    its mutants land in that bucket and the gate reports OK having killed
+    nothing; measured against every referencing file, 24 real survivors appear
+    on lines the PR changed.
+    """
+    mirror = f"tests/unit/{Path(module_rel).parent}/test_{Path(module_rel).stem}.py"
+    ordered = [hit.removeprefix("apps/api/") for hit in hits]
+    # Unit tier only. Every selected file is re-run once PER MUTANT, so an e2e
+    # file in this list is paid for tens of times: app/workers/tasks/
+    # workflow_tasks.py picked up tests/e2e/test_workflow_execution.py, which
+    # compiles real graphs, and the module collapsed from 9.43 to 0.11
+    # mutations/second — all 35 mutants hit mutmut's per-mutant timeout and the
+    # run proved nothing. This is the instrument's documented scope (see the
+    # hermetic-fence note in scripts/test/mutation.sh); the slower tiers are
+    # already run properly, once, by test-python.
+    #
+    # Kept as a filter rather than a cap: dropping the slow tiers is what makes
+    # the run finish, and dropping *arbitrary* files is what re-introduces the
+    # false-green this function exists to prevent — so every unit file stays.
+    unit_only = [hit for hit in ordered if hit.startswith("tests/unit/")]
+    # A module whose only coverage is integration/e2e keeps it: measuring it
+    # slowly beats not measuring it, and reporting "no test file" would be a lie.
+    ordered = unit_only or ordered
+    if (repo_root / mirror).exists():
+        ordered = [mirror, *(hit for hit in ordered if hit != mirror)]
+    return ordered
 
 
 def main() -> int:
@@ -259,14 +315,11 @@ def main() -> int:
             continue
         rel_py = rel.removeprefix("app/")
         rel_py = rel_py.removesuffix(".py")
+        testfiles = with_unit_mirror(rel_py, _test_files_for(rel_py))
+        if testfiles:
+            matrix.append(_entry(rel, testfiles, merge_base))
+            continue
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
-        if (TESTS_DIR.parent / unit_mirror).exists():
-            matrix.append(_entry(rel, unit_mirror, merge_base))
-            continue
-        hits = _test_files_for(rel_py)
-        if hits:
-            matrix.append(_entry(rel, hits[0].removeprefix("apps/api/"), merge_base))
-            continue
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
             "and AST importers/patch targets). Changed code must ship tests."
@@ -279,7 +332,7 @@ def main() -> int:
     return 0
 
 
-def _entry(module_rel: str, testfile: str, merge_base: str) -> dict[str, object]:
+def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, object]:
     """Module matrix entry with the PR's changed line ranges for this file.
 
     The gate is diff-driven: a survivor only fails the lane when its mutation
@@ -288,7 +341,7 @@ def _entry(module_rel: str, testfile: str, merge_base: str) -> dict[str, object]
     coverage.
     """
     ranges = _changed_line_ranges(f"apps/api/{module_rel}", merge_base)
-    return {"module": module_rel, "testfile": testfile, "changed_lines": ranges}
+    return {"module": module_rel, "testfiles": testfiles, "changed_lines": ranges}
 
 
 def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:

@@ -8,6 +8,7 @@ export type {
   Integration,
   IntegrationAuthType,
   IntegrationCategory,
+  IntegrationConnectionData,
   IntegrationCreator,
   IntegrationManagedBy,
   IntegrationStatusRecord,

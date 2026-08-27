@@ -42,12 +42,12 @@ async def _bootstrap() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(postgresql_module.Base.metadata.create_all)
 
-    async def _get_engine():  # type: ignore[return]
+    async def _get_engine():  # type: ignore[no-untyped-def]  # benchmark shim, not part of the typed app surface
         # Must be async: replaces get_postgresql_engine which is awaited by callers.
         await asyncio.sleep(0)
         return engine
 
-    postgresql_module.get_postgresql_engine = _get_engine  # type: ignore[assignment]
+    postgresql_module.get_postgresql_engine = _get_engine
     print("  [bootstrap] Postgres engine ready", flush=True)
 
     # ── ChromaDB ─────────────────────────────────────────────────────────────
@@ -57,12 +57,12 @@ async def _bootstrap() -> None:
     for name in (CHROMA_MEMORIES_COLLECTION, CHROMA_MEMORY_EPISODES_COLLECTION):
         await chroma_client.get_or_create_collection(name=name, metadata={"hnsw:space": "cosine"})
 
-    async def _get_client(*_args: object, **_kwargs: object):  # type: ignore[return]
+    async def _get_client(*_args: object, **_kwargs: object):  # type: ignore[no-untyped-def]  # benchmark shim, not part of the typed app surface
         # Must be async: replaces ChromaClient.get_client which is awaited by callers.
         await asyncio.sleep(0)
         return chroma_client
 
-    ChromaClient.get_client = _get_client  # type: ignore[assignment]
+    ChromaClient.get_client = _get_client  # type: ignore[method-assign]  # benchmark swaps the client getter for the run
     chroma_store._collections.clear()
     print("  [bootstrap] ChromaDB client ready", flush=True)
 
@@ -71,7 +71,7 @@ async def _bootstrap() -> None:
 
     redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
     await redis_client.ping()
-    redis_cache.redis = redis_client  # type: ignore[assignment]
+    redis_cache.redis = redis_client
     print("  [bootstrap] Redis client ready", flush=True)
 
     # ── fastembed warm-up (loads ONNX models once) ────────────────────────────

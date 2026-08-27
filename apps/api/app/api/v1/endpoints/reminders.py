@@ -22,6 +22,7 @@ from app.models.reminder_models import (
     UpdateReminderRequest,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.reminder_service import reminder_scheduler
 from app.utils.cron_utils import (
     calculate_next_occurrences,
@@ -105,6 +106,9 @@ async def create_reminder_endpoint(
         log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
+        capture_context_event(
+            AnalyticsEvents.REMINDER_CREATED, {"is_recurring": bool(reminder.repeat)}
+        )
         return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
@@ -290,6 +294,7 @@ async def cancel_reminder_endpoint(
                 detail="Failed to cancel reminder",
             )
 
+        capture_context_event(AnalyticsEvents.REMINDER_DELETED)
         log.set(outcome="success")
 
     except HTTPException:

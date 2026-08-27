@@ -29,6 +29,7 @@ from app.models.conversation_models import (
     ConversationSummary,
 )
 from app.services import conversation_service
+from app.services.analytics_service import AnalyticsEvents
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -58,6 +59,20 @@ def mock_repo():
 @pytest.fixture
 def test_user():
     return {"user_id": "user_123", "email": "test@example.com"}
+
+
+@pytest.fixture(autouse=True)
+def _no_analytics():
+    """Neutralize analytics captures for tests not asserting on them.
+
+    ``capture_event`` resolves the PostHog provider at call time, which is not
+    registered in this test module's import chain — capture-specific tests
+    patch the call explicitly and assert on it.
+    """
+    with (
+        patch("app.services.conversation_service.capture_event"),
+    ):
+        yield
 
 
 def _document(**overrides) -> ConversationDocument:
@@ -96,6 +111,28 @@ class TestCreateConversationService:
         with pytest.raises(HTTPException) as exc_info:
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
         assert exc_info.value.status_code == 500
+
+    async def test_captures_conversation_created(self, mock_repo, test_user):
+        mock_repo.create.return_value = _document()
+        conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
+
+        with patch("app.services.conversation_service.capture_event") as mock_capture:
+            await create_conversation_service(conversation, test_user)
+
+        mock_capture.assert_called_once_with(
+            "user_123",
+            AnalyticsEvents.CONVERSATION_CREATED,
+            {"is_system_generated": False, "is_onboarding_demo": False},
+        )
+
+    async def test_no_capture_on_repository_error(self, mock_repo, test_user):
+        mock_repo.create.side_effect = Exception("DB connection failed")
+        with (
+            pytest.raises(HTTPException),
+            patch("app.services.conversation_service.capture_event") as mock_capture,
+        ):
+            await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
+        mock_capture.assert_not_called()
 
     async def test_persists_source_and_flags(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
@@ -142,6 +179,16 @@ class TestStarConversation:
             await star_conversation("nonexistent", True, test_user)
         assert exc_info.value.status_code == 404
 
+    async def test_captures_conversation_starred(self, mock_repo, test_user):
+        mock_repo.set_starred.return_value = True
+        with patch("app.services.conversation_service.capture_event") as mock_capture:
+            await star_conversation("conv_abc", True, test_user)
+        mock_capture.assert_called_once_with(
+            "user_123",
+            AnalyticsEvents.CONVERSATION_STARRED,
+            {"starred": True, "conversation_id": "conv_abc"},
+        )
+
 
 class TestDeleteConversation:
     async def test_deletes_single(self, mock_repo, test_user):
@@ -149,9 +196,13 @@ class TestDeleteConversation:
         with (
             patch.object(conversation_service, "delete_session_dir", new=AsyncMock()),
             patch.object(conversation_service, "_cleanup_checkpoint_threads", new=AsyncMock()),
+            patch("app.services.conversation_service.capture_event") as mock_capture,
         ):
             result = await delete_conversation("conv_abc", test_user)
         assert result.conversation_id == "conv_abc"
+        mock_capture.assert_called_once_with(
+            "user_123", AnalyticsEvents.CONVERSATION_DELETED, {"conversation_id": "conv_abc"}
+        )
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
         mock_repo.delete.return_value = False
@@ -162,10 +213,16 @@ class TestDeleteConversation:
     async def test_delete_all_cleans_up_each_conversation(self, mock_repo, test_user):
         mock_repo.delete_all_for_user.return_value = ["conv_1", "conv_2"]
         cleanup = AsyncMock()
-        with patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup):
+        with (
+            patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup),
+            patch("app.services.conversation_service.capture_event") as mock_capture,
+        ):
             result = await delete_all_conversations(test_user)
         assert result.message == "All conversations deleted successfully"
         assert cleanup.await_count == 2
+        mock_capture.assert_called_once_with(
+            "user_123", AnalyticsEvents.CONVERSATION_DELETED, {"count": 2}
+        )
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
         mock_repo.delete_all_for_user.return_value = []
@@ -185,6 +242,16 @@ class TestUpdateDescription:
         with pytest.raises(HTTPException) as exc_info:
             await update_conversation_description("nonexistent", "New Desc", test_user)
         assert exc_info.value.status_code == 404
+
+    async def test_captures_conversation_renamed(self, mock_repo, test_user):
+        mock_repo.set_description.return_value = True
+        with patch("app.services.conversation_service.capture_event") as mock_capture:
+            await update_conversation_description("conv_abc", "New Description", test_user)
+        mock_capture.assert_called_once_with(
+            "user_123",
+            AnalyticsEvents.CONVERSATION_RENAMED,
+            {"conversation_id": "conv_abc"},
+        )
 
 
 class TestMarkAsReadUnread:
@@ -328,6 +395,18 @@ class TestCreateSystemConversation:
         with pytest.raises(HTTPException) as exc_info:
             await create_system_conversation("user_123", "Test", SystemPurpose.OTHER)
         assert exc_info.value.status_code == 500
+
+    async def test_captures_system_conversation_created(self, mock_repo):
+        mock_repo.create.return_value = _document()
+        with patch("app.services.conversation_service.capture_event") as mock_capture:
+            await create_system_conversation(
+                "user_123", "Email Actions", SystemPurpose.WORKFLOW_EXECUTION
+            )
+        mock_capture.assert_called_once_with(
+            "user_123",
+            AnalyticsEvents.CONVERSATION_CREATED,
+            {"is_system_generated": True, "system_purpose": "workflow_execution"},
+        )
 
 
 class TestBatchSyncConversations:

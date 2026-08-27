@@ -36,7 +36,8 @@ def _get_mongodb_instance() -> MongoDB:
     global _mongodb_instance
     if _mongodb_instance is None:
         log.info(f"{LogTag.MONGO} Initializing MongoDB instance (lazy loading)")
-        from app.db.mongodb.mongodb import init_mongodb
+        # Deferred import: kept inside the lazy initializer so MongoDB connects on first collection access, not at import
+        from app.db.mongodb.mongodb import init_mongodb  # noqa: PLC0415 -- lazy init
 
         _mongodb_instance = init_mongodb()
         log.info(f"{LogTag.MONGO} MongoDB instance initialized")

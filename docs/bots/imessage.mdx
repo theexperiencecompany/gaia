@@ -1,0 +1,98 @@
+---
+title: "iMessage Bot"
+description: "Self-host the GAIA iMessage bot using Photon Spectrum."
+icon: "/images/icons/imessage.webp"
+---
+
+# iMessage Bot Development
+
+Run your own instance of the GAIA iMessage bot. The bot receives messages through [Photon Spectrum](https://spectrum.photon.codes), which bridges iMessage to a signed webhook, so you need a publicly reachable URL.
+
+<Note>
+  Looking to use GAIA on iMessage as a user? See [Using GAIA on iMessage](/guides/imessage-bot).
+</Note>
+
+## Prerequisites
+
+- Node.js 18+ and pnpm
+- A [Photon Spectrum](https://spectrum.photon.codes) project with iMessage enabled
+- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+- A publicly reachable URL for the webhook (or a tunnel like ngrok during development)
+
+## Step 1: Set up Photon Spectrum
+
+1. Create a Spectrum project and enable the iMessage platform
+2. Copy your **project ID** and **project secret** — together they are the Basic-auth credentials for Spectrum's management API
+3. Register a webhook pointing at your bot's `/webhook` endpoint (the bot listens on port `3204` by default; override with `BOT_SERVER_PORT`):
+
+   ```json
+   {
+     "webhookUrl": "https://your-domain.example/webhook",
+     "schemaVersion": "normalized-events.v1",
+     "eventTypes": ["message.received"]
+   }
+   ```
+
+4. Copy the **webhook secret**: Spectrum signs every request, and the SDK rejects requests whose `X-Spectrum-Signature` does not verify
+
+<Warning>
+  A project fans every `message.received` event out to **all** registered webhooks. Delete stale entries (an old tunnel URL, for example) or every inbound message will also fire at a dead endpoint, and repeated failures can get a webhook disabled.
+</Warning>
+
+## Step 2: Configure environment variables
+
+Create a `.env` file in `apps/bots/imessage/` (or use the shared `apps/bots/.env`):
+
+```bash
+SPECTRUM_PROJECT_ID=your_project_id
+SPECTRUM_PROJECT_SECRET=your_project_secret
+SPECTRUM_WEBHOOK_SECRET=your_webhook_secret
+GAIA_API_URL=http://localhost:8000
+GAIA_BOT_API_KEY=your_secure_bot_api_key
+GAIA_FRONTEND_URL=http://localhost:3000
+BOT_LOG_HASH_SECRET=your_64_char_hex_secret
+```
+
+`GAIA_BOT_API_KEY` must match the `BOT_API_KEY` configured in your GAIA API. Generate `BOT_LOG_HASH_SECRET` with `openssl rand -hex 32`.
+
+## Step 3: Start the bot
+
+```bash
+# Development (hot reload)
+nx dev bot-imessage
+
+# Production
+nx build bot-imessage && nx start bot-imessage
+```
+
+## Recipients must be registered first
+
+Spectrum's shared line will not deliver to a number the project has not registered. GAIA's connect flow does this for you — `POST /platform-links/imessage/connect` registers the number and returns the pool line assigned to it, which is what the user texts.
+
+Registration is idempotent and expects **E.164** format. Each registered user gets their own `assignedPhoneNumber`, so there is no single number to hand out.
+
+## Platform behavior
+
+A few iMessage-specific constraints, handled automatically by the adapter:
+
+- **Phone-number handles only**: the shared pool routes messages sent from a phone number. A user sending from their Apple ID email gets Spectrum's canned bounce until they switch **Settings → Messages → Send & Receive** and start a new conversation
+- **Direct messages only**: group spaces are ignored
+- **No streaming or edits**: responses are sent as one complete message once generation finishes
+- **Plain text**: iMessage has no markdown rendering, so responses are sent unformatted
+- **Outbound sends go through the space**: `im.space.create(handle).send(...)`, there is no REST send endpoint
+- **Media**: images and documents are uploaded; voice notes are not supported, because the webhook payload carries no attachment id for them
+- **Pro-gated**: linking is restricted to Pro accounts and the plan is re-checked on every message, so a downgrade is refused rather than silently served
+
+## Docker note
+
+The bot image ships only `dist/` plus the three gRPC peer packages the Photon SDK resolves at runtime (`nice-grpc`, `nice-grpc-common`, `@grpc/grpc-js`). tsup bundles their code, but the SDK calls `import.meta.resolve()` on them before creating its client, so they must also exist on disk — the shared `apps/bots/Dockerfile` stages them for this bot and fails the build if any is missing.
+
+## Troubleshooting
+
+| Problem | Solution |
+| --- | --- |
+| Webhook returns 401/403 | Verify `SPECTRUM_WEBHOOK_SECRET` matches the secret Spectrum shows for that webhook |
+| Bot doesn't respond | Check the webhook URL is publicly reachable and points at `/webhook` on the bot's port, and that the webhook is still `enabled` in Spectrum |
+| Sender gets an automated bounce | They are messaging from an Apple ID email, or their number was never registered with the project |
+| Authentication fails | Ensure `GAIA_BOT_API_KEY` matches the API's `BOT_API_KEY` and the API is reachable |
+| Container exits on boot | Usually the gRPC peers are missing from the image — see the Docker note above |

@@ -33,6 +33,9 @@ from app.services.provider_metadata_service import (
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
+from app.services.workflow.integration_pause import (
+    resume_workflows_for_reconnected_integration,
+)
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.redis_utils import RedisPoolManager
@@ -95,7 +98,7 @@ async def store_user_info(
             )
             try:
                 track_login(
-                    user_id=email,
+                    user_id=existing_user.id,
                     email=email,
                     name=name,
                     login_method=LOGIN_METHOD_WORKOS,
@@ -117,10 +120,10 @@ async def store_user_info(
     if not external_side_effects:
         return created.id, True
 
-    # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
+    # Track signup with the stable Mongo user id as the PostHog distinct id.
     try:
         track_signup(
-            user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
+            user_id=created.id,
             email=email,
             name=name,
             signup_method=LOGIN_METHOD_WORKOS,
@@ -247,7 +250,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                 error_type=type(e).__name__,
                 user_id=user_id,
             )
-            for integration_id in composio_id_to_provider.keys():
+            for integration_id in composio_id_to_provider:
                 result[integration_id] = False
 
     # Include custom integrations from MongoDB that are connected
@@ -323,6 +326,7 @@ async def handle_oauth_connection(
     user_id: str,
     integration_config: OAuthIntegration,
     background_tasks: BackgroundTasks,
+    connected_account_id: str | None = None,
 ) -> None:
     """
     Handle successful OAuth connection: setup triggers, update bio status, queue processing.
@@ -331,6 +335,7 @@ async def handle_oauth_connection(
         user_id: The user ID
         integration_config: The integration configuration object
         background_tasks: FastAPI background tasks
+        connected_account_id: Composio's nanoid for the account that just authorized
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})
     log.set_ns(
@@ -452,9 +457,20 @@ async def handle_oauth_connection(
     # set (OAUTH_STATUS + tools:user:* + tool_namespaces), so no manual delete here.
     try:
         await update_user_integration_status(
-            user_id, integration_config.id, INTEGRATION_STATUS_CONNECTED
+            user_id,
+            integration_config.id,
+            INTEGRATION_STATUS_CONNECTED,
+            connected_account_id=connected_account_id,
         )
         log.info(f"{LogTag.OAUTH} Updated user_integrations status for", id=integration_config.id)
+        # Runs after the status write above, and as a background task, so the
+        # reconnected integration already reads as connected by the time
+        # activate_workflow re-checks the workflow's requirements.
+        background_tasks.add_task(
+            resume_workflows_for_reconnected_integration,
+            user_id,
+            integration_config.id,
+        )
     except Exception as e:
         log.warning(
             f"{LogTag.OAUTH} Failed to update user_integrations status",

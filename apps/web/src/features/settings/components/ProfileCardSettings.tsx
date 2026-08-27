@@ -4,7 +4,11 @@ import { Button, ButtonGroup } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
-import { useEffect, useState } from "react";
+import {
+  CONNECT_ACTION_LABEL,
+  integrationConnectionState,
+} from "@shared/utils";
+import { useEffect, useMemo, useState } from "react";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -20,6 +24,9 @@ export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { connectIntegration, getIntegrationStatus } = useIntegrations();
+  const gmailState = integrationConnectionState(
+    getIntegrationStatus("gmail")?.status,
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,19 +71,27 @@ export default function ProfileCardSettings() {
     }
   };
 
-  const displayData: HoloCardDisplayData | null = holoCardData
-    ? {
-        house: holoCardData.house || "bluehaven",
-        name: holoCardData.name,
-        personality_phrase: holoCardData.personality_phrase ?? "",
-        user_bio: holoCardData.user_bio ?? "",
-        account_number: `#${holoCardData.account_number ?? ""}`,
-        member_since: holoCardData.member_since ?? "",
-        overlay_color: holoCardData.overlay_color,
-        overlay_opacity: holoCardData.overlay_opacity,
-        holo_card_id: holoCardData.holo_card_id,
-      }
-    : null;
+  // Memoized on `holoCardData` so identity is stable across unrelated
+  // re-renders (integration polling, etc.) — HoloCardEditor's render-phase
+  // reset keys on object identity and would otherwise clobber the user's
+  // in-progress overlay pick with the stale server value on every parent render.
+  const displayData: HoloCardDisplayData | null = useMemo(
+    () =>
+      holoCardData
+        ? {
+            house: holoCardData.house || "bluehaven",
+            name: holoCardData.name,
+            personality_phrase: holoCardData.personality_phrase ?? "",
+            user_bio: holoCardData.user_bio ?? "",
+            account_number: `#${holoCardData.account_number ?? ""}`,
+            member_since: holoCardData.member_since ?? "",
+            overlay_color: holoCardData.overlay_color,
+            overlay_opacity: holoCardData.overlay_opacity,
+            holo_card_id: holoCardData.holo_card_id,
+          }
+        : null,
+    [holoCardData],
+  );
 
   return (
     <SettingsPage>
@@ -125,9 +140,10 @@ export default function ProfileCardSettings() {
               (displayData.user_bio.startsWith("Connect your Gmail") ||
                 displayData.user_bio.startsWith("Processing")) &&
               // Only show button if Gmail is not connected
-              getIntegrationStatus("gmail")?.connected !== true && (
+              gmailState !== "connected" && (
                 <Button color="primary" onPress={handleConnectGmail}>
-                  Connect Gmail for a more personalized bio
+                  {CONNECT_ACTION_LABEL[gmailState]} Gmail for a more
+                  personalized bio
                 </Button>
               )}
           </div>

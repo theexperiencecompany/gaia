@@ -5,7 +5,7 @@ import { CanvasIcon } from "@icons";
 import type React from "react";
 import { useState } from "react";
 import MarkdownViewerModal from "@/components/common/MarkdownViewerModal";
-import { apiService } from "@/lib/api/service";
+import { getTodoCanvas } from "@/features/todo/api/todoApi";
 
 interface CanvasViewerProps {
   todoId: string;
@@ -26,10 +26,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
     setIsLoading(true);
     setHasError(false);
     try {
-      const res = await apiService.get<{ content: string }>(
-        `/api/v1/todos/${todoId}/canvas`,
-        { silent: true },
-      );
+      const res = await getTodoCanvas(todoId);
       setContent(res.content);
     } catch {
       setHasError(true);

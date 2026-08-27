@@ -36,7 +36,7 @@ class _LLMStub:
 def llm(monkeypatch):
     stub = _LLMStub()
 
-    def fake_get_default_llm():
+    def fake_get_helper_llm():
         client = MagicMock()
 
         def with_structured_output(schema):
@@ -54,7 +54,7 @@ def llm(monkeypatch):
             raise stub.error
         return SocialProfileFilterOutput(owned_profiles=stub.owned_profiles)
 
-    monkeypatch.setattr(svc, "get_default_llm", fake_get_default_llm)
+    monkeypatch.setattr(svc, "get_helper_llm", fake_get_helper_llm)
     monkeypatch.setattr(svc, "ainvoke_llm", fake_ainvoke_llm)
     return stub
 
@@ -64,7 +64,7 @@ def no_llm(monkeypatch):
     def raise_not_configured():
         raise LLMNotConfiguredError("no llm configured")
 
-    monkeypatch.setattr(svc, "get_default_llm", raise_not_configured)
+    monkeypatch.setattr(svc, "get_helper_llm", raise_not_configured)
 
 
 def _email(body: str, **overrides) -> dict:

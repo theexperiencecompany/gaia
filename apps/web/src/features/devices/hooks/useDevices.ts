@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { devicesApi } from "../api/devicesApi";
 import type { Device } from "../types";
 
@@ -16,7 +17,10 @@ export function useDevices() {
 
   const revoke = useMutation({
     mutationFn: (deviceId: string) => devicesApi.revoke(deviceId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: devicesKey }),
+    onSuccess: (_data, deviceId) => {
+      trackEvent(ANALYTICS_EVENTS.DEVICE_DISCONNECTED, { device_id: deviceId });
+      queryClient.invalidateQueries({ queryKey: devicesKey });
+    },
   });
 
   return {

@@ -32,6 +32,7 @@ from app.models.conversation_models import (
     UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from shared.py.wide_events import log
 
@@ -112,6 +113,17 @@ async def create_conversation_service(
             detail=f"Failed to create conversation: {e!s}",
         )
 
+    # Runs from the conversations endpoint, the chat stream's background init,
+    # bot message handling, and seeding — always with an explicit user_id.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CONVERSATION_CREATED,
+        {
+            "is_system_generated": document.is_system_generated,
+            "is_onboarding_demo": document.is_onboarding_demo,
+        },
+    )
+
     return CreateConversationResponse(
         conversation_id=conversation.conversation_id,
         user_id=user_id,
@@ -170,6 +182,13 @@ async def star_conversation(
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
+    # Called from the endpoint today, but attributed explicitly so a future
+    # worker/bot caller is covered without relying on a request context.
+    capture_event(
+        user_id,
+        AnalyticsEvents.CONVERSATION_STARRED,
+        {"starred": starred, "conversation_id": conversation_id},
+    )
     return StarConversationResponse(message="Conversation updated successfully", starred=starred)
 
 
@@ -186,6 +205,7 @@ async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversa
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
 
+    capture_event(user_id, AnalyticsEvents.CONVERSATION_DELETED, {"count": len(conversation_ids)})
     return DeleteAllConversationsResponse(message="All conversations deleted successfully")
 
 
@@ -214,6 +234,9 @@ async def delete_conversation(
 
     await _cleanup_checkpoint_threads(conversation_id)
 
+    capture_event(
+        user_id, AnalyticsEvents.CONVERSATION_DELETED, {"conversation_id": conversation_id}
+    )
     return ConversationActionResponse(
         message="Conversation deleted successfully",
         conversation_id=conversation_id,
@@ -309,6 +332,15 @@ async def create_system_conversation(
             detail=f"Failed to create system conversation: {e!s}",
         )
 
+    capture_event(
+        user_id,
+        AnalyticsEvents.CONVERSATION_CREATED,
+        {
+            "is_system_generated": True,
+            "system_purpose": system_purpose.value,
+        },
+    )
+
     return SystemConversationCreated(
         conversation_id=conversation_id,
         user_id=user_id,
@@ -332,6 +364,15 @@ async def update_conversation_description(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found or description not updated",
+        )
+
+    # Also the auto-title path: the chat stream's background description task
+    # calls this outside a request, so capture with the explicit user id.
+    if user_id:
+        capture_event(
+            user_id,
+            AnalyticsEvents.CONVERSATION_RENAMED,
+            {"conversation_id": conversation_id},
         )
 
     return UpdateDescriptionResponse(

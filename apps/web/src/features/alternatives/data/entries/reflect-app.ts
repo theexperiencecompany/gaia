@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "self-hosted note taking",
   ],
   whyPeopleLook:
-    "Reflect is a beautifully designed note-taking app with good AI writing assistance and networked linking. But like all note apps, it requires you to actively write in it. There is no connection to your email, no calendar awareness, and no proactive intelligence beyond writing suggestions. Users who want their knowledge tool to do more — to learn from their digital activity and surface information proactively — find Reflect too passive.",
+    "Reflect is a beautifully designed note-taking app with good AI writing assistance and networked linking. But like all note apps, it requires you to actively write in it. There is no connection to your email, no calendar awareness, and no proactive intelligence beyond writing suggestions. Users who want their knowledge tool to do more, to learn from their digital activity and surface information proactively, find Reflect too passive.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Automatic knowledge capture from email and calendar activity",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Semantic knowledge retrieval across all your connected tools",
   ],
   gaiaAdvantages: [
-    "Knowledge is captured passively — no need to actively write notes",
+    "Knowledge is captured passively: no need to actively write notes",
     "Email and calendar integrate to build context automatically",
     "Proactive: surfaces relevant past knowledge based on what you're doing now",
     "Open-source and self-hostable; Reflect is closed-source SaaS",
@@ -68,7 +68,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA replace Reflect for networked note-taking?",
       answer:
-        "GAIA's graph-based memory creates networks between people, projects, and events automatically from your digital activity. This is a different approach to networked thinking — emergent rather than manually constructed.",
+        "GAIA's graph-based memory creates networks between people, projects, and events automatically from your digital activity. This is a different approach to networked thinking: emergent rather than manually constructed.",
     },
     {
       question: "Is GAIA open-source while Reflect is not?",

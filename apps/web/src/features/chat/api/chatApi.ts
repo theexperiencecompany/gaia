@@ -409,6 +409,13 @@ export const chatApi = {
         }),
 
         onmessage(event) {
+          // Transport-level record of the raw frame, before any parsing or
+          // dispatch can drop it. This and the executor subscription below are
+          // the app's only two SSE readers, so nothing bypasses the recording.
+          streamLog("sse", "frame", {
+            conversationId,
+            detail: { raw: event.data },
+          });
           const errorResult = onMessage(event);
 
           if (event.data === "[DONE]") {
@@ -483,6 +490,9 @@ export const chatApi = {
         credentials: "include",
         signal,
         onmessage(event) {
+          streamLog("sse", "frame", {
+            detail: { raw: event.data, streamId },
+          });
           if (event.data === "[DONE]") {
             doneReceived = true;
             onClose(true);

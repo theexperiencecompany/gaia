@@ -26,7 +26,10 @@ class ChromaClient:
     """
 
     @classmethod
-    async def get_client(cls, request: Request | None = None) -> AsyncClientAPI:
+    async def get_client(
+        cls,
+        request: Request | None = None,
+    ) -> AsyncClientAPI:
         """
         Get the ChromaDB client from the application state or from lazy providers.
 
@@ -138,7 +141,7 @@ class ChromaClient:
 
         providers.register(
             name=provider_name,
-            loader_func=_loader,  # type: ignore[arg-type]
+            loader_func=_loader,  # type: ignore[arg-type]  # langchain’s collection-loader callback param is untyped upstream
             required_keys=[settings.CHROMADB_HOST, settings.CHROMADB_PORT],
             strategy=MissingKeyStrategy.ERROR,
             auto_initialize=True,
@@ -177,7 +180,10 @@ async def init_chromadb_client() -> AsyncClientAPI:
     client = await chromadb.AsyncHttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     response = await client.heartbeat()
@@ -250,7 +256,10 @@ def init_chromadb_constructor() -> ClientAPI:
     constructor_client = chromadb.HttpClient(
         host=host,
         port=port,
-        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
+        settings=Settings(
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+            chroma_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
+        ),
     )
 
     return constructor_client

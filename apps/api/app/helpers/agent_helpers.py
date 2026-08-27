@@ -1,6 +1,6 @@
 """Core agent helpers: config building, state init, and graph execution (streaming and silent)."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from datetime import UTC, datetime
 import json
 from typing import Any, TypedDict, cast
@@ -15,6 +15,8 @@ from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
+from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
+from app.agents.llm.types import DevModelOption
 from app.config.langfuse import build_langfuse_callback
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
@@ -23,9 +25,6 @@ from app.constants.cache import (
 from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
-    DEFAULT_LLM_PROVIDER,
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
@@ -41,8 +40,12 @@ from app.models.agent_models import (
 )
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.models_models import ModelConfig
-from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
+from app.models.payment_models import PlanType
+from app.models.stream_events import (
+    MessageBoundaryPayload,
+    ModelFallbackFrame,
+    ToolOutputPayload,
+)
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
@@ -52,6 +55,7 @@ from app.utils.agent_utils import (
     process_custom_event_for_tools,
 )
 from app.utils.general_utils import clip_text
+from app.utils.message_breaks import append_message_bubble
 from app.utils.multimodal import extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
@@ -62,6 +66,58 @@ class HandoffMetadata(TypedDict, total=False):
     icon_url: str | None
     integration_id: str
     integration_name: str
+
+
+def announces_tool_call(chunk: AIMessage) -> bool:
+    """True when this chunk already carries a tool call.
+
+    Complete on an ``AIMessage`` (``tool_calls``), still assembling on an
+    ``AIMessageChunk`` (``tool_call_chunks``) — both mean the model is handing
+    off, so whatever text rides along is narration, not a reply.
+
+    Only the second read needs ``getattr``: every AIMessage carries
+    ``tool_calls`` (it defaults to []), while ``tool_call_chunks`` exists on the
+    chunk subclass alone.
+    """
+    return bool(chunk.tool_calls or getattr(chunk, "tool_call_chunks", None))
+
+
+def _flush_held_messages(complete_message: str, held: dict[str, str]) -> str:
+    """Append text whose message never reached a boundary (a cancelled run)."""
+    for text in held.values():
+        if text:
+            complete_message = append_message_bubble(complete_message, text)
+    return complete_message
+
+
+def drop_retracted_text(payload: object, held: dict[str, str]) -> None:
+    """Forget text whose message was retracted mid-node, before its boundary.
+
+    Both retractions the drivers know about are announced at the END of a node,
+    from the ``updates`` payload — except the style guard's, which retracts a
+    draft it is about to replace with a second model call inside the SAME node.
+    It has to announce that on the custom stream, between the draft's tokens and
+    the rewrite's, or a bot would drop the replacement along with the draft. So
+    the driver has to honour a discarded boundary arriving there too, or the
+    draft is retracted on screen and still persisted.
+    """
+    if not isinstance(payload, dict):
+        return
+    boundary = payload.get("message_boundary")
+    if isinstance(boundary, dict) and boundary.get("discarded"):
+        held.pop(str(boundary.get("message_id") or ""), None)
+
+
+def last_ai_message(messages: Sequence[AnyMessage]) -> AIMessage | None:
+    """The model's own reply in a node update.
+
+    A node update also carries ``RemoveMessage`` tombstones for pruned history,
+    so "the message this node produced" is the last AI one, not the last one.
+    """
+    for message in reversed(messages):
+        if isinstance(message, AIMessage):
+            return message
+    return None
 
 
 async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
@@ -151,61 +207,49 @@ def _build_agent_callbacks(
     return callbacks
 
 
-def _resolve_model_config(
-    user_model_config: ModelConfig | None,
-) -> tuple[str, str, int]:
-    """Pick the model triple (name, provider, max_tokens) from user choice or defaults."""
-    if user_model_config:
-        log.set(model_config_source="user_selected")
-        return (
-            user_model_config.provider_model_name,
-            user_model_config.inference_provider.value,
-            user_model_config.max_tokens,
-        )
-    log.set(model_config_source="default")
-    return DEFAULT_MODEL_NAME, DEFAULT_LLM_PROVIDER, DEFAULT_MAX_TOKENS
-
-
 def _inherit_from_parent_configurable(
     base_configurable: AgentConfigurable | None,
     current: AgentConfigurable,
 ) -> AgentConfigurable:
     """Merge `current` with optional inheritance from a parent agent's configurable.
 
-    - Model fields (provider/max_tokens/model_name): parent overrides child.
     - Fallback fields (tool / subagent / vfs / todo / mode / source): child wins; parent
       only fills in blanks.
     - Pass-through (stream_id): always comes from parent.
+
+    The model is NOT merged here. A child inherits its parent's lane whole (see
+    ``build_agent_config``) — one rule for one value, replacing a per-key table in
+    which provider/model_name were parent-overrides, ``model_kwargs`` was
+    conditional and ``reasoning`` was deliberately not inherited at all.
     """
     merged: AgentConfigurable = {**current, "stream_id": None}
 
     if not base_configurable:
         return merged
 
-    merged["provider"] = base_configurable.get("provider", merged["provider"])
-    merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
-    merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
     # Parent overrides: the TRUE conversation id is established once by comms and
     # must survive child agents passing their own wrapped thread ids down as the
     # ``conversation_id`` argument (``executor_<conv>`` → ``<integ>_executor_<conv>``).
     merged["conversation_id"] = (
         base_configurable.get("conversation_id") or merged["conversation_id"]
     )
+    # Sticky-routing key, conversation-scoped: every agent in the tree must
+    # hit the provider holding the conversation's warm cache.
+    if "session_id" in base_configurable:
+        merged["session_id"] = base_configurable["session_id"]
     # Parent overrides, same reason: the user's VERBATIM turns, established once by
     # comms. Every child agent's own "task" is an agent-authored paraphrase (comms →
     # call_executor → handoff), so a child must never overwrite these — the HIL intent
     # judge checks the tool call against what the *user* actually asked, not against the
     # agent's restatement of it.
     merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
-    # Inherit the OpenRouter provider-routing pin (model_kwargs) from the parent.
-    # Without it a subagent drops the first-party provider pin and falls back to the
-    # client default, so the request load-balances onto throttled resellers (e.g.
-    # Parasail) and can 400 / rate-limit. `reasoning` is intentionally NOT inherited:
-    # the executor and provider subagents keep the client default effort, while comms
-    # sets its own lower effort.
-    if "model_kwargs" in base_configurable:
-        merged["model_kwargs"] = base_configurable["model_kwargs"]
-
+    merged["user_request"] = base_configurable.get("user_request") or merged["user_request"]
+    # Same rule, same reason: established once wherever the root call site had the
+    # full user document in hand, and a child never has its own copy to prefer.
+    merged["user_preferences"] = (
+        base_configurable.get("user_preferences") or merged["user_preferences"]
+    )
+    merged["writing_style"] = base_configurable.get("writing_style") or merged["writing_style"]
     # Child wins; the parent only fills a blank. Written out per key rather than
     # driven by a table so each one is a checked TypedDict access.
     merged["selected_tool"] = merged.get("selected_tool") or base_configurable.get("selected_tool")
@@ -249,15 +293,18 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
     return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
-# NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
-# config surface (user context, model, auth, tracing, execution params). Grouping
-# them into a dataclass would not reduce the surface, only move it, and every
-# caller already passes them as explicit keyword args.
-def build_agent_config(  # NOSONAR python:S107
+# These parameters form one cohesive LangGraph execution config surface (user
+# context, model, auth, tracing, execution params). Grouping them into a dataclass
+# would not reduce the surface, only move it. Keyword-only instead: every caller
+# already passed them by name, and a 19-argument positional signature is a
+# mis-ordering waiting to happen.
+async def build_agent_config(
+    *,
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
-    user_model_config: ModelConfig | None = None,
+    role: AgentRole = AgentRole.SUBAGENT,
+    dev_option: DevModelOption | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     thread_id: str | None = None,
     base_configurable: AgentConfigurable | None = None,
@@ -269,6 +316,9 @@ def build_agent_config(  # NOSONAR python:S107
     execution_mode: ExecutionMode | None = None,
     source: str | None = None,
     user_messages: list[str] | None = None,
+    user_request: str | None = None,
+    user_preferences: dict[str, Any] | None = None,
+    writing_style: dict[str, Any] | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
@@ -284,20 +334,46 @@ def build_agent_config(  # NOSONAR python:S107
             (parent-overrides) by the executor and every subagent, whose own tasks are
             agent-authored paraphrases. The HIL intent judge checks gated tool calls
             against these, so they must be the user's words — not a restatement.
+        user_request: The live turn's request exactly as typed, unclipped. Same
+            inheritance rule as ``user_messages``; ``call_executor`` folds it into the
+            executor brief so the worker tier is never left with only the comms
+            agent's paraphrase.
+        user_preferences / writing_style: Onboarding data, same inheritance rule as
+            ``user_messages`` — pass it at whichever root call site already has the
+            full user document in hand (comms, background narration, the dev
+            direct-invoke entrypoint); every child agent inherits it unchanged.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
         recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
             comms/subagent cap; the executor passes EXECUTOR_RECURSION_LIMIT for its
             longer tool loops.
+        role / dev_option: Only consulted for a TOP-LEVEL run (no base_configurable),
+            which is the one that resolves a lane; a child inherits its parent's lane
+            whole and ignores both.
     """
     callbacks = _build_agent_callbacks(conversation_id, user, agent_name, usage_metadata_callback)
-    model_name, provider_name, max_tokens = _resolve_model_config(user_model_config)
+
+    # The one seam every execution path crosses. A run with a parent inherits its
+    # lane whole; a top-level run (chat, background narration, a direct dev
+    # invocation) resolves one here. Doing it here rather than at the callers is
+    # what makes it structurally impossible for a new entry point to be born on
+    # the wrong lane — the same self-sufficiency the budget wall already has.
+    # Precedence: an explicit dev choice (the switcher's whole purpose) beats
+    # inheritance, which beats resolving fresh.
+    inherited_lane = ModelLane.from_configurable((base_configurable or {}).get("lane"))
+    resolved_plan: PlanType | None = None
+    if dev_option is None and inherited_lane is not None:
+        lane = inherited_lane
+    else:
+        lane, resolved_plan = await resolve_lane(user.get("user_id"), role, dev_option)
 
     current: AgentConfigurable = {
-        "provider": provider_name,
-        "max_tokens": max_tokens,
-        "model_name": model_name,
         "conversation_id": conversation_id,
+        # OpenRouter sticky-routing key: pins every request of this
+        # conversation to the provider holding its warm prompt cache
+        # (OpenRouter forces sticky routing from the first request when a
+        # session_id is present — see the routing note in constants/llm.py).
+        "session_id": conversation_id,
         "selected_tool": selected_tool,
         "tool_category": tool_category,
         "subagent_id": subagent_id,
@@ -305,6 +381,9 @@ def build_agent_config(  # NOSONAR python:S107
         "active_todo_id": active_todo_id,
         "conversation_source": source,
         "user_messages": user_messages,
+        "user_request": user_request,
+        "user_preferences": user_preferences,
+        "writing_style": writing_style,
     }
     if execution_mode:
         current["execution_mode"] = execution_mode
@@ -355,15 +434,18 @@ def build_agent_config(  # NOSONAR python:S107
         # The user's own verbatim turns (see build_agent_config). The HIL intent judge
         # reads these; child agents inherit them unchanged.
         "user_messages": resolved["user_messages"],
+        "user_request": resolved["user_request"],
+        "user_preferences": resolved["user_preferences"],
+        "writing_style": resolved["writing_style"],
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),
         "user_timezone": home_timezone,
         "root_request_id": root_request_id,
-        "provider": resolved["provider"],
-        "max_tokens": resolved["max_tokens"],
-        "model_name": resolved["model_name"],
-        "model": resolved["model_name"],
+        # The decision, and its expansion into LangChain's binding keys. Only
+        # ``lane`` is inherited by children; the binding keys are always
+        # re-derived from it, so the two can never drift apart.
+        "lane": lane.to_configurable(),
         "selected_tool": resolved["selected_tool"],
         "tool_category": resolved["tool_category"],
         "subagent_id": resolved["subagent_id"],
@@ -373,12 +455,20 @@ def build_agent_config(  # NOSONAR python:S107
         "execution_mode": resolved.get("execution_mode") or "interactive",
         "conversation_source": resolved_source,
         "source_category": source_category,
+        # Re-emitted in the literal below (a fresh dict — a key dropped here
+        # never reaches the graph config).
+        "session_id": resolved.get("session_id"),
     }
 
-    # plan_type is stamped by apply_plan_model on the top-level configurable and
-    # propagated to children the same way root_request_id is.
-    if inherited.get("plan_type"):
-        configurable["plan_type"] = inherited["plan_type"]
+    # LangChain's binding keys, always re-derived from the lane so the two can
+    # never drift apart.
+    configurable.update(lane.binding_keys())
+
+    # The budget wall reads plan_type to avoid a Redis lookup on the hot path.
+    # Stamped from the same resolve_lane call that chose the model, and inherited
+    # by children the way root_request_id is.
+    if plan := (inherited.get("plan_type") or (resolved_plan.value if resolved_plan else None)):
+        configurable["plan_type"] = plan
 
     # Stash in configurable so child agents (spawned via asyncio.create_task)
     # re-emit the same trace_id from their own build_agent_config call.
@@ -386,14 +476,6 @@ def build_agent_config(  # NOSONAR python:S107
         configurable["langfuse_trace_id"] = effective_trace_id
     if effective_tags:
         configurable["langfuse_tags"] = effective_tags
-
-    # Propagate the OpenRouter provider pin inherited from the parent (see
-    # _inherit_from_parent_configurable) so spawned subagents stay on the
-    # first-party lane. Conditional so an absent pin leaves the model's
-    # model_kwargs ConfigurableField default intact instead of clobbering it
-    # with None.
-    if resolved.get("model_kwargs"):
-        configurable["model_kwargs"] = resolved["model_kwargs"]
 
     metadata: dict[str, Any] = {
         "user_id": user.get("user_id"),
@@ -475,6 +557,13 @@ async def execute_graph_silent(
     complete_message = ""
     tool_data: dict[str, Any] = {"tool_data": []}
     todo_progress_accumulated: dict[str, Any] = {}  # Accumulate todo_progress by source
+    is_comms = config.get("agent_name") == "comms_agent"
+
+    # Same message-scoped hold as execute_graph_streaming: text that turns out to
+    # accompany a tool call is a handoff preamble, and the wire only reveals that
+    # after the text has already been accumulated.
+    message_texts: dict[str, str] = {}
+    tool_call_message_ids: set[str] = set()
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = set()
@@ -495,7 +584,7 @@ async def execute_graph_silent(
         ),
     )
     async for event in silent_stream:
-        ns, stream_mode, payload = event
+        _ns, stream_mode, payload = event
 
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
@@ -541,6 +630,16 @@ async def execute_graph_silent(
                             if tool_entry:
                                 tool_data["tool_data"].append(tool_entry)
                                 emitted_tool_calls.add(tc_id)
+
+                    boundary = last_ai_message(state_update["messages"]) if is_comms else None
+                    if boundary is not None:
+                        boundary_id = boundary.id or ""
+                        held = message_texts.pop(boundary_id, "")
+                        discarded = boundary_id in tool_call_message_ids or announces_tool_call(
+                            boundary
+                        )
+                        if held and not discarded:
+                            complete_message = append_message_bubble(complete_message, held)
             continue
 
         if stream_mode == "messages":
@@ -550,11 +649,15 @@ async def execute_graph_silent(
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
 
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+                message_id = chunk.id or ""
+                if announces_tool_call(chunk):
+                    tool_call_message_ids.add(message_id)
                 content = chunk.text
-                if content and config.get("agent_name") == "comms_agent":
-                    complete_message += content
+                if content and is_comms and message_id not in tool_call_message_ids:
+                    message_texts[message_id] = message_texts.get(message_id, "") + content
 
         elif stream_mode == "custom":
+            drop_retracted_text(payload, message_texts)
             # Accumulate todo_progress for persistence (payload is a dict here)
             if isinstance(payload, dict) and "todo_progress" in payload:
                 snapshot = payload["todo_progress"]
@@ -568,9 +671,11 @@ async def execute_graph_silent(
                     for entry in new_data["tool_data"]:
                         tool_data["tool_data"].append(entry)
                 # Always merge non-tool_data keys (follow_up_actions, etc.)
-                for key, value in new_data.items():
-                    if key != "tool_data":
-                        tool_data[key] = value
+                tool_data.update(
+                    {key: value for key, value in new_data.items() if key != "tool_data"}
+                )
+
+    complete_message = _flush_held_messages(complete_message, message_texts)
 
     # Inject accumulated todo_progress as a single tool_data entry
     if todo_progress_accumulated:
@@ -585,7 +690,7 @@ async def execute_graph_silent(
     return complete_message, tool_data
 
 
-def _json_safe_tool_result(content: Any) -> Any:
+def _json_safe_tool_result(content: Any) -> Any:  # noqa: ANN401 -- framework contract
     """The raw tool result handed to an MCP-UI iframe, as JSON-serializable data.
 
     Inline media is text-extracted out: media blocks are plain dicts, so they
@@ -625,6 +730,21 @@ async def execute_graph_streaming(
     complete_message = ""
     stream_id = agent_configurable(config).get("stream_id")
     user_id = agent_configurable(config).get("user_id")
+    is_comms = config.get("agent_name") == "comms_agent"
+
+    # Streamed text per assistant message, held out of ``complete_message``
+    # until that message is known to be a real reply rather than a preamble to a
+    # handoff. On the OpenAI wire the text deltas of a message arrive BEFORE its
+    # tool-call deltas, so "let me get the tasks created…" is already on the wire
+    # by the time the handoff shows up: it can only be taken back at the message
+    # boundary, never suppressed per chunk.
+    #
+    # Keyed by message id rather than a single in-flight flag: a delegated tier's
+    # chunks arrive interleaved on this same stream (the executor runs inside the
+    # comms tools node), and one shared flag let its tool call silence the comms
+    # reply that followed it.
+    message_texts: dict[str, str] = {}
+    tool_call_message_ids: set[str] = set()
 
     # Emit the model-fallback notice at most once per stream
     fallback_emitted = False
@@ -656,7 +776,7 @@ async def execute_graph_streaming(
 
         # Parse event tuple - handle both 2-tuple and 3-tuple (subgraphs=True)
         if len(event) == 3:
-            ns, stream_mode, payload = event
+            _ns, stream_mode, payload = event
         elif len(event) == 2:
             stream_mode, payload = event
         else:
@@ -746,6 +866,27 @@ async def execute_graph_streaming(
                                             "timestamp": tool_entry.get("timestamp"),
                                             "tool_arguments": entry_data.get("inputs", {}),
                                         }
+
+                    # The node has finished, so the message it produced is now
+                    # complete and its fate is decided: kept, or a preamble to a
+                    # handoff. Announce the boundary either way — the client has
+                    # already rendered the text and needs to be told to drop it.
+                    boundary = last_ai_message(state_update["messages"]) if is_comms else None
+                    if boundary is not None:
+                        boundary_id = boundary.id or ""
+                        held = message_texts.pop(boundary_id, "")
+                        discarded = boundary_id in tool_call_message_ids or announces_tool_call(
+                            boundary
+                        )
+                        if held and not discarded:
+                            complete_message = append_message_bubble(complete_message, held)
+                        yield format_sse_data(
+                            {
+                                "message_boundary": MessageBoundaryPayload(
+                                    message_id=boundary_id, discarded=discarded
+                                ).model_dump()
+                            }
+                        )
             continue
 
         if stream_mode == "messages":
@@ -755,10 +896,13 @@ async def execute_graph_streaming(
 
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+                message_id = chunk.id or ""
+                if announces_tool_call(chunk):
+                    tool_call_message_ids.add(message_id)
                 content = chunk.text
-                if content and config.get("agent_name") == "comms_agent":
+                if content and is_comms and message_id not in tool_call_message_ids:
                     yield format_sse_response(content)
-                    complete_message += content
+                    message_texts[message_id] = message_texts.get(message_id, "") + content
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
@@ -842,6 +986,7 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "custom":
+            drop_retracted_text(payload, message_texts)
             yield f"data: {json.dumps(payload)}\n\n"
 
             # Intercept subagent tool_data events for MCP App detection.
@@ -920,6 +1065,10 @@ async def execute_graph_streaming(
                             error=str(_e),
                             error_type=type(_e).__name__,
                         )
+
+    # A run that ends without its closing node update (cancellation, a graph that
+    # never reaches the agent node again) still owes the user what it streamed.
+    complete_message = _flush_held_messages(complete_message, message_texts)
 
     if cancelled:
         # Stop the run before touching the checkpoint: aclose() raises

@@ -99,7 +99,7 @@ Default to **less**. The code is the documentation — docstrings and comments e
 
 ### Tooling and the autofix hook
 
-After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
+After every `.py` edit, a PostToolUse hook runs `uv run --project apps/api --group dev ruff format` then `... ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
 
 What the hook does NOT fix, you handle:
 
@@ -154,6 +154,23 @@ async def create_todo(
 - Use correct status codes (`201` create, `204` delete, `404` not found).
 - Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
 - A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
+
+## Analytics (PostHog)
+
+Conventions, naming and the no-PII rule are in the root `CLAUDE.md`. The one API-specific decision:
+
+**`capture_context_event(event, props)` vs `capture_event(user_id, event, props)`** — both live in `app/services/analytics_service.py`.
+
+`capture_context_event` sends **no `distinct_id`**. It relies entirely on the contextvar identity that `PostHogRequestContextMiddleware` (`app/api/v1/middleware/auth.py`) sets, and that middleware only identifies a request that `WorkOSAuthMiddleware` already authenticated. Use it in ordinary authenticated route handlers, where it keeps the user id out of every call site.
+
+Use `capture_event(user_id, ...)` — explicitly — whenever the handler resolves its user from something other than a session:
+
+- OAuth / platform-link callbacks (the third party redirects the browser back with no session cookie)
+- Bot routes (`require_bot_api_key`, user resolved via `PlatformLinkService`)
+- Payment and provider webhooks
+- ARQ worker tasks and any background/fire-and-forget path — there is no request at all
+
+Getting this wrong is silent: the event is still captured, just attributed to a fresh anonymous person, so it never appears in that user's funnel. Nothing fails, no test goes red unless it asserts the id. **Assert the `distinct_id` in the test** — the mutation gate kills call-count-only assertions anyway.
 
 ## Service Layer
 
@@ -450,9 +467,11 @@ reveal_type(_get_available_providers())                        # expect: the rea
 
 `reveal_type` is the fastest way to confirm you closed the hole rather than moved it: if it still reveals `Any`, the annotation is cosmetic.
 
-### 18. A literal repeated at a definition site and a lookup site is an enum (see item 5)
+### 18. A literal repeated at a definition site and a lookup site is an enum, when we own the value set (see item 5)
 
 Item 5 covers a fixed set of *values*. This is the sharper case: the same literal written in two places that must agree. Registry keys, event names, queue names, config keys, cache-key prefixes. Nothing enforces the match, so drift is silent and reaches production.
+
+The enum is the answer only for a **closed, repository-owned** domain — one where we define every member and adding one is our change. When the values are external, open-ended, or owned by someone else's schema (provider model ids, third-party API fields, an upstream event vocabulary), an enum claims a closed world we don't control and goes stale the moment the other side adds a value. Those want a named constant in `app/constants/` referenced from both sites instead — same single source of truth, no false closed-world claim.
 
 That is exactly how the `comms_agent` outage happened — `"gemini_llm"` lived in both `@lazy_provider(name="gemini_llm")` and the lookup mapping, and only one side was environment-gated. One enum, referenced from both sides, makes the drift impossible:
 
@@ -628,4 +647,5 @@ nx run-many -t lint --projects=web,desktop
 - **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
+- **Context-assembly sections are the one deliberate exception to "fail loud" (root `CLAUDE.md`).** Every fetcher in `app/agents/context/fetchers.py` catches broadly and returns `""` instead of raising — a context section is enrichment, and failing a user's whole turn because a memory recall or a knowledge-base lookup timed out trades a degraded answer for no answer. The exception is narrow and enforced: only these fetchers and `assemble_context`'s outer catch swallow; every swallow still calls `log.warning`/`log.error` so the failure is visible in the wide event, and a persistent failure degrades to a byte-stable empty block rather than a different one every call (which would itself invalidate the prompt cache). Do not generalize this pattern to other services — see `app/agents/context/fetchers.py`'s module docstring for the full reasoning.
 - **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

@@ -7,10 +7,19 @@ and the _authenticate_session helper.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import FastAPI
+from posthog.contexts import get_context_distinct_id
 import pytest
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse, Response
 from starlette.testclient import TestClient
 
-from app.api.v1.middleware.auth import WorkOSAuthMiddleware, get_current_user
+from app.api.v1.middleware.auth import (
+    PostHogRequestContextMiddleware,
+    WorkOSAuthMiddleware,
+    get_current_user,
+)
 from app.models.user_models import UserDocument
 
 
@@ -335,3 +344,147 @@ class TestAuthenticateSession:
             result_user, _ = await middleware._authenticate_session("tok")
         assert result_user == user_info
         mock_touch.assert_awaited_once_with("a@b.com")
+
+
+# ---------------------------------------------------------------------------
+# PostHogRequestContextMiddleware — the identity every authenticated capture
+# inherits. If it binds nothing, or binds the wrong id, every event a route
+# handler emits lands on an anonymous (or a second) profile and cross-surface
+# funnels silently stop joining.
+# ---------------------------------------------------------------------------
+
+GAIA_USER_ID = "6812f0b3c9a14e2b7d5a91cc"
+REQUEST_PATH = "/api/v1/notes"
+
+
+async def _noop_asgi(scope, receive, send) -> None:  # pragma: no cover - never called
+    """BaseHTTPMiddleware requires an inner app; ``dispatch`` is driven directly."""
+
+
+def _authenticated_request(user: dict | None) -> Request:
+    """A plain GET carrying ``state.user`` exactly as WorkOSAuthMiddleware leaves it."""
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "server": ("testserver", 80),
+            "path": REQUEST_PATH,
+            "raw_path": REQUEST_PATH.encode(),
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 50000),
+        }
+    )
+    if user is not None:
+        request.state.user = user
+    return request
+
+
+async def _dispatch(request: Request) -> tuple[Response, dict]:
+    """Run the middleware over ``request``, reporting what the route saw.
+
+    ``downstream`` records the identity a capture inside the handler would be
+    attributed to, plus the path the handler could still read — the middleware
+    must hand the route its own request, not a substitute.
+    """
+    downstream: dict = {}
+
+    async def call_next(forwarded: Request) -> Response:
+        downstream["distinct_id"] = get_context_distinct_id()
+        downstream["path"] = forwarded.url.path
+        return PlainTextResponse("handler ran")
+
+    middleware = PostHogRequestContextMiddleware(app=_noop_asgi)
+    response = await middleware.dispatch(request, call_next)
+    return response, downstream
+
+
+class TestPostHogRequestContextIdentity:
+    async def test_authenticated_request_is_identified_by_gaia_user_id(
+        self, posthog_provider
+    ) -> None:
+        """The whole point of the middleware: a capture in the route handler is
+        attributed to the stable Mongo user id, with no call site repeating it."""
+        posthog_provider(available=True, client=object())
+
+        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+
+        assert downstream["distinct_id"] == GAIA_USER_ID
+        assert downstream["path"] == REQUEST_PATH
+        assert response.body == b"handler ran"
+
+    async def test_identity_does_not_leak_past_the_request(self, posthog_provider) -> None:
+        """The context is per-request; work after it must not inherit the user."""
+        posthog_provider(available=True, client=object())
+
+        await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+
+        assert get_context_distinct_id() is None
+
+    async def test_unauthenticated_request_is_not_identified(self, posthog_provider) -> None:
+        """Nobody to attribute to — the request must stay personless rather than
+        binding the string "None" as a distinct_id and inventing a profile."""
+        posthog_provider(available=True, client=object())
+
+        response, downstream = await _dispatch(_authenticated_request(None))
+
+        assert downstream["distinct_id"] is None
+        assert downstream["path"] == REQUEST_PATH
+        assert response.body == b"handler ran"
+
+    async def test_user_without_a_user_id_is_not_identified(self, posthog_provider) -> None:
+        """A user document missing the id is still nobody — never identify ""."""
+        posthog_provider(available=True, client=object())
+
+        _, downstream = await _dispatch(_authenticated_request({"email": "a@b.com"}))
+
+        assert downstream["distinct_id"] is None
+
+    async def test_request_is_served_when_posthog_is_unavailable(self, posthog_provider) -> None:
+        """Analytics is never load-bearing: no token configured still serves the route."""
+        posthog_provider(available=False, client=object())
+
+        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+
+        assert downstream["distinct_id"] is None
+        assert downstream["path"] == REQUEST_PATH
+        assert response.body == b"handler ran"
+
+    async def test_request_is_served_when_the_posthog_client_is_none(
+        self, posthog_provider
+    ) -> None:
+        """Available-but-unbuilt: the provider resolves to None, and identifying
+        against no client would raise inside every authenticated request."""
+        posthog_provider(available=True, client=None)
+
+        response, downstream = await _dispatch(_authenticated_request({"user_id": GAIA_USER_ID}))
+
+        assert downstream["distinct_id"] is None
+        assert downstream["path"] == REQUEST_PATH
+        assert response.body == b"handler ran"
+
+    def test_identity_is_bound_through_the_real_asgi_stack(self, posthog_provider) -> None:
+        """The unit tests above drive ``dispatch`` directly; this one proves the
+        middleware still binds identity when Starlette runs it for real."""
+        posthog_provider(available=True, client=object())
+        seen: dict = {}
+
+        app = FastAPI()
+
+        class _AuthenticateEveryone(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                request.state.user = {"user_id": GAIA_USER_ID}
+                return await call_next(request)
+
+        app.add_middleware(PostHogRequestContextMiddleware)
+        app.add_middleware(_AuthenticateEveryone)
+
+        @app.get("/notes")
+        async def notes() -> dict:
+            seen["distinct_id"] = get_context_distinct_id()
+            return {"ok": True}
+
+        assert TestClient(app).get("/notes").status_code == 200
+        assert seen["distinct_id"] == GAIA_USER_ID

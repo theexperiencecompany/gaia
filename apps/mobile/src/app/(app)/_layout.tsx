@@ -126,7 +126,6 @@ export default function AppLayout() {
               name="memory/index"
               options={{ animation: "slide_from_right" }}
             />
-            <Stack.Screen name="test/index" />
             <Stack.Screen
               name="dev/tool-gallery/index"
               options={{ animation: "slide_from_right" }}

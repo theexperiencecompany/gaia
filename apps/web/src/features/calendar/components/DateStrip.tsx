@@ -2,6 +2,23 @@
 
 import type { Virtualizer } from "@tanstack/react-virtual";
 import type React from "react";
+import { useSyncExternalStore } from "react";
+
+import { formatWeekdayShort } from "@/features/calendar/utils/calendarUtils";
+
+// Today's date read through `useSyncExternalStore`: a wall-clock value can't
+// be rendered server-side without risking a hydration mismatch, and resolving
+// one in a mount effect flashes stale content after the first paint. The
+// server snapshot matches no day, so nothing is highlighted during SSR and
+// hydration; React re-reads the client snapshot right after mounting. A no-op
+// subscribe suffices — snapshots are value-compared strings, and the strip
+// re-renders on every scroll/virtualization update anyway.
+const noopUnsubscribe = (): void => {
+  // Intentional no-op: today's date has no live source to subscribe to.
+};
+const subscribeToToday = (): (() => void) => noopUnsubscribe;
+const getServerToday = (): string => "";
+const getTodaySnapshot = (): string => new Date().toDateString();
 
 interface DateStripProps {
   dates: Date[];
@@ -19,6 +36,14 @@ export const DateStrip: React.FC<DateStripProps> = ({
   onDateSelect,
   columnVirtualizer,
 }) => {
+  // Resolved via useSyncExternalStore (see note above the helpers) so no
+  // `new Date()` runs during render and nothing flashes in after paint.
+  const today = useSyncExternalStore(
+    subscribeToToday,
+    getTodaySnapshot,
+    getServerToday,
+  );
+
   return (
     <div className="sticky top-0 z-[30] flex min-h-9 min-w-fit flex-shrink-0 border-b border-zinc-800 bg-primary-bg">
       {/* Time Label Column */}
@@ -41,11 +66,9 @@ export const DateStrip: React.FC<DateStripProps> = ({
 
             const isSelected =
               date.toDateString() === selectedDate.toDateString();
-            const isToday = date.toDateString() === new Date().toDateString();
+            const isToday = today !== "" && date.toDateString() === today;
             const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-            const dayLabel = date
-              .toLocaleDateString("en-US", { weekday: "short" })
-              .toUpperCase();
+            const dayLabel = formatWeekdayShort(date).toUpperCase();
             const dayNumber = date.getDate();
 
             return (

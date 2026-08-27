@@ -1,13 +1,13 @@
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const TOUCHPOINTS = [
-  "Mar 1 — You: sent pricing proposal (opened 3×)",
-  'Feb 26 — Sarah: "Looks interesting, will loop in CTO"',
-  "Feb 20 — Demo call (78 min, very engaged)",
+  "Mar 1, You: sent pricing proposal (opened 3×)",
+  'Feb 26, Sarah: "Looks interesting, will loop in CTO"',
+  "Feb 20, Demo call (78 min, very engaged)",
 ];
 
 const TALKING_POINTS = [
-  "• Reference their enterprise tier launch — scaling need",
+  "• Reference their enterprise tier launch: scaling need",
   "• CTO objection: security/data residency (address proactively)",
   "• Offer: 30-day pilot with dedicated onboarding",
 ];
@@ -22,7 +22,7 @@ export default function MeetingPrepCard() {
           showBackground: false,
         })}
         <span className="text-sm font-medium text-zinc-100">
-          Meeting Brief — Sarah Chen, VP Sales @ ByteScale
+          Meeting Brief: Sarah Chen, VP Sales @ ByteScale
         </span>
       </div>
       <p className="mb-4 text-[11px] text-zinc-500">

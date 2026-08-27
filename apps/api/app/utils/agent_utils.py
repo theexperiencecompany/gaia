@@ -1,14 +1,13 @@
 from collections.abc import Callable
 from datetime import UTC, datetime
 import json
-import re
 from typing import Any, TypedDict, cast
 
 from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
-from app.constants.agents import INTERNAL_AGENT_MARKERS
+from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
@@ -29,19 +28,16 @@ from shared.py.wide_events import log
 StreamWriterCallable = Callable[[dict[str, Any]], None]
 
 
-def strip_internal_agent_markers(text: str) -> str:
-    """Remove internal routing markers an agent may have echoed into user text.
+def strip_internal_agent_tags(text: str) -> str:
+    """Remove internal channel tags an agent may have echoed into user text.
 
-    Markers like ``[EXECUTOR_RESULT]`` wrap the payload handed to comms for
+    Tags like ``<executor_result>`` frame the payload handed to comms for
     re-voicing; they are context for the agent, never part of the user-facing
     reply. A weak model occasionally parrots them verbatim, so strip them
-    deterministically as a hard backstop before delivery.
+    deterministically as a hard backstop before delivery. Only the tags go — the
+    text they framed is the answer the model wrote around.
     """
-    pattern = re.compile(
-        "|".join(re.escape(marker) for marker in INTERNAL_AGENT_MARKERS),
-        flags=re.IGNORECASE,
-    )
-    return pattern.sub("", text).strip()
+    return INTERNAL_AGENT_TAG_PATTERN.sub("", text).strip()
 
 
 class IntegrationMetadata(TypedDict, total=False):

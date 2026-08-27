@@ -30,6 +30,8 @@ export default function DemoChatTab({ label, active }: DemoChatTabProps) {
       className="relative z-0 flex"
       onMouseOut={() => setButtonHovered(false)}
       onMouseOver={() => setButtonHovered(true)}
+      onFocus={() => setButtonHovered(true)}
+      onBlur={() => setButtonHovered(false)}
     >
       <Button
         className={`w-full justify-start px-2 text-sm font-light ${active ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}

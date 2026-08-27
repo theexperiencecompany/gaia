@@ -24,6 +24,7 @@ from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
+from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
@@ -88,9 +89,19 @@ class ExecutorRun:
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
+    #: The ORIGINAL live turn's bot message id, present only when this run is a
+    #: HIL pause/resume of that turn's executor — see ``executor_runner._record_pause``.
+    #: A plain queued (busy-lock) dispatch never carries this, so its result still
+    #: mints a fresh message keyed on ``task_id``.
+    bot_message_id: str | None = None
     workflow_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    active_todo_id: str | None = None
+    #: Where the turn that spawned this run came from. Defaults to background
+    #: work, matching ``build_agent_config``: the only callers that leave the
+    #: source unset are the silent background paths.
+    source_category: SourceCategory = SourceCategory.BG
 
     @classmethod
     def from_configurable(
@@ -102,6 +113,7 @@ class ExecutorRun:
         kind: RunKind,
         task_id: str | None,
         user_message_id: str | None,
+        bot_message_id: str | None = None,
     ) -> "ExecutorRun":
         """Build the run context from a LangGraph ``configurable`` dict."""
         return cls(
@@ -119,14 +131,30 @@ class ExecutorRun:
             kind=kind,
             task_id=task_id,
             user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
+            active_todo_id=configurable.get("active_todo_id"),
+            source_category=SourceCategory(
+                configurable.get("source_category") or SourceCategory.BG.value
+            ),
         )
 
     @property
     def is_queued(self) -> bool:
         return self.kind is RunKind.QUEUED
+
+    @property
+    def renders_native_cards(self) -> bool:
+        """Whether this run's items reach the user as cards rather than as words.
+
+        Only first-party clients render tool cards. A bot conversation gets plain
+        text over its platform API and a scheduled workflow gets a notification,
+        so telling comms "these items are already on the user's screen" there
+        suppresses the only copy of the data the user would ever see.
+        """
+        return self.source_category is SourceCategory.UI
 
     @property
     def executor_owns_tool_data(self) -> bool:

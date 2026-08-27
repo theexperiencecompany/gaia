@@ -84,6 +84,13 @@ scrape_configs:
           service_name: whatsapp-bot
           container: whatsapp-bot
           __path__: /var/log/gaia-whatsapp-bot/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: imessage-bot
+          service_name: imessage-bot
+          container: imessage-bot
+          __path__: /var/log/gaia-imessage-bot/structured-*.json
     pipeline_stages:
       - json:
           expressions:
@@ -111,7 +118,7 @@ scrape_configs:
         target_label: "__tmp_service"
       # Only keep application containers — drop infra (postgres, redis, loki, etc.)
       - source_labels: ["__tmp_service"]
-        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|voice-agent-worker|embedding-sidecar"
+        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot|voice-agent-worker|embedding-sidecar"
         action: keep
       # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
       - source_labels: ["__meta_docker_container_name"]

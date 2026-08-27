@@ -153,7 +153,10 @@ class ReminderScheduler(BaseSchedulerService):
         """Execute a reminder task."""
         try:
             # Import here to avoid circular imports
-            from app.tasks.reminder_tasks import execute_reminder_by_agent
+            # Deferred import: breaks circular import: app.tasks.reminder_tasks reaches back into this service
+            from app.tasks.reminder_tasks import (  # noqa: PLC0415 -- deferred
+                execute_reminder_by_agent,
+            )
 
             # Ensure task is a ReminderModel
             if not isinstance(task, ReminderModel):

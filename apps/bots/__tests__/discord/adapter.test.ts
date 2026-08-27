@@ -96,12 +96,27 @@ vi.mock("discord.js", () => {
 // Mock @gaia/shared so we control handleStreamingChat.
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", () => {
+vi.mock("@gaia/shared/bots", () => {
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
     config = {};
     commands = new Map();
+    analytics = undefined;
+
+    /** Mirrors the real base class: identity-bound analytics for shared helpers. */
+    protected async analyticsFor(platformUserId: string) {
+      return {
+        client: this.analytics,
+        distinctId: await this.resolveDistinctId(platformUserId),
+      };
+    }
+
+    /** Unlinked-user path — these tests assert routing, not identity. */
+    protected async resolveDistinctId(platformUserId: string): Promise<string> {
+      return `${this.platform}:${platformUserId}`;
+    }
+
     protected async dispatchCommand(
       name: string,
       target: {
@@ -213,7 +228,7 @@ vi.mock("@gaia/shared", () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import { handleStreamingChat } from "@gaia/shared";
+import { handleStreamingChat } from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 
 // ---------------------------------------------------------------------------
@@ -416,7 +431,9 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       expect.any(Function), // auth error callback
       expect.any(Function), // generic error callback
       expect.objectContaining({ platform: "discord" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -644,7 +661,9 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -671,7 +690,9 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -717,7 +738,9 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 });
@@ -829,7 +852,9 @@ describe("DiscordAdapter - DM welcome flow", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -943,7 +968,9 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 
@@ -973,7 +1000,9 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      undefined,
+      expect.objectContaining({
+        distinctId: expect.any(String),
+      }),
     );
   });
 });

@@ -43,6 +43,7 @@ import pytest
 from app.agents.core.background.bg_results import drain_bg_subagent_results
 from app.agents.core.background.executor_runner import _record_pause
 from app.agents.core.background.session import (
+    ExecutorRun,
     RunKind,
     create_session,
     increment_pending_subagents,
@@ -225,11 +226,18 @@ class TestCoalescedApprovalBarrier:
                     [by_agent[GMAIL]["_id"], by_agent[SLACK]["_id"]]
                 ), f"one interrupt must carry both approvals, got type={payload.get('type')}"
 
-                run = SimpleNamespace(
-                    task_id="task-e2e",
-                    conversation_id=conv,
-                    user_message_id=None,
+                # The real dataclass, not a SimpleNamespace: _record_pause reads
+                # the run field by field, so a hand-rolled stand-in silently
+                # loses every field the run grows (bot_message_id did exactly
+                # that) and the AttributeError surfaces only as "could not
+                # record resume context".
+                run = ExecutorRun(
                     stream_id=stream,
+                    conversation_id=conv,
+                    user={"user_id": user_id},
+                    kind=RunKind.QUEUED,
+                    task_id="task-e2e",
+                    user_message_id=None,
                 )
                 assert await _record_pause(
                     run,
@@ -301,9 +309,10 @@ class TestCoalescedApprovalBarrier:
                     # structurally; each subagent's real content is read from its
                     # checkpointed thread below.
                     final_text = final_state["messages"][-1].content
-                    assert "[gmail result]" in final_text and "[slack result]" in final_text, (
-                        f"the join returns both sections in one output, got: {final_text[:160]}"
-                    )
+                    assert (
+                        f'<subagent_result agent="{GMAIL}">' in final_text
+                        and f'<subagent_result agent="{SLACK}">' in final_text
+                    ), f"the join returns both sections in one output, got: {final_text[:160]}"
 
                     gmail_thread = await graphs[GMAIL].aget_state(
                         {"configurable": {"thread_id": f"{GMAIL}_executor_{conv}"}}

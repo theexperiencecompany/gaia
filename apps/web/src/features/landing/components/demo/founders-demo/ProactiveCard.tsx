@@ -11,7 +11,7 @@ const HANDLED_ITEMS = [
   {
     id: "pro-2",
     icon: "hubspot",
-    label: "Acme follow-up queued — trial ends Friday",
+    label: "Acme follow-up queued: trial ends Friday",
     detail: "flagged",
     shortDetail: "flagged",
   },

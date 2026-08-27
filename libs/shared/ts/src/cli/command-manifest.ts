@@ -8,19 +8,9 @@ export const CLI_COMMAND_DESCRIPTIONS = {
   stop: "Stop all GAIA services (safe mode by default)",
 } as const;
 
-export const REQUIRED_DOC_COMMANDS = [
-  "gaia init",
-  "gaia setup",
-  "gaia start",
-  "gaia dev",
-  "gaia dev full",
-  "gaia logs",
-  "gaia stop",
-  "gaia status",
-] as const;
-
-export const REQUIRED_INSTALL_COMMANDS = [
-  "npm install -g @heygaia/cli",
-  "pnpm add -g @heygaia/cli",
-  "bun add -g @heygaia/cli",
-] as const;
+/** The canonical way to install the `gaia` CLI, per package manager. */
+export const CLI_INSTALL_COMMANDS = {
+  npm: "npm install -g @heygaia/cli",
+  pnpm: "pnpm add -g @heygaia/cli",
+  bun: "bun add -g @heygaia/cli",
+} as const;

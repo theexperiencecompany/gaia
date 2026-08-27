@@ -19,6 +19,7 @@ from app.models.payment_models import (
     UserSubscriptionStatus,
 )
 from app.models.webhook_models import DodoWebhookAckResponse
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
 from shared.py.wide_events import log
@@ -29,7 +30,7 @@ router = APIRouter()
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
 # evlog-map-disable-next-line audit -- read-only plan catalog lookup, no state change to audit
-async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:
+async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:  # noqa: ARG001 -- slowapi's @limiter.limit requires request in the handler signature
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
     try:
@@ -46,7 +47,7 @@ async def get_plans_endpoint(request: Request, active_only: bool = True) -> list
 @router.post("/subscriptions")
 @limiter.limit("5/minute")
 async def create_subscription_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     subscription_data: CreateSubscriptionRequest,
     user_id: str = Depends(get_user_id),
 ) -> CreateSubscriptionResponse:
@@ -62,13 +63,20 @@ async def create_subscription_endpoint(
     )
     try:
         result = await payment_service.create_subscription(
-            user_id, subscription_data.product_id, subscription_data.quantity
+            user_id,
+            subscription_data.product_id,
+            subscription_data.quantity,
+            subscription_data.discount_code,
         )
         log.audit(
             "subscription checkout created",
             actor=user_id,
             resource=str(subscription_data.product_id) if subscription_data.product_id else None,
             provider="dodo",
+        )
+        capture_context_event(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+            {"quantity": subscription_data.quantity},
         )
         return result
     except Exception as e:
@@ -85,7 +93,7 @@ async def create_subscription_endpoint(
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
 @limiter.limit("5/minute")
 async def cancel_subscription_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> UserSubscriptionStatus:
     """Cancel the user's subscription at the end of the current billing period."""
@@ -106,6 +114,7 @@ async def cancel_subscription_endpoint(
             actor=user_id,
             provider="dodo",
         )
+        capture_context_event(AnalyticsEvents.SUBSCRIPTION_CANCELLATION_REQUESTED)
         return result
     except HTTPException:
         raise
@@ -122,7 +131,7 @@ async def cancel_subscription_endpoint(
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -148,7 +157,7 @@ async def verify_payment_endpoint(
 @limiter.limit("60/minute")
 # evlog-map-disable-next-line audit -- read-only subscription status lookup, no state change to audit
 async def get_subscription_status_endpoint(
-    request: Request,
+    request: Request,  # noqa: ARG001 -- framework contract
     user_id: str = Depends(get_user_id),
 ) -> UserSubscriptionStatus:
     """Get user's current subscription status."""

@@ -25,6 +25,7 @@ import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
 import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import {
   filterEmptyMessagePairs,
@@ -188,6 +189,72 @@ const ChatMessageItem = memo(function ChatMessageItem({
   );
 });
 
+/**
+ * Deduplicate tool calls across all messages in the conversation. Pure and
+ * reference-stable: when nothing was removed for a message, the original
+ * object is returned so its identity survives (otherwise every tool-bearing
+ * bubble re-renders on every token).
+ */
+function deduplicateToolCalls(messages: MessageType[]): MessageType[] {
+  const seenToolCallIds = new Set<string>();
+
+  return messages.map((message) => {
+    // Only process bot messages with tool_data
+    if (message.type !== "bot" || !message.tool_data) {
+      return message;
+    }
+
+    // Track whether anything was actually deduplicated — if not, we return the
+    // original message object so its reference stays stable across streaming
+    // ticks.
+    let changed = false;
+
+    // Filter out tool calls that have already been shown in previous messages
+    const deduplicatedToolData = message.tool_data
+      .map((entry) => {
+        // Only deduplicate tool_calls_data entries
+        if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) {
+          return entry;
+        }
+
+        // Filter the tool calls array within this entry
+        // Cast to unknown[] since we know tool_calls_data contains objects with tool_call_id
+        const toolCallsArray = (
+          Array.isArray(entry.data) ? entry.data : [entry.data]
+        ) as Array<{ tool_call_id?: string }>;
+        const filteredCalls = toolCallsArray.filter((call) => {
+          const toolCallId = call?.tool_call_id;
+          if (!toolCallId) return true; // Keep calls without IDs
+          if (seenToolCallIds.has(toolCallId)) return false; // Skip duplicates
+          seenToolCallIds.add(toolCallId);
+          return true;
+        });
+
+        // Nothing removed for this entry — keep the original reference.
+        if (filteredCalls.length === toolCallsArray.length) return entry;
+        changed = true;
+
+        // If all calls were filtered out, return null to remove this entry
+        if (filteredCalls.length === 0) return null;
+
+        // Return the entry with filtered calls
+        return {
+          ...entry,
+          data: filteredCalls,
+        };
+      })
+      .filter((entry) => entry !== null);
+
+    // No duplicates removed anywhere — preserve the original message reference.
+    if (!changed) return message;
+
+    return {
+      ...message,
+      tool_data: deduplicatedToolData,
+    } as MessageType;
+  });
+}
+
 export default function ChatRenderer({
   convoMessages: propConvoMessages,
   compact = false,
@@ -221,7 +288,8 @@ export default function ChatRenderer({
   // suppress the follow-ups + action row on the *active turn's* bubble only
   // (see `suppressForBusy` below) — finished turns keep their follow-ups.
   const isConversationBusy = isConversationStreaming || isLoading;
-  const scrolledToMessageRef = useRef<string | null>(null);
+  const { scrollToMessage } = useMessageHighlight();
+
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
     src: "",
@@ -244,7 +312,9 @@ export default function ChatRenderer({
   // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
   // memoized message list — stable across streaming tokens.
   const retryMessageRef = useRef(retryMessage);
-  retryMessageRef.current = retryMessage;
+  useEffect(() => {
+    retryMessageRef.current = retryMessage;
+  });
   const handleRetry = useCallback((msgId: string) => {
     // Use the store's active conversation id, NOT the route param. New
     // conversations rewrite the URL via history.replaceState, which does not
@@ -297,66 +367,13 @@ export default function ChatRenderer({
   ]);
 
   // Deduplicate tool calls across all messages in the conversation
-  const messagesWithDeduplicatedToolCalls = useMemo(() => {
-    const seenToolCallIds = new Set<string>();
+  const messagesWithDeduplicatedToolCalls = useMemo(
+    () => deduplicateToolCalls(filteredMessages),
+    [filteredMessages],
+  );
 
-    return filteredMessages.map((message) => {
-      // Only process bot messages with tool_data
-      if (message.type !== "bot" || !message.tool_data) {
-        return message;
-      }
-
-      // Track whether anything was actually deduplicated — if not, we return the
-      // original message object so its reference stays stable across streaming
-      // ticks (otherwise every tool-bearing bubble re-renders on every token).
-      let changed = false;
-
-      // Filter out tool calls that have already been shown in previous messages
-      const deduplicatedToolData = message.tool_data
-        .map((entry) => {
-          // Only deduplicate tool_calls_data entries
-          if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) {
-            return entry;
-          }
-
-          // Filter the tool calls array within this entry
-          // Cast to unknown[] since we know tool_calls_data contains objects with tool_call_id
-          const toolCallsArray = (
-            Array.isArray(entry.data) ? entry.data : [entry.data]
-          ) as Array<{ tool_call_id?: string }>;
-          const filteredCalls = toolCallsArray.filter((call) => {
-            const toolCallId = call?.tool_call_id;
-            if (!toolCallId) return true; // Keep calls without IDs
-            if (seenToolCallIds.has(toolCallId)) return false; // Skip duplicates
-            seenToolCallIds.add(toolCallId);
-            return true;
-          });
-
-          // Nothing removed for this entry — keep the original reference.
-          if (filteredCalls.length === toolCallsArray.length) return entry;
-          changed = true;
-
-          // If all calls were filtered out, return null to remove this entry
-          if (filteredCalls.length === 0) return null;
-
-          // Return the entry with filtered calls
-          return {
-            ...entry,
-            data: filteredCalls,
-          };
-        })
-        .filter((entry) => entry !== null);
-
-      // No duplicates removed anywhere — preserve the original message reference.
-      if (!changed) return message;
-
-      return {
-        ...message,
-        tool_data: deduplicatedToolData,
-      } as MessageType;
-    });
-  }, [filteredMessages]);
-
+  // Scroll to (and highlight) a deep-linked message once it exists.
+  const scrolledToMessageRef = useRef<string | null>(null);
   useEffect(() => {
     const messageId = new URLSearchParams(window.location.search).get(
       "messageId",
@@ -369,7 +386,7 @@ export default function ChatRenderer({
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messagesWithDeduplicatedToolCalls]);
+  }, [messagesWithDeduplicatedToolCalls, scrollToMessage]);
 
   // A bot message only renders a visible bubble when it is non-empty. Empty bot
   // messages are skipped, so grouping must look ahead past them to the next
@@ -419,25 +436,6 @@ export default function ChatRenderer({
     [messagesWithDeduplicatedToolCalls, rendersAsBotBubble],
   );
 
-  const scrollToMessage = (messageId: string) => {
-    if (!messageId) return;
-
-    const messageElement = document.getElementById(messageId);
-
-    if (!messageElement) return;
-
-    messageElement.scrollIntoView({ behavior: "smooth", block: "start" });
-    messageElement.style.transition = "all 0.3s ease";
-
-    setTimeout(() => {
-      messageElement.style.scale = "1.07";
-
-      setTimeout(() => {
-        messageElement.style.scale = "1";
-      }, 300);
-    }, 700);
-  };
-
   return (
     <>
       <title id="chat_title">{`${conversations.find((convo) => convo.conversation_id === convoIdParam)?.description || "New chat"} | GAIA`}</title>
@@ -467,14 +465,17 @@ export default function ChatRenderer({
           // while the conversation is busy — finished turns keep their actions.
           const suppressForBusy =
             index === lastRenderedIndex && isConversationBusy;
+          // Every message carries an id (uuid4 optimistic, backend-assigned
+          // after); the empty-string fallback matches messagePropsUtils.
+          const messageId = message.message_id || "";
 
           return (
             // The scroller virtualizes rows (content-visibility) with anchor
             // math it owns — replaces the old per-bubble inline hack that
             // fought scroll restoration. User messages are turn anchors.
             <MessageScrollerItem
-              key={message.message_id || index}
-              messageId={String(message.message_id || index)}
+              key={messageId}
+              messageId={messageId}
               scrollAnchor={message.type === "user"}
             >
               <ChatMessageItem
@@ -484,7 +485,7 @@ export default function ChatRenderer({
                 isPrecededByBot={isPrecededByBot}
                 suppressForBusy={suppressForBusy}
                 compact={compact}
-                bubbleKey={String(message.message_id || index)}
+                bubbleKey={messageId}
               />
             </MessageScrollerItem>
           );

@@ -12,7 +12,7 @@ export const useDodoPayments = () => {
   const [error, setError] = useState<string | null>(null);
 
   const createSubscriptionAndRedirect = useCallback(
-    async (productId: string) => {
+    async (productId: string, discountCode?: string) => {
       setIsLoading(true);
       setError(null);
 
@@ -25,6 +25,7 @@ export const useDodoPayments = () => {
         // Create subscription via API - backend handles user authentication via JWT
         const result = await pricingApi.createSubscription({
           product_id: productId,
+          ...(discountCode ? { discount_code: discountCode } : {}),
         });
 
         // Redirect user to Dodo payment link

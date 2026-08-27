@@ -22,7 +22,7 @@ import {
   renderForPlatform,
   STREAMING_DEFAULTS,
   type StreamingOptions,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 
 export interface PlatformEmulation {
   platform: PlatformName;
@@ -51,6 +51,7 @@ const SUPPORTS_EDIT: Record<PlatformName, boolean> = {
   slack: true,
   telegram: true,
   whatsapp: false,
+  imessage: false,
 };
 
 /**

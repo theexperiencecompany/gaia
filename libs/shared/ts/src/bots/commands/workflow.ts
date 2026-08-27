@@ -10,7 +10,7 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, truncateResponse } from "../utils";
+import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
@@ -109,8 +109,7 @@ export const workflowCommand: BotCommand = {
       }
 
       const response = await handleWorkflowCreate(gaia, name, ctx, description);
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendChunked(target.sendEphemeral, response, target.platform);
       return;
     }
 
@@ -125,7 +124,6 @@ export const workflowCommand: BotCommand = {
       subcommand,
       subArgs,
     );
-    const truncated = truncateResponse(response, target.platform);
-    await target.sendEphemeral(truncated);
+    await sendChunked(target.sendEphemeral, response, target.platform);
   },
 };

@@ -28,6 +28,7 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
+from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_QUEUE_PREFIX,
@@ -100,6 +101,13 @@ async def call_executor(
         str,
         "The task to execute - describe what needs to be done",
     ],
+    acceptance_criteria: Annotated[
+        list[str],
+        "What must be TRUE for this task to count as done, as a checklist (e.g. "
+        "['the 3 promo emails archived', 'the offer letter flagged']). Give the "
+        "executor a concrete target so it doesn't stop after one step. NEVER "
+        "omit: even a single-step ask needs a concrete done state.",
+    ],
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -133,10 +141,20 @@ async def call_executor(
         return "Internal error: conversation context unavailable. Please try again."
 
     task_id = str(uuid4())
+    # Read off the configurable, never taken as a tool argument. Asking the comms
+    # model to re-transcribe the request made the backstop a model output, so it
+    # failed exactly when it was needed: on a pasted billing table it corrupted 3 of
+    # 4 recipient addresses AND omitted the verbatim copy entirely, leaving the
+    # executor to hunt Gmail for addresses the server had all along.
+    composed_task = compose_executor_brief(
+        task,
+        acceptance_criteria,
+        verbatim_request=base_configurable.get("user_request"),
+    )
 
     try:
         return await _dispatch_executor(
-            task=task,
+            task=composed_task,
             task_id=task_id,
             configurable=configurable,
             conversation_id=conversation_id,
@@ -168,6 +186,7 @@ async def _dispatch_executor(
     )
     stream_id = configurable.get("stream_id")
     user_message_id = configurable.get("user_message_id")
+    bot_message_id = configurable.get("bot_message_id")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
@@ -190,7 +209,7 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
             )
             return (
-                "That task is already running from this same message — not "
+                "That task is already running from this same message, not "
                 "starting it again. The results are on the way."
             )
 
@@ -241,6 +260,7 @@ async def _dispatch_executor(
         kind=RunKind.LIVE,
         task_id=task_id,
         user_message_id=user_message_id,
+        bot_message_id=bot_message_id,
     )
     spawn_background_task(
         run_executor_background(
@@ -255,7 +275,20 @@ async def _dispatch_executor(
         task_id=task_id,
         stream_id=stream_id,
     )
-    return f"Task accepted (task_id: {task_id}). I'm on it — you'll get progress updates as I work."
+    # Comms writes its user-facing reply from THIS string, before the executor
+    # has run a single tool — so it must not read as completion, and it has to
+    # name the approval gate the user may be about to see.
+    return (
+        f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
+        "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
+        "finished. Risky actions pause for the user's approval first and they see an "
+        "approval card; if that happens the work waits on them, not on you. Acknowledge "
+        "that you are on it, and say the action is waiting for their approval if one is "
+        "pending. This guidance applies ONLY to this acknowledgment. The real result "
+        "arrives later as its own message and supersedes it completely: by then the gate "
+        "is settled, so report what happened and never ask again for an approval the "
+        "user has already given."
+    )
 
 
 @tool
@@ -264,7 +297,7 @@ async def cancel_executor(
     task_ids: Annotated[
         list[str],
         "List of task_ids to cancel. Empty list = cancel ALL (running + queued).",
-    ] = [],  # noqa: B006
+    ] = [],  # noqa: B006 -- empty default is the cancel-all sentinel; list is never mutated
 ) -> str:
     """Cancel background executor tasks by their task_ids.
 
@@ -339,7 +372,7 @@ async def cancel_executor(
 
         result = f"Cancelled: {', '.join(cancelled)}."
         if skipped_running:
-            result += " Currently running task was not in the cancel list — still running."
+            result += " Currently running task was not in the cancel list, still running."
         return result
 
     except Exception as e:

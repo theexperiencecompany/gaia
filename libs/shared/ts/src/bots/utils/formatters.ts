@@ -382,7 +382,7 @@ export function convertToWhatsAppMarkdown(text: string): string {
         // become ``### *Heading*`` (after bold) and then ``**Heading**`` once
         // the heading rule wraps the already-emphasised content in ``*`` —
         // re-introducing the double asterisks we tried to remove.
-        .replaceAll(/^#{1,6}\s+(.+)$/gm, "*$1*") // # Heading → *Heading*
+        .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "*$1*") // # Heading → *Heading*
         // Horizontal-rule remover MUST run before the bold rule. Otherwise
         // ``***`` on its own line followed by ``**Heading**`` lets the bold
         // regex's ``[^*]`` greedy-match the inter-line newlines and pair
@@ -395,8 +395,28 @@ export function convertToWhatsAppMarkdown(text: string): string {
         .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "*$1*") // ***bold italic*** → *bold*
         .replaceAll(/\*\*([^*\n]+)\*\*/g, "*$1*") // **bold** → *bold*
         .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)") // [label](url) → label (url)
-        .replaceAll(/^(\s*)[*\-+]\s+/gm, "$1• ") // - / * / + bullet → •
-        .replaceAll(/^>\s*/gm, ""), // > quote → strip prefix
+        .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ") // - / * / + bullet → •
+        .replaceAll(/^>[ \t]*/gm, ""), // > quote → strip prefix
+  );
+}
+
+/**
+ * iMessage renders no markup at all, so every markdown construct degrades to
+ * plain text: emphasis markers are stripped, links become `label (url)`,
+ * headings/quotes lose their prefixes. Fenced code blocks are preserved
+ * verbatim (content matters more than the stray backticks).
+ */
+export function convertToImessageText(text: string): string {
+  return applyOutsideCodeBlocks(text, (segment) =>
+    segment
+      .replaceAll(/^#{1,6}[ \t]+(\S[^\n]*)$/gm, "$1")
+      .replaceAll(/^[-_*]{3,}$/gm, "")
+      .replaceAll(/\*\*\*([^*\n]+)\*\*\*/g, "$1")
+      .replaceAll(/\*\*([^*\n]+)\*\*/g, "$1")
+      .replaceAll(/`([^`\n]+)`/g, "$1")
+      .replaceAll(/\[([^\]]{1,500})\]\(([^)]{1,2048})\)/g, "$1 ($2)")
+      .replaceAll(/^([ \t]*)[*\-+][ \t]+/gm, "$1• ")
+      .replaceAll(/^>[ \t]*/gm, ""),
   );
 }
 
@@ -429,6 +449,7 @@ export const PLATFORM_MARKDOWN: Record<PlatformName, (text: string) => string> =
     slack: convertToSlackMrkdwn,
     telegram: convertToTelegramHtml,
     whatsapp: convertToWhatsAppMarkdown,
+    imessage: convertToImessageText,
   };
 
 /**
@@ -470,6 +491,14 @@ export function buildAuthLinkMessage(authUrl: string): string {
     "**Link your account to GAIA**\n\n" +
     "Tap below to sign in — once you're connected, you can use everything right here.\n" +
     `${authUrl}`
+  );
+}
+
+export function buildPlanRequiredMessage(pricingUrl: string): string {
+  return (
+    "🔒 **This platform is part of GAIA Pro**\n\n" +
+    "Upgrade to keep chatting here.\n" +
+    `${pricingUrl}`
   );
 }
 
@@ -517,6 +546,30 @@ Type /help <command> for details.`,
 };
 
 /**
+ * The user-facing message the API sent with an error response, if it sent one.
+ *
+ * FastAPI puts it under `detail`: a bare string for a plain `HTTPException`
+ * (the bots' flat anti-spam limiter), or an object carrying `message` for the
+ * rate-limit family — `RateLimitExceededException` composes copy naming the
+ * wall that was hit ("You've used today's AI usage allowance. Upgrade to Pro
+ * for higher limits."), which is the only place that distinction exists.
+ */
+function serverMessage(error: unknown): string | null {
+  const data = (error as { response?: { data?: unknown } } | null)?.response
+    ?.data;
+  if (typeof data !== "object" || data === null) return null;
+  const { detail, message } = data as { detail?: unknown; message?: unknown };
+  const candidate =
+    typeof detail === "string"
+      ? detail
+      : ((detail as { message?: unknown } | null | undefined)?.message ??
+        message);
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim()
+    : null;
+}
+
+/**
  * Formats an error message for user display.
  */
 export function formatBotError(error: unknown): string {
@@ -532,7 +585,15 @@ export function formatBotError(error: unknown): string {
   }
 
   if (status === 429) {
-    return "⏳ You're sending messages too fast. Please wait a moment and try again.";
+    // Three different walls return 429 — flat anti-spam, the plan's message
+    // quota, and the daily AI-usage budget — and only the body says which.
+    // Collapsing them all to "you're sending messages too fast" told a user who
+    // is out of allowance to slow down, which is not what happened and not
+    // something waiting fixes.
+    const fromServer = serverMessage(error);
+    return fromServer
+      ? `⏳ ${fromServer}`
+      : "⏳ You're sending messages too fast. Please wait a moment and try again.";
   }
 
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -562,7 +623,11 @@ export function formatBotError(error: unknown): string {
   if (
     message.includes("Connection interrupted") ||
     message.includes("ECONNRESET") ||
-    message.includes("socket hang up")
+    message.includes("socket hang up") ||
+    // Node's premature-close error, raised verbatim as `aborted` when a proxy
+    // hangs up mid-response. Without this it lands in the unhandled bucket
+    // below and shows up as a spurious `unhandled_bot_error`.
+    message === "aborted"
   ) {
     return "🔌 Connection interrupted. Please try again.";
   }

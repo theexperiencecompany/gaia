@@ -7,7 +7,10 @@ export default defineConfig({
     jsxImportSource: "react",
   },
   test: {
-    include: ["src/__tests__/**/*.test.ts", "src/__tests__/**/*.test.tsx"],
+    // Every co-located test under src/, not just src/__tests__ — narrow globs
+    // silently drop any test placed next to its module (it never runs and
+    // nothing tells you).
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     globals: true,
     environment: "node",
     reporters: ["verbose"],
@@ -32,7 +35,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
       "@icons": path.resolve(
         __dirname,
-        "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
+        "node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
       ),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
     },

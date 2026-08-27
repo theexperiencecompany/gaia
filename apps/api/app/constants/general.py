@@ -5,6 +5,9 @@ Centralized general-purpose constants.
 """
 
 ORCHESTRATOR_MAX_ITERATIONS = 10
+# The canonical bubble-break sentinel the comms prompt tells the model to emit.
+# Recognizing the near-miss spellings it actually emits (and splitting on them)
+# is ``app.utils.message_breaks`` — this is only the token we ask for.
 NEW_MESSAGE_BREAKER = "<NEW_MESSAGE_BREAK>"
 
 # Upper bound for every 1-based `page` query parameter. Paginated endpoints turn

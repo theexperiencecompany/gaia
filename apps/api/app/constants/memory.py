@@ -55,6 +55,36 @@ try:
 except ValueError:
     EMBEDDING_SIDECAR_MAX_CONCURRENCY = _default_sidecar_concurrency
 
+# Request bounds (#918). ONNX activation memory scales with batch x tokens:
+# fastembed's default internal batch of 256 texts materializes multi-GB peaks
+# (measured: one 32-text request of ~1600-char passages pushed peak RSS past
+# the prod container limit), so every fastembed forward pass is capped to
+# MAX_BATCH_TEXTS and oversized HTTP calls are split into chunks of at most
+# MAX_BATCH_TEXTS / MAX_BATCH_CHARS before leaving the client. Single texts
+# beyond MAX_TEXT_CHARS are rejected outright - they tokenize far beyond the
+# model's 512-token window and are always a caller bug. Vectors are unchanged
+# by either split (mean pooling is per sequence; measured cosine delta < 1e-7).
+EMBEDDING_SIDECAR_MAX_BATCH_TEXTS = int(os.getenv("MEMORY_SIDECAR_MAX_BATCH_TEXTS", "16"))
+EMBEDDING_SIDECAR_MAX_BATCH_CHARS = int(os.getenv("MEMORY_SIDECAR_MAX_BATCH_CHARS", "64_000"))
+EMBEDDING_SIDECAR_MAX_TEXT_CHARS = int(os.getenv("MEMORY_SIDECAR_MAX_TEXT_CHARS", "65_000"))
+
+# How many times a transiently-failing sidecar call (503/429/connection reset)
+# is retried before giving up — memory saves must survive a brief overload
+# window instead of being dropped, while persistent failures still fail loud.
+# Clamped at the floor: a negative budget would retry forever, which no
+# misconfiguration should be able to cause.
+EMBEDDING_SIDECAR_RETRIES = max(0, int(os.getenv("MEMORY_SIDECAR_RETRIES", "2")))
+# Fixed backoff between retry attempts.
+EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS", "5"))
+)
+
+# How long a sidecar request may wait for a free inference slot before failing
+# with 503 instead of queueing invisibly until the client's own timeout.
+EMBEDDING_SIDECAR_SLOT_WAIT_SECONDS = max(
+    0.0, float(os.getenv("MEMORY_SIDECAR_SLOT_WAIT_SECONDS", "20"))
+)
+
 # Persistent on-disk cache for the fastembed model weights. Set in prod (on the
 # embedding sidecar) to a mounted volume so the ~1.85GB download happens ONCE
 # rather than on every restart/redeploy (measured ~148s cold-load). Unset falls
@@ -126,11 +156,10 @@ RECENCY_BOOST_DECAY_DAYS = 30
 IMPORTANCE_BOOST_BASE = 0.8
 IMPORTANCE_BOOST_WEIGHT = 0.4
 
-# Optional 1-hop graph expansion after reranking: entities on the top
-# results pull in sibling memories at a low fixed score.
+# Optional 1-hop graph expansion: entities on the top results pull in
+# sibling memories, which are then reranked alongside the base pool.
 GRAPH_EXPANSION_SOURCE_RESULTS = 3
 GRAPH_EXPANSION_MAX_SIBLINGS = 3
-GRAPH_EXPANSION_SCORE = 0.05
 
 # Episode (journal) search: verbatim entry matching looks back this many
 # days; query tokens shorter than the minimum are noise and dropped.
@@ -155,11 +184,58 @@ CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 MEMORY_LIVE_COUNT_CACHE_KEY = "user:{user_id}:memory:live_count"
 MEMORY_LIVE_COUNT_CACHE_TTL = 86_400
 
+# How long a ``state`` fact stays live before the nightly sweep forgets it.
+# State is a value that was only true as of a moment ("18 workflows active",
+# "Gmail is disconnected"); it has no natural expiry date the extractor could
+# name, so ingestion stamps a flat window and the sweep retires it. Two months
+# is long enough that a still-true value gets re-asserted by normal use and
+# short enough that a stale one stops being injected into every prompt.
+STATE_FACT_TTL_DAYS = 60
+
+# Agenda items are facts with ``shelf_life=task``: a commitment with a date is
+# useless long after it, but an undated intention deserves a longer leash than
+# a state value before the sweep drops it.
+AGENDA_ITEM_TTL_DAYS = 90
+# Category folder every agenda item files under (it is also a real folder in
+# the taxonomy the extraction prompt offers).
+AGENDA_CATEGORY_PATH = "agenda"
+# How many agenda items the always-injected block renders. The rest stay
+# searchable; the injected block is a reminder, not the whole backlog. Sized
+# so a real backlog arrives whole (30 items of typical length sit inside the
+# agenda's injection bound below) rather than being cut to a handful: a
+# commitment the agent cannot see is one it silently drops.
+AGENDA_INJECTED_ITEM_CAP = 30
+
 # Reconciliation looks at this many nearest existing memories per new fact.
-RECONCILE_CANDIDATES = 5
+# Sized so a subject-attribute already stated several ways (the same partner's
+# anniversary written five times) still has every live variant in the candidate
+# set — with 5 the older duplicates fell outside the window and reconciliation
+# could only ever supersede the newest of them, so the rest stayed live forever.
+RECONCILE_CANDIDATES = 15
 
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
+
+# Near-duplicate gate for journal entries (difflib ratio on normalized text).
+# The extractor's "do NOT repeat" instruction cannot stop a paraphrase, and
+# back-to-back retains race past the journal read — one production day carried
+# the same discussion five times, reworded. Calibrated on those real pairs:
+# true rewordings score 0.91-0.95, genuinely distinct same-day events 0.40 and
+# below, so 0.85 drops the spam with a wide margin over real events.
+EPISODE_ENTRY_DEDUPE_RATIO = 0.85
+
+# Per-thread high-water mark for passive ingestion: the id of the last message
+# already extracted from. Without it the whole thread was re-sent to the
+# extractor every turn — one production conversation with 152 checkpoints
+# re-extracted the same transcript roughly 76 times.
+MEMORY_INGEST_MARK_KEY = "user:{user_id}:memory:ingested:{thread_id}"
+# The mark only has to outlive the gap between two turns of one conversation.
+# Losing it degrades to a full re-ingest (the old behaviour), never to a lost
+# disclosure, so a generous month is the right side to err on.
+MEMORY_INGEST_MARK_TTL = 30 * 86_400
+# How many already-ingested messages ride along ahead of the delta so a new
+# message that only makes sense in context ("yes, that one") still resolves.
+MEMORY_DELTA_CONTEXT_MESSAGES = 6
 
 # Worth-learning gate for conversational ingestion (memory_node). There is NO
 # message-count or tool-call gating: a single disclosure ("my name is Sam")
@@ -193,12 +269,20 @@ DOCUMENT_HISTORY_LIMIT = 10
 CONSOLIDATION_DEBOUNCE_SECONDS = 120
 CONSOLIDATION_PENDING_KEY = "user:{user_id}:memory:consolidate:pending"
 CONSOLIDATION_PENDING_TTL = 3600
-# How many of the freshest facts feed each core-document rewrite.
-CONSOLIDATION_FACTS_LIMIT = 50
-# insights.md looks back this many days of episode summaries.
-CONSOLIDATION_EPISODE_DAYS = 30
-# Soft cap each consolidation prompt enforces on a core document.
-DOCUMENT_TARGET_MAX_CHARS = 2500
+# Upper bound on how many live facts feed one core-document rewrite. This is a
+# safety valve, not a window: user.md and people.md are re-derived from EVERY
+# live durable fact in their categories, because a rewrite fed only the freshest
+# 50 could never be contradicted by the fact it corrupted — that is how "Khyati
+# Sheth, October 19 2022" became "Khyal Shetal, anniversary Oct 19 2026" in the
+# always-injected document while five live memories still said otherwise.
+CONSOLIDATION_FACTS_LIMIT = 500
+# Hard cap on a core document. Enforced in code after the rewrite (one retry
+# with an explicit trim instruction, then the previous version stands) — the
+# prompt asking nicely was the only enforcement, and agenda.md reached 4,886.
+# Matches the per-document injection bound in CORE_CONTEXT_SECTION_MAX_CHARS:
+# a write cap below the read bound would trim knowledge the prompt had room
+# for, and one above it would write documents that arrive clipped every turn.
+DOCUMENT_TARGET_MAX_CHARS = 4000
 
 # /workspace/memory projection: journal pages older than this are dropped
 # from the on-disk view (Postgres keeps the full history).
@@ -222,12 +306,23 @@ CATEGORY_PATH_MAX_DEPTH = 3
 
 # Maximum transcript size fed to the extraction LLM (characters). When a
 # transcript exceeds the cap we keep the head (opening context) and the tail
-# (most recent exchanges) and drop the middle. Sized so a long single session
-# (~20k chars) survives whole — truncation loses mid-conversation details
-# that the user may ask about weeks later.
-EXTRACTION_TRANSCRIPT_MAX_CHARS = 24_000
-EXTRACTION_TRANSCRIPT_HEAD_CHARS = 4_000
-EXTRACTION_TRANSCRIPT_TAIL_CHARS = 20_000
+# (most recent exchanges) and drop the middle. Sized so a long multi-day
+# session (~100k chars) survives whole — truncation loses mid-conversation
+# details that the user may ask about weeks later, and the sliding window
+# also breaks the lane's byte-prefix cache (below).
+#
+# Cache note: the extraction call runs 1-2x per turn; the transcript is the
+# byte-prefix cache's payload. With a small cap the head+tail window SLIDES
+# every turn, so the byte prefix breaks at the truncation marker and the whole
+# transcript re-sends uncached (measured ~30% hit on the lane). The cap is
+# therefore sized so real conversations stay under it and the transcript is
+# append-only — the prefix then extends through it and only the newest
+# exchange is uncached. (The original 10k cap bounded the extraction's cache
+# footprint when it shared the conversation's provider cache; it has run on
+# direct Gemini since — a separate cache store — so that constraint is gone.)
+EXTRACTION_TRANSCRIPT_MAX_CHARS = 100_000
+EXTRACTION_TRANSCRIPT_HEAD_CHARS = 40_000
+EXTRACTION_TRANSCRIPT_TAIL_CHARS = 60_000
 
 # Default importance assigned to a fact when the extractor omits it.
 DEFAULT_MEMORY_IMPORTANCE = 0.5
@@ -242,10 +337,15 @@ MEMORY_EPISODES_DEFAULT_DAYS = 14
 MEMORY_EPISODES_MAX_RANGE_DAYS = 90
 
 # Relevance cutoff applied to every recall: drop the long tail of weak matches
-# by keeping only results scoring at least this fraction of the top hit. Hybrid
-# recall returns a sharp relevance cliff (strong matches ~1.0+, noise <0.1), so
-# a relative floor cleanly separates the two without a brittle absolute one.
-# This keeps both prompt-injected context and the search UI free of noise.
+# by keeping only candidates whose PRE-boost blended relevance is at least this
+# fraction of the pool's best pre-boost relevance (boosts reorder results but
+# never decide survival). The blended base is 0.6 * sigmoid(rerank logit)
+# + 0.4 * (cosine / best cosine) — both terms absolute-preserving, so real
+# matches cluster near the top (~0.85-1.0 of the best) while faintly-related
+# tail facts land well below 0.4 of it, and a hair-thin gap between two real
+# answers stays hair-thin instead of being stretched to 1.0-vs-0.0 as the old
+# min-max scaling did. This keeps prompt-injected context and the search UI
+# free of noise without deleting close runner-up facts.
 RELEVANCE_DROPOFF_RATIO = 0.4
 
 # Request-body length caps. A memory is one atomic fact, so it stays short;
@@ -263,6 +363,20 @@ class MemoryKind(StrEnum):
 
     FACT = "fact"
     EXPERIENCE = "experience"
+
+
+class MemoryShelfLife(StrEnum):
+    """How long an extracted assertion stays true — decides where it is stored.
+
+    ``TASK`` and ``JOURNAL`` never reach the memories table: the extractor uses
+    them to route a commitment to the agenda and an event (or something GAIA
+    itself produced) to the journal, instead of freezing either as a fact.
+    """
+
+    DURABLE = "durable"
+    STATE = "state"
+    TASK = "task"
+    JOURNAL = "journal"
 
 
 class MemoryRelationType(StrEnum):
@@ -300,7 +414,6 @@ class MemoryDocType(StrEnum):
     MEMORY_MD = "memory_md"
     AGENDA_MD = "agenda_md"
     PEOPLE_MD = "people_md"
-    INSIGHTS_MD = "insights_md"
 
 
 # On-disk filenames for the core documents in the /workspace/memory projection.
@@ -309,7 +422,28 @@ MEMORY_DOC_FILENAMES: dict[MemoryDocType, str] = {
     MemoryDocType.MEMORY_MD: "memory.md",
     MemoryDocType.AGENDA_MD: "agenda.md",
     MemoryDocType.PEOPLE_MD: "people.md",
-    MemoryDocType.INSIGHTS_MD: "insights.md",
+}
+
+# Stands in for what a document lost when it overran its budget. Fixed text, so
+# the notice never itself grows with the content it replaces.
+CORE_CONTEXT_TRUNC_MARKER = "\n…[document clipped to bound prompt size]…\n"
+
+# Per-section bounds on the always-injected core-context block. A single
+# head/tail cut over the whole volatile block let an oversized agenda eat the
+# journal instead of itself; each section now carries its own budget, so a
+# runaway section can only truncate itself.
+#
+# These are a runaway backstop, NOT a diet. Memory is the product: the bounds
+# sit above what a healthy document actually is, so the normal case is injected
+# whole and only a document that has genuinely gone wrong is ever clipped.
+# Measured against production (user.md 3,077 / memory.md 3,920 / agenda.md
+# 4,886), the two profile documents land inside their bound untouched and only
+# the agenda — the one that ran away — is bounded, which its item cap
+# (AGENDA_INJECTED_ITEM_CAP) now keeps it under anyway.
+CORE_CONTEXT_SECTION_MAX_CHARS: dict[MemoryDocType, int] = {
+    MemoryDocType.USER_MD: 4_000,
+    MemoryDocType.MEMORY_MD: 4_000,
+    MemoryDocType.AGENDA_MD: 3_000,
 }
 
 

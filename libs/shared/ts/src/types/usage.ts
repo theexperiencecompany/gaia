@@ -39,6 +39,14 @@ export interface ActivityDay {
   date: string;
   /** Total actions (tool calls + messages) that day. */
   count: number;
+  /** Input + output tokens charged to the user that day. Background work
+   * (memory, onboarding) is billed separately and never counted here. */
+  tokens: number;
+  input_tokens: number;
+  output_tokens: number;
+  /** Subset of the input that was served from the prompt cache. */
+  cached_tokens: number;
+  reasoning_tokens: number;
 }
 
 /** Year activity heatmap + the user's standing. Served by /usage/activity,
@@ -46,6 +54,8 @@ export interface ActivityDay {
 export interface UsageActivity {
   days: ActivityDay[];
   total: number;
+  /** Input + output tokens across the whole window. */
+  total_tokens: number;
   /** Consecutive active days ending now (current streak, not historical best). */
   streak: number;
   /** Percentile of this user's activity vs all users (0-100), or null. */

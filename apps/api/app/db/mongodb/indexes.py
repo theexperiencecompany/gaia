@@ -50,7 +50,6 @@ async def create_all_indexes() -> None:
             create_payment_indexes(),
             create_processed_webhook_indexes(),
             create_usage_indexes(),
-            create_ai_models_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
             create_integration_instructions_indexes(),
@@ -60,6 +59,7 @@ async def create_all_indexes() -> None:
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
+            create_pending_platform_registration_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -81,7 +81,6 @@ async def create_all_indexes() -> None:
             "payments",
             "processed_webhooks",
             "usage",
-            "ai_models",
             "integrations",
             "user_integrations",
             "integration_instructions",
@@ -91,10 +90,11 @@ async def create_all_indexes() -> None:
             "bot_sessions",
             "e2b_sandboxes",
             "hil_approvals",
+            "pending_platform_registrations",
         ]
 
         index_results = {}
-        for i, (collection_name, result) in enumerate(zip(collection_names, results)):
+        for collection_name, result in zip(collection_names, results):
             if isinstance(result, Exception):
                 log.error(
                     f"{LogTag.MONGO} Failed to create indexes for collection",
@@ -635,6 +635,32 @@ async def create_processed_webhook_indexes() -> None:
         raise
 
 
+async def create_pending_platform_registration_indexes() -> None:
+    """
+    Create indexes for the pending_platform_registrations collection.
+
+    - Unique on (platform, platform_user_id): one account per handle
+    - (user_id, platform): the per-user lookup on connect, link and unlink
+    - created_at: the range scan the abandoned-registration sweep runs
+    """
+    pending_registrations_collection = get_async_collection("pending_platform_registrations")
+    try:
+        await asyncio.gather(
+            pending_registrations_collection.create_index(
+                [("platform", 1), ("platform_user_id", 1)], unique=True
+            ),
+            pending_registrations_collection.create_index([("user_id", 1), ("platform", 1)]),
+            pending_registrations_collection.create_index("created_at"),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating pending platform registration indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
 async def create_usage_indexes() -> None:
     """
     Create indexes for the usage_snapshots and usage_daily collections.
@@ -688,49 +714,10 @@ async def create_usage_indexes() -> None:
         raise
 
 
-async def create_ai_models_indexes() -> None:
-    """
-    Create indexes for ai_models collection for optimal query performance.
-
-    Query patterns:
-    - Find models by ID (primary lookup)
-    - Find active models by plan availability
-    - Find default models
-    - Pricing lookups
-    """
-    ai_models_collection = get_async_collection("ai_models")
-    try:
-        await asyncio.gather(
-            # Primary model lookup
-            ai_models_collection.create_index("model_id", unique=True),
-            # Active models filtering
-            ai_models_collection.create_index("is_active"),
-            # Default model lookup
-            ai_models_collection.create_index([("is_default", 1), ("is_active", 1)]),
-            # Plan availability queries
-            ai_models_collection.create_index("available_in_plans"),
-            # Combined active + plan queries (most common)
-            ai_models_collection.create_index([("is_active", 1), ("available_in_plans", 1)]),
-            # Pricing queries (for cost calculation)
-            ai_models_collection.create_index(
-                [("model_id", 1), ("is_active", 1)], name="model_pricing_lookup"
-            ),
-            # Provider filtering
-            ai_models_collection.create_index("model_provider"),
-            ai_models_collection.create_index("inference_provider"),
-        )
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.MONGO} Error creating AI models indexes",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise
-
-
 async def _create_index_safe(
-    collection: AsyncIOMotorCollection[dict[str, Any]], keys: IndexKeys, **kwargs: Any
+    collection: AsyncIOMotorCollection[dict[str, Any]],
+    keys: IndexKeys,
+    **kwargs: Any,  # noqa: ANN401 -- contract
 ) -> None:
     """
     Create an index safely, handling IndexOptionsConflict gracefully.

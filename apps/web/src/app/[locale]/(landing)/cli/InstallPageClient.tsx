@@ -11,7 +11,10 @@ import {
 } from "@heroui/table";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
-import { CLI_COMMAND_DESCRIPTIONS } from "@shared/cli/command-manifest";
+import {
+  CLI_COMMAND_DESCRIPTIONS,
+  CLI_INSTALL_COMMANDS,
+} from "@shared/cli/command-manifest";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
@@ -80,19 +83,19 @@ const installMethods = [
   {
     key: "npm",
     title: "npm",
-    code: "npm install -g @heygaia/cli",
+    code: CLI_INSTALL_COMMANDS.npm,
     hint: "from any directory.",
   },
   {
     key: "pnpm",
     title: "pnpm",
-    code: "pnpm add -g @heygaia/cli",
+    code: CLI_INSTALL_COMMANDS.pnpm,
     hint: "from any directory.",
   },
   {
     key: "bun",
     title: "bun",
-    code: "bun add -g @heygaia/cli",
+    code: CLI_INSTALL_COMMANDS.bun,
     hint: "from any directory.",
   },
 ];

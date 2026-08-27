@@ -4,6 +4,7 @@ import os
 import sys
 from typing import Any
 
+from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 import pymongo
 from pymongo.server_api import ServerApi
@@ -89,7 +90,8 @@ class MongoDB:
         try:
             log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
             # Import here to avoid circular import
-            from app.db.mongodb.indexes import create_all_indexes
+            # Deferred import: breaks circular dependency: indexes imports collections, which imports this module
+            from app.db.mongodb.indexes import create_all_indexes  # noqa: PLC0415 -- deferred
 
             await create_all_indexes()
             # await log_index_summary()
@@ -119,3 +121,10 @@ def init_mongodb() -> MongoDB:
     mongodb_instance.ping()
     log.info(f"{LogTag.MONGO} Successfully connected to MongoDB.")
     return mongodb_instance
+
+
+def object_id_filter(id_value: str) -> dict[str, ObjectId]:
+    """The ``_id`` filter for a 24-hex string id — the id-codec stays in app/db
+    (repository-boundaries lint), so raw-connection operational scripts never
+    import bson themselves."""
+    return {"_id": ObjectId(id_value)}

@@ -10,7 +10,7 @@ export const entry: AlternativeData = {
   painPoints: [
     "Steep learning curve to build functional Coda docs with tables and formulas",
     "Pro plan at $10/month per doc maker for full features",
-    "No proactive AI assistant — Coda AI helps with writing and formulas, not workflow management",
+    "No proactive AI assistant: Coda AI helps with writing and formulas, not workflow management",
     "Email and calendar integrations require custom pack setup",
     "Overkill for users who want an AI assistant rather than a document builder",
   ],
@@ -32,7 +32,7 @@ export const entry: AlternativeData = {
     "coda alternative 2026",
   ],
   whyPeopleLook:
-    "Coda's fusion of documents and databases is genuinely powerful — buttons that run automations, tables that act as databases, and packs that connect to external apps. But this power demands significant investment. Building a useful Coda doc takes hours of formula writing and table design. Coda AI helps with text and formula generation, but it does not proactively monitor your email, manage your calendar, or surface what you should work on today. Users who want an intelligent assistant rather than a powerful document builder consistently look for Coda alternatives.",
+    "Coda's fusion of documents and databases is genuinely powerful, with buttons that run automations, tables that act as databases, and packs that connect to external apps. But this power demands significant investment. Building a useful Coda doc takes hours of formula writing and table design. Coda AI helps with text and formula generation, but it does not proactively monitor your email, manage your calendar, or surface what you should work on today. Users who want an intelligent assistant rather than a powerful document builder consistently look for Coda alternatives.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Workflow automation without building tables, formulas, and buttons",
@@ -41,7 +41,7 @@ export const entry: AlternativeData = {
     "Daily work summaries without building a Coda dashboard",
   ],
   gaiaAdvantages: [
-    "Zero configuration — GAIA works immediately with your existing tools",
+    "Zero configuration: GAIA works immediately with your existing tools",
     "Proactive AI surfaces what matters without you building a system",
     "Email and calendar integrated natively, not via packs that need maintenance",
     "Open-source and self-hostable unlike Coda's closed SaaS",

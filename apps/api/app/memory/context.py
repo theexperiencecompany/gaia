@@ -8,25 +8,34 @@ only a backstop.
 """
 
 import asyncio
-from datetime import UTC, date as date_type, datetime, timedelta
+from datetime import date as date_type, timedelta
 
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
     CORE_CONTEXT_CACHE_TTL,
-    RECENT_ACTIVITY_ENTRY_CAP,
+    CORE_CONTEXT_SECTION_MAX_CHARS,
+    CORE_CONTEXT_TRUNC_MARKER,
     MemoryDocType,
 )
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
+from app.memory.user_time import local_today
 from app.models.memory_db_models import MemoryEpisode
+from shared.py.wide_events import log
+
+# Public because get_core_context joins the sections into one string and
+# message_helpers has to find the boundaries again to split the volatile
+# agenda/journal out of the cacheable documents. One definition, so a copy
+# edit here cannot silently stop that split from matching.
+AGENDA_HEADING = "## Current agenda"
+RECENT_ACTIVITY_HEADING = "## Recent activity"
 
 _DOC_SECTIONS: list[tuple[MemoryDocType, str]] = [
     (MemoryDocType.USER_MD, "## About the user"),
     (MemoryDocType.MEMORY_MD, "## Assistant conventions"),
-    (MemoryDocType.AGENDA_MD, "## Current agenda"),
+    (MemoryDocType.AGENDA_MD, AGENDA_HEADING),
 ]
-_RECENT_ACTIVITY_HEADING = "## Recent activity"
 
 
 def _strip_leading_h1(content: str) -> str:
@@ -44,6 +53,29 @@ def _strip_leading_h1(content: str) -> str:
     return content
 
 
+def _bounded(body: str, doc_type: MemoryDocType) -> str:
+    """Clip one document to its own share of the always-injected block.
+
+    Each document is bounded separately rather than the joined block being
+    head/tail-cut as a whole. A single cut over everything meant an oversized
+    agenda (production: 4,886 characters) ate the journal that followed it —
+    the section that overran was never the one that paid for it. The write
+    path caps these documents too; this is the read-side backstop for a
+    document written before the cap existed.
+    """
+    limit = CORE_CONTEXT_SECTION_MAX_CHARS.get(doc_type)
+    if limit is None or len(body) <= limit:
+        return body
+    log.warning(
+        "memory_core_context_section_clipped",
+        error_type="core_context_section_over_budget",
+        doc_type=doc_type.value,
+        chars=len(body),
+        limit=limit,
+    )
+    return body[:limit] + CORE_CONTEXT_TRUNC_MARKER
+
+
 async def get_core_context(user_id: str) -> str:
     """Assembled always-injected memory context, cached in Redis.
 
@@ -55,7 +87,8 @@ async def get_core_context(user_id: str) -> str:
     if isinstance(cached, str):
         return cached
 
-    today = datetime.now(UTC).date()
+    # "Today"/"Yesterday" follow the user's wall clock, not UTC's.
+    today = await local_today(user_id)
     documents, episodes = await asyncio.gather(
         pg_store.get_documents(user_id),
         pg_store.get_episodes_range(user_id, today - timedelta(days=1), today),
@@ -66,11 +99,12 @@ async def get_core_context(user_id: str) -> str:
     for doc_type, heading in _DOC_SECTIONS:
         document = documents_by_type.get(doc_type.value)
         if document is not None and document.content.strip():
-            sections.append(f"{heading}\n{_strip_leading_h1(document.content.strip())}")
+            body = _bounded(_strip_leading_h1(document.content.strip()), doc_type)
+            sections.append(f"{heading}\n{body}")
 
     recent_activity = _format_recent_activity(episodes, today)
     if recent_activity:
-        sections.append(f"{_RECENT_ACTIVITY_HEADING}\n{recent_activity}")
+        sections.append(f"{RECENT_ACTIVITY_HEADING}\n{recent_activity}")
 
     context = "\n\n".join(sections)
     await set_cache(cache_key, context, ttl=CORE_CONTEXT_CACHE_TTL)
@@ -95,10 +129,14 @@ async def invalidate_user_memory_caches(user_id: str) -> None:
 def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> str:
     """Compact journal rendering, bounded so it never dumps a whole day.
 
-    A past day collapses to its one-line rollover summary. Today (not yet
-    summarized) shows only its most recent ``RECENT_ACTIVITY_ENTRY_CAP``
-    entries — enough for continuity without the prompt growing all day. The
-    full journal stays available via ``search_journal``.
+    A past day collapses to its one-line rollover summary. Today emits its
+    NEWEST entries only — the real recency value — with a static no-number
+    note when older ones are dropped. The old anchored-at-day-start window
+    kept only old entries while the newest churned in every turn, and its
+    "+N more entries today" counter changed N every turn; both sat inside the
+    volatile tail where every changed byte costs prompt-cache hit rate. The
+    static note keeps the emitted bytes identical between entry additions.
+    The full journal stays available via ``search_journal``.
     """
     blocks: list[str] = []
     for episode in episodes:
@@ -108,10 +146,14 @@ def _format_recent_activity(episodes: list[MemoryEpisode], today: date_type) -> 
             continue
         if not episode.entries:
             continue
-        recent = episode.entries[-RECENT_ACTIVITY_ENTRY_CAP:]
+        # Emit the NEWEST entries (last-2) — not an anchored-at-start window
+        # (which held only old entries and churned the newest in every turn)
+        # and no numbered counter (N changed every turn). The omitted-note is
+        # byte-identical across turns, so the emitted bytes only change when
+        # a new entry lands.
+        recent = episode.entries[-2:] if len(episode.entries) > 2 else episode.entries
         lines = [f"- {entry.get('time', '')} {entry.get('text', '')}".rstrip() for entry in recent]
-        more = len(episode.entries) - len(recent)
-        if more > 0:
-            lines.insert(0, f"- (+{more} earlier entries today)")
+        if len(episode.entries) > 2:
+            lines.append("- (earlier entries omitted)")
         blocks.append(f"### {label} ({episode.date.isoformat()})\n" + "\n".join(lines))
     return "\n".join(blocks)

@@ -19,11 +19,22 @@ interface DetectionRecord {
   id: number;
   score: number;
   detectedAt: number;
-  /** Wall-clock time (epoch ms) the detection fired — for the log timestamp. */
-  firedAt: number;
+  /** Wall-clock time the detection fired, formatted for the log timestamp. */
+  firedAtLabel: string;
   speechStartedAt: number | null;
   timeToWakeMs: number | null;
 }
+
+// Timestamps are formatted once when a detection is recorded (a client-side
+// event, never during render), so locale/timezone differences between server
+// and browser can't cause hydration mismatches. Module scope avoids rebuilding
+// the formatter per record.
+const firedAtFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
 
 export default function WakeWordDemoPage() {
   const [enabled, setEnabled] = useState(false);
@@ -82,7 +93,7 @@ export default function WakeWordDemoPage() {
           id,
           score: lastDetection.score,
           detectedAt,
-          firedAt: Date.now(),
+          firedAtLabel: firedAtFormatter.format(Date.now()),
           speechStartedAt,
           timeToWakeMs,
         },
@@ -468,11 +479,7 @@ function DetectionLog({ history }: Readonly<{ history: DetectionRecord[] }>) {
                     ? "no onset"
                     : `${Math.round(h.timeToWakeMs)} ms`}
                 </span>
-                <span className="ml-auto text-zinc-500">
-                  {new Date(h.firedAt).toLocaleTimeString(undefined, {
-                    hour12: false,
-                  })}
-                </span>
+                <span className="ml-auto text-zinc-500">{h.firedAtLabel}</span>
               </li>
             ))}
           </ul>

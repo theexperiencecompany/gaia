@@ -140,9 +140,9 @@ def test_a_reordered_prompt_is_caught(monkeypatch: pytest.MonkeyPatch) -> None:
     """End anchor before start anchor means the section moved — not a valid span."""
 
     def swap(text: str) -> str:
-        return text.replace("— VOICE MECHANICS", "— TONE MIRRORING (PRIMARY DIRECTIVE)", 1).replace(
-            "— TONE MIRRORING (PRIMARY DIRECTIVE)\n   - Match the user exactly",
-            "— VOICE MECHANICS\n   - Match the user exactly",
+        return text.replace("Mechanics:", "TONE MIRRORING (PRIMARY DIRECTIVE):", 1).replace(
+            "TONE MIRRORING (PRIMARY DIRECTIVE): match the user exactly",
+            "Mechanics: match the user exactly",
             1,
         )
 
@@ -156,7 +156,7 @@ def test_a_renamed_section_header_breaks_the_clause(monkeypatch: pytest.MonkeyPa
     """Renaming a section is the realistic prompt edit, and it must not pass."""
     _edit(
         monkeypatch,
-        lambda text: text.replace("— TONE MIRRORING (PRIMARY DIRECTIVE)", "— MATCHING THE USER"),
+        lambda text: text.replace("TONE MIRRORING (PRIMARY DIRECTIVE):", "MATCHING THE USER:"),
     )
 
     with pytest.raises(ClauseResolutionError, match="TONE MIRRORING"):
@@ -184,11 +184,11 @@ def test_resolve_returns_the_shipped_text_not_a_paraphrase() -> None:
     """Sanity: the clause is the prompt's own words, header included."""
     text = resolve(TONE_REF)
 
-    assert text.startswith("— TONE MIRRORING (PRIMARY DIRECTIVE)")
-    assert "Match the user exactly" in text
-    assert "Don't default to one fixed style" in text
+    assert text.startswith("TONE MIRRORING (PRIMARY DIRECTIVE)")
+    assert "match the user exactly" in text
+    assert "Never default to one fixed style" in text
     # The extent stops where the next section starts.
-    assert "VOICE MECHANICS" not in text
+    assert "Mechanics:" not in text
 
 
 def test_an_edited_rule_flows_through_without_touching_any_eval(
@@ -204,8 +204,8 @@ def test_an_edited_rule_flows_through_without_touching_any_eval(
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "- Don't default to one fixed style, talk how they talk.",
-            "- Don't default to one fixed style, talk how they talk.\n   - Also mirror their punctuation.",
+            "Never default to one fixed style.",
+            "Never default to one fixed style. Also mirror their punctuation.",
         ),
     )
 
@@ -218,7 +218,7 @@ def test_a_line_clause_is_exactly_one_line() -> None:
 
     assert text.count("\n") == 0
     assert text.startswith("- Emojis EXTREMELY RARE")
-    assert "NEVER use one before the user has used one first" in text
+    assert "never before the user has used one first" in text
 
 
 def test_clause_helper_matches_resolve() -> None:
@@ -248,7 +248,7 @@ def test_contract_criteria_change_when_the_prompt_changes(
     _edit(
         monkeypatch,
         lambda text: text.replace(
-            "and NEVER use one before the user has used one first",
+            "and never before the user has used one first",
             "and NEVER use one under any circumstance",
         ),
     )

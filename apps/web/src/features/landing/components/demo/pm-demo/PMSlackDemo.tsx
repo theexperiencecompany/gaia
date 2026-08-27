@@ -22,7 +22,7 @@ function PMSlackDemo() {
       phase2Time="9:18 AM"
       phase2Question="what's the current status of the search feature?"
       phase3Time="9:18 AM"
-      phase3Response="Search feature (ENG-390) is shipped — v2.3.0, merged Feb 28. Known issue: timeout on >10k results (ENG-412, in progress, assigned to Alex, targeting next sprint). The user-reported timeout bug was fixed yesterday in v2.4.1."
+      phase3Response="Search feature (ENG-390) is shipped: v2.3.0, merged Feb 28. Known issue: timeout on >10k results (ENG-412, in progress, assigned to Alex, targeting next sprint). The user-reported timeout bug was fixed yesterday in v2.4.1."
     />
   );
 }

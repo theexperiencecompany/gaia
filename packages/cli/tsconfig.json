@@ -11,6 +11,7 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
     "paths": { "@/*": ["./src/*"] }
   },
   "exclude": ["dist", "node_modules"]

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.hil_models import HILPreferences
+from app.services.analytics_service import AnalyticsEvents
 from app.services.hil.preferences import (
     get_hil_preferences,
     set_tool_override,
@@ -37,6 +38,18 @@ def user_repo():
         repo.set_hil_preference_fields = AsyncMock()
         repo.set_hil_tool_override = AsyncMock()
         yield repo
+
+
+@pytest.fixture(autouse=True)
+def _neutralize_captures():
+    """Silence analytics captures for tests not asserting on them.
+
+    ``capture_event`` resolves the PostHog provider at call time, which is not
+    registered in this test module's import chain — capture-specific tests
+    patch the call explicitly and assert on it.
+    """
+    with patch(f"{MODULE}.capture_event"):
+        yield
 
 
 class TestReads:
@@ -68,8 +81,11 @@ class TestWrites:
     async def test_a_partial_update_passes_through_and_reads_back(self, user_repo) -> None:
         user_repo.get.return_value = _user_with({"mode": "auto"})
 
-        prefs = await update_hil_preferences(USER_ID, mode="auto")
+        with patch(f"{MODULE}.get_hil_preferences", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = HILPreferences(mode="auto")
+            prefs = await update_hil_preferences(USER_ID, mode="auto")
 
+        mock_get.assert_awaited_once_with(USER_ID)
         user_repo.set_hil_preference_fields.assert_awaited_once_with(
             USER_ID, mode="auto", tool_overrides=None
         )
@@ -91,3 +107,53 @@ class TestWrites:
 
         user_repo.set_hil_tool_override.assert_awaited_once_with(USER_ID, "GMAIL_SEND_EMAIL", True)
         assert prefs.tool_overrides == {"GMAIL_SEND_EMAIL": True}
+
+
+class TestCaptures:
+    async def test_a_mode_change_is_captured(self, user_repo) -> None:
+        user_repo.get.return_value = _user_with({"mode": "auto"})
+
+        with patch(f"{MODULE}.capture_event") as mock_capture:
+            await update_hil_preferences(USER_ID, mode="always_ask")
+
+        mock_capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {"setting": "hil_approvals", "mode": "always_ask"},
+        )
+
+    async def test_a_tool_overrides_only_update_is_not_captured(self, user_repo) -> None:
+        with patch(f"{MODULE}.capture_event") as mock_capture:
+            await update_hil_preferences(USER_ID, tool_overrides={})
+
+        mock_capture.assert_not_called()
+
+    async def test_a_tool_override_is_captured(self, user_repo) -> None:
+        with patch(f"{MODULE}.capture_event") as mock_capture:
+            await set_tool_override(USER_ID, "GMAIL_SEND_EMAIL", True)
+
+        mock_capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {
+                "setting": "tool_approval",
+                "tool_name": "GMAIL_SEND_EMAIL",
+                "require_approval": True,
+            },
+        )
+
+    async def test_clearing_a_tool_override_is_captured_as_not_requiring_approval(
+        self, user_repo
+    ) -> None:
+        with patch(f"{MODULE}.capture_event") as mock_capture:
+            await set_tool_override(USER_ID, "GMAIL_SEND_EMAIL", None)
+
+        mock_capture.assert_called_once_with(
+            USER_ID,
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {
+                "setting": "tool_approval",
+                "tool_name": "GMAIL_SEND_EMAIL",
+                "require_approval": False,
+            },
+        )

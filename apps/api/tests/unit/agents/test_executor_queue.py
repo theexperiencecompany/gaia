@@ -6,6 +6,7 @@ session registration, and the queue-item serialization rules.
 """
 
 import json
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -14,15 +15,19 @@ from app.agents.core.background import executor_queue as eq, session as sess
 from app.agents.core.background.executor_queue import (
     LockState,
     build_lock_value,
+    build_run_item,
     enqueue_task,
     get_lock_state,
     parse_lock_value,
     pop_next_queued_run,
+    prepare_run_from_item,
     reclaim_stranded_task,
     release_lock_if_owned,
+    safe_configurable,
 )
 from app.agents.core.background.session import RunKind, get_session
 from app.constants.cache import EXECUTOR_BUSY_TTL, EXECUTOR_QUEUE_TTL
+from app.models.agent_models import AgentConfigurable
 
 
 @pytest.fixture(autouse=True)
@@ -233,7 +238,7 @@ class TestReclaimStrandedTask:
 
 
 class TestEnqueueTask:
-    async def test_serializes_scalars_and_drops_unsafe_values(self) -> None:
+    async def test_serializes_owned_keys_and_drops_unsafe_values(self) -> None:
         with patch.object(eq, "redis_cache") as redis:
             redis.client.rpush = AsyncMock()
             redis.client.expire = AsyncMock()
@@ -245,8 +250,11 @@ class TestEnqueueTask:
                 configurable={
                     "user_id": "u1",
                     "workflow_id": "wf-1",
-                    "not_allowlisted": "dropped",
-                    "user_message_id": {"nested": "dropped — not a scalar"},
+                    # Not declared on AgentConfigurable — LangGraph's own runtime
+                    # keys look like this and must never reach the queue item.
+                    "not_owned": "dropped",
+                    # Declared, but holding something JSON cannot carry.
+                    "model_kwargs": {"provider": object()},
                 },
                 conversation_id="conv-1",
                 user_message_id="msg-1",
@@ -259,3 +267,159 @@ class TestEnqueueTask:
             redis.client.expire.assert_awaited_once_with(
                 "executor:queue:conv-1", EXECUTOR_QUEUE_TTL
             )
+
+
+class TestBuildRunItem:
+    """``build_run_item`` is the single serialized shape written by both the
+    plain queue enqueue and the HIL pause store — fields must default so a
+    plain queue item never accidentally carries resume-only identity."""
+
+    def test_omits_bot_message_id_by_default(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+        )
+        assert item["bot_message_id"] is None
+
+    def test_carries_bot_message_id_when_a_pause_supplies_it(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+            bot_message_id="orig-msg-1",
+        )
+        assert item["bot_message_id"] == "orig-msg-1"
+
+
+class TestPrepareRunFromItemResumeIdentity:
+    """A HIL resume re-dispatches through the same ``prepare_run_from_item``
+    the queue pop uses — the resumed run must inherit the original bot
+    message id from the stored item so its result can reconcile onto it."""
+
+    async def test_bot_message_id_threads_into_the_resumed_run(self) -> None:
+        item = build_run_item(
+            task="continue the task",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+            bot_message_id="orig-msg-1",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.bot_message_id == "orig-msg-1"
+        assert prepared.run.kind is RunKind.QUEUED  # shares the queue's re-dispatch path
+
+        # The client folds the new stream into the ORIGINAL turn's message
+        # instead of opening a second placeholder, so the id has to reach the
+        # browser on the stream_started event too — not just the run object.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] == "orig-msg-1"
+
+    async def test_plain_queued_item_has_no_bot_message_id(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1"},
+            conversation_id="conv-1",
+            user_message_id="msg-1",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.bot_message_id is None
+
+        # Present and null rather than absent: the client branches on the key,
+        # so a plain queued run must say "open a fresh placeholder" explicitly.
+        event = ws.broadcast_to_user.await_args.args[1]
+        assert event["bot_message_id"] is None
+
+
+class TestSafeConfigurable:
+    """What survives a queue hop and a HIL resume.
+
+    A dropped key does not make the re-dispatched run smaller — it makes it a
+    *different* run than the one the user started, with no signal that it changed.
+    """
+
+    @pytest.mark.regression
+    def test_carries_every_gaia_owned_key_including_non_scalars(self) -> None:
+        configurable: AgentConfigurable = {
+            "thread_id": "t",
+            "conversation_id": "c",
+            "user_id": "u",
+            # THE model selection. Dropping it made a queued run resolve a fresh
+            # lane instead of continuing the one the user's turn started on.
+            "lane": {
+                "provider": "openrouter",
+                "model": "deepseek/deepseek-v4-flash-0731",
+                "reasoning": {"effort": "low"},
+                # The OpenRouter first-party pin. Dropping it load-balances the
+                # queued run onto throttled resellers — the exact 429s it prevents.
+                "provider_pin": {"provider": {"only": ["deepseek"]}},
+                "max_input_tokens": 1_000_000,
+            },
+            "provider": "openrouter",
+            "model": "deepseek/deepseek-v4-flash-0731",
+            "model_kwargs": {"provider": {"only": ["deepseek"]}},
+            "reasoning": {"effort": "low"},
+            "plan_type": "pro",
+            # The per-request token ceiling keys on this; a fresh id resets the
+            # ceiling mid-conversation.
+            "root_request_id": "rr-1",
+            # The HIL intent judge grounds gated tool calls against these. A
+            # resumed run that lost them judges against nothing — on the one path
+            # where HIL is the whole point.
+            "user_messages": ["send the invoice to bob"],
+            "langfuse_trace_id": "tr-1",
+        }
+
+        assert safe_configurable(configurable) == configurable
+
+    def test_drops_langgraph_runtime_keys(self) -> None:
+        configurable = {
+            "thread_id": "t",
+            "checkpoint_ns": "ns",
+            "__pregel_runtime": object(),
+        }
+
+        assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
+
+    def test_drops_the_run_scoped_hil_replay_flag(self) -> None:
+        configurable = {"thread_id": "t", "hil_resume_replay": True}
+
+        assert safe_configurable(cast(AgentConfigurable, configurable)) == {"thread_id": "t"}
+
+    def test_warns_and_drops_a_value_that_cannot_be_serialized(self) -> None:
+        configurable = {"thread_id": "t", "model_kwargs": {"provider": object()}}
+
+        with patch.object(eq.log, "warning") as warn:
+            kept = safe_configurable(cast(AgentConfigurable, configurable))
+
+        assert kept == {"thread_id": "t"}
+        assert warn.call_count == 1
+        assert warn.call_args.kwargs["configurable_key"] == "model_kwargs"

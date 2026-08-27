@@ -12,10 +12,10 @@ nx run voice-agent:sync
 nx dev voice-agent       # runs: uv run python -m src start
 
 # Lint (ruff)
-nx lint voice-agent      # runs: uvx ruff check src/
+nx lint voice-agent      # runs: uv run --group dev ruff check src/
 
 # Format (ruff)
-nx format voice-agent    # runs: uvx ruff format src/
+nx format voice-agent    # runs: uv run --group dev ruff format src/
 
 # Download model files (VAD/turn-detection)
 cd apps/voice-agent && uv run python -m src download-files
@@ -52,7 +52,7 @@ The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `Wo
 ## Code Style
 
 - Dependency manager: **uv** (never pip directly)
-- Linter/formatter: **ruff** (via `uvx ruff`)
+- Linter/formatter: **ruff** (via `uv run --group dev ruff`, pinned by the root uv.lock)
 - All imports at the top of the file — no inline imports (the `__main__.py` pattern of conditional imports in `try/except` is an existing exception for CLI dispatch only)
 - All function parameters and return values must have type annotations. Use `Any` only for genuinely untyped third-party code.
 - Python 3.11+: use modern syntax (`X | None` unions, `match` statements).
@@ -60,7 +60,7 @@ The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `Wo
 
 ### Tooling and the autofix hook
 
-After every `.py` edit, a PostToolUse hook runs `uvx ruff format` then `uvx ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
+After every `.py` edit, a PostToolUse hook runs `uv run --project apps/api --group dev ruff format` then `... ruff check --fix` on the file. Formatting, import order/grouping, `Optional[X]` → `X | None`, `Union[X, Y]` → `X | Y`, lowercase generics, unused imports, mutable default args, bare `except`, and `print` are corrected automatically — do not hand-fix them.
 
 What the hook does NOT fix, you handle manually: lint warnings ruff can't auto-resolve (`nx lint voice-agent`, read the rule, fix the cause) and type correctness (there is no `nx type-check` target for voice-agent; keep full annotations and run `uvx mypy src` if you need a type pass). Fix the cause, never silence it.
 

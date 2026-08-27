@@ -9,7 +9,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Connect Gmail, Slack, GitHub, Notion, and 47 more",
     headline: "All your tools. One assistant.",
     subheadline:
-      "GAIA connects to Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Workspace, and 44+ more — with OAuth in one click, no API keys required.",
+      "GAIA connects to Gmail, Slack, GitHub, Notion, Linear, HubSpot, Google Workspace, and 44+ more, with OAuth in one click, no API keys required.",
     benefits: [
       {
         icon: "LinkSquare02Icon",
@@ -47,14 +47,14 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
         number: "03",
         title: "All that service's tools are live",
         description:
-          "GAIA immediately has access to every action for that integration — no further configuration required.",
+          "GAIA immediately has access to every action for that integration. No further configuration required.",
       },
     ],
     faqs: [
       {
         question: "Do I need to manage API keys?",
         answer:
-          "No. All integrations use OAuth — GAIA handles token storage and refresh automatically.",
+          "No. All integrations use OAuth, and GAIA handles token storage and refresh automatically.",
       },
       {
         question: "Can I connect multiple accounts for the same service?",
@@ -64,7 +64,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         question: "What permissions does GAIA request?",
         answer:
-          "Permissions are scoped to the minimum needed for each action. For Gmail that means read, compose, and send — not full account access. Permission scopes are listed on each integration's detail page.",
+          "Permissions are scoped to the minimum needed for each action. For Gmail that means read, compose, and send, not full account access. Permission scopes are listed on each integration's detail page.",
       },
       {
         question: "Can I revoke access to a connected service?",
@@ -76,7 +76,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         title: "Single command across Gmail and Calendar",
         description:
-          "A founder connects Gmail and Google Calendar, then asks GAIA to check for meeting requests in the inbox and block the times on the calendar — one prompt, two integrations.",
+          "A founder connects Gmail and Google Calendar, then asks GAIA to check for meeting requests in the inbox and block the times on the calendar: one prompt, two integrations.",
       },
       {
         title: "GitHub and Linear in one workflow",
@@ -86,7 +86,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         title: "HubSpot and Slack briefing",
         description:
-          "A sales manager connects HubSpot and Slack, then asks GAIA for a daily briefing of deals updated yesterday — delivered to a Slack channel every morning.",
+          "A sales manager connects HubSpot and Slack, then asks GAIA for a daily briefing of deals updated yesterday, delivered to a Slack channel every morning.",
       },
     ],
     relatedSlugs: ["marketplace", "mcp-support", "custom-integrations"],
@@ -100,7 +100,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Discover and install community-built integrations",
     headline: "Thousands of integrations, not just fifty.",
     subheadline:
-      "Browse and install community-built integrations from the GAIA marketplace — or publish your own for others to use.",
+      "Browse and install community-built integrations from the GAIA marketplace, or publish your own for others to use.",
     benefits: [
       {
         icon: "UserGroupIcon",
@@ -132,7 +132,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
         number: "02",
         title: "Install in one click",
         description:
-          "Click Install and the integration's tools are added to GAIA immediately — no configuration needed for most integrations.",
+          "Click Install and the integration's tools are added to GAIA immediately. No configuration needed for most integrations.",
       },
       {
         number: "03",
@@ -191,7 +191,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Connect any Model Context Protocol server",
     headline: "Connect any AI tool, not just GAIA's list.",
     subheadline:
-      "GAIA supports the Model Context Protocol — connect any MCP-compatible server and its tools become immediately available to every GAIA agent.",
+      "GAIA supports the Model Context Protocol: connect any MCP-compatible server and its tools become immediately available to every GAIA agent.",
     benefits: [
       {
         icon: "ServerIcon",
@@ -246,7 +246,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         question: "How does GAIA handle authentication for MCP servers?",
         answer:
-          "Servers requiring bearer tokens accept a token added during setup. OAuth-based servers are handled via spec discovery — GAIA follows the server's auth flow automatically.",
+          "Servers requiring bearer tokens accept a token added during setup. OAuth-based servers are handled via spec discovery, and GAIA follows the server's auth flow automatically.",
       },
       {
         question: "Are MCP tools available to subagents?",
@@ -282,7 +282,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Build, publish, and share your own integrations",
     headline: "Build the integration that doesn't exist yet.",
     subheadline:
-      "Create a custom integration with any URL, add a bearer token, publish it to the marketplace — and GAIA's agents use it immediately across all your automations.",
+      "Create a custom integration with any URL, add a bearer token, publish it to the marketplace, and GAIA's agents use it immediately across all your automations.",
     benefits: [
       {
         icon: "LinkSquare02Icon",
@@ -373,7 +373,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     tagline: "Unified contact lookup across Gmail, HubSpot, and more",
     headline: "Find anyone, across every tool.",
     subheadline:
-      "GAIA searches contacts across Gmail, Google Contacts, and HubSpot CRM in one query — with name, email, phone, and company context returned instantly.",
+      "GAIA searches contacts across Gmail, Google Contacts, and HubSpot CRM in one query, with name, email, phone, and company context returned instantly.",
     benefits: [
       {
         icon: "Search01Icon",
@@ -440,7 +440,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         title: "Pre-call contact briefing in seconds",
         description:
-          "Before a sales call, ask GAIA for everything on a contact — their last email thread, HubSpot deal stage, and phone number — returned as a single card in under 5 seconds.",
+          "Before a sales call, ask GAIA for everything on a contact (their last email thread, HubSpot deal stage, and phone number) returned as a single card in under 5 seconds.",
       },
       {
         title: "Find and email a contact from memory",
@@ -461,10 +461,10 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
     category: "Integrations",
     icon: "BotIcon",
     title: "Specialized Agents",
-    tagline: "37 purpose-built agents — one for every integration",
+    tagline: "37 purpose-built agents, one for every integration",
     headline: "A specialist for every integration.",
     subheadline:
-      "GAIA has 37 purpose-built subagents — one for each integration — each with scoped tools, specialized instructions, and deep knowledge of that platform's API.",
+      "GAIA has 37 purpose-built subagents, one for each integration, each with scoped tools, specialized instructions, and deep knowledge of that platform's API.",
     benefits: [
       {
         icon: "RouteIcon",
@@ -514,7 +514,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         question: "Can multiple subagents run at the same time?",
         answer:
-          "Yes. For tasks spanning multiple integrations, GAIA can run subagents in parallel — for example fetching from GitHub and Slack simultaneously — and merge the results.",
+          "Yes. For tasks spanning multiple integrations, GAIA can run subagents in parallel, for example fetching from GitHub and Slack simultaneously, then merge the results.",
       },
       {
         question: "Can I customize a subagent's behavior?",
@@ -532,7 +532,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         title: "Cross-platform task in one message",
         description:
-          "Ask GAIA to create a GitHub issue from a Slack message thread — the Slack subagent reads the thread, the GitHub subagent creates the issue, both in the same conversation.",
+          "Ask GAIA to create a GitHub issue from a Slack message thread: the Slack subagent reads the thread, the GitHub subagent creates the issue, both in the same conversation.",
       },
       {
         title: "Parallel multi-source research",
@@ -542,7 +542,7 @@ export const INTEGRATIONS_FEATURES: FeatureData[] = [
       {
         title: "Deep HubSpot CRM update",
         description:
-          "After a sales call, ask GAIA to log the call outcome in HubSpot — the HubSpot subagent finds the contact, updates the deal stage, and adds a note, all from one instruction.",
+          "After a sales call, ask GAIA to log the call outcome in HubSpot: the HubSpot subagent finds the contact, updates the deal stage, and adds a note, all from one instruction.",
       },
     ],
     relatedSlugs: ["integrations", "workflows", "mcp-support"],

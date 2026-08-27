@@ -45,7 +45,7 @@ export default function StandupCard() {
           showBackground: false,
         })}
         <span className="text-[11px] font-medium text-zinc-300">
-          Daily Standup — Thursday, March 6
+          Daily Standup: Thursday, March 6
         </span>
       </div>
 

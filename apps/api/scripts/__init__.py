@@ -40,7 +40,7 @@ When adding new scripts that are required at runtime or during setup:
 4. **Script Naming:**
    - Use descriptive names that indicate the script's purpose
    - Follow the pattern: `{purpose}_setup.py` or `{purpose}_script.py`
-   - Examples: `payment_setup.py`, `seed_models.py`, `validate_config.py`
+   - Examples: `payment_setup.py`, `grant_pro_access.py`
 
 5. **Documentation:**
    - Include comprehensive docstrings
@@ -51,5 +51,4 @@ When adding new scripts that are required at runtime or during setup:
 Current Scripts:
 ================
 - payment_setup.py: Sets up subscription plans in the database
-- seed_models.py: Manages AI models collection with CRUD operations
 """

@@ -7,12 +7,28 @@ to verify routing, status codes, response bodies, and validation.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.chat_models import MessageModel
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
+from app.services.analytics_service import AnalyticsEvents
 from app.utils.search.models import SearchResultItem, WebSearchResult
 
 SEARCH_BASE = "/api/v1"
+ANALYTICS_PATCH = "app.api.v1.endpoints.search.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
 
 
 class TestSearchMessages:
@@ -41,6 +57,8 @@ class TestSearchMessages:
         assert "conversations" in data
         assert "notes" in data
         assert len(data["messages"]) == 1
+        assert data["conversations"] == []
+        assert data["notes"] == []
 
     @patch(
         "app.api.v1.endpoints.search.search_messages",
@@ -68,8 +86,37 @@ class TestSearchMessages:
         assert response.status_code == 200
         data = response.json()
         assert data["messages"] == []
-        assert data["conversations"] == []
-        assert data["notes"] == []
+
+
+class TestSearchAnalytics:
+    """Analytics captures on the search endpoint."""
+
+    @patch(
+        "app.api.v1.endpoints.search.search_messages",
+        new_callable=AsyncMock,
+    )
+    async def test_search_captures_search_performed(
+        self, mock_search: AsyncMock, client: AsyncClient
+    ):
+        mock_search.return_value = SearchResultsResponse(
+            messages=[
+                MessageSearchResult(
+                    conversation_id="conv-1",
+                    message=MessageModel(type="bot", response="hello"),
+                    snippet="hello",
+                )
+            ],
+            conversations=[],
+            notes=[],
+        )
+        with patch(ANALYTICS_PATCH) as mock_capture:
+            response = await client.get(f"{SEARCH_BASE}/search", params={"query": "hello"})
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SEARCH_PERFORMED,
+            {"mode": "keyword", "query_length": 5, "result_count": 1},
+        )
 
     @patch(
         "app.api.v1.endpoints.search.search_messages",
@@ -183,7 +230,7 @@ class TestFetchUrlMetadata:
             favicon="https://example.com/favicon.ico",
             website_name="Example",
             website_image=None,
-            url="https://example.com",  # type: ignore[arg-type]
+            url="https://example.com",
         )
         response = await client.post(
             f"{SEARCH_BASE}/fetch-url-metadata",
@@ -210,7 +257,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://a.com",  # type: ignore[arg-type]
+            url="https://a.com",
         )
         url2_resp = URLResponse(
             title="Site B",
@@ -218,7 +265,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://b.com",  # type: ignore[arg-type]
+            url="https://b.com",
         )
         mock_fetch.side_effect = [url1_resp, url2_resp]
         response = await client.post(
@@ -244,7 +291,7 @@ class TestFetchUrlMetadata:
             favicon=None,
             website_name=None,
             website_image=None,
-            url="https://good.com",  # type: ignore[arg-type]
+            url="https://good.com",
         )
         mock_fetch.side_effect = [good_resp, Exception("Timeout")]
         response = await client.post(

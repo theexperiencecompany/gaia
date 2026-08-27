@@ -8,7 +8,7 @@ re-projection.
 Layout under ``<user_root>/memory/``::
 
     GUIDE.md                      hand-authored, mode 0644
-    user.md  memory.md  agenda.md  people.md  insights.md     mode 0444
+    user.md  memory.md  agenda.md  people.md   mode 0444
     journal/YYYY-MM-DD.md         last 30 days, mode 0444
     facts/<category_path>.md      one file per leaf folder, mode 0444
 

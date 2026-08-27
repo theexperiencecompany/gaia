@@ -6,7 +6,6 @@ import {
   type ChatStreamEvent,
   createTurnAccumulator,
   parseChatStreamEvent,
-  TOOL_CALLS_DATA_TOOL_NAME,
   type TurnAccumulator,
 } from "@shared/chat";
 import {
@@ -15,7 +14,7 @@ import {
   RateLimitError,
 } from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
-import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
+import { loadingLabelForEvent } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
@@ -137,6 +136,9 @@ export class TurnSession {
     streamLog("lifecycle", "turn:start", {
       turnKey: this.key,
       conversationId: this.conversationId,
+      // Carried so an on-disk recording is self-describing: the reader can see
+      // which prompt produced the frames that follow.
+      detail: { prompt: this.inputText },
     });
 
     trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
@@ -325,13 +327,11 @@ export class TurnSession {
         this.handleMainResponseComplete();
         return undefined;
 
-      case "progress":
+      case "progress": {
         this.setSpinner(true);
-        this.setLoadingText(event.message, {
-          toolName: event.tool_name,
-          toolCategory: event.tool_category,
-        });
+        this.applyLoadingLabel(event);
         return undefined;
+      }
 
       case "conversation_initialized":
         await this.handleConversationInitialized(event);
@@ -347,6 +347,9 @@ export class TurnSession {
         return undefined;
 
       case "response":
+      // A discarded boundary retracts text that is already on screen, so it has
+      // to re-render exactly like an added delta does.
+      case "message_boundary":
       case "tool_data":
       case "tool_output":
       case "reasoning":
@@ -367,24 +370,19 @@ export class TurnSession {
 
   private accumulate(event: ChatStreamEvent): void {
     // Executor/tool activity after main_response_complete means the turn is
-    // still working — re-arm the loading indicator it may have cleared.
-    if (event.type !== "response" && event.type !== "follow_up_actions") {
+    // still working — re-arm the loading indicator it may have cleared. Text
+    // events are not activity: `message_boundary` only closes the message whose
+    // deltas just arrived, so it must not re-arm what they did not.
+    if (
+      event.type !== "response" &&
+      event.type !== "message_boundary" &&
+      event.type !== "follow_up_actions"
+    ) {
       this.setSpinner(true);
     }
 
     if (event.type === "tool_data") {
-      trackEvent(ANALYTICS_EVENTS.TOOL_USED, {
-        tool_name: event.entry.tool_name,
-        tool_category: event.entry.tool_category || "unknown",
-        timestamp: event.entry.timestamp || new Date().toISOString(),
-      });
-      if (event.entry.tool_name === TOOL_CALLS_DATA_TOOL_NAME) {
-        const hints = readToolDataLoadingHints(event.entry.data);
-        if (hints) {
-          const { message, ...toolInfo } = hints;
-          this.setLoadingText(message, toolInfo);
-        }
-      }
+      this.applyLoadingLabel(event);
       if (event.entry.tool_name === APPROVAL_REQUEST_TOOL_NAME) {
         this.handleApprovalFrame(
           event.entry.data as ApprovalRequestData | null,
@@ -392,12 +390,7 @@ export class TurnSession {
       }
     }
 
-    if (
-      event.type === "unknown" &&
-      event.payload.status === "generating_image"
-    ) {
-      this.setLoadingText("Generating image...");
-    }
+    if (event.type === "unknown") this.applyLoadingLabel(event);
 
     this.acc = applyStreamEvent(this.acc, event);
     streamLog("accumulator", `applied:${event.type}`, {
@@ -476,10 +469,6 @@ export class TurnSession {
       };
       try {
         await db.putConversation(conversation);
-        trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, {
-          conversationId,
-          source: "chat",
-        });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -647,19 +636,14 @@ export class TurnSession {
     }
   }
 
-  private setLoadingText(
-    text: string,
-    toolInfo?: {
-      toolName?: string;
-      toolCategory?: string;
-      integrationName?: string;
-      iconUrl?: string;
-      showCategory?: boolean;
-    },
-  ): void {
+  /** Set the loading label if this event carries one. Shared with the executor
+   *  stream so both paths label a run the same way. */
+  private applyLoadingLabel(event: ChatStreamEvent): void {
+    const label = loadingLabelForEvent(event);
+    if (!label) return;
     useStreamStore
       .getState()
-      .setSessionLoadingText(this.sessionKey, text, toolInfo);
+      .setSessionLoadingText(this.sessionKey, label.text, label.toolInfo);
   }
 
   // ── Store / DB flushes ─────────────────────────────────────────────────────
@@ -956,17 +940,19 @@ export class TurnSession {
         [])
       : [];
 
-    const history = stored
-      .filter(
-        (message) =>
-          message.role !== "system" &&
-          message.id !== optimisticId &&
-          message.content.trim().length > 0,
-      )
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.content,
-      }));
+    const history: { role: "user" | "assistant"; content: string }[] = [];
+    for (const message of stored) {
+      if (
+        message.role !== "system" &&
+        message.id !== optimisticId &&
+        message.content.trim().length > 0
+      ) {
+        history.push({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        });
+      }
+    }
 
     if (this.args.userMessage.response.trim().length > 0) {
       history.push({ role: "user", content: this.args.userMessage.response });

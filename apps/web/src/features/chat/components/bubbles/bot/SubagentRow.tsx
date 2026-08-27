@@ -1,15 +1,22 @@
 "use client";
 
+import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
-import { PuzzleIcon, ShieldIcon, ToolsIcon } from "@icons";
+import { PuzzleIcon, ToolsIcon } from "@icons";
+import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
-import { BrainIcon, ChevronDown } from "@/components/shared/icons";
+import {
+  BrainIcon,
+  ChevronDown,
+  ShieldAlertIcon,
+} from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
 // ── Animation config (matches LoadingIndicator) ─────────────────────────────
@@ -25,9 +32,36 @@ const expandTransition = {
 function WaitingForApprovalPill() {
   return (
     <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-amber-400">
-      <ShieldIcon width={13} height={13} />
+      <ShieldAlertIcon width={13} height={13} />
       Waiting for approval
     </span>
+  );
+}
+
+// A settled decision rides its tool's own row — one place tells the whole story.
+const APPROVAL_CHIP: Record<
+  string,
+  { label: string; color: "success" | "danger" | "warning" }
+> = {
+  approved: { label: "Approved", color: "success" },
+  auto_approved: { label: "Auto-approved", color: "success" },
+  denied: { label: "Denied", color: "danger" },
+  timeout: { label: "Expired", color: "warning" },
+  abandoned: { label: "Expired", color: "warning" },
+};
+
+function ApprovalOutcomeChip({ status }: Readonly<{ status: ApprovalStatus }>) {
+  const chip = APPROVAL_CHIP[status];
+  if (!chip) return null;
+  return (
+    <Chip
+      size="sm"
+      variant="flat"
+      color={chip.color}
+      className="ml-2 h-5 text-[10px]"
+    >
+      {chip.label}
+    </Chip>
   );
 }
 
@@ -76,12 +110,19 @@ function skillToolLabel(call: ToolCallEntry): string | null {
     : null;
 }
 
+// Strips separators so two labels can be compared for redundancy ("retrieve_tools"
+// vs "Retrieve tools"). Module scope keeps its identity stable across renders.
+function normalizeLabel(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function ToolCallRow({
   call,
   isLast,
   getIconUrl,
   getIntegrationName,
   awaitingApproval,
+  approvalStatus,
 }: Readonly<{
   call: ToolCallEntry;
   isLast: boolean;
@@ -89,6 +130,8 @@ function ToolCallRow({
   getIntegrationName: (c: ToolCallEntry) => string | undefined;
   /** This tool call is blocked on a pending HIL approval. */
   awaitingApproval: boolean;
+  /** Settled HIL outcome for this call, rendered as a chip on the row. */
+  approvalStatus?: ApprovalStatus;
 }>) {
   const [expanded, setExpanded] = useState(false);
 
@@ -121,9 +164,8 @@ function ToolCallRow({
   // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
   // "Retrieve tools". Compares with separators stripped so a tool name only
   // shows when it genuinely differs from the primary label.
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normPrimary = normalize(primaryLabel);
-  const normSecondary = normalize(secondaryLabel);
+  const normPrimary = normalizeLabel(primaryLabel);
+  const normSecondary = normalizeLabel(secondaryLabel);
   const hasCategoryText =
     secondaryLabel.length > 0 &&
     normSecondary.length > 0 &&
@@ -188,6 +230,7 @@ function ToolCallRow({
                 <WaitingForApprovalPill />
               </span>
             )}
+            {approvalStatus && <ApprovalOutcomeChip status={approvalStatus} />}
           </div>
           {hasCategoryText && (
             <p className="text-[11px] text-zinc-600 leading-tight">
@@ -199,9 +242,10 @@ function ToolCallRow({
         <AnimatePresence>
           {expanded && hasDetails && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -272,9 +316,10 @@ function ThinkingStepRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -299,9 +344,14 @@ export function StepRow(
     getIconUrl: (c: ToolCallEntry) => string | undefined;
     getIntegrationName: (c: ToolCallEntry) => string | undefined;
     pendingApprovalToolCallIds: Set<string>;
+    approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
   }>,
 ) {
-  const { pendingApprovalToolCallIds, ...rowProps } = props;
+  const {
+    pendingApprovalToolCallIds,
+    approvalStatusByToolCallId,
+    ...rowProps
+  } = props;
   if (props.call.reasoning != null) {
     return (
       <ThinkingStepRow reasoning={props.call.reasoning} isLast={props.isLast} />
@@ -310,7 +360,16 @@ export function StepRow(
   const awaitingApproval =
     !!props.call.tool_call_id &&
     pendingApprovalToolCallIds.has(props.call.tool_call_id);
-  return <ToolCallRow {...rowProps} awaitingApproval={awaitingApproval} />;
+  const approvalStatus = props.call.tool_call_id
+    ? approvalStatusByToolCallId?.get(props.call.tool_call_id)
+    : undefined;
+  return (
+    <ToolCallRow
+      {...rowProps}
+      awaitingApproval={awaitingApproval}
+      approvalStatus={approvalStatus}
+    />
+  );
 }
 
 // ── Subagent row (Option B style) ───────────────────────────────────────────
@@ -322,6 +381,7 @@ export function SubagentRow({
   getIconUrl,
   getIntegrationName,
   pendingApprovalToolCallIds,
+  approvalStatusByToolCallId,
 }: Readonly<{
   group: EnrichedSubagentGroup;
   isLast: boolean;
@@ -334,6 +394,7 @@ export function SubagentRow({
   /** tool_call_ids blocked on a pending HIL approval — surfaces "Waiting for
    *  approval" on the matching step and this subagent's header. */
   pendingApprovalToolCallIds: Set<string>;
+  approvalStatusByToolCallId?: Map<string, ApprovalStatus>;
 }>) {
   // Running only while the stream is open: completed_at is null both for a
   // genuinely-running subagent AND for one whose end event never arrived, so
@@ -347,6 +408,11 @@ export function SubagentRow({
   const visibleSteps = group.tool_calls.filter(
     (tc) => tc.tool_name !== "spawn_subagent",
   );
+  // One stable React key per step — derived from stream-stable structure
+  // (tool_call_id, else a slot anchored to the nearest preceding identified
+  // sibling), never payload content, so a growing reasoning delta keeps its
+  // row's `expanded` state across stream frames.
+  const stepKeys = deriveStepKeys(group.subagent_id, visibleSteps);
   // One of this subagent's steps is blocked on approval — the header shows the
   // amber marker instead of the neutral spinner so the pause reads as
   // intentional, not a hang.
@@ -414,12 +480,13 @@ export function SubagentRow({
                 <div className="space-y-0">
                   {visibleSteps.map((tc, tIdx) => (
                     <StepRow
-                      key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
+                      key={stepKeys[tIdx]}
                       call={tc}
                       isLast={tIdx === visibleSteps.length - 1}
                       getIconUrl={getIconUrl}
                       getIntegrationName={getIntegrationName}
                       pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                      approvalStatusByToolCallId={approvalStatusByToolCallId}
                     />
                   ))}
                 </div>
@@ -474,9 +541,10 @@ export function SubagentRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -494,7 +562,7 @@ export function SubagentRow({
                   <div className="space-y-0">
                     {visibleSteps.map((tc, tIdx) => (
                       <StepRow
-                        key={`${group.subagent_id}-tc-${tc.tool_call_id || tIdx}`}
+                        key={stepKeys[tIdx]}
                         call={tc}
                         isLast={
                           tIdx === visibleSteps.length - 1 &&
@@ -503,6 +571,7 @@ export function SubagentRow({
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                         pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>
@@ -519,6 +588,7 @@ export function SubagentRow({
                         getIconUrl={getIconUrl}
                         getIntegrationName={getIntegrationName}
                         pendingApprovalToolCallIds={pendingApprovalToolCallIds}
+                        approvalStatusByToolCallId={approvalStatusByToolCallId}
                       />
                     ))}
                   </div>

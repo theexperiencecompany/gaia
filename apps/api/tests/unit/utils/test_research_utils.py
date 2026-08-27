@@ -30,13 +30,16 @@ async def test_decompose_parses_llm_json_response() -> None:
     query = f"unique-llm-path-{uuid4()}"
     with (
         patch("app.utils.research_utils.ainvoke_llm", new_callable=AsyncMock) as llm,
-        patch("app.utils.research_utils.get_default_llm", return_value=object()),
+        patch("app.utils.research_utils.get_helper_llm", return_value=object()),
     ):
         llm.return_value = response
         queries = await decompose_research_queries(query, "web", "", 1)
 
     assert queries == ["query one", "query two", "query three"]
     assert len(queries) == 3
+    # The label becomes ``agent_name`` on the llm_call wide event, which is how
+    # this lane's auxiliary COGS is told apart from every other one-shot helper.
+    assert llm.await_args.kwargs["label"] == "research_queries"
 
 
 async def test_decompose_falls_back_to_heuristics_when_llm_fails() -> None:

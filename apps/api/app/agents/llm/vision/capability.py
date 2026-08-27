@@ -4,11 +4,13 @@ from enum import Enum
 
 from langchain_core.runnables import RunnableConfig
 
+from app.agents.llm.lane import ModelLane
 from app.agents.llm.model_catalog import get_openrouter_catalog
 from app.constants.llm import (
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MODEL_NAME,
     GEMINI_PROVIDER,
+    LANE_FIELD_ID,
     OPENROUTER_PROVIDER,
 )
 from app.models.agent_models import agent_configurable
@@ -28,15 +30,11 @@ class MediaDelivery(Enum):
 
 
 def active_lane(config: RunnableConfig) -> tuple[str, str]:
-    """The (provider, model) this run will actually call.
-
-    Gemini binds its model from ``model_name`` and OpenRouter from ``model``, so
-    ``plan_model._pin_model`` writes both and either key answers the question.
-    """
-    configurable = agent_configurable(config)
-    provider = configurable.get("provider") or DEFAULT_LLM_PROVIDER
-    model = configurable.get("model") or configurable.get("model_name") or DEFAULT_MODEL_NAME
-    return provider, model
+    """The (provider, model) this run will actually call."""
+    lane = ModelLane.from_configurable(agent_configurable(config).get(LANE_FIELD_ID))
+    if lane is None:
+        return DEFAULT_LLM_PROVIDER, DEFAULT_MODEL_NAME
+    return lane.provider, lane.model or DEFAULT_MODEL_NAME
 
 
 async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:

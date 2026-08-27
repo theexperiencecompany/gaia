@@ -1,17 +1,20 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { useDisclosure } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
+import { Settings01Icon } from "@icons";
 
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
+import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
-import { IntegrationToolApprovals } from "@/features/integrations/components/IntegrationToolApprovals";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
+import { useIntegrationPermissions } from "@/features/integrations/hooks/useIntegrationPermissions";
 import { useIntegrationTools } from "@/features/integrations/hooks/useIntegrationTools";
 import type { Integration } from "@/features/integrations/types";
-import { useHilPreferences } from "@/features/settings/hooks/useHilPreferences";
 
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
@@ -52,10 +55,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   } = useIntegrationTools(integration, category);
   const { isOwnIntegration, isForkedIntegration } =
     useIntegrationOwnership(integration);
-  const { mode: hilMode } = useHilPreferences();
-  // Approvals off: the same list renders read-only with a turn-on prompt, so the
-  // view never changes shape. Not-connected integrations show a plain browse view.
-  const hilOff = hilMode === "always_allow";
+  // The sidebar only reads its approval state — configuring it lives in the
+  // modal behind the Permissions button.
+  const permissions = useIntegrationPermissions(integrationTools);
+  const permissionsModal = useDisclosure();
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -115,15 +118,37 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         )}
         {integrationTools.length > 0 && (
           <div className="relative right-1 mt-3">
-            <h2 className="text-sm font-medium text-zinc-300">
-              {isConnected ? "Tool approvals" : "Available tools"} (
-              {integrationTools.length})
-            </h2>
-            {isConnected && !hilOff && (
-              <p className="mt-0.5 text-xs text-zinc-500">
-                Choose which tools need approval before running.
-              </p>
-            )}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-medium text-zinc-300">
+                  Available tools
+                </h2>
+                {/* Sized off its own height so a one-digit count is a circle
+                    rather than the default pill, and longer counts grow. */}
+                <Chip
+                  size="sm"
+                  variant="flat"
+                  radius="full"
+                  classNames={{
+                    base: "h-5 min-w-5 px-0",
+                    content: "px-1.5 text-xs",
+                  }}
+                >
+                  {integrationTools.length}
+                </Chip>
+              </div>
+              {isConnected && (
+                <Button
+                  size="sm"
+                  variant="light"
+                  className="h-7 shrink-0 px-2 text-xs text-zinc-400"
+                  startContent={<Settings01Icon className="size-3.5" />}
+                  onPress={permissionsModal.onOpen}
+                >
+                  Permissions
+                </Button>
+              )}
+            </div>
           </div>
         )}
         {showToolsSkeleton && (
@@ -136,26 +161,19 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       <SidebarContent className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {integrationTools.length > 0 && (
           <div className="flex-1 min-h-0 overflow-y-auto pb-2">
-            {isConnected ? (
-              <IntegrationToolApprovals
-                tools={integrationTools}
-                disabled={hilOff}
-              />
-            ) : (
-              <div className="flex flex-wrap gap-2 content-start">
-                {integrationTools.map((tool) => (
-                  <Chip
-                    key={tool.name}
-                    variant="bordered"
-                    color="default"
-                    radius="full"
-                    className="font-light border-1 text-zinc-300"
-                  >
-                    {tool.label}
-                  </Chip>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap gap-2 content-start">
+              {integrationTools.map((tool) => (
+                <Chip
+                  key={tool.name}
+                  variant="bordered"
+                  color="default"
+                  radius="full"
+                  className="font-light border-1 text-zinc-300"
+                >
+                  {tool.label}
+                </Chip>
+              ))}
+            </div>
           </div>
         )}
         {showToolsSkeleton && (
@@ -172,6 +190,16 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           <IntegrationRelatedWorkflows integrationId={integration.id} />
         </div>
       </SidebarContent>
+
+      {isConnected && (
+        <IntegrationPermissionsModal
+          name={integration.name}
+          tools={integrationTools}
+          permissions={permissions}
+          isOpen={permissionsModal.isOpen}
+          onOpenChange={permissionsModal.onOpenChange}
+        />
+      )}
     </div>
   );
 };

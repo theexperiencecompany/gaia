@@ -1,10 +1,21 @@
 import base64
 from datetime import datetime
+import json
 from pathlib import Path
 import tomllib
 from typing import Any, TypedDict
 
 ELLIPSIS = "…"
+
+
+def is_json_safe(value: object) -> bool:
+    """Whether ``value`` survives a JSON round trip — the honest test for
+    "can this be persisted", rather than a proxy like isinstance-on-scalars."""
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def clip_text(text: str, limit: int) -> str:
@@ -53,7 +64,7 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
 def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
     """Transform a Gmail API or Composio message into the frontend-friendly format,
     keeping every raw key alongside the derived ones."""
-    from dateutil.parser import parse as parse_date
+    from dateutil.parser import parse as parse_date  # noqa: PLC0415 -- cycle
 
     def get_sender(m: dict[str, Any]) -> str:
         return m.get("from") or m.get("sender") or ""

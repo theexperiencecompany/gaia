@@ -170,6 +170,34 @@ class TestSweepDormantWorkflows:
         assert result.candidates == []
         deactivate.assert_not_awaited()
 
+    async def test_automation_only_usage_rows_do_not_mask_dormancy(self):
+        """A pure-automation day writes a usage_daily row with cost but count 0.
+        Truthiness of the returned dict read that as "active", so a user whose
+        only footprint was their own workflow firing could never be swept."""
+        deactivate = AsyncMock()
+        p = _patches(
+            users=[_user("wf_only")],
+            workflows_by_user={"wf_only": [_workflow("wf_a")]},
+            deactivate=deactivate,
+        )
+        with (
+            p[0],
+            p[1],
+            patch(
+                f"{_MOD}.usage_daily_repository.counts_since",
+                new_callable=AsyncMock,
+                return_value={"2026-08-01": 0, "2026-08-02": 0},
+            ),
+            p[3],
+            p[4],
+        ):
+            result = await sweep_dormant_workflows()
+
+        assert result.workflows_paused == 1
+        deactivate.assert_awaited_once_with(
+            "wf_a", "wf_only", reason=DeactivationReason.USER_DORMANT
+        )
+
     async def test_max_users_bounds_one_run(self):
         """Pausing unregisters Composio triggers per workflow, so an unbounded
         first run over a long backlog is a burst of third-party calls."""
@@ -233,10 +261,10 @@ class TestSweepDormantWorkflows:
         assert chat.await_args.args == ("u1", result.cutoff)
         assert metered.await_args.args == ("u1", result.cutoff.strftime("%Y-%m-%d"))
 
-    async def test_the_threshold_defaults_to_ninety_days(self):
-        """30 days is where the signal choice still moves the answer by ~2,000
-        workflows; 90 is where it stops mattering. See DORMANCY_THRESHOLD."""
-        assert timedelta(days=90) == DORMANCY_THRESHOLD
+    async def test_the_threshold_defaults_to_thirty_days(self):
+        """A month of silence on every human signal is dormancy. The old 90 was
+        covering for signals automation could pollute; see DORMANCY_THRESHOLD."""
+        assert timedelta(days=30) == DORMANCY_THRESHOLD
 
     async def test_the_cutoff_honours_the_threshold(self):
         find_dormant = AsyncMock(return_value=[])

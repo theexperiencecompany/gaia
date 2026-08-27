@@ -1,3 +1,4 @@
+import { integrationConnectionState } from "@gaia/shared";
 import { Skeleton } from "heroui-native";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -22,7 +23,9 @@ export function IntegrationStatusPill({
     return <Skeleton className="h-6 w-20 rounded-full" />;
   }
 
-  if (status === "connected") {
+  const state = integrationConnectionState(status);
+
+  if (state === "connected") {
     return (
       <View className="rounded-full bg-success/15 px-2.5 py-1">
         <Text className="text-[11px] font-semibold text-success">
@@ -32,11 +35,21 @@ export function IntegrationStatusPill({
     );
   }
 
-  if (status === "created") {
+  if (state === "pending") {
     return (
       <View className="rounded-full bg-amber-500/10 px-2.5 py-1">
         <Text className="text-[11px] font-semibold text-amber-500">
           Pending
+        </Text>
+      </View>
+    );
+  }
+
+  if (state === "expired") {
+    return (
+      <View className="rounded-full bg-red-500/10 px-2.5 py-1">
+        <Text className="text-[11px] font-semibold text-red-500">
+          Disconnected
         </Text>
       </View>
     );

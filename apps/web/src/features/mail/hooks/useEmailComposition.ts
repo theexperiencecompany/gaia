@@ -38,6 +38,27 @@ const defaultUIState: EmailCompositionUIState = {
   activeTagIndex: null,
 };
 
+const compositionOptions = {
+  writingStyles: [
+    { id: "formal", label: "Formal" },
+    { id: "friendly", label: "Friendly" },
+    { id: "casual", label: "Casual" },
+    { id: "persuasive", label: "Persuasive" },
+    { id: "humorous", label: "Humorous" },
+  ],
+  contentLengthOptions: [
+    { id: "none", label: "None" },
+    { id: "shorten", label: "Shorten" },
+    { id: "lengthen", label: "Lengthen" },
+    { id: "summarize", label: "Summarize" },
+  ],
+  clarityOptions: [
+    { id: "none", label: "None" },
+    { id: "simplify", label: "Simplify" },
+    { id: "rephrase", label: "Rephrase" },
+  ],
+};
+
 export function useEmailComposition(): UseEmailCompositionReturn {
   // Form state
   const [toEmails, setToEmails] = useState<Tag[]>(defaultFormState.toEmails);
@@ -93,28 +114,6 @@ export function useEmailComposition(): UseEmailCompositionReturn {
   };
 
   const editor = useEditor(editorConfig);
-
-  // Options
-  const options = {
-    writingStyles: [
-      { id: "formal", label: "Formal" },
-      { id: "friendly", label: "Friendly" },
-      { id: "casual", label: "Casual" },
-      { id: "persuasive", label: "Persuasive" },
-      { id: "humorous", label: "Humorous" },
-    ],
-    contentLengthOptions: [
-      { id: "none", label: "None" },
-      { id: "shorten", label: "Shorten" },
-      { id: "lengthen", label: "Lengthen" },
-      { id: "summarize", label: "Summarize" },
-    ],
-    clarityOptions: [
-      { id: "none", label: "None" },
-      { id: "simplify", label: "Simplify" },
-      { id: "rephrase", label: "Rephrase" },
-    ],
-  };
 
   // Actions
   const handleAiSelect = useCallback(
@@ -237,6 +236,6 @@ export function useEmailComposition(): UseEmailCompositionReturn {
     },
     editor,
     editorConfig,
-    options,
+    options: compositionOptions,
   };
 }

@@ -2,10 +2,10 @@
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
 
-import { getAllFAQs } from "@/lib/faq";
+import { type FAQItem, getAllFAQs } from "@/lib/faq";
 
-export function FAQAccordion() {
-  const faqItems = getAllFAQs();
+export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
+  const faqItems = faqs ?? getAllFAQs();
 
   return (
     <div className="relative flex h-fit w-full items-center justify-center px-2 py-8 sm:px-4">
@@ -27,7 +27,7 @@ export function FAQAccordion() {
       <div className="relative z-1 w-full max-w-7xl px-0 py-4 sm:p-8">
         <div className="mb-10 flex w-full flex-col items-start justify-center gap-3">
           <span className="font-serif text-4xl sm:text-5xl lg:text-7xl font-medium">
-            Frequently asked questions
+            FAQ
           </span>
         </div>
 

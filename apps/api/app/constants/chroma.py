@@ -10,6 +10,8 @@ being wiped by lane r1's teardown.
 The suffix also predates that use: it separates runs that embed with different
 models/dimensions, which cannot share a collection. Empty (the default) is the
 production naming, so unset envs reproduce the historical names byte for byte.
+
+Also holds tunables for the ChromaDB-backed LangGraph store.
 """
 
 import os
@@ -20,3 +22,11 @@ CHROMA_COLLECTION_SUFFIX = os.getenv("GAIA_CHROMA_COLLECTION_SUFFIX", "")
 # or the files feature (app/constants/files.py).
 CHROMA_NOTES_COLLECTION = "notes" + CHROMA_COLLECTION_SUFFIX
 CHROMA_CANVAS_COLLECTION = "gaia_canvas" + CHROMA_COLLECTION_SUFFIX
+
+# Caps concurrent ChromaDB HTTP connections process-wide (shared across every
+# _apply_put_ops call, not just within one batch — see loop_bound_semaphore
+# usage in chroma_store.py) to avoid EMFILE 24 (per-process fd limit, not
+# system-wide ENFILE). gaia-backend's RLIMIT_NOFILE soft limit is 1024 with
+# ~72 fds baseline usage, so 20 clears it with wide margin even when startup
+# fans out indexing across every provider toolkit concurrently.
+MAX_CONCURRENT_CHROMA_WRITES = 20

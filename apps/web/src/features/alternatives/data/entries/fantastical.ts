@@ -7,7 +7,7 @@ export const entry: AlternativeData = {
   category: "calendar",
   tagline: "Premium calendar app for Mac, iPhone, and iPad",
   painPoints: [
-    "Apple ecosystem only — no Android, Linux, or Windows desktop app",
+    "Apple ecosystem only: no Android, Linux, or Windows desktop app",
     "Primarily a calendar viewer; limited AI or automation",
     "Premium pricing at $4.75/month just for a calendar app",
     "No email or task creation from communication",
@@ -67,7 +67,7 @@ export const entry: AlternativeData = {
     {
       question: "Can GAIA read email and create calendar events from it?",
       answer:
-        "Yes. GAIA can read Gmail threads and automatically create calendar events from scheduling information in emails — something Fantastical cannot do.",
+        "Yes. GAIA can read Gmail threads and automatically create calendar events from scheduling information in emails, something Fantastical cannot do.",
     },
     {
       question: "Is GAIA cheaper than Fantastical Premium?",

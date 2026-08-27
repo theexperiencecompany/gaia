@@ -46,7 +46,7 @@ class TestCreateSupportTicket:
             title="App crashes on login",
             description="When I try to log in with Google, the app crashes immediately.",
         )
-        assert "support ticket" in result
+        assert result.startswith("I've prepared a support ticket draft for you to review."), result
         assert "review" in result.lower()
         # Verify writer was called with progress and data
         assert w.call_count == 2
@@ -75,7 +75,35 @@ class TestCreateSupportTicket:
             title="Add dark mode",
             description="I would love to have a dark mode option in the settings.",
         )
-        assert "feature request" in result
+        assert result.startswith("I've prepared a feature request draft for you to review."), result
+
+    @patch(f"{MODULE}.get_stream_writer")
+    @patch(f"{MODULE}.user_service")
+    async def test_mixed_case_type_labels_correctly(
+        self, mock_user_svc: MagicMock, mock_gsw: MagicMock
+    ) -> None:
+        """Regression: the confirmation label must come from the normalized enum,
+        not the raw LLM-supplied string. 'Feature' streams a feature ticket but
+        used to be announced as a support ticket because the raw string never
+        equals SupportRequestType.FEATURE."""
+        w = _writer()
+        mock_gsw.return_value = w
+        mock_user_svc.get_user_by_id = AsyncMock(
+            return_value={"email": "test@example.com", "name": "Test User"}
+        )
+
+        from app.agents.tools.support_tool import create_support_ticket
+
+        result = await create_support_ticket.coroutine(
+            config=_cfg(),
+            type="Feature",
+            title="Add dark mode",
+            description="I would love to have a dark mode option in the settings.",
+        )
+        data_call = w.call_args_list[1][0][0]
+        ticket = data_call["support_ticket_data"][0]
+        assert ticket["type"] == "feature"
+        assert result.startswith("I've prepared a feature request draft for you to review."), result
 
     async def test_no_user_id(self) -> None:
         from app.agents.tools.support_tool import create_support_ticket

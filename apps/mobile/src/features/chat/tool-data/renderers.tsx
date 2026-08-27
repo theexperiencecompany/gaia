@@ -20,10 +20,6 @@ import { Text } from "@/components/ui/text";
 
 import { ApprovalRequestCard } from "../components/chat/approval-request-card";
 import { EmailComposeCard } from "../components/chat/email-compose-card";
-import {
-  type ToolCallEntry,
-  ToolCallsSection,
-} from "../components/chat/tool-calls-section";
 import { ToolCardHeader, ToolCardShell } from "./primitives";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
@@ -102,19 +98,31 @@ function UnsupportedToolCard({
   );
 }
 
+/** Content-derived list keys, de-duplicated with an occurrence suffix. */
+function stableItemKeys<T>(items: T[], keyOf: (item: T) => string): string[] {
+  const counts = new Map<string, number>();
+  return items.map((item) => {
+    const base = keyOf(item);
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    return n === 0 ? base : `${base}-${n}`;
+  });
+}
+
 const TOOL_RENDERERS: Record<
   string,
   (data: unknown, baseKey: string) => React.ReactNode
 > = {
   email_compose_data: (data, baseKey) => {
     const emails = (Array.isArray(data) ? data : [data]) as EmailComposeData[];
+    const keys = stableItemKeys(
+      emails,
+      (email) => email.subject || email.to?.join("-") || "draft",
+    );
     return (
       <React.Fragment key={baseKey}>
-        {emails.map((email) => (
-          <EmailComposeCard
-            key={`${baseKey}-${email.subject || email.to?.join("-") || Math.random()}`}
-            data={email}
-          />
+        {emails.map((email, index) => (
+          <EmailComposeCard key={keys[index]} data={email} />
         ))}
       </React.Fragment>
     );
@@ -122,13 +130,14 @@ const TOOL_RENDERERS: Record<
 
   email_sent_data: (data, baseKey) => {
     const emails = Array.isArray(data) ? data : [data];
+    const keys = stableItemKeys(
+      emails,
+      (email) => email.message_id || email.subject || "sent",
+    );
     return (
       <React.Fragment key={baseKey}>
-        {emails.map((email) => (
-          <EmailSentCard
-            key={`${baseKey}-${email.message_id || email.subject || Math.random()}`}
-            data={email}
-          />
+        {emails.map((email, index) => (
+          <EmailSentCard key={keys[index]} data={email} />
         ))}
       </React.Fragment>
     );
@@ -210,11 +219,15 @@ const TOOL_RENDERERS: Record<
 
   support_ticket_data: (data, baseKey) => {
     const tickets = Array.isArray(data) ? data : [data];
+    const keys = stableItemKeys(
+      tickets,
+      (ticket) => ticket.title || ticket.type || "ticket",
+    );
     return (
       <React.Fragment key={baseKey}>
-        {tickets.map((ticket) => (
+        {tickets.map((ticket, index) => (
           <SupportTicketCard
-            key={`${baseKey}-${ticket.title || ticket.type || Math.random()}`}
+            key={keys[index]}
             data={ticket as SupportTicketData}
           />
         ))}
@@ -297,13 +310,14 @@ const TOOL_RENDERERS: Record<
 
   reddit_data: (data, baseKey) => {
     const items = Array.isArray(data) ? data : [data];
+    const keys = stableItemKeys(
+      items,
+      (item) => item.type || item.post?.title || "post",
+    );
     return (
       <React.Fragment key={baseKey}>
-        {items.map((item) => (
-          <RedditCard
-            key={`${baseKey}-${item.type || item.post?.title || Math.random()}`}
-            data={item as RedditData}
-          />
+        {items.map((item, index) => (
+          <RedditCard key={keys[index]} data={item as RedditData} />
         ))}
       </React.Fragment>
     );
@@ -339,14 +353,6 @@ const TOOL_RENDERERS: Record<
     />
   ),
 
-  // Stacked tool-icons + "Used N tools" collapsible (matches web parity).
-  // Backend may stream this as a single object that should be wrapped, or
-  // as an already-built array.
-  tool_calls_data: (data, baseKey) => {
-    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
-    return <ToolCallsSection key={baseKey} tool_calls_data={calls} />;
-  },
-
   // HIL approval — pending→resolved updates replace it in place via
   // upsertApprovalToolData (shared turn accumulator / use-chat onToolData).
   approval_request: (data, baseKey) => (
@@ -358,99 +364,14 @@ interface ToolDataRendererProps {
   toolData?: ToolDataEntry[];
 }
 
-/**
- * Backend streams `tool_calls_data` as one entry per call, but the UI
- * should render a single consolidated "Used N tools" section per message
- * (mirrors apps/web/src/features/chat/components/interface/ChatRenderer.tsx
- * which dedupes by tool_call_id and merges into one entry). Without this,
- * multiple "Used 1 tool" headers stack on top of each other.
- */
-/** Keep only fields with a meaningful (non-undefined, non-empty) value. */
-function pickDefinedFields(
-  call: Record<string, unknown>,
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(call).filter(([, v]) => v !== undefined && v !== ""),
-  );
-}
-
-/**
- * Merge one streamed tool call into `buffer`, keyed by tool_call_id so a
- * later event (e.g. carrying `output` once execution finishes) updates the
- * earlier entry instead of being dropped as a duplicate.
- */
-function mergeToolCall(
-  buffer: Record<string, unknown>[],
-  idToIndex: Map<string, number>,
-  rawCall: unknown,
-): void {
-  const call = (rawCall ?? {}) as Record<string, unknown>;
-  const id =
-    typeof call.tool_call_id === "string" ? call.tool_call_id : undefined;
-
-  if (id && idToIndex.has(id)) {
-    // Prefer the latest non-empty value for fields that grow over time
-    // (status, output, message). Inputs usually stream complete on the first
-    // event, but we still merge to be defensive.
-    const existingIndex = idToIndex.get(id) as number;
-    const existing = buffer[existingIndex] ?? {};
-    buffer[existingIndex] = { ...existing, ...pickDefinedFields(call) };
-    return;
-  }
-
-  if (id) idToIndex.set(id, buffer.length);
-  buffer.push(call);
-}
-
-function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
-  const result: ToolDataEntry[] = [];
-  let toolCallsBuffer: Record<string, unknown>[] = [];
-  let firstToolCallsTimestamp: ToolDataEntry["timestamp"] | undefined;
-  // tool_call_id → index inside toolCallsBuffer, so a later streamed entry
-  // can be merged into the earlier entry instead of being dropped.
-  const idToIndex = new Map<string, number>();
-
-  const flush = () => {
-    if (toolCallsBuffer.length > 0) {
-      result.push({
-        tool_name: "tool_calls_data",
-        data: toolCallsBuffer,
-        timestamp: firstToolCallsTimestamp,
-      });
-      toolCallsBuffer = [];
-      idToIndex.clear();
-      firstToolCallsTimestamp = undefined;
-    }
-  };
-
-  for (const entry of toolData) {
-    if (entry.tool_name === "tool_calls_data") {
-      const calls = Array.isArray(entry.data) ? entry.data : [entry.data];
-      for (const rawCall of calls) {
-        mergeToolCall(toolCallsBuffer, idToIndex, rawCall);
-      }
-      if (firstToolCallsTimestamp === undefined) {
-        firstToolCallsTimestamp = entry.timestamp;
-      }
-    } else {
-      flush();
-      result.push(entry);
-    }
-  }
-  flush();
-  return result;
-}
-
 export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
   if (!toolData || toolData.length === 0) {
     return null;
   }
 
-  const consolidated = consolidateToolData(toolData);
-
   return (
     <View className="flex-col w-full">
-      {consolidated.map((entry, index) => {
+      {toolData.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;

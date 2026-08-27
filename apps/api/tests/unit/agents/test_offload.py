@@ -35,7 +35,7 @@ def _msg(additional_kwargs: dict) -> ToolMessage:
 
 def test_mark_offload_is_non_mutating_and_round_trips() -> None:
     base = {"existing": 1}
-    out = mark_offload(base, INFO)  # type: ignore[arg-type]
+    out = mark_offload(base, INFO)  # type: ignore[arg-type]  # fixture passes a loose dict as OffloadInfo
     assert base == {"existing": 1}  # input untouched
     assert out[OFFLOAD_KEY] == INFO and out["existing"] == 1
     assert read_offload(_msg(out)) == INFO
@@ -55,9 +55,9 @@ def test_read_offload_path_not_str_is_none() -> None:
 
 def test_read_offload_non_dict_additional_kwargs_returns_none() -> None:
     # F2: must not raise AttributeError when additional_kwargs isn't a dict.
-    assert read_offload(SimpleNamespace(additional_kwargs="not-a-dict")) is None  # type: ignore[arg-type]
-    assert read_offload(SimpleNamespace(additional_kwargs=None)) is None  # type: ignore[arg-type]
-    assert read_offload(SimpleNamespace()) is None  # type: ignore[arg-type]
+    assert read_offload(SimpleNamespace(additional_kwargs="not-a-dict")) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
+    assert read_offload(SimpleNamespace(additional_kwargs=None)) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
+    assert read_offload(SimpleNamespace()) is None  # type: ignore[arg-type]  # SimpleNamespace fakes a ToolMessage
 
 
 # --- pop_offload_descriptor -------------------------------------------------- #
@@ -92,21 +92,21 @@ def test_pop_descriptor_no_key_or_non_dict_is_none(result: object) -> None:
 
 @pytest.mark.parametrize("fmt", ["json", "jsonl"])
 def test_tools_for_offload_structured_gets_jq_and_grep(fmt: str) -> None:
-    assert tools_for_offload({**INFO, "fmt": fmt}) == [QUERY_JSON_TOOL_NAME, GREP_TOOL_NAME]  # type: ignore[arg-type]
+    assert tools_for_offload({**INFO, "fmt": fmt}) == [QUERY_JSON_TOOL_NAME, GREP_TOOL_NAME]  # type: ignore[typeddict-item]  # loose dict expanded into a TypedDict parameter
 
 
 def test_tools_for_offload_text_gets_grep_only() -> None:
-    assert tools_for_offload({**INFO, "fmt": "text"}) == [GREP_TOOL_NAME]  # type: ignore[arg-type]
+    assert tools_for_offload({**INFO, "fmt": "text"}) == [GREP_TOOL_NAME]  # type: ignore[typeddict-item]  # loose dict expanded into a TypedDict parameter
 
 
 @pytest.mark.parametrize("fmt", ["csv", "", "JSON", "yaml"])
 def test_tools_for_offload_unknown_fmt_gets_grep(fmt: str) -> None:
-    assert tools_for_offload({**INFO, "fmt": fmt}) == [GREP_TOOL_NAME]  # type: ignore[arg-type]
+    assert tools_for_offload({**INFO, "fmt": fmt}) == [GREP_TOOL_NAME]  # type: ignore[typeddict-item]  # loose dict expanded into a TypedDict parameter
 
 
 def test_tools_for_offload_missing_fmt_defaults_to_grep() -> None:
     # F1: a marker that only satisfied read_offload's `path` check must not KeyError.
-    assert tools_for_offload({"path": "/w/x", "bytes": 1, "producer": "p", "records": None}) == [  # type: ignore[arg-type]
+    assert tools_for_offload({"path": "/w/x", "bytes": 1, "producer": "p", "records": None}) == [  # type: ignore[typeddict-item]  # fixture omits the required fmt key on purpose
         GREP_TOOL_NAME
     ]
 

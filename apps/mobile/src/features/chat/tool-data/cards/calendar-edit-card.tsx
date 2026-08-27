@@ -1,3 +1,8 @@
+import {
+  bucketDate,
+  formatDateWithRelative,
+  formatTimeRange,
+} from "@gaia/shared";
 import { Button } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
@@ -32,69 +37,6 @@ interface CalendarEditCardProps {
   data: CalendarEditOption[];
   onEdit?: (event: CalendarEditOption) => Promise<void>;
   onEditAll?: (events: CalendarEditOption[]) => Promise<void>;
-}
-
-// -- Date helpers (mirrors web utils/date/calendarDateUtils.ts) --------------
-
-function formatTimeString(date: Date): string {
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const ampm = hours >= 12 ? "PM" : "AM";
-  const hour12 = hours % 12 || 12;
-  const minuteStr = minutes.toString().padStart(2, "0");
-  if (minutes === 0) return `${hour12} ${ampm}`;
-  return `${hour12}:${minuteStr} ${ampm}`;
-}
-
-function formatTimeRange(startTime: string, endTime: string): string {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return startTime;
-  }
-
-  const startStr = formatTimeString(start);
-  const endStr = formatTimeString(end);
-
-  if (start.getHours() < 12 && end.getHours() >= 12) {
-    return `${startStr} – ${endStr}`;
-  }
-  if (start.getHours() >= 12 && end.getHours() >= 12) {
-    return `${startStr.replace(" PM", "")} – ${endStr}`;
-  }
-  if (start.getHours() < 12 && end.getHours() < 12) {
-    return `${startStr.replace(" AM", "")} – ${endStr}`;
-  }
-  return `${startStr} – ${endStr}`;
-}
-
-function formatDateWithRelative(dateString: string): string {
-  const date = new Date(dateString);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-
-  const compareDate = new Date(date);
-  compareDate.setHours(0, 0, 0, 0);
-
-  const fullDate = date.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
-  if (compareDate.getTime() === today.getTime()) return `${fullDate} (Today)`;
-  if (compareDate.getTime() === tomorrow.getTime())
-    return `${fullDate} (Tomorrow)`;
-  if (compareDate.getTime() === yesterday.getTime())
-    return `${fullDate} (Yesterday)`;
-  return fullDate;
 }
 
 // -- Edit-event helpers (mirrors web utils/calendar/eventHelpers.ts) ----------
@@ -142,7 +84,7 @@ function groupByDate(
       event.original_start?.dateTime ||
       event.original_start?.date ||
       new Date().toISOString();
-    const dateKey = new Date(raw).toISOString().slice(0, 10);
+    const dateKey = bucketDate(raw);
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(event);
   }

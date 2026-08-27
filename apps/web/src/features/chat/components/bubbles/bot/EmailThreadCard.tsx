@@ -2,7 +2,7 @@ import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import DOMPurify from "dompurify";
-import { useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 
 import { Gmail } from "@/components/shared/icons";
 import type { EmailThreadData } from "@/types/features/mailTypes";
@@ -40,9 +40,6 @@ function EmailBodyRenderer({
   body: string;
   content?: { text: string; html: string };
 }) {
-  const [loading, setLoading] = useState(true);
-  const shadowHostRef = useRef<HTMLDivElement | null>(null);
-
   const htmlContent = content?.html || content?.text || body;
 
   const sanitizedHtml = DOMPurify.sanitize(htmlContent, {
@@ -50,23 +47,22 @@ function EmailBodyRenderer({
     ADD_TAGS: ["iframe"],
   });
 
-  useEffect(() => {
-    if (!sanitizedHtml) {
-      setLoading(false);
-      return;
-    }
-
-    if (shadowHostRef.current) {
-      const shadowRoot =
-        shadowHostRef.current.shadowRoot ||
-        shadowHostRef.current.attachShadow({ mode: "open" });
+  // Injects the sanitized email into a shadow root directly from a ref
+  // callback. React re-runs the callback synchronously at commit whenever its
+  // identity changes (i.e. when sanitizedHtml changes), so content updates
+  // never go through a render → effect → setState round-trip and there is no
+  // intermediate "loading" paint to flash.
+  const attachShadowContent = useCallback(
+    (host: HTMLDivElement | null) => {
+      if (!host) return;
+      const shadowRoot = host.shadowRoot || host.attachShadow({ mode: "open" });
       shadowRoot.innerHTML = "";
       const contentWrapper = document.createElement("div");
       contentWrapper.innerHTML = sanitizedHtml;
       shadowRoot.appendChild(contentWrapper);
-      setLoading(false);
-    }
-  }, [sanitizedHtml]);
+    },
+    [sanitizedHtml],
+  );
 
   if (!body && (!content || (!content.text && !content.html))) {
     return (
@@ -76,13 +72,8 @@ function EmailBodyRenderer({
 
   return (
     <div className="relative w-full overflow-auto shadow-md">
-      {loading && (
-        <div className="absolute inset-0 z-10 flex h-full w-full items-start justify-center bg-black/90 p-10 backdrop-blur-3xl">
-          <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-white"></div>
-        </div>
-      )}
       <div
-        ref={shadowHostRef}
+        ref={attachShadowContent}
         className="w-full rounded-lg bg-white p-4 text-black"
       />
     </div>
@@ -96,7 +87,7 @@ export default function EmailThreadCard({
 }) {
   return (
     <div
-      className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300`}
+      className={`mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300`}
     >
       <Accordion variant="light" defaultExpandedKeys={["email-thread"]}>
         <AccordionItem

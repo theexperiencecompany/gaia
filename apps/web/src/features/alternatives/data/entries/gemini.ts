@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "Google's AI assistant with Workspace integration and web access",
   painPoints: [
     "Google Workspace integration is improving but still inconsistent",
-    "No proactive behavior — Gemini waits for you to ask questions",
+    "No proactive behavior: Gemini waits for you to ask questions",
     "Advanced Workspace features require Google One AI Premium at $19.99/month",
     "Cannot manage tasks, set reminders, or take multi-step actions autonomously",
     "Memory and context retention across sessions is limited",
@@ -33,7 +33,7 @@ export const entry: AlternativeData = {
     "self-hosted AI assistant",
   ],
   whyPeopleLook:
-    "Google Gemini has the advantage of being tightly integrated with Gmail, Drive, and Calendar via Google Workspace. But Gemini is still fundamentally a reactive assistant — it answers questions and generates content when you ask. It does not proactively monitor your inbox, alert you to scheduling conflicts, or automatically create tasks from emails. Users who want an AI that runs in the background and manages their digital life without constant prompting find that Gemini does not go far enough.",
+    "Google Gemini has the advantage of being tightly integrated with Gmail, Drive, and Calendar via Google Workspace. But Gemini is still fundamentally a reactive assistant. It answers questions and generates content when you ask. It does not proactively monitor your inbox, alert you to scheduling conflicts, or automatically create tasks from emails. Users who want an AI that runs in the background and manages their digital life without constant prompting find that Gemini does not go far enough.",
   gaiaFitScore: 4,
   gaiaReplaces: [
     "Proactive Gmail management including triage, drafting, and follow-up tracking",
@@ -43,7 +43,7 @@ export const entry: AlternativeData = {
     "Persistent memory for people, projects, and ongoing conversations",
   ],
   gaiaAdvantages: [
-    "Proactive by default — surfaces important information without prompting",
+    "Proactive by default: surfaces important information without prompting",
     "Graph-based memory retains context across months, not just sessions",
     "Open-source with no Google data retention concerns",
     "Extends beyond Google tools to 50+ third-party integrations via MCP",
@@ -59,7 +59,7 @@ export const entry: AlternativeData = {
     {
       question: "Is GAIA better than Gemini for Gmail management?",
       answer:
-        "GAIA is more proactive and action-oriented for Gmail. It can triage your inbox, draft replies with full context, create tasks from emails, and monitor threads for follow-ups — all without you having to open a chat window.",
+        "GAIA is more proactive and action-oriented for Gmail. It can triage your inbox, draft replies with full context, create tasks from emails, and monitor threads for follow-ups, all without you having to open a chat window.",
     },
     {
       question: "Does GAIA integrate with Google services like Gemini does?",

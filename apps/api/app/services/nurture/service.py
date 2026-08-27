@@ -146,7 +146,7 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     await _send_step(user, step)
     await _record_step(user.id, step.key, now, status="sent")
     capture_event(
-        user.email,
+        user.id,
         AnalyticsEvents.NURTURE_EMAIL_SENT,
         {"step": step.key, "day_offset": step.day_offset},
     )

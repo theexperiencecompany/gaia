@@ -136,7 +136,7 @@ class TestTieredRateLimits:
 
     def test_info_is_required(self) -> None:
         with pytest.raises(Exception):
-            TieredRateLimits()  # type: ignore[call-arg]
+            TieredRateLimits()  # type: ignore[call-arg]  # bare construction exercises required-arg validation
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +182,7 @@ class TestFeatureLimits:
         "notification_operations",
         "integration_publish",
         "integration_clone",
+        "imessage_registration",
     ]
 
     def test_all_expected_features_present(self) -> None:
@@ -191,6 +192,13 @@ class TestFeatureLimits:
     def test_no_unexpected_features(self) -> None:
         for feature in FEATURE_LIMITS:
             assert feature in self.EXPECTED_FEATURES, f"Unexpected feature: {feature}"
+
+    def test_imessage_registration_is_pro_gated_and_small(self) -> None:
+        """The iMessage connect throttle: no free access, and a tight paid cap."""
+        limits = FEATURE_LIMITS["imessage_registration"]
+        assert limits.free.day == 0
+        assert limits.free.month == 0
+        assert 0 < limits.pro.day <= 20
 
     def test_all_features_have_valid_structure(self) -> None:
         for key, limits in FEATURE_LIMITS.items():
@@ -223,7 +231,7 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode", "imessage_registration"}
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count
@@ -354,7 +362,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -366,7 +374,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -378,7 +386,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -391,7 +399,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -403,7 +411,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.MONTH)
 
@@ -415,7 +423,7 @@ class TestGetResetTime:
 
         with patch("app.config.rate_limits.datetime") as mock_dt:
             mock_dt.now.return_value = fake_now
-            mock_dt.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+            mock_dt.side_effect = datetime
 
             result = get_reset_time(RateLimitPeriod.DAY)
 
@@ -554,3 +562,12 @@ class TestGetFeatureInfo:
         assert isinstance(result, FeatureInfo)
         assert result.title == ""
         assert result.description == "Usage for "
+
+
+@pytest.mark.unit
+class TestActivityPolicy:
+    def test_trigger_workflow_executions_never_counts_as_activity(self) -> None:
+        """System-driven fires are not user actions: counting them let a user's
+        own automation keep them "active" forever (masking the dormancy sweep)
+        and inflated the activity heatmap with runs nobody performed."""
+        assert FEATURE_LIMITS["trigger_workflow_executions"].counts_as_activity is False

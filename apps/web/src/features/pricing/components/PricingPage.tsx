@@ -5,6 +5,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import { wallpapers } from "@/config/wallpapers";
 import ComparisonGrid from "@/features/landing/components/sections/ComparisonGrid";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -14,11 +15,15 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
 
+const EMPTY_PLANS: Plan[] = [];
+
 interface PricingPageProps {
   initialPlans?: Plan[];
 }
 
-export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
+export default function PricingPage({
+  initialPlans = EMPTY_PLANS,
+}: PricingPageProps) {
   const [isYearly, setIsYearly] = useState(false);
 
   useEffect(() => {
@@ -38,6 +43,11 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
           fill
           className="aspect-video object-cover object-bottom opacity-80"
         />
+        {/* Above the photo but below the fade, so the grain stops where the
+            wallpaper does instead of speckling the solid background. Heavier
+            than the shared default — this wallpaper is bright and soft-focus,
+            so it swallows grain the darker blog artwork shows readily. */}
+        <GrainOverlay className="opacity-[0.34]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background via-background to-transparent" />
       </div>
 

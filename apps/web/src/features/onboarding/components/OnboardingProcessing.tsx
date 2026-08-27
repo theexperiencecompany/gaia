@@ -194,9 +194,9 @@ function OnboardingProcessingImpl({
                   {isDone ? (
                     <m.div
                       key="check"
-                      initial={{ scale: 0, opacity: 0 }}
+                      initial={{ scale: 0.95, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                       className="absolute inset-0"
                     >
@@ -206,7 +206,7 @@ function OnboardingProcessingImpl({
                     <m.div
                       key="icon"
                       initial={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0, opacity: 0 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
                       transition={{ duration: 0.15 }}
                       className="absolute inset-0"
                     >
@@ -274,9 +274,10 @@ function OnboardingProcessingImpl({
         {showSlowNotice && (
           <m.p
             className="text-xs text-zinc-500"
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
             Still working on it. This may take another minute or two.

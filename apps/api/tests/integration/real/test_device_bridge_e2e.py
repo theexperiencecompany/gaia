@@ -40,19 +40,21 @@ import pytest
 
 pytestmark = [pytest.mark.service, pytest.mark.slow]
 
-# Anchor by walking up to the ``apps`` directory that owns the bridge package,
-# rather than by depth from this test file — the file may move within the tests
-# tree.
-BRIDGE_DIR = next(
-    parent / "bridge" for parent in Path(__file__).resolve().parents if (parent / "bridge").is_dir()
+# Anchor by walking up to the repo root that owns the CLI package (which ships
+# `gaia bridge`), rather than by depth from this test file — the file may move
+# within the tests tree.
+CLI_DIR = next(
+    parent / "packages" / "cli"
+    for parent in Path(__file__).resolve().parents
+    if (parent / "packages" / "cli").is_dir()
 )
 # tsx's bin location depends on pnpm's node-linker: the isolated linker (used
 # inside the Dagger harness, which never sees the repo .npmrc) puts it in the
-# bridge package's own node_modules/.bin; the hoisted linker (dev machines and
+# CLI package's own node_modules/.bin; the hoisted linker (dev machines and
 # CI runners, per .npmrc) only creates the repo-root node_modules/.bin.
-_BRIDGE_TSX = BRIDGE_DIR / "node_modules" / ".bin" / "tsx"
-_ROOT_TSX = BRIDGE_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
-TSX_BIN = _BRIDGE_TSX if _BRIDGE_TSX.exists() else _ROOT_TSX
+_CLI_TSX = CLI_DIR / "node_modules" / ".bin" / "tsx"
+_ROOT_TSX = CLI_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
+TSX_BIN = _CLI_TSX if _CLI_TSX.exists() else _ROOT_TSX
 EVERYTHING_SERVER = {
     "type": "stdio",
     "key": "everything",
@@ -85,7 +87,7 @@ class BridgeDaemon:
             "src/index.ts",
             "bridge",
             *args,
-            cwd=str(BRIDGE_DIR),
+            cwd=str(CLI_DIR),
             env=env,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,

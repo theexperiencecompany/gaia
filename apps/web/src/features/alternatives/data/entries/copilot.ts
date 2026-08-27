@@ -9,13 +9,13 @@ export const entry: AlternativeData = {
   painPoints: [
     "Requires Microsoft 365 subscription; locked into the Microsoft ecosystem",
     "High enterprise pricing puts Copilot out of reach for individuals",
-    "Limited outside of Office apps — cannot manage non-Microsoft tools",
+    "Limited outside of Office apps: cannot manage non-Microsoft tools",
     "Privacy concerns around Microsoft processing enterprise data",
     "Less effective for users not deeply embedded in the Microsoft stack",
   ],
   metaTitle: "Best Microsoft Copilot Alternative in 2026",
   metaDescription:
-    "Not on Microsoft 365? GAIA is a proactive AI assistant that works with Gmail, Google Calendar, and 50+ tools — no Microsoft subscription required. Free tier available.",
+    "Not on Microsoft 365? GAIA is a proactive AI assistant that works with Gmail, Google Calendar, and 50+ tools, with no Microsoft subscription required. Free tier available.",
   keywords: [
     "microsoft copilot alternative",
     "copilot alternative",
@@ -44,7 +44,7 @@ export const entry: AlternativeData = {
   ],
   gaiaAdvantages: [
     "Works with Google Workspace, not just Microsoft 365",
-    "No enterprise licensing required — free tier available",
+    "No enterprise licensing required: free tier available",
     "Open-source codebase means no vendor lock-in",
     "Self-hostable for organizations with strict data compliance needs",
     "50+ tool integrations beyond the Microsoft ecosystem",

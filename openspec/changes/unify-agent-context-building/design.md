@@ -49,7 +49,7 @@ Constraints inherited from the existing code, all load-bearing and all currently
 - `build_agent_config` and configurable inheritance. Already centralized in one function with one inheritance table and reasonable coverage; folding it in grows the class without clarifying anything.
 - Middleware behaviour — summarization, compaction, media description, loop guard, HIL. They mutate context, but downstream of the assembly boundary this change owns.
 - Re-introducing parent→child memory/skills prefetch. The dead plumbing is deleted here; a real prefetch optimization is a separate, trace-justified change.
-- Changing which sections a tier gets, except the three corrections named below.
+- Changing which sections a tier gets, except the three corrections named below. **Reopened as a deliberate follow-up, not part of this change:** the registry this change built made the content asymmetry visible — comms alone got `core_memory`/`user_prefs`/`gaia_knowledge`/`tracked_todos`, so the executor and every subagent drafted user-facing prose (emails, documents) with no access to the user's writing style or preferences. Extended to `ALL_TIERS`, gated on fixing the actual gap that made it a Non-Goal in the first place: `AgentConfigurable` carried no onboarding data at all. `build_agent_config` gained `user_preferences`/`writing_style` kwargs, threaded the same way as `user_messages` — set once at whichever root call site already has the full user document (comms, background narration, the dev direct-invoke entrypoint), inherited unchanged by every child. `SectionContext.from_configurable` reads them off `configurable` the same way it reads `user_name`/`user_timezone`, instead of the two unused override kwargs that no call site had ever populated.
 - Prompt *text*. Section bodies are ported verbatim.
 
 ## Decisions
@@ -66,16 +66,20 @@ core_memory           ●      ○      ○        ○       ○       memory_re
 memory_recall         ●      ●      ●        ●       ●       memory_recall
 gaia_knowledge        ●      ○      ○        ○       ○       memory_recall
 tracked_todos         ●      ○      ○        ○       ○       memory_recall
-skills                ●      ●      ●        ○       ○       memory_recall
-bg_banner             ●      ●      ●        ●       ○       memory_recall
-active_todo_banner    ●      ●      ●        ●       ○       memory_recall
+skills                ○      ●      ●        ●       ●       memory_recall
+bg_banner             ●      ●      ●        ●       ●       memory_recall
+active_todo_banner    ●      ●      ●        ●       ●       memory_recall
 user_identity         ●      ●      ●        ●       ●       dynamic_stable
 user_prefs            ●      ○      ○        ○       ○       dynamic_stable
-integrations_manifest ●      ●      ○        ○       ●       dynamic_stable
-workspace_session     ○      ●      ●        ●       ○       dynamic_stable
+integrations_manifest ●      ●      ○        ○       ○       dynamic_stable
+workspace_session     ○      ●      ●        ●       ●       dynamic_stable
 provider_metadata     ○      ○      ●        ○       ○       dynamic_stable
 custom_instructions   ○      ○      ●        ○       ○       dynamic_stable
 ```
+
+Six cells differ from this change's first draft of the table. Each was corrected to match what the code observably does today, not the other way round — changing which tier gets which section is an explicit Non-Goal. See finding F1 for the per-cell evidence.
+
+This table is the record of what shipped in this change. `core_memory`, `gaia_knowledge`, `tracked_todos`, and `user_prefs` were later extended from comms-only to every tier — see the Non-Goals section above, "Reopened as a deliberate follow-up."
 
 Alternatives rejected: a base class with per-tier subclasses (five subclasses to express what is a boolean per cell, and the override points become the new place divergence hides); keeping two implementations and adding a shared helper (leaves both call graphs live, so the next divergence is one edit away).
 
@@ -121,6 +125,8 @@ Everything else is ported verbatim. These three are corrections, each with its o
 
 A fourth divergence — comms formats recalled memories via `entry_to_note` (dated), subagents use raw `mem.content` — is unified on `entry_to_note`. Dates are strictly more information, and no comment defends the raw form.
 
+A fifth divergence, already described as F3 under Findings below: `create_agent_context_message` joined sections with `"\n".join(parts)` and then concatenated blocks that each carried their own leading `\n\n` (and, for provider metadata, a trailing `\n`), producing stray blank runs the registry's uniform join removes. Confirmed by A/B against `origin/master`: rendering the same fixture through both the pre-refactor and post-refactor subagent paths shows the `provider_metadata` → `custom_instructions` boundary drop from three blank lines to zero.
+
 ### 7. Delete the dead prefetch plumbing
 
 `__pinned_memories__` / `__pinned_skills__` are threaded through every configurable (`agent_helpers.py:186-187, 222-223, 363-364`) and the `memories_text` / `skills_text` parameters are documented as avoiding duplicate ChromaDB lookups — but nothing writes the keys and no call site passes the parameters. Every subagent still runs its own recall. Deleting keeps this change to one reason for a snapshot to move.
@@ -143,7 +149,43 @@ A fourth divergence — comms formats recalled memories via `entry_to_note` (dat
 
 Rollback: steps 1 and 2 stand alone and are independently valuable. Step 3 is a pure structural move under green snapshots and reverts as one commit.
 
-## Open Questions
+## Resolved Questions
 
-- Should the prefix-stability floor be a fixed byte count or a ratio of the static+stable block? A ratio survives prompt edits; a fixed floor catches silent prompt growth. Decide when the first real measurement exists (step 1).
-- Does the workflow authoring tier want the connected-integrations manifest as a proper `dynamic_stable` section instead of hand-folded into its `HumanMessage`? The hand-folding is a documented workaround for the static-slot eviction the registry removes, so the workaround may no longer be needed — confirm once the registry exists.
+**Prefix floor: neither a fixed byte count nor a ratio — the exact stable-block boundary.** Measured after the fix (bytes, common fixture):
+
+| tier | stable block ends at | shared across a clock tick | shared across a query change | total request |
+|---|---|---|---|---|
+| comms | 74282 | 74633 | 74553 | 74705 |
+| executor | 37098 | 38829 | 38749 | 38901 |
+| provider subagent | 14534 | 17448 | 17368 | 17520 |
+| spawn | 262 | 544 | 464 | 616 |
+| workflow authoring | 23709 | 24041 | 23961 | 24113 |
+
+The measurement killed both proposed options. A static prompt is 14–74 KB and a volatile block is a few hundred bytes, so folding the volatile block back into the cacheable region — the exact defect this change fixes — moves the shared prefix by under 1%. Any ratio loose enough to survive a prompt edit is far too loose to catch it, and a fixed byte count stops meaning anything the first time a prompt grows. Both would have shipped as decoration; the "can it fail" check in `TestTheFloorCanFail` is what exposed it.
+
+The boundary has neither problem: *no byte at or before the end of the stable block may change between turns*. It is exact, scale-free, survives prompt edits, and fails immediately on the real regression. `TestTheFloorCanFail` reconstructs the pre-fix folded arrangement and confirms it breaches.
+
+**Workflow authoring keeps its hand-folded integrations hint.** The workaround it documents is real and unchanged by the registry: the hint is ground truth the *author* reasons over, and as a `SystemMessage` it would occupy the static slot and evict `WORKFLOW_AGENT_SYSTEM_PROMPT`. Giving it a `dynamic_stable` section would also change which tier gets which section, an explicit Non-Goal. Left as-is.
+
+## Findings from characterization (step 1)
+
+Recorded against `tests/unit/agents/context/__snapshots__/`. The three named defects all reproduce. Four things the snapshots showed that decision 1's table did not predict:
+
+**F1 — the section × tier table above is wrong in six cells.** Corrected against observed behaviour:
+
+| section | design said | actually | why |
+|---|---|---|---|
+| `skills` @ comms | ● | ○ | `build_dynamic_context_messages` only emits skills from `skills_text`, which no call site passes |
+| `skills` @ spawn | ○ | ● | `subagent_id=None` falls through to `EXECUTOR_SUBAGENT_ID` |
+| `skills` @ workflow | ○ | ● | same fallback |
+| `workspace_session` @ workflow | ○ | ● | emitted whenever `vfs_session_id` is set, which the workflow author inherits |
+| `bg_banner` @ workflow | ○ | ● | read from the inherited `execution_mode` |
+| `active_todo_banner` @ workflow | ○ | ● | read from the inherited `active_todo_id` |
+
+The registry ports observed behaviour, not the table — changing which tier gets which section is an explicit Non-Goal. The table above is corrected to match.
+
+**F2 — the onboarding prompt silently evicts the whole stable identity block.** `construct_langchain_messages` appends the onboarding system prompt with `memory_message=True` *after* the stable dynamic-context message. `manage_system_prompts_node` keeps only the LATEST message carrying that marker, so on every onboarding turn the user's name, timezone, preferences and connected-integrations manifest never reach the model — precisely the turns where knowing the user matters most. It is invisible today because no test observes the post-hook array. Fixed under its own failing-first test; the onboarding prompt takes its own slot rather than borrowing the dynamic one.
+
+**F3 — subagent context blocks are assembled by string concatenation with mismatched separators.** `create_agent_context_message` `"\n".join(parts)` and then concatenates sections that each carry their own leading `\n\n` and, for provider metadata, a trailing `\n`, producing stray blank runs. Cosmetic in isolation, but it is why no two tiers' blocks are comparable byte-for-byte. The registry joins sections uniformly.
+
+**F4 — recalled memories render two different ways.** Confirmed as stated in decision 6: comms via `entry_to_note` (dated), subagents via raw `mem.content`. Unified on `entry_to_note`.

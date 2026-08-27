@@ -148,8 +148,11 @@ linux:
   # Custom protocol for OAuth deep linking
   mimeTypes:
     - x-scheme-handler/gaia
+  # electron-builder 26 nests .desktop entries under `entry:`; the flat map
+  # here was the v25 shape and is rejected by the v26 schema.
   desktop:
-    MimeType: x-scheme-handler/gaia
+    entry:
+      MimeType: x-scheme-handler/gaia
 
 publish:
   provider: github

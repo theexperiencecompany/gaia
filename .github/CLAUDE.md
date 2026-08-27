@@ -10,10 +10,11 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-two
-  lanes (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity,
-  security, evlog-map observability score, wide-event cross-runtime
-  conformance, semgrep, per-module mutation testing, …) behind the
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty
+  lanes (Biome, tsc, `python-static` = ruff + custom AST lints + complexity +
+  docstrings + security in one job, mypy, dead code, evlog-map observability
+  score, wide-event cross-runtime conformance, semgrep, sharded mutation
+  testing, …) behind the
   ratcheted `Quality gate (required)` check.
 
 
@@ -28,8 +29,8 @@ lists, parsing output, loops, multi-line shell — lives in a script under
 `scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
 
 ```yaml
-- name: Mutation check
-  run: bash scripts/ci/mutation-check.sh
+- name: Compute the mutation matrix
+  run: bash scripts/ci/mutation-plan.sh
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
@@ -50,7 +51,11 @@ Three layers, from cheap to precise:
 1. **`code-quality.yml` `changes` job** — one no-toolchain job diffs the PR
    and skips whole language lanes (Python lanes on a TS-only PR and vice
    versa). Lanes skipped this way count as PASSING in the gate; a failed
-   `changes` job fails the gate.
+   `changes` job fails the gate. The detect lists are a deliberate superset
+   that includes workflow/config files (yaml/yml/toml/lock/json): a
+   workflow-only (`.yml`) PR lights every lane up so changes to CI itself
+   get validated, but each lane self-skips via its own narrower
+   `changed-files.sh` list — lane lists NEVER include yml.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
    `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
@@ -100,6 +105,24 @@ intended semantic, keep it:
   plugin registers test files as entry points and test-only-referenced code
   counts as used. When adding a workspace, add the exclusion.
 
+## The mutation lane's shard count
+
+`scripts/ci/mutation-plan.sh` fans the changed modules across a matrix, capped
+at **the matrix's own `max-parallel`**. Do not raise the cap to "get more
+parallelism" — GitHub runs only `max-parallel` jobs at a time regardless, so a
+wider matrix cannot finish sooner. What it does cost is one check row per job
+(a 430-module diff produced 250 of them, which no reviewer can read past) and a
+full checkout + `uv sync` per job rather than per shard.
+
+Under the cap each module gets its own shard and the check is named after it,
+which is the common case and the most useful thing to read at a glance. Over
+it, modules pack in round-robin and the check says `shard N/M (K modules)`; the
+step then names every failing module in an `::error::` annotation and the job
+summary, because "this shard is red" is useless without saying which module.
+
+If the two ever drift, the plan silently either wastes runners or under-uses
+them — keep `MAX_SHARDS` and `max-parallel` in step.
+
 ## The quality gate
 
 `code-quality.yml`'s gate enforces every lane: a lane that is neither
@@ -109,22 +132,20 @@ is gone — the rollout it enabled is complete and the two sources of truth had
 drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
 map, and its name to the `LANES` array; it is enforced from the first run.
 
-## Suppression baseline (no new inline lint suppressions)
+## Suppression hygiene (every inline suppression carries its why)
 
-The `suppression-ratchet` lane guards `# noqa` / `# type: ignore` / `// biome-ignore`
-against silent growth via a checked-in baseline (`config/suppressions-baseline.json`),
-not a git-history diff — `tools/lints/check_suppressions.py` scans the current
-working tree and compares per-(file, kind) counts against it, so the check is a
-pure local scan with no fetch-depth, base ref, or merge-base. A file may only
-match or shrink its baseline count; a pure rename (byte-identical content) is
-free via a content hash, but any genuine growth fails with an exact `file:line`.
-Reproduce or accept a change locally with the one command:
-`python3 tools/lints/check_suppressions.py` (add `--update` to regenerate the
-baseline after fixing or deliberately accepting a new suppression — the baseline
-diff is the review surface). This is unrelated to the ruff ignore-list ratchet
-(`tools/lints/check_ignore_ratchet.py`), which guards `[tool.ruff.lint] ignore`
-/ `per-file-ignores` / mypy overrides in `pyproject.toml` — see
-`tools/lints/README.md#ignore-ratchet`.
+The `suppression-hygiene` lane is stateless: there is no baseline. A suppression
+(`# noqa` / `# type: ignore` / `// biome-ignore`) may only exist inline, at the
+offending line, WITH a written reason on that same line —
+`tools/lints/check_suppressions.py` fails at the exact line otherwise. Staleness
+is hunted by the compilers themselves: mypy's `warn_unused_ignores` flags dead
+`# type: ignore`, ruff's RUF100 flags dead `# noqa`, and biome's
+`suppressions/unused` diagnostic for dead `// biome-ignore` is gated in the
+biome lane. Reproduce locally:
+`python3 tools/lints/check_suppressions.py` (add paths to scope). Escape hatches
+in `pyproject.toml` (`[tool.ruff.lint] ignore`, `per-file-ignores`, weakening
+mypy overrides) must each carry a why-comment beside them — checked by
+`tools/lints/check_ignore_whys.py`; see `tools/lints/README.md#ignore-whys`.
 
 ## Log readability (for humans AND agents)
 

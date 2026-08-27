@@ -2,6 +2,7 @@
 
 from app.db.repositories.users import user_repository
 from app.models.hil_models import HILMode, HILPreferences
+from app.services.analytics_service import AnalyticsEvents, capture_event
 
 
 async def get_hil_preferences(user_id: str) -> HILPreferences:
@@ -20,10 +21,29 @@ async def update_hil_preferences(
     await user_repository.set_hil_preference_fields(
         user_id, mode=mode, tool_overrides=tool_overrides
     )
-    return await get_hil_preferences(user_id)
+    prefs = await get_hil_preferences(user_id)
+
+    # A mode change is the user-facing milestone; per-tool changes flow through
+    # set_tool_override, which captures its own event.
+    if mode is not None:
+        capture_event(
+            user_id,
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {"setting": "hil_approvals", "mode": mode},
+        )
+    return prefs
 
 
 async def set_tool_override(user_id: str, tool_name: str, ask: bool | None) -> HILPreferences:
     """Set (``ask`` = True/False) or clear (``ask`` = None) one tool's override."""
     await user_repository.set_hil_tool_override(user_id, tool_name, ask)
+    capture_event(
+        user_id,
+        AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+        {
+            "setting": "tool_approval",
+            "tool_name": tool_name,
+            "require_approval": ask is True,
+        },
+    )
     return await get_hil_preferences(user_id)

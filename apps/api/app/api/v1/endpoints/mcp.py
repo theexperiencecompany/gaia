@@ -18,6 +18,7 @@ from app.helpers.mcp_helpers import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.schemas.mcp import MCPConnectionTestResponse
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
@@ -29,7 +30,7 @@ router = APIRouter()
 @router.post("/test/{integration_id}", response_model_exclude_none=True)
 async def test_mcp_connection(
     integration_id: str,
-    user: AuthenticatedUser = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),  # noqa: PT028 -- contract
 ) -> MCPConnectionTestResponse:
     """
     Test connection to an MCP server.
@@ -58,10 +59,10 @@ async def test_mcp_connection(
     # Probe the server
     probe_result = await client.probe_connection(server_url)
     log.set(
-        probe=dict(
-            requires_auth=probe_result.get("requires_auth", False),
-            has_error=bool(probe_result.get("error")),
-        )
+        probe={
+            "requires_auth": probe_result.get("requires_auth", False),
+            "has_error": bool(probe_result.get("error")),
+        }
     )
 
     probe_error = probe_result.get("error")
@@ -254,6 +255,13 @@ async def mcp_oauth_callback(
         await invalidate_user_integration_caches(str(user_id))
 
         log.audit("mcp integration connected via oauth", actor=user_id, resource=integration_id)
+        capture_context_event(
+            AnalyticsEvents.INTEGRATION_CONNECTED,
+            {
+                "integration_id": integration_id,
+                "connection_method": "oauth",
+            },
+        )
 
         frontend_url = get_frontend_url()
         log.set(outcome="connected")

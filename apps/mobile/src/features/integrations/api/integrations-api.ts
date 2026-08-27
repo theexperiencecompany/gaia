@@ -1,3 +1,7 @@
+import {
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
+} from "@gaia/shared";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { apiService } from "@/lib/api";
@@ -16,13 +20,8 @@ import type {
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Display order: created (added but unconnected) first, then connected, then
-// the rest of the catalog. Matches the previous client-side merge ordering.
-const STATUS_PRIORITY: Record<Integration["status"], number> = {
-  created: 0,
-  connected: 1,
-  not_connected: 2,
-};
+// Display order: things needing the user's attention (expired, then created)
+// first, then connected, then the rest of the catalog.
 
 /**
  * Map one personalized catalog entry (`GET /integrations/me`) to the mobile
@@ -61,8 +60,10 @@ export async function fetchIntegrations(): Promise<Integration[]> {
       await apiService.get<MyIntegrationsResponse>("/integrations/me");
 
     return response.integrations.map(toIntegration).sort((a, b) => {
-      const priorityA = STATUS_PRIORITY[a.status];
-      const priorityB = STATUS_PRIORITY[b.status];
+      const priorityA =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(a.status)];
+      const priorityB =
+        INTEGRATION_STATE_ORDER[integrationConnectionState(b.status)];
       if (priorityA !== priorityB) return priorityA - priorityB;
       return a.name.localeCompare(b.name);
     });

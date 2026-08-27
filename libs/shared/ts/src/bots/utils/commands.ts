@@ -245,7 +245,12 @@ export async function handleNewConversation(
   ctx: CommandContext,
 ): Promise<string> {
   try {
-    await gaia.resetSession(ctx.platform, ctx.platformUserId, ctx.channelId);
+    await gaia.resetSession(
+      ctx.platform,
+      ctx.platformUserId,
+      ctx.channelId,
+      ctx.isDm,
+    );
     return "Started a new conversation. Your previous conversation is saved and accessible from the GAIA web app.";
   } catch (_error: unknown) {
     return "Failed to start a new conversation. Please try again.";

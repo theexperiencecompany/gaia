@@ -60,6 +60,8 @@ export const workflowApi = {
       title?: string;
       description?: string;
       prompt?: string;
+      icon?: string | null;
+      icon_color?: string | null;
       trigger_config?: CreateWorkflowRequest["trigger_config"];
       activated?: boolean;
       notify_on_completion?: boolean;

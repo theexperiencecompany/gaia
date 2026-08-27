@@ -18,6 +18,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -44,7 +45,14 @@ from app.models.workflow_models import (
     TriggerType,
     Workflow,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
+from app.services.triggers.batching import (
+    coalesce_window_seconds,
+    drain_trigger_batch,
+    reschedule_if_refilled,
+)
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -62,7 +70,11 @@ _DRIFT_WARN_SECONDS = 300
 
 
 async def process_workflow_generation_task(
-    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    todo_id: str,
+    user_id: str,
+    title: str,
+    description: str = "",
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -134,6 +146,16 @@ async def process_workflow_generation_task(
                     )
                 )
 
+                capture_event(
+                    user_id,
+                    AnalyticsEvents.WORKFLOW_CREATED,
+                    {
+                        "workflow_id": workflow.id,
+                        "steps_count": len(workflow.steps),
+                        "is_todo_workflow": True,
+                    },
+                )
+
                 try:
                     websocket_manager = get_websocket_manager()
                     await websocket_manager.broadcast_to_user(
@@ -156,7 +178,10 @@ async def process_workflow_generation_task(
                     )
 
                 # Clear the generating flag
-                from app.services.workflow.queue_service import WorkflowQueueService
+                # Deferred import: function-local re-bind in this success path; the workflow stack is already loaded by module-top service imports
+                from app.services.workflow.queue_service import (  # noqa: PLC0415 -- deferred
+                    WorkflowQueueService,
+                )
 
                 try:
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
@@ -195,7 +220,9 @@ async def process_workflow_generation_task(
     except Exception as e:
         # Clear the generating flag on failure too
         try:
-            from app.services.workflow.queue_service import WorkflowQueueService
+            from app.services.workflow.queue_service import (  # noqa: PLC0415 -- heavy workflow queue loads only when this task runs
+                WorkflowQueueService,
+            )
 
             await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
         except Exception as cleanup_error:
@@ -229,6 +256,12 @@ async def process_workflow_generation_task(
             )
 
         raise
+
+
+async def _completed_onboarding(user_id: str) -> bool:
+    """Whether the user submitted the onboarding wizard (``onboarding.completed``)."""
+    user = await user_repository.get(user_id)
+    return bool(user and (user.onboarding or {}).get("completed"))
 
 
 async def _rearm_if_scheduled(
@@ -437,8 +470,24 @@ async def _record_execution_failure(
     await _notify_workflow_failed(error, workflow)
 
 
+def _origin_for(trigger_type: str) -> LimitHitOrigin:
+    """A manual fire is the user standing there; a schedule or webhook is not.
+
+    Picks which email a limit hit sends, so getting it wrong tells a user who
+    clicked Run that their workflows are paused, or tells a user who did nothing
+    that *they* hit *their* limit.
+    """
+    return (
+        LimitHitOrigin.INTERACTIVE
+        if trigger_type == TriggerType.MANUAL.value
+        else LimitHitOrigin.BACKGROUND
+    )
+
+
 async def execute_workflow_by_id(
-    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    workflow_id: str,
+    context: dict[str, Any] | None = None,
 ) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
@@ -455,6 +504,9 @@ async def execute_workflow_by_id(
     scheduler = workflow_scheduler
     workflow = None
     execution_id = None
+    # Resolved before the try so the finally's refill check can see it on
+    # every exit path.
+    batch_key = (context or {}).get("trigger_batch_key")
 
     try:
         workflow = await scheduler.get_task(workflow_id)
@@ -462,8 +514,26 @@ async def execute_workflow_by_id(
         if not workflow:
             return f"Workflow {workflow_id} not found"
 
-        # Determine trigger type from context
-        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+        # A coalesced trigger run carries its events (keyed by batch_key) in
+        # Redis rather than in the job payload, so that concurrent enqueues
+        # could dedup down to this one job. Drained only AFTER the gates below
+        # — a run the onboarding or budget gate rejects must leave the buffer
+        # intact for a later run, not consume the events and discard them.
+
+        # Determine trigger type from context. An explicit trigger_type always
+        # wins; only an ABSENT one falls back — to "integration" when the
+        # context carries a webhook payload (trigger fires queued before the
+        # trigger service stamped trigger_type), else to "manual".
+        trigger_type = context.get("trigger_type") if context else None
+        if trigger_type is None:
+            trigger_type = (
+                TriggerType.INTEGRATION.value
+                if context and "trigger_data" in context
+                else TriggerType.MANUAL.value
+            )
+        # Everything below runs as this kind of work: the budget wall, the run's
+        # own tiered limit, and every rate-limited tool the agent reaches.
+        mark_run_origin(_origin_for(trigger_type))
         log.set(
             workflow=WorkflowContext(
                 id=workflow_id,
@@ -476,24 +546,96 @@ async def execute_workflow_by_id(
         # executing) so a concurrent recovery scan can't double-execute a workflow
         # whose previous fire is still running. Manual/integration "run now" fires
         # don't go through the scan and must not be status-gated.
-        if trigger_type == TriggerType.SCHEDULE.value and not (
-            await scheduler.claim_scheduled_for_execution(workflow_id)
-        ):
-            log.warning(
-                f"{LogTag.WORKER} Workflow not in scheduled state "
-                "(already claimed or running); skipping duplicate scheduled fire",
-                workflow_id=workflow_id,
-            )
-            return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+        #
+        # The claim also pins the occurrence the fire was armed for
+        # (``scheduled_for``, stamped by the scheduler at enqueue). ARQ has no job
+        # cancellation, so after a reschedule the old deferred job still fires;
+        # trigger_config.next_run has moved on and the mismatch rejects it instead
+        # of running the workflow at its original time. Jobs enqueued before the
+        # stamp existed carry no key and are ungated, so a deploy never strands a
+        # schedule.
+        if trigger_type == TriggerType.SCHEDULE.value:
+            # Only a numeric stamp is scheduler provenance. Manual "run now"
+            # callers control their own context dict, so a hand-typed
+            # trigger_type/scheduled_for must be ignored (ungated), not crash
+            # fromtimestamp with a TypeError/OverflowError mid-run.
+            scheduled_for = context.get("scheduled_for") if context else None
+            if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+                log.warning(
+                    f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                    "treating as unstamped",
+                    workflow_id=workflow_id,
+                    scheduled_for=str(scheduled_for)[:32],
+                )
+                expected_next_run = None
+            else:
+                try:
+                    expected_next_run = datetime.fromtimestamp(scheduled_for, tz=UTC)
+                except (ValueError, OverflowError, OSError):
+                    log.warning(
+                        f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
+                        "treating as unstamped",
+                        workflow_id=workflow_id,
+                        scheduled_for=str(scheduled_for)[:32],
+                    )
+                    expected_next_run = None
+            if not (
+                await scheduler.claim_scheduled_for_execution(
+                    workflow_id, expected_next_run=expected_next_run
+                )
+            ):
+                log.warning(
+                    f"{LogTag.WORKER} Workflow not in scheduled state "
+                    "(already claimed, running, deactivated, or rescheduled away); "
+                    "skipping stale scheduled fire",
+                    workflow_id=workflow_id,
+                    scheduled_for=scheduled_for,
+                )
+                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
         _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
+
+        # System-initiated runs (schedule and trigger fires) don't run for a
+        # user who never finished the onboarding wizard: their auto-created
+        # workflows would drain the daily budget for someone who hasn't
+        # started using GAIA, then aim "you hit your limit" messaging at them.
+        # Re-arm quietly so a recurring workflow resumes if they finish later.
+        if trigger_type != TriggerType.MANUAL.value and not await _completed_onboarding(
+            workflow.user_id
+        ):
+            log.info(
+                f"{LogTag.WORKER} Workflow skipped — user has not completed onboarding",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+            )
+            await _rearm_quietly(scheduler, workflow, context, workflow_id)
+            return f"Workflow {workflow_id} skipped — user has not completed onboarding"
 
         # Cost wall BEFORE any execution record or LLM work: when the user's
         # daily budget is spent the run is skipped cleanly (no confusing
         # "failed" row) and the except branch below sends the budget-specific
         # notification + re-arms the next occurrence, so a recurring workflow
         # resumes after the budget resets.
-        await enforce_daily_cost_budget(workflow.user_id, feature_key="trigger_workflow_executions")
+        await enforce_daily_cost_budget(
+            workflow.user_id,
+            feature_key="trigger_workflow_executions",
+        )
+
+        # Both gates passed — take the batch. An empty one means another run
+        # already drained these events and there is nothing left to do.
+        if batch_key:
+            events = await drain_trigger_batch(str(batch_key))
+            if events is None:
+                # Redis unreachable: the buffer may hold events — exit WITHOUT
+                # claiming they were drained; the finally's refill check (or the
+                # next inbound event) schedules a fresh run once Redis returns.
+                log.set_ns("workflow", outcome="trigger_batch_unavailable")
+                return f"Workflow {workflow_id} skipped — trigger batch unavailable"
+            log.set_ns("workflow", trigger_batch_size=len(events))
+            if not events:
+                log.set_ns("workflow", outcome="trigger_batch_empty")
+                return f"Workflow {workflow_id} skipped — trigger batch empty"
+            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
 
         # Create execution record at start
         execution = await create_execution(
@@ -523,6 +665,18 @@ async def execute_workflow_by_id(
             summary="Workflow executed",
             conversation_id=conversation_id,
         )
+
+        # Analytics: the run-now endpoint already captures manual executions at
+        # queue time (workflows.py); background-origin runs — scheduler,
+        # tracked-todo, and integration triggers — only flow through this task,
+        # so their completion is captured here. `trigger_type` already folds
+        # unstamped integration fires in (see the derivation above).
+        if trigger_type != TriggerType.MANUAL.value:
+            capture_event(
+                workflow.user_id,
+                AnalyticsEvents.WORKFLOW_EXECUTED,
+                {"workflow_id": workflow_id, "trigger_type": trigger_type},
+            )
 
         # Arm the next occurrence (scheduled recurring workflows only). A re-arm
         # failure must not turn a successful execution into a reported failure.
@@ -557,9 +711,32 @@ async def execute_workflow_by_id(
         # error) must not permanently kill a recurring workflow.
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
-        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        return f"Error executing workflow {workflow_id}: {e}"
+    finally:
+        # Events that landed while this run held the batch could not schedule
+        # their own run (the job id was occupied). Every exit owes them a
+        # follow-up — a failed or gate-skipped run must strand them no more
+        # than a successful one. Best-effort: a scheduling error only warns.
+        if batch_key is not None and workflow is not None:
+            try:
+                await reschedule_if_refilled(
+                    workflow_id,
+                    str(batch_key),
+                    coalesce_window_seconds(workflow.trigger_config),
+                    context or {},
+                )
+            except Exception as refill_error:
+                log.warning(
+                    f"{LogTag.WORKER} Trigger batch refill check failed",
+                    workflow_id=workflow_id,
+                    error=str(refill_error),
+                    error_type=type(refill_error).__name__,
+                )
 
 
+# No static origin: this decorator is evaluated at import, long before the
+# trigger is known. The seam reads the run's origin instead, which
+# execute_workflow_by_id sets from trigger_type.
 @tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(
     workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
@@ -576,7 +753,7 @@ async def execute_workflow_as_chat(
     """
 
     # Avoid circular import
-    from app.agents.core.agent import call_agent_silent
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- agent cycle
 
     user_id = user["user_id"]
 
@@ -706,7 +883,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict[str, Any],
+    ctx: dict[str, Any],  # noqa: ARG001 -- framework contract
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -734,7 +911,7 @@ async def regenerate_workflow_steps(
     )
 
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Regenerate steps using the service method (without background queue)
     await WorkflowService.regenerate_workflow_steps(
@@ -748,7 +925,7 @@ async def regenerate_workflow_steps(
     return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
-async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:  # noqa: ARG001 -- contract
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.
@@ -763,7 +940,7 @@ async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id
     """
     log.set(workflow_id=workflow_id, user_id=user_id)
     # Import here to avoid circular imports
-    from app.services.workflow import WorkflowService
+    from app.services.workflow.service import WorkflowService  # noqa: PLC0415 -- cycle
 
     # Generate steps using the service method
     await WorkflowService._generate_workflow_steps(workflow_id, user_id)

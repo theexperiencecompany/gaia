@@ -18,6 +18,7 @@ export const TODO_ENDPOINTS = {
   bulkPriority: "/todos/bulk/priority",
   bulkProject: "/todos/bulk/project",
   labels: "/todos/labels",
+  canvas: (todoId: string) => `/todos/${todoId}/canvas`,
   subtasks: (todoId: string) => `/todos/${todoId}/subtasks`,
   subtask: (todoId: string, subtaskId: string) =>
     `/todos/${todoId}/subtasks/${subtaskId}`,

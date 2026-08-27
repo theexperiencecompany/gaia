@@ -16,7 +16,7 @@ keeps the import graph acyclic.
 from dataclasses import dataclass
 from enum import StrEnum
 import json
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 from uuid import uuid4
 
 from app.agents.core.background.session import ExecutorRun, RunKind, create_session
@@ -27,6 +27,8 @@ from app.constants.cache import (
     EXECUTOR_QUEUE_TTL,
 )
 from app.constants.executor import (
+    CONFIGURABLE_OWNED_KEYS,
+    CONFIGURABLE_RUN_SCOPED_KEYS,
     EXECUTOR_COLLECT_MARKER_PREFIX,
     EXECUTOR_COLLECT_MARKER_TTL,
     EXECUTOR_COLLECTION_TASK,
@@ -36,43 +38,12 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
+from app.utils.general_utils import is_json_safe
 from shared.py.wide_events import log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
 QUEUED_STREAM_ID_PREFIX = "queued_"
-
-# Keys from configurable that are safe to serialize into queue items.
-# Filters out non-serializable LangGraph internals (e.g. Runtime objects).
-_CONFIGURABLE_SCALAR_KEYS = frozenset(
-    {
-        "thread_id",
-        "conversation_id",
-        "user_id",
-        "email",
-        "user_timezone",
-        "user_name",
-        "stream_id",
-        "provider",
-        "model_name",
-        "max_tokens",
-        "selected_tool",
-        "tool_category",
-        "subagent_id",
-        "vfs_session_id",
-        "user_message_id",
-        "active_todo_id",
-        "execution_mode",
-        "conversation_source",
-        "source_category",
-        # Workflow context must survive queueing: without it a queued workflow
-        # run loses its id and the delivery path silently downgrades the result
-        # from the completion notification to a plain conversation message.
-        "workflow_id",
-        "workflow_title",
-        "workflow_notify_on_completion",
-    }
-)
 
 
 class ExecutorRunItem(TypedDict, total=False):
@@ -91,6 +62,10 @@ class ExecutorRunItem(TypedDict, total=False):
     configurable: AgentConfigurable
     conversation_id: str
     user_message_id: str | None
+    #: The original live turn's bot message id, set only when this item was
+    #: written by a HIL pause (``_record_pause``) — a plain queue enqueue never
+    #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
+    bot_message_id: str | None
 
 
 @dataclass(frozen=True)
@@ -368,6 +343,7 @@ def build_run_item(
     configurable: AgentConfigurable,
     conversation_id: str,
     user_message_id: str | None,
+    bot_message_id: str | None = None,
 ) -> ExecutorRunItem:
     """The one serialized run-context shape: written by the queue and the HIL
     resume store, read back by ``prepare_run_from_item``. Add fields here, not
@@ -378,24 +354,32 @@ def build_run_item(
         "configurable": safe_configurable(configurable),
         "conversation_id": conversation_id,
         "user_message_id": user_message_id,
+        "bot_message_id": bot_message_id,
     }
 
 
 def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     """The serializable subset of a ``configurable``, safe to persist and rebuild
-    a run from. Filters out non-serializable LangGraph internals (Runtime objects).
+    a run from — the GAIA-owned keys minus the run-scoped ones.
 
-    ``_CONFIGURABLE_SCALAR_KEYS`` is the allowlist, so every surviving key is an
-    ``AgentConfigurable`` key by construction (Type Safety item 12).
+    Every surviving key is an ``AgentConfigurable`` key by construction (Type
+    Safety item 12). A declared key holding an unserializable value is dropped
+    with a WARNING rather than in silence: silent dropping is how a queued run
+    quietly stopped being the run the user started.
     """
-    return cast(
-        AgentConfigurable,
-        {
-            k: v
-            for k, v in configurable.items()
-            if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-        },
-    )
+    kept: dict[str, Any] = {}
+    for key, value in configurable.items():
+        if key not in CONFIGURABLE_OWNED_KEYS or key in CONFIGURABLE_RUN_SCOPED_KEYS:
+            continue
+        if not is_json_safe(value):
+            log.warning(
+                f"{LogTag.AGENT} Dropping unserializable configurable key from a queued run",
+                configurable_key=key,
+                value_type=type(value).__name__,
+            )
+            continue
+        kept[key] = value
+    return cast(AgentConfigurable, kept)
 
 
 async def prepare_run_from_item(
@@ -413,6 +397,7 @@ async def prepare_run_from_item(
     task = item.get("task", "")
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
+    queued_bot_message_id = item.get("bot_message_id")
     configurable: AgentConfigurable = item.get("configurable") or {}
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
@@ -447,6 +432,10 @@ async def prepare_run_from_item(
                 "stream_id": queued_stream_id,
                 "conversation_id": conversation_id,
                 "task_id": task_id,
+                # A HIL resume continues the ORIGINAL turn's message: the client
+                # folds this stream into it instead of opening a second
+                # placeholder (which would render its own tool accordion).
+                "bot_message_id": item.get("bot_message_id"),
             },
         )
 
@@ -458,5 +447,6 @@ async def prepare_run_from_item(
         kind=RunKind.QUEUED,
         task_id=task_id,
         user_message_id=queued_user_message_id,
+        bot_message_id=queued_bot_message_id,
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)

@@ -88,6 +88,15 @@ const todos = await apiService.get<Todo[]>("/api/todos");
 - Every major feature area that renders independently should be wrapped in an `ErrorBoundary`.
 - Use the shared one at `src/components/shared/ErrorBoundary.tsx` — do not create new ones. It catches rendering errors and reports to PostHog automatically.
 
+## Analytics (PostHog)
+
+Naming, identity and the no-PII rule are in the root `CLAUDE.md`. Web specifics:
+
+- `trackEvent(ANALYTICS_EVENTS.X, { ... })` from `src/lib/analytics.ts` — never `posthog.capture` directly, and never a bare string event name. Add new names to `ANALYTICS_EVENTS` in that file.
+- Users are identified by the **backend user id** (`useFetchUser`), not the WorkOS id or email, so web events join the API's.
+- Ingestion is proxied through `/ingest/*` so ad blockers cannot drop it; those rewrites follow `NEXT_PUBLIC_POSTHOG_HOST` (`next.config.mjs`), and `skipTrailingSlashRedirect: true` is required for it.
+- Prefer capturing server-side when the backend already sees the action — a client capture is the one an ad blocker eats. Capture on success, not on click.
+
 ## State Management
 
 Zustand (v5). Stores live in `src/stores/` and are named `use<Name>Store`.
@@ -152,7 +161,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 
 **Raw `<button>` is a documented exception, never a default.** A raw `<button>` is allowed ONLY where HeroUI `<Button>` provably cannot reproduce the required layout/styling without fighting the component. Every such instance must be listed here so the exception stays auditable:
 
-- _(none currently — all interactive buttons use HeroUI `<Button>`.)_
+- Clickable card/list-row/chip containers converted from `div[role="button"]` to raw `<button type="button">` during the React Doctor a11y sweep (calendar event bars/cards/rows, chat tool-card rows like Todo/Twitter sections, composer items like LockedToolItem/SlashCommandDropdown/SelectedReplyIndicator, HoloCard flip container) — HeroUI `<Button>` cannot reproduce these full-card layouts; the native element supplies click + Enter/Space semantics.
 
 **Do not override HeroUI default styling.** Use variant/color props (`variant="flat"`, `color="primary"`, etc.) first. Custom `classNames` / `className` / inline `style` are acceptable only for one-off layout adjustments (`w-full`, `max-w-*`) or when the user explicitly asks for a visual customisation — never to override HeroUI's internal color or shape tokens. Overrides make components fragile across theme changes and upgrades.
 
@@ -165,7 +174,7 @@ Always use HeroUI over raw HTML or custom implementations. HeroUI handles access
 - `config.ts` — locale list (`en`, `es`, `fr`, `de`, `ja`, `ko`, `pt-BR`) and `defaultLocale = "en"`
 - `routing.ts` — `localePrefix: "as-needed"` (default locale has no prefix in URL)
 - `request.ts` — server-side locale resolution passed to `createNextIntlPlugin`
-- `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname`, `redirect` wrappers
+- `navigation.ts` — locale-aware `Link`, `useRouter`, `usePathname` wrappers
 
 **When to use `@/i18n/navigation` vs `next/navigation`:**
 

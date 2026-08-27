@@ -86,23 +86,38 @@ if (typeof window !== "undefined") {
       }
     }
 
-    // PostHog (any environment where the key is set)
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      try {
-        const { default: posthog } = await import("posthog-js");
-        posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
-          api_host: "/ingest",
-          ui_host: "https://us.posthog.com",
-          defaults: "2025-05-24",
-          capture_exceptions: true,
-          debug: process.env.NODE_ENV === "development",
-          // Drop the same crawler / extension / third-party exception noise
-          // Sentry filters above so both sinks stay in agreement.
-          before_send: filterExceptionBeforeSend,
-        });
-      } catch {
-        // Analytics should never break the app.
+    // PostHog (any environment where the project token is set)
+    const posthogProjectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+    if (!posthogProjectToken) {
+      if (process.env.NODE_ENV === "development") {
+        console.error(
+          new Error(
+            "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN is configured",
+          ),
+        );
       }
+      return;
+    }
+
+    try {
+      const { default: posthog } = await import("posthog-js");
+      posthog.init(posthogProjectToken, {
+        // Ingestion goes through the first-party /ingest proxy (see the
+        // rewrites in next.config.mjs, which point it at
+        // NEXT_PUBLIC_POSTHOG_HOST) so ad blockers cannot drop events.
+        // ui_host names the real instance so the toolbar and "view in
+        // PostHog" links resolve to the configured region, not the US default.
+        api_host: "/ingest",
+        ui_host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+        defaults: "2025-05-24",
+        capture_exceptions: true,
+        debug: process.env.NODE_ENV === "development",
+        // Drop the same crawler / extension / third-party exception noise
+        // Sentry filters above so both sinks stay in agreement.
+        before_send: filterExceptionBeforeSend,
+      });
+    } catch {
+      // Analytics should never break the app.
     }
   };
 

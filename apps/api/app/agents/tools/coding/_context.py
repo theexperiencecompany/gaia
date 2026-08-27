@@ -84,7 +84,7 @@ def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole
         path = posixpath.join(base, path)
     canonical = posixpath.normpath(path)
     if not is_under_workspace(canonical):
-        raise ValueError(f"Path escapes /workspace: {path}")
+        raise ValueError("path must stay inside /workspace")
     role, conv = classify(canonical)
     return canonical, role, conv
 

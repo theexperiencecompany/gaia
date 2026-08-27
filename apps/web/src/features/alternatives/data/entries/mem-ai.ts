@@ -8,7 +8,7 @@ export const entry: AlternativeData = {
   tagline: "AI-powered note-taking that automatically organizes your knowledge",
   painPoints: [
     "Expensive at $14.99/month for a note-taking app",
-    "AI organization is still manual-input-dependent — garbage in, garbage out",
+    "AI organization is still manual-input-dependent: garbage in, garbage out",
     "Limited integrations beyond the note-taking context",
     "No email or calendar integration for automatic knowledge capture",
     "Slower than simpler note apps for basic note-taking use cases",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
     "Cross-tool knowledge graph connecting email, tasks, and calendar",
   ],
   gaiaAdvantages: [
-    "Knowledge built automatically from existing tools — no manual note entry",
+    "Knowledge built automatically from existing tools, no manual note entry",
     "Email and calendar context enriches memory without extra effort",
     "Proactive memory surfacing rather than reactive search",
     "Open-source and self-hostable unlike Mem",
@@ -58,7 +58,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA organize notes automatically like Mem?",
       answer:
-        "GAIA goes further — it captures knowledge automatically from your email and calendar rather than requiring you to write notes. What you learn in meetings, what comes in via email, and what tasks you complete all enrich GAIA's memory without manual input.",
+        "GAIA goes further: it captures knowledge automatically from your email and calendar rather than requiring you to write notes. What you learn in meetings, what comes in via email, and what tasks you complete all enrich GAIA's memory without manual input.",
     },
     {
       question: "Is GAIA cheaper than Mem.ai?",
@@ -68,7 +68,7 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA have semantic search like Mem?",
       answer:
-        "Yes. GAIA uses ChromaDB for vector-based semantic search across your knowledge, conversations, and connected tool data — providing similar search quality to Mem with broader data sources.",
+        "Yes. GAIA uses ChromaDB for vector-based semantic search across your knowledge, conversations, and connected tool data, providing similar search quality to Mem with broader data sources.",
     },
     {
       question: "Can GAIA capture meeting notes automatically unlike Mem?",

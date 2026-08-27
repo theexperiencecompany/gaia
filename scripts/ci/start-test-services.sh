@@ -63,12 +63,22 @@ PULL_BACKOFF_SECS=5
 # Data directories on tmpfs: every one of these containers is thrown away at
 # the end of the job, so durability buys nothing and fsync costs real time.
 # Postgres in particular is commit-latency bound under a 16-way xdist run.
+#
+# max_connections: the default 100 is a single-client default, and this suite is
+# not one client. `pytest -n auto` gives a worker per core, and each worker can
+# hold the app engine (pool_size=5 + max_overflow=10) AND the checkpointer pool
+# (max_size=20) at once — 35 apiece before the per-test NullPool engines the
+# real-services memory tests open. Four workers already exceed 100, which is why
+# the suite met "sorry, too many clients already" as it grew rather than on any
+# one change. Same reasoning as redis' --databases below: the service has to be
+# sized for xdist, not for one process. Slots are a few KB each here.
 start_postgres() {
   docker run -d --name "$PG_NAME" \
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=2g \
     -p "${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
+    -c max_connections=300 \
     -c fsync=off -c synchronous_commit=off -c full_page_writes=off
 }
 

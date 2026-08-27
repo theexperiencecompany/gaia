@@ -12,6 +12,7 @@ never sees builtins.
 """
 
 from functools import cache
+import re
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.oauth_models import OAuthIntegration
@@ -60,6 +61,46 @@ def get_subagent_by_id(subagent_id: str) -> Subagent | None:
     s = subagent_id.lower().strip()
     for sa in all_subagents():
         if sa.id.lower() == s or (sa.short_name and sa.short_name.lower() == s):
+            return sa
+    return None
+
+
+@cache
+def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]:
+    """One whole-word matcher per third-party provider, over its name and its id.
+
+    Internal subagents are deliberately absent as *matches*: "todos",
+    "reminders" and "skills" are ordinary words that appear in task prose
+    constantly, and a generic noun cannot mislead anyone about which product
+    holds their data. `short_name` is excluded for the same reason — Google
+    Tasks' short name is literally "tasks".
+
+    Cached with `all_subagents()`; call `_third_party_name_matchers.cache_clear()`
+    alongside it if a test injects a fake subagent.
+    """
+    matchers: list[tuple[Subagent, re.Pattern[str]]] = []
+    for sa in all_subagents():
+        if sa.managed_by == "internal":
+            continue
+        # Sorted only so the compiled pattern is stable across runs (set order
+        # is not). Alternation ORDER cannot change whether the pattern matches:
+        # the engine backtracks to the next alternative when a boundary lookaround
+        # fails, and the only consumer reads `pattern.search(text)` as a boolean,
+        # never the matched text.
+        alternation = "|".join(re.escape(label) for label in sorted({sa.name, sa.id}))
+        matchers.append((sa, re.compile(rf"(?<![\w-])(?:{alternation})(?![\w-])", re.IGNORECASE)))
+    return tuple(matchers)
+
+
+def foreign_provider_named_in(text: str, target_id: str) -> Subagent | None:
+    """The third-party provider ``text`` names that is not ``target_id``, if any.
+
+    A task routed to one subagent while naming another produces a result that
+    credits the named product with work it never did — the reason eight GAIA
+    todos reached the user as "8 tasks created (Todoist)".
+    """
+    for sa, pattern in _third_party_name_matchers():
+        if sa.id != target_id and pattern.search(text):
             return sa
     return None
 

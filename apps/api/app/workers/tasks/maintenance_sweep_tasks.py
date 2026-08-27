@@ -25,7 +25,6 @@ from app.models.notification.notification_models import (
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
-from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -278,10 +277,7 @@ def _is_dormant(todo: TodoDocument, now: datetime) -> bool:
 
     # Blocking label present — only surface if it has been stuck too long
     # Use idle_days as proxy for label age (label changes trigger updated_at)
-    if idle_days > WAITING_LABEL_MAX_DAYS:
-        return True
-
-    return False
+    return idle_days > WAITING_LABEL_MAX_DAYS
 
 
 async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOutcome:
@@ -553,16 +549,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         log.warning("maintenance_sweep.user_fetch_failed", user_id=user_id, error=str(exc))
         user_data = {"user_id": user_id, "name": "User"}
 
-    user_model_config = None
-    try:
-        user_model_config = await get_default_model()
-    except Exception as exc:
-        log.warning(
-            "maintenance_sweep.model_config_failed",
-            todo_id=todo_id,
-            error=str(exc),
-        )
-
     conversation_id = str(uuid4())
 
     request = MessageRequestWithHistory(
@@ -578,7 +564,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            user_model_config=user_model_config,
             trigger_context={
                 "trigger_type": "maintenance_health_check",
                 "todo_id": todo_id,

@@ -11,7 +11,7 @@ export const entry: AlternativeData = {
     "Sync between devices requires the paid Bear Pro plan at $2.99/month",
     "No proactive AI features; note-taking is entirely manual",
     "No email, calendar, or task integration",
-    "Beautiful but passive — Bear never helps you do anything automatically",
+    "Beautiful but passive: Bear never helps you do anything automatically",
   ],
   metaTitle: "Best Bear App Alternative in 2026",
   metaDescription:
@@ -31,7 +31,7 @@ export const entry: AlternativeData = {
     "bear alternative 2026",
   ],
   whyPeopleLook:
-    "Bear is celebrated as one of the most elegant note-taking apps on Apple platforms, with its clean Markdown editor, nested tags, and beautiful themes. But it is entirely passive — you write in Bear, and Bear stores what you write. It cannot read your email to capture correspondence context, does not know about your calendar, and has no AI that surfaces relevant notes when you need them. Users who leave Apple's ecosystem or who want their notes tool to be more active in their workflow consistently look for alternatives.",
+    "Bear is celebrated as one of the most elegant note-taking apps on Apple platforms, with its clean Markdown editor, nested tags, and beautiful themes. But it is entirely passive. You write in Bear, and Bear stores what you write. It cannot read your email to capture correspondence context, does not know about your calendar, and has no AI that surfaces relevant notes when you need them. Users who leave Apple's ecosystem or who want their notes tool to be more active in their workflow consistently look for alternatives.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Cross-platform note access on Android, Windows, and Linux",
@@ -42,7 +42,7 @@ export const entry: AlternativeData = {
   gaiaAdvantages: [
     "Works on every platform including Android, Windows, Linux, and web",
     "Knowledge is captured automatically from your digital activity",
-    "No sync paywall — all platforms included in the free tier",
+    "No sync paywall: all platforms included in the free tier",
     "Open-source and self-hostable unlike Bear's closed app",
     "Proactive assistant that connects notes to email, tasks, and calendar",
   ],

@@ -43,7 +43,7 @@ _OPENROUTER_TRANSIENT_ERRORS: tuple[type[BaseException], ...] = (
 # Transient provider/infra errors — safe to retry, usually succeed on a second
 # attempt. The agent model node wraps the bound model in ``with_retry`` on these.
 # Provider 429s are the provider's own quota, distinct from the application rate
-# limiter (``LangChainRateLimitException``) which must NOT be retried.
+# limiter (``LangChainRateLimitError``) which must NOT be retried.
 #
 # Gemini: ``langchain-google-genai`` (google-genai SDK) lets ``ServerError`` (5xx)
 # propagate raw but wraps every ``ClientError`` (4xx, INCLUDING transient 429s)
@@ -78,10 +78,10 @@ LLM_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     TimeoutError,
 )
 
-# chatbot.py one-shot helper: operational failures degrade to a friendly message;
-# programming bugs (TypeError, KeyError, bare RuntimeError, ...) and CancelledError
-# stay fail-loud.
-CHATBOT_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
+# chatbot.py one-shot helper: operational failures are logged and re-raised for the
+# caller to handle (e.g. degrade its own output to a placeholder); programming bugs
+# (TypeError, KeyError, bare RuntimeError, ...) and CancelledError stay fail-loud.
+CHATBOT_OPERATIONAL_EXCEPTIONS: tuple[type[BaseException], ...] = (
     LLMNotConfiguredError,
     *LLM_FALLBACK_EXCEPTIONS,
 )

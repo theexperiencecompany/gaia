@@ -6,7 +6,7 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
-import { MoreHorizontalIcon, ShieldIcon } from "@icons";
+import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
@@ -14,7 +14,10 @@ import type {
   ApprovalStatus,
 } from "@shared/chat";
 import { useState } from "react";
+import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
+import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
+import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
@@ -34,13 +37,13 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   );
   if (rows.length === 0) return null;
   return (
-    <div className="mt-3 space-y-1.5 rounded-2xl bg-zinc-900 p-3">
+    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
       {rows.map(([key, value]) => (
-        <div key={key} className="flex gap-2 text-xs">
-          <span className="shrink-0 text-zinc-500">{key}</span>
-          <span className="min-w-0 flex-1 truncate text-right text-zinc-300">
-            {String(value)}
-          </span>
+        <div key={key} className="text-xs">
+          <div className="mb-0.5 text-[11px] text-zinc-500">
+            {key.replaceAll("_", " ")}
+          </div>
+          <div className="text-zinc-200">{String(value)}</div>
         </div>
       ))}
     </div>
@@ -55,6 +58,7 @@ export default function ApprovalRequestSection({
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const locked = submitting !== null || disabled;
+  const markApprovalDecided = useMarkApprovalDecided();
 
   const decide = async (
     decision: ApprovalDecision,
@@ -71,7 +75,7 @@ export default function ApprovalRequestSection({
       // stream (a different message), so it never replaces this card. A 410
       // (already resolved elsewhere) is swallowed by postApprovalDecision and
       // settles here too; reaching the catch means the submit genuinely failed.
-      // The group moves it into the receipts list — it is not thrown away.
+      markApprovalDecided();
       onDecided(
         decision === "approve" ? "approved" : "denied",
         feedback.trim() || null,
@@ -86,26 +90,32 @@ export default function ApprovalRequestSection({
 
   return (
     <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
-      <div className="flex items-start gap-2">
-        <ShieldIcon width={18} className="mt-0.5 shrink-0 text-amber-400" />
+      <div className="flex items-start gap-2.5">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
+          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
+        </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm text-zinc-100">{data.summary}</div>
-          <div className="text-xs text-zinc-500">Approval required</div>
+          <div className="text-xs font-medium text-amber-400">
+            Needs approval
+          </div>
+          <div className="text-sm leading-snug text-zinc-100">
+            {formatToolName(data.gated_tool_name)}
+          </div>
         </div>
       </div>
 
       <ArgsPreview args={data.args_preview} />
 
-      <Input
-        className="mt-3"
-        size="sm"
-        variant="flat"
-        placeholder="Optional: tell GAIA why (or what to do instead)"
-        value={feedback}
-        onValueChange={setFeedback}
-        isDisabled={locked}
-      />
       <div className="mt-3 flex items-center gap-2">
+        <Input
+          className="flex-1"
+          size="sm"
+          variant="flat"
+          placeholder="Tell GAIA why (optional)"
+          value={feedback}
+          onValueChange={setFeedback}
+          isDisabled={locked}
+        />
         <Button
           color="primary"
           size="sm"

@@ -1,9 +1,12 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
+from app.agents.llm.lane import ModelLane
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -167,10 +170,10 @@ class TestGetHandoffMetadata:
 
 class TestBuildAgentConfig:
     @patch("app.helpers.agent_helpers.providers")
-    def test_basic_config(self, mock_providers):
+    async def test_basic_config(self, mock_providers):
         mock_providers.get.return_value = None  # no posthog
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -185,12 +188,12 @@ class TestBuildAgentConfig:
         assert config["recursion_limit"] == AGENT_RECURSION_LIMIT
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_uses_home_profile_timezone(self, mock_providers):
+    async def test_uses_home_profile_timezone(self, mock_providers):
         """The agent operates in the user's stored home zone (IANA, DST-aware)."""
         mock_providers.get.return_value = None
 
         home_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=home_user,
             agent_name="comms_agent",
@@ -198,12 +201,12 @@ class TestBuildAgentConfig:
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_inherits_home_timezone_from_base_configurable(self, mock_providers):
+    async def test_inherits_home_timezone_from_base_configurable(self, mock_providers):
         """A child agent reconstructs a bare user dict, so it inherits the home
         zone from the parent's configurable (user_timezone)."""
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,  # no timezone on the user dict
             agent_name="executor",
@@ -212,10 +215,10 @@ class TestBuildAgentConfig:
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_custom_thread_id(self, mock_providers):
+    async def test_custom_thread_id(self, mock_providers):
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -224,48 +227,44 @@ class TestBuildAgentConfig:
         assert config["configurable"]["thread_id"] == "custom-thread"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_user_model_config(self, mock_providers):
+    async def test_base_configurable_inheritance(self, mock_providers):
         mock_providers.get.return_value = None
 
-        model_cfg = MagicMock()
-        model_cfg.provider_model_name = "gpt-4"
-        model_cfg.inference_provider.value = "openai"
-        model_cfg.max_tokens = 8000
-
-        config = build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            user_model_config=model_cfg,
+        parent_lane = ModelLane(
+            provider="gemini",
+            model="parent-model",
+            reasoning={"effort": "high"},
+            provider_pin={"provider": {"only": ["parent-vendor"]}},
+            max_input_tokens=128_000,
         )
-        assert config["configurable"]["model_name"] == "gpt-4"
-        assert config["configurable"]["provider"] == "openai"
-        assert config["configurable"]["max_tokens"] == 8000
-
-    @patch("app.helpers.agent_helpers.providers")
-    def test_base_configurable_inheritance(self, mock_providers):
-        mock_providers.get.return_value = None
-
         base = {
-            "provider": "anthropic",
-            "max_tokens": 4000,
-            "model_name": "claude-3",
+            "lane": parent_lane.to_configurable(),
             "selected_tool": "web_search",
             "vfs_session_id": "vfs-sess-1",
         }
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="executor",
             base_configurable=base,
         )
-        assert config["configurable"]["provider"] == "anthropic"
-        assert config["configurable"]["selected_tool"] == "web_search"
-        assert config["configurable"]["vfs_session_id"] == "vfs-sess-1"
+        configurable = config["configurable"]
+        # The lane is inherited WHOLE — one rule, no per-key table. The pin and the
+        # reasoning budget were previously governed by two different rules (a
+        # conditional copy, and never-inherited-at-all), which is how a subagent
+        # silently dropped the first-party pin onto throttled resellers.
+        assert ModelLane.from_configurable(configurable["lane"]) == parent_lane
+        # ...and re-expanded into LangChain's binding keys, so the two cannot drift.
+        assert configurable["provider"] == "gemini"
+        assert configurable["model"] == "parent-model"
+        assert configurable["reasoning"] == {"effort": "high"}
+        assert configurable["model_kwargs"] == {"provider": {"only": ["parent-vendor"]}}
+        assert configurable["selected_tool"] == "web_search"
+        assert configurable["vfs_session_id"] == "vfs-sess-1"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
+    async def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
         """Each fallback key inherits from the SAME key on the parent, and no other.
 
         The seven fallback keys are written out one per line in
@@ -286,36 +285,43 @@ class TestBuildAgentConfig:
             "conversation_source": "telegram",
         }
 
-        inherited = build_agent_config(
-            conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor", base_configurable=base
+        inherited = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable=base,
+            )
         )["configurable"]
         assert {key: inherited[key] for key in base} == base
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_child_value_wins_over_parent_for_fallback_keys(self, mock_providers):
+    async def test_child_value_wins_over_parent_for_fallback_keys(self, mock_providers):
         """The parent only fills a blank — an explicit child value is never clobbered."""
         mock_providers.get.return_value = None
 
-        configurable = build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable={
-                "selected_tool": "parent-tool",
-                "tool_category": "parent-category",
-                "subagent_id": "parent-subagent",
-                "vfs_session_id": "parent-vfs",
-                "active_todo_id": "parent-todo",
-                "execution_mode": "background",
-                "conversation_source": "telegram",
-            },
-            selected_tool="child-tool",
-            tool_category="child-category",
-            subagent_id="child-subagent",
-            vfs_session_id="child-vfs",
-            active_todo_id="child-todo",
-            execution_mode="interactive",
-            source="web",
+        configurable = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "selected_tool": "parent-tool",
+                    "tool_category": "parent-category",
+                    "subagent_id": "parent-subagent",
+                    "vfs_session_id": "parent-vfs",
+                    "active_todo_id": "parent-todo",
+                    "execution_mode": "background",
+                    "conversation_source": "telegram",
+                },
+                selected_tool="child-tool",
+                tool_category="child-category",
+                subagent_id="child-subagent",
+                vfs_session_id="child-vfs",
+                active_todo_id="child-todo",
+                execution_mode="interactive",
+                source="web",
+            )
         )["configurable"]
 
         assert configurable["selected_tool"] == "child-tool"
@@ -327,22 +333,26 @@ class TestBuildAgentConfig:
         assert configurable["conversation_source"] == "web"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_parent_overrides_child_for_conversation_id_and_user_messages(self, mock_providers):
+    async def test_parent_overrides_child_for_conversation_id_and_user_messages(
+        self, mock_providers
+    ):
         """The TRUE conversation id and the user's verbatim turns are established
         once by comms; a child passing its own wrapped thread id or an
         agent-authored paraphrase must not overwrite them (the HIL intent judge
         grounds gated calls against the user's own words)."""
         mock_providers.get.return_value = None
 
-        configurable = build_agent_config(
-            conversation_id="github_executor_conv-1",
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable={
-                "conversation_id": "conv-1",
-                "user_messages": ["delete the repo"],
-            },
-            user_messages=["the agent's paraphrase"],
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "conversation_id": "conv-1",
+                    "user_messages": ["delete the repo"],
+                },
+                user_messages=["the agent's paraphrase"],
+            )
         )["configurable"]
 
         assert configurable["conversation_id"] == "conv-1"
@@ -351,28 +361,179 @@ class TestBuildAgentConfig:
         assert configurable["thread_id"] == "github_executor_conv-1"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_stream_id_always_comes_from_the_parent(self, mock_providers):
+    async def test_parent_overrides_child_for_the_verbatim_user_request(self, mock_providers):
+        """Same rule as ``user_messages``, and for the same reason: comms establishes
+        the user's raw words once, and a child agent only ever has its parent's
+        paraphrase to offer. ``call_executor`` reads this to build the executor brief,
+        so a child winning here would put the paraphrase back where the verbatim copy
+        belongs — the exact failure this key exists to prevent."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "conversation_id": "conv-1",
+                    "user_request": "delete the repo",
+                },
+                user_request="the agent's paraphrase",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "delete the repo"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
+        """With no parent there is nothing to inherit, so the value passed in is the
+        one that lands — this is the comms root, where the raw message enters."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1",
+                user=FAKE_USER,
+                agent_name="comms_agent",
+                user_request="pls archive the junk mail",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "pls archive the junk mail"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
+        self, mock_providers
+    ) -> None:
+        """``user_preferences`` / ``writing_style`` follow the exact same rule as
+        ``user_messages`` above: established once wherever the root call site has
+        the full user document (comms), a child agent (executor, a handoff
+        subagent) never has its own copy to prefer, so the parent's value wins."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1",
+                user=FAKE_USER,
+                agent_name="gmail_agent",
+                base_configurable={
+                    "conversation_id": "conv-1",
+                    "user_preferences": {"profession": "engineer"},
+                    "writing_style": {"summary": "terse"},
+                },
+            )
+        )["configurable"]
+
+        assert configurable["user_preferences"] == {"profession": "engineer"}
+        assert configurable["writing_style"] == {"summary": "terse"}
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_no_parent_and_no_explicit_value_leaves_preferences_absent(
+        self, mock_providers
+    ) -> None:
+        """A root call site with no onboarding data (e.g. a dev user who hasn't
+        onboarded) must not fabricate a value — the context section reads a
+        missing key as "render nothing", never as a stale default."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1", user=FAKE_USER, agent_name="executor_agent"
+            )
+        )["configurable"]
+
+        assert configurable["user_preferences"] is None
+        assert configurable["writing_style"] is None
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_is_the_conversation_when_there_is_no_parent(self, mock_providers):
+        """The sticky-routing key defaults to the conversation id itself."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            )
+        )["configurable"]
+
+        assert configurable["session_id"] == CONV_ID
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_is_inherited_verbatim_from_the_parent(self, mock_providers):
+        """Every agent in the tree routes on the parent's sticky key, not its own id.
+
+        A child is spawned with a wrapped thread id as its ``conversation_id``, so
+        deriving the key locally would send it to a provider with a cold cache.
+        """
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"session_id": "conv-1"},
+            )
+        )["configurable"]
+
+        assert configurable["session_id"] == "conv-1"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_session_id_survives_a_parent_that_carries_none(self, mock_providers):
+        """A parent that explicitly holds no sticky key hands down that absence.
+
+        Present-but-None and absent are different: the key is inherited on
+        presence, so a parent routing without one must not have a child invent one.
+        """
+        mock_providers.get.return_value = None
+
+        with_none = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"session_id": None},
+            )
+        )["configurable"]
+        without_key = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"selected_tool": "web_search"},
+            )
+        )["configurable"]
+
+        assert with_none["session_id"] is None
+        assert without_key["session_id"] == CONV_ID
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_stream_id_always_comes_from_the_parent(self, mock_providers):
         """Pass-through, not a fallback: a child never invents its own stream."""
         mock_providers.get.return_value = None
 
-        with_parent = build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable={"stream_id": "stream-9"},
+        with_parent = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={"stream_id": "stream-9"},
+            )
         )["configurable"]
-        without_parent = build_agent_config(
-            conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+        without_parent = (
+            await build_agent_config(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            )
         )["configurable"]
 
         assert with_parent["stream_id"] == "stream-9"
         assert without_parent["stream_id"] is None
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_posthog_callback_added(self, mock_providers):
+    async def test_posthog_callback_added(self, mock_providers):
         mock_providers.get.return_value = MagicMock()  # posthog client present
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -380,11 +541,11 @@ class TestBuildAgentConfig:
         assert len(config["callbacks"]) >= 1
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_usage_metadata_callback(self, mock_providers):
+    async def test_usage_metadata_callback(self, mock_providers):
         mock_providers.get.return_value = None
 
         usage_cb = MagicMock()
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -393,10 +554,10 @@ class TestBuildAgentConfig:
         assert usage_cb in config["callbacks"]
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_selected_tool_and_category(self, mock_providers):
+    async def test_selected_tool_and_category(self, mock_providers):
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -407,10 +568,10 @@ class TestBuildAgentConfig:
         assert config["configurable"]["tool_category"] == "web"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_bot_source_sets_bot_category_and_channel(self, mock_providers) -> None:
+    async def test_bot_source_sets_bot_category_and_channel(self, mock_providers) -> None:
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -424,10 +585,10 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_channel"] == "whatsapp"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_web_source_sets_ui_category(self, mock_providers) -> None:
+    async def test_web_source_sets_ui_category(self, mock_providers) -> None:
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -438,10 +599,10 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_channel"] == "web"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_missing_source_defaults_to_background(self, mock_providers) -> None:
+    async def test_missing_source_defaults_to_background(self, mock_providers) -> None:
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="comms_agent",
@@ -453,12 +614,12 @@ class TestBuildAgentConfig:
         assert config["metadata"]["source_channel"] == "background"
 
     @patch("app.helpers.agent_helpers.providers")
-    def test_source_inherited_from_base_configurable(self, mock_providers) -> None:
+    async def test_source_inherited_from_base_configurable(self, mock_providers) -> None:
         """A child agent (e.g. executor) inherits the channel from its parent and
         recomputes the category — so background runs are still tagged Bot/UI."""
         mock_providers.get.return_value = None
 
-        config = build_agent_config(
+        config = await build_agent_config(
             conversation_id=CONV_ID,
             user=FAKE_USER,
             agent_name="executor",
@@ -527,19 +688,8 @@ class TestBuildInitialState:
 class TestExecuteGraphSilent:
     async def test_accumulates_message_content(self):
         """Verifies AIMessageChunk content from comms_agent is accumulated."""
-        chunk = MagicMock()
-        chunk.text = "Hello "
-        chunk.__class__.__name__ = "AIMessageChunk"
-        # Make isinstance check work
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk2 = MagicMock(spec=AIMC)
-        chunk2.text = "world"
-        chunk2.content = "world"
-
-        chunk1 = MagicMock(spec=AIMC)
-        chunk1.text = "Hello "
-        chunk1.content = "Hello "
+        chunk1 = AIMessageChunk(content="Hello ", id="msg-1")
+        chunk2 = AIMessageChunk(content="world", id="msg-1")
 
         events = [
             ((), "messages", (chunk1, {"agent_name": "comms_agent"})),
@@ -558,11 +708,7 @@ class TestExecuteGraphSilent:
         assert msg == "Hello world"
 
     async def test_skips_silent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "should be skipped"
-        chunk.content = "should be skipped"
+        chunk = AIMessageChunk(content="should be skipped", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent", "silent": True})),
@@ -580,11 +726,7 @@ class TestExecuteGraphSilent:
         assert msg == ""
 
     async def test_skips_non_comms_agent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "executor text"
-        chunk.content = "executor text"
+        chunk = AIMessageChunk(content="executor text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "executor_agent"})),
@@ -603,13 +745,20 @@ class TestExecuteGraphSilent:
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
     async def test_custom_events_merged(self, mock_process):
-        mock_process.return_value = {
-            "tool_data": [{"tool_name": "custom_tool"}],
-            "follow_up_actions": ["action1"],
-        }
+        """tool_data entries ACCUMULATE across events while every other key is
+        merged by name — a second event's tool_data must not replace the first
+        event's entries."""
+        mock_process.side_effect = [
+            {"tool_data": [{"tool_name": "first_tool"}]},
+            {
+                "tool_data": [{"tool_name": "custom_tool"}],
+                "follow_up_actions": ["action1"],
+            },
+        ]
 
         events = [
             ((), "custom", {"some": "data"}),
+            ((), "custom", {"other": "data"}),
         ]
 
         graph = AsyncMock()
@@ -620,7 +769,10 @@ class TestExecuteGraphSilent:
             {},
             {"configurable": {"user_id": USER_ID}},
         )
-        assert len(tool_data["tool_data"]) == 1
+        assert [e["tool_name"] for e in tool_data["tool_data"]] == [
+            "first_tool",
+            "custom_tool",
+        ]
         assert tool_data["follow_up_actions"] == ["action1"]
 
     async def test_todo_progress_accumulated(self):
@@ -788,6 +940,82 @@ class TestExecuteGraphSilent:
         assert mock_format.await_count == 1  # the duplicate is not formatted again
         assert len(tool_data["tool_data"]) == 1
 
+    async def test_a_handoff_preamble_is_never_persisted(self):
+        """Text that turns out to accompany a tool call is narration, not a
+        reply. The silent driver holds it by message id and drops it when the
+        node's own boundary reveals the handoff — the same rule the streaming
+        driver enforces, on the path workflows and background runs take."""
+        preamble = AIMessageChunk(content="let me get that set up", id="msg-1")
+        handoff = AIMessage(
+            content="let me get that set up",
+            id="msg-1",
+            tool_calls=[{"id": "tc_1", "name": "call_executor", "args": {"task": "x"}}],
+        )
+
+        events = [
+            ((), "messages", (preamble, {"agent_name": "comms_agent"})),
+            ((), "updates", {"agent": {"messages": [handoff]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        with patch(
+            "app.helpers.agent_helpers.format_tool_call_entry",
+            new_callable=AsyncMock,
+            return_value={"tool_name": "tool_calls_data", "data": {}},
+        ):
+            msg, tool_data = await execute_graph_silent(
+                graph,
+                {},
+                {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
+            )
+
+        assert msg == ""
+        # ...and silencing the narration did not silence the tool card.
+        assert len(tool_data["tool_data"]) == 1
+
+    async def test_a_tool_free_reply_survives_its_boundary(self):
+        """The other half of the same rule: a message that ends without a tool
+        call is the answer, and the boundary must release it."""
+        chunk = AIMessageChunk(content="all set up now.", id="msg-1")
+        reply = AIMessage(content="all set up now.", id="msg-1")
+
+        events = [
+            ((), "messages", (chunk, {"agent_name": "comms_agent"})),
+            ((), "updates", {"agent": {"messages": [reply]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        msg, _ = await execute_graph_silent(
+            graph,
+            {},
+            {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
+        )
+
+        assert msg == "all set up now."
+
+    async def test_a_non_comms_run_never_inspects_boundaries(self):
+        """The executor's text is read by comms, never by a person, so it is
+        never accumulated and its boundaries decide nothing."""
+        chunk = AIMessageChunk(content="executor text", id="msg-1")
+        reply = AIMessage(content="executor text", id="msg-1")
+
+        events = [
+            ((), "messages", (chunk, {"agent_name": "executor_agent"})),
+            ((), "updates", {"agent": {"messages": [reply]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        msg, _ = await execute_graph_silent(
+            graph,
+            {},
+            {"agent_name": "executor_agent", "configurable": {"user_id": USER_ID}},
+        )
+
+        assert msg == ""
+
 
 # ---------------------------------------------------------------------------
 # execute_graph_streaming
@@ -812,14 +1040,33 @@ class TestExecuteGraphStreaming:
         assert any("nostream" in r for r in results)
 
     @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_a_run_that_was_never_cancelled_says_so_by_omission(self, mock_sm):
+        """The endpoint keys the cancel path off this marker. A run that always
+        reported itself cancelled would close every stream through the
+        interruption path — recording an interruption that never happened and
+        acking a cancel nobody asked for."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        chunk = AIMessageChunk(content="done.", id="msg-1")
+        events = [((), "messages", (chunk, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = [
+            frame
+            async for frame in execute_graph_streaming(
+                graph, {}, {"agent_name": "comms_agent", "configurable": {"stream_id": "s1"}}
+            )
+        ]
+
+        marker = next(r for r in results if r.startswith("nostream: "))
+        assert json.loads(marker.removeprefix("nostream: ")) == {"complete_message": "done."}
+
+    @patch("app.helpers.agent_helpers.stream_manager")
     async def test_cancellation(self, mock_sm):
         mock_sm.is_cancelled = AsyncMock(return_value=True)
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "text"
-        chunk.content = "text"
+        chunk = AIMessageChunk(content="text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),
@@ -843,11 +1090,7 @@ class TestExecuteGraphStreaming:
         mock_sm.is_cancelled = AsyncMock(return_value=False)
         mock_format_sse.return_value = "data: Hello\n\n"
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "Hello"
-        chunk.content = "Hello"
+        chunk = AIMessageChunk(content="Hello", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),

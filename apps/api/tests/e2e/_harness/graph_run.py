@@ -43,6 +43,9 @@ SELECT_NODE = "select_tools"
 TOOLS_NODE = "tools"
 #: Terminal node for ``finish_task``.
 FINISH_NODE = "finish_task"
+#: Where the completion guard sends a run back for one more pass instead of
+#: letting it end on demonstrably unfinished work.
+NUDGE_NODE = "nudge_continue"
 
 #: The memory engine double a comms graph was built with, so a test can assert
 #: passive ingestion actually ran.
@@ -245,6 +248,26 @@ class RecordingFakeModel(BindableToolsFakeModel):
         return self._generate(messages, *args, **kwargs)
 
 
+#: What a scripted hand-off sends for `call_executor`'s required
+#: `acceptance_criteria`. The e2e suites are about graph wiring, not the tool's
+#: schema — that the field is required at all is pinned in
+#: `tests/unit/agents/test_executor_handoff_brief.py`. Filling it here keeps one
+#: schema change from rewriting fifty scripts by hand.
+SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
+
+
+def call(name: str, args: dict[str, Any] | None = None, id: str = "c1") -> dict[str, Any]:
+    """One scripted tool call.
+
+    Lived in four e2e modules as identical copies until `acceptance_criteria`
+    became required and every one of them broke at once.
+    """
+    call_args = dict(args or {})
+    if name == "call_executor" and "acceptance_criteria" not in call_args:
+        call_args["acceptance_criteria"] = list(SCRIPTED_ACCEPTANCE_CRITERIA)
+    return {"name": name, "args": call_args, "id": id}
+
+
 def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
     """A fake model that replays ``script``, one entry per model call.
 
@@ -267,7 +290,7 @@ def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
             responses.append(AIMessage(content="", tool_calls=list(item)))
         else:
             responses.append(AIMessage(content=str(item)))
-    return RecordingFakeModel(responses=responses)
+    return RecordingFakeModel(responses=responses, profile={"max_input_tokens": 1_000_000})
 
 
 def call_all_tools_response_generator(

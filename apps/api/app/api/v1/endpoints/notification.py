@@ -36,6 +36,7 @@ from app.models.notification.request_models import (
     PaginatedNotificationsResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -116,7 +117,7 @@ async def get_notifications(
     try:
         notifications, notification_count = await asyncio.gather(
             notification_service.get_user_notifications(
-                user_id, status, limit + 1, offset, channel_type
+                user_id, status, limit, offset, channel_type
             ),
             notification_service.get_user_notifications_count(user_id, status, channel_type),
         )
@@ -195,6 +196,15 @@ async def update_channel_preferences(
         )
 
         prefs = await fetch_channel_preferences(user_id)
+        changed = preferences.model_dump(exclude_unset=True)
+        capture_context_event(
+            AnalyticsEvents.NOTIFICATION_PREFERENCE_UPDATED,
+            {
+                "changed_channel_count": len(changed),
+                "channels_enabled": sorted(c for c, on in changed.items() if on is True),
+                "channels_disabled": sorted(c for c, on in changed.items() if on is False),
+            },
+        )
         log.set(operation="update_channel_preferences", outcome="success")
         return ChannelPreferences(
             telegram=prefs["telegram"],

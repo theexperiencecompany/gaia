@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-
+import { getToolDisplayName } from "@shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 
@@ -37,12 +37,7 @@ export default function WorkflowStep({
   // would otherwise show a raw uuid); fall back to the category. Title-case the
   // result so lowercase custom names render capitalized.
   const categoryLabel =
-    step.category === "gaia"
-      ? "GAIA"
-      : (
-          getIntegrationName(step.category) ??
-          step.category.replaceAll("_", " ")
-        ).replace(/\b\w/g, (c) => c.toUpperCase());
+    getIntegrationName(step.category) ?? getToolDisplayName(step.category);
 
   return (
     <div className="relative flex items-start gap-5">

@@ -1,13 +1,13 @@
 /**
  * Shared @gaia/shared mock factory for bot adapter tests.
  *
- * All adapter tests mock @gaia/shared identically except for platform name,
+ * All adapter tests mock @gaia/shared/bots identically except for platform name,
  * STREAMING_DEFAULTS, and platform-specific converters. This factory avoids
  * duplicating the common ~40-line BaseBotAdapter stub across every test file.
  *
  * Usage in a test file:
  *
- *   vi.mock("@gaia/shared", async () => {
+ *   vi.mock("@gaia/shared/bots", async () => {
  *     const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
  *     return makeGaiaSharedMock("whatsapp", {
  *       streamingDefaults: { whatsapp: { editIntervalMs: 2000, streaming: false, platform: "whatsapp" } },
@@ -29,7 +29,7 @@ interface GaiaSharedMockOptions {
 }
 
 /**
- * Creates the @gaia/shared mock object with a BaseBotAdapter stub and shared
+ * Creates the @gaia/shared/bots mock object with a BaseBotAdapter stub and shared
  * helper mocks. Callers supply platform-specific overrides.
  */
 export function makeGaiaSharedMock(
@@ -51,6 +51,19 @@ export function makeGaiaSharedMock(
     config = {};
     commands = new Map();
     analytics = undefined;
+
+    /** Mirrors the real base class: identity-bound analytics for shared helpers. */
+    protected async analyticsFor(platformUserId: string) {
+      return {
+        client: this.analytics,
+        distinctId: await this.resolveDistinctId(platformUserId),
+      };
+    }
+
+    /** Unlinked-user path — adapter tests assert routing, not identity. */
+    protected async resolveDistinctId(platformUserId: string): Promise<string> {
+      return `${this.platform}:${platformUserId}`;
+    }
 
     protected async dispatchCommand(
       name: string,
@@ -187,6 +200,9 @@ export function makeGaiaSharedMock(
     friendlyMediaError: vi.fn(
       (kind: string) => `Couldn't process that ${kind}.`,
     ),
+    // Plain shared constant every adapter's download path imports — the real
+    // value, so a test asserting the deadline asserts production's.
+    MEDIA_READ_TIMEOUT_MS: 30_000,
     unsupportedMediaMessage: vi.fn(
       (kind: string) => `I can't process ${kind} yet.`,
     ),

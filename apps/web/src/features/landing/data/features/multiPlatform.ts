@@ -6,10 +6,10 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "MicrophoneIcon",
     title: "Voice",
-    tagline: "Talk to GAIA hands-free — real-time voice conversations",
+    tagline: "Talk to GAIA hands-free: real-time voice conversations",
     headline: "Say it. GAIA handles the rest.",
     subheadline:
-      "Activate voice mode and have a real-time conversation — Deepgram transcribes, GAIA responds with ElevenLabs TTS, and all the same tools are available hands-free.",
+      "Activate voice mode and have a real-time conversation. Deepgram transcribes, GAIA responds with ElevenLabs TTS, and all the same tools are available hands-free.",
     benefits: [
       {
         icon: "Clock01Icon",
@@ -54,7 +54,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         question: "Can GAIA take real actions in voice mode?",
         answer:
-          "Yes. Voice mode has the same tool access as chat — create tasks, send emails, search the web, set reminders, and more, all hands-free.",
+          "Yes. Voice mode has the same tool access as chat: create tasks, send emails, search the web, set reminders, and more, all hands-free.",
       },
       {
         question: "What speech-to-text engine is used?",
@@ -76,17 +76,17 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         title: "Hands-free task creation while commuting",
         description:
-          "A founder commutes by train and dictates tasks to GAIA hands-free — GAIA creates them with the right project and priority parsed from the spoken instruction.",
+          "A founder commutes by train and dictates tasks to GAIA hands-free, and GAIA creates them with the right project and priority parsed from the spoken instruction.",
       },
       {
         title: "Quick email reply without typing",
         description:
-          "A manager says 'reply to the last email from Sarah and tell her the report is ready' — GAIA drafts and sends without the user touching a keyboard.",
+          "A manager says 'reply to the last email from Sarah and tell her the report is ready,' and GAIA drafts and sends without the user touching a keyboard.",
       },
       {
         title: "Real-time research during a walk",
         description:
-          "A researcher asks GAIA about a topic while walking, receives a spoken summary, and follows up with clarifying questions — a full research session hands-free.",
+          "A researcher asks GAIA about a topic while walking, receives a spoken summary, and follows up with clarifying questions: a full research session hands-free.",
       },
     ],
     relatedSlugs: ["smart-chat", "mobile", "reminders"],
@@ -100,7 +100,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     tagline: "Use GAIA directly inside your Slack workspace",
     headline: "@GAIA in Slack, doing real work.",
     subheadline:
-      "Mention @GAIA in any channel or DM, run slash commands, or receive automated workflow posts — all from inside the Slack your team already uses.",
+      "Mention @GAIA in any channel or DM, run slash commands, or receive automated workflow posts, all from inside the Slack your team already uses.",
     benefits: [
       {
         icon: "AtIcon",
@@ -112,7 +112,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
         icon: "CommandIcon",
         title: "Slash commands",
         description:
-          "/gaia, /todo, /workflow — full GAIA capabilities through native Slack commands.",
+          "/gaia, /todo, /workflow: full GAIA capabilities through native Slack commands.",
       },
       {
         icon: "Notification01Icon",
@@ -160,14 +160,14 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         question: "Can I use GAIA in a Slack DM?",
         answer:
-          "Yes. Open a direct message with the GAIA app and use it exactly like the web chat — full tool access, memory, and context.",
+          "Yes. Open a direct message with the GAIA app and use it exactly like the web chat: full tool access, memory, and context.",
       },
     ],
     useCases: [
       {
         title: "Instant GitHub PR summary in Slack",
         description:
-          "A developer mentions @GAIA in the #engineering channel asking for a summary of all open PRs — GAIA queries GitHub and posts a formatted list in under 10 seconds.",
+          "A developer mentions @GAIA in the #engineering channel asking for a summary of all open PRs, and GAIA queries GitHub and posts a formatted list in under 10 seconds.",
       },
       {
         title: "Daily standup briefing posted automatically",
@@ -191,7 +191,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     tagline: "Full GAIA capabilities in your Discord server",
     headline: "GAIA lives in your Discord server.",
     subheadline:
-      "Use slash commands, mention GAIA in channels, execute workflows, and get streaming AI responses — all inside Discord with rich embeds and context menus.",
+      "Use slash commands, mention GAIA in channels, execute workflows, and get streaming AI responses, all inside Discord with rich embeds and context menus.",
     benefits: [
       {
         icon: "LayoutIcon",
@@ -263,7 +263,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         title: "Summarize a long discussion thread",
         description:
-          "A moderator right-clicks a long thread and selects Summarize with GAIA — a concise embed with key points appears in the channel within seconds.",
+          "A moderator right-clicks a long thread and selects Summarize with GAIA, and a concise embed with key points appears in the channel within seconds.",
       },
       {
         title: "Automated project updates to Discord",
@@ -279,10 +279,10 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     category: "Multi-Platform",
     icon: "AirplaneIcon",
     title: "Telegram Bot",
-    tagline: "GAIA in your Telegram — commands, DMs, group chats",
+    tagline: "GAIA in your Telegram: commands, DMs, group chats",
     headline: "GAIA in your Telegram, anywhere in the world.",
     subheadline:
-      "Use /gaia, /todo, and /workflow commands in DMs or groups — with native command suggestion menus and automatic ephemeral responses in group chats.",
+      "Use /gaia, /todo, and /workflow commands in DMs or groups, with native command suggestion menus and automatic ephemeral responses in group chats.",
     benefits: [
       {
         icon: "CommandIcon",
@@ -314,7 +314,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
         number: "02",
         title: "Link your GAIA account",
         description:
-          "Send /start and follow the link to connect your GAIA account — one-time setup.",
+          "Send /start and follow the link to connect your GAIA account: one-time setup.",
       },
       {
         number: "03",
@@ -349,7 +349,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         title: "Reminders on the go via Telegram",
         description:
-          "A consultant sets reminders through the Telegram bot while traveling — no app switching, no desktop needed. Reminders arrive as Telegram messages at the right time.",
+          "A consultant sets reminders through the Telegram bot while traveling. No app switching, no desktop needed. Reminders arrive as Telegram messages at the right time.",
       },
       {
         title: "Quick task capture from anywhere",
@@ -373,7 +373,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
     tagline: "The full GAIA experience on iOS and Android",
     headline: "The full GAIA experience on mobile.",
     subheadline:
-      "Every feature available on web — chat, todos, workflows, integrations, voice — optimized for iOS and Android with native push notifications and offline support.",
+      "Every feature available on web (chat, todos, workflows, integrations, voice) optimized for iOS and Android with native push notifications and offline support.",
     benefits: [
       {
         icon: "Notification01Icon",
@@ -391,7 +391,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
         icon: "TouchInteractionIcon",
         title: "Touch-optimized",
         description:
-          "iMessage-style bubbles, long-press bulk select, bottom sheets, haptic feedback — built for thumbs.",
+          "iMessage-style bubbles, long-press bulk select, bottom sheets, haptic feedback: built for thumbs.",
       },
     ],
     howItWorks: [
@@ -405,7 +405,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
         number: "02",
         title: "All your data syncs instantly",
         description:
-          "Conversations, todos, workflows, and integrations are all available immediately — no extra setup.",
+          "Conversations, todos, workflows, and integrations are all available immediately. No extra setup.",
       },
       {
         number: "03",
@@ -418,7 +418,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         question: "Is the mobile app a full version or a lighter version?",
         answer:
-          "Full version. Every feature available on web — chat, todos, workflows, integrations, voice, goals, reminders — is available on mobile with the same capabilities.",
+          "Full version. Every feature available on web (chat, todos, workflows, integrations, voice, goals, reminders) is available on mobile with the same capabilities.",
       },
       {
         question: "Does the mobile app work offline?",
@@ -440,7 +440,7 @@ export const MULTI_PLATFORM_FEATURES: FeatureData[] = [
       {
         title: "Morning briefing on the commute",
         description:
-          "An executive opens GAIA on their phone every morning to review the automated briefing — calendar, emails, and todos for the day — before arriving at the office.",
+          "An executive opens GAIA on their phone every morning to review the automated briefing (calendar, emails, and todos for the day) before arriving at the office.",
       },
       {
         title: "Voice task capture while driving",

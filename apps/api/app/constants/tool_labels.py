@@ -154,6 +154,9 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "search_todo_context": "Checking what I'm tracking",
     "list_tracked_todos": "Reviewing tracked work",
     "complete_tracked_todo": "Wrapping that up",
+    # ── Native: billing ────────────────────────────────────────────────
+    "get_subscription_details": "Checking your subscription",
+    "create_upgrade_link": "Getting your upgrade link",
     # ── Native: support, manual, skills ────────────────────────────────
     "create_support_ticket": "Creating a support ticket",
     "read_manual": "Reading the manual",

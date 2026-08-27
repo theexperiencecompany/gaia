@@ -15,7 +15,7 @@ function RoadmapCard() {
   return (
     <div className="rounded-2xl bg-zinc-800 p-4 w-fit min-w-[280px]">
       <p className="text-sm font-semibold text-zinc-100 mb-3">
-        Marathon Roadmap — June
+        Marathon Roadmap: June
       </p>
       <div className="space-y-2">
         {MILESTONES.map((milestone, index) => (

@@ -4,7 +4,6 @@ Usage tracking API endpoints.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -28,8 +27,10 @@ from app.schemas.usage import (
     FeaturePeriodUsage,
     FeatureUpgrade,
     FeatureUsageSummary,
+    UsageActivityResponse,
     UsageSummary,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.cost_budget import get_budget_status
 from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import get_activity
@@ -59,6 +60,12 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.USAGE_QUERIED,
+            # plan_type is always a PlanType enum here (subscription.plan_type
+            # defaults to PlanType.FREE) — the hasattr fallback was dead code.
+            {"plan_type": user_plan.value},
+        )
         return UsageSummary(
             user_id=user_id,
             plan_type=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
@@ -137,8 +144,8 @@ async def get_usage_history(
 async def get_usage_activity(
     days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
     user_id: str = Depends(get_user_id),
-) -> dict[str, Any]:
-    """Daily activity for the heatmap: per-day action counts, streak, and standing."""
+) -> UsageActivityResponse:
+    """Daily activity for the heatmap: per-day actions and tokens, streak, and standing."""
     log.set(operation="get_usage_activity", period=f"{days}d")
     try:
         result = await get_activity(user_id, days)

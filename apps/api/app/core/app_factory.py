@@ -23,6 +23,7 @@ from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.core.lazy_loader import providers
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
 
@@ -30,7 +31,8 @@ from app.core.middleware import configure_middleware
 # on the default registry at app startup. Without this the storage layer is
 # lazy-imported on first use, and /metrics omits the fs_op_* metadata lines
 # until the first FS-shaped operation runs.
-from app.services.storage import metrics as _fs_metrics  # noqa: F401
+# Imported for router-registration side effects.
+from app.services.storage import metrics as _fs_metrics  # noqa: F401 -- side effects
 from app.utils.errors import AppError
 from shared.py.wide_events import log as wide_log
 
@@ -112,7 +114,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(
-        request: Request, exc: RequestValidationError
+        request: Request,  # noqa: ARG001 -- Starlette calls exception handlers as handler(conn, exc)
+        exc: RequestValidationError,
     ) -> JSONResponse:
         """Log validation errors with field-level detail and return 422."""
         errors = [
@@ -167,14 +170,33 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        """Return the generic 500 body for exceptions that escaped everything.
+        """Capture uncaught exceptions and return the generic 500 body.
 
-        No logging here on purpose: this handler runs in ServerErrorMiddleware,
-        OUTSIDE the LoggingMiddleware boundary, so wide-event calls would land
-        on an orphan state — and the boundary's own except path has already
-        recorded the exception and emitted the http_request line by the time
-        this runs.
+        No wide-event logging happens here: this handler runs in
+        ServerErrorMiddleware, outside the LoggingMiddleware boundary, so those
+        calls would land on an orphan state. The shared PostHog client is
+        initialized during lifespan startup and records the exception centrally.
         """
+        # Guard like PostHogRequestContextMiddleware: this handler runs even in
+        # apps built without the production lifespan (tests, scripts), where the
+        # provider is never registered — providers.get would raise KeyError and
+        # a raising 500-handler turns the JSON body into a bare Starlette 500.
+        posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
+        if posthog_client is not None:
+            # Attribute explicitly. PostHogRequestContextMiddleware identifies
+            # inside `with new_context():` around call_next, so an exception
+            # propagating out of it unwinds that context before reaching this
+            # handler in ServerErrorMiddleware — every 500 would otherwise land
+            # on a fresh anonymous profile, making crashes unattributable to the
+            # user who hit them. request.state survives because it lives on the
+            # request object, not a contextvar.
+            user = getattr(request.state, "user", None)
+            user_id = user.get("user_id") if user else None
+            if user_id:
+                posthog_client.capture_exception(exc, distinct_id=str(user_id))
+            else:
+                posthog_client.capture_exception(exc)
+
         return JSONResponse(
             status_code=500,
             content={"error": "internal_server_error"},

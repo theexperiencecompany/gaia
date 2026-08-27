@@ -14,11 +14,11 @@ import { useEffect, useRef, useState } from "react";
 const BRIEFING_ITEMS = [
   {
     icon: Mail01Icon,
-    text: "3 emails need your reply — including Sarah from legal",
+    text: "3 emails need your reply, including Sarah from legal",
   },
   {
     icon: Calendar01Icon,
-    text: "2 meetings today — standup at 10am, demo at 3pm",
+    text: "2 meetings today: standup at 10am, demo at 3pm",
   },
   {
     icon: SourceCodeCircleIcon,

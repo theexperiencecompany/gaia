@@ -1,8 +1,6 @@
 import {
-  Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
-  DashboardSquare02Icon,
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
@@ -36,9 +34,7 @@ export const NAV_BUTTONS: {
   label: string;
   page?: DemoPage;
 }[] = [
-  { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
-  { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
-  { Icon: CheckListIcon, label: "Todos", page: "todos" },
+  { Icon: CheckListIcon, label: "Tasks", page: "todos" },
   { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
   { Icon: ZapIcon, label: "Workflows", page: "workflows" },
   { Icon: MessageMultiple02Icon, label: "Chats", page: "chats" },
@@ -100,73 +96,13 @@ export const DUMMY_NOTIFICATIONS = [
   },
 ];
 
-// ─── Demo models ──────────────────────────────────────────────────────────────
-export const DEMO_MODELS = [
-  {
-    id: "claude-sonnet-4-5-20250929",
-    name: "Claude Sonnet 4.5",
-    provider: "Anthropic",
-    description: "Balanced performance and intelligence.",
-    tier: "free",
-    is_default: true,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "claude-haiku-4-5-20251001",
-    name: "Claude Haiku 4.5",
-    provider: "Anthropic",
-    description: "Fast and compact. Best for simple tasks.",
-    tier: "free",
-    is_default: false,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6",
-    provider: "Anthropic",
-    description: "Most capable. Best for complex reasoning.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/logos/logo.webp",
-  },
-  {
-    id: "gemini-3-flash",
-    name: "Gemini 3 Flash",
-    provider: "Google",
-    description: "Fast and efficient for everyday tasks.",
-    tier: "free",
-    is_default: false,
-    logo: "/images/icons/gemini.webp",
-  },
-  {
-    id: "gemini-3-pro",
-    name: "Gemini 3 Pro",
-    provider: "Google",
-    description: "Google's most advanced reasoning model.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/icons/gemini.webp",
-  },
-  {
-    id: "grok-4-1",
-    name: "Grok 4.1",
-    provider: "xAI",
-    description: "xAI's latest model with real-time web access.",
-    tier: "pro",
-    is_default: false,
-    logo: "/images/icons/grok.webp",
-  },
-];
-
-export const MODEL_PROVIDERS = ["Anthropic", "Google", "xAI"];
-
 // ─── Founder email for EmailComposeCard ───────────────────────────────────────
 export const FOUNDER_EMAIL = {
   to: ["investors@sequoia.com"],
-  subject: "GAIA — Q4 Update: 3x MRR, $2.1M ARR, Series A Prep",
+  subject: "Q4 Update from GAIA: 3x MRR, $2.1M ARR, Series A Prep",
   body: `Hi all,
 
-Q4 Update — November 2025
+Q4 Update: November 2025
 
 → MRR: $175K (+3x QoQ)
 → ARR: $2.1M run rate
@@ -175,7 +111,8 @@ Q4 Update — November 2025
 
 Heading into Series A. Happy to connect this week.
 
-— Aryan`,
+Best,
+Aryan`,
   thread_id: "demo-founder",
 };
 
@@ -216,7 +153,7 @@ export const USE_CASES: UseCase[] = [
       "Pulling Q4 metrics",
     ],
     botResponse:
-      "I've drafted your Q4 investor update using 12 recent investor emails and your Google Sheets metrics. It covers 3x MRR growth, key milestones, and a Series A narrative — review and send when you're ready:",
+      "I've drafted your Q4 investor update using 12 recent investor emails and your Google Sheets metrics. It covers 3x MRR growth, key milestones, and a Series A narrative. Review and send when you're ready:",
     finalCard: "email",
   },
   {
@@ -290,7 +227,7 @@ export const USE_CASES: UseCase[] = [
       "Drafting social content",
     ],
     botResponse:
-      "Based on your top performers, data-led threads get 3× more engagement. I've drafted 2 posts — one for X on Monday morning and one for LinkedIn mid-week — and logged both to your content calendar:",
+      "Based on your top performers, data-led threads get 3× more engagement. I've drafted 2 posts (one for X on Monday morning and one for LinkedIn mid-week) and logged both to your content calendar:",
     finalCard: "tools",
   },
   {
@@ -327,7 +264,7 @@ export const USE_CASES: UseCase[] = [
       "Reviewing your notes",
     ],
     botResponse:
-      "Here's your finals study plan built around 3 upcoming deadlines and your Notion lecture notes. I've created 5 prioritised tasks starting Monday — high-priority chapters first, mock exam Thursday, revision Friday:",
+      "Here's your finals study plan built around 3 upcoming deadlines and your Notion lecture notes. I've created 5 prioritised tasks starting Monday: high-priority chapters first, mock exam Thursday, revision Friday:",
     finalCard: "tasks",
   },
   {

@@ -11,14 +11,32 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.user_models import (
     OnboardingPreferences,
     OnboardingStatusResponse,
     UserDocument,
 )
+from app.services.analytics_service import AnalyticsEvents
 
 BASE_URL = "/api/v1/onboarding"
+ANALYTICS_PATCH = "app.api.v1.endpoints.onboarding.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
+
 STATUS_URL = f"{BASE_URL}/status"
 PHASE_URL = f"{BASE_URL}/phase"
 PREFERENCES_URL = f"{BASE_URL}/preferences"
@@ -107,6 +125,55 @@ class TestCompleteOnboarding:
         data = response.json()
         assert data["success"] is True
         assert data["message"] == "Onboarding completed successfully"
+
+
+class TestOnboardingAnalytics:
+    """Analytics captures on onboarding endpoints."""
+
+    async def test_complete_does_not_capture_completion_it_only_queues(self, client: AsyncClient):
+        """Submitting the form QUEUES the pipeline; it does not finish onboarding.
+
+        Capturing here counted the milestone at the wrong moment and counted
+        submissions whose pipeline later failed. The worker owns the event and
+        fires it once the phase actually reaches PERSONALIZATION_COMPLETE.
+        """
+        with (
+            patch(
+                _COMPLETE_ONBOARDING,
+                new_callable=AsyncMock,
+                return_value={
+                    "user_id": "507f1f77bcf86cd799439011",
+                    "name": "Test User",
+                },
+            ),
+            patch(
+                _REDIS_POOL_MANAGER + ".get_pool",
+                new_callable=AsyncMock,
+                return_value=AsyncMock(),
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.post(BASE_URL, json=_make_onboarding_request())
+
+        assert response.status_code == 200
+        captured = [call.args[0] for call in mock_capture.call_args_list]
+        assert AnalyticsEvents.ONBOARDING_COMPLETED not in captured
+
+    async def test_update_phase_captures_step_completed(self, client: AsyncClient):
+        with (
+            patch(_SET_PHASE, new_callable=AsyncMock, return_value=True),
+            patch(
+                _WEBSOCKET_MANAGER + ".broadcast_to_user",
+                new_callable=AsyncMock,
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.post(PHASE_URL, json={"phase": "getting_started"})
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.ONBOARDING_STEP_COMPLETED, {"phase": "getting_started"}
+        )
 
     async def test_complete_onboarding_missing_name_returns_422(self, client: AsyncClient):
         response = await client.post(
@@ -276,6 +343,31 @@ class TestUpdatePreferences:
         data = response.json()
         assert data["success"] is True
         assert data["message"] == "Preferences updated successfully"
+
+    async def test_update_preferences_captures_settings_changed(self, client: AsyncClient):
+        with (
+            patch(
+                _UPDATE_PREFERENCES,
+                new_callable=AsyncMock,
+                return_value={"user_id": "507f1f77bcf86cd799439011"},
+            ),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.patch(
+                PREFERENCES_URL,
+                json={"profession": "Engineer", "custom_instructions": "Be concise."},
+            )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
+            {
+                "setting": "onboarding_preferences",
+                "fields": ["custom_instructions", "profession"],
+                "response_style": None,
+                "has_custom_instructions": True,
+            },
+        )
 
     async def test_update_preferences_empty_body_allowed(self, client: AsyncClient):
         """Empty optional fields should be accepted."""

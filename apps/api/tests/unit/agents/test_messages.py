@@ -8,10 +8,10 @@ The static main prompt is byte-identical across users/channels. Per-user
 identity (name, timezone, preferences, integrations) lives in the stable
 dynamic-context message; volatile per-turn content (memory recall, knowledge,
 skills, todos) lives in an optional memory-recall message. Both are built by
-``build_dynamic_context_messages``. The current-time HumanMessage is appended
+the shared context-assembly module. The current-time HumanMessage is appended
 LAST so minute ticks never shift the cacheable prefix. These tests exercise the
-orchestration — they patch ``create_system_message`` and
-``build_dynamic_context_messages`` and verify the assembled message list.
+orchestration — they patch ``create_system_message`` and ``assemble_context``
+and verify the assembled message list.
 """
 
 from typing import Any
@@ -20,8 +20,10 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
+from app.agents.context.assemble import AssembledContext
+from app.agents.context.slots import ONBOARDING_MARKER
+from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import construct_langchain_messages
-from app.helpers.message_helpers import DynamicContextMessages
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -53,11 +55,9 @@ def _patches(
             return_value=system_msg,
         ),
         "build_dynamic": patch(
-            "app.agents.core.messages.build_dynamic_context_messages",
+            "app.agents.core.messages.assemble_context",
             new_callable=AsyncMock,
-            return_value=DynamicContextMessages(
-                stable=dynamic_msg, memory_recall=memory_recall_msg
-            ),
+            return_value=AssembledContext(stable=dynamic_msg, volatile=memory_recall_msg),
         ),
         "format_workflow": patch(
             "app.agents.core.messages.format_workflow_execution_message",
@@ -166,13 +166,73 @@ class TestConstructLangchainMessages:
                 source="whatsapp",
             )
 
-        kwargs = mock_dyn.call_args.kwargs
-        assert kwargs["user_id"] == "uid-1"
-        assert kwargs["user_name"] == "Alice"
-        assert kwargs["user_timezone"] == "Asia/Kolkata"
-        assert kwargs["user_preferences"] == {"tone": "formal"}
-        assert kwargs["query"] == "hi"
-        assert kwargs["source"] == "whatsapp"
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.tier is AgentTier.COMMS
+        assert ctx.user_id == "uid-1"
+        assert ctx.user_name == "Alice"
+        assert ctx.user_timezone == "Asia/Kolkata"
+        assert ctx.user_preferences == {"tone": "formal"}
+        assert ctx.query == "hi"
+        assert ctx.source == "whatsapp"
+
+    @pytest.mark.asyncio
+    async def test_every_field_the_context_is_built_from_survives_the_trip(self) -> None:
+        """This function's whole job is turning the auth payload into the shape
+        assembly reads. Every field dropped here is a section that silently
+        renders nothing — the user's writing style stops being honoured, or a
+        background run believes a human is waiting — with no error anywhere.
+        """
+        p = _patches()
+        user_dict = {
+            "timezone": "Asia/Kolkata",
+            "onboarding": {
+                "preferences": {"tone": "formal"},
+                "writing_style": {"case": "lower"},
+            },
+        }
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                user_name="Alice",
+                user_dict=user_dict,
+                query="hi",
+                active_todo_id="todo-7",
+                execution_mode="background",
+                source="slack",
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.writing_style == {"case": "lower"}
+        assert ctx.active_todo_id == "todo-7"
+        assert ctx.execution_mode == "background"
+        assert ctx.source == "slack"
+
+    @pytest.mark.asyncio
+    async def test_a_user_with_no_onboarding_answers_carries_none_not_a_crash(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_id="uid-1", user_dict={}
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.user_timezone is None
+        assert ctx.user_preferences is None
+        assert ctx.writing_style is None
+
+    @pytest.mark.asyncio
+    async def test_an_unauthenticated_turn_carries_no_user_fields(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"] as mock_dyn, p["format_files"]:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_dict=None
+            )
+
+        ctx = mock_dyn.call_args.args[0]
+        assert ctx.user_timezone is None
+        assert ctx.user_preferences is None
+        assert ctx.writing_style is None
 
     @pytest.mark.asyncio
     async def test_source_passed_to_static_prompt_selector(self) -> None:
@@ -452,3 +512,207 @@ class TestTriggerContext:
 
         call_args = mock_wf.call_args
         assert call_args[0][2] == trigger
+
+
+class TestTheOnboardingProbeSeesTheUsersActualMessage:
+    """Whether a turn is an onboarding turn is decided partly by what the user
+    just said, so the probe has to receive the user's LATEST message — not the
+    first, not the assistant's reply, and not with the whitespace a chat client
+    leaves on it. Getting this wrong misclassifies the turn, and onboarding is
+    exactly when the agent knows least about the user.
+    """
+
+    @staticmethod
+    def _probe() -> Any:
+        return patch(
+            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+            new_callable=AsyncMock,
+            return_value=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_it_receives_the_latest_user_message_trimmed(self) -> None:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+            await construct_langchain_messages(
+                messages=[
+                    {"role": "user", "content": "an earlier question"},
+                    {"role": "assistant", "content": "an earlier answer"},
+                    {"role": "user", "content": "  what can you do?  "},
+                ],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="what can you do?")
+
+    @pytest.mark.asyncio
+    async def test_a_thread_ending_on_the_assistant_carries_no_user_message(self) -> None:
+        """A trailing assistant turn means the user has not spoken on this call;
+        passing its text would have the probe classify on GAIA's own words.
+
+        Reachable only alongside a selected tool — with neither a user message
+        nor a tool the function refuses the turn outright.
+        """
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            p["format_tool"],
+            self._probe() as probe,
+        ):
+            await construct_langchain_messages(
+                messages=[
+                    {"role": "user", "content": "hello"},
+                    {"role": "assistant", "content": "hi there"},
+                ],
+                user_id="uid-1",
+                conversation_id="conv-1",
+                selected_tool="gmail",
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+
+    @pytest.mark.asyncio
+    async def test_an_empty_thread_carries_no_user_message(self) -> None:
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            p["format_tool"],
+            self._probe() as probe,
+        ):
+            await construct_langchain_messages(
+                messages=[], user_id="uid-1", conversation_id="conv-1", selected_tool="gmail"
+            )
+
+        probe.assert_awaited_once_with("uid-1", "conv-1", latest_user_message="")
+
+    @pytest.mark.asyncio
+    async def test_a_turn_with_neither_a_message_nor_a_tool_is_refused(self) -> None:
+        """The refusal is what makes the two cases above reachable only with a
+        tool — worth pinning, since silently sending an empty turn to the model
+        would burn a call and return nothing useful."""
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"]:
+            with pytest.raises(ValueError, match="No human message or selected tool"):
+                await construct_langchain_messages(messages=[], user_id="uid-1")
+
+    @pytest.mark.asyncio
+    async def test_a_turn_outside_a_conversation_is_never_probed(self) -> None:
+        """Without a conversation there is no onboarding state to read, so the
+        Mongo probe would be a query on nothing."""
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe() as probe:
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}], user_id="uid-1"
+            )
+
+        probe.assert_not_awaited()
+
+
+class TestAnOnboardingTurnKeepsBothItsPromptAndTheUsersIdentity:
+    """The onboarding prompt used to be stamped ``memory_message`` — the stable
+    block's OWN marker — and emitted after it, so the single-occupant slot kept
+    the prompt and dropped the identity block. Every onboarding turn reached the
+    model with no user name, timezone, preferences or integrations manifest,
+    which is precisely the turn where knowing the user matters most.
+
+    It has its own slot now. Both halves are pinned here: the prompt arrives,
+    and it arrives *beside* identity rather than instead of it.
+    """
+
+    PROMPT = "Welcome! Ask about their inbox."
+
+    def _probe(self) -> Any:
+        return patch(
+            "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+            new_callable=AsyncMock,
+            return_value=self.PROMPT,
+        )
+
+    async def _run(self) -> list[Any]:
+        p = _patches()
+        with p["create_system"], p["build_dynamic"], p["format_files"], self._probe():
+            return await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_prompt_reaches_the_model_verbatim(self) -> None:
+        onboarding = [
+            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
+        ]
+
+        assert len(onboarding) == 1
+        assert onboarding[0].content == self.PROMPT
+
+    @pytest.mark.asyncio
+    async def test_the_identity_block_is_still_there(self) -> None:
+        assert DYNAMIC_MSG in await self._run()
+
+    @pytest.mark.asyncio
+    async def test_the_prompt_does_not_claim_the_stable_blocks_slot(self) -> None:
+        """Carrying ``memory_message`` is what made it evict identity; the
+        pruning node keeps only the latest holder of that marker."""
+        (onboarding,) = [
+            m for m in await self._run() if m.additional_kwargs.get(ONBOARDING_MARKER) is True
+        ]
+
+        assert onboarding.additional_kwargs.get("memory_message") is not True
+        assert onboarding.additional_kwargs.get("dynamic_context") is not True
+
+    @pytest.mark.asyncio
+    async def test_it_follows_the_stable_block_rather_than_replacing_it(self) -> None:
+        result = await self._run()
+        onboarding = next(m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER) is True)
+
+        assert result.index(onboarding) > result.index(DYNAMIC_MSG)
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_turn_carries_no_onboarding_message(self) -> None:
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            patch(
+                "app.agents.core.messages.get_onboarding_system_prompt_if_applicable",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_id="uid-1",
+                conversation_id="conv-1",
+            )
+
+        assert not [m for m in result if m.additional_kwargs.get(ONBOARDING_MARKER)]
+
+
+class TestTheClockIsRenderedInTheUsersTimezone:
+    @pytest.mark.asyncio
+    async def test_the_users_zone_reaches_the_clock(self) -> None:
+        """A clock built in the wrong zone makes "this afternoon" and "tomorrow"
+        resolve to the wrong day for anyone outside UTC."""
+        p = _patches()
+        with (
+            p["create_system"],
+            p["build_dynamic"],
+            p["format_files"],
+            patch(
+                "app.agents.core.messages.build_current_time_message",
+                return_value=HumanMessage(content="now", additional_kwargs={"time_context": True}),
+            ) as clock,
+        ):
+            await construct_langchain_messages(
+                messages=[{"role": "user", "content": "hi"}],
+                user_dict={"timezone": "Asia/Kolkata"},
+            )
+
+        clock.assert_called_once_with(user_timezone="Asia/Kolkata")

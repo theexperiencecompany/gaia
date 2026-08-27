@@ -82,7 +82,7 @@ GATES: dict[str, _Scorer] = {
         .score(output=run.text, end_state=run.end_state, expected=case.expected)
         .value
     ),
-    "bubble_boundary": lambda case, run: BubbleBoundary().score(messages=run.messages).value,
+    "bubble_boundary": lambda _case, run: BubbleBoundary().score(messages=run.messages).value,
 }
 
 ExtraGates = Mapping[str, _Scorer | None]

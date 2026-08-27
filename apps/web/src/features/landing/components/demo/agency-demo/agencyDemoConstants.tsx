@@ -23,7 +23,7 @@ export const AGENCY_PROACTIVE_MESSAGES: ChatMessage[] = [
     id: "ag-pr3",
     role: "assistant",
     content:
-      "ByteScale's deliverable is 3 days behind — the content brief wasn't received. I've drafted a follow-up to their PM. Want me to send it?",
+      "ByteScale's deliverable is 3 days behind: the content brief wasn't received. I've drafted a follow-up to their PM. Want me to send it?",
     delay: 600,
   },
 ];
@@ -76,7 +76,7 @@ export const PORTFOLIO_BRIEF_MESSAGES: ChatMessage[] = [
     id: "ag-pb5",
     role: "assistant",
     content:
-      "ByteScale is most urgent — 3 days behind on the content brief that was supposed to come from their side. Momentum is approaching scope creep territory: 14h over budget. Worth a conversation before it gets worse.",
+      "ByteScale is most urgent: 3 days behind on the content brief that was supposed to come from their side. Momentum is approaching scope creep territory: 14h over budget. Worth a conversation before it gets worse.",
     delay: 700,
   },
 ];
@@ -177,7 +177,7 @@ export const BD_PIPELINE_MESSAGES: ChatMessage[] = [
     id: "ag-bd5",
     role: "assistant",
     content:
-      "HealthTech Co is the hottest lead — inbound this morning, ideal profile. I've sent an intro response and drafted a capabilities deck from your template. The CloudOps RFP is due Friday — want me to start on that now?",
+      "HealthTech Co is the hottest lead: inbound this morning, ideal profile. I've sent an intro response and drafted a capabilities deck from your template. The CloudOps RFP is due Friday. Want me to start on that now?",
     delay: 700,
   },
 ];

@@ -1,12 +1,14 @@
+import { BOT_PLATFORM_ICONS, type BotPlatform } from "@/config/botPlatforms";
 import { siteConfig } from "@/lib/seo";
 
-export type BotPlatform = "discord" | "telegram" | "slack" | "whatsapp";
+export type { BotPlatform };
 
 export const BOT_LINKS: Record<BotPlatform, string> = {
   discord: `${siteConfig.url}/discord-bot`,
   telegram: "https://t.me/heygaia_bot",
   slack: "/slack-bot",
   whatsapp: "https://wa.me/12762088737",
+  imessage: "/settings/linked-accounts",
 };
 
 export interface BotAction {
@@ -31,7 +33,7 @@ export interface BotConfig {
 export const BOTS: BotConfig[] = [
   {
     id: "discord",
-    icon: "/images/icons/macos/discord.webp",
+    icon: BOT_PLATFORM_ICONS.discord,
     name: "Discord",
     description:
       "Add GAIA to any server or chat one-on-one. Use slash commands, @mention in any channel, or DM for personal help.",
@@ -49,7 +51,7 @@ export const BOTS: BotConfig[] = [
   },
   {
     id: "telegram",
-    icon: "/images/icons/macos/telegram.webp",
+    icon: BOT_PLATFORM_ICONS.telegram,
     name: "Telegram",
     description:
       "Just open a chat with @heygaia_bot and start talking. No setup, no group required — it's just you and GAIA.",
@@ -67,7 +69,7 @@ export const BOTS: BotConfig[] = [
   },
   {
     id: "slack",
-    icon: "/images/icons/macos/slack.webp",
+    icon: BOT_PLATFORM_ICONS.slack,
     name: "Slack",
     description:
       "Bring GAIA into your workspace. Delegate tasks, run workflows, and get answers — all inside Slack.",
@@ -79,7 +81,7 @@ export const BOTS: BotConfig[] = [
   },
   {
     id: "whatsapp",
-    icon: "/images/icons/macos/whatsapp.webp",
+    icon: BOT_PLATFORM_ICONS.whatsapp,
     name: "WhatsApp",
     description:
       "Talk to GAIA on the app already on your phone. Ask questions, delegate tasks — no new accounts, no new habits.",
@@ -92,6 +94,23 @@ export const BOTS: BotConfig[] = [
     secondaryAction: {
       label: "Join Community",
       href: "https://whatsapp.heygaia.io",
+      external: true,
+    },
+  },
+  {
+    id: "imessage",
+    icon: BOT_PLATFORM_ICONS.imessage,
+    name: "iMessage",
+    description:
+      "Text GAIA from the Messages app already on your iPhone. Register your number once, then it's just another conversation in blue bubbles.",
+    badge: { label: "Pro", color: "primary" },
+    primaryAction: {
+      label: "Connect Your Number",
+      href: BOT_LINKS.imessage,
+    },
+    secondaryAction: {
+      label: "Read the Docs",
+      href: "https://docs.heygaia.io/guides/imessage-bot",
       external: true,
     },
   },

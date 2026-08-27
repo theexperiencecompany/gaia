@@ -22,6 +22,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
 from langgraph.types import Command
 
+from app.agents.context.tiers import AgentTier
 from app.agents.core.background.bg_results import try_claim_bg_dispatch
 from app.agents.core.background.session import (
     claim_bg_integration,
@@ -35,7 +36,11 @@ from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
 )
-from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
+from app.agents.core.subagents.registry import (
+    all_subagents,
+    foreign_provider_named_in,
+    get_subagent_by_id,
+)
 from app.agents.core.subagents.subagent_helpers import (
     create_subagent_system_message,
 )
@@ -59,7 +64,6 @@ from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.subagent_models import Subagent
-from app.services.connect_link_service import build_connect_link_url
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
@@ -75,7 +79,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
 )
 from app.utils.background_tasks import spawn_background_task
-from app.utils.integration_checker import build_integration_connection_message
+from app.utils.integration_checker import request_integration_connection
 from shared.py.wide_events import log
 
 SUBAGENTS_NAMESPACE = ("subagents",)
@@ -121,38 +125,15 @@ async def check_integration_connection(
     integration_id: str,
     user_id: str,
 ) -> str | None:
-    """Check if integration is connected and return error message if not."""
-    try:
-        subagent = get_subagent_by_id(integration_id)
-        if not subagent:
-            return None
-
-        is_connected = await check_integration_status(integration_id, user_id)
-
-        if is_connected:
-            return None
-
-        writer = get_stream_writer()
-        writer({"progress": f"Checking {subagent.name} connection..."})
-
-        integration_data = {
-            "integration_id": subagent.id,
-            "message": f"To use {subagent.name} features, please connect your account first.",
-        }
-
-        writer({"integration_connection_required": integration_data})
-
-        connect_url = await build_connect_link_url(user_id, subagent.id)
-        return build_integration_connection_message(subagent.name, connect_url)
-
-    except Exception as e:
-        log.error(
-            f"{LogTag.AGENT} Error checking integration status",
-            integration_id=integration_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
+    """Return the connect prompt when the integration isn't connected, else None."""
+    subagent = get_subagent_by_id(integration_id)
+    if not subagent:
         return None
+
+    if await check_integration_status(integration_id, user_id):
+        return None
+
+    return await request_integration_connection(subagent.id, subagent.name, user_id)
 
 
 async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
@@ -333,7 +314,7 @@ async def _resolve_subagent(
             return (
                 None,
                 None,
-                f"Error: {integration_name} is unavailable — {e.reason}",
+                f"Error: {integration_name} is unavailable: {e.reason}",
                 False,
             )
 
@@ -359,11 +340,10 @@ async def _resolve_subagent(
         token_store = MCPTokenStore(user_id=user_id)
         is_connected = await token_store.is_connected(integration_id)
         if not is_connected:
-            connect_url = await build_connect_link_url(user_id, integration_id)
             return (
                 None,
                 None,
-                build_integration_connection_message(subagent.name, connect_url),
+                await request_integration_connection(integration_id, subagent.name, user_id),
                 False,
             )
 
@@ -374,7 +354,7 @@ async def _resolve_subagent(
             return (
                 None,
                 None,
-                f"Error: {agent_name} is unavailable — {e.reason}",
+                f"Error: {agent_name} is unavailable: {e.reason}",
                 False,
             )
     else:
@@ -478,7 +458,7 @@ async def prepare_subagent_execution(
         "name": configurable.get("user_name"),
     }
 
-    subagent_config = build_agent_config(
+    subagent_config = await build_agent_config(
         conversation_id=thread_id,
         user=user,
         thread_id=subagent_thread_id,
@@ -510,6 +490,7 @@ async def prepare_subagent_execution(
 
     messages = await build_initial_messages(
         system_message=system_message,
+        tier=AgentTier.PROVIDER_SUBAGENT,
         agent_name=agent_name,
         configurable=new_configurable,
         task=sanitized_task,
@@ -519,9 +500,6 @@ async def prepare_subagent_execution(
         # back to agent_name ("gmail_agent"), which never matches the stored
         # integration id ("gmail"), so the user's instructions are dropped.
         integration_id=integration_id,
-        # Only forward metadata we actually fetched — None keeps the context
-        # builder's own fetch-or-skip decision intact.
-        provider_metadata=provider_meta if provider_name else None,
     )
 
     ctx = SubagentExecutionContext(
@@ -664,7 +642,7 @@ async def resume_parked_subagent(
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
     }
-    subagent_config = build_agent_config(
+    subagent_config = await build_agent_config(
         conversation_id=record.conversation_id,
         user=user,
         thread_id=record.subagent_thread_id,
@@ -728,7 +706,7 @@ async def handoff(
     background: Annotated[
         bool,
         "If True, run the subagent in the background and return immediately. "
-        "Use for parallel subagent dispatch — call wait_for_subagents() after "
+        "Use for parallel subagent dispatch: call wait_for_subagents() after "
         "all background handoffs to collect results. Default False (blocking).",
     ] = False,
     tool_call_id: Annotated[str, InjectedToolCallId] = "",
@@ -778,6 +756,23 @@ async def handoff(
         agent_name: str = ctx.agent_name
         integration_id: str = ctx.integration_id
 
+        # A task naming one provider while routed to another is a routing mistake
+        # that survives the whole run: the subagent does the work on ITS system and
+        # the executor writes the name it was told into the summary, so the user is
+        # told their data went somewhere it never went. Refuse before dispatch —
+        # the executor can re-route or drop the name, but it cannot un-say it.
+        foreign = foreign_provider_named_in(task, integration_id)
+        if foreign is not None:
+            return (
+                f"HANDOFF REJECTED: this task is routed to the {agent_name} subagent "
+                f"({integration_id}) but its text names {foreign.name}. {foreign.name} is a "
+                f"separate integration with its own subagent, and nothing you hand to "
+                f"{integration_id} touches it: leaving the name in makes the result claim "
+                f"{foreign.name} did work it never did. Either re-issue this handoff to "
+                f"subagent:{foreign.id} if that is where the work belongs, or send it again "
+                f"with every mention of {foreign.name} removed from the task."
+            )
+
         # An uncollected parked subagent owns this integration's checkpoint thread.
         # Running ANY new handoff on it (blocking or background) would feed fresh
         # input to an interrupted thread — LangGraph discards the pending interrupt,
@@ -818,7 +813,7 @@ async def handoff(
                     probe_parked,
                 )
                 return (
-                    "[WARNING: background handoff fell back to blocking — "
+                    "[WARNING: background handoff fell back to blocking: "
                     "stream_id not propagated into executor configurable] "
                     f"{blocking_result}"
                 )

@@ -9,11 +9,28 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.payment_models import PlanType
+from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
+ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
+
+
+@pytest.fixture(autouse=True)
+def _noop_analytics():
+    """Neutralize capture_context_event for every test in this module.
+
+    The test app runs a no-op lifespan, so the PostHog provider is never
+    registered; a bare capture_context_event call would raise KeyError on the
+    missing provider. Tests that assert on captures patch the call site again
+    and assert on their own mock.
+    """
+    with patch(ANALYTICS_PATCH):
+        yield
+
 
 # Patch targets
 _PAYMENT_SERVICE = (
@@ -84,6 +101,41 @@ class TestGetUsageSummary:
         assert "features" in data
         assert data["budget"] == _MOCK_BUDGET
         assert "last_updated" in data
+
+    async def test_summary_captures_usage_queried(self, client: AsyncClient):
+        mock_sub = _mock_subscription()
+        mock_features: dict = {
+            "chat": {
+                "title": "Chat Messages",
+                "description": "AI chat messages",
+                "upgrade": {"day": 0, "month": 60000},
+                "periods": {
+                    "day": {
+                        "used": 5,
+                        "limit": 50,
+                        "percentage": 10.0,
+                        "reset_time": "2025-01-02T00:00:00+00:00",
+                        "remaining": 45,
+                    }
+                },
+            }
+        }
+
+        with (
+            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
+            patch(
+                _GET_REALTIME_USAGE,
+                new_callable=AsyncMock,
+                return_value=mock_features,
+            ),
+            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+            patch(ANALYTICS_PATCH) as mock_capture,
+        ):
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(AnalyticsEvents.USAGE_QUERIED, {"plan_type": "free"})
+        assert type(mock_capture.call_args.args[1]["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
         mock_sub = _mock_subscription("pro")

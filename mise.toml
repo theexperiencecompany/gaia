@@ -150,8 +150,6 @@ depends = ["setup:env", "setup:deps", "setup:voice-agent"]
 run = '''
 echo "Starting Docker services..."
 nx run docker:docker:up
-echo "Seeding AI models..."
-(cd apps/api && uv run --group backend python scripts/seed_models.py --force)
 echo ""
 echo "Setup complete! Run 'mise dev' to start development servers."
 '''
@@ -196,6 +194,9 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
 # target THIS worktree's API instead of whatever owns port 8000.
 GAIA_API_URL=http://localhost:$api_port
+# The API mints absolute links from this (OAuth callbacks, connect links). Without
+# the override it hands out the main worktree's 8000 and the link 404s.
+HOST=http://localhost:$api_port
 # Scripted LLM stub (\`mise dev --sim\`). --sim derives OPENROUTER_BASE_URL from it.
 LLM_STUB_PORT=$(( 9797 + offset ))
 BOT_DISCORD_PORT=$(( 3200 + offset ))
@@ -337,7 +338,7 @@ run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --par
 
 [tasks."dev:bots"]
 description = "Run ALL bots (Discord, Telegram, Slack, WhatsApp) in parallel"
-run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=4"
+run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack,bot-whatsapp,bot-imessage --parallel=5"
 
 [tasks."dev:arq"]
 description = "Run API + web + arq worker"
@@ -346,7 +347,7 @@ run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web -
 
 [tasks."dev:full"]
 description = "Run API + web + arq worker + voice agent + all bots in parallel"
-run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp --parallel=8"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack,bot-whatsapp,bot-imessage --parallel=9"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILD COMMANDS
@@ -556,6 +557,10 @@ run = "dagger call -s docker-build --app bot-telegram"
 description = "Build WhatsApp bot Docker image via Dagger"
 run = "dagger call -s docker-build --app bot-whatsapp"
 
+[tasks."ci:docker:bot-imessage"]
+description = "Build iMessage bot Docker image via Dagger"
+run = "dagger call -s docker-build --app bot-imessage"
+
 # ── GitHub Actions simulation (via act) ──
 
 [tasks."ci:act:quality"]
@@ -641,3 +646,17 @@ run = "python3 tools/evlog_map"
 [tasks."observability:map:all"]
 description = "Observability score with the per-entry check matrix"
 run = "python3 tools/evlog_map --all"
+
+# ── Agent-legible gates ──────────────────────────────────────────────────────
+[tasks."ci:local"]
+description = "Run CI quality gates locally (same lanes/versions as GitHub Actions); --list shows all lanes"
+run = "python3 scripts/dev/gaia_verify.py"
+
+
+[tasks."pr:comments"]
+description = "Fetch PR review threads read-only: resolution state, IDs for resolve/reply, next-step syntax"
+run = "python3 scripts/dev/pr_comments.py"
+
+[tasks."ci:remote"]
+description = "Merge-readiness dashboard for a PR's GitHub gates: checks, conflicts, reviews, unresolved threads (--watch to poll)"
+run = "python3 scripts/dev/ci_remote.py"

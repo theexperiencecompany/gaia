@@ -6,13 +6,13 @@ export const entry: AlternativeData = {
   domain: "calendar.google.com",
   category: "calendar",
   tagline:
-    "The world's most-used calendar — but it only stores events, not intelligence",
+    "The world's most-used calendar, but it only stores events, not intelligence",
   painPoints: [
-    "Events sit in Calendar with no briefing, context, or preparation reminders — you have to remember to check yourself",
+    "Events sit in Calendar with no briefing, context, or preparation reminders, so you have to remember to check yourself",
     "Scheduling conflicts require manual detection; Calendar won't warn you that a meeting overlaps a deep-work block you set last month",
-    "No automatic event creation from email — you must manually copy flight confirmations, dinner reservations, and meeting invites",
+    "No automatic event creation from email: you must manually copy flight confirmations, dinner reservations, and meeting invites",
     "Natural language entry is limited; creating a recurring event with exceptions requires navigating multiple menus",
-    "No cross-tool awareness — Calendar doesn't know about your Todoist tasks, Gmail threads, or Notion docs related to a meeting",
+    "No cross-tool awareness: Calendar doesn't know about your Todoist tasks, Gmail threads, or Notion docs related to a meeting",
   ],
   metaTitle: "Google Calendar Alternative — GAIA — AI-Powered Smart Calendar",
   metaDescription:
@@ -28,7 +28,7 @@ export const entry: AlternativeData = {
     "google calendar alternative 2026",
   ],
   whyPeopleLook:
-    "Google Calendar is a passive event store — it holds your schedule but offers no intelligence about it. Users grow frustrated when they miss preparation steps for meetings, fail to catch scheduling conflicts until the last minute, or spend time manually entering events that were already described in emails. The search for an alternative is really a search for a calendar that thinks ahead.",
+    "Google Calendar is a passive event store. It holds your schedule but offers no intelligence about it. Users grow frustrated when they miss preparation steps for meetings, fail to catch scheduling conflicts until the last minute, or spend time manually entering events that were already described in emails. The search for an alternative is really a search for a calendar that thinks ahead.",
   gaiaFitScore: 3,
   gaiaReplaces: [
     "Manual meeting briefing lookups before calls",
@@ -53,12 +53,12 @@ export const entry: AlternativeData = {
     {
       question: "Does GAIA replace Google Calendar entirely?",
       answer:
-        "No — and that's intentional. Google Calendar remains your source of truth for events. GAIA is the intelligence layer on top: it reads your calendar, creates events from emails, surfaces briefings proactively, and connects your schedule to tasks and email context. A fit score of 3/5 reflects this complementary relationship.",
+        "No, and that's intentional. Google Calendar remains your source of truth for events. GAIA is the intelligence layer on top: it reads your calendar, creates events from emails, surfaces briefings proactively, and connects your schedule to tasks and email context. A fit score of 3/5 reflects this complementary relationship.",
     },
     {
       question: "Can GAIA create Google Calendar events from emails?",
       answer:
-        "Yes. GAIA's Gmail integration detects flight confirmations, dinner reservations, meeting invites, and other event-worthy emails, then creates or suggests Google Calendar events automatically — a capability Google Calendar itself lacks natively.",
+        "Yes. GAIA's Gmail integration detects flight confirmations, dinner reservations, meeting invites, and other event-worthy emails, then creates or suggests Google Calendar events automatically, a capability Google Calendar itself lacks natively.",
     },
     {
       question: "Is GAIA free compared to Google Calendar?",
@@ -68,7 +68,7 @@ export const entry: AlternativeData = {
     {
       question: "What does GAIA add to Google Calendar that Google doesn't?",
       answer:
-        "Proactive meeting briefings, automatic event creation from email, cross-tool conflict awareness (tasks + calendar together), natural language scheduling via chat, and a memory layer that ties past meeting notes to future events — none of which Google Calendar provides natively.",
+        "Proactive meeting briefings, automatic event creation from email, cross-tool conflict awareness (tasks + calendar together), natural language scheduling via chat, and a memory layer that ties past meeting notes to future events, none of which Google Calendar provides natively.",
     },
   ],
 };

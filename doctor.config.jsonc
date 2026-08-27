@@ -1,0 +1,48 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  // Supply-chain floor: nx@22.7.7 scores 46/100 on Socket's install-behavior
+  // axis (build orchestrators legitimately run install scripts); its
+  // vulnerability/maintenance/quality axes are 92–100. Identity confirmed —
+  // it IS this repo's task runner. Floor lowered 50→45 so the gate judges
+  // real supply-chain risk, not orchestrator semantics. Lives at the repo
+  // root because the workspace-level supply-chain scan reads only the root
+  // config when invoked with --project '*'.
+  "supplyChain": {
+    "enabled": true,
+    "minScore": 45
+  },
+  "ignore": {
+    // Agent-skill bundles: SKILL.md files and the example templates they ship,
+    // installed here and read by agents — never imported, built or shipped by
+    // this repo. The two trees are copies of one set, and the templates that
+    // triggered this (motion/templates/*.tsx) are byte-identical across both,
+    // so a finding here is a finding in an upstream file and "fixing" it turns
+    // the next skill update into a merge conflict. Same call the other
+    // scanners already make for these paths: [tool.ruff] extend-exclude and
+    // [tool.bandit] exclude_dirs in pyproject.toml, and biome.json, which
+    // excludes .claude and .agents outright.
+    "files": [".agents/skills/**", ".claude/skills/**"],
+    "overrides": [
+      // The wake-word controller's lifetime is managed imperatively (start()
+      // creates it, stop() disposes it), not by an effect, so the three
+      // listeners are attached in start() and released by detachListeners().
+      // effect-needs-cleanup only recognises subscribe-and-return-cleanup
+      // inside one effect and cannot follow that indirection — but the cleanup
+      // is structurally guaranteed: the `enabled` effect's cleanup calls
+      // stop(), and stop() calls detachListeners() synchronously before
+      // awaiting anything, so no listener outlives its controller on unmount,
+      // on an `enabled` flip, or on a failed start.
+      //
+      // Wiring them in an effect instead (as this branch briefly did) is the
+      // shape that is actually unsafe here: a ref assignment schedules no
+      // render, so calling the hook's exported start() from an event handler
+      // would attach no listeners at all, and the version that "worked" did so
+      // only because one effect happened to run after another in the same
+      // commit.
+      {
+        "files": ["src/internal/use-wake-word-base.ts"],
+        "rules": ["react-doctor/effect-needs-cleanup"]
+      }
+    ]
+  }
+}

@@ -18,13 +18,20 @@ import pytest
 from sqlalchemy import Select, Update
 from sqlalchemy.dialects import postgresql
 
-from app.constants.memory import FORGET_REASON_MAX_CHARS, MemoryRelationType
+from app.constants.memory import (
+    AGENDA_CATEGORY_PATH,
+    FORGET_REASON_MAX_CHARS,
+    MemoryRelationType,
+)
 from app.memory.pg_store._session import escape_like
 from app.memory.pg_store.memories import (
+    SweptMemory,
     _active_memories_query,
     _not_expired_clause,
+    backfill_agenda_expiry,
     count_live_memories,
     fts_search,
+    get_agenda_memories,
     get_all_live_memories,
     get_chain,
     get_facts_for_consolidation,
@@ -37,6 +44,7 @@ from app.memory.pg_store.memories import (
     list_memories,
     mark_forgotten,
     supersede_memory,
+    sweep_expired_memories,
 )
 from app.models.memory_db_models import MemoryRecord
 
@@ -700,22 +708,21 @@ class TestGetFactsForConsolidation:
         sql, params = _compiled(stmt)
         assert "ORDER BY memories.created_at DESC" in sql
         assert "LIMIT" in sql
-        assert "memories.kind =" not in sql
-        assert "memories.kind IN" not in sql
+        assert "memories.shelf_life =" not in sql
         assert "LIKE" not in sql
         assert params["user_id_1"] == USER
         assert params["param_1"] == 50
 
-    async def test_filters_by_kind(self) -> None:
+    async def test_filters_by_shelf_life(self) -> None:
         session = MagicMock()
         session.execute = AsyncMock(return_value=_scalars_result([]))
         with _patched_memory_session(session):
-            await get_facts_for_consolidation(USER, kind="fact", limit=10)
+            await get_facts_for_consolidation(USER, shelf_life="durable", limit=10)
 
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
-        assert "memories.kind = %(kind_1)s" in sql
-        assert params["kind_1"] == "fact"
+        assert "memories.shelf_life = %(shelf_life_1)s" in sql
+        assert params["shelf_life_1"] == "durable"
 
     async def test_filters_by_category_prefixes(self) -> None:
         session = MagicMock()
@@ -746,20 +753,20 @@ class TestGetFactsForConsolidation:
         assert result == []
         patched.assert_not_called()
 
-    async def test_kind_and_prefixes_combine_with_and(self) -> None:
+    async def test_shelf_life_and_prefixes_combine_with_and(self) -> None:
         session = MagicMock()
         session.execute = AsyncMock(return_value=_scalars_result([]))
         with _patched_memory_session(session):
             await get_facts_for_consolidation(
-                USER, category_prefixes=["work"], kind="fact", limit=10
+                USER, category_prefixes=["work"], shelf_life="durable", limit=10
             )
 
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
-        assert "memories.kind = %(kind_1)s" in sql
+        assert "memories.shelf_life = %(shelf_life_1)s" in sql
         assert "memories.category_path = %(category_path_1)s" in sql
         assert "memories.category_path LIKE %(category_path_2)s ESCAPE" in sql
-        assert params["kind_1"] == "fact"
+        assert params["shelf_life_1"] == "durable"
         assert params["category_path_1"] == "work"
         assert params["category_path_2"] == "work/%"
 
@@ -816,3 +823,148 @@ class TestGetRecentFacts:
         (stmt,) = _executed_stmts(session)
         _, params = _compiled(stmt)
         assert params["param_1"] == 3
+
+
+# ---------------------------------------------------------------------------
+# get_agenda_memories
+# ---------------------------------------------------------------------------
+
+
+class TestGetAgendaMemories:
+    async def test_reads_only_the_agenda_folder_most_important_first(self) -> None:
+        # agenda.md is rendered from this query and injected on every turn, so
+        # what it drops when it hits the cap has to be the least important item,
+        # not an arbitrary row.
+        rows = [make_record(), make_record()]
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_scalars_result(rows))
+        with _patched_memory_session(session):
+            assert await get_agenda_memories(USER, limit=8) == rows
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.category_path = %(category_path_1)s" in sql
+        assert params["category_path_1"] == AGENDA_CATEGORY_PATH
+        assert "ORDER BY memories.importance DESC, memories.created_at DESC" in sql
+        assert params["param_1"] == 8
+        assert params["user_id_1"] == USER
+
+    async def test_only_live_rows_reach_the_page(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_scalars_result([]))
+        with _patched_memory_session(session):
+            await get_agenda_memories(USER, limit=8)
+
+        (stmt,) = _executed_stmts(session)
+        sql, _ = _compiled(stmt)
+        assert "memories.is_latest IS true" in sql
+        assert "memories.is_forgotten IS false" in sql
+        assert "memories.forget_after IS NULL OR memories.forget_after >" in sql
+
+
+# ---------------------------------------------------------------------------
+# sweep_expired_memories
+# ---------------------------------------------------------------------------
+
+
+class TestSweepExpiredMemories:
+    async def test_retires_past_due_rows_and_returns_owner_id_pairs(self) -> None:
+        """The swept row ids come back too: the worker must retire the same
+        rows' Chroma flags, or reconciliation keeps matching them and swallows
+        identical restatements as DUPLICATE forever."""
+        id_a, id_b, id_c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        session = MagicMock()
+        session.execute = AsyncMock(
+            return_value=_all_result([("u1", id_a), ("u2", id_b), ("u1", id_c)])
+        )
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            swept = await sweep_expired_memories()
+
+        assert swept == [
+            SweptMemory(user_id="u1", memory_id=str(id_a)),
+            SweptMemory(user_id="u2", memory_id=str(id_b)),
+            SweptMemory(user_id="u1", memory_id=str(id_c)),
+        ]
+        session.commit.assert_awaited_once()
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert sql.startswith("UPDATE memories SET")
+        assert "is_forgotten=%(is_forgotten)s" in sql
+        assert "forget_reason=%(forget_reason)s" in sql
+        assert params["is_forgotten"] is True
+        assert params["forget_reason"] == "expired"
+        assert "RETURNING memories.user_id, memories.id" in sql
+
+    async def test_the_filter_is_live_rows_whose_expiry_has_arrived(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories()
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.is_forgotten IS false" in sql
+        assert "memories.forget_after IS NOT NULL" in sql
+        # `<=`, not `<`: an expiry that lands exactly now has arrived.
+        assert "memories.forget_after <= %(forget_after_1)s" in sql
+        assert params["forget_after_1"].tzinfo is not None
+
+    async def test_an_unscoped_sweep_touches_every_owner(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories()
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        where_clause = sql.split("WHERE", 1)[1].split("RETURNING", 1)[0]
+        assert "memories.user_id" not in where_clause
+        assert "user_id_1" not in params
+
+    async def test_a_scoped_sweep_is_confined_to_that_owner(self) -> None:
+        # The repair script sweeps one user; the nightly task sweeps everyone.
+        session = MagicMock()
+        session.execute = AsyncMock(return_value=_all_result([]))
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            await sweep_expired_memories(USER)
+
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert "memories.user_id = %(user_id_1)s" in sql
+        assert params["user_id_1"] == USER
+
+
+# ---------------------------------------------------------------------------
+# backfill_agenda_expiry
+# ---------------------------------------------------------------------------
+
+
+class TestBackfillAgendaExpiry:
+    async def test_stamps_only_live_expiryless_agenda_rows(self) -> None:
+        """Legacy agenda rows (pre task-shelf-life) carry no ``forget_after``,
+        so the sweep never retires them: production held year-old items in the
+        always-injected agenda block. The stamp must scope to exactly the
+        agenda folder's live expiry-less rows — anything wider would put an
+        expiry on durable facts."""
+        session = MagicMock()
+        result = MagicMock()
+        result.rowcount = 152
+        session.execute = AsyncMock(return_value=result)
+        session.commit = AsyncMock()
+        with _patched_memory_session(session):
+            stamped = await backfill_agenda_expiry()
+
+        assert stamped == 152
+        session.commit.assert_awaited_once()
+        (stmt,) = _executed_stmts(session)
+        sql, params = _compiled(stmt)
+        assert sql.startswith("UPDATE memories SET forget_after=")
+        assert "memories.created_at + %(created_at_1)s" in sql
+        assert "memories.is_forgotten IS false" in sql
+        assert "memories.category_path = %(category_path_1)s" in sql
+        assert "memories.forget_after IS NULL" in sql
+        assert params["category_path_1"] == AGENDA_CATEGORY_PATH

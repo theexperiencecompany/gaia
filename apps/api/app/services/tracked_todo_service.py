@@ -2,7 +2,7 @@
 Tracked todo service — Mongo-backed lifecycle for GAIA's working memory todos.
 
 A tracked todo is a regular todo with:
-- vfs_path (display label) set to /users/{user_id}/todos/{todo_id}/
+- vfs_path (display label) set to /workspace/gaia-tasks/{todo_id}
 - 'gaia-tracked' label
 - canvas_content field (agent-written brain) indexed in ChromaDB
 - log_content field (system-written audit trail)
@@ -101,7 +101,7 @@ def _format_signal_entry(doc: TodoDocument, key_details: str) -> str:
     """Render one tracked todo as a signal-matching context bullet (+ indented key details)."""
     labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    entry = f'- "{doc.title}"{labels_str} (ID: {doc.id}, vfs: {doc.vfs_path or ""})'
+    entry = f'- "{doc.title}"{labels_str} (ID: {doc.id})'
     if key_details:
         for dl in key_details.split("\n")[:_KEY_DETAILS_MAX_LINES]:
             entry += f"\n    {dl.strip()}"
@@ -118,7 +118,7 @@ def _format_tracked_todo_line(doc: TodoDocument, now: datetime, active_todo_id: 
     return (
         f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
         f" — {age_days}d old, updated {last_update}d ago"
-        f" | ID: {doc.id} | VFS: {doc.vfs_path or 'none'}"
+        f" | ID: {doc.id}"
     )
 
 
@@ -162,7 +162,7 @@ class TrackedTodoService:
         result = await TodoService.create_todo(todo, user_id)
         todo_id = result.id
 
-        vfs_path = build_vfs_label(user_id, todo_id)
+        vfs_path = build_vfs_label(todo_id)
         canvas_content = initial_canvas or CANVAS_TEMPLATE.format(title=title)
         now = datetime.now(UTC)
         log_content = (
@@ -210,7 +210,6 @@ class TrackedTodoService:
         if doc.completed:
             return True
 
-        vfs_path = doc.vfs_path or build_vfs_label(user_id, todo_id)
         now = datetime.now(UTC)
 
         await append_log(
@@ -219,8 +218,10 @@ class TrackedTodoService:
             f"\n## {now.isoformat()} [COMPLETED]\n- Summary: {summary}\n",
         )
 
-        # Switch the display label to the archived form (purely cosmetic).
-        archive_path = vfs_path.replace("/todos/", "/todos/archive/")
+        # Always derive the archived label — never persist a stored one back.
+        # Legacy docs still carry the host-side /users/<uid>/todos/<id> format;
+        # deriving here heals them on completion instead of re-saving the leak.
+        archive_path = build_vfs_label(todo_id, archived=True)
 
         # The repository refreshes the entity cache and bumps the generation, so
         # the frontend reflects completion immediately — no manual invalidation.

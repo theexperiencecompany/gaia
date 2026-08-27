@@ -43,7 +43,7 @@ def read_offload(message: ToolMessage) -> OffloadInfo | None:
         return None
     info = kwargs.get(OFFLOAD_KEY)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]
+        return info  # type: ignore[return-value]  # isinstance guard checks shape; mypy can't narrow dict to OffloadInfo
     return None
 
 
@@ -58,7 +58,7 @@ def pop_offload_descriptor(result: object) -> OffloadInfo | None:
         return None
     info = result.pop(OFFLOAD_RESULT_KEY, None)
     if isinstance(info, dict) and isinstance(info.get("path"), str):
-        return info  # type: ignore[return-value]
+        return info  # type: ignore[return-value]  # isinstance guard checks shape; mypy can't narrow dict to OffloadInfo
     return None
 
 

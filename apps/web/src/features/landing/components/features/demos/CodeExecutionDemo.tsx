@@ -142,7 +142,7 @@ const CODE_EXECUTION_MESSAGES: ChatMessage[] = [
     id: "ce5",
     role: "assistant",
     content:
-      "North America leads at $2.4M, followed by Europe at $1.8M. APAC is third at $1.1M — solid growth but still a gap to close.",
+      "North America leads at $2.4M, followed by Europe at $1.8M. APAC is third at $1.1M, solid growth but still a gap to close.",
     delay: 700,
   },
 ];

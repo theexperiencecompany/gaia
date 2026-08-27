@@ -22,17 +22,22 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const user = useUser();
   const currentQuestion = questions[state.questionIndex];
+  const prefilledRef = useRef(false);
 
+  // Pre-fill the name draft from the account name at most once per mount,
+  // retrying until the persisted user store has actually hydrated.
   useEffect(() => {
+    if (prefilledRef.current) return;
     if (
       currentQuestion?.fieldName === FIELD_NAMES.NAME &&
       !state.responses[FIELD_NAMES.NAME] &&
       !state.draftText &&
       user.name
     ) {
+      prefilledRef.current = true;
       dispatch({ type: "draftText", value: user.name });
     }
-  }, []);
+  }, [currentQuestion, state.responses, state.draftText, user.name, dispatch]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {

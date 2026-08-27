@@ -46,6 +46,7 @@ from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
@@ -243,6 +244,14 @@ async def install_skill_with_auto_discover(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {
+                "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
+                "source": "github",
+            },
+        )
         return installed
     except HTTPException:
         raise
@@ -288,6 +297,14 @@ async def create_inline_skill_endpoint(
         )
         log.set(skill_id=installed.id if hasattr(installed, "id") else None)
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_INSTALLED,
+            {
+                "skill_id": installed.id if hasattr(installed, "id") else None,
+                "target": installed.target,
+                "source": "inline",
+            },
+        )
         return installed
     except HTTPException:
         raise
@@ -484,13 +501,17 @@ async def uninstall_skill_endpoint(
     """Uninstall a skill and remove its files from VFS."""
     log.set(operation="uninstall_skill", skill_id=skill_id)
     try:
-        success = await uninstall_skill_full(user_id, skill_id)
-        if not success:
+        uninstalled = await uninstall_skill_full(user_id, skill_id)
+        if not uninstalled:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Skill {skill_id} not found",
             )
         log.set(outcome="success")
+        capture_context_event(
+            AnalyticsEvents.SKILL_UNINSTALLED,
+            {"skill_id": skill_id, "target": uninstalled.target},
+        )
     except HTTPException:
         raise
     except Exception as e:

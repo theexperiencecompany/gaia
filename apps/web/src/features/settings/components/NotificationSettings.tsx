@@ -12,7 +12,6 @@ import {
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -24,7 +23,13 @@ export default function NotificationSettings() {
   >({});
   const [channelPrefs, setChannelPrefs] = useState<
     Record<NotificationPlatform, boolean>
-  >({ telegram: true, discord: true, whatsapp: true, slack: true });
+  >({
+    telegram: true,
+    discord: true,
+    whatsapp: true,
+    slack: true,
+    imessage: true,
+  });
   const [loading, setLoading] = useState(true);
   const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
@@ -58,10 +63,6 @@ export default function NotificationSettings() {
     try {
       await NotificationsAPI.updateChannelPreference(platform, enabled);
       setChannelPrefs((prev) => ({ ...prev, [platform]: enabled }));
-      trackEvent(ANALYTICS_EVENTS.SETTINGS_NOTIFICATIONS_TOGGLED, {
-        platform,
-        enabled,
-      });
     } catch {
       toast.error(`Failed to update ${platform} notification preference`);
     } finally {

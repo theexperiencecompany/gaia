@@ -76,7 +76,7 @@ concurrency:
 jobs:
   deploy:
     if: inputs.action == 'deploy'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
@@ -87,7 +87,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
@@ -97,7 +97,7 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -144,7 +144,7 @@ jobs:
           # Bot/grafana aliases only move when their tags were deployed this
           # run — extend the health gate to match exactly what will be retagged.
           if [[ -n "${BOTS_IMAGE_TAG}" ]]; then
-            SERVICES="${SERVICES} discord-bot slack-bot telegram-bot whatsapp-bot"
+            SERVICES="${SERVICES} discord-bot slack-bot telegram-bot whatsapp-bot imessage-bot"
           fi
           if [[ -n "${GRAFANA_IMAGE_TAG}" ]]; then
             SERVICES="${SERVICES} grafana"
@@ -285,7 +285,7 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
@@ -295,7 +295,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
@@ -305,7 +305,7 @@ jobs:
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -318,7 +318,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             for svc in $(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot'); do
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot'); do
               echo "Rolling back $svc..."
               docker --context prod service rollback "$svc"
             done
@@ -338,7 +338,7 @@ jobs:
         run: |
           if [ "$ROLLBACK_MODE" = "last" ]; then
             SERVICES=$(docker --context prod stack services gaia-prod --format '{{.Name}}' \
-              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot')
+              | grep -E 'gaia-backend|arq_worker|embedding-sidecar|voice-agent-worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|imessage-bot')
           else
             SERVICES="gaia-prod_gaia-backend gaia-prod_arq_worker gaia-prod_embedding-sidecar"
           fi

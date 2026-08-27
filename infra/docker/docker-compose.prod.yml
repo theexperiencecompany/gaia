@@ -83,9 +83,9 @@ services:
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
-      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs_v2` is pre-created per node.
       - type: volume
-        source: gaia_jfs
+        source: gaia_jfs_v2
         target: /mnt/jfs
         volume:
           nocopy: true
@@ -163,9 +163,9 @@ services:
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
-      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs` is pre-created per node.
+      # (no /dev/fuse, no SYS_ADMIN). Volume `gaia_jfs_v2` is pre-created per node.
       - type: volume
-        source: gaia_jfs
+        source: gaia_jfs_v2
         target: /mnt/jfs
         volume:
           nocopy: true
@@ -261,6 +261,10 @@ services:
       MEMORY_MODEL_CACHE_DIR: /models
       # Cap glibc malloc arenas (complements the ONNX arena being off).
       MALLOC_ARENA_MAX: "2"
+      # Measured (scripts/sidecar_benchmark/): 2 ORT threads per inference
+      # matches 4-thread throughput at high concurrency while using less peak
+      # RSS. Concurrency stays adaptive (cores / threads).
+      MEMORY_ONNX_THREADS: "2"
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
@@ -297,11 +301,11 @@ services:
         # for `embedding-sidecar` then drops, so every embed call fails).
       resources:
         limits:
-          # Working set under production load is ~3.0-3.1 GiB (two ONNX models
-          # — mxbai embedder + jina reranker — plus per-batch arenas that grow
-          # with batch_size, up to 40). The old 2560M cap sat below that, so
-          # the kernel OOM-killed it (exit 137) on first real traffic. 5G gives
-          # headroom; host has 15 GiB total / ~10 GiB free.
+          # Measured (#918 fix): floor ~1.9-2.1GB once both ONNX models are
+          # warm, peak ~2.4-2.5GB under sustained mixed load — batches are
+          # bounded server-side, so RSS no longer grows with request size
+          # (pre-fix soak peaked at 5.2GB and OOM-killed the old 2560M cap).
+          # 3072M keeps ~25% headroom over the measured peak.
           memory: 3072M
         reservations:
           memory: 2G
@@ -486,6 +490,50 @@ services:
         condition: any
         delay: 5s
 
+  imessage-bot:
+    image: ghcr.io/theexperiencecompany/gaia-bot-imessage:${GAIA_BOTS_IMAGE_TAG:-latest}
+    environment:
+      BOT_SERVER_PORT: "3204"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
+      ENV: production
+    secrets:
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_project_id
+    ports:
+      # Nginx proxies /bots/imessage/* (Photon webhook). ingress (not host) so
+      # rolling updates are zero-downtime; the Hetzner firewall keeps the port
+      # localhost-only. Do not remove the firewall rule.
+      - target: 3204
+        published: 3204
+        protocol: tcp
+        mode: ingress
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - imessage-bot
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3204/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: start-first
+      restart_policy:
+        condition: any
+        delay: 5s
+
   # ---------------------------------------------------------------------------
   # Infrastructure
   # ---------------------------------------------------------------------------
@@ -587,7 +635,7 @@ services:
   # ---------------------------------------------------------------------------
   # Holds the whole directory tree, filenames and inode→chunk mapping. R2 stores
   # only anonymous blocks, so losing this loses the filesystem — hence
-  # noeviction, appendfsync always, and the hourly dump on the gaia_jfs volume.
+  # noeviction, appendfsync always, and the hourly dump on the gaia_jfs_v2 volume.
   # Internet-reachable because E2B sandboxes mount JuiceFS directly
   # (apps/api/scripts/mount_juicefs.sh); AUTH password + firewall allowlist on
   # 6380 are the access control.
@@ -1171,26 +1219,29 @@ volumes:
   prometheus_data:
   promtail_positions:
   # AOF survives a crash, not the loss of this node — that's what --backup-meta
-  # on gaia_jfs below covers.
+  # on gaia_jfs_v2 below covers.
   jfs_meta_data:
   # JuiceFS volume backed by the juicedata/juicefs plugin. Pre-create per node:
   #   docker volume create -d juicedata/juicefs -o name=gaia-0 \
   #     -o metaurl='rediss://:PASSWORD@jfs-meta.heygaia.io:6380/0' \
   #     -o access-key=... -o secret-key=... \
-  #     -o mountFlags="--backup-meta 1h --cache-size 4096 --max-uploads 20 --prefetch 8 --buffer-size 600" \
-  #     gaia_jfs
-  # (no -o mountFlags --cache-dir: that path doesn't exist in the plugin → mount EOF)
+  #     -o backup-meta=1h -o cache-size=4096 \
+  #     -o max-uploads=20 -o prefetch=8 -o buffer-size=600 \
+  #     gaia_jfs_v2
+  # One -o per flag: the released plugin has no `mountFlags` key. No -o cache-dir
+  # (absent from the plugin rootfs → mount EOF) and no -o all-squash (squashes
+  # the plugin's own root `touch .juicefs` readiness probe to uid 1000, which
+  # then can't write it → `exec: already started` and a failed Mount over a live
+  # daemon). Verify with `stat -c %i /mnt/jfs` == 1 before repointing the mounts.
   #
   # metaurl is baked in here, NOT read from JUICEFS_META_URL_TEMPLATE. Changing
-  # the metadata engine in Infisical moves the API and sandboxes but leaves this
-  # mount on the old engine — the volume must be dropped and recreated per node:
-  #   docker service scale gaia-prod_gaia-backend=0 gaia-prod_arq_worker=0
-  #   docker volume rm gaia_jfs && docker volume create ... (as above)
+  # the metadata engine in Infisical leaves this mount on the old one — create a
+  # new volume, verify it, repoint. Don't rm the live one to reuse its name.
   #
   # --backup-meta belongs here, not in scripts/docker-entrypoint.sh: the plugin
   # mounts /mnt/jfs first, so the entrypoint's own mount short-circuits on
   # `mountpoint -q` and its flags never apply in prod. Dumps land under `meta/`.
-  gaia_jfs:
+  gaia_jfs_v2:
     external: true
 
 networks:

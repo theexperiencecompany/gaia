@@ -1,6 +1,7 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
 from datetime import UTC, datetime
+import re
 import threading
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
@@ -428,6 +429,38 @@ class TestUploadSingleAttachment:
 # ===========================================================================
 
 
+class _LocalTimeDiffersFromUTC(datetime):
+    """datetime stand-in whose local-time ``now(None)`` reads a different DATE
+    than its UTC ``now(UTC)``.
+
+    The ticket id's date segment must be computed against UTC (the id is stored,
+    displayed and sorted across timezones); this clock turns a non-UTC read into
+    a wrong date the assertion can see, instead of relying on the CI machine's
+    timezone happening to differ from UTC at run time.
+    """
+
+    UTC_NOW = datetime(2026, 6, 15, 2, 0, tzinfo=UTC)
+
+    @classmethod
+    def now(cls, tz: datetime | None = None) -> datetime:  # type: ignore[override]  # mirrors datetime.now's optional-tz signature deliberately
+        if tz is None:
+            return cls(2026, 6, 14, 20, 0)  # naive local read: previous day
+        return cls.UTC_NOW
+
+
+def _assert_ticket_id_shape(ticket_id: str) -> None:
+    """Pin the ticket-id shape: GAIA-<UTC yyyymmdd>-<8 uppercase hex chars>."""
+    assert re.fullmatch(r"GAIA-\d{8}-[0-9A-F]{8}", ticket_id), ticket_id
+
+
+def _assert_utc_ticket_id(ticket_id: str) -> None:
+    """Pin the shape AND that the date segment is the fake clock's UTC date —
+    a local-time read would produce 20260614 here."""
+    _assert_ticket_id_shape(ticket_id)
+    date_segment = ticket_id.removeprefix("GAIA-").split("-")[0]
+    assert date_segment == "20260615", f"ticket id must carry the UTC date, got {ticket_id!r}"
+
+
 class TestCreateSupportRequest:
     async def test_success(
         self,
@@ -447,11 +480,32 @@ class TestCreateSupportRequest:
         assert isinstance(result, SupportRequestSubmissionResponse)
         assert result.success is True
         assert result.ticket_id is not None
+        _assert_ticket_id_shape(result.ticket_id)
         assert result.support_request is not None
         assert result.support_request.user_id == USER_ID
         assert result.support_request.status == SupportRequestStatus.OPEN
         assert result.support_request.priority == SupportRequestPriority.MEDIUM
         mock_support_repo.create.assert_awaited_once()
+
+    async def test_the_ticket_id_date_segment_is_read_against_utc(
+        self,
+        monkeypatch,
+        mock_support_repo,
+        mock_email_notifications,
+        sample_request_data,
+    ):
+        """A local-time read would stamp the wrong day for part of the world."""
+        monkeypatch.setattr("app.services.support_service.datetime", _LocalTimeDiffersFromUTC)
+
+        with patch("app.services.support_service.log"):
+            result = await create_support_request(
+                request_data=sample_request_data,
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+                user_name=USER_NAME,
+            )
+
+        _assert_utc_ticket_id(result.ticket_id)
 
     async def test_create_failure_rolls_back_and_raises_500(
         self,
@@ -664,6 +718,26 @@ class TestCreateSupportRequestWithAttachments:
             )
 
         assert result.success is True
+
+    async def test_the_ticket_id_date_segment_is_read_against_utc(
+        self,
+        monkeypatch,
+        mock_support_repo,
+        mock_email_notifications,
+        sample_request_data,
+    ):
+        """Same UTC contract as the plain create — pinned on both entry points."""
+        monkeypatch.setattr("app.services.support_service.datetime", _LocalTimeDiffersFromUTC)
+
+        with patch("app.services.support_service.log"):
+            result = await create_support_request_with_attachments(
+                request_data=sample_request_data,
+                attachments=[],
+                user_id=USER_ID,
+                user_email=USER_EMAIL,
+            )
+
+        _assert_utc_ticket_id(result.ticket_id)
 
     async def test_too_many_attachments_raises_400(self, sample_request_data):
         """More than 5 attachments raises 400."""

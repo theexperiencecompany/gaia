@@ -12,7 +12,7 @@ export const BRIEFING_TOOLS: ToolStep[] = [
   {
     category: "gmail",
     name: "gmail_list_emails",
-    message: "Scanning inbox — 4 urgent",
+    message: "Scanning inbox: 4 urgent",
   },
   {
     category: "googlecalendar",
@@ -99,7 +99,7 @@ export const BRIEFING_MESSAGES: ChatMessage[] = [
     id: "b5",
     role: "assistant",
     content:
-      "Board sync at 2pm is your highest priority — your Q4 deck isn't ready. I can draft the key slides from your metrics if you want.",
+      "Board sync at 2pm is your highest priority, and your Q4 deck isn't ready. I can draft the key slides from your metrics if you want.",
     delay: 700,
   },
 ];
@@ -134,7 +134,7 @@ export const INVESTOR_MESSAGES: ChatMessage[] = [
     id: "inv5",
     role: "assistant",
     content:
-      "Done. I pulled MRR, customers, and churn from your Google Sheets and referenced 3 recent investor threads. The draft covers growth, key wins, and your Series A timeline — ready for review.",
+      "Done. I pulled MRR, customers, and churn from your Google Sheets and referenced 3 recent investor threads. The draft covers growth, key wins, and your Series A timeline, ready for review.",
     delay: 700,
   },
   {
@@ -164,7 +164,7 @@ export const PROACTIVE_MESSAGES: ChatMessage[] = [
     id: "pr3",
     role: "assistant",
     content:
-      "The Acme follow-up is queued — want me to send it? Their trial expires Friday.",
+      "The Acme follow-up is queued. Want me to send it? Their trial expires Friday.",
     delay: 600,
   },
 ];
@@ -199,7 +199,7 @@ export const PIPELINE_MESSAGES: ChatMessage[] = [
     id: "p5",
     role: "assistant",
     content:
-      "Acme Corp is the most urgent — their trial expires Friday and they haven't scheduled onboarding. I've drafted a check-in email. Want me to send it?",
+      "Acme Corp is the most urgent: their trial expires Friday and they haven't scheduled onboarding. I've drafted a check-in email. Want me to send it?",
     delay: 700,
   },
 ];

@@ -54,9 +54,9 @@ def frozen_time(iso: str) -> Generator[datetime, None, None]:
         "app.api.v1.middleware.tiered_rate_limiter", fromlist=["datetime"]
     ).datetime
 
-    class _FrozenDatetime(datetime):  # type: ignore[type-arg]
-        @classmethod  # type: ignore[override]
-        def now(cls, tz: timezone | None = None) -> datetime:  # type: ignore[override]
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:  # type: ignore[override]  # fake clock deliberately narrows the datetime.now signature
             return frozen
 
     with (

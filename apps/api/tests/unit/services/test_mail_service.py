@@ -621,6 +621,33 @@ class TestSearchMessages:
         params = mock_invoke_gmail_tool.call_args[0][2]
         assert params["query"] == ""
 
+    async def test_forwards_message_format_to_gmail(self, mock_invoke_gmail_tool):
+        """message_format="metadata" must land on the Gmail tool as format="metadata".
+
+        This is the documented lightweight-fetch path (skips body decode, bypasses
+        GMAIL_FULL_FETCH_HARD_LIMIT); a typoed key or a dropped condition would
+        silently fall back to the expensive full fetch.
+        """
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate(
+            {
+                "successful": True,
+                "data": {"messages": [], "nextPageToken": None},
+            }
+        )
+
+        await search_messages(
+            USER_ID,
+            query="test",
+            message_format="metadata",
+            include_payload=False,
+            verbose=False,
+        )
+
+        params = mock_invoke_gmail_tool.call_args[0][2]
+        assert params["format"] == "metadata"
+        assert params["include_payload"] is False
+        assert params["verbose"] is False
+
 
 # ---------------------------------------------------------------------------
 # create_label

@@ -16,7 +16,12 @@ export const stopCommand: BotCommand = {
 
   async execute({ gaia, target, ctx }: CommandExecuteParams): Promise<void> {
     try {
-      await gaia.resetSession(ctx.platform, ctx.platformUserId, ctx.channelId);
+      await gaia.resetSession(
+        ctx.platform,
+        ctx.platformUserId,
+        ctx.channelId,
+        ctx.isDm,
+      );
       await target.sendEphemeral("⏹️ Stopped. Starting a new conversation.");
     } catch (error) {
       wideLog.error("stop_command_error", undefined, error);

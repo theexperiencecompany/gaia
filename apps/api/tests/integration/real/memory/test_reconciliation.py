@@ -115,7 +115,7 @@ async def test_contradiction_creates_updates_chain(
     assert new_metadata is not None and new_metadata["is_latest"] is True
 
 
-async def test_refinement_extends_and_keeps_both_latest(
+async def test_refinement_extends_and_retires_the_less_complete_row(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
     await _retain(memory_user, fake_llm, make_batch([make_fact("Arjun likes coffee.")]))
@@ -133,14 +133,19 @@ async def test_refinement_extends_and_keeps_both_latest(
 
     rows = await fetch_memory_rows(memory_user)
     assert len(rows) == 2
-    assert all(row.is_latest for row in rows), "EXTENDS must not supersede the original"
-    extension = next(row for row in rows if row.id != old.id)
-    # EXTENDS is a relatedness link, not a revision: the new fact keeps version 1
-    # and its own chain (root_id stays None). Only UPDATES advances the version.
-    assert extension.version == 1
+    # Two rows about the same subject-attribute must never both be live. They
+    # used to (36% of the production store), so recall returned both versions.
+    live = [row for row in rows if row.is_latest]
+    assert len(live) == 1
+    extension = live[0]
+    assert extension.id != old.id
+    assert extension.version == 2
     assert extension.parent_id == old.id
-    assert extension.root_id is None
+    assert extension.root_id == old.id
     assert extension.relation_type == MemoryRelationType.EXTENDS.value
+
+    retired_metadata = await chroma_vector_metadata(str(old.id))
+    assert retired_metadata is not None and retired_metadata["is_latest"] is False
 
 
 async def test_same_topic_different_assertion_stays_new(

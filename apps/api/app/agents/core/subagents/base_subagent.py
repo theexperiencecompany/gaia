@@ -1,13 +1,13 @@
 """Factory for provider-specific sub-agents.
 
 Subagents are standalone graphs with their own checkpointers, invoked via the
-tool-calling pattern like executor_agent. Each runs memory_node as an
-end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
+tool-calling pattern like executor_agent. Passive memory learning is NOT wired
+here — it runs once per comms turn, over the conversation the user actually
+had (see app/agents/core/nodes/memory_node.py).
 """
 
 import asyncio
 from collections.abc import Mapping
-from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -16,12 +16,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import (
-    manage_system_prompts_node,
-    memory_node,
-)
-from app.agents.core.nodes.adapt_media import adapt_media_node
-from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, grep, query_json, read
@@ -41,7 +36,6 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
@@ -216,6 +210,7 @@ class SubAgentFactory:
         # middleware and the todo (plan_tasks/update_tasks) tools + hook so it
         # cannot drift into executing the workflow it is supposed to describe.
         middleware = create_subagent_middleware(
+            agent_name=name,
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
             subagent_tool_space=tool_space,
@@ -246,13 +241,13 @@ class SubAgentFactory:
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "middleware": middleware,
-            "pre_model_hooks": [
-                cast(HookType, filter_messages_node),
-                cast(HookType, adapt_media_node),
-                manage_system_prompts_node,
-                *([todo_hook] if todo_hook is not None else []),
-            ],
-            "end_graph_hooks": [memory_node],
+            "pre_model_hooks": worker_pre_model_hooks(todo_hook),
+            # No memory hook. Extraction runs once per comms turn: a subagent
+            # sees the same thread the comms agent already ingested, so hooking
+            # it here re-extracted one conversation once per subagent per turn,
+            # and it is the tier whose transcripts are raw provider payloads
+            # rather than anything the user said.
+            "end_graph_hooks": [],
         }
 
         valid_auto_bind: list[str] | None = (
@@ -318,7 +313,7 @@ class SubAgentFactory:
                 tool_runtime_config=child_tool_runtime,
             )
 
-        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
+        builder = create_agent(**common_kwargs)  # type: ignore[arg-type]  # kwargs assembled as a runtime dict; **-unpacking defeats mypy's kwarg checking
 
         try:
             checkpointer_manager = await get_checkpointer_manager()

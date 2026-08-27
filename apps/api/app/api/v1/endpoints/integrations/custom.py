@@ -19,6 +19,7 @@ from app.schemas.integrations.responses import (
     PublishIntegrationResponse,
     UnpublishIntegrationResponse,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     delete_custom_integration,
@@ -64,6 +65,16 @@ async def create_custom_mcp_integration(
 
         log.set(integration_id=integration.integration_id)
         log.set(outcome="success")
+        # OAuth-managed connects complete at the MCP OAuth callback; only a
+        # direct (no-auth / bearer) connect finishes here.
+        if conn_result.get("status") == "connected":
+            capture_context_event(
+                AnalyticsEvents.INTEGRATION_CONNECTED,
+                {
+                    "integration_id": integration.integration_id,
+                    "auth_type": "bearer" if request.bearer_token else "none",
+                },
+            )
         return CreateCustomIntegrationResponse(
             message="Custom integration created",
             integration_id=integration.integration_id,

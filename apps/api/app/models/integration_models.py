@@ -21,6 +21,11 @@ from app.models.oauth_models import IntegrationContent, OAuthIntegration
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
 
+# Connection state of a user's integration. `expired` means "was connected and no
+# longer works" (revoked grant / dead refresh token) — distinct from `created`
+# ("added, never authenticated") and from the absence of a record entirely.
+UserIntegrationStatus = Literal["created", "connected", "expired"]
+
 
 class IntegrationTool(BaseModel):
     """Tool metadata for frontend display (not used by LLM)."""
@@ -169,9 +174,12 @@ class UserIntegration(BaseModel):
 
     user_id: str = Field(..., description="User's MongoDB ObjectId as string")
     integration_id: str = Field(..., description="Reference to integration")
-    status: Literal["created", "connected"] = Field(
+    status: UserIntegrationStatus = Field(
         "created",
-        description="'created' = added but not authenticated, 'connected' = ready to use",
+        description=(
+            "'created' = added but not authenticated, 'connected' = ready to use, "
+            "'expired' = was connected but the upstream grant died"
+        ),
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     connected_at: datetime | None = Field(None, description="When OAuth/auth was completed")
@@ -185,9 +193,15 @@ class UserIntegrationDocument(UserScopedDocument):
     incidental; access is always by the business pair."""
 
     integration_id: str
-    status: Literal["created", "connected"] = "created"
+    status: UserIntegrationStatus = "created"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     connected_at: datetime | None = None
+    expired_at: datetime | None = None
+    expired_reason: str | None = None
+    # Composio's connected-account nanoid (``ca_...``). Recorded so a dead or
+    # stale account can be addressed directly — revoked, deleted, or inspected —
+    # without listing every account for the user first.
+    connected_account_id: str | None = None
 
 
 class UserIntegrationUpdate(BaseModel):
@@ -195,8 +209,11 @@ class UserIntegrationUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["created", "connected"] | None = None
+    status: UserIntegrationStatus | None = None
     connected_at: datetime | None = None
+    expired_at: datetime | None = None
+    expired_reason: str | None = None
+    connected_account_id: str | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -341,9 +358,10 @@ class UserIntegrationResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     integration_id: str
-    status: Literal["created", "connected"]
+    status: UserIntegrationStatus
     created_at: datetime
     connected_at: datetime | None = None
+    expired_at: datetime | None = None
 
     # Hydrated integration details
     integration: IntegrationResponse

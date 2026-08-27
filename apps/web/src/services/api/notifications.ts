@@ -5,9 +5,32 @@ import {
   BulkActions,
   type NotificationResponse,
   type PaginatedNotificationsResponse,
-  type SnoozeRequest,
   type UseNotificationsOptions,
 } from "@/types/features/notificationTypes";
+
+/** Shape-only description of an unexpected payload — never its contents. */
+function describePayload(payload: unknown): string {
+  if (typeof payload === "string") {
+    // Classify by the first non-whitespace character rather than quoting the
+    // body. This still separates the cases that matter — an edge/proxy HTML
+    // page from truncated JSON from an empty body — without putting any of the
+    // response's bytes into the error, which could carry a token or user text.
+    const firstChar = payload.trimStart()[0];
+    const kind =
+      firstChar === "<"
+        ? " that looks like markup"
+        : firstChar === "{" || firstChar === "["
+          ? " that looks like truncated JSON"
+          : "";
+    return `a ${payload.length}-char string${kind}`;
+  }
+  if (payload === null || payload === undefined) return String(payload);
+  if (Array.isArray(payload)) return `an array of ${payload.length}`;
+  if (typeof payload === "object") {
+    return `an object with keys [${Object.keys(payload).join(", ")}]`;
+  }
+  return `a ${typeof payload}`;
+}
 
 export class NotificationsAPI {
   private static BASE_URL = "/notifications";
@@ -30,45 +53,20 @@ export class NotificationsAPI {
       `${NotificationsAPI.BASE_URL}?${params.toString()}`,
     );
 
-    return response.data;
-  }
-
-  /**
-   * Fetch all notifications regardless of status
-   */
-  static async getAllNotifications(
-    options: Omit<UseNotificationsOptions, "status"> = {},
-  ): Promise<PaginatedNotificationsResponse> {
-    const params = new URLSearchParams();
-
-    if (options.limit) params.append("limit", options.limit.toString());
-    if (options.offset) params.append("offset", options.offset.toString());
-    if (options.channel_type)
-      params.append("channel_type", options.channel_type);
-
-    const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${NotificationsAPI.BASE_URL}?${params.toString()}`,
-    );
-
-    return response.data;
-  }
-
-  /**
-   * Fetch read notifications
-   */
-  static async getReadNotifications(
-    options: Omit<UseNotificationsOptions, "status"> = {},
-  ): Promise<PaginatedNotificationsResponse> {
-    const params = new URLSearchParams();
-
-    if (options.limit) params.append("limit", options.limit.toString());
-    if (options.offset) params.append("offset", options.offset.toString());
-    if (options.channel_type)
-      params.append("channel_type", options.channel_type);
-
-    const response = await apiauth.get<PaginatedNotificationsResponse>(
-      `${NotificationsAPI.BASE_URL}/status?${params.toString()}`,
-    );
+    // The endpoint always returns a `notifications` array (required field on the
+    // API's response model). Anything else means the body did not come from the
+    // API — a proxy/edge error page or truncated JSON that axios silently leaves
+    // as a string. Fail loudly, and describe what actually arrived, so the next
+    // occurrence identifies itself instead of surfacing as a TypeError deep in a
+    // hook. Only the status and the payload's shape are reported, never its
+    // contents, so this stays free of notification text.
+    if (!Array.isArray(response.data?.notifications)) {
+      throw new Error(
+        `Malformed notifications response: expected \`notifications\` to be an array. ` +
+          `HTTP ${response.status}, content-type ${response.headers["content-type"] ?? "none"}, ` +
+          `received ${describePayload(response.data)}`,
+      );
+    }
 
     return response.data;
   }
@@ -129,24 +127,6 @@ export class NotificationsAPI {
   }
 
   /**
-   * Snooze a notification until a specific time
-   */
-  static async snoozeNotification(
-    notificationId: string,
-    snoozeUntil: Date,
-  ): Promise<NotificationResponse> {
-    const snoozeRequest: SnoozeRequest = {
-      snooze_until: snoozeUntil.toISOString(),
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/${notificationId}/snooze`,
-      snoozeRequest,
-    );
-    return response.data;
-  }
-
-  /**
    * Bulk mark notifications as read
    */
   static async bulkMarkAsRead(
@@ -183,34 +163,6 @@ export class NotificationsAPI {
   }
 
   /**
-   * Delete notifications permanently
-   */
-  static async bulkDelete(
-    notificationIds: string[],
-  ): Promise<NotificationResponse> {
-    const bulkRequest: BulkActionRequest = {
-      notification_ids: notificationIds,
-      action: BulkActions.DELETE,
-    };
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/bulk-actions`,
-      bulkRequest,
-    );
-    return response.data;
-  }
-
-  /**
-   * Get unread notification count
-   */
-  static async getUnreadCount(): Promise<{ count: number }> {
-    const response = await apiauth.get<{ count: number }>(
-      `${NotificationsAPI.BASE_URL}/unread/count`,
-    );
-    return response.data;
-  }
-
-  /**
    * Get notification channel preferences (telegram, discord, whatsapp, slack)
    */
   static async getChannelPreferences(): Promise<
@@ -232,22 +184,5 @@ export class NotificationsAPI {
     await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {
       [platform]: enabled,
     });
-  }
-
-  /**
-   * Create a test notification for debugging WebSocket
-   */
-  static async createTestNotification(
-    type: string = "all",
-  ): Promise<NotificationResponse> {
-    const params = new URLSearchParams();
-    if (type !== "all") {
-      params.append("notification_type", type);
-    }
-
-    const response = await apiauth.post<NotificationResponse>(
-      `${NotificationsAPI.BASE_URL}/test?${params.toString()}`,
-    );
-    return response.data;
   }
 }

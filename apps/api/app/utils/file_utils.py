@@ -7,7 +7,7 @@ are embedded into ChromaDB for retrieval.
 """
 
 import asyncio
-import os
+from pathlib import Path
 from typing import Union, cast
 
 from langchain_core.messages import BaseMessage
@@ -15,7 +15,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm, metered_config, with_llm_retry
+from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -40,7 +40,7 @@ from app.constants.files import (
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 from app.utils import local_document_parser
-from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.image_codec import ImageCodec, InvalidImageError
 from shared.py.wide_events import log
 
 _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
@@ -70,7 +70,7 @@ class DocumentProcessor:
         """
         self._parser: LlamaParse | None = None
         self.user_id = user_id
-        self.llm = get_default_llm()
+        self.llm = get_helper_llm()
 
     @property
     def parser(self) -> LlamaParse:
@@ -129,7 +129,7 @@ class DocumentProcessor:
                 return await self.process_text(file_content)
             if content_type == "application/json":
                 return await self.process_text(file_content)
-            ext = os.path.splitext(filename)[1].lower()
+            ext = Path(filename).suffix.lower()
             return f"File of type {ext} (no content extraction available)"
         except Exception as e:
             log.error(
@@ -151,7 +151,7 @@ class DocumentProcessor:
         """
         try:
             inline = await ImageCodec.from_bytes(image_data)
-        except InvalidImage as e:
+        except InvalidImageError as e:
             log.error(
                 f"{LogTag.TOOL} Failed to process image", error=str(e), error_type=type(e).__name__
             )
@@ -315,7 +315,7 @@ class DocumentProcessor:
                 error_type=type(e).__name__,
                 exc_info=True,
             )
-            raise e
+            raise
 
     async def _generate_text_summary(self, text: str) -> str:
         """Generate a summary for text content using the default LLM."""

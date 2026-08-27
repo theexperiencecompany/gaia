@@ -1,14 +1,17 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import type { Selection } from "@heroui/react";
-import { Add01Icon } from "@icons";
+import { Add01Icon, RedoIcon } from "@icons";
+import {
+  CONNECT_ACTION_LABEL,
+  INTEGRATION_STATE_ORDER,
+  integrationConnectionState,
+} from "@shared/utils";
 import type React from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useRouter } from "@/i18n/navigation";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-
 import type { Integration } from "../types";
 
 interface IntegrationsCardProps {
@@ -23,9 +26,13 @@ const IntegrationItem: React.FC<{
   onClick: (id: string) => void;
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
-  const isConnected = integration.status === "connected";
+  const state = integrationConnectionState(integration.status);
+  const isConnected = state === "connected";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
+  // Pending or expired grants need user action — same treatment as the rows
+  // on the integrations page (IntegrationsList): amber retry/reconnect affordance.
+  const needsAttention = state === "pending" || state === "expired";
 
   const handleClick = () => {
     onClick(integration.id);
@@ -40,10 +47,13 @@ const IntegrationItem: React.FC<{
 
   return (
     <div
-      className={`flex min-h-12 cursor-pointer flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
-      onClick={handleClick}
+      className={`flex min-h-12 flex-col justify-center ${gapClass} overflow-hidden ${size === "small" ? "rounded-xl" : "rounded-2xl"} bg-zinc-800/40 ${paddingClass} transition hover:bg-zinc-700`}
     >
-      <div className="flex items-center gap-3">
+      <button
+        type="button"
+        className="flex min-w-0 cursor-pointer items-center gap-3 text-left"
+        onClick={handleClick}
+      >
         <div className="shrink-0">
           {getToolCategoryIcon(
             integration.id,
@@ -65,32 +75,41 @@ const IntegrationItem: React.FC<{
             </div>
           </div>
         ) : (
-          <div className="flex-1 text-sm font-medium">{integration.name}</div>
+          <div className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+            {integration.name}
+          </div>
+        )}
+      </button>
+
+      <div className="shrink-0 flex items-center gap-2">
+        {/* Status Dots - always show */}
+        {isConnected && (
+          <span className="h-2 w-2 rounded-full bg-success mr-2" />
         )}
 
-        <div className="shrink-0 flex items-center gap-2">
-          {/* Status Dots - always show */}
-          {isConnected && (
-            <span className="h-2 w-2 rounded-full bg-success mr-2" />
-          )}
+        {state === "pending" && (
+          <span className="h-2 w-2 rounded-full bg-warning mr-2" />
+        )}
 
-          {integration.status === "created" && (
-            <span className="h-2 w-2 rounded-full bg-warning mr-2" />
-          )}
+        {state === "expired" && (
+          <span className="h-2 w-2 rounded-full bg-danger mr-2" />
+        )}
 
-          {/* Connect button */}
-          {isAvailable && !isConnected && integration.status !== "created" && (
-            <Button
-              size="sm"
-              variant="flat"
-              color="primary"
-              className="text-xs text-primary"
-              onPress={handleConnectClick}
-            >
-              Connect
-            </Button>
-          )}
-        </div>
+        {/* Action button — pending reads as Retry, expired as Reconnect, never Connect */}
+        {(isAvailable || needsAttention) && !isConnected && (
+          <Button
+            size="sm"
+            variant="flat"
+            color={needsAttention ? "warning" : "primary"}
+            className="text-xs"
+            startContent={
+              needsAttention ? <RedoIcon width={16} height={16} /> : undefined
+            }
+            onPress={handleConnectClick}
+          >
+            {CONNECT_ACTION_LABEL[state]}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -106,10 +125,11 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   const { isExpanded, setExpanded } = useIntegrationsAccordion();
   const router = useRouter();
 
-  // Only the user's own integrations — connected, or created (added, not yet
-  // authenticated). The full catalog lives on the integrations page.
+  // Only the user's own integrations — connected, created (added, not yet
+  // authenticated) or expired (connected once, now broken). The full catalog
+  // lives on the integrations page.
   const myIntegrations = integrations.filter(
-    (i) => i.status === "connected" || i.status === "created",
+    (i) => integrationConnectionState(i.status) !== "disconnected",
   );
 
   // Convert boolean to Selection for NextUI Accordion
@@ -135,12 +155,6 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     (i) => i.status === "connected",
   ).length;
 
-  const statusOrder = {
-    created: 0,
-    connected: 1,
-    not_connected: 2,
-    error: 3,
-  };
   return (
     <div className="mx-2 mb-3 border-b-1 border-zinc-800">
       <Accordion
@@ -177,9 +191,15 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
             <div className="grid grid-cols-2 gap-2 pl-1">
               {myIntegrations
                 .toSorted((a, b) => {
-                  // Connected first, then alphabetically
-                  const aOrder = statusOrder[a.status] ?? 99;
-                  const bOrder = statusOrder[b.status] ?? 99;
+                  // Needs-attention first, then connected, then alphabetically
+                  const aOrder =
+                    INTEGRATION_STATE_ORDER[
+                      integrationConnectionState(a.status)
+                    ];
+                  const bOrder =
+                    INTEGRATION_STATE_ORDER[
+                      integrationConnectionState(b.status)
+                    ];
                   if (aOrder !== bOrder) return aOrder - bOrder;
                   return a.name.localeCompare(b.name);
                 })
