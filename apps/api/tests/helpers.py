@@ -50,7 +50,7 @@ def pick_free_port() -> int:
 # the URL pins no DB or DB 0, and the resolved DB is never 0 for any worker. An
 # explicitly configured non-zero DB is a deliberate caller choice and is preserved
 # (offset per worker).
-_TEST_REDIS_DB_BLOCK_START = 8  # first DB of the throwaway block (8–15)
+_TEST_REDIS_DB_BLOCK_START = 8  # first DB of the throwaway block (8–31)
 
 
 def worker_redis_url(base_url: str) -> str:
@@ -59,7 +59,7 @@ def worker_redis_url(base_url: str) -> str:
     Each xdist worker gets its own logical DB so ``flushdb()`` teardown cannot wipe
     another worker's in-flight keys, and the resolved DB is never 0 — so teardown
     can never touch the application's live database. When the URL pins no DB (or
-    pins DB 0), the run is relocated into a dedicated high-DB block (8–15).
+    pins DB 0), the run is relocated into a dedicated high-DB block (8–31).
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -68,13 +68,17 @@ def worker_redis_url(base_url: str) -> str:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
     configured_db = int(match.group(1)) if match else 0
+    # The CI Redis runs with --databases 32 (scripts/ci/start-test-services.sh),
+    # so the throwaway block is 8-31: room for 24 workers with NO wrapping. The
+    # previous 8-15 block wrapped at eight workers, which on a 16-worker run put
+    # gw0 and gw8 on the same DB — and teardown is flushdb(), so each wiped the
+    # other's in-flight keys. Wrapping only happens past 24 workers, and is
+    # then a deliberate, documented degradation rather than a silent one.
+    block_size = 32 - _TEST_REDIS_DB_BLOCK_START
     if configured_db:
-        # Deliberate non-zero DB: offset per worker, but never wrap onto DB 0.
-        db = (configured_db + worker_num) % 16 or _TEST_REDIS_DB_BLOCK_START
+        # Deliberate non-zero DB: offset per worker, but never land on DB 0.
+        db = (configured_db + worker_num) % 32 or _TEST_REDIS_DB_BLOCK_START
     else:
-        # No DB or DB 0 (the app's live DB): use the throwaway block, wrapping
-        # within 8–15 so the flush target is always an isolated test database.
-        block_size = 16 - _TEST_REDIS_DB_BLOCK_START
         db = _TEST_REDIS_DB_BLOCK_START + (worker_num % block_size)
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
