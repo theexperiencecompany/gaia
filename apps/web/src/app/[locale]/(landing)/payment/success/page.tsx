@@ -19,6 +19,7 @@ import { LAST_CHECKOUT_PRODUCT_KEY } from "@/features/pricing/constants";
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
+import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -94,37 +95,10 @@ export default function PaymentSuccessPage() {
     else router.push("/pricing");
   };
 
-  // Receipt details: the webhook-verified subscription record is the source of
-  // truth — every printed row comes from this one endpoint, so the reference
-  // can never describe a different subscription than the plan/amount next to
-  // it. While verifying we preview the plan from the remembered checkout click.
-  const previewPlan =
-    plans.find((plan) => plan.dodo_product_id === lastProductId) ?? undefined;
-  const activePlan = subscriptionStatus?.current_plan;
-  const subscription = subscriptionStatus?.subscription;
-  const isSubscribed = subscriptionStatus?.is_subscribed === true;
-
-  const receipt = {
-    planName:
-      (isSubscribed ? activePlan?.name : undefined) ?? previewPlan?.name,
-    amount:
-      (isSubscribed
-        ? (subscription?.recurring_pre_tax_amount ?? activePlan?.amount)
-        : previewPlan?.amount) ?? null,
-    currency:
-      (isSubscribed
-        ? (subscription?.currency ?? activePlan?.currency)
-        : previewPlan?.currency) ?? undefined,
-    billingPeriod:
-      (isSubscribed ? activePlan?.duration : undefined) ??
-      previewPlan?.duration,
-    nextBillingDate: isSubscribed
-      ? (subscription?.next_billing_date ?? null)
-      : null,
-    subscriptionRef: isSubscribed
-      ? (subscription?.dodo_subscription_id ?? null)
-      : null,
-  };
+  const previewPlan = plans.find(
+    (plan) => plan.dodo_product_id === lastProductId,
+  );
+  const receipt = buildReceiptDetails(subscriptionStatus, previewPlan);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center px-4 pt-24 pb-16">
@@ -177,6 +151,9 @@ export default function PaymentSuccessPage() {
                 currency={receipt.currency}
                 nextBillingDate={receipt.nextBillingDate}
                 planName={receipt.planName}
+                purchasedAt={receipt.purchasedAt}
+                customerEmail={user.email || undefined}
+                quantity={receipt.quantity}
                 stage={printerStage}
                 subscriptionRef={receipt.subscriptionRef}
               />

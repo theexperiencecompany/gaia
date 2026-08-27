@@ -20,6 +20,12 @@ type PostPaymentReceiptProps = {
   nextBillingDate?: string | null;
   /** Dodo subscription id printed under the barcode. */
   subscriptionRef?: string | null;
+  /** ISO date the charge was taken, from the subscription record. */
+  purchasedAt?: string | null;
+  /** Email the subscription is billed to. */
+  customerEmail?: string;
+  /** Seats purchased, from the subscription record. */
+  quantity?: number;
 };
 
 /** Formats minor-unit money with the currency it was actually charged in. */
@@ -59,6 +65,12 @@ function billingPeriodLabel(billingPeriod?: string): string {
   return "Subscription";
 }
 
+function billingCycleLabel(billingPeriod?: string): string | null {
+  if (billingPeriod === "yearly") return "Annual";
+  if (billingPeriod === "monthly") return "Monthly";
+  return null;
+}
+
 /**
  * Deterministic pseudo-barcode bar widths (1-3px) derived from the
  * subscription reference, so every checkout prints a distinct pattern.
@@ -84,10 +96,17 @@ export function PostPaymentReceipt({
   billingPeriod,
   nextBillingDate,
   subscriptionRef,
+  purchasedAt,
+  customerEmail,
+  quantity = 1,
 }: PostPaymentReceiptProps) {
   const displayName = planName ?? "GAIA Pro";
   const nextBilling = formatDate(nextBillingDate);
+  const purchased = formatDate(purchasedAt);
+  const cycle = billingCycleLabel(billingPeriod);
   const price = amount != null ? formatMoney(amount, currency) : null;
+  const lineTotal =
+    amount != null ? formatMoney(amount * quantity, currency) : null;
   const bars = barcodeBars(subscriptionRef ?? displayName);
 
   return (
@@ -133,26 +152,63 @@ export function PostPaymentReceipt({
 
         <ReceiptPrinter.Output>
           <ReceiptPrinter.Paper>
-            <dl className="space-y-2.5">
+            <div className="flex items-baseline justify-between gap-4 text-xs">
+              <span className="font-semibold tracking-[0.2em]">RECEIPT</span>
+              {purchased && <span className="opacity-60">{purchased}</span>}
+            </div>
+            {customerEmail && (
+              <p className="mt-1 truncate text-xs opacity-60">
+                {customerEmail}
+              </p>
+            )}
+            <hr className="my-3 border-dashed border-zinc-300" />
+            <dl className="space-y-2">
+              <div className="flex justify-between gap-4 text-xs">
+                <dt className="min-w-0">
+                  <span className="font-medium">{displayName}</span>
+                  {cycle && <span className="opacity-60"> ({cycle})</span>}
+                  {quantity > 1 && (
+                    <span className="opacity-60"> x{quantity}</span>
+                  )}
+                </dt>
+                <dd className="shrink-0 text-right font-medium">{price}</dd>
+              </div>
+            </dl>
+            <hr className="my-3 border-dashed border-zinc-300" />
+            <dl className="space-y-2">
               <div className="flex justify-between gap-4">
                 <dt className="pt-0.5 text-sm">Total</dt>
-                <dd className="text-right text-lg tracking-tight">{price}</dd>
+                <dd className="text-right text-lg tracking-tight">
+                  {lineTotal}
+                </dd>
               </div>
               <div className="flex justify-between gap-4 text-xs">
-                <dt className="opacity-60">{displayName}</dt>
+                <dt className="opacity-60">Billing</dt>
                 <dd className="text-right font-medium">
                   {billingPeriodLabel(billingPeriod)}
                 </dd>
               </div>
               {nextBilling && (
                 <div className="flex justify-between gap-4 text-xs">
-                  <dt className="opacity-60">Next billing</dt>
+                  <dt className="opacity-60">Next charge</dt>
                   <dd className="text-right font-medium">{nextBilling}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-4 text-xs">
+                <dt className="opacity-60">Status</dt>
+                <dd className="text-right font-medium">Active</dd>
+              </div>
+              {subscriptionRef && (
+                <div className="flex justify-between gap-4 text-xs">
+                  <dt className="opacity-60">Ref</dt>
+                  <dd className="min-w-0 break-all text-right font-medium">
+                    {subscriptionRef}
+                  </dd>
+                </div>
+              )}
             </dl>
-            <hr />
-            <p className="mt-8 text-xs leading-relaxed opacity-70">
+            <hr className="my-3 border-dashed border-zinc-300" />
+            <p className="text-xs leading-relaxed opacity-70">
               Thanks for subscribing to {displayName}. Every Pro feature is now
               unlocked — welcome aboard.
             </p>

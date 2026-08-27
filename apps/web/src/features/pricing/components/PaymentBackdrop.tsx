@@ -20,7 +20,7 @@ export function PaymentBackdrop() {
         className="object-cover"
       />
       {/* Soften for card contrast */}
-      <div className="absolute inset-0 bg-primary-bg/40" />
+      <div className="absolute inset-0 bg-primary-bg/15" />
     </div>
   );
 }
