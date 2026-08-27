@@ -9,6 +9,8 @@ in flight. Both are silent in production, so they are pinned here.
 from types import TracebackType
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.services.workflow.thread_reset import reset_workflow_threads
 
 MODULE = "app.services.workflow.thread_reset"
@@ -185,3 +187,82 @@ class TestGuards:
         assert log.warning.call_count == 1
         assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
         assert log.warning.call_args.kwargs["conversation_id"] == CONV
+
+    async def test_it_gives_up_quietly_when_there_is_no_checkpointer_pool(self) -> None:
+        """No Postgres means nothing to reset; the run must still go ahead."""
+        checkpointer = _checkpointer()
+        manager = _manager({CONV: False}, checkpointer)
+        manager.pool = None
+
+        with (
+            patch(f"{MODULE}.get_checkpointer_manager", AsyncMock(return_value=manager)),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+            patch(f"{MODULE}.log") as log,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            deleted_count = await reset_workflow_threads(CONV)
+
+        assert deleted_count == 0
+        checkpointer.adelete_thread.assert_not_awaited()
+        assert "no checkpointer pool" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs["conversation_id"] == CONV
+
+    async def test_a_workflow_with_no_threads_yet_deletes_nothing(self) -> None:
+        """First run of a workflow: nothing to reset, and no in-flight query either."""
+        checkpointer = _checkpointer()
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager({}, checkpointer)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            deleted_count = await reset_workflow_threads(CONV)
+
+        assert deleted_count == 0
+        checkpointer.adelete_thread.assert_not_awaited()
+
+    async def test_the_skip_for_a_chat_conversation_says_why(self) -> None:
+        with (
+            patch(f"{MODULE}.conversation_repository") as conversations,
+            patch(f"{MODULE}.log") as log,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=False)
+            await reset_workflow_threads(CONV)
+
+        assert "not a workflow conversation" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs["conversation_id"] == CONV
+
+
+@pytest.mark.unit
+class TestResetWideEvent:
+    """How much was reset, and how much was left alone, on the run's wide event.
+
+    Without both numbers a reset that quietly stopped resetting anything — the
+    exact failure this feature exists to prevent — looks identical in production
+    to one with nothing left to do.
+    """
+
+    async def test_it_reports_what_it_reset_and_what_it_spared(self) -> None:
+        checkpointer = _checkpointer()
+        threads = {
+            CONV: False,
+            f"executor_{CONV}": False,
+            f"gmail_executor_{CONV}": True,
+        }
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager(threads, checkpointer)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+            patch(f"{MODULE}.log") as log,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            deleted_count = await reset_workflow_threads(CONV)
+
+        assert deleted_count == 2
+        log.set_ns.assert_called_once_with("workflow", threads_reset=2, threads_skipped_inflight=1)

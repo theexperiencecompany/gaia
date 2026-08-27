@@ -62,7 +62,7 @@ async def write_playbook(
 
         body = playbook_body_from_input(description, steps, synthesize, ask)
 
-        validation = await validate_playbook(body)
+        validation = await validate_playbook(body, user_id)
         if not validation.valid:
             log.warning(f"{LogTag.TOOL} write_playbook: rejected", issues=len(validation.issues))
             return error_response(

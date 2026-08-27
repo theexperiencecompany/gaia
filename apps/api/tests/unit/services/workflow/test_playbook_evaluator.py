@@ -43,6 +43,18 @@ def _context(
     )
 
 
+def _assert_actionable(error: PlaceholderError, token: str) -> None:
+    """Every placeholder failure has to name the token and say what to do next.
+
+    The playbook author only ever sees this triple. A run that stops with a
+    nameless message, or with no ``why``/``fix``, leaves them holding a dead
+    workflow and no way to repair it.
+    """
+    assert token in error.message
+    assert error.why
+    assert error.fix
+
+
 def test_now_and_today_render_the_workflow_zone() -> None:
     context = _context()
     assert resolve_value("$now", context) == "2026-03-14T09:30:00+01:00"
@@ -101,6 +113,7 @@ def test_unresolvable_step_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$steps.missing.count", _context())
     assert "$steps.missing.count" in caught.value.message
+    _assert_actionable(caught.value, "$steps.missing.count")
 
 
 def test_unresolvable_step_field_raises_and_names_the_placeholder() -> None:
@@ -108,12 +121,14 @@ def test_unresolvable_step_field_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$steps.inbox.total", context)
     assert "$steps.inbox.total" in caught.value.message
+    _assert_actionable(caught.value, "$steps.inbox.total")
 
 
 def test_unresolvable_trigger_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$trigger.email.subject", _context(trigger={"events": []}))
     assert "$trigger.email.subject" in caught.value.message
+    _assert_actionable(caught.value, "$trigger.email.subject")
 
 
 def test_empty_user_field_raises_and_names_the_placeholder() -> None:
@@ -121,6 +136,7 @@ def test_empty_user_field_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$user.email", _context(user=blank))
     assert "$user.email" in caught.value.message
+    _assert_actionable(caught.value, "$user.email")
 
 
 def test_whole_value_placeholder_preserves_the_resolved_type() -> None:
@@ -175,8 +191,12 @@ def test_placeholders_nested_in_lists_and_dicts_resolve() -> None:
 
 
 def test_an_offset_on_a_non_time_root_is_rejected() -> None:
-    with pytest.raises(PlaceholderError):
+    """An offset silently ignored on $trigger would hand a tool the wrong window."""
+    with pytest.raises(PlaceholderError) as caught:
         resolve_value("$trigger.at + 1d", _context(trigger={"at": "x"}))
+    _assert_actionable(caught.value, "$trigger.at")
+    assert "$now" in caught.value.why
+    assert "$today" in caught.value.why
 
 
 def test_last_run_index_keeps_the_most_recent_call_per_tool() -> None:
@@ -189,3 +209,99 @@ def test_last_run_index_keeps_the_most_recent_call_per_tool() -> None:
     )
     assert index["GMAIL_FETCH"] == {"next_page": "tok_2"}
     assert index["SLACK_POST"] == "posted"
+
+
+def test_a_field_on_a_time_root_is_rejected() -> None:
+    """$now resolves to a time, so $now.hour addresses nothing.
+
+    Letting it through would resolve to the whole timestamp under a name that
+    promises one component, and the tool would silently get the wrong argument.
+    """
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$now.hour", _context())
+    _assert_actionable(caught.value, "$now.hour")
+
+
+def test_unknown_user_field_is_rejected_and_names_the_real_ones() -> None:
+    """The author has to be told the closed set, or they will keep guessing."""
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$user.phone", _context())
+    _assert_actionable(caught.value, "$user.phone")
+    assert "email, name, timezone" in caught.value.why
+
+
+def test_missing_ask_names_the_placeholder() -> None:
+    """An ask the model never wrote must stop the run by name, not send an empty string."""
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$ask.body", _context(asks={"subject": "hi"}))
+    _assert_actionable(caught.value, "$ask.body")
+
+
+def test_a_step_placeholder_with_no_field_resolves_to_the_whole_result() -> None:
+    """$steps.inbox on its own is the step's entire result, not a miss."""
+    context = _context(steps={"inbox": StepResult(value={"count": 12})})
+    assert resolve_value("$steps.inbox", context) == {"count": 12}
+
+
+def test_nested_step_path_splits_at_the_step_id_not_the_last_dot() -> None:
+    """The step id is the FIRST segment; splitting from the right would look up
+    a step called ``inbox.page`` and fail a playbook that is perfectly valid."""
+    context = _context(steps={"inbox": StepResult(value={"page": {"next": "tok_7"}})})
+    assert resolve_value("$steps.inbox.page.next", context) == "tok_7"
+
+
+def test_nested_last_run_path_splits_at_the_tool_name_not_the_last_dot() -> None:
+    """Same split for $last_run, which is keyed by tool name."""
+    context = _context(last_run={"GMAIL_FETCH": {"page": {"next": "tok_7"}}})
+    assert resolve_value("$last_run.GMAIL_FETCH.page.next", context) == "tok_7"
+
+
+def test_a_tool_name_keeps_every_leading_character() -> None:
+    """Only the separating dot is stripped from a path.
+
+    Trimming anything else would silently rename the tool, and a cursor the
+    playbook depends on would resolve to None on every replay.
+    """
+    context = _context(last_run={"XERO_INVOICES": {"cursor": "inv_3"}})
+    assert resolve_value("$last_run.XERO_INVOICES.cursor", context) == "inv_3"
+
+
+def test_out_of_range_list_index_stops_the_run_by_name() -> None:
+    """A stale playbook indexing past the end must raise PlaceholderError, not
+    IndexError: only the named error reaches the user as something repairable."""
+    context = _context(trigger={"events": [{"id": "evt_9"}]})
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$trigger.events.1.id", context)
+    _assert_actionable(caught.value, "$trigger.events.1.id")
+
+
+def test_non_numeric_index_into_a_list_stops_the_run_by_name() -> None:
+    """A field name applied to a list is a stale playbook, not a crash."""
+    context = _context(trigger={"events": [{"id": "evt_9"}]})
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$trigger.events.id", context)
+    _assert_actionable(caught.value, "$trigger.events.id")
+
+
+def test_indexing_into_a_scalar_stops_the_run_by_name() -> None:
+    """Walking past a leaf value must fail loudly rather than resolve to None."""
+    context = _context(steps={"inbox": StepResult(value={"count": 12})})
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$steps.inbox.count.0", context)
+    _assert_actionable(caught.value, "$steps.inbox.count.0")
+
+
+def test_embedded_structured_value_renders_as_json() -> None:
+    """A dict interpolated into a prompt must arrive as JSON the model can read,
+    not as Python repr with single quotes."""
+    context = _context(steps={"inbox": StepResult(value={"page": {"next": "tok_7"}})})
+    resolved = resolve_value("cursor=$steps.inbox.page", context)
+    assert resolved == 'cursor={"next": "tok_7"}'
+
+
+def test_embedded_value_that_is_not_json_serialisable_still_renders() -> None:
+    """A trigger payload can carry a datetime. Rendering it must not blow up the
+    run with a TypeError halfway through building a tool argument."""
+    context = _context(trigger={"when": NOW})
+    resolved = resolve_value("due $trigger.when", context)
+    assert "2026-03-14 09:30:00+01:00" in resolved

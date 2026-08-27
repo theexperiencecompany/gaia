@@ -9,17 +9,19 @@ is the only way a playbook is ever authored — nothing parses YAML back.
 """
 
 from typing import Annotated, Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 import pytest
 import yaml
 
 from app.models.playbook_models import PlaybookBody
-from app.services.workflow.playbook.parser import validate_playbook
+from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
+from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
+USER_ID = "user-1"
 
 
 @tool
@@ -46,8 +48,43 @@ class _FakeRegistry:
         return self._tools
 
 
+@tool
+async def exec(code: Annotated[str, "Code to run"]) -> dict[str, Any]:
+    """Run a query against the integration. Stands in for an MCP tool."""
+    return {}
+
+
+def _mcp_exec_tool() -> BaseTool:
+    return exec
+
+
 def _registry() -> _FakeRegistry:
     return _FakeRegistry({"send_email": send_email, "list_events": list_events})
+
+
+class _SchemaTool(BaseTool):
+    """A tool whose args are a raw JSON schema, the shape MCP tools arrive in.
+
+    Unions and empty arg sets cannot be expressed with ``@tool`` decorators, and
+    they are exactly the schemas a real integration hands the validator.
+    """
+
+    arg_schema: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def args(self) -> dict[str, Any]:
+        return self.arg_schema
+
+    def _run(self, **kwargs: Any) -> dict[str, Any]:
+        return {}
+
+
+def _schema_registry(**schemas: dict[str, Any]) -> _FakeRegistry:
+    tools: dict[str, BaseTool] = {
+        name: _SchemaTool(name=name, description=f"{name} tool", arg_schema=schema)
+        for name, schema in schemas.items()
+    }
+    return _FakeRegistry(tools)
 
 
 def _body(raw_yaml: str) -> PlaybookBody:
@@ -78,6 +115,19 @@ ask:
     uses: [agenda]
 synthesize: Say what was sent.
 """
+
+
+def _handoff_space(tools: dict[str, BaseTool] | None = None):
+    """Stub the handoff tool space, standing in for a real subagent's tools.
+
+    A handoff's children are validated against that subagent's own space, which
+    for an MCP integration is fetched from the user's client. Tests declare that
+    space explicitly rather than reaching for a live subagent registry.
+    """
+    space = SubagentTools(
+        tools=_registry().get_tool_dict() if tools is None else tools, initial_tool_ids=[]
+    )
+    return patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=space))
 
 
 @pytest.mark.unit
@@ -137,7 +187,7 @@ class TestValidatePlaybook:
     async def test_valid_playbook_has_no_issues(self) -> None:
         body = _body(VALID_YAML)
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is True
         assert result.issues == []
 
@@ -153,7 +203,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert any("send_owl" in issue.problem for issue in result.issues)
 
@@ -172,7 +222,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert [issue.where for issue in result.issues] == ["steps[0].args.bcc"]
         assert "bcc" in result.issues[0].problem
@@ -192,7 +242,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert result.issues[0].where == "steps[0].args.retries"
         assert "integer" in result.issues[0].problem
@@ -215,7 +265,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert result.issues[0].where == "steps[0].args.to"
         assert "$steps.agenda" in result.issues[0].problem
@@ -240,8 +290,65 @@ steps:
 synthesize: x
 """
         )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            _handoff_space(),
+        ):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
+
+    async def test_a_handoff_to_an_unknown_subagent_is_rejected_by_name(self) -> None:
+        """Regression: handoff children used to be checked against the executor's
+        registry, which refused every MCP integration whose tools are fetched per
+        user. Now the subagent is resolved, so a missing one must say so."""
+        body = _body(
+            """
+description: Hand off to nobody
+steps:
+  - id: delegate
+    handoff: no_such_agent
+    steps:
+      - id: inner
+        tool: send_email
+        args:
+          to: a@b.com
+synthesize: x
+"""
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=None)),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert "no_such_agent" in result.issues[0].problem
+
+    async def test_a_tool_only_the_integration_has_is_accepted(self) -> None:
+        """The PostHog case: `exec` exists on the user's MCP client and nowhere in
+        the executor's registry. Validating it against the registry refused every
+        playbook an integration-backed workflow could ever write."""
+        body = _body(
+            """
+description: Read PostHog
+steps:
+  - id: delegate
+    handoff: posthog
+    steps:
+      - id: query
+        tool: exec
+        args:
+          code: "1"
+synthesize: x
+"""
+        )
+        mcp_only = {"exec": _mcp_exec_tool()}
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            _handoff_space(mcp_only),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
         assert result.issues == []
 
     async def test_undeclared_ask_reference_is_rejected(self) -> None:
@@ -258,7 +365,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert "$ask.headline" in result.issues[0].problem
 
@@ -276,7 +383,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert "$sender.email" in result.issues[0].problem
 
@@ -293,7 +400,7 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.issues == []
 
     async def test_ask_uses_an_undeclared_step_is_rejected(self) -> None:
@@ -313,6 +420,328 @@ synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body)
+            result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert result.issues[0].where == "ask.body.uses"
+
+    async def test_a_union_typed_arg_accepts_every_member_of_the_union(self) -> None:
+        """An optional arg is declared as anyOf[string, null].
+
+        Reading only the ``type`` key would treat the whole union as untyped and
+        wave through any value; reading the wrong union key would reject a
+        perfectly valid playbook at authoring time.
+        """
+        registry = _schema_registry(
+            query_rows={"cursor": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
+        )
+        for value in ("tok_1", "null"):
+            body = _body(
+                f"""
+description: Optional cursor
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      cursor: {value}
+synthesize: x
+"""
+            )
+            with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+                result = await validate_playbook(body, USER_ID)
+            assert result.issues == []
+
+    async def test_a_union_typed_arg_rejects_a_value_outside_the_union(self) -> None:
+        """The message has to name the union, or the agent cannot repair the arg."""
+        registry = _schema_registry(
+            query_rows={"cursor": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
+        )
+        body = _body(
+            """
+description: Wrong union member
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      cursor: 7
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert result.issues[0].where == "steps[0].args.cursor"
+        assert "expected string or null, got int" in result.issues[0].problem
+
+    async def test_a_oneof_union_is_checked_exactly_like_anyof(self) -> None:
+        """JSON Schema spells a union both ways and integrations use both."""
+        registry = _schema_registry(
+            query_rows={"limit": {"oneOf": [{"type": "integer"}, {"type": "string"}]}}
+        )
+        body = _body(
+            """
+description: oneOf union
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      limit: [1, 2]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "expected integer or string, got list" in result.issues[0].problem
+
+    async def test_a_union_whose_members_are_themselves_unions_still_reports_a_type(
+        self,
+    ) -> None:
+        """A nested union has accepted types but no name to print for them.
+
+        The message must still be a sentence the agent can act on rather than
+        crashing the whole validation on a schema shape it did not expect.
+        """
+        registry = _schema_registry(
+            query_rows={"limit": {"anyOf": [{"anyOf": [{"type": "integer"}]}]}}
+        )
+        body = _body(
+            """
+description: Nested union
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      limit: nope
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "expected another type, got str" in result.issues[0].problem
+
+    async def test_a_boolean_is_not_accepted_for_an_integer_arg(self) -> None:
+        """Python says ``isinstance(True, int)``; the tool's API does not.
+
+        Letting ``true`` through as a count sends a live integration a 1 the
+        author never wrote.
+        """
+        body = _body(
+            """
+description: Boolean count
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+      retries: true
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "expected integer, got bool" in result.issues[0].problem
+
+    async def test_a_placeholder_in_a_typed_arg_is_not_type_checked(self) -> None:
+        """``$steps.agenda.count`` is a string now and an int at replay time.
+
+        Type-checking the unresolved token would make every dynamic argument
+        unauthorable.
+        """
+        body = _body(
+            """
+description: Count comes from an earlier step
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+      retries: $steps.agenda.count
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
+
+    async def test_a_placeholder_nested_inside_a_list_arg_is_still_checked(self) -> None:
+        """Placeholders hide inside structured args, and a stale reference in one
+        breaks the replay just as hard as a top-level one."""
+        registry = _schema_registry(query_rows={"ids": {"type": "array"}})
+        body = _body(
+            """
+description: Nested reference
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      ids: [$steps.nowhere.id]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "$steps.nowhere.id" in result.issues[0].problem
+
+    async def test_a_placeholder_nested_inside_an_object_arg_is_still_checked(self) -> None:
+        """Same for a mapping arg, which is how most integrations take a payload."""
+        registry = _schema_registry(query_rows={"filter": {"type": "object"}})
+        body = _body(
+            """
+description: Nested reference in a mapping
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      filter:
+        owner: $steps.nowhere.id
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "$steps.nowhere.id" in result.issues[0].problem
+
+    async def test_every_bad_arg_on_a_step_is_reported_not_just_the_first(self) -> None:
+        """The author fixes what the report lists. Stopping at the first bad arg
+        turns one rejected write into a round trip per arg."""
+        body = _body(
+            """
+description: Two bad args
+steps:
+  - id: one
+    tool: send_email
+    args:
+      bcc: c@d.com
+      cc: e@f.com
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert sorted(issue.where for issue in result.issues) == [
+            "steps[0].args.bcc",
+            "steps[0].args.cc",
+        ]
+
+    async def test_an_unknown_arg_lists_the_args_the_tool_does_take(self) -> None:
+        """Naming the real args is what lets the agent fix the call in one turn."""
+        body = _body(
+            """
+description: Bad arg
+steps:
+  - id: one
+    tool: send_email
+    args:
+      bcc: c@d.com
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert "it takes: retries, subject, to" in result.issues[0].problem
+
+    async def test_a_tool_that_takes_no_args_says_nothing_rather_than_an_empty_list(
+        self,
+    ) -> None:
+        """An empty list after "it takes:" reads like a truncated message."""
+        registry = _schema_registry(ping={})
+        body = _body(
+            """
+description: Arg on an argless tool
+steps:
+  - id: one
+    tool: ping
+    args:
+      loud: true
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "it takes: nothing" in result.issues[0].problem
+
+    async def test_an_unknown_namespace_lists_the_namespaces_that_exist(self) -> None:
+        """The closed namespace set is the whole vocabulary; the rejection has to
+        hand it over or the agent guesses again."""
+        body = _body(
+            """
+description: Invented namespace
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: $sender.email
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert "ask, last_run, now, steps, today, trigger, user" in result.issues[0].problem
+
+    async def test_a_deep_step_reference_resolves_against_the_step_id(self) -> None:
+        """``$steps.agenda.organizer.email`` names step ``agenda``, not
+        ``agenda.organizer``. Splitting from the wrong end rejects a playbook
+        that would replay perfectly."""
+        body = _body(
+            """
+description: Deep reference
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.organizer.email
+      subject: hi
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
+
+
+@pytest.mark.unit
+class TestDumpPlaybook:
+    """The YAML rendering is what the agent reads its own playbook back from."""
+
+    def test_non_ascii_text_survives_the_rendering(self) -> None:
+        """Descriptions are written by users in their own language. Escaping the
+        accented characters makes the playbook unreadable for the person who
+        wrote it and for the agent that has to edit it."""
+        body = _body(
+            """
+description: Résumé für das Team
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+synthesize: x
+"""
+        )
+        rendered = dump_playbook(body)
+        assert "Résumé für das Team" in rendered
+
+    def test_keys_stay_in_authored_order(self) -> None:
+        """Alphabetising would put ``description`` after ``ask`` and scatter each
+        step's ``id``/``tool``/``args``, so the document stops reading like the
+        sequence it describes."""
+        body = _body(VALID_YAML)
+        rendered = dump_playbook(body)
+        assert rendered.index("description:") < rendered.index("steps:")
+        assert rendered.index("steps:") < rendered.index("ask:")
+        assert rendered.index("id: agenda") < rendered.index("args:")

@@ -33,8 +33,6 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
-from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.middleware.factory import create_middleware_stack
 from app.agents.prompts.playbook_prompts import PLAYBOOK_NARRATION_PROMPT
@@ -62,6 +60,7 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
 )
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
+from app.services.workflow.playbook.tool_space import resolve_subagent_tools
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -232,7 +231,7 @@ async def _run_handoff(
     """Run a handoff's recorded children inside that subagent's tool space."""
     subagent_id = step.handoff or ""
     position = run.position
-    space = await _subagent_space(subagent_id, run.registry)
+    space = await _subagent_space(subagent_id, playbook.user_id, run.registry)
     if space is None:
         return _StepFailure(position, _HANDOFF_TOOL, f"no subagent named {subagent_id!r} exists")
 
@@ -363,34 +362,27 @@ def _record(
     return digest
 
 
-async def _subagent_space(subagent_id: str, registry: ToolRegistry) -> _ToolSpace | None:
+async def _subagent_space(
+    subagent_id: str, user_id: str, registry: ToolRegistry
+) -> _ToolSpace | None:
     """The tool space a handoff's children run in, or ``None`` for an unknown id."""
-    subagent = get_subagent_by_id(subagent_id)
-    if subagent is None:
+    # The same resolution the validator used when this playbook was written. If
+    # the two ever diverge, a playbook is accepted and then replayed against a
+    # tool space that never had the tool it recorded.
+    space = await resolve_subagent_tools(subagent_id, user_id, registry)
+    if space is None or space.subagent is None:
         return None
-
+    subagent = space.subagent
     config = subagent.config
-    scoped, initial = build_scoped_tool_dict(
-        tool_registry=registry,
-        tool_space=config.tool_space,
-        mcp_tools=None,
-        include_finish_task=config.include_finish_task,
-    )
     runtime = build_provider_parent_tool_runtime_config(
-        provider_tool_names=initial,
+        provider_tool_names=space.initial_tool_ids,
         todo_tool_names=[],
         auto_bind_tool_names=config.auto_bind_tools,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
         include_finish_task=config.include_finish_task,
     )
-    if subagent.mcp_config is not None:
-        # An MCP subagent's real tools live on the user's own MCPClient and never
-        # in the global registry, so the scoped set built above would be missing
-        # exactly the tools the playbook recorded. Fall back to the registry; the
-        # gate stays the boundary either way.
-        return _ToolSpace(tools=registry.get_tool_dict(), runtime=runtime, subagent_id=subagent.id)
-    return _ToolSpace(tools=scoped, runtime=runtime, subagent_id=subagent.id)
+    return _ToolSpace(tools=space.tools, runtime=runtime, subagent_id=subagent.id)
 
 
 def _tool_space_denial(tool_name: str, space: _ToolSpace) -> str | None:

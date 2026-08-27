@@ -39,6 +39,10 @@ from app.services.workflow.playbook.scripted_model import (
 from app.utils.chat_utils import get_user_id_from_config
 
 MODULE = "app.services.workflow.playbook.runner"
+#: A handoff resolves its subagent inside tool_space, not the runner, so that is
+#: where the lookup is stubbed. Everything below it (the scoped tool dict) runs
+#: for real against the fake registry.
+TOOL_SPACE_MODULE = "app.services.workflow.playbook.tool_space"
 GATE = "app.services.hil.gate"
 
 USER = PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin")
@@ -176,7 +180,7 @@ async def _run(
             f"{MODULE}.workflow_executions_repository.find_latest_with_trace",
             AsyncMock(return_value=None),
         ),
-        patch(f"{MODULE}.get_subagent_by_id", return_value=subagent),
+        patch(f"{TOOL_SPACE_MODULE}.get_subagent_by_id", return_value=subagent),
         patch(f"{MODULE}.ainvoke_structured", llm),
         _gate_policy(policy),
     ):

@@ -351,3 +351,72 @@ class TestPlaybookWideEvent:
         assert event["reason"] == "workflow_hash_match"
         assert event["llm_calls"] == 1
         assert event["playbook_id"] == playbook.playbook_id
+
+
+@pytest.mark.unit
+class TestWorkflowHash:
+    """The fingerprint a stored playbook is validated against on every run.
+
+    The digest is written into the playbook document and compared on every later
+    run of that workflow. It therefore has to mean the same thing across
+    processes, deploys and restarts: if the digest for an unchanged workflow
+    ever moves, every playbook already stored stops matching and every workflow
+    silently falls back to reasoning each run, which is exactly the cost this
+    feature exists to avoid.
+    """
+
+    def _steps(self) -> list[WorkflowStep]:
+        return [
+            WorkflowStep(
+                id="s1", title="Fetch mail", category="gmail", description="Read the inbox"
+            )
+        ]
+
+    def test_the_digest_of_a_known_workflow_is_pinned(self) -> None:
+        """A golden value, because the failure mode is invisible otherwise.
+
+        Changing the serialisation (key order, separators, which fields go in)
+        produces a perfectly good hash that simply is not the one in the
+        database. If this assertion has to change, every stored playbook is
+        being invalidated on purpose and the migration has to be deliberate.
+        """
+        assert (
+            workflow_hash("Mail the agenda", self._steps())
+            == "06df0ed3e452637317211d5ded39f8376f0e6a918cf8cd8ff26ecf37d95f7caf"
+        )
+
+    def test_the_same_workflow_hashes_the_same_every_time(self) -> None:
+        assert workflow_hash("Mail the agenda", self._steps()) == workflow_hash(
+            "Mail the agenda", self._steps()
+        )
+
+    def test_editing_the_prompt_changes_the_digest(self) -> None:
+        """A rewritten prompt asks a different question, so the frozen sequence
+        must stop being trusted."""
+        assert workflow_hash("Mail the agenda", self._steps()) != workflow_hash(
+            "Mail the agenda and the weather", self._steps()
+        )
+
+    def test_editing_a_step_changes_the_digest(self) -> None:
+        """Every step field is part of what the playbook was written against."""
+        base = self._steps()
+        for field, value in (
+            ("id", "s2"),
+            ("title", "Fetch calendar"),
+            ("category", "calendar"),
+            ("description", "Read the calendar"),
+        ):
+            edited = [base[0].model_copy(update={field: value})]
+            assert workflow_hash("Mail the agenda", base) != workflow_hash(
+                "Mail the agenda", edited
+            ), field
+
+    def test_reordering_the_steps_changes_the_digest(self) -> None:
+        """A playbook freezes an order, so a reordered workflow is a new one."""
+        second = WorkflowStep(
+            id="s2", title="Send mail", category="gmail", description="Send the digest"
+        )
+        forward = [*self._steps(), second]
+        assert workflow_hash("Mail the agenda", forward) != workflow_hash(
+            "Mail the agenda", list(reversed(forward))
+        )

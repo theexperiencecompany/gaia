@@ -18,7 +18,7 @@ PLAYBOOK_CHECK_BRIEF = """<playbook_check>
 This workflow has no working playbook. When you have finished the work above (and only then), decide whether the sequence you just ran is worth freezing so future runs can replay it instead of reasoning it out again.
 
 Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
-1. Which of your calls were discovery (finding an id, a channel, a folder, a file, recovering from an error) rather than the work itself? Those must not go in a playbook.
+1. Which of your calls were discovery or dead ends (finding an id, a channel, a folder, a file, recovering from an error, or an attempt that came back empty, wrong or refused that you then did differently) rather than the work itself? Those must not go in a playbook. A playbook records what WORKED: freeze the call that actually produced the result, with the arguments that made it produce one, not the first thing you tried.
 2. Which args are fixed on every run, and what does each of the others become? The placeholder vocabulary is: $now, $today, $now + 1d; $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>; $ask.<name>.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
 4. What did you have to write or judge from content, rather than copy straight out of a result? Each of those becomes an $ask.

@@ -27,6 +27,8 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.workflow.playbook.parser import dump_playbook
+from app.services.workflow.playbook.tool_space import SubagentTools
+from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 TOOLS_MODULE = "app.agents.tools.playbook_tools"
 PARSER_MODULE = "app.services.workflow.playbook.parser"
@@ -83,6 +85,25 @@ def _workflow() -> WorkflowDocument:
         steps=[],
         trigger_config=TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
     )
+
+
+OTHER_USER = "507f1f77bcf86cd799439012"
+
+
+def _config_for(user_id: str) -> RunnableConfig:
+    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
+
+
+class _FakeWorkflowStore:
+    """A workflow lookup that is scoped per user, exactly as the repository is.
+
+    A MagicMock that answers for anybody cannot show a tenant leak; this can.
+    """
+
+    async def get_for_user(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
+        if (workflow_id, user_id) == (WORKFLOW_ID, USER_ID):
+            return _workflow()
+        return None
 
 
 def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
@@ -242,6 +263,17 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            # A handoff's children are validated against that subagent's own
+            # space, which for an MCP integration is fetched from the user's
+            # client. Declared here rather than resolved from a live registry.
+            patch(
+                f"{PARSER_MODULE}.resolve_subagent_tools",
+                AsyncMock(
+                    return_value=SubagentTools(
+                        tools=_FakeRegistry().get_tool_dict(), initial_tool_ids=[]
+                    )
+                ),
+            ),
         ):
             result = await write_playbook.ainvoke(
                 {**NEW_ARGS, "steps": steps, "ask": ask}, config=_config()
@@ -408,3 +440,244 @@ class TestPlaybookToolContract:
 
         assert result["success"] is False
         assert result["error"] == "disable_failed"
+
+
+@pytest.mark.unit
+class TestPlaybookStorageDetails:
+    """What actually lands in the document, beyond "a write happened"."""
+
+    async def test_the_stored_hash_fingerprints_the_workflow_it_was_written_for(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The replay path compares this hash before running the frozen steps.
+
+        Fingerprinting the wrong thing means either every run falls back to the
+        agent (the playbook never pays off) or an edited workflow keeps replaying
+        a sequence that no longer answers it.
+        """
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        workflow = _workflow()
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert stored.workflow_hash == workflow_hash(workflow.prompt, workflow.steps)
+
+    async def test_a_write_stamps_one_moment_on_both_timestamps(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """A fresh playbook has never been revised, so "written" and "updated"
+        are the same instant. A read reports ``updated_at`` back to the agent as
+        when the document was written."""
+        before = datetime.now(UTC)
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert stored.created_at == stored.updated_at
+        assert before <= stored.updated_at <= datetime.now(UTC)
+
+    async def test_a_rejected_write_reports_every_problem_with_where_it_is(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The agent fixes the whole document in one revision or not at all.
+
+        Reporting a single problem, or a problem without its node path, costs a
+        round trip per issue and the agent often gives up first.
+        """
+        steps = [
+            {"id": "one", "tool": "send_owl", "args": {}},
+            {"id": "two", "tool": "list_events", "args": {"calendar_id": 5}},
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+
+        assert result["error"] == "invalid_playbook"
+        assert "steps[0]: no tool named 'send_owl' exists" in result["message"]
+        assert "steps[1].args.calendar_id: expected string, got int" in result["message"]
+        assert store.documents == {}
+
+
+@pytest.mark.unit
+class TestReadPlaybookDetails:
+    async def test_a_playbook_that_has_never_replayed_says_so(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """This flag is how the agent tells "written and working" from "written
+        and never exercised". Reporting a never-run playbook as used hides the
+        case where the replay path is silently never taken."""
+        document = _existing(store)
+        store.documents[(WORKFLOW_ID, USER_ID)] = document.model_copy(
+            update={"last_run_status": PlaybookRunStatus.NOT_RUN}
+        )
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+
+        assert result["data"]["exists"] is True
+        assert result["data"]["last_run_used_it"] is False
+        assert result["data"]["last_run_status"] == "not_run"
+
+    async def test_it_reports_when_the_playbook_was_last_written(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The agent decides whether a playbook is stale from this timestamp, so
+        it has to be the last write, not the first."""
+        document = _existing(store)
+        revised = document.updated_at.replace(microsecond=0)
+        store.documents[(WORKFLOW_ID, USER_ID)] = document.model_copy(
+            update={"updated_at": revised}
+        )
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+
+        assert result["data"]["written_at"] == revised.isoformat()
+
+
+@pytest.mark.unit
+class TestPlaybookTenantIsolation:
+    """Every playbook operation is scoped to the caller.
+
+    A workflow id is guessable and appears in URLs; if any of these three tools
+    resolved one without the user, one account could read, overwrite, or delete
+    another account's automation.
+    """
+
+    async def test_a_write_cannot_target_another_users_workflow(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config_for(OTHER_USER))
+
+        assert result["error"] == "workflow_not_found"
+        assert store.documents == {}
+
+    async def test_a_read_cannot_reach_another_users_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID}, config=_config_for(OTHER_USER)
+            )
+
+        assert result["data"] == {"exists": False}
+
+    async def test_a_disable_cannot_delete_another_users_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await disable_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID, "reason": "not mine"},
+                config=_config_for(OTHER_USER),
+            )
+
+        assert result["data"] == {"disabled": False}
+        assert (WORKFLOW_ID, USER_ID) in store.documents
+
+
+@pytest.mark.unit
+class TestPlaybookWideEvents:
+    """The fields each tool puts on the run's wide event.
+
+    These are the only production record that a playbook was written, read, or
+    disabled and for which workflow. Without them an authoring agent that has
+    quietly stopped writing playbooks, or that disables one every run, is
+    invisible in the logs.
+    """
+
+    async def test_a_write_records_the_tool_the_workflow_and_what_was_stored(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        log.set.assert_called_once_with(
+            tool={"name": "write_playbook", "action": "write"}, workflow_id=WORKFLOW_ID
+        )
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        log.set_ns.assert_called_once_with("playbook", id=stored.playbook_id, steps=1)
+
+    async def test_a_rejected_write_is_recorded_with_how_many_problems(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": [{"id": "one", "tool": "send_owl", "args": {}}]},
+                config=_config(),
+            )
+
+        assert log.warning.call_args.kwargs["issues"] == 1
+        log.set_ns.assert_not_called()
+
+    async def test_a_read_records_the_tool_and_the_workflow(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+
+        log.set.assert_called_once_with(
+            tool={"name": "read_playbook", "action": "read"}, workflow_id=WORKFLOW_ID
+        )
+
+    async def test_a_disable_records_the_reason_it_was_given(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await disable_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID, "reason": "the order now depends on the inbox"},
+                config=_config(),
+            )
+
+        log.set.assert_called_once_with(
+            tool={"name": "disable_playbook", "action": "disable"}, workflow_id=WORKFLOW_ID
+        )
+        log.set_ns.assert_called_once_with(
+            "playbook", disabled=True, reason="the order now depends on the inbox"
+        )
+
+    async def test_disabling_nothing_records_no_disable(self, store: _FakePlaybookStore) -> None:
+        """A no-op must not look like a disable, or the logs show playbooks being
+        torn down that were never there."""
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await disable_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID, "reason": "nothing to disable"}, config=_config()
+            )
+
+        log.set_ns.assert_not_called()

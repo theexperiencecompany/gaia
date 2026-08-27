@@ -18,8 +18,9 @@ from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 import yaml
 
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import PlaybookBody, PlaybookStep
+from app.services.workflow.playbook.tool_space import resolve_subagent_tools
 
 #: The placeholder namespaces a playbook may address. Everything else is a typo:
 #: placeholders are resolved by code, so an unrecognised one would be handed to a
@@ -85,19 +86,25 @@ def _dump_step(step: PlaybookStep) -> dict[str, Any]:
     return node
 
 
-async def validate_playbook(body: PlaybookBody) -> PlaybookValidation:
-    """Check a parsed playbook against the live tool registry.
+async def validate_playbook(body: PlaybookBody, user_id: str) -> PlaybookValidation:
+    """Check a parsed playbook against the tools it would actually reach.
 
     Three classes of problem, all fatal for a replay: a tool that does not
     exist, an arg the tool does not take (or takes with another type), and a
     reference to a step or ask the document never declares before that point.
+
+    ``user_id`` is required because "does this tool exist" has no user-independent
+    answer: a handoff's children run in that subagent's space, and an MCP
+    integration's tools live on that user's own client.
     """
     registry = await get_tool_registry()
     tools = registry.get_tool_dict()
 
     issues: list[PlaybookIssue] = []
     declared_steps: set[str] = set()
-    _check_steps(body.steps, "steps", tools, set(body.ask), declared_steps, issues)
+    await _check_steps(
+        body.steps, "steps", tools, set(body.ask), declared_steps, issues, user_id, registry
+    )
 
     for name, ask in body.ask.items():
         for step_id in ask.uses:
@@ -112,22 +119,47 @@ async def validate_playbook(body: PlaybookBody) -> PlaybookValidation:
     return PlaybookValidation(valid=not issues, issues=issues)
 
 
-def _check_steps(
+async def _check_steps(
     steps: Sequence[PlaybookStep],
     path: str,
     tools: Mapping[str, BaseTool],
     ask_names: set[str],
     declared_steps: set[str],
     issues: list[PlaybookIssue],
+    user_id: str,
+    registry: ToolRegistry,
 ) -> None:
     """Walk the steps in document order, so a reference can only resolve
-    backwards: ``declared_steps`` holds exactly what ran before this node."""
+    backwards: ``declared_steps`` holds exactly what ran before this node.
+
+    Descending into a handoff switches tool space, exactly as the replay does.
+    Checking a subagent's children against the executor's registry refuses every
+    integration whose tools are fetched per user.
+    """
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
         if step.tool:
             _check_tool_step(step, here, tools, ask_names, declared_steps, issues)
         else:
-            _check_steps(step.steps, f"{here}.steps", tools, ask_names, declared_steps, issues)
+            space = await resolve_subagent_tools(step.handoff or "", user_id, registry)
+            if space is None:
+                issues.append(
+                    PlaybookIssue(
+                        where=here,
+                        problem=f"no subagent named {step.handoff!r} exists to hand off to",
+                    )
+                )
+            else:
+                await _check_steps(
+                    step.steps,
+                    f"{here}.steps",
+                    space.tools,
+                    ask_names,
+                    declared_steps,
+                    issues,
+                    user_id,
+                    registry,
+                )
         if step.id:
             declared_steps.add(step.id)
 
