@@ -13,10 +13,14 @@ export function LiveBrowserCanvas({
   const { canvasRef, status } = useLiveBrowser(socketUrl, interactive);
   return (
     <div className="overflow-hidden rounded-xl bg-zinc-950 ring-1 ring-white/10">
+      {/* h-auto keeps the element at the frame's own aspect ratio (the canvas
+          width/height attributes) — a forced CSS aspect stretches the image. */}
       <canvas
         ref={canvasRef}
+        width={1280}
+        height={800}
         tabIndex={interactive ? 0 : -1}
-        className={`aspect-video w-full outline-none ${
+        className={`h-auto w-full outline-none ${
           interactive ? "cursor-crosshair" : "pointer-events-none"
         }`}
       />

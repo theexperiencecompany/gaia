@@ -85,7 +85,7 @@ export function BrowserLivePanel() {
             interactive={!!pendingHandoff}
           />
         ) : (
-          <div className="flex aspect-video items-center justify-center rounded-xl bg-zinc-950 text-sm text-zinc-500 ring-1 ring-white/10">
+          <div className="flex aspect-[8/5] items-center justify-center rounded-xl bg-zinc-950 text-sm text-zinc-500 ring-1 ring-white/10">
             {done ? "This browser session has ended." : "Connecting…"}
           </div>
         )}
@@ -95,6 +95,14 @@ export function BrowserLivePanel() {
             key={pendingHandoff.handoff_id}
             handoff={pendingHandoff}
             inPanel
+            // A stop/timeout ends the session — nothing left to watch, so the
+            // panel bows out. A continue keeps it open to watch the agent resume.
+            onSettled={(settledStatus) => {
+              if (settledStatus !== "completed") {
+                close();
+                closeSidebar();
+              }
+            }}
           />
         ) : (
           currentTask &&

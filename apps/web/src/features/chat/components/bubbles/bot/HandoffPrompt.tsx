@@ -147,6 +147,7 @@ export function HandoffPrompt({
   handoff,
   inPanel = false,
   onOpenPanel,
+  onSettled,
 }: {
   handoff: BrowserHandoffSnapshot;
   /** Rendered inside the browser side panel: the big interactive canvas is
@@ -154,6 +155,8 @@ export function HandoffPrompt({
   inPanel?: boolean;
   /** Desktop web: the primary action opens the side panel instead of a new tab. */
   onOpenPanel?: () => void;
+  /** Fires once when the handoff reaches a terminal status (this tab or elsewhere). */
+  onSettled?: (status: Exclude<BrowserHandoffStatus, "pending">) => void;
 }) {
   const [decided, setDecided] = useState<"continue" | "cancel" | null>(null);
   const [pending, setPending] = useState(false);
@@ -175,8 +178,10 @@ export function HandoffPrompt({
 
   const settled = serverStatus && serverStatus !== "pending";
 
+  // Poll until the handoff settles — including after OUR OWN decision, or the
+  // "Stopping…" spinner would spin forever waiting for a state nothing updates.
   useEffect(() => {
-    if (decided || settled) return;
+    if (settled) return;
     let active = true;
     const poll = async () => {
       const res = await browserApi.getHandoffStatus(handoff.handoff_id);
@@ -188,17 +193,24 @@ export function HandoffPrompt({
       active = false;
       clearInterval(id);
     };
-  }, [decided, settled, handoff.handoff_id]);
+  }, [settled, handoff.handoff_id]);
+
+  useEffect(() => {
+    if (serverStatus && serverStatus !== "pending") onSettled?.(serverStatus);
+  }, [serverStatus, onSettled]);
 
   const decide = async (decision: "continue" | "cancel", message?: string) => {
     setPending(true);
     setDecided(decision);
     try {
-      await browserApi.postHandoffDecision(
+      const res = await browserApi.postHandoffDecision(
         handoff.handoff_id,
         decision,
         message,
       );
+      // The decision response carries the terminal status — settle immediately
+      // instead of waiting a poll cycle.
+      if (res && res.status !== "pending") setServerStatus(res.status);
     } catch {
       setDecided(null);
     } finally {
@@ -235,12 +247,9 @@ export function HandoffPrompt({
         </div>
       )}
 
-      {decided ? (
-        <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-amber-200/80">
-          <Spinner size="sm" color="warning" />
-          {decided === "continue" ? "Continuing…" : "Stopping…"}
-        </div>
-      ) : serverStatus && serverStatus !== "pending" ? (
+      {/* Settled beats the in-flight spinner: once the server confirms the
+          decision, show the outcome — never an eternal "Stopping…". */}
+      {serverStatus && serverStatus !== "pending" ? (
         (() => {
           const resolved = RESOLVED_META[serverStatus];
           const ResolvedIcon = resolved.icon;
@@ -251,6 +260,11 @@ export function HandoffPrompt({
             </div>
           );
         })()
+      ) : decided ? (
+        <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-amber-200/80">
+          <Spinner size="sm" color="warning" />
+          {decided === "continue" ? "Continuing…" : "Stopping…"}
+        </div>
       ) : (
         <div className="mt-3 space-y-2.5 border-t border-amber-500/15 pt-3">
           <HandoffPrimaryAction
