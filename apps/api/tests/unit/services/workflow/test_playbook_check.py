@@ -20,7 +20,11 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF
+from app.agents.prompts.playbook_prompts import (
+    PLAYBOOK_CHECK_BRIEF,
+    PLAYBOOK_HEAL_BRIEF,
+    PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
+)
 from app.agents.tools.playbook_tools import write_playbook
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.models.playbook_models import (
@@ -350,6 +354,15 @@ def test_the_heal_brief_makes_the_agent_probe_before_accepting_an_empty_result()
     assert "Only a broader probe that also comes back empty" in PLAYBOOK_HEAL_BRIEF
     assert "the rewrite must use the args that found them" in PLAYBOOK_HEAL_BRIEF
     assert "—" not in PLAYBOOK_HEAL_BRIEF
+
+
+def test_the_heal_brief_demands_a_decision_even_when_no_more_calls_are_needed():
+    # Seen live: two of six fallback agents answered the user from the steps
+    # that had already run, made no further calls, and ended without a
+    # decision. "No work left" is exactly when the decision gets forgotten.
+    for text in (PLAYBOOK_HEAL_BRIEF, PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE):
+        assert "even if you make no further calls" in text
+        assert "—" not in text
 
 
 def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():

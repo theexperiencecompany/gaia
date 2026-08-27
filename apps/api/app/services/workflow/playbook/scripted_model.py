@@ -24,7 +24,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
 #: What the loop-ending turn says. Never read by anything — a replay's
-#: user-facing text is written by the run's one real model call — but an empty
+#: user-facing text is written by the run's end-of-run model call — but an empty
 #: assistant message is rewritten to "Empty response from model." by
 #: ``create_agent``, which reads as a fault in a log.
 REPLAY_FINISHED_CONTENT = "Playbook replay finished."

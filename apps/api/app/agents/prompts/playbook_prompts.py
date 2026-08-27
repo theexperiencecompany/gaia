@@ -41,7 +41,7 @@ Do not lean on the playbook this run. Call read_playbook first so you can see th
 
 If the recorded reason is that a call returned nothing, do not accept that emptiness on the replay's terms. Before you call write_playbook with the same sequence, establish that the source genuinely has nothing by probing more broadly than the frozen call: a longer window, the filter dropped, a check that the integration actually answers at all. Say in the result what you checked. Only a broader probe that also comes back empty justifies rewriting the same sequence. If the broader probe finds items the frozen call missed, the args are wrong, and the rewrite must use the args that found them.
 
-When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. Call write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
+When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. That holds even if you make no further calls because the steps that already ran answer the task: the decision is part of the work, not something that happens only after tool calls. Call write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not mention playbooks or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
@@ -61,7 +61,15 @@ PLAYBOOK_HEAL_VERDICTS = {
 PLAYBOOK_HEAL_NO_REASON = "no reason was recorded"
 
 
-PLAYBOOK_NARRATION_PROMPT = """You are finishing a workflow run that followed a written playbook, so the steps were replayed rather than reasoned out. Everything below already happened or is about to happen exactly as listed.
+#: The style guidance both replay prompts end on. One constant so the two calls
+#: cannot drift apart on voice.
+_PLAYBOOK_VOICE = """Write like a person. Open on the actual point, vary your sentence length, use plain words, and say what you think instead of hedging every clause. No throat-clearing openers, no "delve", "seamless", "robust", "leverage", "testament to", no reflexive "Moreover". Do not overcorrect into forced quirkiness or slang either. Natural and clear is the whole target."""
+
+#: The mid-run call: fills the ``$ask`` fields the next step needs, and nothing
+#: else. It runs before the later steps, so it must not write the user's result
+#: or judge the run: neither can be done before the run's outcome is known.
+PLAYBOOK_ASK_PROMPT = (
+    """You are writing the fields a workflow run needs before it can continue. The run follows a written playbook, so its steps are replayed rather than reasoned out. The steps listed as ran already happened exactly as listed. The steps still to run happen after you answer, and some of them use what you write.
 
 <playbook>
 {description}
@@ -79,15 +87,44 @@ PLAYBOOK_NARRATION_PROMPT = """You are finishing a workflow run that followed a 
 {asks}
 </asks>
 
-Produce all three of these in this one pass:
+Write one entry per ask above, keyed by the ask's own name. Follow each ask's instruction and respect its length budget. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
 
-1. One entry per ask above, keyed by the ask's own name. Follow each ask's instruction and respect its length budget. If there are no asks, return an empty list.
-2. The run's result for the user, written to this brief: {synthesize}
-3. A verdict on the run. Judge whether the step results plausibly fulfil the playbook's description and the brief above. Answer suspect when a result is empty where the task expects items, contains an error, or contradicts the description; otherwise answer ok. When it is suspect, give a one line reason. Write the result either way, exactly as the data reads.
+Ground every word in what is listed above. Never invent a number, a name, a link, or an outcome that is not there.
+
+"""
+    + _PLAYBOOK_VOICE
+)
+
+#: The end-of-run call: the user's result and a verdict, written once every
+#: step has run. There is no still-to-run section because there is nothing
+#: still to run; what is listed is the whole run.
+PLAYBOOK_NARRATION_PROMPT = (
+    """You are finishing a workflow run that followed a written playbook, so the steps were replayed rather than reasoned out. Every step below already ran, exactly as listed, and nothing else ran. The run is over.
+
+<playbook>
+{description}
+</playbook>
+
+<ran>
+{completed}
+</ran>
+
+<asks>
+{asks}
+</asks>
+
+The asks section holds the fields written earlier in this run, for context only. The steps that needed them already used them.
+
+Produce both of these in this one pass:
+
+1. The run's result for the user, written to this brief: {synthesize}
+2. A verdict on the run. Judge only the steps listed under ran, and judge them on their own results: whether they plausibly fulfil the playbook's description and the brief above. Answer suspect when a result is empty where the task expects items, contains an error, or contradicts the description; otherwise answer ok. Never answer suspect because some step is missing from the list. The list is complete, and a step that is not on it was not part of this run. When it is suspect, give a one line reason. Write the result either way, exactly as the data reads.
 
 Ground every word in what is listed above. Never invent a number, a name, a link, or an outcome that is not there, and if something did not happen, say that plainly instead of smoothing over it.
 
-Write like a person. Open on the actual point, vary your sentence length, use plain words, and say what you think instead of hedging every clause. No throat-clearing openers, no "delve", "seamless", "robust", "leverage", "testament to", no reflexive "Moreover". Do not overcorrect into forced quirkiness or slang either. Natural and clear is the whole target."""
+"""
+    + _PLAYBOOK_VOICE
+)
 
 
 PLAYBOOK_FALLBACK_TEMPLATE = """The playbook for this workflow was replayed first and it stopped partway.
@@ -106,4 +143,4 @@ PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE = """The playbook for this workflow was repla
 These steps ALREADY RAN in this same execution, with these results, and their effects are real:
 {completed}
 
-Do not repeat them. Do the work properly yourself, checking each step against that reason, and end this run by rewriting the playbook or disabling it."""
+Do not repeat them. Do the work properly yourself, checking each step against that reason, and end this run by rewriting the playbook or disabling it, even if you make no further calls because these results already answer the task."""
