@@ -47,7 +47,9 @@ jobs:
   detect:
     needs: [select-runner]
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 5
+    # 15, not 5: the first install after a lockfile/layout change on a persistent
+    # workspace converts the whole node_modules tree (one-time, >5 min).
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
