@@ -225,17 +225,22 @@ jobs:
           # unit + meta need no service containers, sidecar or Node (verified on
           # the box: 10,542 passed, 0 errors, nothing running). contracts needs
           # Redis/Mongo, so it rides with integration.
-          - { name: unit, paths: "tests/unit tests/meta", ignore: "", node: "false", services: "false", workers: "" }
+          # Static worker shares: the lanes start together, so a runtime probe of
+          # "workers already running" sees zero on every lane and each took 16 —
+          # 32+ workers on 16 threads (8 physical cores). Shares sum to the box.
+          - { name: unit, paths: "tests/unit tests/meta", ignore: "", node: "false", services: "false", workers: "10", serial: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
           # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "true", services: "true", workers: "" }
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "true", services: "true", workers: "6", serial: "false" }
           # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
           # Postgres (clean_bridge_tables); under xdist another worker's fixture
           # wipes its rows mid-test ("Refresh token is invalid"). main.yml runs
           # this file alone for the same reason. Serial, in its own slice.
-          - { name: bridge, paths: "tests/integration/real/test_device_bridge_e2e.py", ignore: "", node: "true", services: "true", workers: "0" }
+          # serial: GitHub's expression engine treats the string "0" as falsy, so a
+          # `workers: "0"` fell through to the detected 16 and the 4 tests raced.
+          - { name: bridge, paths: "tests/integration/real/test_device_bridge_e2e.py", ignore: "", node: "true", services: "true", workers: "0", serial: "true" }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -266,7 +271,7 @@ jobs:
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} slice=${{ matrix.slice.name }}"
           /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n ${{ matrix.slice.workers || steps.par.outputs.py }} --dist worksteal ${{ matrix.slice.paths }} ${{ matrix.slice.ignore }} \
+            uv run --frozen pytest -n ${{ matrix.slice.serial == 'true' && '0' || (matrix.slice.workers != '' && matrix.slice.workers || steps.par.outputs.py) }} --dist worksteal ${{ matrix.slice.paths }} ${{ matrix.slice.ignore }} \
             -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report= --cov-fail-under=0 \
