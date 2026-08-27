@@ -89,6 +89,8 @@ class TestUpsertForWorkflow:
         assert set_fields["description"] == "second"
         assert set_fields["workflow_hash"] == "hash-2"
         assert set_fields["last_run_status"] is PlaybookRunStatus.NOT_RUN
+        assert set_fields["last_run_reason"] is None
+        assert set_fields["suspect_streak"] == 0
         assert set_fields["steps"][0]["tool"] == "list_events"
         # The identity is never part of the rewrite: a replay in flight keeps its id.
         assert "playbook_id" not in set_fields
@@ -134,12 +136,50 @@ class TestRecordRunOutcome:
 
         assert outcome is None
 
-    async def test_without_an_id_it_updates_whatever_the_workflow_has(
+    async def test_without_an_id_it_updates_whatever_the_workflow_has_in_one_write(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        collection.find_one = AsyncMock(return_value=_raw(playbook_id="pb_current"))
-
         await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
 
+        collection.find_one.assert_not_awaited()
         filter_, _update = collection.find_one_and_update.await_args.args
-        assert filter_ == {"playbook_id": "pb_current"}
+        assert filter_ == {"workflow_id": WORKFLOW_ID, "user_id": USER_ID}
+
+    async def test_a_suspect_run_records_its_reason_and_grows_the_streak(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="list_events returned no items"
+        )
+
+        _filter, update = collection.find_one_and_update.await_args.args
+        assert update["$set"]["last_run_status"] is PlaybookRunStatus.SUSPECT
+        assert update["$set"]["last_run_reason"] == "list_events returned no items"
+        assert update["$inc"] == {"suspect_streak": 1}
+        assert "suspect_streak" not in update["$set"]
+
+    async def test_a_success_clears_the_reason_and_resets_the_streak(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS, reason="ignored on success"
+        )
+
+        _filter, update = collection.find_one_and_update.await_args.args
+        assert update["$set"]["last_run_status"] is PlaybookRunStatus.SUCCESS
+        assert update["$set"]["last_run_reason"] is None
+        assert update["$set"]["suspect_streak"] == 0
+        assert "$inc" not in update
+
+    async def test_a_failure_records_its_reason_and_leaves_the_streak_alone(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, reason="stopped at step 2"
+        )
+
+        _filter, update = collection.find_one_and_update.await_args.args
+        assert update["$set"]["last_run_status"] is PlaybookRunStatus.FAILED
+        assert update["$set"]["last_run_reason"] == "stopped at step 2"
+        assert "suspect_streak" not in update["$set"]
+        assert "$inc" not in update

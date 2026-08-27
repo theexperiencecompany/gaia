@@ -82,6 +82,29 @@ def _largest_sequence(
     return None, lambda items: items
 
 
+def largest_list_len(value: object) -> int | None:
+    """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
+
+    Tool results are envelopes (``{"data": {"messages": [...]}}``), so "did this
+    call return any items" has to look past the top level. Shared by the replay's
+    empty-result check and the handoff call record, so both agree on what empty
+    means.
+    """
+    best: int | None = None
+    if isinstance(value, list):
+        best = len(value)
+        children: list[object] = value
+    elif isinstance(value, dict):
+        children = list(value.values())
+    else:
+        return None
+    for child in children:
+        nested = largest_list_len(child)
+        if nested is not None and (best is None or nested > best):
+            best = nested
+    return best
+
+
 # The run-states an execution record may hold: created as ``running``, then
 # exactly one terminal write. Named once here because the document, the update
 # model, the repository's ``complete`` and the service's ``complete_execution``

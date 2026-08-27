@@ -66,3 +66,6 @@ INTERNAL_AGENT_TAG_PATTERN = re.compile(
 # ``format_workflow_execution_message`` — named once here because a drift
 # between those two sites is silent and the agent would re-run a side effect.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
+
+# After this many consecutive suspect replays the worker disables the playbook.
+PLAYBOOK_SUSPECT_STREAK_LIMIT = 2

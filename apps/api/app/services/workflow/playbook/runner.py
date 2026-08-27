@@ -25,7 +25,7 @@ Two properties are load-bearing:
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
@@ -47,7 +47,11 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
-from app.models.workflow_execution_models import RecordedCall, build_result_digest
+from app.models.workflow_execution_models import (
+    RecordedCall,
+    build_result_digest,
+    largest_list_len,
+)
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow.playbook.evaluator import (
@@ -104,10 +108,15 @@ class PlaybookAskAnswer(BaseModel):
 
 
 class PlaybookNarration(BaseModel):
-    """Everything the one model call produces: every ask, plus the result."""
+    """Everything the one model call produces: every ask, the result, and a verdict."""
 
     asks: list[PlaybookAskAnswer] = Field(default_factory=list)
     result: str = Field(description="The run's user-facing result")
+    outcome: Literal["ok", "suspect"] = Field(
+        default="ok",
+        description="ok when the results plausibly fulfil the playbook, suspect otherwise",
+    )
+    reason: str = Field(default="", description="One line on why the run is suspect, else empty")
 
 
 class PlaybookRunResult(BaseModel):
@@ -124,6 +133,10 @@ class PlaybookRunResult(BaseModel):
     #: must not do again.
     completed: list[str] = Field(default_factory=list)
     llm_calls: int = 0
+    #: Why a run that completed (``ok=True``) is not trusted: a step came back
+    #: empty where the previous run had items, or the narration judged the
+    #: results wrong. Never set on a stopped run, which reports through ``failure``.
+    suspect: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,11 +171,14 @@ class _Run:
     registry: ToolRegistry
     base: RunContext
     configurable: AgentConfigurable
+    previous_trace: Sequence[RecordedCall] = ()
     trace: list[RecordedCall] = field(default_factory=list)
     steps: dict[str, StepResult] = field(default_factory=dict)
     completed: list[str] = field(default_factory=list)
     asks: dict[str, str] = field(default_factory=dict)
     narration: PlaybookNarration | None = None
+    #: The first deterministic reason a completed step was not trusted.
+    suspect: str | None = None
     position: int = 0
 
 
@@ -199,6 +215,7 @@ async def run_playbook(
             asks={},
         ),
         configurable=configurable,
+        previous_trace=previous.trace if previous is not None else (),
     )
     space = _ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
@@ -223,6 +240,7 @@ async def run_playbook(
         trace=run.trace,
         completed=run.completed,
         llm_calls=1,
+        suspect=_suspect_reason(run, narration),
     )
 
 
@@ -314,16 +332,21 @@ async def _run_tool_step(
     if message.additional_kwargs.get(HIL_STATUS_KWARG):
         return _StepFailure(position, tool_name, f"refused by the approval gate: {text}")
 
-    if message.status == "error":
-        _record(run, tool_name, space.subagent_id, args, text)
-        return _StepFailure(position, tool_name, text)
-
     _record(run, tool_name, space.subagent_id, args, text)
+    if message.status == "error":
+        return _StepFailure(position, tool_name, text)
+    value = parse_result(text)
+    # A tool that catches its own failure answers with a success-shaped
+    # message carrying an error envelope; that is a failed step, not a result.
+    reported = _envelope_failure(value)
+    if reported is not None:
+        return _StepFailure(position, tool_name, reported)
+
     if step.id:
         info = read_offload(message)
-        run.steps[step.id] = StepResult(
-            value=parse_result(text), file=info["path"] if info else None
-        )
+        run.steps[step.id] = StepResult(value=value, file=info["path"] if info else None)
+    if run.suspect is None:
+        run.suspect = _empty_where_previous_had_items(tool_name, value, run.previous_trace)
     # This line is the model's only view of what the tool returned, and it has
     # to write the user's result from it: bounded for the model, not the record.
     shown = build_result_digest(text, max_chars=_NARRATION_RESULT_MAX_CHARS)
@@ -379,6 +402,47 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: _ToolSpace) -> Tool
         (message for message in reversed(state["messages"]) if isinstance(message, ToolMessage)),
         None,
     )
+
+
+def _envelope_failure(value: object) -> str | None:
+    """What a JSON envelope says went wrong, or ``None`` when it reports no failure."""
+    if not isinstance(value, dict):
+        return None
+    error = value.get("error")
+    if value.get("success") is not False and not error:
+        return None
+    reported = error or value.get("message") or "the tool reported success=false"
+    return str(reported)[:_FAILURE_QUOTE_MAX_CHARS]
+
+
+def _empty_where_previous_had_items(
+    tool_name: str, value: object, previous: Sequence[RecordedCall]
+) -> str | None:
+    """Why an empty result is suspect: the previous run's same tool had items.
+
+    An empty list is a legitimate answer (no mail today) right up until the run
+    before it had a full one, at which point it is far more likely a silent
+    auth or filter failure than a quiet day. The record is read by tool name,
+    first match, the same way ``$last_run`` addresses it.
+    """
+    if largest_list_len(value) != 0:
+        return None
+    earlier = next((call for call in previous if call.tool_name == tool_name), None)
+    if earlier is None:
+        return None
+    before = largest_list_len(parse_result(earlier.result_digest))
+    if not before:
+        return None
+    return f"{tool_name} returned no items where the previous run returned {before}"
+
+
+def _suspect_reason(run: _Run, narration: PlaybookNarration) -> str | None:
+    """The deterministic reason first; the narration's verdict only fills a gap."""
+    if run.suspect is not None:
+        return run.suspect
+    if narration.outcome != "suspect":
+        return None
+    return narration.reason or "the narration judged the results suspect"
 
 
 def _record(

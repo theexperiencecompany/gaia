@@ -14,11 +14,15 @@ from langchain_core.messages import AnyMessage, ToolMessage
 
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import FINISH_TASK_NAME
+from app.models.workflow_execution_models import largest_list_len
 
 #: Longest serialized form a single recorded arg value may take; anything past
 #: it is cut with the marker so the record's token cost stays bounded.
 MAX_RECORDED_ARG_CHARS = 200
 ARG_TRUNCATION_MARKER = "…[truncated]"
+#: Appended to a recorded call whose result carried no items, so the executor
+#: can see the empty step before it freezes the call.
+EMPTY_RESULT_SUFFIX = " -> returned no items"
 
 CALL_RECORD_LEAD_IN = (
     "Calls this subagent ran (successful only, in order). When writing a "
@@ -41,26 +45,58 @@ def _truncated_arg(value: object) -> object:
     return rendered[:MAX_RECORDED_ARG_CHARS] + ARG_TRUNCATION_MARKER
 
 
+def _parsed_result(message: ToolMessage) -> object | None:
+    """The tool result as JSON when its content is a JSON document, else ``None``."""
+    content = message.content
+    if not isinstance(content, str):
+        return None
+    try:
+        parsed: object = json.loads(content)
+    except ValueError:
+        return None
+    return parsed
+
+
+def _is_error_envelope(result: object) -> bool:
+    """A "successful" tool message whose body says the call failed.
+
+    Many tools answer with ``{"success": false, ...}`` or ``{"error": "..."}``
+    under a normal status, so status alone does not say the call worked.
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("success") is False:
+        return True
+    error = result.get("error")
+    return bool(error)
+
+
 def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
     """One ``TOOL_NAME({"arg":value})`` line per successful call, in call order.
 
     A call counts as successful only when a non-error ``ToolMessage`` answers its
-    id. ``finish_task`` is infrastructure, never a playbook step, so it is
-    dropped even when it succeeded.
+    id and its body is not an error envelope. ``finish_task`` is infrastructure,
+    never a playbook step, so it is dropped even when it succeeded. A call whose
+    result carried no items is kept but marked, so the executor sees an empty
+    step before freezing it.
     """
-    succeeded = {
-        message.tool_call_id
-        for message in messages
-        if isinstance(message, ToolMessage) and message.status != "error" and message.tool_call_id
-    }
+    results: dict[str, object | None] = {}
+    for message in messages:
+        if isinstance(message, ToolMessage) and message.status != "error" and message.tool_call_id:
+            result = _parsed_result(message)
+            if not _is_error_envelope(result):
+                results[message.tool_call_id] = result
     lines: list[str] = []
     for message in messages:
         for call in getattr(message, "tool_calls", None) or []:
             name = str(call.get("name") or "")
-            if not name or name == FINISH_TASK_NAME or call.get("id") not in succeeded:
+            if not name or name == FINISH_TASK_NAME or call.get("id") not in results:
                 continue
             args = {key: _truncated_arg(value) for key, value in (call.get("args") or {}).items()}
-            lines.append(f"{name}({_compact_json(args)})")
+            line = f"{name}({_compact_json(args)})"
+            if largest_list_len(results[call.get("id") or ""]) == 0:
+                line += EMPTY_RESULT_SUFFIX
+            lines.append(line)
     return lines
 
 

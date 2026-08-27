@@ -1531,3 +1531,227 @@ def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
     assert call["args"] == {"calendar_id": "primary"}
     assert call["id"] == scripted_call_id(0)
     assert call["type"] == "tool_call"
+
+
+# --- results that are wrong without being errors ----------------------------
+
+
+def _previous_run(*calls: RecordedCall) -> AsyncMock:
+    """The previous execution's trace, as ``find_latest_with_trace`` hands it back."""
+    previous = MagicMock()
+    previous.trace = list(calls)
+    return AsyncMock(return_value=previous)
+
+
+class TestErrorEnvelope:
+    """A tool that catches its own failure answers with a success-status message
+    whose body says it failed. That is a failed step: recorded, then stopped."""
+
+    async def test_a_success_false_envelope_stops_the_step_with_its_message(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(
+                recorder,
+                events_result='{"success": false, "error": "Insufficient permission: calendar"}',
+            )
+        )
+
+        result, llm = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is False
+        assert result.suspect is None
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 1 (list_events): Insufficient permission: calendar."
+        )
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert llm.await_count == 0
+
+    async def test_the_failed_call_is_still_on_the_record(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"success": false, "error": "expired token"}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert [call.tool_name for call in result.trace] == ["list_events"]
+        assert result.trace[0].result_digest == '{"success": false, "error": "expired token"}'
+
+    async def test_a_non_empty_error_field_fails_even_without_a_success_flag(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"error": "rate limited", "items": []}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is False
+        assert "rate limited" in (result.failure or "")
+
+    async def test_a_success_envelope_with_a_null_error_is_a_result(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"success": true, "error": null, "items": [1]}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is True, result.failure
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
+    async def test_the_quoted_message_is_bounded(self) -> None:
+        long_error = "x" * 400
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result=json.dumps({"success": False, "message": long_error}))
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is False
+        assert "x" * 120 in (result.failure or "")
+        assert "x" * 121 not in (result.failure or "")
+
+
+class TestSuspectVerdict:
+    """A run that completes can still be wrong. ``suspect`` says why, without
+    stopping anything: every step runs, the result is written, and the worker
+    decides what a distrusted result is worth."""
+
+    PREVIOUS_HAD_THREE = RecordedCall(
+        tool_name="list_events", result_digest='{"items": [{"id": 1}, {"id": 2}, {"id": 3}]}'
+    )
+
+    async def test_empty_where_the_previous_run_had_items_is_suspect_but_completes(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+
+        result, llm = await _run(
+            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+        )
+
+        assert result.ok is True, result.failure
+        assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+        assert result.text == "Twelve events, mail sent."
+        assert llm.await_count == 1
+
+    async def test_an_empty_list_inside_a_result_envelope_counts_as_empty(self) -> None:
+        """GAIA tools answer in envelopes: the list is at ``data.messages``, not
+        at the top. Seen live: a Gmail fetch of nothing is
+        ``{"data": {"fetched_count": 0, "messages": []}}``."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"data": {"fetched_count": 0, "messages": []}}')
+        )
+        previous = _previous_run(
+            RecordedCall(
+                tool_name="list_events",
+                result_digest='{"data": {"fetched_count": 2, "messages": [{"id": 1}, {"id": 2}]}}',
+            )
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+
+        assert result.ok is True, result.failure
+        assert result.suspect == "list_events returned no items where the previous run returned 2"
+
+    async def test_empty_with_no_previous_run_is_not_suspect(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is True, result.failure
+        assert result.suspect is None
+
+    async def test_empty_where_the_previous_run_was_also_empty_is_not_suspect(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        previous = _previous_run(
+            RecordedCall(tool_name="list_events", result_digest='{"items": []}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+
+        assert result.suspect is None
+
+    async def test_the_previous_run_is_read_by_tool_name_not_position(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        previous = _previous_run(
+            RecordedCall(tool_name="send_email", result_digest='{"items": [1, 2]}'),
+            self.PREVIOUS_HAD_THREE,
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+
+        assert result.suspect == "list_events returned no items where the previous run returned 3"
+
+    async def test_the_narrations_verdict_becomes_the_reason(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        narration = PlaybookNarration(
+            result="No events were found.", outcome="suspect", reason="the agenda came back empty"
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, narration=narration)
+
+        assert result.ok is True, result.failure
+        assert result.suspect == "the agenda came back empty"
+        # The text is handed over untouched: flagging it is the worker's job.
+        assert result.text == "No events were found."
+
+    async def test_a_narration_that_says_ok_leaves_the_run_trusted(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            narration=PlaybookNarration(result="Twelve events.", outcome="ok", reason=""),
+        )
+
+        assert result.suspect is None
+
+    async def test_the_deterministic_reason_wins_over_the_narrations(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        narration = PlaybookNarration(
+            result="Nothing today.", outcome="suspect", reason="the model's own take"
+        )
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            narration=narration,
+            find_previous=_previous_run(self.PREVIOUS_HAD_THREE),
+        )
+
+        assert result.suspect == "list_events returned no items where the previous run returned 3"
+
+    async def test_a_stopped_run_never_carries_a_suspect_reason(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, failing="send_email", events_result='{"items": []}')
+        )
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+        )
+
+        assert result.ok is False
+        assert result.suspect is None
+
+    async def test_the_narration_is_asked_for_a_verdict(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        _, llm = await _run(_playbook(AGENDA_STEPS), registry)
+
+        prompt = str(llm.await_args.args[1])
+        assert "Answer suspect when a result is empty where the task expects items" in prompt
+        assert "—" not in prompt

@@ -76,9 +76,44 @@ class TestPlaybooksRepository:
 
     async def test_upsert_resets_the_last_run_outcome(self, repo) -> None:
         await repo.upsert_for_workflow(make_doc())
-        await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED)
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty where it had items"
+        )
         replaced = await repo.upsert_for_workflow(make_doc(description="second"))
         assert replaced.last_run_status is PlaybookRunStatus.NOT_RUN
+        assert replaced.last_run_reason is None
+        assert replaced.suspect_streak == 0
+
+    async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
+        await repo.create(make_doc())
+
+        first = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty once"
+        )
+        second = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty twice"
+        )
+        cleared = await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
+
+        assert (first.suspect_streak, first.last_run_reason) == (1, "empty once")
+        assert (second.suspect_streak, second.last_run_reason) == (2, "empty twice")
+        assert cleared.last_run_status is PlaybookRunStatus.SUCCESS
+        assert cleared.suspect_streak == 0
+        assert cleared.last_run_reason is None
+        reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+        assert reread == cleared
+
+    async def test_a_failure_keeps_the_streak_and_records_its_reason(self, repo) -> None:
+        await repo.create(make_doc())
+        await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="e")
+
+        failed = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, reason="stopped at step 2"
+        )
+
+        assert failed.last_run_status is PlaybookRunStatus.FAILED
+        assert failed.last_run_reason == "stopped at step 2"
+        assert failed.suspect_streak == 1
 
     async def test_record_run_outcome_persists(self, repo) -> None:
         await repo.create(make_doc())
