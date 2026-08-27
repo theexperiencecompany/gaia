@@ -27,6 +27,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── Runner selection: home box when online and idle, GitHub otherwise ─────
+  # Every compute lane below runs on the 16-core home server through this
+  # probe (scripts/ci/select-runner.sh) and falls back to ubuntu-latest in
+  # under 15s when it is offline or busy. The gate and the pure-network
+  # scanners stay on GitHub — they gain nothing from cores.
+  select-runner:
+    name: Select runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+      runner_label: ${{ steps.pick.outputs.runner_label }}
+      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: pick
+        uses: ./.github/actions/select-runner
+        with:
+          runner-label: gaia-home
+          flavour: standard
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+
   # --- Change detection (no toolchain install) -----------------------------
   # Skips whole language lanes a PR doesn't touch; lanes still self-scope to
   # exact changed files. Push/dispatch → __FULL__ → everything runs.
@@ -73,9 +101,9 @@ jobs:
   # --- Biome lint + format -------------------------------------------------
   biome:
     name: Biome lint + format
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -106,9 +134,9 @@ jobs:
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -135,9 +163,9 @@ jobs:
   # --- Circular dependency check ------------------------------------------
   circular:
     name: No circular imports
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -152,9 +180,9 @@ jobs:
   # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
     name: File size limits
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -179,9 +207,9 @@ jobs:
   # --- Types must live in dedicated type files ----------------------------
   types-location:
     name: Types live in dedicated *.types.ts files
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -206,9 +234,9 @@ jobs:
   # --- Components-per-file ------------------------------------------------
   components-per-file:
     name: At most 2 React components per file
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -233,9 +261,9 @@ jobs:
   # --- Copy-paste detection -----------------------------------------------
   duplicates:
     name: Copy-paste detection (jscpd)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -259,9 +287,9 @@ jobs:
   # --- Published package hygiene ------------------------------------------
   package-hygiene:
     name: Published package hygiene (publint + attw)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -288,9 +316,9 @@ jobs:
   # --- TypeScript strict type-check ---------------------------------------
   type-check:
     name: TypeScript strict type-check (all workspaces)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -320,9 +348,9 @@ jobs:
   # --- Python ruff --------------------------------------------------------
   python-ruff:
     name: Python ruff (strict rule set)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -377,9 +405,9 @@ jobs:
   # --- Python mypy --------------------------------------------------------
   python-mypy:
     name: Python mypy (staged-strict)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -466,9 +494,9 @@ jobs:
   # --- Python docstring coverage ------------------------------------------
   python-interrogate:
     name: Python docstring coverage (interrogate ≥ 80%)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -496,9 +524,9 @@ jobs:
   # --- Python cyclomatic complexity ---------------------------------------
   python-xenon:
     name: Python cyclomatic complexity (xenon)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -537,9 +565,9 @@ jobs:
   # --- Python security (bandit gates; pip-audit advisory) -----------------
   python-security:
     name: Python security (bandit; pip-audit advisory)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -598,9 +626,9 @@ jobs:
   # test suites (first step).
   observability:
     name: Observability score (evlog map)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -685,9 +713,9 @@ jobs:
   # actually stops the two halves drifting apart between reviews.
   wide-event-conformance:
     name: Wide events have one shape across Python and TypeScript
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -711,9 +739,9 @@ jobs:
   # and the [tool.vulture] ignore_names / ignore_decorators lists in pyproject.toml.
   dead-code:
     name: Dead code (knip + vulture, strict)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -755,9 +783,9 @@ jobs:
   # Prometheus pass — see infra/docker/observability/CLAUDE.md.
   alert-rules:
     name: Grafana alert rules (pint + promtool)
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_alert_rules == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -819,9 +847,9 @@ jobs:
   # working-tree scan, so it is reproducible locally with the exact command below.
   suppression-ratchet:
     name: "Suppression baseline (no new # noqa / # type: ignore / biome-ignore)"
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -915,9 +943,9 @@ jobs:
   # such surface to break. mutation.sh is parallel-safe (per-invocation
   # workdir), so concurrent runs never race on shared state.
   test-mutation:
-    needs: [changes]
+    needs: [select-runner, changes]
     if: needs.changes.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     # A large changed module can carry hundreds of mutants (each running its
     # covering tests once) — a 745-mutant module takes ~13 min. The xargs
     # parallelism overlaps modules, so this is the per-module worst case.

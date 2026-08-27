@@ -18,6 +18,30 @@ env:
   NX_NO_CLOUD: "true"
 
 jobs:
+  # ── Runner selection: home box when online and idle, GitHub otherwise ─────
+  select-runner:
+    name: Select runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+      runner_label: ${{ steps.pick.outputs.runner_label }}
+      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: pick
+        uses: ./.github/actions/select-runner
+        with:
+          runner-label: gaia-home
+          flavour: standard
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
+
   # --- Detect affected projects -------------------------------------------
   detect:
     runs-on: ubuntu-latest
@@ -82,9 +106,9 @@ jobs:
 
   # --- Build (runner-native, typescript only) -----------------------------
   build:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -111,9 +135,9 @@ jobs:
   # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
   # per run for a ~2.5 min suite.
   test-python:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -193,10 +217,18 @@ jobs:
   # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
   # is unset. A regression that slows the default run fails this lane instead
   # of silently degrading every contributor's feedback loop.
+      # Reused self-hosted runner: services and the embedding sidecar must not
+      # outlive the job (a leaked container holds its port for the next one).
+      - name: Tear down service containers and sidecar
+        if: always()
+        run: |
+          bash scripts/ci/stop-embedding-sidecar.sh
+          bash scripts/ci/stop-test-services.sh
+
   test-fast:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
@@ -223,9 +255,9 @@ jobs:
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -249,8 +281,8 @@ jobs:
   # custom lint rules and the sim stack's directive parser have no test gate at
   # all. The suite is ~0.1s, so always-on costs nothing.
   test-harness-tools:
-    needs: [detect]
-    runs-on: ubuntu-latest
+    needs: [select-runner, detect]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
@@ -322,8 +354,8 @@ jobs:
   # for pre-existing findings, not new ones the PR caused. Upgrade the
   # flagged packages, re-scan, then remove continue-on-error.
   trivy-scan:
-    needs: [detect]
-    runs-on: ubuntu-latest
+    needs: [select-runner, detect]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     continue-on-error: true
     steps:
@@ -347,9 +379,9 @@ jobs:
   # to pin a bug carries, so there is nothing left to false-positive on: a diff
   # with no such tests passes trivially, and one that has them must prove them.
   regression-proof:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -362,6 +394,14 @@ jobs:
         run: bash ../../scripts/ci/regression-proof.sh origin/master
 
   # --- Quality gate (branch protection target) ----------------------------
+      # Reused self-hosted runner: services and the embedding sidecar must not
+      # outlive the job (a leaked container holds its port for the next one).
+      - name: Tear down service containers and sidecar
+        if: always()
+        run: |
+          bash scripts/ci/stop-embedding-sidecar.sh
+          bash scripts/ci/stop-test-services.sh
+
   quality-gate:
     name: quality-gate
     if: always()
