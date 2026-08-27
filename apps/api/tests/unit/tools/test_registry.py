@@ -1,6 +1,7 @@
 """Unit tests for the tool registry (DynamicToolDict, ToolCategory, ToolRegistry)."""
 
 from collections.abc import Mapping
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import BaseTool
@@ -476,7 +477,7 @@ class TestInitializeCategories:
         return registry
 
     #: One tool per category, so a dropped or renamed registration is caught.
-    EXPECTED = {
+    EXPECTED: ClassVar[dict[str, str]] = {
         "write_playbook": "playbooks",
         "read_playbook": "playbooks",
         "disable_playbook": "playbooks",
