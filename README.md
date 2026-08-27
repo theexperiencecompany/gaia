@@ -66,33 +66,6 @@ Workflows run on their own. This is what you ask it directly.
 - **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
 - **"Now run that every Monday at 9am."** Any of the above becomes a standing job, running on a schedule without you.
 
-## Integrations
-
-- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
-- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
-- **A marketplace.** Browse what the community published, or publish your own.
-- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
-
-```bash
-gaia bridge login          # approve the pairing in your browser
-gaia bridge fs ~/projects  # share a folder
-gaia bridge up             # connect
-```
-
-## Platforms
-
-| | Platform | How |
-| --- | --- | --- |
-| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. [Pro plan](https://heygaia.io/pricing). |
-| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
-| <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
-| <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
-| <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
-
-- Also on the **web**, a **[desktop app](https://heygaia.io/download)** for macOS, Windows and Linux, and **mobile**
-- It's all one account — a chat you start on Telegram shows up in the web app
-- Same memory everywhere, no matter where you talk to it
-
 ## Getting started
 
 | If you want to… | Go here |
@@ -154,6 +127,33 @@ Your ongoing cost is model API usage, not hosting — the [self-hosting guide](h
 - Pay yearly and two months are free
 - **Self-hosting is free** — you cover your own model API costs instead
 - Full details on the [pricing page](https://heygaia.io/pricing)
+
+## Platforms
+
+| | Platform | How |
+| --- | --- | --- |
+| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. [Pro plan](https://heygaia.io/pricing). |
+| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
+| <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
+| <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
+| <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
+
+- Also on the **web**, a **[desktop app](https://heygaia.io/download)** for macOS, Windows and Linux, and **mobile**
+- It's all one account — a chat you start on Telegram shows up in the web app
+- Same memory everywhere, no matter where you talk to it
+
+## Integrations
+
+- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
+- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
+- **A marketplace.** Browse what the community published, or publish your own.
+- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
+
+```bash
+gaia bridge login          # approve the pairing in your browser
+gaia bridge fs ~/projects  # share a folder
+gaia bridge up             # connect
+```
 
 ## Security
 
