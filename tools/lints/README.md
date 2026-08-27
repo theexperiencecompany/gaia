@@ -5,8 +5,11 @@ for. Plain-Python AST checkers, stdlib only, one file per rule plus a shared
 runner. They run in the `static-python` CI job and the api pre-commit config.
 
 ```bash
-# Run against the API app tree (exits non-zero on any violation or crashed rule):
-python3 tools/lints/run.py apps/api/app
+# Run against the API app tree (exits non-zero on any violation or crashed rule).
+# Needs Python 3.12+ (the version CI runs) and refuses to start on anything
+# older — the rules parse app sources with the running interpreter's `ast`, so
+# an older python crashes rules on syntax it cannot parse:
+uv run --project apps/api python tools/lints/run.py apps/api/app
 
 # Unit tests:
 uv run --project apps/api pytest tools/lints/test_lints.py -q
