@@ -18,8 +18,6 @@ interface FeedItem {
   category: string;
 }
 
-const BUILD_DATE = new Date().toUTCString();
-
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -41,7 +39,7 @@ function buildItem(item: FeedItem): string {
     </item>`;
 }
 
-function getStaticPages(baseUrl: string): FeedItem[] {
+function getStaticPages(baseUrl: string, buildDate: string): FeedItem[] {
   const pages: Array<{
     path: string;
     title: string;
@@ -198,78 +196,99 @@ function getStaticPages(baseUrl: string): FeedItem[] {
     title: page.title,
     link: `${baseUrl}${page.path}`,
     description: page.description,
-    pubDate: BUILD_DATE,
+    pubDate: buildDate,
     category: page.category,
   }));
 }
 
-function getFeaturePages(baseUrl: string): FeedItem[] {
+function getFeaturePages(baseUrl: string, buildDate: string): FeedItem[] {
   return FEATURES.map((feature) => ({
     title: `${feature.title} - ${feature.tagline}`,
     link: `${baseUrl}/features/${feature.slug}`,
     description: feature.subheadline,
-    pubDate: BUILD_DATE,
+    pubDate: buildDate,
     category: `Features / ${feature.category}`,
   }));
 }
 
-async function getComparisonPages(baseUrl: string): Promise<FeedItem[]> {
+async function getComparisonPages(
+  baseUrl: string,
+  buildDate: string,
+): Promise<FeedItem[]> {
   const all = await getAllComparisons();
   return all.map((item) => ({
     title: item.metaTitle || `GAIA vs ${item.name}`,
     link: `${baseUrl}/compare/${item.slug}`,
     description: item.metaDescription || item.description,
-    pubDate: BUILD_DATE,
+    pubDate: buildDate,
     category: "Comparisons",
   }));
 }
 
-async function getAlternativePages(baseUrl: string): Promise<FeedItem[]> {
+async function getAlternativePages(
+  baseUrl: string,
+  buildDate: string,
+): Promise<FeedItem[]> {
   const all = await getAllAlternatives();
   return all.map((item) => ({
     title: item.metaTitle || `GAIA Alternative to ${item.name}`,
     link: `${baseUrl}/alternative-to/${item.slug}`,
     description: item.metaDescription || item.tagline,
-    pubDate: BUILD_DATE,
+    pubDate: buildDate,
     category: "Alternatives",
   }));
 }
 
-async function getPersonaPages(baseUrl: string): Promise<FeedItem[]> {
+async function getPersonaPages(
+  baseUrl: string,
+  buildDate: string,
+): Promise<FeedItem[]> {
   const all = await getAllPersonas();
   return all.map((item) => ({
     title: item.metaTitle || `GAIA for ${item.title}`,
     link: `${baseUrl}/for/${item.slug}`,
     description: item.metaDescription || item.intro,
-    pubDate: BUILD_DATE,
+    pubDate: buildDate,
     category: "Built For",
   }));
 }
 
-async function getGlossaryPages(baseUrl: string): Promise<FeedItem[]> {
+async function getGlossaryPages(
+  baseUrl: string,
+  buildDate: string,
+): Promise<FeedItem[]> {
   const all = await getAllGlossaryTerms();
-  return all
-    .filter((term) => !term.canonicalSlug)
-    .map((term) => ({
+  const items: FeedItem[] = [];
+  for (const term of all) {
+    if (term.canonicalSlug) continue;
+    items.push({
       title: term.metaTitle || term.term,
       link: `${baseUrl}/learn/${term.slug}`,
       description: term.metaDescription || term.definition,
-      pubDate: BUILD_DATE,
+      pubDate: buildDate,
       category: "Glossary",
-    }));
+    });
+  }
+  return items;
 }
 
-async function getComboPages(baseUrl: string): Promise<FeedItem[]> {
+async function getComboPages(
+  baseUrl: string,
+  buildDate: string,
+): Promise<FeedItem[]> {
   const all = await getAllCombos();
-  return all
-    .filter((combo) => !combo.canonicalSlug)
-    .map((combo) => ({
+  const items: FeedItem[] = [];
+  for (const combo of all) {
+    if (combo.canonicalSlug) continue;
+    items.push({
       title: combo.metaTitle || `${combo.toolA} + ${combo.toolB} Automation`,
       link: `${baseUrl}/automate/${combo.slug}`,
       description: combo.metaDescription || combo.tagline,
-      pubDate: BUILD_DATE,
+      pubDate: buildDate,
       category: "Automation Combos",
-    }));
+    });
+  }
+  return items;
 }
 
 async function getIntegrationItems(baseUrl: string): Promise<FeedItem[]> {
@@ -356,14 +375,12 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
 
     const allWorkflows = [...explore.workflows, ...community.workflows];
     const seen = new Set<string>();
+    const items: FeedItem[] = [];
 
-    return allWorkflows
-      .filter((wf) => {
-        if (seen.has(wf.slug)) return false;
-        seen.add(wf.slug);
-        return true;
-      })
-      .map((wf) => ({
+    for (const wf of allWorkflows) {
+      if (seen.has(wf.slug)) continue;
+      seen.add(wf.slug);
+      items.push({
         title: wf.title,
         link: `${baseUrl}/use-cases/${wf.slug}`,
         description:
@@ -373,7 +390,10 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
         category: wf.categories?.includes("featured")
           ? "Featured Workflows"
           : "Community Workflows",
-      }));
+      });
+    }
+
+    return items;
   } catch (error) {
     console.error("Error fetching workflows for RSS feed:", error);
     return [];
@@ -383,6 +403,9 @@ async function getWorkflowItems(baseUrl: string): Promise<FeedItem[]> {
 export async function GET() {
   try {
     const baseUrl = siteConfig.url;
+    // Evaluated per request (not at module load) so a long-lived server process
+    // never serves stale build dates.
+    const buildDate = new Date().toUTCString();
 
     const [
       blogItems,
@@ -397,16 +420,16 @@ export async function GET() {
       getBlogItems(baseUrl),
       getWorkflowItems(baseUrl),
       getIntegrationItems(baseUrl),
-      getComparisonPages(baseUrl),
-      getAlternativePages(baseUrl),
-      getGlossaryPages(baseUrl),
-      getComboPages(baseUrl),
-      getPersonaPages(baseUrl),
+      getComparisonPages(baseUrl, buildDate),
+      getAlternativePages(baseUrl, buildDate),
+      getGlossaryPages(baseUrl, buildDate),
+      getComboPages(baseUrl, buildDate),
+      getPersonaPages(baseUrl, buildDate),
     ]);
 
     const allItems: FeedItem[] = [
-      ...getStaticPages(baseUrl),
-      ...getFeaturePages(baseUrl),
+      ...getStaticPages(baseUrl, buildDate),
+      ...getFeaturePages(baseUrl, buildDate),
       ...comparisonPages,
       ...alternativePages,
       ...personaPages,

@@ -23,6 +23,7 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
 import { pinMessage } from "../../api/chat-api";
@@ -277,7 +278,7 @@ export function ChatScreenContent({
   useEffect(() => {
     if (!isAtBottomRef.current) return;
     const now = Date.now();
-    if (now - lastFollowTsRef.current < 120) return;
+    if (now - lastFollowTsRef.current < 60) return;
     lastFollowTsRef.current = now;
     flatListRef.current?.scrollToEnd({ animated: false });
   }, [messages, flatListRef]);
@@ -588,7 +589,7 @@ export function ChatScreenContent({
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
-                  tintColor="#00bbff"
+                  tintColor={colors.brand}
                 />
               }
               onLoad={() => {

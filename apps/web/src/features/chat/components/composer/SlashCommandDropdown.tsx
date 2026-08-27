@@ -1,12 +1,16 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
-import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Cancel01Icon, GridIcon, SearchIcon } from "@icons";
+import { Cancel01Icon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { handleSlashCommandKey } from "@/features/chat/hooks/useSlashCommandDropdownState";
+import {
+  useScrollSelectedToolIntoView,
+  useSlashCommandItems,
+} from "@/features/chat/hooks/useSlashCommandItems";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -15,21 +19,10 @@ import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
-import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
+import { CategoryTabs } from "./CategoryTabs";
 import { LockedCategorySection } from "./LockedCategorySection";
 import { LockedToolItem } from "./LockedToolItem";
-
-// Types for virtualized items
-type VirtualItemType =
-  | { type: "integrations-card" }
-  | { type: "unlocked-tool"; match: SlashCommandMatch; toolIndex: number }
-  | {
-      type: "locked-category-header";
-      category: string;
-      tools: SlashCommandMatch[];
-      requiredIntegration: { id: string; name: string };
-    }
-  | { type: "locked-tool"; match: SlashCommandMatch };
+import type { VirtualItemType } from "./virtualItemTypes";
 
 // Component to render each virtualized item
 interface VirtualizedItemProps {
@@ -91,8 +84,9 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <div
-          className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
+        <button
+          type="button"
+          className={`relative mx-2 mb-1 block w-full cursor-pointer rounded-xl border-none text-left transition-colors duration-150 ${isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"}`}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
@@ -130,7 +124,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
     );
   }
@@ -176,6 +170,28 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
 
   return null;
 };
+
+/** Estimated row heights for the virtualizer (measureElement corrects them). */
+function estimateVirtualItemHeight(
+  index: number,
+  virtualItems: VirtualItemType[],
+): number {
+  const item = virtualItems[index];
+  if (!item) return 48;
+
+  switch (item.type) {
+    case "integrations-card":
+      return 200; // Estimated height for IntegrationsCard (will auto-adjust)
+    case "unlocked-tool":
+      return 48; // Regular tool item height
+    case "locked-category-header":
+      return 80; // Category header with connect button
+    case "locked-tool":
+      return 48; // Locked tool item (same as regular)
+    default:
+      return 48;
+  }
+}
 
 interface SlashCommandDropdownProps {
   matches: SlashCommandMatch[];
@@ -260,83 +276,17 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
 
   // Handle keyboard navigation within the dropdown
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Get filtered matches based on current category
-    const getFilteredMatches = (
-      category: string,
-      matches: SlashCommandMatch[],
-    ) => {
-      if (category === "all") return matches;
-      return matches.filter((match) => match.tool.category === category);
-    };
-
-    const currentFilteredMatches = getFilteredMatches(
-      selectedCategory,
+    handleSlashCommandKey(e, {
       matches,
-    );
-
-    switch (e.key) {
-      case "ArrowUp":
-        e.preventDefault();
-        if (onNavigateUp) {
-          onNavigateUp();
-        }
-        break;
-
-      case "ArrowDown":
-        e.preventDefault();
-        if (onNavigateDown) {
-          onNavigateDown();
-        }
-        break;
-
-      case "ArrowLeft": {
-        e.preventDefault();
-        const currentCategoryIndex = categories.indexOf(selectedCategory);
-        const newLeftIndex = Math.max(0, currentCategoryIndex - 1);
-        const newLeftCategory = categories[newLeftIndex];
-        handleCategoryChange(newLeftCategory);
-        break;
-      }
-
-      case "ArrowRight": {
-        e.preventDefault();
-        const currentRightIndex = categories.indexOf(selectedCategory);
-        const newRightIndex = Math.min(
-          categories.length - 1,
-          currentRightIndex + 1,
-        );
-        const newRightCategory = categories[newRightIndex];
-        handleCategoryChange(newRightCategory);
-        break;
-      }
-
-      case "Enter":
-      case "Tab": {
-        e.preventDefault();
-        // Only select unlocked items
-        const unlockedFilteredMatches = currentFilteredMatches.filter(
-          (match) => !match.enhancedTool?.isLocked,
-        );
-        if (unlockedFilteredMatches.length === 1) {
-          onSelect(unlockedFilteredMatches[0]);
-        } else {
-          const selectedMatch = currentFilteredMatches[selectedIndex];
-          // Only allow selection if the item is not locked
-          if (selectedMatch && !selectedMatch.enhancedTool?.isLocked) {
-            onSelect(selectedMatch);
-          }
-        }
-        break;
-      }
-
-      case "Escape":
-        e.preventDefault();
-        onClose();
-        break;
-
-      default:
-        break;
-    }
+      selectedCategory,
+      categories,
+      selectedIndex,
+      selectCategory: handleCategoryChange,
+      navigateUp: onNavigateUp,
+      navigateDown: onNavigateDown,
+      onSelect,
+      onClose,
+    });
   };
 
   // Get unique categories from matches, use external if provided
@@ -350,197 +300,34 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     return ["all", ...uniqueCategories.toSorted()];
   }, [matches, externalCategories]);
 
-  // Build a map of category ID -> { displayName, iconUrl } for efficient lookup
-  const categoryDisplayMap = useMemo(() => {
-    const map: Record<string, { displayName: string; iconUrl?: string }> = {};
-    matches.forEach((match) => {
-      if (!map[match.tool.category]) {
-        map[match.tool.category] = {
-          displayName: match.tool.display_name, // Single source of truth from backend
-          iconUrl: match.tool.icon_url,
-        };
-      }
-    });
-    return map;
-  }, [matches]);
-
-  // Locked-tool count per category across all matches (drives the category tab
-  // lock indicator independent of the currently selected category filter).
-  const lockedCountByCategory = useMemo(() => {
-    const counts: Record<string, number> = {};
-    matches.forEach((match) => {
-      if (match.enhancedTool?.isLocked) {
-        counts[match.tool.category] = (counts[match.tool.category] ?? 0) + 1;
-      }
-    });
-    return counts;
-  }, [matches]);
-
-  // Filter matches based on selected category and search query
-  const filteredMatches = useMemo(() => {
-    let filtered = matches;
-
-    // Filter by category
-    if (selectedCategory !== "all") {
-      filtered = filtered.filter(
-        (match) => match.tool.category === selectedCategory,
-      );
-    }
-
-    // Filter by search query (when opened via button or slash command)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      return filtered.filter(
-        (match) =>
-          formatToolName(match.tool.name).toLowerCase().includes(query) ||
-          match.tool.category.toLowerCase().includes(query) ||
-          match.tool.display_name?.toLowerCase().includes(query),
-      );
-    }
-
-    return filtered;
-  }, [matches, selectedCategory, searchQuery]);
-
-  // Check if IntegrationsCard should be shown
-  const showIntegrationsCard = useMemo(() => {
-    // Only show integrations card when opened via button (not via typing slash)
-    if (!openedViaButton) return false;
-
-    // Hide when searching in the search input
-    if (searchQuery.trim()) return false;
-
-    // Show only for "all" category and when no filtering is happening
-    return (
-      selectedCategory === "all" && matches.length === filteredMatches.length
-    );
-  }, [
+  const {
+    categoryDisplayMap,
+    lockedCountByCategory,
+    showIntegrationsCard,
+    unlockedMatches,
+    virtualItems,
+  } = useSlashCommandItems({
+    matches,
     selectedCategory,
     searchQuery,
     openedViaButton,
-    matches.length,
-    filteredMatches.length,
-  ]);
-
-  // Separate unlocked and locked matches, grouping locked by category
-  const { unlockedMatches, lockedCategories } = useMemo(() => {
-    const unlocked: SlashCommandMatch[] = [];
-    const lockedByCategory: Record<string, SlashCommandMatch[]> = {};
-
-    filteredMatches.forEach((match) => {
-      const isLocked = match.enhancedTool?.isLocked || false;
-      if (isLocked) {
-        if (!lockedByCategory[match.tool.category]) {
-          lockedByCategory[match.tool.category] = [];
-        }
-        lockedByCategory[match.tool.category].push(match);
-      } else {
-        unlocked.push(match);
-      }
-    });
-
-    return {
-      unlockedMatches: unlocked,
-      lockedCategories: lockedByCategory,
-    };
-  }, [filteredMatches]);
-
-  // Build flat list of virtualized items
-  const virtualItems = useMemo((): VirtualItemType[] => {
-    const items: VirtualItemType[] = [];
-
-    // Add IntegrationsCard if shown
-    if (showIntegrationsCard) {
-      items.push({ type: "integrations-card" });
-    }
-
-    // Add unlocked tools
-    unlockedMatches.forEach((match, index) => {
-      items.push({ type: "unlocked-tool", match, toolIndex: index });
-    });
-
-    // Add locked categories with their tools
-    Object.entries(lockedCategories).forEach(([category, categoryMatches]) => {
-      const firstTool = categoryMatches[0];
-
-      // Add category header - use display_name directly from backend
-      items.push({
-        type: "locked-category-header",
-        category,
-        tools: categoryMatches,
-        requiredIntegration: {
-          id: firstTool.tool.category,
-          name: firstTool.tool.display_name, // Single source of truth
-        },
-      });
-
-      // Add each locked tool
-      categoryMatches.forEach((match) => {
-        items.push({ type: "locked-tool", match });
-      });
-    });
-
-    return items;
-  }, [showIntegrationsCard, unlockedMatches, lockedCategories]);
+  });
 
   const rowVirtualizer = useVirtualizer({
     count: virtualItems.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: (index) => {
-      const item = virtualItems[index];
-      if (!item) return 48;
-
-      switch (item.type) {
-        case "integrations-card":
-          return 200; // Estimated height for IntegrationsCard (will auto-adjust)
-        case "unlocked-tool":
-          return 48; // Regular tool item height
-        case "locked-category-header":
-          return 80; // Category header with connect button
-        case "locked-tool":
-          return 48; // Locked tool item (same as regular)
-        default:
-          return 48;
-      }
-    },
+    estimateSize: (index) => estimateVirtualItemHeight(index, virtualItems),
     overscan: 5,
   });
 
-  // Scroll to selected item when selectedIndex changes
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedIndex < unlockedMatches.length) {
-      // Don't scroll if IntegrationsCard is shown and expanded
-      // This keeps the integrations visible while navigating tools
-      if (showIntegrationsCard && isIntegrationsExpanded) {
-        return;
-      }
-
-      // Find the virtual index for the selected unlocked tool
-      let virtualIndex = -1;
-      for (let i = 0; i < virtualItems.length; i++) {
-        const item = virtualItems[i];
-        if (item.type === "unlocked-tool" && item.toolIndex === selectedIndex) {
-          virtualIndex = i;
-          break;
-        }
-      }
-
-      if (virtualIndex >= 0) {
-        requestAnimationFrame(() => {
-          rowVirtualizer.scrollToIndex(virtualIndex, {
-            align: "center",
-            behavior: "smooth",
-          });
-        });
-      }
-    }
-  }, [
+  useScrollSelectedToolIntoView({
     selectedIndex,
-    rowVirtualizer,
-    unlockedMatches.length,
+    unlockedMatchCount: unlockedMatches.length,
     showIntegrationsCard,
     isIntegrationsExpanded,
     virtualItems,
-  ]);
+    scrollToIndex: rowVirtualizer.scrollToIndex,
+  });
 
   return (
     <AnimatePresence>
@@ -598,50 +385,13 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
           )}
 
           {/* Category Tabs */}
-          <div>
-            <ScrollShadow orientation="horizontal" className="overflow-x-auto">
-              <div className="flex min-w-max gap-1 px-2 py-2">
-                {/* <div className="grid min-w-max gap-1 px-2 py-2 grid-rows-2 grid-flow"> for 2 rows */}
-                {categories.map((category) => (
-                  <button
-                    type="button"
-                    key={category}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleCategoryChange(category);
-                    }}
-                    className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${selectedCategory === category ? "bg-zinc-700/40 text-white" : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"}`}
-                  >
-                    {category === "all" ? (
-                      <GridIcon
-                        size={16}
-                        strokeWidth={2}
-                        className="text-gray-400"
-                      />
-                    ) : (
-                      getToolCategoryIcon(
-                        category,
-                        { showBackground: false, size: 16 },
-                        categoryDisplayMap[category]?.iconUrl,
-                      )
-                    )}
-                    <span>
-                      {category === "all"
-                        ? "All"
-                        : formatToolName(
-                            categoryDisplayMap[category]?.displayName ||
-                              category,
-                          )}
-                    </span>
-                    <CategoryIntegrationStatus
-                      category={category}
-                      lockedCount={lockedCountByCategory[category] ?? 0}
-                    />
-                  </button>
-                ))}
-              </div>
-            </ScrollShadow>
-          </div>
+          <CategoryTabs
+            categories={categories}
+            selectedCategory={selectedCategory}
+            categoryDisplayMap={categoryDisplayMap}
+            lockedCountByCategory={lockedCountByCategory}
+            onCategoryChange={handleCategoryChange}
+          />
 
           {/* Tool List */}
           <div

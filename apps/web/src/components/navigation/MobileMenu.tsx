@@ -4,7 +4,7 @@ import { Menu01Icon } from "@icons";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -82,6 +82,49 @@ export default function MobileMenu() {
     { title: "Connect", links: connect },
   ];
 
+  // Authentication links — one pass over `auth`, keeping the links that match
+  // the user's auth state (requiresAuth when logged in, guestOnly otherwise).
+  const authLinks: ReactNode[] = [];
+  for (const link of auth) {
+    if (isAuthenticated ? !link.requiresAuth : !link.guestOnly) continue;
+    if (isAuthenticated) {
+      authLinks.push(
+        <button
+          key={link.href}
+          type="button"
+          className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
+          onClick={() => {
+            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+              is_logged_in: Boolean(isAuthenticated),
+              destination: link.href,
+            });
+            router.push(link.href);
+            closeSheet();
+          }}
+        >
+          {link.label}
+        </button>,
+      );
+    } else {
+      authLinks.push(
+        <Link
+          key={link.href}
+          href={link.href}
+          className="text-sm font-semibold text-primary transition-colors hover:text-primary"
+          onClick={() => {
+            trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
+              is_logged_in: Boolean(isAuthenticated),
+              destination: link.href,
+            });
+            closeSheet();
+          }}
+        >
+          {link.label}
+        </Link>,
+      );
+    }
+  }
+
   return (
     <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
       <SheetTrigger aria-label="Menu trigger">
@@ -111,46 +154,7 @@ export default function MobileMenu() {
             ))}
 
             {/* Authentication links */}
-            <div className="mt-8 flex flex-col gap-2">
-              {isAuthenticated
-                ? auth
-                    .filter((link) => link.requiresAuth)
-                    .map((link) => (
-                      <button
-                        key={link.href}
-                        type="button"
-                        className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
-                        onClick={() => {
-                          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
-                            is_logged_in: Boolean(isAuthenticated),
-                            destination: link.href,
-                          });
-                          router.push(link.href);
-                          closeSheet();
-                        }}
-                      >
-                        {link.label}
-                      </button>
-                    ))
-                : auth
-                    .filter((link) => link.guestOnly)
-                    .map((link) => (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        className="text-sm font-semibold text-primary transition-colors hover:text-primary"
-                        onClick={() => {
-                          trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
-                            is_logged_in: Boolean(isAuthenticated),
-                            destination: link.href,
-                          });
-                          closeSheet();
-                        }}
-                      >
-                        {link.label}
-                      </Link>
-                    ))}
-            </div>
+            <div className="mt-8 flex flex-col gap-2">{authLinks}</div>
           </SheetDescription>
         </SheetHeader>
       </SheetContent>

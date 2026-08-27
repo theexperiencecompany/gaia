@@ -56,15 +56,19 @@ export const useFileAttachments = () => {
       });
       if (validFiles.length === 0) return;
 
-      const pending = validFiles.map((file) => ({
-        file,
-        tempId: crypto.randomUUID(),
-        previewUrl: file.type.startsWith("image/")
-          ? URL.createObjectURL(file)
-          : "",
-      }));
+      const pending: Array<{ file: File; tempId: string; previewUrl: string }> =
+        [];
+      // Every minted preview URL is tracked at creation so each one is
+      // provably revoked once the batch settles.
+      const previewObjectUrls: string[] = [];
 
-      for (const { file, tempId, previewUrl } of pending) {
+      for (const file of validFiles) {
+        const tempId = crypto.randomUUID();
+        const previewUrl = file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : "";
+        if (previewUrl) previewObjectUrls.push(previewUrl);
+        pending.push({ file, tempId, previewUrl });
         addUploadedFile({
           id: tempId,
           url: previewUrl,
@@ -79,7 +83,7 @@ export const useFileAttachments = () => {
       setAuxLoading(true, "Uploading files...");
       try {
         await Promise.allSettled(
-          pending.map(async ({ file, tempId, previewUrl }) => {
+          pending.map(async ({ file, tempId }) => {
             try {
               const response = await chatApi.uploadFile(file);
               const description = response.description || `File: ${file.name}`;
@@ -113,12 +117,15 @@ export const useFileAttachments = () => {
               // as a toast — just drop the failed chip.
               removeUploadedFile(tempId);
               throw error;
-            } finally {
-              if (previewUrl) URL.revokeObjectURL(previewUrl);
             }
           }),
         );
       } finally {
+        // Chips no longer need the previews: settled chips hold the server
+        // URL (or nothing), failed chips are gone.
+        for (const url of previewObjectUrls) {
+          URL.revokeObjectURL(url);
+        }
         activeUploads.current -= 1;
         if (activeUploads.current === 0) setAuxLoading(false);
       }

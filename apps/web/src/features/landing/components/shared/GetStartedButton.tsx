@@ -19,10 +19,7 @@ export default function GetStartedButton({
   href?: string;
 }) {
   return (
-    <div
-      className="relative z-2 flex flex-col items-center gap-4 group"
-      style={{ willChange: "auto" }}
-    >
+    <div className="relative z-2 flex flex-col items-center gap-4 group">
       <Link href={href}>
         <RaisedButton
           className={`rounded-xl ${classname} before:rounded-xl duration-400 ease-out group shadow-black hover:scale-110`}

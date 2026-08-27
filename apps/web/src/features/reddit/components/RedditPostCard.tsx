@@ -24,10 +24,12 @@ function formatTime(timestamp: number): string {
   if (diffInSeconds < 604800)
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
 
+  // UTC keeps the rendered date identical between SSR and the browser.
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+    timeZone: "UTC",
   });
 }
 
@@ -49,12 +51,16 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
         has_selftext: Boolean(post.selftext),
         has_external_link: !post.is_self && Boolean(post.url),
       });
-      window.open(`https://reddit.com${post.permalink}`, "_blank");
+      window.open(
+        `https://reddit.com${post.permalink}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
     }
   };
 
   return (
-    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-all hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
+    <div className="group w-full max-w-2xl overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-800 text-white transition-[border-color,box-shadow] hover:border-orange-600/50 hover:shadow-lg hover:shadow-orange-600/10">
       <div className="space-y-3 p-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
@@ -73,12 +79,22 @@ export default function RedditPostCard({ post }: RedditPostCardProps) {
             </div>
 
             {/* Title */}
-            <h3
-              className="cursor-pointer text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500]"
-              onClick={handleOpenPost}
-            >
-              {post.title}
-            </h3>
+            {post.permalink ? (
+              <a
+                href={`https://reddit.com${post.permalink}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block cursor-pointer"
+              >
+                <h3 className="text-base leading-snug font-semibold text-white transition-colors group-hover:text-[#FF4500]">
+                  {post.title}
+                </h3>
+              </a>
+            ) : (
+              <h3 className="text-base leading-snug font-semibold text-white">
+                {post.title}
+              </h3>
+            )}
           </div>
 
           {/* Flair if available */}

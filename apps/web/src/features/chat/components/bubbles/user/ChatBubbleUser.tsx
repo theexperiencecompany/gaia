@@ -23,7 +23,7 @@ function scrollToMessage(messageId: string) {
   const messageElement = document.getElementById(messageId);
   if (!messageElement) return;
   messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-  messageElement.style.transition = "all 0.3s ease";
+  messageElement.style.transition = "scale 0.3s ease";
   messageElement.style.scale = "1.02";
   setTimeout(() => {
     messageElement.style.scale = "1";

@@ -26,6 +26,10 @@ export default defineConfig({
         __dirname,
         "../../libs/shared/ts/src/analytics/index.ts",
       ),
+      "@gaia/shared/bots": path.resolve(
+        __dirname,
+        "../../libs/shared/ts/src/bots/index.ts",
+      ),
       "@gaia/shared": path.resolve(
         __dirname,
         "../../libs/shared/ts/src/index.ts",

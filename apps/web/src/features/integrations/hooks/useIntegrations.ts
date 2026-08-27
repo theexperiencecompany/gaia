@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
@@ -78,7 +78,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   // depend on the array — otherwise every refetch changes their identity and
   // churns consumers (e.g. the sidebar content rebuilt on every poll tick).
   const integrationsRef = useRef(integrations);
-  integrationsRef.current = integrations;
+  useEffect(() => {
+    integrationsRef.current = integrations;
+  });
 
   // Get status for a specific integration, derived from the /me catalog.
   const getIntegrationStatus = useCallback(

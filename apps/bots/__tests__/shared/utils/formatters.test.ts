@@ -19,7 +19,7 @@ import {
   htmlToPlainText,
   PLATFORM_MARKDOWN,
   renderForPlatform,
-} from "@gaia/shared";
+} from "@gaia/shared/bots";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 // ---------------------------------------------------------------------------

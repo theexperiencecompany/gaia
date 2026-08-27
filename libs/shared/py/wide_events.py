@@ -231,6 +231,7 @@ class MemoryContext(TypedDict, total=False):
     # retain/consolidate write-path outcome.
     facts_extracted: int
     episode_entries: int
+    episode_entries_deduped: int
     entities_linked: int
     edges_added: int
     new_count: int

@@ -52,7 +52,7 @@ export const useIntegrationTools = (
     });
 
     const mentionNames = Array.from(
-      new Set(entries.map((entry) => entry.label).filter(Boolean)),
+      new Set(entries.flatMap((entry) => (entry.label ? [entry.label] : []))),
     );
 
     return { tools: entries, mentionNames };

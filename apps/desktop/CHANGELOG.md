@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.5.0...desktop-v0.6.0) (2026-08-25)
+
+
+### Features
+
+* **devx:** ci:local, ci:remote, pr:comments — agent-legible shipping gates ([#1093](https://github.com/theexperiencecompany/gaia/issues/1093)) ([efd45e0](https://github.com/theexperiencecompany/gaia/commit/efd45e0960831e5e729703f6d891ddddda9679c4))
+* Extract PDF/DOCX/XLSX/PPTX/CSV locally via anydoc + pdf-inspector ([#890](https://github.com/theexperiencecompany/gaia/issues/890)) ([e6c71c4](https://github.com/theexperiencecompany/gaia/commit/e6c71c4285347c134a5db6857cb46926033e97c6))
+* **gmail:** inbox summary tool, body normalization, and agent docs ([#783](https://github.com/theexperiencecompany/gaia/issues/783)) ([0edf4a4](https://github.com/theexperiencecompany/gaia/commit/0edf4a4e9e705e337d52cb6502c184da4d3d1144))
+
+
+### Bug Fixes
+
+* **api:** drop removed ast aliases so config schema dump works on Python 3.12+ ([#878](https://github.com/theexperiencecompany/gaia/issues/878)) ([beebc92](https://github.com/theexperiencecompany/gaia/commit/beebc92c7b97487dcbc8ff5004932c43b3e45281))
+* **quality:** repair lint errors blocking the PR quality gate ([#870](https://github.com/theexperiencecompany/gaia/issues/870)) ([d4b5605](https://github.com/theexperiencecompany/gaia/commit/d4b56055eb6e3e938f2dd2e85ba36c28f7d2bdce))
+* **security:** remediate 192 of 196 Dependabot alerts ([#860](https://github.com/theexperiencecompany/gaia/issues/860)) ([9984705](https://github.com/theexperiencecompany/gaia/commit/99847059fee66f46c6a7f94cd3569047f4eec470))
+* **security:** remediate audited SSRF/IDOR/auth/webhook findings across the monorepo ([#848](https://github.com/theexperiencecompany/gaia/issues/848)) ([13f36fc](https://github.com/theexperiencecompany/gaia/commit/13f36fc07485d47b99f68d9e9e8b291d6aa1101c))
+
 ## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.4.0...desktop-v0.5.0) (2026-07-03)
 
 

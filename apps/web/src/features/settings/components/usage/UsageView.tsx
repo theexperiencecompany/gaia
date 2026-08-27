@@ -9,23 +9,19 @@ import { USAGE_WARN_THRESHOLD } from "@shared/constants/usage";
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { formatCompactNumber, formatDate, formatDateUTC } from "@shared/utils";
 import { useMemo, useState } from "react";
-import {
-  Area,
-  AreaChart,
-  PolarAngleAxis,
-  RadialBar,
-  RadialBarChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
 import BlurStack from "@/components/ui/blur-stack";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
 import type { UsageHistoryEntry } from "../../api/usageApi";
 import { DayByDay } from "./DayByDay";
+import { severityColor } from "./severityColor";
 import { ActivityBadge, UsageHeatmap } from "./UsageHeatmap";
-import { CARD, HEALTHY, InfoTip, NEAR, severityColor } from "./usageChrome";
+import { CARD, HEALTHY, InfoTip, NEAR } from "./usageChrome";
+
+// recharts is heavy, so it loads on demand instead of shipping eagerly with
+// the settings page. The shared promise means every chart here triggers a
+// single chunk load.
 
 /** Fraction (0-1) of the current window already elapsed — the "you should be
  * here by now" mark. Simple: elapsed / total, from the window's reset time. */
@@ -121,6 +117,7 @@ function heroWindow(
 function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
   // Free has no monthly allowance to show, so its hero is daily-only.
   const [win, setWin] = useState<Period>(isPro ? "month" : "day");
+  const R = useRecharts();
   const { percent, resetIso } = heroWindow(summary, win);
   const used = Math.min(100, Math.round(percent));
 
@@ -159,28 +156,32 @@ function Hero({ summary, isPro }: { summary: UsageSummary; isPro: boolean }) {
         </Tabs>
       )}
       <div className="relative size-32 shrink-0">
-        <ChartContainer config={{}} className="aspect-square size-32">
-          <RadialBarChart
-            data={[{ value: used }]}
-            innerRadius="76%"
-            outerRadius="100%"
-            startAngle={230}
-            endAngle={-50}
-          >
-            <PolarAngleAxis
-              type="number"
-              domain={[0, 100]}
-              tick={false}
-              axisLine={false}
-            />
-            <RadialBar
-              dataKey="value"
-              cornerRadius={10}
-              background={{ fill: "#27272a" }}
-              fill={severityColor(percent)}
-            />
-          </RadialBarChart>
-        </ChartContainer>
+        {R ? (
+          <ChartContainer config={{}} className="aspect-square size-32">
+            <R.RadialBarChart
+              data={[{ value: used }]}
+              innerRadius="76%"
+              outerRadius="100%"
+              startAngle={230}
+              endAngle={-50}
+            >
+              <R.PolarAngleAxis
+                type="number"
+                domain={[0, 100]}
+                tick={false}
+                axisLine={false}
+              />
+              <R.RadialBar
+                dataKey="value"
+                cornerRadius={10}
+                background={{ fill: "#27272a" }}
+                fill={severityColor(percent)}
+              />
+            </R.RadialBarChart>
+          </ChartContainer>
+        ) : (
+          <div className="aspect-square size-full rounded-full bg-zinc-800/60" />
+        )}
         {/* Pace tick: where usage "should" be at an even burn. Amber if ahead of it. */}
         {showPace && (
           <svg
@@ -530,6 +531,7 @@ function Trend({
   /** The feature key whose cumulative monthly activity is plotted. */
   primary: string;
 }) {
+  const R = useRecharts();
   const month = summary.features[primary]?.periods.month;
   const limit = month?.limit ?? 0;
   const resetIso = month?.reset_time;
@@ -596,67 +598,70 @@ function Trend({
           Nothing used yet this {monthName} — your trend will appear here.
         </div>
       )}
-      {!isEmpty && (
-        <ChartContainer
-          config={{ actual: { label: "Sent", color: HEALTHY } }}
-          className="aspect-[16/6] w-full"
-        >
-          <AreaChart
-            data={rows}
-            margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+      {!isEmpty &&
+        (R ? (
+          <ChartContainer
+            config={{ actual: { label: "Sent", color: HEALTHY } }}
+            className="aspect-[16/6] w-full"
           >
-            <defs>
-              <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
-                <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="dom"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={12}
-              minTickGap={40}
-              tickFormatter={(d) => `${monthName} ${d}`}
-              tick={{ fill: "#71717a", fontSize: 11 }}
-            />
-            <YAxis hide domain={[0, yMax]} />
-            {showLimit && (
-              <ReferenceLine
-                y={limit}
-                stroke="#52525b"
-                strokeDasharray="4 4"
-                label={{
-                  value: `${limit.toLocaleString()} limit`,
-                  position: "insideTopRight",
-                  fill: "#a1a1aa",
-                  fontSize: 10,
-                }}
+            <R.AreaChart
+              data={rows}
+              margin={{ left: 0, right: 0, top: 12, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="trajFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={HEALTHY} stopOpacity={0.25} />
+                  <stop offset="100%" stopColor={HEALTHY} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <R.XAxis
+                dataKey="dom"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={12}
+                minTickGap={40}
+                tickFormatter={(d) => `${monthName} ${d}`}
+                tick={{ fill: "#71717a", fontSize: 11 }}
               />
-            )}
-            <ChartTooltip content={<TrendTooltip monthName={monthName} />} />
-            <Area
-              dataKey="actual"
-              type="monotone"
-              stroke={HEALTHY}
-              strokeWidth={2}
-              fill="url(#trajFill)"
-              connectNulls
-              dot={false}
-            />
-            <Area
-              dataKey="projected"
-              type="monotone"
-              stroke={NEAR}
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              fill="none"
-              connectNulls
-              dot={false}
-            />
-          </AreaChart>
-        </ChartContainer>
-      )}
+              <R.YAxis hide domain={[0, yMax]} />
+              {showLimit && (
+                <R.ReferenceLine
+                  y={limit}
+                  stroke="#52525b"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: `${limit.toLocaleString()} limit`,
+                    position: "insideTopRight",
+                    fill: "#a1a1aa",
+                    fontSize: 10,
+                  }}
+                />
+              )}
+              <ChartTooltip content={<TrendTooltip monthName={monthName} />} />
+              <R.Area
+                dataKey="actual"
+                type="monotone"
+                stroke={HEALTHY}
+                strokeWidth={2}
+                fill="url(#trajFill)"
+                connectNulls
+                dot={false}
+              />
+              <R.Area
+                dataKey="projected"
+                type="monotone"
+                stroke={NEAR}
+                strokeWidth={2}
+                strokeDasharray="4 4"
+                fill="none"
+                connectNulls
+                dot={false}
+              />
+            </R.AreaChart>
+          </ChartContainer>
+        ) : (
+          <div className="aspect-[16/6] w-full rounded-lg bg-zinc-800/60" />
+        ))}
     </section>
   );
 }
@@ -684,17 +689,18 @@ function Tools({
         f.periods.day?.percentage ?? 0,
         f.periods.month?.percentage ?? 0,
       );
-    return Object.entries(summary.features)
-      .filter(([key]) => key !== primary)
-      .map(([key, f]) => ({ key, f, p: f.periods[period] }))
-      .filter(
-        (r): r is { key: string; f: FeatureUsage; p: PeriodData } =>
-          !!r.p && r.p.limit > 0,
-      )
-      .sort(
-        (a, b) =>
-          severity(b.f) - severity(a.f) || a.f.title.localeCompare(b.f.title),
-      );
+    // Single pass: skip the primary feature and unusable rows while building.
+    const rows: { key: string; f: FeatureUsage; p: PeriodData }[] = [];
+    for (const [key, f] of Object.entries(summary.features)) {
+      if (key === primary) continue;
+      const p = f.periods[period];
+      if (!p || p.limit <= 0) continue;
+      rows.push({ key, f, p });
+    }
+    return rows.sort(
+      (a, b) =>
+        severity(b.f) - severity(a.f) || a.f.title.localeCompare(b.f.title),
+    );
   }, [summary.features, primary, period]);
 
   const COLLAPSED = 8;

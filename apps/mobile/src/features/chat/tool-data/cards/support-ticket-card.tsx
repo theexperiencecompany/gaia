@@ -254,11 +254,11 @@ export function SupportTicketCard({
 
   return (
     <>
-      {/* Outer card — matches web's `rounded-3xl bg-zinc-800 overflow-hidden`.
+      {/* Outer card — mobile tool-card shell (rounded-2xl bg-zinc-800 p-4).
           Mobile uses mx-4/my-1 for the chat bubble gutter. */}
-      <View className="rounded-3xl bg-zinc-800 mx-4 my-1 overflow-hidden">
+      <View className="rounded-2xl bg-zinc-800 mx-4 my-1 overflow-hidden">
         {/* Header — type icon + chip */}
-        <View className="flex-row items-center justify-between px-6 py-1">
+        <View className="flex-row items-center justify-between px-4 py-1">
           <View className="flex-row items-center gap-2 pt-3 pb-2">
             <AppIcon
               icon={isFeature ? Comment01Icon : HelpCircleIcon}
@@ -276,10 +276,10 @@ export function SupportTicketCard({
           </View>
         </View>
 
-        <View className="px-6 flex-col gap-1">
+        <View className="px-4 flex-col gap-1">
           {/* Title row + edit button */}
           <View className="flex-row items-center justify-between">
-            <Text className="text-zinc-100 text-lg font-semibold flex-1">
+            <Text className="text-zinc-100 text-base font-semibold flex-1">
               {editData.title}
             </Text>
             <Button
@@ -327,7 +327,7 @@ export function SupportTicketCard({
         </View>
 
         {/* Submit button — right-aligned, rounded-full primary */}
-        <View className="flex-row justify-end px-6 pb-5">
+        <View className="flex-row justify-end px-4 pb-5">
           <Button
             size="md"
             variant="primary"

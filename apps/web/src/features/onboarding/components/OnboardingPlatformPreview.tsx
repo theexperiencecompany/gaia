@@ -126,8 +126,9 @@ export function OnboardingPlatformPreview({
         className="relative shrink-0 overflow-hidden rounded-2xl"
         style={{ height: 280, minHeight: 280, maxHeight: 280 }}
       >
-        {hasLoaded ? (
-          <AnimatePresence mode="wait" initial={false}>
+        {!hasLoaded && <Skeleton className="absolute inset-0 rounded-2xl" />}
+        <AnimatePresence mode="wait" initial={false}>
+          {hasLoaded && (
             <m.div
               key={activePlatform}
               initial={{ opacity: 0 }}
@@ -145,10 +146,8 @@ export function OnboardingPlatformPreview({
                 showHeader={false}
               />
             </m.div>
-          </AnimatePresence>
-        ) : (
-          <Skeleton className="absolute inset-0 rounded-2xl" />
-        )}
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

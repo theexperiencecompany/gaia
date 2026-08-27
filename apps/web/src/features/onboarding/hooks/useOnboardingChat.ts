@@ -47,23 +47,22 @@ export function useOnboardingChat(
     activeConversationIdRef.current = conversationId;
   }, [conversationId]);
 
-  useEffect(() => {
-    if (!todoExecutionInProgressRef.current) return;
-    if (!isChatSending) {
-      todoExecutionInProgressRef.current = false;
-      setIsTodoExecutionDone(true);
-    }
-  }, [isChatSending]);
-
-  useEffect(() => {
-    if (isTodoExecutionDone) return;
-    if (!conversationId || isChatSending) return;
-    if (
-      streamMessages.some((m) => m.role === "assistant" && m.status === "sent")
-    ) {
-      setIsTodoExecutionDone(true);
-    }
-  }, [isTodoExecutionDone, conversationId, isChatSending, streamMessages]);
+  // Latch completion during render instead of adjusting state in effects that
+  // react to streaming/message-store changes. Done when either an assistant
+  // reply is already persisted (covers remounts) or our initiated execution
+  // finished sending. Clearing todoExecutionInProgressRef here would be dead:
+  // its only reader below is guarded by !isTodoExecutionDone, and once the
+  // latch sets, isTodoExecutionDone never resets.
+  const hasSentAssistantReply = streamMessages.some(
+    (m) => m.role === "assistant" && m.status === "sent",
+  );
+  if (
+    !isTodoExecutionDone &&
+    (hasSentAssistantReply ||
+      (todoExecutionInProgressRef.current && !isChatSending))
+  ) {
+    setIsTodoExecutionDone(true);
+  }
 
   const sendChatMessage = useCallback(
     async (content: string) => {

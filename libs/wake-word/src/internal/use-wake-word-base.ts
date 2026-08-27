@@ -36,11 +36,19 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
   onCreate?: (controller: C) => void,
 ): WakeWordBaseResult {
   const controllerRef = useRef<C | null>(null);
+  const listenerCleanupsRef = useRef<(() => void)[]>([]);
   const [state, setState] = useState<DetectorState>("idle");
   const [lastDetection, setLastDetection] = useState<DetectionEvent | null>(
     null,
   );
   const [error, setError] = useState<Error | null>(null);
+
+  // Unsubscribes for the listeners attached to the controller currently in
+  // controllerRef, released whenever that controller is discarded.
+  const detachListeners = useCallback(() => {
+    for (const off of listenerCleanupsRef.current) off();
+    listenerCleanupsRef.current = [];
+  }, []);
 
   const start = useCallback(async () => {
     if (controllerRef.current) return;
@@ -48,9 +56,15 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
     setError(null);
     const controller = createController();
     controllerRef.current = controller;
-    controller.on("detection", setLastDetection);
-    controller.on("state", setState);
-    controller.on("error", setError);
+    // Subscribe before start(): the controller may emit as soon as it runs, and
+    // deferring this to an effect would drop anything raised in between — and
+    // would attach nothing at all when start() is called from an event handler
+    // that schedules no re-render.
+    listenerCleanupsRef.current = [
+      controller.on("detection", setLastDetection),
+      controller.on("state", setState),
+      controller.on("error", setError),
+    ];
     onCreate?.(controller);
     try {
       await controller.start();
@@ -61,18 +75,23 @@ export function useWakeWordBase<C extends WakeWordControllerLike>(
       }
     } catch (err) {
       setError(err as Error);
-      // Only clear the ref if it still points at this (failed) controller.
-      if (controllerRef.current === controller) controllerRef.current = null;
+      // Only clear the ref if it still points at this (failed) controller —
+      // otherwise the listeners being released belong to its replacement.
+      if (controllerRef.current === controller) {
+        controllerRef.current = null;
+        detachListeners();
+      }
     }
-  }, [createController, onCreate]);
+  }, [createController, onCreate, detachListeners]);
 
   const stop = useCallback(async () => {
     const controller = controllerRef.current;
     controllerRef.current = null;
+    detachListeners();
     await controller?.stop();
     setState("idle");
     setError(null);
-  }, []);
+  }, [detachListeners]);
 
   useEffect(() => {
     if (!enabled) return;

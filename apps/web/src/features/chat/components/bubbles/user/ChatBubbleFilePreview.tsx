@@ -1,8 +1,10 @@
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
-import { getFormattedFileType } from "@/features/chat/components/files/FilePreview";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
-import { getFileTypeExtension } from "@/features/chat/components/files/fileTypeConfig";
+import {
+  getFileTypeExtension,
+  getFormattedFileType,
+} from "@/features/chat/components/files/fileTypeConfig";
 import type { FileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {

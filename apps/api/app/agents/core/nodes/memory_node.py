@@ -25,6 +25,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
+from app.agents.context.slots import PromptSlot, slot_of
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
@@ -70,10 +71,32 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
         Tuple of (should_learn, reason)
     """
     for msg in messages:
-        if isinstance(msg, HumanMessage):
+        # slot_of filters graph plumbing that rides the thread as a
+        # HumanMessage — the re-stamped current-time slot lands in every
+        # delta, and counted as user text it made this check always-true.
+        if isinstance(msg, HumanMessage) and slot_of(msg) is PromptSlot.CONVERSATION:
             if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
     return False, "No substantive user message"
+
+
+def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
+    """Whether the NEW slice of a thread justifies an extraction call.
+
+    The node's thread-level check passes on the strength of ANY substantive
+    user message, however old — so in a long thread every "ok"/"thanks" turn
+    bought a full extraction call for a delta with nothing in it (measured:
+    half of production extraction calls yielded zero facts and zero journal
+    entries). Substance is either real user text or tool activity: a short
+    "yes" that triggered actual work still journals what was done.
+    """
+    worth, _ = _check_worth_learning(delta)
+    if worth:
+        return True
+    return any(
+        isinstance(msg, ToolMessage) or (isinstance(msg, AIMessage) and msg.tool_calls)
+        for msg in delta
+    )
 
 
 def _format_messages_for_user_memory(
@@ -101,6 +124,12 @@ def _format_messages_for_user_memory(
             formatted.append({"role": _ROLE_MARKER, "content": _DELTA_MARKER})
 
         if isinstance(msg, HumanMessage):
+            # Non-conversation slots (the re-stamped current-time message) are
+            # graph plumbing: rendered as `user: ...` they polluted every
+            # transcript, and the extractor gets the date in its volatile
+            # context already.
+            if slot_of(msg) is not PromptSlot.CONVERSATION:
+                continue
             content = extract_text_content(msg.content)
             if content:
                 formatted.append({"role": _ROLE_USER, "content": content})
@@ -208,6 +237,19 @@ async def _store_user_memory_background(
                 log.set(memory_ingest={"skipped": "system_generated_conversation"})
                 return
             to_ingest, context_count = await _messages_to_ingest(user_id, session_id, messages)
+            delta = to_ingest[context_count:]
+            if delta and not _delta_worth_learning(delta):
+                # Not advancing the mark keeps the trivial turn in the next
+                # delta, so its content is still extracted alongside the next
+                # substantive turn instead of being silently dropped.
+                log.set(
+                    memory_ingest={
+                        "skipped": "trivial_delta",
+                        "thread_messages": len(messages),
+                        "delta_messages": len(delta),
+                    }
+                )
+                return
             formatted = _format_messages_for_user_memory(to_ingest, context_count)
             if not formatted:
                 return

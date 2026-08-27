@@ -91,13 +91,16 @@ def _split_core_context(core_context: str) -> tuple[str, str, str]:
 
 
 async def build_core_memory_block(ctx: SectionContext) -> str:
-    """The BYTE-STABLE half of the memory core: the user / assistant-conventions
+    """The document half of the memory core: the user / assistant-conventions
     documents (identity, preferences, routines).
 
-    These are rewritten only by the consolidation pass, never per turn, so they
-    belong inside the cached prefix. The agenda and the activity journal are
-    split out into their own volatile section below — they churn every turn, and
-    inside the prefix they were the dominant per-turn uncached chunk.
+    Deliberately in the volatile TAIL, not the cached prefix, even though the
+    documents change less often than the agenda/journal half: consolidation
+    rewrites them DURING conversations, and inside the prefix each rewrite
+    pushed the whole conversation out of the cache behind it (measured on the
+    real graph: moving them behind the conversation took comms 46.0% -> 59.3%
+    and the executor 64.8% -> 75.8%). The tail re-send is the known price;
+    see the placement note on ``SECTIONS`` in ``sections.py``.
     """
     documents, _agenda, _activity = _split_core_context(await _core_context(ctx.user_id))
     return f"{CORE_MEMORY_HEADER}\n{documents}" if documents else ""

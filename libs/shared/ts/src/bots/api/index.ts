@@ -488,6 +488,7 @@ export class GaiaClient {
     platform: string,
     platformUserId: string,
     channelId?: string,
+    isDm?: boolean,
   ): Promise<void> {
     return this.request(async () => {
       await this.client.post(
@@ -496,6 +497,7 @@ export class GaiaClient {
           platform,
           platform_user_id: platformUserId,
           channel_id: channelId ?? null,
+          is_dm: isDm ?? false,
         },
         {
           headers: {

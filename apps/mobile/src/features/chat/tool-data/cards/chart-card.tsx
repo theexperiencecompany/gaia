@@ -56,7 +56,6 @@ export interface ChartDisplayData {
 // ---------------------------------------------------------------------------
 
 const PRIMARY = "#00bbff";
-const _BG_CARD = "#171920";
 const MUTED = "#71717a";
 const GRID = "rgba(255,255,255,0.08)";
 const CHART_HEIGHT = 180;

@@ -24,7 +24,7 @@ export function CategoryFilter({
           key={category}
           variant={selectedCategory === category ? "solid" : "flat"}
           color={selectedCategory === category ? "primary" : "default"}
-          className="cursor-pointer transition-all duration-200"
+          className="cursor-pointer transition-colors duration-200"
           onClick={() => onCategoryChange(category)}
         >
           {getCategoryLabel(category)}

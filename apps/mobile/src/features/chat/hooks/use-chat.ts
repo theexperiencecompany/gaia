@@ -1,8 +1,5 @@
-import type { ToolDataEntry } from "@gaia/shared/chat";
-import {
-  mergeToolOutputIntoToolData,
-  upsertApprovalToolData,
-} from "@gaia/shared/chat";
+import type { TurnAccumulator } from "@gaia/shared/chat";
+import { applyStreamEvent, createTurnAccumulator } from "@gaia/shared/chat";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -59,8 +56,14 @@ export function useChat(
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef<string | null>(null);
-  const streamingResponseRef = useRef<string>("");
-  const streamingToolDataRef = useRef<ToolDataEntry[]>([]);
+  /**
+   * Shared, tested turn accumulator (@gaia/shared/chat) — the single source
+   * of truth for the in-flight assistant message. Every parsed stream event
+   * folds into it via applyStreamEvent, so response text, tool data,
+   * approvals (upserted per approval_id), reasoning steps, subagent groups
+   * and todo progress all assemble identically to web and background runs.
+   */
+  const turnAccumulatorRef = useRef<TurnAccumulator>(createTurnAccumulator());
   /**
    * Settle function for the in-flight turn. Every terminal path (done, error,
    * user cancel) funnels through it and only the first call wins — this is
@@ -287,8 +290,7 @@ export function useChat(
         isStreaming: true,
         conversationId: storeKey,
       });
-      streamingResponseRef.current = "";
-      streamingToolDataRef.current = [];
+      turnAccumulatorRef.current = createTurnAccumulator();
       streamIdRef.current = null;
 
       // --- Single-settle turn finalization --------------------------------
@@ -431,54 +433,63 @@ export function useChat(
                 liveStore.setMessages(storeKey, updatedMsgs);
               }
             },
-            onChunk: (chunk) => {
-              streamingResponseRef.current += chunk;
-              useChatStore
-                .getState()
-                .updateLastMessage(
-                  activeConvIdRef.current!,
-                  streamingResponseRef.current,
-                );
-            },
             onProgress: (message, toolName) => {
               useChatStore.getState().setStreamingState({
                 progress: message,
                 progressToolName: toolName ?? null,
               });
             },
-            onFollowUpActions: (actions) => {
-              useChatStore
-                .getState()
-                .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
-            },
-            onToolData: (entry) => {
-              // A HIL approval frame replaces the prior frame for its
-              // approval_id in place; every other entry is appended.
-              streamingToolDataRef.current = upsertApprovalToolData(
-                streamingToolDataRef.current,
-                entry,
+            onStreamEvent: (event) => {
+              // Fold every parsed frame into the shared turn accumulator,
+              // then derive live UI state from it. The reducer already
+              // upserts approvals per approval_id, coalesces reasoning into
+              // tool_calls_data entries, nests subagent groups and upserts
+              // todo progress — no hand-rolled accumulation here.
+              turnAccumulatorRef.current = applyStreamEvent(
+                turnAccumulatorRef.current,
+                event,
               );
-              // Keep the last AI message in sync with accumulated tool data
-              // so tool cards render live during streaming.
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  toolData: streamingToolDataRef.current,
-                });
-            },
-            onToolOutput: (output) => {
-              // Backend streams the tool result on a separate event keyed
-              // by tool_call_id; merge it into the matching tool_data entry
-              // (web parity, mirrors useChatStream.handleToolOutput).
-              streamingToolDataRef.current = mergeToolOutputIntoToolData(
-                streamingToolDataRef.current,
-                output,
-              );
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  toolData: streamingToolDataRef.current,
-                });
+              const acc = turnAccumulatorRef.current;
+              const convId = activeConvIdRef.current;
+              if (!convId) return;
+              const liveStore = useChatStore.getState();
+
+              switch (event.type) {
+                case "response":
+                  liveStore.updateLastMessage(convId, acc.responseText);
+                  return;
+                case "tool_data":
+                case "tool_output":
+                case "reasoning":
+                case "subagent_start":
+                case "subagent_end":
+                case "todo_progress":
+                  // Keep the last AI message in sync with accumulated tool
+                  // data so tool cards render live during streaming.
+                  liveStore.updateLastAssistantMessage(convId, {
+                    toolData: acc.toolData,
+                    imageData: acc.imageData,
+                  });
+                  return;
+                case "unknown": {
+                  // Image-generation frames arrive as untyped payloads; the
+                  // accumulator turns them into first-class image state
+                  // (generating = url "" until the real URL lands).
+                  if (acc.imageData === null && !acc.generatingImage) return;
+                  liveStore.updateLastAssistantMessage(convId, {
+                    toolData: acc.toolData,
+                    imageData: acc.imageData,
+                  });
+                  return;
+                }
+                case "follow_up_actions":
+                  liveStore.updateLastMessageFollowUp(convId, event.actions);
+                  return;
+                default:
+                  // Lifecycle frames (progress, done, keepalive, …) are
+                  // handled by their own callbacks below or ignored.
+                  return;
+              }
             },
             onDone: () => settle("done"),
             onTransportClosed: () => {

@@ -10,7 +10,7 @@ export function WaveSpinnerSquare() {
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: static array for spinner
                 key={idx}
-                className="w-1.5 h-1.5 transition-all"
+                className="w-1.5 h-1.5"
                 style={{
                   backgroundColor: "#00bbff",
                   animation: "waveDiagTLAnimation 0.7s ease-out infinite",
