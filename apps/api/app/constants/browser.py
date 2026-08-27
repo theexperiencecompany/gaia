@@ -127,7 +127,18 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "If you encounter a CAPTCHA, reCAPTCHA, hCaptcha, or an 'I'm not a robot' / "
     "image-grid challenge, do NOT attempt to solve it yourself — call the "
     "`solve_captcha_with_help` action immediately on the FIRST challenge so the user "
-    "solves it in the live browser, then continue. Never keep clicking challenge tiles."
+    "solves it in the live browser, then continue. Never keep clicking challenge tiles.\n"
+    # Measured on a real investor-application form: given a name and an email and
+    # nothing else, the agent typed a phone number it made up and a country it
+    # made up, and reported the form as correctly filled. On a form that submits,
+    # that is fabricated data sent under the user's name.
+    "NEVER invent a value for a field the task did not give you — no made-up phone "
+    "numbers, addresses, dates, amounts, countries or company details, and no "
+    "plausible-looking placeholder. If a field you cannot leave empty has no value "
+    "in the task, call `request_human_takeover` and say which field is missing. "
+    "The one exception is when the task itself says the run is a test or that dummy "
+    "values are fine. Reporting a field as filled with a value you invented is a "
+    "failure, not a completion."
 )
 
 # Desktop viewport for the browser agent so pages render at a normal laptop

@@ -397,6 +397,22 @@ def test_init_derives_timeouts_and_starts_from_a_clean_slate() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_the_task_preamble_forbids_inventing_field_values() -> None:
+    """A missing value must become a handoff, never a plausible-looking guess.
+
+    Measured on a real investor-application form: given only a name and an email,
+    the agent typed a phone number and a country it made up, then reported the
+    form as correctly filled. On a form that submits, that is fabricated data
+    sent under the user's name — so the rule and its escape hatch are part of the
+    prompt contract, not advice.
+    """
+    from app.constants.browser import BROWSER_TAKEOVER_PREAMBLE
+
+    assert "NEVER invent a value" in BROWSER_TAKEOVER_PREAMBLE
+    # The rule is only safe because it names somewhere for the agent to go.
+    assert "request_human_takeover" in BROWSER_TAKEOVER_PREAMBLE
+
+
 async def test_run_configures_the_agent_from_the_runner_settings(patch_browser) -> None:
     from app.constants.browser import BROWSER_TAKEOVER_PREAMBLE
 
