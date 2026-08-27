@@ -386,6 +386,11 @@ jobs:
             -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
             --output type=cacheonly . 2>&1 | tail -n 40 | tee /tmp/docker.time
           grep -E "Elapsed \(wall clock\)" /tmp/docker.time | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
+      # The persistent builder idles at ~1.8 GB RSS; stopping it costs ~2s to
+      # boot on the next build and gives the RAM back to test lanes meanwhile.
+      - name: Stop the persistent builder (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: docker buildx stop gaia-ci 2>/dev/null || true
 
   # ── Benchmark matrix — pins each workload to exact cpus for fair speedup curve
   benchmark:
