@@ -1168,7 +1168,14 @@ def background_structured_runnable(
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature).with_structured_output(schema)
     if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
-        return _build_custom_llm(temperature).with_structured_output(schema)
+        # Bounded like the helper lane, and by model_copy for the reason
+        # get_helper_llm gives. Unbounded, a replay's narration ran to the
+        # endpoint's 64k output cap, took 257 seconds, and delivered a result
+        # cut mid-sentence; a one-shot that writes a brief never needs that.
+        bounded = _build_custom_llm(temperature).model_copy(
+            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
+        )
+        return bounded.with_structured_output(schema)
     return _aux_structured_runnable(schema, temperature, config)
 
 

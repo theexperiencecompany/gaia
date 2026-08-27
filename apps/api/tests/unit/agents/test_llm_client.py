@@ -58,6 +58,7 @@ from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    HELPER_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_DEV_APP_TITLE,
@@ -658,7 +659,12 @@ class TestBackgroundStructuredRunnable:
 
         mock_aux.assert_not_called()
         mock_build_custom.assert_called_once_with(0.3)
-        assert runnable is mock_build_custom.return_value.with_structured_output.return_value
+        # Bounded like the helper lane. Seen live: a replay's narration on the
+        # custom endpoint ran to the endpoint's 64k output cap, took 257 seconds,
+        # and delivered a result cut mid-sentence.
+        bounded = mock_build_custom.return_value.model_copy
+        bounded.assert_called_once_with(update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS})
+        assert runnable is bounded.return_value.with_structured_output.return_value
 
 
 # ---------------------------------------------------------------------------
