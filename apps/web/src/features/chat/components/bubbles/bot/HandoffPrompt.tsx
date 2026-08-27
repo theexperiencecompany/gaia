@@ -175,26 +175,18 @@ export function HandoffPrompt({
 
   return (
     <div className="rounded-2xl bg-zinc-900 p-3.5">
-      <div className="flex items-start gap-2.5">
-        <span className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-800">
-          <Icon className="size-4 text-[#00bbff]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-zinc-100">{meta.title}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
-            {handoff.reason}
-          </p>
-        </div>
+      <div className="flex items-center gap-2">
+        <Icon className="size-4 shrink-0 text-[#00bbff]" />
+        <p className="text-sm font-semibold text-zinc-100">{meta.title}</p>
       </div>
+      <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+        {handoff.reason}
+      </p>
 
+      {/* The canvas is the instruction — it says "you're in control" better than
+          a label above it ever did, so the label is gone. */}
       {!inPanel && handoff.live_view_url && liveToken && (
         <div className="mt-3">
-          <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-            <CursorInWindowIcon className="size-3.5 text-zinc-400" />
-            <span className="text-[11px] font-medium text-zinc-400">
-              Live browser, you're in control
-            </span>
-          </div>
           <LiveBrowserCanvas
             socketUrl={liveViewSocketUrl(handoff.live_view_url, liveToken)}
             interactive
@@ -233,37 +225,39 @@ export function HandoffPrompt({
             onContinue={() => decide("continue", note.trim() || undefined)}
           />
 
-          <div className="flex items-center gap-2">
-            <Input
-              size="sm"
-              radius="full"
-              value={note}
-              onValueChange={setNote}
-              isDisabled={pending}
-              aria-label="Note for the assistant"
-              placeholder={'Or tell me what to do, e.g. "just grab the photo"'}
-              classNames={{
-                inputWrapper:
-                  "bg-zinc-800 data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
-                input: "text-zinc-100 placeholder:text-zinc-500",
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  decide("continue", note.trim() || undefined);
-                }
-              }}
-            />
+          <Input
+            size="sm"
+            radius="full"
+            value={note}
+            onValueChange={setNote}
+            isDisabled={pending}
+            aria-label="Note for the assistant"
+            placeholder={'Or tell me what to do instead, e.g. "skip the login"'}
+            classNames={{
+              inputWrapper:
+                "bg-zinc-800 data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
+              input: "text-zinc-100 placeholder:text-zinc-500",
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                decide("continue", note.trim() || undefined);
+              }
+            }}
+          />
+
+          {/* Stop is the rare, destructive path — quiet text, not a peer of the
+              primary action it sits under. */}
+          <div className="flex justify-center">
             <Button
               variant="light"
               size="sm"
               radius="full"
-              color="danger"
-              className="shrink-0"
-              startContent={<StopCircleIcon className="size-4" />}
+              className="h-7 text-xs text-zinc-500"
+              startContent={<StopCircleIcon className="size-3.5" />}
               onPress={() => decide("cancel")}
             >
-              Stop
+              Stop the task
             </Button>
           </div>
         </div>

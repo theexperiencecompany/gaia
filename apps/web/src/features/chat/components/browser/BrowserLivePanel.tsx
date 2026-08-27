@@ -4,14 +4,13 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Spinner } from "@heroui/spinner";
+import { Tooltip } from "@heroui/tooltip";
 import {
   AiWebBrowsingIcon,
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
   CursorInWindowIcon,
-  RefreshIcon,
+  SquareArrowUpRight02Icon,
   SquareLock02Icon,
   StopCircleIcon,
 } from "@icons";
@@ -24,9 +23,15 @@ import { BROWSER_STATUS_META } from "@/features/browser/utils";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { ShimmerText } from "../bubbles/bot/ShimmerText";
 
+type ChipColor =
+  (typeof BROWSER_STATUS_META)[keyof typeof BROWSER_STATUS_META]["color"];
+
 // The tab's surface color — the cove curves and the toolbar must all be
 // exactly this so tab → toolbar reads as one continuous piece of chrome.
 const TAB_SURFACE = "#27272a"; // zinc-800
+
+// Long enough to read the final status, short enough not to feel stuck open.
+const PANEL_CLOSE_DELAY_MS = 2500;
 
 function hostnameOf(url: string | null): string | null {
   if (!url) return null;
@@ -51,12 +56,12 @@ function TabCove({ side }: { side: "left" | "right" }) {
   return (
     <svg
       aria-hidden="true"
-      viewBox="0 0 12 12"
-      className={`absolute bottom-0 size-3 ${
-        side === "left" ? "-left-3" : "-right-3 -scale-x-100"
+      viewBox="0 0 16 16"
+      className={`absolute bottom-0 size-4 ${
+        side === "left" ? "-left-4" : "-right-4 -scale-x-100"
       }`}
     >
-      <path d="M12 0 C12 7.5 7.5 12 0 12 L12 12 Z" fill={TAB_SURFACE} />
+      <path d="M16 0 Q16 16 0 16 L16 16 Z" fill={TAB_SURFACE} />
     </svg>
   );
 }
@@ -69,8 +74,15 @@ function TabCove({ side }: { side: "left" | "right" }) {
  * which the chat's browser card keeps in sync from the SSE stream.
  */
 export function BrowserLivePanel() {
-  const { sessionId, socketUrl, status, currentTask, pendingHandoff, close } =
-    useBrowserPanel();
+  const {
+    sessionId,
+    socketUrl,
+    pageUrl,
+    status,
+    currentTask,
+    pendingHandoff,
+    close,
+  } = useBrowserPanel();
   const closeSidebar = useRightSidebar((state) => state.close);
   const sidebarOpen = useRightSidebar((state) => state.isOpen);
 
@@ -81,12 +93,28 @@ export function BrowserLivePanel() {
     if (!sidebarOpen) close();
   }, [sidebarOpen, close]);
 
+  // A finished run has nothing left to watch: the live socket is gone and the
+  // card below carries the recap. Hand the width back to the conversation
+  // instead of leaving a dead browser pinned open. Delayed a beat so the final
+  // frame and status are visible rather than vanishing on completion.
+  const finished =
+    status === "completed" || status === "failed" || status === "cancelled";
+  useEffect(() => {
+    if (!finished) return undefined;
+    const timer = setTimeout(() => {
+      close();
+      closeSidebar();
+    }, PANEL_CLOSE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [finished, close, closeSidebar]);
+
   if (!sessionId) return null;
 
   return (
     <BrowserChrome
       key={sessionId}
       socketUrl={socketUrl}
+      pageUrl={pageUrl}
       status={status}
       currentTask={currentTask}
       pendingHandoffId={pendingHandoff?.handoff_id ?? null}
@@ -99,8 +127,79 @@ export function BrowserLivePanel() {
   );
 }
 
+function TabStrip({
+  title,
+  host,
+  statusMeta,
+  working,
+  onClose,
+}: {
+  title: string | null;
+  host: string | null;
+  statusMeta: { label: string; color: ChipColor } | null;
+  working: boolean;
+  onClose: () => void;
+}) {
+  const [faviconFailed, setFaviconFailed] = useState(false);
+  return (
+    <div className="flex items-end px-4 pt-2">
+      <div className="relative flex h-9 min-w-0 max-w-[60%] items-center gap-2 rounded-t-[14px] bg-zinc-800 px-4">
+        <TabCove side="left" />
+        {host && !faviconFailed ? (
+          <Image
+            src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+            alt=""
+            width={14}
+            height={14}
+            unoptimized
+            className="size-3.5 shrink-0 rounded-sm"
+            onError={() => setFaviconFailed(true)}
+          />
+        ) : (
+          <AiWebBrowsingIcon className="size-3.5 shrink-0 text-zinc-400" />
+        )}
+        <span className="truncate text-xs text-zinc-200">
+          {title || "New tab"}
+        </span>
+        <TabCove side="right" />
+      </div>
+      <div className="ml-auto flex items-center gap-1.5 pb-1.5 pl-4">
+        {working && (
+          <Spinner size="sm" color="current" className="text-[#00bbff]" />
+        )}
+        {statusMeta && (
+          <Chip
+            size="sm"
+            variant="flat"
+            color={statusMeta.color}
+            classNames={
+              working
+                ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
+                : undefined
+            }
+          >
+            {statusMeta.label}
+          </Chip>
+        )}
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          radius="full"
+          className="text-zinc-400"
+          aria-label="Close browser panel"
+          onPress={onClose}
+        >
+          <Cancel01Icon className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function BrowserChrome({
   socketUrl,
+  pageUrl,
   status,
   currentTask,
   pendingHandoffId,
@@ -108,6 +207,7 @@ function BrowserChrome({
   onClose,
 }: {
   socketUrl: string | null;
+  pageUrl: string | null;
   status: ReturnType<typeof useBrowserPanel.getState>["status"];
   currentTask: string | null;
   pendingHandoffId: string | null;
@@ -120,7 +220,6 @@ function BrowserChrome({
     status: liveStatus,
     page,
   } = useLiveBrowser(socketUrl, interactive);
-  const [faviconFailed, setFaviconFailed] = useState(false);
   const statusMeta = status ? BROWSER_STATUS_META[status] : null;
   const done =
     status === "completed" || status === "failed" || status === "cancelled";
@@ -129,65 +228,18 @@ function BrowserChrome({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-900">
-      {/* Tab strip — rounded tab with the Chrome lip curves at its base. */}
-      <div className="flex items-end px-4 pt-2">
-        <div className="relative flex h-9 min-w-0 max-w-[60%] items-center gap-2 rounded-t-[10px] bg-zinc-800 px-3.5">
-          <TabCove side="left" />
-          {host && !faviconFailed ? (
-            <Image
-              src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
-              alt=""
-              width={14}
-              height={14}
-              unoptimized
-              className="size-3.5 shrink-0 rounded-sm"
-              onError={() => setFaviconFailed(true)}
-            />
-          ) : (
-            <AiWebBrowsingIcon className="size-3.5 shrink-0 text-zinc-400" />
-          )}
-          <span className="truncate text-xs text-zinc-200">
-            {page.title || "New tab"}
-          </span>
-          <TabCove side="right" />
-        </div>
-        <div className="ml-auto flex items-center gap-1.5 pb-1.5 pl-4">
-          {working && (
-            <Spinner size="sm" color="current" className="text-[#00bbff]" />
-          )}
-          {statusMeta && (
-            <Chip
-              size="sm"
-              variant="flat"
-              color={statusMeta.color}
-              classNames={
-                working
-                  ? { base: "!bg-[#00bbff]/15", content: "!text-[#00bbff]" }
-                  : undefined
-              }
-            >
-              {statusMeta.label}
-            </Chip>
-          )}
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            radius="full"
-            className="text-zinc-400"
-            aria-label="Close browser panel"
-            onPress={onClose}
-          >
-            <Cancel01Icon className="size-4" />
-          </Button>
-        </div>
-      </div>
+      <TabStrip
+        title={page.title}
+        host={host}
+        statusMeta={statusMeta}
+        working={working}
+        onClose={onClose}
+      />
 
-      {/* Toolbar — nav glyphs + omnibox, one continuous surface with the tab. */}
-      <div className="flex items-center gap-2 bg-zinc-800 py-2 pl-3 pr-4">
-        <ArrowLeft01Icon className="size-4 shrink-0 text-zinc-500" />
-        <ArrowRight01Icon className="size-4 shrink-0 text-zinc-600" />
-        <RefreshIcon className="mr-1 size-3.5 shrink-0 text-zinc-500" />
+      {/* Toolbar — the omnibox, one continuous surface with the tab. No back or
+          reload glyphs: this browser is driven by the agent, and a control that
+          cannot act is worse than no control. */}
+      <div className="flex items-center gap-2 bg-zinc-800 px-4 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-zinc-900 px-3.5 py-1.5">
           {page.url?.startsWith("https://") && (
             <SquareLock02Icon className="size-3 shrink-0 text-zinc-500" />
@@ -196,6 +248,24 @@ function BrowserChrome({
             {displayUrl(page.url)}
           </span>
         </div>
+        {pageUrl && (
+          <Tooltip content="Open in a new tab" size="sm" delay={400}>
+            <Button
+              as="a"
+              href={pageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              isIconOnly
+              size="sm"
+              variant="light"
+              radius="full"
+              className="shrink-0 text-zinc-400"
+              aria-label="Open the live browser in a new tab"
+            >
+              <SquareArrowUpRight02Icon className="size-4" />
+            </Button>
+          </Tooltip>
+        )}
       </div>
 
       {/* The screen — natural height, so the action bar sits right below it. */}
@@ -238,7 +308,7 @@ function BrowserChrome({
       ) : (
         currentTask &&
         !done && (
-          <div className="rounded-b-2xl bg-zinc-800 px-4 py-3 text-sm">
+          <div className="bg-zinc-800 px-4 py-3 text-sm">
             <ShimmerText text={currentTask} />
           </div>
         )
@@ -268,7 +338,7 @@ function HandoffBar({
   const hasNote = note.trim().length > 0;
 
   return (
-    <div className="rounded-b-2xl bg-zinc-800 px-4 pb-3.5 pt-3">
+    <div className="bg-zinc-800 px-4 pb-4 pt-3">
       <div className="mb-2.5 flex items-start gap-2">
         <CursorInWindowIcon className="mt-0.5 size-4 shrink-0 text-[#00bbff]" />
         <p className="text-[13px] leading-snug text-zinc-200">{reason}</p>
