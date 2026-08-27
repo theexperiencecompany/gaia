@@ -40,7 +40,7 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
-from app.services.browser.captions import caption_from_actions
+from app.services.browser.captions import caption_from_action_list
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.replay import create_replay_link
 from app.services.browser.screenshots import upload_step_screenshot
@@ -61,12 +61,23 @@ RequestHandoffFn = Callable[[HandoffRequest], Awaitable[HandoffOutcome]]
 IsCancelledFn = Callable[[], Awaitable[bool]]
 
 
+# Attributes worth naming an otherwise-unlabelled control by, in the order a
+# person would recognise it. `value` covers <input type="submit" value="Submit">.
+_LABEL_ATTRIBUTES = ("aria-label", "value", "title", "placeholder", "alt", "name", "id")
+
+
 def _element_label(state: BrowserStateSummary, index: object) -> str | None:
-    """The on-page text of the element an action targets, by its DOM index.
+    """The on-page name of the element an action targets, by its DOM index.
 
     Browser-Use addresses elements by index, which is meaningless to a reader.
     The same step state the agent saw carries the DOM, so the index resolves to
-    the element's own text — that is what makes a caption say what was clicked.
+    something recognisable — that is what makes a caption say what was clicked.
+
+    Tries the accessibility name first: it is what a screen reader announces and
+    what a person would call the control, and it is populated for icon-only
+    buttons that carry no text at all. Falls back to the visible text, then to
+    the labelling attributes, then to the tag name — so a control is never
+    described as a bare verb when anything at all identifies it.
     """
     if not isinstance(index, int):
         return None
@@ -75,7 +86,17 @@ def _element_label(state: BrowserStateSummary, index: object) -> str | None:
     if node is None:
         return None
     try:
-        return (node.get_meaningful_text_for_llm() or "").strip() or None
+        ax_node = getattr(node, "ax_node", None)
+        candidates = [getattr(ax_node, "name", None), node.get_meaningful_text_for_llm()]
+        attributes = getattr(node, "attributes", None) or {}
+        candidates += [attributes.get(attr) for attr in _LABEL_ATTRIBUTES]
+        for candidate in candidates:
+            text = (candidate or "").strip()
+            if text:
+                return text
+        # Last resort: the tag itself ("Clicking BUTTON" still beats "Clicking").
+        tag = (getattr(node, "node_name", "") or "").strip()
+        return tag.lower() or None
     except Exception:  # a DOM node shape we don't recognise must not kill the step
         return None
 
@@ -308,12 +329,15 @@ class BrowserTaskRunner:
     ) -> None:
         """Fires after the model picks actions, before they execute."""
         self._last_step = n_steps
+        step_actions = _extract_actions(agent_output, browser_state_summary)
         goal = (
             getattr(agent_output, "next_goal", None)
             or getattr(agent_output, "thinking", "")
-            or caption_from_actions(agent_output)
+            # Flash mode strips the two above, so this is the caption on the
+            # cheap path — built from the resolved actions so it names the
+            # element ("Clicking \"Submit\""), not just the verb.
+            or caption_from_action_list(step_actions)
         )
-        step_actions = _extract_actions(agent_output, browser_state_summary)
         raw_screenshot = getattr(browser_state_summary, "screenshot", None)
 
         # Per-step profiling: `since_prev_ms` is the wall-clock the agent spent on the

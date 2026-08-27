@@ -6,15 +6,12 @@ from source, plus the two caption builders and _dedupe_join.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from app.schemas.browser import BrowserAction
 from app.services.browser.captions import (
     _dedupe_join,
     caption_from_action_list,
-    caption_from_actions,
     describe_action,
 )
 
@@ -246,155 +243,30 @@ class TestCaptionFromActionList:
             "my custom action"
         )
 
+    def test_click_names_the_element_it_hit(self):
+        """A bare "Clicking" tells a reader nothing. The element's own name is
+        what makes the step readable — and it is grounded in the page, not in
+        the model's claim about its intent."""
+        actions = [BrowserAction(name="click", inputs={"index": 9}, target="Add to cart")]
+        assert caption_from_action_list(actions) == 'Clicking "Add to cart"'
 
-# ---------------------------------------------------------------------------
-# caption_from_actions — structured AgentOutput path
-# ---------------------------------------------------------------------------
-
-
-class _FakeAction:
-    def __init__(self, name: str, params: dict):
-        self._name = name
-        self._params = params
-
-    def model_dump(self, exclude_none: bool = False):
-        return {self._name: self._params}
-
-
-class _FakeActionNonDictParams:
-    def model_dump(self, exclude_none: bool = False):
-        return {"click": "not-a-dict"}
-
-
-class _FakeActionNoDump:
-    pass
-
-
-class _FakeOutput:
-    def __init__(self, actions):
-        self.action = actions
-
-
-@pytest.mark.unit
-class TestCaptionFromActions:
-    def test_no_action_attribute(self):
-        class Empty:
-            pass
-
-        assert caption_from_actions(Empty()) == ""
-
-    def test_action_none(self):
-        out = _FakeOutput(None)
-        assert caption_from_actions(out) == ""
-
-    def test_action_empty_list(self):
-        assert caption_from_actions(_FakeOutput([])) == ""
-
-    def test_single_click(self):
-        out = _FakeOutput([_FakeAction("click", {})])
-        assert caption_from_actions(out) == "Clicking"
-
-    def test_navigate_with_url_uses_host(self):
-        out = _FakeOutput([_FakeAction("navigate", {"url": "https://www.example.com/page"})])
-        assert caption_from_actions(out) == "Opening example.com"
-
-    def test_navigate_without_url(self):
-        out = _FakeOutput([_FakeAction("navigate", {})])
-        assert caption_from_actions(out) == "Opening the page"
-
-    def test_navigate_with_www_stripped(self):
-        out = _FakeOutput([_FakeAction("navigate", {"url": "https://www.test.com"})])
-        assert caption_from_actions(out) == "Opening test.com"
-
-    def test_input_with_text(self):
-        out = _FakeOutput([_FakeAction("input", {"text": "hello"})])
-        assert caption_from_actions(out) == 'Typing "hello"'
-
-    def test_input_empty_text(self):
-        out = _FakeOutput([_FakeAction("input", {"text": ""})])
-        assert caption_from_actions(out) == "Typing"
-
-    def test_select_dropdown_with_text(self):
-        out = _FakeOutput([_FakeAction("select_dropdown", {"text": "Pick me"})])
-        assert caption_from_actions(out) == 'Choosing "Pick me"'
-
-    def test_search_with_query(self):
-        out = _FakeOutput([_FakeAction("search", {"query": "cats"})])
-        assert caption_from_actions(out) == 'Searching "cats"'
-
-    def test_search_page_with_text(self):
-        out = _FakeOutput([_FakeAction("search_page", {"text": "dogs"})])
-        assert caption_from_actions(out) == 'Searching "dogs"'
-
-    def test_multiple_actions_joined(self):
-        out = _FakeOutput([_FakeAction("click", {}), _FakeAction("scroll", {})])
-        assert caption_from_actions(out) == "Clicking, Scrolling"
-
-    def test_single_action_with_multiple_keys(self):
-        class MultiAction:
-            def model_dump(self, exclude_none: bool = False):
-                return {"click": {}, "scroll": {}}
-
-        out = _FakeOutput([MultiAction()])
-        result = caption_from_actions(out)
-        assert "Clicking" in result
-        assert "Scrolling" in result
-
-    def test_non_dict_params_treated_as_empty(self):
-        out = _FakeOutput([_FakeActionNonDictParams()])
-        assert caption_from_actions(out) == "Clicking"
-
-    def test_no_model_dump_returns_empty(self):
-        out = _FakeOutput([_FakeActionNoDump()])
-        assert caption_from_actions(out) == ""
-
-    def test_deduplicates(self):
-        out = _FakeOutput([_FakeAction("click", {}), _FakeAction("click", {})])
-        assert caption_from_actions(out) == "Clicking"
-
-    def test_magic_mock_action_filters_empty_dump(self):
-        empty = MagicMock()
-        empty.model_dump.return_value = {}
-        out = MagicMock()
-        out.action = [empty]
-        assert caption_from_actions(out) == ""
-
-    def test_magic_mock_model_dump_called_with_exclude_none(self):
-        m = MagicMock()
-        m.model_dump.return_value = {"input": {"text": "hi"}}
-        out = MagicMock()
-        out.action = [m]
-        assert caption_from_actions(out) == 'Typing "hi"'
-        m.model_dump.assert_called_once_with(exclude_none=True)
-
-    def test_all_action_types_via_structured_path(self):
-        cases = [
-            (_FakeAction("upload_file", {}), "Uploading a file"),
-            (_FakeAction("go_back", {}), "Going back"),
-            (_FakeAction("wait", {}), "Waiting for the page"),
-            (_FakeAction("request_human_takeover", {}), "Handing this step to you"),
-            (_FakeAction("solve_captcha_with_help", {}), "Handing this step to you"),
-            (_FakeAction("done", {}), "Wrapping up"),
-            (_FakeAction("extract", {}), "Reading the page"),
-            (_FakeAction("read_file", {}), "Reading the page"),
-            (_FakeAction("send_keys", {"text": "hi"}), 'Typing "hi"'),
-            (_FakeAction("scroll_to_text", {}), "Scrolling"),
-            (_FakeAction("select_dropdown", {}), "Choosing an option"),
+    def test_click_without_a_target_names_the_coordinates(self):
+        actions = [
+            BrowserAction(name="click", inputs={"coordinate_x": 412, "coordinate_y": 680})
         ]
-        for action, want in cases:
-            out = _FakeOutput([action])
-            assert caption_from_actions(out) == want, f"mismatch for {want}"
+        assert caption_from_action_list(actions) == "Clicking at 412, 680"
 
-    def test_mixed_structured_actions(self):
-        out = _FakeOutput(
-            [
-                _FakeAction("navigate", {"url": "https://example.com"}),
-                _FakeAction("input", {"text": "query"}),
-                _FakeAction("click", {}),
-            ]
-        )
-        assert caption_from_actions(out) == 'Opening example.com, Typing "query", Clicking'
+    def test_click_with_neither_falls_back_to_the_verb(self):
+        assert caption_from_action_list([BrowserAction(name="click")]) == "Clicking"
 
-    def test_handoff_and_done_mixed(self):
-        out = _FakeOutput([_FakeAction("request_human_takeover", {}), _FakeAction("done", {})])
-        assert caption_from_actions(out) == "Handing this step to you, Wrapping up"
+    def test_typing_names_the_field(self):
+        actions = [
+            BrowserAction(name="input", inputs={"text": "Aryan"}, target="Full name")
+        ]
+        assert caption_from_action_list(actions) == 'Typing "Aryan" into "Full name"'
+
+    def test_long_target_is_truncated(self):
+        actions = [BrowserAction(name="click", inputs={}, target="x" * 80)]
+        caption = caption_from_action_list(actions)
+        assert caption.endswith('…"')
+        assert len(caption) < 60

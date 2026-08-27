@@ -199,13 +199,29 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_LLM_PROVIDER: str = "google"
     BROWSER_USE_LLM_MODEL: str = "gemini-3.1-flash-lite"
     BROWSER_USE_LLM_API_KEY: str | None = None
-    # Browser-Use "flash mode" strips the planner/thinking/next_goal fields from every
-    # step's output schema. Benchmarked as a negligible speed win on typical tasks (the
-    # bottleneck is page loads + per-step LLM latency, not output tokens) while it costs
-    # the model's per-step reasoning — and the recap loses meaningful step captions
-    # ("Search for X" becomes "Clicking"). Off by default; better captions + reasoning
-    # for ~no time cost.
-    BROWSER_USE_FLASH_MODE: bool = False
+    # Browser-Use "flash mode" strips thinking / evaluation_previous_goal /
+    # next_goal / plan from every step's output schema, leaving memory + action.
+    # The agent still reasons and still carries state; it stops narrating.
+    #
+    # On by default, on measured evidence (2026-08-27, zai/glm-5.3-flash over
+    # Merge Gateway, 7-field form fill graded against the submitted page's own
+    # query string rather than the agent's claim): 2/2 runs correct in both
+    # modes, 5/5 fields both modes, and ~26% fewer prompt tokens with it on
+    # (27k vs 36k median). Per-step cost roughly halves (~$0.00011 vs
+    # ~$0.00022) because the stripped fields are echoed back as context on
+    # every later step.
+    #
+    # The old objection — that captions degrade to "Clicking" — no longer
+    # holds: when next_goal is absent the caption is built from the action plus
+    # the target element's own DOM text ("Clicking \"Add to cart\""), which is
+    # grounded in the page instead of in the model's stated intent. On a
+    # reasoning model the schema's `thinking` field is also near-redundant with
+    # the provider's own reasoning channel, so it is paid-for duplication.
+    #
+    # NOT measured: recovery-heavy tasks (stale element, failed click,
+    # unexpected modal), where evaluation_previous_goal is the agent's
+    # self-check. Turn this off if such tasks regress.
+    BROWSER_USE_FLASH_MODE: bool = True
     # Cloudflare R2 (S3-compatible, free tier) — the fast edge store for browser step
     # screenshots. Cloudinary stays the durable store for arbitrary user files. The S3
     # endpoint is derived from the account id; the public base URL is the bucket's

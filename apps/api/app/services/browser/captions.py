@@ -8,14 +8,10 @@ the SSE step card (``runner.py``) and the bot's photo caption
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlparse
 
 from app.schemas.browser import BrowserAction
-
-if TYPE_CHECKING:
-    from browser_use.agent.views import AgentOutput
-
 
 # Actions whose whole meaning is the element they hit — a bare verb reads as
 # noise ("Clicking"), the element's text reads as intent ("Clicking Add to cart").
@@ -45,13 +41,24 @@ def describe_action(name: str, params: dict[str, Any], target: str | None = None
         q = str(params.get("query") or params.get("text") or "").strip()
         return f'Searching "{q}"' if q else "Searching"
     if name in ("input", "send_keys"):
-        return f'Typing "{text}"' if text else "Typing"
+        if text and target:
+            return f'Typing "{_shorten(text)}" into "{_shorten(target)}"'
+        if text:
+            return f'Typing "{_shorten(text)}"'
+        return f'Typing into "{_shorten(target)}"' if target else "Typing"
     if name == "select_dropdown":
         if text:
             return f'Choosing "{text}"'
         return f'Choosing in "{_shorten(target)}"' if target else "Choosing an option"
     if name == "click":
-        return f'Clicking "{_shorten(target)}"' if target else "Clicking"
+        if target:
+            return f'Clicking "{_shorten(target)}"'
+        # A coordinate click resolves no element, so name the point it hit
+        # rather than leaving a bare verb with no object at all.
+        x, y = params.get("coordinate_x"), params.get("coordinate_y")
+        if isinstance(x, int) and isinstance(y, int):
+            return f"Clicking at {x}, {y}"
+        return "Clicking"
     if name in ("scroll", "scroll_to_text"):
         return "Scrolling"
     if name in ("extract", "read_file", "read_long_content", "find_text", "find_elements"):
@@ -67,17 +74,6 @@ def describe_action(name: str, params: dict[str, Any], target: str | None = None
     if name == "done":
         return "Wrapping up"
     return name.replace("_", " ")
-
-
-def caption_from_actions(agent_output: AgentOutput) -> str:
-    """A caption built from a step's actions — the fallback when the model's own
-    ``next_goal``/``thinking`` are absent (flash mode)."""
-    parts: list[str] = []
-    for action in getattr(agent_output, "action", None) or []:
-        dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
-        for name, params in dumped.items():
-            parts.append(describe_action(name, params if isinstance(params, dict) else {}))
-    return _dedupe_join(parts)
 
 
 def caption_from_action_list(actions: list[BrowserAction]) -> str:
