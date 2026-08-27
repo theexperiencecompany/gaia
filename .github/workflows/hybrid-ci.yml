@@ -333,6 +333,8 @@ jobs:
           fi
       - uses: docker/setup-buildx-action@v3
         if: runner.environment != 'self-hosted'
+      - name: Playwright pin matches uv.lock
+        run: bash scripts/ci/check-playwright-pin.sh
       - name: Build api image (timed, not pushed)
         run: |
           set -euo pipefail

@@ -1,5 +1,25 @@
 # syntax=docker/dockerfile:1
 
+# ---- Browsers: Chromium for crawl4ai, cached independently of the app deps ----
+# crawl4ai-setup downloads Chromium (~170 MB) into PLAYWRIGHT_BROWSERS_PATH. In
+# the builder stage that RUN sits after `uv sync`, so every uv.lock change
+# invalidated it and re-downloaded Chromium — measured as the difference
+# between a 41s and a 458s image build on the home runner. This stage depends
+# only on the Playwright version: the browser directory is pre-populated here
+# and copied into the builder, where crawl4ai-setup finds the matching
+# revision already present and skips the download. The final image is
+# byte-identical to before (same /opt/browsers, produced by the same tool).
+#
+# PLAYWRIGHT_VERSION must match the `playwright` entry in uv.lock — a
+# mismatch means a different browser revision and crawl4ai-setup downloads
+# again. scripts/ci/check-playwright-pin.sh enforces it in CI.
+FROM python:3.12-slim AS browsers
+ARG PLAYWRIGHT_VERSION=1.60.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install "playwright==${PLAYWRIGHT_VERSION}" \
+    && playwright install chromium
+
 # ---- Builder: compile dependencies and download browser ----
 FROM python:3.12-slim AS builder
 WORKDIR /app
@@ -30,7 +50,10 @@ COPY apps/api/pyproject.toml ./apps/api/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package gaia --group backend
 
-# Download crawl4ai browser (Chromium via Playwright)
+# crawl4ai post-install. The Chromium revision is already in place from the
+# browsers stage, so this no longer downloads anything — it only runs
+# crawl4ai's own setup against the present browser.
+COPY --from=browsers /opt/browsers /opt/browsers
 RUN crawl4ai-setup
 
 # ---- Runtime: minimal production image ----
