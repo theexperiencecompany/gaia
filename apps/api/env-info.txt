@@ -1,5 +1,0 @@
-BASE_URL=http://127.0.0.1:8321
-repo: /Users/aryan/Projects/gaia.react-doctor-main
-api: native uvicorn (apps/api), port 8321, ENV=development, DEV_AUTH_BYPASS_EMAIL set
-infra: host-mapped docker containers (mongo :27017, redis :6379, postgres :5432, chromadb :8080, rabbitmq-mgmt :15672)
-Python 3.12.13
