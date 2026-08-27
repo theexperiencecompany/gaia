@@ -68,9 +68,7 @@ class TestRateLimitExceededException:
 
 
 def _tiered(free: RateLimitConfig, pro: RateLimitConfig) -> TieredRateLimits:
-    return TieredRateLimits(
-        free=free, pro=pro, info=FeatureInfo(title="Feature", description="d")
-    )
+    return TieredRateLimits(free=free, pro=pro, info=FeatureInfo(title="Feature", description="d"))
 
 
 MODULE = "app.api.v1.middleware.tiered_rate_limiter"

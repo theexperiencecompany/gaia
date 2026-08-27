@@ -779,7 +779,9 @@ class TestRunTodos:
 
         assert result == created
         assert from_triage.await_count == 0
-        assert from_focus.await_count == 1
+        # Same call as the no-Gmail branch below and just as easy to under-fill:
+        # a dropped name/profession/focus makes the LLM draft generic todos.
+        assert from_focus.await_args.args == (USER, "Ann", "dev", "ship v2", [])
 
     async def test_gmail_with_no_triage_and_no_focus_creates_nothing(self, stages: Any) -> None:
         with (

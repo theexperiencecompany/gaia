@@ -372,7 +372,9 @@ class TestBuildWorkflowPromptContext:
         assert "close the Q3 deals" in out
 
     def test_blank_profession_falls_back_to_a_generic_noun(self) -> None:
-        assert "professional" in _prompt(profession="")
+        # Exact line, not a substring: "professional" appears in the template's
+        # own prose, so a mangled fallback would still read as present.
+        assert "- Profession: professional\n" in _prompt(profession="")
 
     def test_blank_focus_is_marked_not_specified(self) -> None:
         assert NOT_SPECIFIED in _prompt(focus="")
@@ -416,7 +418,18 @@ class TestBuildWorkflowPromptContext:
         assert "z" * 151 not in out
 
     def test_missing_writing_style_is_labelled(self) -> None:
-        assert "not analyzed" in _prompt(writing_style=None)
+        assert "- Writing style: not analyzed\n" in _prompt(writing_style=None)
+
+    def test_clarify_answers_reach_the_prompt(self) -> None:
+        """The template weights this above the inbox signals — dropping it makes
+        every generated workflow generic while the prompt still renders fine."""
+        out = _prompt(clarify_answers=[{"kind": "blocker", "value": "hiring is slow"}])
+
+        assert "Clarifying context the user just shared:" in out
+        assert "- Blocker: hiring is slow" in out
+
+    def test_no_clarify_answers_renders_no_section(self) -> None:
+        assert "Clarifying context" not in _prompt(clarify_answers=None)
 
     def test_selected_integrations_render_with_friendly_names(self) -> None:
         integration_id = next(iter(OAUTH_INTEGRATION_NAME_BY_ID))

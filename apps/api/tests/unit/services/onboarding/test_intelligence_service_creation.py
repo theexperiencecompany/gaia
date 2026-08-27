@@ -579,6 +579,39 @@ class TestCreateOnboardingWorkflows:
 
         assert captured[0] == ["gmail", "slack"]
 
+    async def test_the_rendered_prompt_and_user_reach_the_spec_generator(self) -> None:
+        """The prompt IS the whole brief. Losing it (or the user it is billed to)
+        still produces four workflows — generic ones, for the wrong meter."""
+        with (
+            patch(
+                f"{MODULE}._build_workflow_prompt_context", return_value="THE PROMPT"
+            ) as build_prompt,
+            patch(
+                f"{MODULE}._generate_workflow_specs", AsyncMock(return_value=_specs())
+            ) as generate,
+            patch(f"{MODULE}._build_one_workflow", AsyncMock(return_value=_card("w0"))),
+        ):
+            ctx = _ctx(has_gmail=False)
+            await _create_onboarding_workflows(ctx, selected_integrations=["slack"])
+
+        build_prompt.assert_called_once_with(ctx, ["slack"])
+        generate.assert_awaited_once_with(USER, "THE PROMPT")
+
+    async def test_no_usable_integrations_reach_the_prompt_as_none_not_an_empty_list(
+        self,
+    ) -> None:
+        """`[]` and `None` render differently downstream: the empty list is the
+        \"user picked nothing\" case and must not read as a preference."""
+        with (
+            patch(f"{MODULE}._build_workflow_prompt_context", return_value="p") as build_prompt,
+            patch(f"{MODULE}._generate_workflow_specs", AsyncMock(return_value=_specs())),
+            patch(f"{MODULE}._build_one_workflow", AsyncMock(return_value=_card("w0"))),
+        ):
+            ctx = _ctx(has_gmail=False)
+            await _create_onboarding_workflows(ctx, selected_integrations=["not_real"])
+
+        build_prompt.assert_called_once_with(ctx, None)
+
     async def test_spec_generation_failure_falls_back_to_one_workflow(self) -> None:
         with (
             patch(f"{MODULE}._generate_workflow_specs", AsyncMock(side_effect=RuntimeError("llm"))),
@@ -589,7 +622,21 @@ class TestCreateOnboardingWorkflows:
             result = await _create_onboarding_workflows(_ctx(has_gmail=False))
 
         assert result == _fallback_cards()
-        assert fallback.await_args.args[:3] == (USER, "ship v2", "UTC")
+        # No usable integrations here, so the fallback is told None rather than [].
+        assert fallback.await_args.args == (USER, "ship v2", "UTC", None)
+
+    async def test_the_fallback_still_gets_the_usable_integrations(self) -> None:
+        with (
+            patch(f"{MODULE}._generate_workflow_specs", AsyncMock(side_effect=RuntimeError("llm"))),
+            patch(
+                f"{MODULE}._create_fallback_workflow", AsyncMock(return_value=_fallback_cards())
+            ) as fallback,
+        ):
+            await _create_onboarding_workflows(
+                _ctx(has_gmail=False), selected_integrations=["slack"]
+            )
+
+        assert fallback.await_args.args == (USER, "ship v2", "UTC", ["slack"])
 
 
 # ---------------------------------------------------------------------------
@@ -669,12 +716,21 @@ def holo_stack() -> Any:
 class TestRunHoloCard:
     async def test_saves_the_generated_card_and_announces_readiness(self, holo_stack: Any) -> None:
         _, save, emit = holo_stack
-        await _run_holo_card(_ctx(focus="focus"), UserDocument(id=USER))
+        user = UserDocument(id=USER)
+        with patch(
+            f"{MODULE}.get_user_metadata",
+            AsyncMock(return_value=UserProfileMetadata(account_number=1, member_since="2026")),
+        ) as metadata:
+            await _run_holo_card(_ctx(focus="focus"), user)
 
         args = save.await_args.args
         assert args[0] == USER
         assert args[1] == "mistgrove"
         assert args[2] == "a phrase"
+        # Both the id and the already-loaded document: without the document the
+        # lookup re-reads Mongo, without the id it reads the wrong person.
+        metadata.assert_awaited_once_with(USER, user=user)
+        assert emit.await_args.args[0] == USER
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
     async def test_context_summary_gathers_every_available_signal(self, holo_stack: Any) -> None:
@@ -684,7 +740,13 @@ class TestRunHoloCard:
                 user_id=USER,
                 name="Ann",
                 focus="ship v2",
-                triage=_triage(),
+                triage=_triage(
+                    important_emails=[
+                        EmailSummary(sender="ann@x.com", subject="Contract", why_important="d"),
+                        EmailSummary(sender="bob@x.com", subject="Invoice", why_important="d"),
+                    ],
+                    patterns=["newsletters", "receipts"],
+                ),
                 writing_style=WritingStyleProfile(
                     summary="Terse", example=WritingStyleExampleBlocks(body=["x"])
                 ),
@@ -696,12 +758,29 @@ class TestRunHoloCard:
 
         summary = content.await_args.args[1]
         assert "Busy inbox" in summary
-        assert "newsletters" in summary
-        assert "ann@x.com" in summary
+        # Exact separators, from multi-element lists: with one element a wrong
+        # join string never appears in the output at all.
+        assert "Inbox patterns: newsletters; receipts" in summary
+        assert "Key contacts: ann@x.com, bob@x.com" in summary
         assert "Terse" in summary
         assert "x: u1" in summary
         assert "ship v2" in summary
         assert "Goal: grow the team" in summary
+
+    async def test_only_the_top_five_contacts_reach_the_card(self, holo_stack: Any) -> None:
+        """The cap keeps the card prompt bounded; slipping it by one is invisible
+        in every fixture with fewer than six important emails."""
+        content, _, _ = holo_stack
+        emails = [
+            EmailSummary(sender=f"s{i}@x.com", subject="s", why_important="w") for i in range(6)
+        ]
+        await _run_holo_card(
+            _ctx(focus="", triage=_triage(important_emails=emails)), UserDocument(id=USER)
+        )
+
+        summary = content.await_args.args[1]
+        assert "Key contacts: s0@x.com, s1@x.com, s2@x.com, s3@x.com, s4@x.com" in summary
+        assert "s5@x.com" not in summary
 
     async def test_blank_clarify_answers_are_skipped(self, holo_stack: Any) -> None:
         content, _, _ = holo_stack
