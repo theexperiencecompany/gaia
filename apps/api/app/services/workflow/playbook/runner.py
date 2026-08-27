@@ -64,9 +64,13 @@ from app.services.workflow.playbook.tool_space import resolve_subagent_tools
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
-#: How much of a step's result the failure report and the model prompt quote. Far
-#: shorter than the stored digest: these are read by a human or spent as tokens.
-_SUMMARY_MAX_CHARS = 120
+#: How much of a step's result the FAILURE REPORT quotes. Short on purpose: it
+#: is read by a person working out which step broke, not used to write anything.
+#: Deliberately NOT shared with the narration below. One bound served both once,
+#: and at 120 characters the model writing the run's result saw a single JSON
+#: value cut mid-token and reported the run as truncated: it was summarising the
+#: bound rather than the data.
+_FAILURE_QUOTE_MAX_CHARS = 120
 
 #: The tool name a handoff node records itself under, matching what the agent
 #: path emits for the same delegation.
@@ -287,7 +291,10 @@ async def _run_tool_step(
         run.steps[step.id] = StepResult(
             value=parse_result(text), file=info["path"] if info else None
         )
-    run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {digest[:_SUMMARY_MAX_CHARS]}")
+    # The whole digest: this line is the model's only view of what the tool
+    # returned, and it has to write the user's result from it. The digest is
+    # already bounded where it is built (RESULT_DIGEST_MAX_CHARS).
+    run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {digest}")
     return None
 
 
@@ -501,7 +508,9 @@ def _render_asks(asks: Mapping[str, PlaybookAsk], completed: Sequence[str]) -> s
 
 def _failure_text(failure: _StepFailure, completed: Sequence[str]) -> str:
     """The stopped run as a report to the caller, not as an exception."""
-    done = "; ".join(completed) if completed else "nothing"
+    done = (
+        "; ".join(line[:_FAILURE_QUOTE_MAX_CHARS] for line in completed) if completed else "nothing"
+    )
     return (
         f"Playbook stopped at step {failure.position} ({failure.label}): {failure.reason}. "
         f"Completed: {done}. Nothing after that step ran."

@@ -13,6 +13,7 @@ to fill; the scripted model's turns are not model calls and never reach a provid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+import json
 from typing import Annotated, Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -55,7 +56,9 @@ class _Recorder:
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
 
-def _tools(recorder: _Recorder, *, failing: str | None = None) -> dict[str, BaseTool]:
+def _tools(
+    recorder: _Recorder, *, failing: str | None = None, events_result: str = '{"count": 12}'
+) -> dict[str, BaseTool]:
     @tool
     async def list_events(calendar_id: Annotated[str, "Calendar"], config: RunnableConfig) -> str:
         """List calendar events."""
@@ -69,7 +72,7 @@ def _tools(recorder: _Recorder, *, failing: str | None = None) -> dict[str, Base
         )
         if failing == "list_events":
             raise ValueError("calendar unavailable")
-        return '{"count": 12}'
+        return events_result
 
     @tool
     async def send_email(to: Annotated[str, "Recipient"], body: Annotated[str, "Body"] = "") -> str:
@@ -497,3 +500,26 @@ def test_the_scripted_model_never_reaches_a_provider() -> None:
 
     assert isinstance(model.turn_for([]), AIMessage)
     assert model._llm_type == "playbook-scripted"
+
+
+async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None:
+    """The narration writes the user's result, so it must see the actual data.
+
+    Regression: the failure report and the narration prompt shared one 120-char
+    bound. A list result reached the model cut mid-token, so it described the run
+    as truncated and reported one item out of many. It was summarising the bound
+    rather than the data, and the run looked broken to the user while every tool
+    call had in fact succeeded.
+    """
+    payload = json.dumps({"todos": [{"title": f"Todo {i}"} for i in range(30)]})
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder, events_result=payload))
+    playbook = _playbook(
+        [PlaybookStep(id="all", tool="list_events", args={"calendar_id": "primary"})]
+    )
+
+    result, llm = await _run(playbook, registry)
+
+    assert result.ok is True
+    prompt = str(llm.await_args.args[1])
+    assert "Todo 29" in prompt, "the model must see the whole result, not the first 120 chars"
