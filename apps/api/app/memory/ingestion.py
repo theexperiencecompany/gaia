@@ -45,6 +45,7 @@ from app.memory.management import forget_memory
 from app.memory.mappers import row_to_entry
 from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact, ExtractedMemoryBatch
+from app.memory.user_time import resolve_user_timezone
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
 from app.models.payment_models import PlanType
@@ -287,7 +288,9 @@ async def retain(
     ``now`` overrides the ingestion timestamp used for relative-date
     resolution, ``mentioned_at`` (recency), and the journal day — letting
     callers replay historical sessions (backfills, benchmarks) at their real
-    time. Defaults to the current UTC time.
+    time. Defaults to the current UTC time. Journal DAYS (and the entry clock
+    times shown to the user) bucket that instant on the user's wall clock,
+    so a 2am local chat files under the user's today, not UTC's.
     """
     timings: dict[str, int] = {}
     started = time.perf_counter()
@@ -302,7 +305,8 @@ async def retain(
 
     folder_tree = await pg_store.get_folder_tree(user_id)
     recent_facts = await pg_store.get_recent_facts(user_id, limit=RECENT_FACTS_LIMIT)
-    today_episode = await pg_store.get_episode(user_id, now.date())
+    local_now = (await resolve_user_timezone(user_id)).localize(now)
+    today_episode = await pg_store.get_episode(user_id, local_now.date())
     journaled_today = (
         [entry.get("text", "") for entry in today_episode.entries] if today_episode else []
     )
@@ -317,7 +321,7 @@ async def retain(
         recent_facts=recent_facts,
         journaled_today=journaled_today,
         extraction_hints=extraction_hints,
-        current_date=now,
+        current_date=local_now,
     )
     timings["extract_ms"] = _elapsed_ms(stage)
 
@@ -392,13 +396,13 @@ async def retain(
 
     stage = time.perf_counter()
     result.episode_entries, entries_deduped = await _append_episode_entries(
-        user_id, batch.episode_entries, source_type=source_type, now=now
+        user_id, batch.episode_entries, source_type=source_type, local_now=local_now
     )
-    await _summarize_rolled_over_days(user_id, today=now.date())
+    await _summarize_rolled_over_days(user_id, today=local_now.date())
     timings["episodes_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
-    await _store_conversation_chunks(user_id, messages, source_id=source_id, now=now)
+    await _store_conversation_chunks(user_id, messages, source_id=source_id, local_now=local_now)
     timings["chunks_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
@@ -694,7 +698,7 @@ async def _store_conversation_chunks(
     messages: list[dict[str, str]],
     *,
     source_id: str | None,
-    now: datetime,
+    local_now: datetime,
 ) -> None:
     """Embed the raw transcript in chunks (verbatim retention tier).
 
@@ -744,7 +748,7 @@ async def _store_conversation_chunks(
             "id": f"{user_id}:{session_key}:{index}",
             "embedding": embedding,
             "document": chunk,
-            "metadata": {"user_id": user_id, "date": now.date().isoformat()},
+            "metadata": {"user_id": user_id, "date": local_now.date().isoformat()},
         }
         for index, (chunk, embedding) in enumerate(zip(chunks, embeddings))
     ]
@@ -770,20 +774,23 @@ async def _append_episode_entries(
     entries: list[str],
     *,
     source_type: MemorySourceType,
-    now: datetime,
+    local_now: datetime,
 ) -> tuple[int, int]:
     """Append today's novel journal lines; returns ``(appended, deduped)``.
 
-    The journal had no dedupe tier — facts get embedding reconciliation,
-    entries were appended blindly — and the extractor's "do NOT repeat"
-    instruction cannot stop a paraphrase, so one production day carried the
-    same discussion five times reworded. Today's entries are re-read HERE,
-    not reused from retain's earlier snapshot, because back-to-back retains
-    race: the fresh read sees what a concurrent retain wrote seconds ago.
+    ``local_now`` is the ingestion instant on the user's wall clock — it
+    decides both the journal DAY the lines file under and the clock time
+    stamped on each entry. The journal had no dedupe tier — facts get
+    embedding reconciliation, entries were appended blindly — and the
+    extractor's "do NOT repeat" instruction cannot stop a paraphrase, so one
+    production day carried the same discussion five times reworded. Today's
+    entries are re-read HERE, not reused from retain's earlier snapshot,
+    because back-to-back retains race: the fresh read sees what a concurrent
+    retain wrote seconds ago.
     """
     if not entries:
         return 0, 0
-    episode = await pg_store.get_episode(user_id, now.date())
+    episode = await pg_store.get_episode(user_id, local_now.date())
     seen = (
         [_normalize_entry(str(entry.get("text", ""))) for entry in episode.entries]
         if episode
@@ -798,11 +805,11 @@ async def _append_episode_entries(
         seen.append(normalized)
     if not kept:
         return 0, len(entries)
-    timestamp = now.strftime(EPISODE_ENTRY_TIME_FORMAT)
+    timestamp = local_now.strftime(EPISODE_ENTRY_TIME_FORMAT)
     episode_entries: list[pg_store.EpisodeEntry] = [
         {"time": timestamp, "text": text, "source": source_type.value} for text in kept
     ]
-    await pg_store.append_episode_entries(user_id, now.date(), episode_entries)
+    await pg_store.append_episode_entries(user_id, local_now.date(), episode_entries)
     return len(episode_entries), len(entries) - len(kept)
 
 

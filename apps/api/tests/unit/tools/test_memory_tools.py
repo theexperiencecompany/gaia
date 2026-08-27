@@ -1128,8 +1128,26 @@ class TestGetJournal:
 
         assert result == "No journal entries for 2026-03-12."
 
+    @patch(f"{MODULE}.memory_engine")
+    @patch(f"{MODULE}.local_today", new_callable=AsyncMock)
+    async def test_omitted_date_defaults_to_the_users_local_today(
+        self, mock_local_today: AsyncMock, mock_engine: MagicMock, stream: MagicMock
+    ) -> None:
+        # A UTC+5:30 user asking "what did I do today" at 2am local must read
+        # THEIR today, not UTC's (which is still yesterday for them).
+        mock_local_today.return_value = date_type(2026, 8, 27)
+        mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
+
+        result = await get_journal.coroutine(config=_make_config(), date="")
+
+        mock_local_today.assert_awaited_once_with(FAKE_USER_ID)
+        mock_engine.get_episodes.assert_awaited_once_with(
+            FAKE_USER_ID, date_type(2026, 8, 27), date_type(2026, 8, 27)
+        )
+        assert result == "No journal entries for 2026-08-27."
+
     @pytest.mark.parametrize(
-        "bad_date", ["12/03/2026", "March 12", "2026-13-45", "", "2026-03-12T09:30:00"]
+        "bad_date", ["12/03/2026", "March 12", "2026-13-45", "2026-03-12T09:30:00"]
     )
     @patch(f"{MODULE}.memory_engine")
     async def test_unparseable_date_is_rejected_before_any_query(

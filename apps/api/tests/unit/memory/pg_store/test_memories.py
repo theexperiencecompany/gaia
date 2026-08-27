@@ -25,6 +25,7 @@ from app.constants.memory import (
 )
 from app.memory.pg_store._session import escape_like
 from app.memory.pg_store.memories import (
+    SweptMemory,
     _active_memories_query,
     _not_expired_clause,
     backfill_agenda_expiry,
@@ -867,14 +868,24 @@ class TestGetAgendaMemories:
 
 
 class TestSweepExpiredMemories:
-    async def test_retires_past_due_rows_and_returns_their_owners(self) -> None:
+    async def test_retires_past_due_rows_and_returns_owner_id_pairs(self) -> None:
+        """The swept row ids come back too: the worker must retire the same
+        rows' Chroma flags, or reconciliation keeps matching them and swallows
+        identical restatements as DUPLICATE forever."""
+        id_a, id_b, id_c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
         session = MagicMock()
-        session.execute = AsyncMock(return_value=_all_result([("u1",), ("u2",), ("u1",)]))
+        session.execute = AsyncMock(
+            return_value=_all_result([("u1", id_a), ("u2", id_b), ("u1", id_c)])
+        )
         session.commit = AsyncMock()
         with _patched_memory_session(session):
-            owners = await sweep_expired_memories()
+            swept = await sweep_expired_memories()
 
-        assert owners == ["u1", "u2", "u1"]
+        assert swept == [
+            SweptMemory(user_id="u1", memory_id=str(id_a)),
+            SweptMemory(user_id="u2", memory_id=str(id_b)),
+            SweptMemory(user_id="u1", memory_id=str(id_c)),
+        ]
         session.commit.assert_awaited_once()
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
@@ -883,7 +894,7 @@ class TestSweepExpiredMemories:
         assert "forget_reason=%(forget_reason)s" in sql
         assert params["is_forgotten"] is True
         assert params["forget_reason"] == "expired"
-        assert "RETURNING memories.user_id" in sql
+        assert "RETURNING memories.user_id, memories.id" in sql
 
     async def test_the_filter_is_live_rows_whose_expiry_has_arrived(self) -> None:
         session = MagicMock()

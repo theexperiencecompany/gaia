@@ -8,7 +8,7 @@ only a backstop.
 """
 
 import asyncio
-from datetime import UTC, date as date_type, datetime, timedelta
+from datetime import date as date_type, timedelta
 
 from app.constants.memory import (
     CORE_CONTEXT_CACHE_KEY,
@@ -20,6 +20,7 @@ from app.constants.memory import (
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.memory import pg_store
 from app.memory.retrieval import invalidate_recall_cache
+from app.memory.user_time import local_today
 from app.models.memory_db_models import MemoryEpisode
 from shared.py.wide_events import log
 
@@ -86,7 +87,8 @@ async def get_core_context(user_id: str) -> str:
     if isinstance(cached, str):
         return cached
 
-    today = datetime.now(UTC).date()
+    # "Today"/"Yesterday" follow the user's wall clock, not UTC's.
+    today = await local_today(user_id)
     documents, episodes = await asyncio.gather(
         pg_store.get_documents(user_id),
         pg_store.get_episodes_range(user_id, today - timedelta(days=1), today),

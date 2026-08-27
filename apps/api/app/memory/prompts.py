@@ -106,7 +106,7 @@ When you cannot decide between durable and state, choose **state**.
 3. Third person: write "Sam's girlfriend Nadia ..." with the user's REAL name, never "my girlfriend", "she", or the literal words "the user".
 4. Absolute dates: resolve relative dates ("next Friday", "in two weeks") against today into concrete datetimes in occurred_start/occurred_end.
 5. Shelf life: declare `shelf_life` on every fact using Test 2 above. Expiry is derived from it in code; never write an expiry date yourself, and never emit a 'task' or 'journal' item as a fact.
-6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever — INCLUDING when the user explicitly asks you to remember one. Memory is not a vault: a stored secret is injected into future prompts in plaintext. Instead emit a journal line that the user shared a credential and it was deliberately not stored ("Aryan asked GAIA to remember a wifi password; not stored — GAIA does not keep secrets").
+6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever, INCLUDING when the user explicitly asks you to remember one. Memory is not a vault: a stored secret is injected into future prompts in plaintext. Instead emit a journal line that the user shared a credential and it was deliberately not stored ("Aryan asked GAIA to remember a wifi password; not stored; GAIA does not keep secrets").
 7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to the user's life (a named product, place, person, amount, or event) is worth keeping, but only as whatever the two tests say it is. When in doubt about whether something belongs in the fact store at all, put it in the journal; a wrong journal line ages out, a wrong fact is injected into every conversation forever.
 8. Future-useful only: never store the current task as a fact: "Sam is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("Sam plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
@@ -272,7 +272,7 @@ section (a co-founder belongs under Work, not Others).
 
 Only people in the user's actual life belong here. NEVER list a public figure,
 celebrity, or anyone the user merely researched, read about, or asked
-questions about — a footballer from a sports question is not a relationship.
+questions about: a footballer from a sports question is not a relationship.
 NEVER list a name from the entity register that no source fact says anything
 about: a bare name with no supporting fact is dropped, not padded with filler
 like "Entity register entry".

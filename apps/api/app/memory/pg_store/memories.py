@@ -5,6 +5,7 @@ Purely storage: no LLM calls, no embedding calls. Lineage rules live here
 filter); everything semantic happens upstream in the engine.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import uuid
 
@@ -354,14 +355,25 @@ async def backfill_agenda_expiry() -> int:
         return rowcount(result)
 
 
-async def sweep_expired_memories(user_id: str | None = None) -> list[str]:
-    """Forget every row whose ``forget_after`` has passed; returns their owners.
+@dataclass(frozen=True)
+class SweptMemory:
+    """One row retired by the expiry sweep: its owner and its id."""
+
+    user_id: str
+    memory_id: str
+
+
+async def sweep_expired_memories(user_id: str | None = None) -> list[SweptMemory]:
+    """Forget every row whose ``forget_after`` has passed; returns the swept rows.
 
     Expiry was enforced only at read time, so an expired row stayed live in the
     folder tree, the free-plan cap count, the ``/workspace/memory`` projection
-    and every rendered document forever. The owner of each swept row comes back
-    so the caller can repair exactly those users' derived state. ``user_id``
-    scopes the sweep for the repair script; the nightly task sweeps everyone.
+    and every rendered document forever. Each swept row comes back as
+    ``(owner, id)`` so the caller can repair exactly those users' derived state
+    and retire the same rows' Chroma flags — Postgres alone flipping
+    ``is_forgotten`` leaves the vector matchable, and reconciliation would keep
+    swallowing identical restatements as DUPLICATE. ``user_id`` scopes the
+    sweep for the repair script; the nightly task sweeps everyone.
     """
     filters: list[ColumnElement[bool]] = [
         MemoryRecord.is_forgotten.is_(False),
@@ -375,10 +387,13 @@ async def sweep_expired_memories(user_id: str | None = None) -> list[str]:
             update(MemoryRecord)
             .where(*filters)
             .values(is_forgotten=True, forget_reason=_EXPIRY_FORGET_REASON)
-            .returning(MemoryRecord.user_id)
+            .returning(MemoryRecord.user_id, MemoryRecord.id)
         )
         await session.commit()
-        return [owner for (owner,) in result.all()]
+        return [
+            SweptMemory(user_id=owner, memory_id=str(memory_id))
+            for owner, memory_id in result.all()
+        ]
 
 
 async def get_all_live_memories(user_id: str) -> list[MemoryRecord]:

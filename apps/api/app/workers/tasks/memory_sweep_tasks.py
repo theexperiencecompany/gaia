@@ -10,7 +10,7 @@ actually happen, and repairs the derived state of the users it touched.
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.memory import pg_store
+from app.memory import chroma_store, pg_store
 from app.memory.cap_counter import set_cached_live_count
 from app.memory.consolidation import render_agenda_document
 from app.memory.context import invalidate_user_memory_caches
@@ -25,8 +25,14 @@ async def sweep_expired_memories(_ctx: dict[str, Any]) -> str:
     backfilled = await pg_store.backfill_agenda_expiry()
     if backfilled:
         log.info(f"{LogTag.WORKER} legacy agenda rows stamped", backfilled=backfilled)
-    owners = await pg_store.sweep_expired_memories()
-    affected = sorted(set(owners))
+    swept = await pg_store.sweep_expired_memories()
+    # Postgres flipping is_forgotten is not enough: the vector keeps
+    # is_latest=True/is_forgotten=False in Chroma, so reconciliation would
+    # still match the retired row and drop identical restatements as
+    # DUPLICATE. Retire the same rows' Chroma flags in the same run.
+    for row in swept:
+        await chroma_store.set_memory_flags(row.memory_id, is_latest=False, is_forgotten=True)
+    affected = sorted({row.user_id for row in swept})
 
     for user_id in affected:
         # The counter is optimistic and only ever adjusted at mutation sites,
@@ -37,7 +43,7 @@ async def sweep_expired_memories(_ctx: dict[str, Any]) -> str:
         await render_agenda_document(user_id)
         await invalidate_user_memory_caches(user_id)
 
-    summary = {"memories_expired": len(owners), "users_repaired": len(affected)}
+    summary = {"memories_expired": len(swept), "users_repaired": len(affected)}
     log.set(memory_sweep=summary)
     log.info(f"{LogTag.WORKER} expired memories swept", **summary)
-    return f"expired={len(owners)} users={len(affected)}"
+    return f"expired={len(swept)} users={len(affected)}"

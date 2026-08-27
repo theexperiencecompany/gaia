@@ -29,6 +29,7 @@ from app.memory.pg_store.maintenance import (
     get_overview_counts,
 )
 from app.memory.pg_store.memories import (
+    SweptMemory,
     backfill_agenda_expiry,
     count_live_memories,
     fts_search,
@@ -51,6 +52,7 @@ from app.memory.pg_store.memories import (
 __all__ = [
     "EpisodeEntry",
     "MemoryOverviewCounts",
+    "SweptMemory",
     "append_episode_entries",
     "count_live_memories",
     "delete_all_memories",
