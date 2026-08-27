@@ -50,6 +50,28 @@ runs:
         node-version: "22.15.1"
         cache: "pnpm"
 
+    # Nx's local cache is the difference between rebuilding a project and
+    # reprinting its previous output. main.yml gets this on GitHub runners by
+    # pushing .nx/cache through actions/cache; hybrid-ci had no equivalent, so
+    # every home run rebuilt from cold — TS tests took 152s here against 26s on
+    # a GitHub runner with a cache hit. On a persistent box the cache can just
+    # stay on disk.
+    #
+    # Keyed per runner instance rather than shared. Nx 20+ backs the cache with
+    # SQLite (.nx/cache/nx.db), and pointing several concurrently-running job
+    # processes at one database file risks corrupting it. Per-instance still
+    # gives the win that matters — warm cache across runs — without that risk.
+    - name: Link persistent Nx cache (self-hosted)
+      if: runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        NX_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/nx-cache"
+        mkdir -p "$NX_DIR" .nx
+        rm -rf .nx/cache
+        ln -s "$NX_DIR" .nx/cache
+        echo "Nx cache (persistent, no GH cache): $NX_DIR ($(du -sh "$NX_DIR" 2>/dev/null | cut -f1))"
+
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile --prefer-offline
