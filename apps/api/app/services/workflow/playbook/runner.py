@@ -30,17 +30,12 @@ from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
 from app.agents.middleware.factory import create_middleware_stack
 from app.agents.prompts.playbook_prompts import PLAYBOOK_NARRATION_PROMPT
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.agents.tools.core.tool_runtime_config import (
-    ToolRuntimeConfig,
-    build_provider_parent_tool_runtime_config,
-)
 from app.agents.workspace.offload import read_offload
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
@@ -64,7 +59,12 @@ from app.services.workflow.playbook.evaluator import (
     resolve_args,
 )
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
-from app.services.workflow.playbook.tool_space import resolve_subagent_tools
+from app.services.workflow.playbook.tool_space import (
+    ToolSpace,
+    handoff_tool_space,
+    resolve_subagent_tools,
+    tool_space_denial,
+)
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -137,22 +137,10 @@ class PlaybookRunResult(BaseModel):
     #: empty where the previous run had items, or the narration judged the
     #: results wrong. Never set on a stopped run, which reports through ``failure``.
     suspect: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class _ToolSpace:
-    """Where a step's tool is looked up, and what that scope allows.
-
-    Top level is the full registry. Inside a handoff it is the subagent's own
-    scoped tool set and runtime config, which is the boundary a delegated call
-    already had. The handoff's children replay against that scoped mapping in
-    their own scripted graphs — never the subagent's real graph, which would put
-    a thinking model back in a run that has no thinking in it.
-    """
-
-    tools: Mapping[str, BaseTool]
-    runtime: ToolRuntimeConfig | None
-    subagent_id: str | None
+    #: Which check produced ``suspect``: the deterministic record comparison, or
+    #: the narration's own verdict. The worker weighs them differently, so it
+    #: needs to know which one spoke. ``None`` exactly when ``suspect`` is.
+    suspect_source: Literal["record", "narration"] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,7 +205,7 @@ async def run_playbook(
         configurable=configurable,
         previous_trace=previous.trace if previous is not None else (),
     )
-    space = _ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
+    space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
     if failure is None and run.narration is None:
@@ -234,13 +222,15 @@ async def run_playbook(
     narration = run.narration
     if narration is None:
         raise RuntimeError("playbook replay finished every step without a narration")
+    suspect, suspect_source = _suspect_verdict(run, narration)
     return PlaybookRunResult(
         ok=True,
         text=narration.result,
         trace=run.trace,
         completed=run.completed,
         llm_calls=1,
-        suspect=_suspect_reason(run, narration),
+        suspect=suspect,
+        suspect_source=suspect_source,
     )
 
 
@@ -248,7 +238,7 @@ async def _run_steps(
     playbook: PlaybookDocument,
     steps: Sequence[PlaybookStep],
     run: _Run,
-    space: _ToolSpace,
+    space: ToolSpace,
 ) -> _StepFailure | None:
     """Run one level of the playbook in order. The first failure stops everything."""
     for step in steps:
@@ -284,7 +274,7 @@ async def _run_handoff(
 
 
 async def _run_tool_step(
-    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, space: _ToolSpace
+    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, space: ToolSpace
 ) -> _StepFailure | None:
     """Resolve one recorded call and replay it through a graph, then record it."""
     tool_name = step.tool or ""
@@ -297,7 +287,7 @@ async def _run_tool_step(
         if failure is not None:
             return failure
 
-    denial = _tool_space_denial(tool_name, space)
+    denial = tool_space_denial(tool_name, space)
     if denial is not None:
         return _StepFailure(position, tool_name, denial)
 
@@ -332,7 +322,21 @@ async def _run_tool_step(
     if message.additional_kwargs.get(HIL_STATUS_KWARG):
         return _StepFailure(position, tool_name, f"refused by the approval gate: {text}")
 
-    _record(run, tool_name, space.subagent_id, args, text)
+    # The record is the run's contract: a call that ran but cannot be recorded
+    # stops the run as a report, never as a raise that loses the steps before it.
+    try:
+        _record(run, tool_name, space.subagent_id, args, text)
+    except ValidationError as exc:
+        log.exception(
+            f"{LogTag.WORKFLOW} Playbook step ran but its result could not be recorded",
+            playbook_id=playbook.playbook_id,
+            workflow_id=playbook.workflow_id,
+            tool_name=tool_name,
+            error_type=type(exc).__name__,
+        )
+        return _StepFailure(
+            position, tool_name, f"ran, but its result could not be recorded ({exc.title})"
+        )
     if message.status == "error":
         return _StepFailure(position, tool_name, text)
     value = parse_result(text)
@@ -354,7 +358,7 @@ async def _run_tool_step(
     return None
 
 
-async def _replay_call(call: ScriptedCall, run: _Run, space: _ToolSpace) -> ToolMessage | None:
+async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolMessage | None:
     """Run one recorded call through its own scripted graph; ``None`` if it produced none.
 
     Everything a tool needs at runtime — the pregel runtime behind
@@ -423,11 +427,12 @@ def _empty_where_previous_had_items(
     An empty list is a legitimate answer (no mail today) right up until the run
     before it had a full one, at which point it is far more likely a silent
     auth or filter failure than a quiet day. The record is read by tool name,
-    first match, the same way ``$last_run`` addresses it.
+    LAST match, the same way ``last_run_index`` resolves ``$last_run``: a tool
+    called twice in one run is compared against the attempt that worked.
     """
     if largest_list_len(value) != 0:
         return None
-    earlier = next((call for call in previous if call.tool_name == tool_name), None)
+    earlier = next((call for call in reversed(previous) if call.tool_name == tool_name), None)
     if earlier is None:
         return None
     before = largest_list_len(parse_result(earlier.result_digest))
@@ -436,74 +441,50 @@ def _empty_where_previous_had_items(
     return f"{tool_name} returned no items where the previous run returned {before}"
 
 
-def _suspect_reason(run: _Run, narration: PlaybookNarration) -> str | None:
+def _suspect_verdict(
+    run: _Run, narration: PlaybookNarration
+) -> tuple[str | None, Literal["record", "narration"] | None]:
     """The deterministic reason first; the narration's verdict only fills a gap."""
     if run.suspect is not None:
-        return run.suspect
+        return run.suspect, "record"
     if narration.outcome != "suspect":
-        return None
-    return narration.reason or "the narration judged the results suspect"
+        return None, None
+    return narration.reason or "the narration judged the results suspect", "narration"
 
 
 def _record(
     run: _Run, tool_name: str, subagent_id: str | None, args: dict[str, Any], text: str
-) -> str:
-    """Append the call to the trace the moment it resolves, and return its digest.
+) -> None:
+    """Append the call to the trace the moment it resolves.
 
     Appended before the caller decides what the result means, so a step that
     fails after a side effect is still on the record.
     """
-    digest = build_result_digest(text)
     run.trace.append(
         RecordedCall(
             tool_name=tool_name,
             tool_category=run.registry.get_category_of_tool(tool_name),
             subagent_id=subagent_id,
             args=args,
-            result_digest=digest,
+            result_digest=build_result_digest(text),
         )
     )
-    return digest
 
 
 async def _subagent_space(
     subagent_id: str, user_id: str, registry: ToolRegistry
-) -> _ToolSpace | None:
+) -> ToolSpace | None:
     """The tool space a handoff's children run in, or ``None`` for an unknown id."""
-    # The same resolution the validator used when this playbook was written. If
-    # the two ever diverge, a playbook is accepted and then replayed against a
-    # tool space that never had the tool it recorded.
+    # The same resolution AND the same construction the validator used when this
+    # playbook was written. If the two ever diverge, a playbook is accepted and
+    # then replayed against a tool space that never had the tool it recorded.
     space = await resolve_subagent_tools(subagent_id, user_id, registry)
-    if space is None or space.subagent is None:
+    if space is None:
         return None
-    subagent = space.subagent
-    config = subagent.config
-    runtime = build_provider_parent_tool_runtime_config(
-        provider_tool_names=space.initial_tool_ids,
-        todo_tool_names=[],
-        auto_bind_tool_names=config.auto_bind_tools,
-        use_direct_tools=config.use_direct_tools,
-        disable_retrieve_tools=config.disable_retrieve_tools,
-        include_finish_task=config.include_finish_task,
-    )
-    return _ToolSpace(tools=space.tools, runtime=runtime, subagent_id=subagent.id)
+    return handoff_tool_space(space)
 
 
-def _tool_space_denial(tool_name: str, space: _ToolSpace) -> str | None:
-    """Why this space may not run ``tool_name``, or ``None`` when it may."""
-    if tool_name not in space.tools:
-        return f"no tool named {tool_name!r} is available in this run's tool space"
-    runtime = space.runtime
-    if (
-        runtime is not None
-        and not runtime.enable_retrieve_tools
-        and tool_name not in runtime.initial_tool_names
-    ):
-        return f"{tool_name} is outside the bound tool set of this handoff, which cannot retrieve"
-    return None
-
-
-def _configurable_for(run: _Run, space: _ToolSpace) -> dict[str, Any]:
+def _configurable_for(run: _Run, space: ToolSpace) -> dict[str, Any]:
     """The run's configurable, tagged with the subagent when inside a handoff."""
     configurable: dict[str, Any] = dict(run.configurable)
     if space.subagent_id is not None:

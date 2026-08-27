@@ -26,7 +26,11 @@ from langgraph.types import Command
 from app.agents.middleware.factory import create_middleware_stack as real_create_middleware_stack
 from app.agents.workspace.offload import mark_offload
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
-from app.models.workflow_execution_models import RESULT_DIGEST_MAX_CHARS, RecordedCall
+from app.models.workflow_execution_models import (
+    RESULT_DIGEST_MAX_CHARS,
+    RecordedCall,
+    build_result_digest,
+)
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.evaluator import PlaybookUser
@@ -1330,6 +1334,30 @@ class TestTrace:
         assert result.trace[1].subagent_id == "calendar_agent"
         assert "calendar unavailable" in result.trace[1].result_digest
 
+    async def test_a_result_that_cannot_be_recorded_stops_the_run_with_the_steps_before_it(
+        self,
+    ) -> None:
+        """The record was built outside the step's guard, so a digest the model
+        refused raised out of ``run_playbook`` and the steps already on the
+        trace were lost with it. The run always comes back as a result."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        def over_long(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
+            if output == "sent":
+                return "x" * (RESULT_DIGEST_MAX_CHARS + 1)
+            return build_result_digest(output, max_chars=max_chars)
+
+        with patch(f"{MODULE}.build_result_digest", over_long):
+            result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert "step 2 (send_email)" in result.failure
+        assert "could not be recorded" in result.failure
+        assert [call.tool_name for call in result.trace] == ["list_events"]
+        assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+
 
 # --- the identity a replayed call runs under -------------------------------
 
@@ -1691,6 +1719,21 @@ class TestSuspectVerdict:
 
         assert result.suspect == "list_events returned no items where the previous run returned 3"
 
+    async def test_the_previous_runs_last_call_of_the_tool_is_the_one_compared(self) -> None:
+        """``$last_run`` resolves a tool called twice to its LAST result (the
+        attempt that worked); the empty-result check read the FIRST, so a retry
+        that had items after an empty first attempt was never compared."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        previous = _previous_run(
+            RecordedCall(tool_name="list_events", result_digest='{"items": []}'),
+            self.PREVIOUS_HAD_THREE,
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+
+        assert result.suspect == "list_events returned no items where the previous run returned 3"
+
     async def test_the_narrations_verdict_becomes_the_reason(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
@@ -1732,6 +1775,60 @@ class TestSuspectVerdict:
         )
 
         assert result.suspect == "list_events returned no items where the previous run returned 3"
+
+    async def test_a_record_verdict_names_the_record_as_its_source(self) -> None:
+        """The worker treats a deterministic verdict and the model's own opinion
+        differently, so the result has to say which one spoke."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+        )
+
+        assert result.suspect is not None
+        assert result.suspect_source == "record"
+
+    async def test_a_narration_verdict_names_the_narration_as_its_source(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        narration = PlaybookNarration(
+            result="No events were found.", outcome="suspect", reason="the agenda came back empty"
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, narration=narration)
+
+        assert result.suspect == "the agenda came back empty"
+        assert result.suspect_source == "narration"
+
+    async def test_when_both_speak_the_source_is_the_record(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        narration = PlaybookNarration(
+            result="Nothing today.", outcome="suspect", reason="the model's own take"
+        )
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            narration=narration,
+            find_previous=_previous_run(self.PREVIOUS_HAD_THREE),
+        )
+
+        assert result.suspect_source == "record"
+
+    async def test_a_trusted_run_has_no_suspect_source(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS),
+            registry,
+            narration=PlaybookNarration(result="Twelve events.", outcome="ok", reason=""),
+        )
+
+        assert result.suspect is None
+        assert result.suspect_source is None
 
     async def test_a_stopped_run_never_carries_a_suspect_reason(self) -> None:
         recorder = _Recorder()

@@ -16,6 +16,7 @@ from pydantic import Field, ValidationError
 import pytest
 import yaml
 
+from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
     PlaybookAsk,
     PlaybookBody,
@@ -24,6 +25,7 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     playbook_body_from_input,
 )
+from app.models.subagent_models import Subagent
 from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.tool_space import SubagentTools
 
@@ -133,6 +135,39 @@ def _handoff_space(tools: dict[str, BaseTool] | None = None):
     """
     space = SubagentTools(
         tools=_registry().get_tool_dict() if tools is None else tools, initial_tool_ids=[]
+    )
+    return patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=space))
+
+
+def _retrieval_disabled_handoff_space():
+    """A handoff to a subagent shaped like ``docgen``: direct tools, no retrieval.
+
+    Its scoped dict holds both the tool it binds (``list_events``) and one it
+    can only see (``send_email``), the way the always-available tools sit in
+    every subagent's dict without being in its initial set.
+    """
+    subagent = Subagent(
+        id="calendar_agent",
+        name="Calendar",
+        provider="calendar",
+        managed_by="internal",
+        config=SubAgentConfig(
+            agent_name="calendar_agent",
+            tool_space="calendar",
+            handoff_tool_name="handoff_to_calendar",
+            domain="calendar",
+            capabilities="c",
+            use_cases="u",
+            system_prompt="p",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+            include_finish_task=False,
+        ),
+    )
+    space = SubagentTools(
+        tools={"list_events": list_events, "send_email": send_email},
+        initial_tool_ids=["list_events"],
+        subagent=subagent,
     )
     return patch(f"{MODULE}.resolve_subagent_tools", AsyncMock(return_value=space))
 
@@ -358,6 +393,67 @@ synthesize: x
 
         assert result.issues == []
 
+    async def test_a_child_the_subagent_can_see_but_not_bind_is_refused_as_the_runner_would(
+        self,
+    ) -> None:
+        """A subagent that cannot retrieve (``docgen``, ``gaia_knowledge_guide``)
+        runs only the tools it bound at startup, yet its scoped dict also holds
+        the always-available ones. Validating children against the dict alone
+        accepted a playbook the replay then stopped at that very step. The
+        refusal has to be the runner's own wording, so the author reads one
+        message whether it comes at write time or at replay."""
+        body = _body(
+            """
+description: Delegate a send the subagent could never make
+steps:
+  - id: delegate
+    handoff: calendar_agent
+    steps:
+      - id: mail
+        tool: send_email
+        args:
+          to: a@b.com
+          subject: hi
+synthesize: x
+"""
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            _retrieval_disabled_handoff_space(),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].steps[0]",
+                "send_email is outside the bound tool set of this handoff, which cannot retrieve",
+            )
+        ]
+
+    async def test_a_child_the_subagent_binds_at_startup_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Delegate a read the subagent binds
+steps:
+  - id: delegate
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+synthesize: x
+"""
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            _retrieval_disabled_handoff_space(),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+
     async def test_undeclared_ask_reference_is_rejected(self) -> None:
         body = _body(
             """
@@ -493,6 +589,165 @@ synthesize: x
             result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert result.issues[0].where == "ask.body.uses"
+
+    async def test_an_ask_reading_a_step_that_runs_after_the_asks_are_filled_is_refused(
+        self,
+    ) -> None:
+        """The runner narrates at the FIRST step addressing any ``$ask``, from the
+        steps completed by then. ``uses`` was only checked against the steps the
+        whole document declares, so an ask reading a later step validated and
+        was then written from nothing at replay, silently."""
+        body = _body(
+            """
+description: Summarise the agenda before fetching it
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.summary
+  - id: calendar
+    tool: list_events
+    args:
+      calendar_id: primary
+ask:
+  summary:
+    prompt: Summarise the agenda
+    uses: [calendar]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
+        problem = result.issues[0].problem
+        assert "'summary'" in problem
+        assert "'mail'" in problem
+        assert "'calendar'" in problem
+
+    async def test_every_ask_is_filled_at_the_first_ask_step_not_only_the_one_addressed(
+        self,
+    ) -> None:
+        """One model call writes every ask. An ask whose own reference comes
+        late enough is still written at the first ``$ask`` step, before the step
+        it reads has run."""
+        body = _body(
+            """
+description: Two asks, one filled too early
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.greeting
+  - id: calendar
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: followup
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.summary
+ask:
+  greeting:
+    prompt: Say hello
+  summary:
+    prompt: Summarise the agenda
+    uses: [calendar]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
+        assert "'mail'" in result.issues[0].problem
+
+    async def test_an_ask_reading_only_earlier_steps_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Summarise the agenda after fetching it
+steps:
+  - id: calendar
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.summary
+ask:
+  summary:
+    prompt: Summarise the agenda
+    uses: [calendar]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+
+    async def test_an_ask_reading_a_step_nobody_declares_is_reported_once(self) -> None:
+        """The ordering check must not double up with the existence check."""
+        body = _body(
+            """
+description: Ask reading a ghost step
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.summary
+ask:
+  summary:
+    prompt: Summarise
+    uses: [inbox]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            ("ask.summary.uses", "no step is declared with id 'inbox'")
+        ]
+
+    async def test_a_duplicate_step_id_is_refused_by_name(self) -> None:
+        """The runner records results by id, so a second ``agenda`` overwrites
+        the first and every ``$steps.agenda`` silently reads whichever ran last."""
+        body = _body(
+            """
+description: Two steps called agenda
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: delegate
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: work
+synthesize: x
+"""
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=_registry()),
+            _handoff_space(),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["steps[1].steps[0]"]
+        assert "'agenda'" in result.issues[0].problem
 
     async def test_a_union_typed_arg_accepts_every_member_of_the_union(self) -> None:
         """An optional arg is declared as anyOf[string, null].

@@ -104,8 +104,20 @@ def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:
 
 
 def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]:
-    """One step's arguments with every placeholder resolved."""
-    return {key: resolve_value(value, context) for key, value in args.items()}
+    """One step's arguments with every placeholder resolved.
+
+    An argument that IS a placeholder and resolves to ``None`` (a ``$last_run``
+    with no history behind it) is left out, so the tool's own default applies
+    rather than a null reaching a parameter that does not accept one. A literal
+    null, and a null inside a nested value, are kept as written.
+    """
+    resolved: dict[str, Any] = {}
+    for key, value in args.items():
+        item = resolve_value(value, context)
+        if item is None and isinstance(value, str) and PLACEHOLDER_TOKEN.fullmatch(value):
+            continue
+        resolved[key] = item
+    return resolved
 
 
 def resolve_value(value: object, context: RunContext) -> object:
@@ -168,7 +180,8 @@ def _resolve_time(
     if unit is not None and amount is not None:
         offset = timedelta(**{_OFFSET_UNITS[unit]: int(amount)})
         moment = now - offset if sign == "-" else now + offset
-    return moment.date().isoformat() if root == "today" else moment.isoformat()
+    # Seconds, not microseconds: some APIs reject the longer form as not RFC 3339.
+    return moment.date().isoformat() if root == "today" else moment.isoformat(timespec="seconds")
 
 
 def _resolve_user(token: str, path: str, user: PlaybookUser) -> str:

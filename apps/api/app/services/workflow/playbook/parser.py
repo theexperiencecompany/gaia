@@ -12,17 +12,22 @@ form, so nothing ever parses the YAML again.
 """
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 import re
 from typing import Any
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 import yaml
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.models.playbook_models import PlaybookBody, PlaybookStep
+from app.models.playbook_models import PlaybookAsk, PlaybookBody, PlaybookStep
 from app.services.workflow.playbook.placeholders import placeholder_tokens
-from app.services.workflow.playbook.tool_space import resolve_subagent_tools
+from app.services.workflow.playbook.tool_space import (
+    ToolSpace,
+    handoff_tool_space,
+    resolve_subagent_tools,
+    tool_space_denial,
+)
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -93,36 +98,58 @@ async def validate_playbook(body: PlaybookBody, user_id: str) -> PlaybookValidat
     integration's tools live on that user's own client.
     """
     registry = await get_tool_registry()
-    tools = registry.get_tool_dict()
-
-    issues: list[PlaybookIssue] = []
-    declared_steps: set[str] = set()
+    walk = _Walk(
+        asks=body.ask,
+        all_step_ids=_step_ids(body.steps),
+        user_id=user_id,
+        registry=registry,
+    )
     await _check_steps(
-        body.steps, "steps", tools, set(body.ask), declared_steps, issues, user_id, registry
+        body.steps,
+        "steps",
+        ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None),
+        walk,
     )
 
     for name, ask in body.ask.items():
         for step_id in ask.uses:
-            if step_id not in declared_steps:
-                issues.append(
+            if step_id not in walk.declared_steps:
+                walk.issues.append(
                     PlaybookIssue(
                         where=f"ask.{name}.uses",
                         problem=f"no step is declared with id {step_id!r}",
                     )
                 )
 
-    return PlaybookValidation(valid=not issues, issues=issues)
+    return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
+
+
+@dataclass
+class _Walk:
+    """What one pass over the document accumulates, in document order."""
+
+    asks: Mapping[str, PlaybookAsk]
+    all_step_ids: set[str]
+    user_id: str
+    registry: ToolRegistry
+    declared_steps: set[str] = field(default_factory=set)
+    issues: list[PlaybookIssue] = field(default_factory=list)
+    #: Set at the first step that addresses any ``$ask``: the runner fills EVERY
+    #: ask there, in one model call, from the steps that have run by then.
+    asks_filled_at: str | None = None
+
+
+def _step_ids(steps: Sequence[PlaybookStep]) -> set[str]:
+    ids: set[str] = set()
+    for step in steps:
+        if step.id:
+            ids.add(step.id)
+        ids |= _step_ids(step.steps)
+    return ids
 
 
 async def _check_steps(
-    steps: Sequence[PlaybookStep],
-    path: str,
-    tools: Mapping[str, BaseTool],
-    ask_names: set[str],
-    declared_steps: set[str],
-    issues: list[PlaybookIssue],
-    user_id: str,
-    registry: ToolRegistry,
+    steps: Sequence[PlaybookStep], path: str, space: ToolSpace, walk: _Walk
 ) -> None:
     """Walk the steps in document order, so a reference can only resolve
     backwards: ``declared_steps`` holds exactly what ran before this node.
@@ -134,50 +161,53 @@ async def _check_steps(
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
         if step.tool:
-            _check_tool_step(step, here, tools, ask_names, declared_steps, issues)
+            _check_tool_step(step, here, space, walk)
         else:
-            space = await resolve_subagent_tools(step.handoff or "", user_id, registry)
-            if space is None:
-                issues.append(
+            subagent = await resolve_subagent_tools(step.handoff or "", walk.user_id, walk.registry)
+            if subagent is None:
+                walk.issues.append(
                     PlaybookIssue(
                         where=here,
                         problem=f"no subagent named {step.handoff!r} exists to hand off to",
                     )
                 )
             else:
-                await _check_steps(
-                    step.steps,
-                    f"{here}.steps",
-                    space.tools,
-                    ask_names,
-                    declared_steps,
-                    issues,
-                    user_id,
-                    registry,
-                )
+                await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
         if step.id:
-            declared_steps.add(step.id)
+            # The runner keys its record on the id, so a second step with the
+            # same id would overwrite the first's result for every later $steps.
+            if step.id in walk.declared_steps:
+                walk.issues.append(
+                    PlaybookIssue(
+                        where=here,
+                        problem=f"step id {step.id!r} is already used by an earlier step; "
+                        "ids must be unique so $steps references and the run's record "
+                        "point at one step",
+                    )
+                )
+            walk.declared_steps.add(step.id)
 
 
-def _check_tool_step(
-    step: PlaybookStep,
-    path: str,
-    tools: Mapping[str, BaseTool],
-    ask_names: set[str],
-    declared_steps: set[str],
-    issues: list[PlaybookIssue],
-) -> None:
-    tool = tools.get(step.tool) if step.tool else None
-    if tool is None:
-        issues.append(PlaybookIssue(where=path, problem=f"no tool named {step.tool!r} exists"))
+def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk) -> None:
+    tool_name = step.tool or ""
+    denial = tool_space_denial(tool_name, space)
+    if denial is not None:
+        walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
-    schema: dict[str, Any] = tool.args
+    # The evaluator's own scanner, so a placeholder embedded in text
+    # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+    tokens = list(placeholder_tokens(step.args))
+    if walk.asks_filled_at is None and any(token.group("root") == "ask" for token in tokens):
+        walk.asks_filled_at = step.id or path
+        _check_asks_fillable(walk)
+
+    schema: dict[str, Any] = space.tools[tool_name].args
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
         arg_schema = schema.get(key)
         if arg_schema is None:
-            issues.append(
+            walk.issues.append(
                 PlaybookIssue(
                     where=where,
                     problem=f"{step.tool} takes no arg {key!r}; it takes: "
@@ -185,35 +215,50 @@ def _check_tool_step(
                 )
             )
             continue
-        # The evaluator's own scanner, so a placeholder embedded in text
-        # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
-        tokens = list(placeholder_tokens(value))
-        for token in tokens:
-            _check_placeholder(token, where, ask_names, declared_steps, issues)
-        if not tokens:
-            _check_value_type(value, arg_schema, where, issues)
+        arg_tokens = list(placeholder_tokens(value))
+        for token in arg_tokens:
+            _check_placeholder(token, where, walk)
+        if not arg_tokens:
+            _check_value_type(value, arg_schema, where, walk.issues)
 
 
-def _check_placeholder(
-    match: re.Match[str],
-    where: str,
-    ask_names: set[str],
-    declared_steps: set[str],
-    issues: list[PlaybookIssue],
-) -> None:
+def _check_asks_fillable(walk: _Walk) -> None:
+    """Every ask reads only steps that ran before the asks are filled.
+
+    The runner narrates once, at the first step addressing any ``$ask``, and the
+    narration sees only the steps completed by then. An ask whose ``uses`` names
+    a later step would be written from nothing, silently. An id no step declares
+    at all is reported after the walk, not here.
+    """
+    for name, ask in walk.asks.items():
+        for step_id in ask.uses:
+            if step_id in walk.declared_steps or step_id not in walk.all_step_ids:
+                continue
+            walk.issues.append(
+                PlaybookIssue(
+                    where=f"ask.{name}.uses",
+                    problem=f"ask {name!r} reads step {step_id!r}, but the asks are filled at "
+                    f"step {walk.asks_filled_at!r} (the first to address $ask), before "
+                    f"{step_id!r} runs; move {step_id!r} ahead of {walk.asks_filled_at!r} "
+                    "or drop it from uses",
+                )
+            )
+
+
+def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
     # The tokenizer only matches known roots; any other ``$word`` is literal text.
     token = match.group(0)
     root = match.group("root")
     name = match.group("path").lstrip(".").partition(".")[0]
-    if root == "steps" and name not in declared_steps:
-        issues.append(
+    if root == "steps" and name not in walk.declared_steps:
+        walk.issues.append(
             PlaybookIssue(
                 where=where,
                 problem=f"{token} points at a step that no earlier node declares",
             )
         )
-    elif root == "ask" and name not in ask_names:
-        issues.append(
+    elif root == "ask" and name not in walk.asks:
+        walk.issues.append(
             PlaybookIssue(
                 where=where, problem=f"{token} points at an ask the playbook never declares"
             )

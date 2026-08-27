@@ -18,7 +18,13 @@ from app.agents.tools.core.registry import ToolRegistry
 from app.constants.general import FINISH_TASK_NAME
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
-from app.services.workflow.playbook.tool_space import resolve_subagent_tools
+from app.services.workflow.playbook.tool_space import (
+    SubagentTools,
+    ToolSpace,
+    handoff_tool_space,
+    resolve_subagent_tools,
+    tool_space_denial,
+)
 
 MODULE = "app.services.workflow.playbook.tool_space"
 PROVIDER_MODULE = "app.agents.core.subagents.provider_subagents"
@@ -42,7 +48,9 @@ def _registry() -> ToolRegistry:
     return registry
 
 
-def _subagent(*, mcp: bool, include_finish_task: bool = True) -> Subagent:
+def _subagent(
+    *, mcp: bool, include_finish_task: bool = True, disable_retrieve_tools: bool = False
+) -> Subagent:
     return Subagent(
         id=SUBAGENT_ID,
         name="PostHog",
@@ -57,6 +65,8 @@ def _subagent(*, mcp: bool, include_finish_task: bool = True) -> Subagent:
             use_cases="u",
             system_prompt="p",
             include_finish_task=include_finish_task,
+            use_direct_tools=disable_retrieve_tools,
+            disable_retrieve_tools=disable_retrieve_tools,
         ),
         mcp_config=MCPConfig(server_url="https://mcp.example/sse") if mcp else None,
     )
@@ -273,3 +283,65 @@ class TestMcpBackedSubagent:
         assert "Could not reach an integration's tools" in log.warning.call_args.args[0]
         assert log.warning.call_args.kwargs["subagent_id"] == SUBAGENT_ID
         assert log.warning.call_args.kwargs["error_type"] == "TimeoutError"
+
+
+@pytest.mark.unit
+class TestToolSpaceDenial:
+    """One answer to "may this step run here", read by the validator at write
+    time and the runner at replay. A subagent's scoped dict holds more than it
+    can bind (the always-available tools), so membership alone accepted
+    playbooks the replay then refused at the first child step."""
+
+    ALWAYS_AVAILABLE = "grep"
+
+    def _space(self, subagent: Subagent | None) -> ToolSpace:
+        return handoff_tool_space(
+            SubagentTools(
+                tools={REGISTRY_TOOL: _tool(REGISTRY_TOOL), self.ALWAYS_AVAILABLE: _tool("grep")},
+                initial_tool_ids=[REGISTRY_TOOL],
+                subagent=subagent,
+            )
+        )
+
+    def test_a_subagent_that_cannot_retrieve_refuses_a_tool_it_only_sees(self) -> None:
+        space = self._space(_subagent(mcp=False, disable_retrieve_tools=True))
+
+        assert tool_space_denial(self.ALWAYS_AVAILABLE, space) == (
+            "grep is outside the bound tool set of this handoff, which cannot retrieve"
+        )
+        assert tool_space_denial(REGISTRY_TOOL, space) is None
+
+    def test_a_subagent_that_can_retrieve_runs_anything_in_its_space(self) -> None:
+        space = self._space(_subagent(mcp=False))
+
+        assert tool_space_denial(self.ALWAYS_AVAILABLE, space) is None
+        assert tool_space_denial(REGISTRY_TOOL, space) is None
+
+    def test_the_handoff_space_carries_the_subagents_identity(self) -> None:
+        space = self._space(_subagent(mcp=False, disable_retrieve_tools=True))
+
+        assert space.subagent_id == SUBAGENT_ID
+        assert space.runtime is not None
+        assert space.runtime.enable_retrieve_tools is False
+        assert REGISTRY_TOOL in space.runtime.initial_tool_names
+
+    def test_tools_with_no_subagent_behind_them_have_no_runtime_bound(self) -> None:
+        space = self._space(None)
+
+        assert space.runtime is None
+        assert space.subagent_id is None
+        assert tool_space_denial(self.ALWAYS_AVAILABLE, space) is None
+
+    def test_a_tool_missing_from_a_handoff_names_the_space(self) -> None:
+        space = self._space(_subagent(mcp=False))
+
+        assert tool_space_denial("send_owl", space) == (
+            "no tool named 'send_owl' is available in this run's tool space"
+        )
+
+    def test_a_tool_missing_at_top_level_simply_does_not_exist(self) -> None:
+        space = ToolSpace(
+            tools={REGISTRY_TOOL: _tool(REGISTRY_TOOL)}, runtime=None, subagent_id=None
+        )
+
+        assert tool_space_denial("send_owl", space) == "no tool named 'send_owl' exists"

@@ -33,10 +33,11 @@ def _context(
     last_run: dict[str, object] | None = None,
     asks: dict[str, str] | None = None,
     user: PlaybookUser | None = None,
+    now: datetime = NOW,
 ) -> RunContext:
     return RunContext(
         user=user or PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin"),
-        now=NOW,
+        now=now,
         trigger=trigger or {},
         steps=steps or {},
         last_run=last_run or {},
@@ -60,6 +61,14 @@ def test_now_and_today_render_the_workflow_zone() -> None:
     context = _context()
     assert resolve_value("$now", context) == "2026-03-14T09:30:00+01:00"
     assert resolve_value("$today", context) == "2026-03-14"
+
+
+def test_now_renders_to_the_second_not_the_microsecond() -> None:
+    """A worker's clock carries microseconds and some APIs reject the longer
+    form as not RFC 3339; a ``$now`` and any offset on it read to the second."""
+    context = _context(now=NOW.replace(microsecond=624690))
+    assert resolve_value("$now", context) == "2026-03-14T09:30:00+01:00"
+    assert resolve_value("$now + 1h", context) == "2026-03-14T10:30:00+01:00"
 
 
 def test_time_offsets_move_forward_and_back() -> None:
@@ -103,6 +112,24 @@ def test_unresolvable_last_run_is_none_not_an_error() -> None:
     context = _context(last_run={})
     assert resolve_value("$last_run.GMAIL_FETCH.next_page", context) is None
     assert resolve_value("$last_run.GMAIL_FETCH", context) is None
+
+
+def test_a_whole_value_last_run_with_no_history_is_left_out_of_the_args() -> None:
+    """``None`` reached a tool parameter that is not Optional and failed
+    validation at call time; leaving the key out lets the tool's default apply."""
+    resolved = resolve_args(
+        {"page_token": "$last_run.GMAIL_FETCH.next_page", "max_results": 10}, _context()
+    )
+    assert resolved == {"max_results": 10}
+
+
+def test_a_null_inside_a_nested_value_is_kept_as_written() -> None:
+    """Only a top-level whole-value placeholder is dropped: a null nested in a
+    structure is data the tool is meant to see, as is a literal null."""
+    resolved = resolve_args(
+        {"filter": {"cursor": "$last_run.GMAIL_FETCH.next_page"}, "label": None}, _context()
+    )
+    assert resolved == {"filter": {"cursor": None}, "label": None}
 
 
 def test_a_last_run_path_the_tool_did_not_return_stops_the_run_by_name() -> None:
