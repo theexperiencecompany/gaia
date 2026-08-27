@@ -17,7 +17,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.message_models import SelectedWorkflowData
-from app.models.playbook_models import PlaybookDocument
+from app.models.playbook_models import PlaybookDocument, PlaybookStep
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
@@ -148,6 +148,22 @@ async def add_playbook_run_messages(
     )
 
 
+def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
+    """The frozen steps as lines a person can read on the Run playbook card.
+
+    "todos subagent -> list_todos" says who does what; the raw document shape
+    (ids, args, nesting) belongs in read_playbook, not on a chat card.
+    """
+    lines: list[str] = []
+    for step in steps:
+        if step.handoff:
+            children = ", ".join(child.tool or "?" for child in step.steps)
+            lines.append(f"{step.handoff} subagent -> {children}")
+        else:
+            lines.append(step.tool or "?")
+    return lines
+
+
 async def build_playbook_tool_data(
     trace: Sequence[RecordedCall], user_id: str, playbook: PlaybookDocument
 ) -> list[ToolDataEntry]:
@@ -161,17 +177,18 @@ async def build_playbook_tool_data(
     entries: list[ToolDataEntry] = []
     outputs: dict[str, str] = {}
     lead_id = str(uuid4())
+    plan = _playbook_plan(playbook.steps)
     lead = await format_tool_call_entry(
         ToolCall(
             name="run_playbook",
-            args={"description": playbook.description, "steps": len(playbook.steps)},
+            args={"description": playbook.description, "plan": plan},
             id=lead_id,
         ),
         user_id=user_id,
     )
     if lead is not None:
         outputs[lead_id] = (
-            f"Replayed {len(playbook.steps)} frozen step(s) from this workflow's playbook."
+            f"Replayed {len(plan)} frozen step(s): " + "; ".join(plan)
         )
         entries.append(lead)
     for call in trace:
