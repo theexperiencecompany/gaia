@@ -16,7 +16,14 @@ from pydantic import Field, ValidationError
 import pytest
 import yaml
 
-from app.models.playbook_models import PlaybookBody
+from app.models.playbook_models import (
+    PlaybookAsk,
+    PlaybookBody,
+    PlaybookHandoffStepInput,
+    PlaybookStep,
+    PlaybookStepInput,
+    playbook_body_from_input,
+)
 from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.tool_space import SubagentTools
 
@@ -745,3 +752,173 @@ synthesize: x
         assert rendered.index("description:") < rendered.index("steps:")
         assert rendered.index("steps:") < rendered.index("ask:")
         assert rendered.index("id: agenda") < rendered.index("args:")
+
+
+def _messages(exc: pytest.ExceptionInfo[ValidationError]) -> list[str]:
+    """Just the validator's own messages.
+
+    ``str(ValidationError)`` also renders the offending input, so a message
+    asserted against the whole string passes on the strength of the input echo
+    even when the message says something else entirely.
+    """
+    return [error["msg"] for error in exc.value.errors()]
+
+
+class TestStepShapeMessages:
+    """What a rejected step actually tells the agent that wrote it.
+
+    These messages are the authoring loop: the write fails, the agent reads the
+    message, and rewrites the step. A message that does not name the offending
+    node leaves it to guess which of a dozen steps to change, and a message that
+    names the wrong thing sends it to rewrite a step that was fine. Both models
+    carry the same rule because a playbook is authored through the input models
+    and stored through ``PlaybookStep``, and the two must refuse the same shapes.
+    """
+
+    def test_a_stored_step_that_is_both_shapes_is_named(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStep.model_validate(
+                {
+                    "id": "both_shapes",
+                    "tool": "send_email",
+                    "handoff": "mail_agent",
+                    "steps": [{"id": "inner", "tool": "send_email"}],
+                }
+            )
+
+        assert any(
+            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
+            for message in _messages(exc)
+        )
+
+    def test_a_stored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
+        """A step with no id has to be described somehow, and "" is not a description."""
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStep.model_validate({"args": {"to": "x@example.com"}})
+
+        assert any(
+            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
+            for message in _messages(exc)
+        )
+
+    def test_a_stored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStep.model_validate({"id": "delegate", "handoff": "mail_agent"})
+
+        assert any(
+            "handoff mail_agent: carries no steps, so it would do nothing" in message
+            for message in _messages(exc)
+        )
+
+    def test_a_stored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+        """Only a handoff nests, and the message names the step, not the tool.
+
+        The agent addresses the step it has to fix by id, so naming the tool
+        instead points it at every step that calls that tool.
+        """
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStep.model_validate(
+                {
+                    "id": "notify",
+                    "tool": "send_email",
+                    "steps": [{"id": "inner", "tool": "send_email"}],
+                }
+            )
+
+        assert any(
+            "step notify: only a handoff may carry nested steps" in message
+            for message in _messages(exc)
+        )
+
+    def test_an_authored_step_that_is_both_shapes_is_named(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStepInput.model_validate(
+                {
+                    "id": "both_shapes",
+                    "tool": "send_email",
+                    "handoff": "mail_agent",
+                    "steps": [{"id": "inner", "tool": "send_email"}],
+                }
+            )
+
+        assert any(
+            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
+            for message in _messages(exc)
+        )
+
+    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
+
+        assert any(
+            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
+            for message in _messages(exc)
+        )
+
+    def test_an_authored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStepInput.model_validate({"id": "delegate", "handoff": "mail_agent"})
+
+        assert any(
+            "handoff mail_agent: carries no steps, so it would do nothing" in message
+            for message in _messages(exc)
+        )
+
+    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookStepInput.model_validate(
+                {
+                    "id": "notify",
+                    "tool": "send_email",
+                    "steps": [{"id": "inner", "tool": "send_email"}],
+                }
+            )
+
+        assert any(
+            "step notify: only a handoff may carry nested steps" in message
+            for message in _messages(exc)
+        )
+
+
+class TestAuthoredPlaybookBecomesTheStoredOne:
+    """The tool boundary's flat arguments, turned into the body that is stored.
+
+    Everything dropped here is dropped silently: the playbook validates, stores
+    and replays, and only the arguments the recorded call actually needed are
+    missing. The replay then calls the right tool with the wrong arguments.
+    """
+
+    def test_a_handoff_childs_arguments_survive_the_conversion(self) -> None:
+        child = PlaybookHandoffStepInput(
+            id="mail", tool="send_email", args={"to": "team@example.com", "subject": "Agenda"}
+        )
+
+        step = child.to_step()
+
+        assert step.id == "mail"
+        assert step.tool == "send_email"
+        assert step.args == {"to": "team@example.com", "subject": "Agenda"}
+
+    def test_the_declared_asks_reach_the_stored_body(self) -> None:
+        ask = PlaybookAsk(prompt="Write the digest.", uses=["events"])
+
+        body = playbook_body_from_input(
+            description="Mail the agenda",
+            steps=[PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"})],
+            synthesize="Say how many events there were.",
+            ask={"body": ask},
+        )
+
+        assert body.ask == {"body": ask}
+        assert [step.tool for step in body.steps] == ["list_events"]
+
+    def test_a_playbook_with_no_asks_stores_an_empty_mapping(self) -> None:
+        """``None`` is what the tool boundary sends for "no asks", and it is not storable."""
+        body = playbook_body_from_input(
+            description="Mail the agenda",
+            steps=[PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"})],
+            synthesize="Say how many events there were.",
+            ask=None,
+        )
+
+        assert body.ask == {}

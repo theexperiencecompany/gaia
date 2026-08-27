@@ -29,8 +29,11 @@ class _FakeCursor:
     def __init__(self, threads: dict[str, bool]) -> None:
         self.threads = threads
         self._rows: list[tuple[str]] = []
+        #: Every statement as it was sent, in order.
+        self.statements: list[str] = []
 
     async def execute(self, sql: str, params: tuple[object, ...]) -> None:
+        self.statements.append(sql)
         if "FROM checkpoint_writes" in sql:
             (candidates,) = params
             assert isinstance(candidates, list)
@@ -81,9 +84,11 @@ class _FakePool:
         return self._conn
 
 
-def _manager(threads: dict[str, bool], checkpointer: MagicMock) -> MagicMock:
+def _manager(
+    threads: dict[str, bool], checkpointer: MagicMock, cursor: _FakeCursor | None = None
+) -> MagicMock:
     manager = MagicMock()
-    manager.pool = _FakePool(_FakeCursor(threads))
+    manager.pool = _FakePool(cursor or _FakeCursor(threads))
     manager.get_checkpointer.return_value = checkpointer
     return manager
 
@@ -266,3 +271,112 @@ class TestResetWideEvent:
 
         assert deleted_count == 2
         log.set_ns.assert_called_once_with("workflow", threads_reset=2, threads_skipped_inflight=1)
+
+
+class TestTheQueriesItSends:
+    """The two statements, exactly as Postgres receives them.
+
+    This function deletes checkpoint rows, so the predicate is the whole safety
+    argument: an anchored ``right()`` comparison rather than a LIKE (the ids are
+    full of underscores, and an unescaped ``_`` matches any character), and an
+    in-flight check anchored to each thread's own head checkpoint. A predicate
+    that drifts is silent in production and takes another conversation's history
+    with it, so both statements are pinned character for character.
+    """
+
+    async def test_the_thread_query_matches_ids_by_anchored_suffix_not_by_pattern(self) -> None:
+        checkpointer = _checkpointer()
+        cursor = _FakeCursor({CONV: False})
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager({}, checkpointer, cursor)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            await reset_workflow_threads(CONV)
+
+        assert cursor.statements[0] == (
+            "SELECT DISTINCT thread_id FROM checkpoints "
+            "WHERE thread_id IN (%s, %s) OR right(thread_id, %s) = %s"
+        )
+
+    async def test_the_in_flight_query_looks_at_each_threads_own_head_checkpoint(self) -> None:
+        checkpointer = _checkpointer()
+        cursor = _FakeCursor({CONV: False})
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager({}, checkpointer, cursor)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            await reset_workflow_threads(CONV)
+
+        assert cursor.statements[1] == (
+            "SELECT DISTINCT w.thread_id FROM checkpoint_writes w "
+            "WHERE w.thread_id = ANY(%s) AND w.checkpoint_id = ("
+            "  SELECT max(c.checkpoint_id) FROM checkpoints c"
+            "  WHERE c.thread_id = w.thread_id AND c.checkpoint_ns = w.checkpoint_ns"
+            ")"
+        )
+
+    async def test_it_asks_the_repository_about_the_conversation_it_was_given(self) -> None:
+        """The workflow guard is only a guard if it is asked about the right conversation.
+
+        Asked about anything else it answers "not a workflow" for a workflow, or
+        worse, "workflow" for a chat, and this function deletes that chat's
+        checkpoint threads.
+        """
+        checkpointer = _checkpointer()
+        threads = {CONV: False, f"executor_{CONV}": False}
+
+        async def is_workflow(conversation_id: str) -> bool:
+            return conversation_id == CONV
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager(threads, checkpointer)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+        ):
+            conversations.is_workflow_execution = AsyncMock(side_effect=is_workflow)
+            deleted_count = await reset_workflow_threads(CONV)
+
+        assert deleted_count == 2
+
+
+class TestTheFailureWarning:
+    """What a failed reset leaves behind for whoever reads the run later.
+
+    A reset that fails is deliberately not fatal, so the wide event is the ONLY
+    trace that it happened. Without the error itself on the event, a workflow
+    quietly replaying its whole history every fire looks exactly like one that
+    reset cleanly.
+    """
+
+    async def test_it_names_the_failure_and_the_consequence(self) -> None:
+        checkpointer = _checkpointer()
+        checkpointer.adelete_thread = AsyncMock(side_effect=RuntimeError("postgres is down"))
+
+        with (
+            patch(
+                f"{MODULE}.get_checkpointer_manager",
+                AsyncMock(return_value=_manager({CONV: False}, checkpointer)),
+            ),
+            patch(f"{MODULE}.conversation_repository") as conversations,
+            patch(f"{MODULE}.log") as log,
+        ):
+            conversations.is_workflow_execution = AsyncMock(return_value=True)
+            deleted_count = await reset_workflow_threads(CONV)
+
+        assert deleted_count == 0
+        message = log.warning.call_args.args[0]
+        assert "Workflow thread reset failed" in message
+        assert "run will replay its history" in message
+        assert log.warning.call_args.kwargs["error"] == "postgres is down"

@@ -1353,3 +1353,27 @@ async def test_a_handoff_child_can_address_an_ask() -> None:
     assert result.ok is True, result.failure
     assert recorder.calls[0][1]["calendar_id"] == "primary"
     assert _prompt_block(str(llm.await_args.args[1]), "still_to_run") == "more (list_events)"
+
+
+def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
+    """The exact shape of the turn the agent loop is handed.
+
+    ``content`` must be empty: a scripted turn is a call, not an answer, and any
+    text on it is prose the run never produced that still reaches the message
+    history and the user-facing stream. The call's ``type`` is what LangChain
+    routes on, so a tool call carrying anything else is dropped on the floor and
+    the step silently never runs.
+    """
+    model = ScriptedModel(
+        script=[ScriptedCall(name="list_events", args={"calendar_id": "primary"})]
+    )
+
+    message = model.turn_for([HumanMessage(content="go")])
+
+    assert message.content == ""
+    assert len(message.tool_calls) == 1
+    call = message.tool_calls[0]
+    assert call["name"] == "list_events"
+    assert call["args"] == {"calendar_id": "primary"}
+    assert call["id"] == scripted_call_id(0)
+    assert call["type"] == "tool_call"

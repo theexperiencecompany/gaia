@@ -495,6 +495,89 @@ class TestBuildExecutorGraph:
             # manage_system_prompts_node, todo_hook
             assert len(pre_model_hooks) == 4
 
+    async def test_the_executor_binds_exactly_its_declared_starting_tools(self):
+        """The executor's starting tool set, pinned as a whole rather than sampled.
+
+        Every id here is bound by hand instead of left to semantic retrieval,
+        because something names it by hand: a prompt block, a brief, or another
+        tool's instructions. An id that silently changes spelling drops the tool
+        from the initial set and the run reads an instruction it cannot act on,
+        with no error anywhere. A tool added here on purpose fails this test
+        once, which is the point.
+        """
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert kwargs["initial_tool_ids"] == [
+            "handoff",
+            "plan_tasks",
+            "update_tasks",
+            "read",
+            "bash",
+            "deep_research",
+            "wait_for_subagents",
+            "read_manual",
+            "create_tracked_todo",
+            "update_tracked_todo",
+            "update_tracked_todo_canvas",
+            "complete_tracked_todo",
+            "search_todo_context",
+            "list_tracked_todos",
+            "save_learned_skill",
+            "write_playbook",
+        ]
+
+    async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
+        """A caller that hands in a model gets that model, not a freshly built one.
+
+        Every caller that supplies one is pinning the lane deliberately (a test
+        harness, a deployment on a custom endpoint). Rebuilding it here sends the
+        run to whatever the default provider is, which on a custom deployment is
+        a provider it has no key for.
+        """
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            deps["mocks"][f"{_MOD}.init_llm"].assert_not_called()
+
+        assert kwargs["llm"] is deps["llm"]
+
+    async def test_it_checkpoints_to_postgres_unless_asked_not_to(self):
+        """In-memory checkpointing is opt-in, and the default must stay durable.
+
+        An executor built with an in-memory saver loses every conversation the
+        moment the worker restarts: the next turn resumes from nothing and the
+        run reads as a user who never said anything.
+        """
+        fake_checkpointer = MagicMock(name="postgres_checkpointer")
+        fake_manager = MagicMock()
+        fake_manager.get_checkpointer.return_value = fake_checkpointer
+
+        with ExitStack() as stack:
+            deps = _apply_patches(
+                stack,
+                {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=fake_manager)},
+            )
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"]):
+                pass
+
+            compile_kwargs = deps["builder"].compile.call_args.kwargs
+
+        assert compile_kwargs["checkpointer"] is fake_checkpointer
+
     async def test_subagent_middleware_wired_when_present(self):
         """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""
         from app.agents.middleware.subagent import SubagentMiddleware
