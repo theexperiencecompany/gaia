@@ -23,6 +23,7 @@ from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
+from app.models.workflow_execution_models import RecordedCall
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import (
@@ -38,6 +39,7 @@ from app.services.workflow.playbook.scripted_model import (
     scripted_call_id,
 )
 from app.utils.chat_utils import get_user_id_from_config
+from app.utils.timezone import Timezone
 
 MODULE = "app.services.workflow.playbook.runner"
 #: A handoff resolves its subagent inside tool_space, not the runner, so that is
@@ -174,20 +176,27 @@ async def _run(
     narration: PlaybookNarration | None = None,
     policy: str = "allow",
     subagent: _FakeSubagent | None = None,
+    runnable: MagicMock | None = None,
+    find_previous: AsyncMock | None = None,
 ) -> tuple[PlaybookRunResult, AsyncMock]:
-    """Run the playbook with mocked seams; hands back the result and the LLM mock."""
+    """Run the playbook with mocked seams; hands back the result and the LLM mock.
+
+    ``runnable`` and ``find_previous`` let a test hold on to the seam it is
+    asserting about: how the one model call is built, and what the previous
+    execution's trace was looked up with.
+    """
     llm = AsyncMock(return_value=narration or _narration())
     with (
         patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=registry)),
         patch(
             f"{MODULE}.workflow_executions_repository.find_latest_with_trace",
-            AsyncMock(return_value=None),
+            find_previous or AsyncMock(return_value=None),
         ),
         patch(f"{TOOL_SPACE_MODULE}.get_subagent_by_id", return_value=subagent),
         # The narration runs on whatever provider the deployment uses, so the
         # runnable is built then invoked. Both halves are stubbed: the test cares
         # that ONE model call happens and what it returns, not which lane served it.
-        patch(f"{MODULE}.background_structured_runnable", MagicMock()),
+        patch(f"{MODULE}.background_structured_runnable", runnable or MagicMock()),
         patch(f"{MODULE}.ainvoke_llm", llm),
         _gate_policy(policy),
     ):
@@ -523,3 +532,233 @@ async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None
     assert result.ok is True
     prompt = str(llm.await_args.args[1])
     assert "Todo 29" in prompt, "the model must see the whole result, not the first 120 chars"
+
+
+# --- the one model call ----------------------------------------------------
+
+
+class TestNarrationCall:
+    """How the run's single model call is built, billed, and prompted.
+
+    It is the only call in a replay, so everything about it is load-bearing: the
+    schema it must return, the user its COGS lands on, the label it appears under
+    in observability, and the material it is given to write from. A replay that
+    silently narrates from an empty prompt still returns a plausible paragraph,
+    which is exactly why the prompt's contents are pinned rather than the shape
+    of the answer.
+    """
+
+    async def test_it_is_one_structured_call_metered_to_the_workflows_user(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        runnable = MagicMock()
+
+        result, llm = await _run(_playbook(AGENDA_STEPS), registry, runnable=runnable)
+
+        assert result.ok is True, result.failure
+        assert runnable.call_args.args == (PlaybookNarration,)
+        # Attribution, not budget: a replay's narration is COGS and has to land
+        # on the workflow's owner at both halves of the call.
+        assert runnable.call_args.kwargs["config"] == {"configurable": {"user_id": "u_1"}}
+        assert llm.await_args.args[0] is runnable.return_value
+        assert llm.await_args.kwargs["config"] == {"configurable": {"user_id": "u_1"}}
+        assert llm.await_args.kwargs["label"] == "playbook_narration"
+
+    async def test_the_prompt_carries_the_playbook_and_everything_that_ran(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(AGENDA_STEPS)
+
+        result, llm = await _run(playbook, registry)
+
+        prompt = str(llm.await_args.args[1])
+        assert result.completed == [
+            'events (list_events) -> {"count": 12}',
+            "mail (send_email) -> sent",
+        ]
+        assert playbook.description in prompt
+        assert playbook.synthesize in prompt
+        assert "\n".join(result.completed) in prompt
+        # Narrated at the end, so nothing is outstanding and the model must be
+        # told so rather than left to read an empty section as "unknown".
+        assert "nothing, every step has run" in prompt
+
+    async def test_a_mid_run_narration_is_told_what_has_not_happened_yet(self) -> None:
+        """A result written before the last step still has to describe the whole run.
+
+        The narration fires as soon as a step needs a ``$ask``, which can be the
+        first step. Without the steps still to come in the prompt, the model
+        writes the run up as if it ended there.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(
+            [
+                PlaybookStep(id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.summary"}),
+                PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ],
+            ask={"summary": PlaybookAsk(prompt="Summarise the day.", uses=[])},
+        )
+
+        result, llm = await _run(playbook, registry, narration=_narration(summary="A quiet day."))
+
+        assert result.ok is True, result.failure
+        prompt = str(llm.await_args.args[1])
+        assert "mail (send_email)\nevents (list_events)" in prompt
+        # Nothing has run yet at that point, and an empty section would read as
+        # "the run did nothing" rather than "the run has not started".
+        assert "nothing yet" in prompt
+
+    async def test_the_prompt_states_every_declared_ask_and_its_budget(self) -> None:
+        """One call fills every ask, so the per-ask instruction can only travel in the prompt."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        ask = PlaybookAsk(prompt="Write the digest.", uses=["events"])
+        playbook = _playbook(
+            [
+                PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+                PlaybookStep(
+                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                ),
+            ],
+            ask={"body": ask},
+        )
+
+        result, llm = await _run(playbook, registry, narration=_narration(body="Twelve today."))
+
+        assert result.ok is True, result.failure
+        prompt = str(llm.await_args.args[1])
+        assert f"- body: {ask.prompt}" in prompt
+        assert f"budget: about {ask.max_tokens} tokens" in prompt
+
+    async def test_an_ask_the_model_ignored_is_named_on_the_wide_event(self) -> None:
+        """A silently unwritten ask produces a run that reads as fine and is not.
+
+        The step addressing it fails with a placeholder error far from the cause,
+        so the only way to see that the model skipped a field it was asked for is
+        this warning.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(
+            AGENDA_STEPS,
+            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+        )
+
+        with patch(f"{MODULE}.log") as log:
+            result, _ = await _run(playbook, registry, narration=_narration())
+
+        assert result.ok is True, result.failure
+        assert log.warning.call_count == 1
+        assert "wrote nothing for declared asks" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs["missing_asks"] == ["body"]
+        assert log.warning.call_args.kwargs["playbook_id"] == playbook.playbook_id
+        assert log.warning.call_args.kwargs["workflow_id"] == "wf_1"
+
+
+# --- what the run is given to resolve against ------------------------------
+
+
+class TestRunContext:
+    """The material a replay resolves its placeholders against.
+
+    Every one of these is silent when wrong: the step still runs, with a hole in
+    its arguments, and the tool does something subtly different from what was
+    recorded.
+    """
+
+    async def test_the_previous_runs_results_are_addressable_by_tool_name(self) -> None:
+        """``$last_run`` is how a cursor survives between fires.
+
+        It is looked up for this workflow and this user; a lookup that drifts off
+        either one silently resolves the placeholder to nothing and the run
+        starts over from the beginning of whatever it was paging through.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        previous = MagicMock()
+        previous.trace = [RecordedCall(tool_name="list_events", result_digest='{"count": 7}')]
+
+        async def find_latest(workflow_id: str, user_id: str) -> MagicMock | None:
+            return previous if (workflow_id, user_id) == ("wf_1", "u_1") else None
+
+        playbook = _playbook(
+            [
+                PlaybookStep(
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": "Last time $last_run.list_events.count"},
+                )
+            ]
+        )
+
+        result, _ = await _run(
+            playbook, registry, find_previous=AsyncMock(side_effect=find_latest)
+        )
+
+        assert result.ok is True, result.failure
+        assert recorder.calls[0][1]["body"] == "Last time 7"
+
+    async def test_the_user_and_the_users_clock_reach_the_step(self) -> None:
+        """``$now`` is the workflow's own zone, not the worker's.
+
+        A worker in UTC resolving a Berlin workflow's ``$now`` sends a digest
+        stamped an hour off, or on the wrong day either side of midnight.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(
+            [PlaybookStep(id="mail", tool="send_email", args={"to": "$user.email", "body": "$now"})]
+        )
+
+        result, _ = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert recorder.calls[0][1]["to"] == USER.email
+        offset = datetime.now(Timezone.parse(USER.timezone).tzinfo).strftime("%z")
+        assert recorder.calls[0][1]["body"].endswith(f"{offset[:3]}:{offset[3:]}")
+
+
+# --- what the result reports -----------------------------------------------
+
+
+async def test_a_finished_run_reports_every_step_it_completed() -> None:
+    """``completed`` is what a fallback agent is told it must not do again.
+
+    An empty list on a run that really did send the mail is how a workflow sends
+    twice.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+    assert result.ok is True, result.failure
+    assert result.completed == [
+        'events (list_events) -> {"count": 12}',
+        "mail (send_email) -> sent",
+    ]
+
+
+async def test_a_run_that_stops_after_narrating_still_reports_the_call_it_made() -> None:
+    """The narration is spent whether or not the run finished.
+
+    ``llm_calls`` is the replay's cost line. A stopped run that already narrated
+    and reports zero makes the replay look free exactly when it was not.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder, failing="list_events"))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.summary"}),
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+        ],
+        ask={"summary": PlaybookAsk(prompt="Summarise the day.", uses=[])},
+    )
+
+    result, llm = await _run(playbook, registry, narration=_narration(summary="A quiet day."))
+
+    assert result.ok is False
+    assert llm.await_count == 1
+    assert result.llm_calls == 1
+    assert result.completed == ["mail (send_email) -> sent"]
