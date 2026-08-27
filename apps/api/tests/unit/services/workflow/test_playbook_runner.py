@@ -26,7 +26,7 @@ from langgraph.types import Command
 from app.agents.middleware.factory import create_middleware_stack as real_create_middleware_stack
 from app.agents.workspace.offload import mark_offload
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
-from app.models.workflow_execution_models import RecordedCall
+from app.models.workflow_execution_models import RESULT_DIGEST_MAX_CHARS, RecordedCall
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.evaluator import PlaybookUser
@@ -560,6 +560,33 @@ async def test_the_narration_sees_the_whole_result_not_a_snippet_of_it() -> None
     assert result.ok is True
     prompt = str(llm.await_args.args[1])
     assert "Todo 29" in prompt, "the model must see the whole result, not the first 120 chars"
+
+
+async def test_the_narration_sees_every_item_even_when_the_record_keeps_fewer() -> None:
+    """The record digest is bounded so history stops growing; the narration is not
+    history. Seen live: an inbox fetch of five emails with bodies overran the
+    4000-char record bound, the narration was handed the record's three, and
+    the user's triage said "5 pulled, only 3 included" over a run in which every
+    call had succeeded.
+    """
+    payload = json.dumps(
+        {
+            "fetched_count": 5,
+            "messages": [{"id": f"msg_{i}", "body": "x" * 1200} for i in range(5)],
+        }
+    )
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder, events_result=payload))
+    playbook = _playbook(
+        [PlaybookStep(id="mail", tool="list_events", args={"calendar_id": "primary"})]
+    )
+
+    result, llm = await _run(playbook, registry)
+
+    assert result.ok is True
+    prompt = str(llm.await_args.args[1])
+    assert "msg_4" in prompt, "the narration must see every item the tool returned"
+    assert len(result.trace[0].result_digest) <= RESULT_DIGEST_MAX_CHARS
 
 
 # --- the one model call ----------------------------------------------------

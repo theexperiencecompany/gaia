@@ -19,8 +19,8 @@ from app.db.repositories.base import MongoDocument
 RESULT_DIGEST_MAX_CHARS = 4000
 
 
-def build_result_digest(output: object) -> str:
-    """A tool's result, bounded for the record and never cut mid-structure.
+def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
+    """A tool's result, bounded to ``max_chars`` and never cut mid-structure.
 
     The digest is not decoration. ``$last_run.<TOOL>.<path>`` resolves against
     it and a replay's narration reads it as what the tool returned, so a blind
@@ -29,17 +29,21 @@ def build_result_digest(output: object) -> str:
     it were the whole result. A JSON payload is therefore re-serialised compactly
     and, when it still does not fit, loses whole elements off the end rather than
     half of one. Only a result that is not JSON is truncated as text.
+
+    The record uses the default bound so history stops growing with the number
+    of runs; a reader that writes from the result (a replay's narration) passes
+    a bound sized for what a model can read, not for what a document can hold.
     """
     if output is None:
         return ""
     text = output if isinstance(output, str) else str(output)
-    if len(text) <= RESULT_DIGEST_MAX_CHARS:
+    if len(text) <= max_chars:
         return text
     try:
         value = json.loads(text)
     except (ValueError, TypeError):
-        return text[:RESULT_DIGEST_MAX_CHARS]
-    return _bounded_json(value)
+        return text[:max_chars]
+    return _bounded_json(value, max_chars)
 
 
 def _compact(value: object) -> str:
@@ -47,18 +51,18 @@ def _compact(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def _bounded_json(value: object) -> str:
+def _bounded_json(value: object, max_chars: int) -> str:
     """``value`` as compact JSON under the bound, dropping whole list elements."""
     items, rebuild = _largest_sequence(value)
     if items is None:
         # Nothing to shed element-wise (a huge scalar or a deep object): fall back
         # to text, which parse_result reads as text rather than as broken JSON.
-        return _compact(value)[:RESULT_DIGEST_MAX_CHARS]
+        return _compact(value)[:max_chars]
 
     kept: list[Any] = []
     for item in items:
         kept.append(item)
-        if len(_compact(rebuild(kept))) > RESULT_DIGEST_MAX_CHARS:
+        if len(_compact(rebuild(kept))) > max_chars:
             kept.pop()
             break
     return _compact(rebuild(kept))

@@ -72,6 +72,15 @@ from shared.py.wide_events import log
 #: bound rather than the data.
 _FAILURE_QUOTE_MAX_CHARS = 120
 
+#: How much of a step's result the NARRATION reads. The record's bound
+#: (RESULT_DIGEST_MAX_CHARS) keeps history from growing with the number of runs;
+#: the narration is not history, it is the one reader that writes the user's
+#: result from the data, and at the record's 4000 characters it saw three of an
+#: inbox's five emails and told the user so. Bounded at all only so a tool that
+#: returns megabytes cannot blow the model's context; whole elements are shed,
+#: never half of one.
+_NARRATION_RESULT_MAX_CHARS = 60_000
+
 #: The tool name a handoff node records itself under, matching what the agent
 #: path emits for the same delegation.
 _HANDOFF_TOOL = "handoff"
@@ -285,16 +294,16 @@ async def _run_tool_step(
         _record(run, tool_name, space.subagent_id, args, text)
         return _StepFailure(position, tool_name, text)
 
-    digest = _record(run, tool_name, space.subagent_id, args, text)
+    _record(run, tool_name, space.subagent_id, args, text)
     if step.id:
         info = read_offload(message)
         run.steps[step.id] = StepResult(
             value=parse_result(text), file=info["path"] if info else None
         )
-    # The whole digest: this line is the model's only view of what the tool
-    # returned, and it has to write the user's result from it. The digest is
-    # already bounded where it is built (RESULT_DIGEST_MAX_CHARS).
-    run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {digest}")
+    # This line is the model's only view of what the tool returned, and it has
+    # to write the user's result from it: bounded for the model, not the record.
+    shown = build_result_digest(text, max_chars=_NARRATION_RESULT_MAX_CHARS)
+    run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {shown}")
     return None
 
 
