@@ -1160,7 +1160,13 @@ def background_structured_runnable(
     runs there too. The aux alias is deliberately NOT applied in that case: it
     names a model id only the OpenRouter catalogue serves, and re-pointing a
     custom endpoint at it asks for a model that endpoint does not have.
+
+    Sim mode wins over the custom endpoint, as in every other factory here
+    (``init_custom_llm``, ``get_default_llm``): a sim run with DEV_LLM_* set
+    must land on the scripted stub, not on a real endpoint.
     """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature).with_structured_output(schema)
     if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
         return _build_custom_llm(temperature).with_structured_output(schema)
     return _aux_structured_runnable(schema, temperature, config)

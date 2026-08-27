@@ -47,6 +47,7 @@ from app.agents.llm.client import (
     ainvoke_llm,
     ainvoke_structured,
     ainvoke_structured_gemini,
+    background_structured_runnable,
     get_default_llm,
     init_llm,
     register_llm_providers,
@@ -618,6 +619,47 @@ class TestGetDefaultLlm:
         mock_settings.GOOGLE_API_KEY = None
 
         assert get_default_llm() is mock_sim_llm.return_value
+
+
+class TestBackgroundStructuredRunnable:
+    class _Shape(BaseModel):
+        text: str
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client._sim_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_sim_mode_wins_over_the_custom_endpoint(
+        self, mock_settings: MagicMock, mock_sim_llm: MagicMock, mock_build_custom: MagicMock
+    ) -> None:
+        """A sim run with DEV_LLM_* set must land on the scripted stub, like every
+        other factory — not on the real custom endpoint."""
+        mock_settings.GAIA_SIM_MODE = True
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_build_custom.assert_not_called()
+        mock_sim_llm.assert_called_once_with(0.3)
+        mock_sim_llm.return_value.with_structured_output.assert_called_once_with(self._Shape)
+        assert runnable is mock_sim_llm.return_value.with_structured_output.return_value
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_outside_sim_mode_the_custom_endpoint_is_used_when_configured(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_aux.assert_not_called()
+        mock_build_custom.assert_called_once_with(0.3)
+        assert runnable is mock_build_custom.return_value.with_structured_output.return_value
 
 
 # ---------------------------------------------------------------------------
