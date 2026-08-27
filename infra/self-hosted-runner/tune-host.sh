@@ -12,6 +12,18 @@
 #     the box runs much of the job below its rated clock.
 #   * Installs a systemd unit so the governor survives a reboot (the sysfs
 #     setting does not).
+#   * zram swap + the kernel's recommended VM knobs for it. The box had no
+#     zram, an 8 GB disk swap file at priority -1 and vm.swappiness=60 — stock
+#     desktop settings. Under a memory spike (observed: 16 pytest workers at
+#     2.5 GB each) that means paging to NVMe with a load average of 42 and
+#     every core busy doing nothing. zram compresses cold pages in RAM
+#     (zstd, typically 3-4x) at memory speed; the disk file stays as the last
+#     resort behind it. Knob values are the ones the kernel zram docs
+#     recommend (Documentation/admin-guide/blockdev/zram.rst), not folklore:
+#     swappiness 180 (swapping to zram is cheaper than dropping page cache),
+#     page-cluster 0 (no readahead — zram has no seek cost), and the
+#     watermark settings that make the kernel start compressing early rather
+#     than stalling under pressure.
 #
 # All root work happens in ONE sudo invocation. Doing it as a series of `sudo`
 # calls means re-authenticating for each one over a non-interactive session
@@ -74,6 +86,46 @@ else
 fi
 PAYLOAD_EOF
 
+ZRAM_PCT="${ZRAM_PCT:-50}"   # zram size as % of RAM; 50% of 46 GiB ≈ 23 GiB uncompressed capacity
+cat >> "$PAYLOAD" <<PAYLOAD_EOF
+# ---- zram + VM tuning ----
+if [[ "$MODE" == "performance" ]]; then
+  if ! dpkg -s systemd-zram-generator >/dev/null 2>&1; then
+    apt-get install -y -qq systemd-zram-generator >/dev/null 2>&1 || echo "WARN: could not install systemd-zram-generator"
+  fi
+  cat > /etc/systemd/zram-generator.conf <<'ZCONF'
+# CI host: compressed swap in RAM ahead of the disk swap file.
+[zram0]
+zram-size = ram * ${ZRAM_PCT} / 100
+compression-algorithm = zstd
+swap-priority = 100
+ZCONF
+  cat > /etc/sysctl.d/99-gaia-ci-vm.conf <<'SCONF'
+# Kernel zram documentation recommendations (blockdev/zram.rst).
+vm.swappiness = 180
+vm.page-cluster = 0
+vm.watermark_boost_factor = 0
+vm.watermark_scale_factor = 125
+# Large, bursty writers (docker layers, uv/pnpm extraction): let more dirty
+# pages accumulate before forcing synchronous writeback on 46 GiB.
+vm.dirty_background_ratio = 5
+vm.dirty_ratio = 20
+SCONF
+  sysctl -q --system >/dev/null
+  systemctl daemon-reload
+  systemctl restart systemd-zram-setup@zram0.service 2>/dev/null || true
+  # Drain stale pages out of the disk swap file so it starts empty behind zram.
+  if grep -q '^/swap.img' /proc/swaps; then
+    avail_kb=\$(awk '/MemAvailable/{print \$2}' /proc/meminfo); used_kb=\$(awk '/^\/swap.img/{print \$4}' /proc/swaps)
+    if (( avail_kb > used_kb * 2 )); then swapoff /swap.img && swapon -p -1 /swap.img; fi
+  fi
+else
+  rm -f /etc/systemd/zram-generator.conf /etc/sysctl.d/99-gaia-ci-vm.conf
+  systemctl daemon-reload; swapoff /dev/zram0 2>/dev/null || true
+  sysctl -q -w vm.swappiness=60 vm.page-cluster=3 vm.watermark_boost_factor=15000 vm.watermark_scale_factor=10 vm.dirty_background_ratio=10 vm.dirty_ratio=20 >/dev/null
+fi
+PAYLOAD_EOF
+
 # -S reads the password from stdin when there is no tty, and is harmless when
 # there is one (sudo still prompts normally).
 if sudo -n true 2>/dev/null; then
@@ -85,4 +137,7 @@ fi
 echo "[tune] Governor now: $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor) on all $(nproc) CPUs"
 [[ "$MODE" == "performance" ]] && echo "[tune] Persisted via cpu-governor-performance.service (survives reboot)"
 echo "[tune] /dev/shm: $(df -h /dev/shm | awk 'NR==2{print $4" free of "$2}')  (mutation workdirs stage here)"
+echo "[tune] swap:"; awk 'NR>1{printf "        %-14s %6.1f GiB  prio %s\n", $1, $3/1048576, $5}' /proc/swaps
+[[ -e /sys/block/zram0/comp_algorithm ]] && echo "[tune] zram0: $(cat /sys/block/zram0/comp_algorithm | grep -o '\[[a-z0-9]*\]') $(numfmt --to=iec < /sys/block/zram0/disksize)"
+echo "[tune] vm: swappiness=$(sysctl -n vm.swappiness) page-cluster=$(sysctl -n vm.page-cluster) watermark_scale=$(sysctl -n vm.watermark_scale_factor)"
 echo "[tune] Done."
