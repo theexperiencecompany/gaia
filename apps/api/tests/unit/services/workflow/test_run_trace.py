@@ -6,12 +6,16 @@ the next run is told nothing useful about the last one.
 """
 
 from datetime import UTC, datetime
+import json
+
+import pytest
 
 from app.models.chat_models import ToolDataEntry
 from app.models.workflow_execution_models import (
     RESULT_DIGEST_MAX_CHARS,
     RecordedCall,
     WorkflowExecution,
+    build_result_digest,
 )
 from app.services.workflow.run_trace import (
     LAST_RUN_MAX_CALLS,
@@ -194,3 +198,66 @@ def test_reasoning_deltas_are_not_recorded_as_calls():
     trace = build_trace(entries)
 
     assert [call.tool_name for call in trace] == ["search_todos"]
+
+
+@pytest.mark.unit
+class TestResultDigest:
+    """The digest is read back as data, so it must never stop mid-structure.
+
+    Regression: the digest was a blind ``text[:400]`` slice. A ``list_todos``
+    result was cut mid-token, so ``parse_result`` could no longer read it, every
+    ``$last_run.<TOOL>.<path>`` against it silently resolved to nothing, and a
+    replay's narration described one truncated fragment as the whole run.
+    """
+
+    def _todos(self, count: int) -> str:
+        return json.dumps(
+            {
+                "todos": [
+                    {
+                        "title": f"Sample todo {index}",
+                        "description": None,
+                        "labels": [],
+                        "priority": "none",
+                        "project_id": "6a8b603ca9491c1710262563",
+                        "completed": False,
+                        "subtasks": [],
+                    }
+                    for index in range(count)
+                ]
+            }
+        )
+
+    def test_an_oversized_json_result_stays_parseable(self) -> None:
+        digest = build_result_digest(self._todos(200))
+
+        assert len(digest) <= RESULT_DIGEST_MAX_CHARS
+        parsed = json.loads(digest)  # the whole point: still JSON
+        assert isinstance(parsed["todos"], list)
+        assert parsed["todos"], "dropping every element defeats the digest"
+        assert parsed["todos"][0]["title"] == "Sample todo 0"
+
+    def test_whole_elements_are_dropped_never_half_of_one(self) -> None:
+        parsed = json.loads(build_result_digest(self._todos(200)))
+
+        for todo in parsed["todos"]:
+            assert set(todo) == {
+                "title",
+                "description",
+                "labels",
+                "priority",
+                "project_id",
+                "completed",
+                "subtasks",
+            }
+
+    def test_a_result_that_fits_is_kept_verbatim(self) -> None:
+        assert build_result_digest('{"count": 3}') == '{"count": 3}'
+
+    def test_a_non_json_result_is_bounded_as_text(self) -> None:
+        digest = build_result_digest("x" * (RESULT_DIGEST_MAX_CHARS + 500))
+
+        assert len(digest) == RESULT_DIGEST_MAX_CHARS
+
+    def test_no_result_is_an_empty_digest(self) -> None:
+        assert build_result_digest(None) == ""

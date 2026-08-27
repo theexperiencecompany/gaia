@@ -49,7 +49,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
-from app.models.workflow_execution_models import RESULT_DIGEST_MAX_CHARS, RecordedCall
+from app.models.workflow_execution_models import RecordedCall, build_result_digest
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow.playbook.evaluator import (
@@ -350,7 +350,7 @@ def _record(
     Appended before the caller decides what the result means, so a step that
     fails after a side effect is still on the record.
     """
-    digest = text[:RESULT_DIGEST_MAX_CHARS]
+    digest = build_result_digest(text)
     run.trace.append(
         RecordedCall(
             tool_name=tool_name,

@@ -16,9 +16,9 @@ import json
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.models.chat_models import ToolDataEntry
 from app.models.workflow_execution_models import (
-    RESULT_DIGEST_MAX_CHARS,
     RecordedCall,
     WorkflowExecution,
+    build_result_digest,
 )
 
 #: The two ``tool_data`` kinds that carry tool calls. Everything else in the list
@@ -40,6 +40,13 @@ NON_CALL_ENTRY_NAMES = frozenset({"reasoning"})
 #: reintroduce the context bloat the reset exists to remove.
 LAST_RUN_MAX_CALLS = 40
 LAST_RUN_MAX_ARGS_CHARS = 300
+#: How much of a recorded result is worth spending prompt on. Deliberately far
+#: below what the record itself keeps: the stored digest is data the next run
+#: RESOLVES against ($last_run.<TOOL>.<path>) and must stay whole, while this is
+#: only what the agent READS, and forty of them at full size would be a bigger
+#: brief than the work. One bound cannot serve both, and when it tried, raising
+#: it for fidelity silently inflated every workflow prompt.
+LAST_RUN_MAX_DIGEST_CHARS = 400
 LAST_RUN_MAX_SUMMARY_CHARS = 800
 
 
@@ -71,7 +78,7 @@ def render_last_run(execution: WorkflowExecution) -> str:
         args = json.dumps(call.args, default=str)[:LAST_RUN_MAX_ARGS_CHARS]
         lines.append(f"{call.tool_name}({args})")
         if call.result_digest:
-            lines.append(f"  -> {call.result_digest}")
+            lines.append(f"  -> {call.result_digest[:LAST_RUN_MAX_DIGEST_CHARS]}")
     omitted = len(execution.trace) - LAST_RUN_MAX_CALLS
     if omitted > 0:
         lines.append(f"... and {omitted} more calls")
@@ -117,5 +124,5 @@ def _recorded_call(data: object, subagent_id: object) -> RecordedCall | None:
         tool_category=str(data.get("tool_category") or ""),
         subagent_id=str(subagent_id) if subagent_id else None,
         args=dict(inputs) if isinstance(inputs, dict) else {},
-        result_digest="" if output is None else str(output)[:RESULT_DIGEST_MAX_CHARS],
+        result_digest=build_result_digest(output),
     )

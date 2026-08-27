@@ -4,7 +4,9 @@ Workflow Execution Models.
 Models for tracking workflow execution history.
 """
 
+from collections.abc import Callable
 from datetime import datetime
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,7 +16,66 @@ from app.db.repositories.base import MongoDocument
 #: How much of a tool's result is kept on the record. Enough to tell the next run
 #: what came back (ids, a count, a cursor) without storing message bodies — the
 #: whole point is that a run's history stops growing with the number of runs.
-RESULT_DIGEST_MAX_CHARS = 400
+RESULT_DIGEST_MAX_CHARS = 4000
+
+
+def build_result_digest(output: object) -> str:
+    """A tool's result, bounded for the record and never cut mid-structure.
+
+    The digest is not decoration. ``$last_run.<TOOL>.<path>`` resolves against
+    it and a replay's narration reads it as what the tool returned, so a blind
+    slice breaks both at once: JSON cut mid-token stops parsing, a cursor then
+    silently resolves to nothing, and the narration describes a fragment as if
+    it were the whole result. A JSON payload is therefore re-serialised compactly
+    and, when it still does not fit, loses whole elements off the end rather than
+    half of one. Only a result that is not JSON is truncated as text.
+    """
+    if output is None:
+        return ""
+    text = output if isinstance(output, str) else str(output)
+    if len(text) <= RESULT_DIGEST_MAX_CHARS:
+        return text
+    try:
+        value = json.loads(text)
+    except (ValueError, TypeError):
+        return text[:RESULT_DIGEST_MAX_CHARS]
+    return _bounded_json(value)
+
+
+def _compact(value: object) -> str:
+    return json.dumps(value, separators=(",", ":"), default=str)
+
+
+def _bounded_json(value: object) -> str:
+    """``value`` as compact JSON under the bound, dropping whole list elements."""
+    items, rebuild = _largest_sequence(value)
+    if items is None:
+        # Nothing to shed element-wise (a huge scalar or a deep object): fall back
+        # to text, which parse_result reads as text rather than as broken JSON.
+        return _compact(value)[:RESULT_DIGEST_MAX_CHARS]
+
+    kept: list[Any] = []
+    for item in items:
+        kept.append(item)
+        if len(_compact(rebuild(kept))) > RESULT_DIGEST_MAX_CHARS:
+            kept.pop()
+            break
+    return _compact(rebuild(kept))
+
+
+def _largest_sequence(
+    value: object,
+) -> tuple[list[Any] | None, Callable[[list[Any]], object]]:
+    """The list inside ``value`` worth shedding, and how to put it back."""
+    if isinstance(value, list):
+        return value, lambda items: items
+    if isinstance(value, dict):
+        lists = {key: item for key, item in value.items() if isinstance(item, list)}
+        if lists:
+            key = max(lists, key=lambda name: len(_compact(lists[name])))
+            return lists[key], lambda items, key=key: {**value, key: items}
+    return None, lambda items: items
+
 
 # The run-states an execution record may hold: created as ``running``, then
 # exactly one terminal write. Named once here because the document, the update
