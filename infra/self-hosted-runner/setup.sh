@@ -157,6 +157,7 @@ PATH=${RUNNER_PATH}
 MISE_NODE_COREPACK=1
 RUNNER_INDEX=${idx}
 RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+${NX_REMOTE_ENV}
 ENVFILE
 
   # Stale registration → remove with the fresh token before reconfiguring.
@@ -279,6 +280,49 @@ WantedBy=default.target
 UNIT
 systemctl --user daemon-reload
 echo "[setup] Wrote $UNIT_DIR/gaia-runner@.service"
+
+# Shared Nx remote cache (see nx-cache-server/README.md). The per-runner local
+# Nx cache is SQLite-backed and therefore keyed per instance; this server is
+# the tier every instance shares. Loopback only; token stays on the host.
+NX_SRV_DIR="${LOCAL_CACHE}/nx-cache-server"
+NX_TOKEN_FILE="${LOCAL_CACHE}/nx-remote.token"
+NX_CACHE_PORT="${NX_CACHE_PORT:-4222}"
+NX_SRV_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/nx-cache-server/server.mjs"
+if [[ -f "$NX_SRV_SRC" ]]; then
+  mkdir -p "$NX_SRV_DIR" "${LOCAL_CACHE}/nx-remote"
+  install -m 0644 "$NX_SRV_SRC" "$NX_SRV_DIR/server.mjs"
+  if [[ ! -s "$NX_TOKEN_FILE" ]]; then
+    (umask 077; head -c 32 /dev/urandom | base64 | tr -d '/+=\n' > "$NX_TOKEN_FILE")
+    echo "[setup] Generated Nx cache token at $NX_TOKEN_FILE"
+  fi
+  NODE_BIN="$(command -v node || echo /home/aryan/.local/share/mise/installs/node/22.23.2/bin/node)"
+  cat > "$UNIT_DIR/gaia-nx-cache.service" <<UNIT
+[Unit]
+Description=Shared Nx remote cache for the home runner instances
+After=network.target
+
+[Service]
+Type=simple
+Environment=NX_CACHE_DIR=${LOCAL_CACHE}/nx-remote
+Environment=NX_CACHE_PORT=${NX_CACHE_PORT}
+Environment=NX_CACHE_HOST=127.0.0.1
+Environment=NX_CACHE_MAX_BYTES=${NX_CACHE_MAX_BYTES:-8589934592}
+ExecStart=/bin/bash -c 'NX_CACHE_TOKEN="\$(cat ${NX_TOKEN_FILE})" exec ${NODE_BIN} ${NX_SRV_DIR}/server.mjs'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --now gaia-nx-cache.service > /dev/null 2>&1 \
+    && echo "[setup] Nx cache server enabled on 127.0.0.1:${NX_CACHE_PORT}" \
+    || echo "::warning::could not start gaia-nx-cache.service"
+  NX_REMOTE_ENV="NX_SELF_HOSTED_REMOTE_CACHE_SERVER=http://127.0.0.1:${NX_CACHE_PORT}
+NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN=$(cat "$NX_TOKEN_FILE")"
+else
+  NX_REMOTE_ENV=""
+fi
 
 # Nightly cache prune as a user timer, so the persistent caches that make the
 # box fast stay size-bounded without anyone remembering to run anything.

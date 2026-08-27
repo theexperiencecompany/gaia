@@ -112,6 +112,9 @@ fi
 # --- size-bounded stores ----------------------------------------------------
 trim_lru "${CACHE_ROOT}/pnpm-store" "$PNPM_BUDGET_GB" "pnpm store"
 trim_lru "${CACHE_ROOT}/uv"         "$UV_BUDGET_GB"   "uv cache"
+# The Nx remote cache server evicts LRU itself (NX_CACHE_MAX_BYTES); this is a
+# backstop at a slightly larger budget in case the server is down.
+trim_lru "${CACHE_ROOT}/nx-remote"  "${NX_REMOTE_BUDGET_GB:-9}" "nx remote cache"
 for d in "${CACHE_ROOT}"/*/nx-cache;   do trim_lru "$d" "$NX_BUDGET_GB"   "nx cache ($(basename "$(dirname "$d")"))"; done
 for d in "${CACHE_ROOT}"/*/nextjs;     do trim_lru "$d" "$NEXT_BUDGET_GB" "next cache ($(basename "$(dirname "$d")"))"; done
 
