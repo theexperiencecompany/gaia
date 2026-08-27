@@ -10,7 +10,7 @@ browser task actually runs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config.settings import settings
 from app.services.browser.exceptions import BrowserUnavailableError
@@ -102,13 +102,21 @@ def build_browser_llm() -> BaseChatModel:
         # fallback: schema in the system prompt, plain-text JSON parsed back.
         # Vision is unaffected — image input alone is fine on those lanes.
         schema_in_prompt = settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT
-        return ChatOpenAI(
-            model=model,
-            api_key=api_key,
-            base_url=base_url,
-            add_schema_to_system_prompt=schema_in_prompt,
-            dont_force_structured_output=schema_in_prompt,
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "api_key": api_key,
+            "base_url": base_url,
+            "add_schema_to_system_prompt": schema_in_prompt,
+            "dont_force_structured_output": schema_in_prompt,
+        }
+        effort = settings.BROWSER_USE_LLM_REASONING_EFFORT
+        if effort:
+            # Naming this model in `reasoning_models` is what makes Browser-Use
+            # forward `reasoning_effort` at all — its check is a substring match
+            # against the model name, not a capability lookup.
+            kwargs["reasoning_effort"] = effort
+            kwargs["reasoning_models"] = [model]
+        return ChatOpenAI(**kwargs)
 
     raise BrowserUnavailableError(f"Unknown browser LLM provider: '{provider}'.")
 

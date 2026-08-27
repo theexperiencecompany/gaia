@@ -94,6 +94,7 @@ class TestBuildBrowserLlm:
         api_key="test-key",
         base_url=None,
         schema_in_prompt=False,
+        reasoning_effort=None,
     ):
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_PROVIDER", provider)
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_MODEL", model)
@@ -101,6 +102,9 @@ class TestBuildBrowserLlm:
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", base_url)
         monkeypatch.setattr(
             "app.services.browser.llm.settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT", schema_in_prompt
+        )
+        monkeypatch.setattr(
+            "app.services.browser.llm.settings.BROWSER_USE_LLM_REASONING_EFFORT", reasoning_effort
         )
 
     def test_anthropic(self, monkeypatch):
@@ -195,6 +199,31 @@ class TestBuildBrowserLlm:
             dont_force_structured_output=True,
         )
 
+    def test_reasoning_effort_names_the_model_so_it_reaches_the_wire(self, monkeypatch):
+        """Browser-Use forwards `reasoning_effort` only for models whose NAME is in
+        `reasoning_models` — a substring match, not a capability lookup. Without
+        naming our own model there, a thinking model thinks unthrottled."""
+        mocks = _fake_browser_use_modules(monkeypatch)
+        self._set_provider(
+            monkeypatch, "openai", base_url="https://gw.example/v1", reasoning_effort="low"
+        )
+        from app.services.browser.llm import build_browser_llm
+
+        build_browser_llm()
+        kwargs = mocks["ChatOpenAI"].call_args.kwargs
+        assert kwargs["reasoning_effort"] == "low"
+        assert kwargs["reasoning_models"] == ["test-model"]
+
+    def test_no_reasoning_effort_leaves_the_kwargs_off(self, monkeypatch):
+        mocks = _fake_browser_use_modules(monkeypatch)
+        self._set_provider(monkeypatch, "openai", base_url=None)
+        from app.services.browser.llm import build_browser_llm
+
+        build_browser_llm()
+        kwargs = mocks["ChatOpenAI"].call_args.kwargs
+        assert "reasoning_effort" not in kwargs
+        assert "reasoning_models" not in kwargs
+
     def test_openrouter_uses_default_base_url(self, monkeypatch):
         mocks = _fake_browser_use_modules(monkeypatch)
         self._set_provider(monkeypatch, "openrouter", base_url=None)
@@ -257,6 +286,9 @@ class TestBuildBrowserLlm:
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", None)
         monkeypatch.setattr(
             "app.services.browser.llm.settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT", False
+        )
+        monkeypatch.setattr(
+            "app.services.browser.llm.settings.BROWSER_USE_LLM_REASONING_EFFORT", None
         )
         from app.services.browser.llm import build_browser_llm
 

@@ -223,6 +223,13 @@ class CommonSettings(BaseAppSettings):
     # requested capabilities"). Browser-Use can instead put the schema in the
     # system prompt and parse plain-text JSON back — set this for those lanes.
     BROWSER_USE_LLM_SCHEMA_IN_PROMPT: bool = False
+    # Reasoning budget for a thinking model on the browser lane. Browser-Use only
+    # forwards `reasoning_effort` for models whose NAME matches its hardcoded
+    # OpenAI reasoning list, so a thinking model it doesn't recognise (zai/glm-*)
+    # silently thinks unthrottled — measured at ~1.2k thinking chars and 8.6s per
+    # step, versus 1.8s at "low". Set this to have the lane's own model treated as
+    # a reasoning model so the effort actually reaches the wire.
+    BROWSER_USE_LLM_REASONING_EFFORT: Literal["minimal", "low", "medium", "high"] | None = None
     # Vision (screenshots to the model) is the biggest cost driver — keep it on
     # for reliability, but a deployment optimizing cost can disable it.
     BROWSER_USE_VISION: bool = True
