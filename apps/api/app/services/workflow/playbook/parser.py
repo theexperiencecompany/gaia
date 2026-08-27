@@ -11,7 +11,8 @@ the agent reading its own playbook back; the structured body is the only stored
 form, so nothing ever parses the YAML again.
 """
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+import re
 from typing import Any
 
 from langchain_core.tools import BaseTool
@@ -20,14 +21,8 @@ import yaml
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import PlaybookBody, PlaybookStep
+from app.services.workflow.playbook.placeholders import placeholder_tokens
 from app.services.workflow.playbook.tool_space import resolve_subagent_tools
-
-#: The placeholder namespaces a playbook may address. Everything else is a typo:
-#: placeholders are resolved by code, so an unrecognised one would be handed to a
-#: tool as the literal ``$whatever`` string.
-PLACEHOLDER_ROOTS: frozenset[str] = frozenset(
-    {"now", "today", "user", "trigger", "steps", "last_run", "ask"}
-)
 
 _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
     "string": (str,),
@@ -190,30 +185,26 @@ def _check_tool_step(
                 )
             )
             continue
-        for token in _placeholders(value):
+        # The evaluator's own scanner, so a placeholder embedded in text
+        # ("Email $steps.mail.to") is checked exactly as a whole-value one is.
+        tokens = list(placeholder_tokens(value))
+        for token in tokens:
             _check_placeholder(token, where, ask_names, declared_steps, issues)
-        if not _has_placeholder(value):
+        if not tokens:
             _check_value_type(value, arg_schema, where, issues)
 
 
 def _check_placeholder(
-    token: str,
+    match: re.Match[str],
     where: str,
     ask_names: set[str],
     declared_steps: set[str],
     issues: list[PlaybookIssue],
 ) -> None:
-    root, rest = _split_placeholder(token)
-    if root not in PLACEHOLDER_ROOTS:
-        issues.append(
-            PlaybookIssue(
-                where=where,
-                problem=f"unknown placeholder {token!r}; the namespaces are "
-                f"{', '.join(sorted(PLACEHOLDER_ROOTS))}",
-            )
-        )
-        return
-    name = rest.partition(".")[0]
+    # The tokenizer only matches known roots; any other ``$word`` is literal text.
+    token = match.group(0)
+    root = match.group("root")
+    name = match.group("path").lstrip(".").partition(".")[0]
     if root == "steps" and name not in declared_steps:
         issues.append(
             PlaybookIssue(
@@ -267,28 +258,3 @@ def _describe(arg_schema: dict[str, Any]) -> str:
     variants = arg_schema.get("anyOf") or arg_schema.get("oneOf") or []
     names = [v["type"] for v in variants if isinstance(v, dict) and isinstance(v.get("type"), str)]
     return " or ".join(names) if names else "another type"
-
-
-def _placeholders(value: object) -> Iterator[str]:
-    """Every ``$...`` token in a value, however deeply nested."""
-    if isinstance(value, str):
-        if value.startswith("$"):
-            yield value
-    elif isinstance(value, dict):
-        for item in value.values():
-            yield from _placeholders(item)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _placeholders(item)
-
-
-def _has_placeholder(value: object) -> bool:
-    return any(True for _ in _placeholders(value))
-
-
-def _split_placeholder(token: str) -> tuple[str, str]:
-    """``$steps.draft.file`` becomes ``("steps", "draft.file")``; ``$now + 1d``
-    becomes ``("now", "")`` because the offset is resolved, not referenced."""
-    head = token[1:].split(maxsplit=1)[0] if token[1:].strip() else ""
-    root, _, rest = head.partition(".")
-    return root, rest

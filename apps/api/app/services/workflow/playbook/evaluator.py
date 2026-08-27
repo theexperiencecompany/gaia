@@ -8,10 +8,12 @@ only ever become data.
 The one asymmetry worth knowing: the current run is addressed by step id
 (``$steps.<id>``) and the previous run by TOOL NAME (``$last_run.<TOOL>``),
 because the run before a playbook's first replay was agentic and has no step ids
-at all. That is also why an unresolvable ``$last_run`` is ``None`` rather than an
-error: a first replay legitimately has nothing to look back at, while an
-unresolvable ``$steps`` / ``$trigger`` / ``$user`` means the playbook no longer
-matches reality and must fail loudly instead of calling a tool with a hole in it.
+at all. That is also why a ``$last_run`` naming a tool the previous run never
+called is ``None`` rather than an error: a first replay legitimately has nothing
+to look back at. Every other miss — a ``$last_run`` path absent from what that
+tool did return, an unresolvable ``$steps`` / ``$trigger`` / ``$user`` — means
+the playbook no longer matches reality and must fail loudly instead of calling a
+tool with a hole in it.
 """
 
 from collections.abc import Mapping, Sequence
@@ -22,7 +24,7 @@ import re
 from typing import Any
 
 from app.models.workflow_execution_models import RecordedCall
-from app.services.workflow.playbook.parser import PLACEHOLDER_ROOTS
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 from app.utils.errors import AppError
 
 #: Offset suffixes ``$now``/``$today`` accept, as ``timedelta`` keywords.
@@ -33,18 +35,6 @@ _OFFSET_UNITS: dict[str, str] = {
     "m": "minutes",
     "s": "seconds",
 }
-
-#: Longest root first so ``last_run`` is never matched as a shorter alternative.
-_ROOT_ALTERNATION = "|".join(sorted(PLACEHOLDER_ROOTS, key=len, reverse=True))
-
-#: One token: a root from the parser's closed namespace set, an optional dotted
-#: path, and (for the two time roots) an optional signed offset. Used to match,
-#: never to build code — the match groups are read as data.
-_TOKEN = re.compile(
-    rf"\$(?P<root>{_ROOT_ALTERNATION})"
-    r"(?P<path>(?:\.[A-Za-z0-9_-]+)*)"
-    r"(?:\s*(?P<sign>[+-])\s*(?P<amount>\d+)(?P<unit>[wdhms])\b)?"
-)
 
 #: The only fields ``$user`` exposes.
 _USER_FIELDS = ("email", "name", "timezone")
@@ -132,10 +122,10 @@ def resolve_value(value: object, context: RunContext) -> object:
     if not isinstance(value, str) or "$" not in value:
         return value
 
-    whole = _TOKEN.fullmatch(value)
+    whole = PLACEHOLDER_TOKEN.fullmatch(value)
     if whole is not None:
         return _resolve_token(whole, context)
-    return _TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
+    return PLACEHOLDER_TOKEN.sub(lambda match: _render(_resolve_token(match, context)), value)
 
 
 def _resolve_token(match: re.Match[str], context: RunContext) -> object:
@@ -168,7 +158,7 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
         return _resolve_required(token, context.trigger, path, "the trigger payload")
     if root == "steps":
         return _resolve_step(token, path, context.steps)
-    return _resolve_last_run(path, context.last_run)
+    return _resolve_last_run(token, path, context.last_run)
 
 
 def _resolve_time(
@@ -227,18 +217,32 @@ def _resolve_step(token: str, path: str, steps: Mapping[str, StepResult]) -> obj
     return _resolve_required(token, result.value, rest, f"step {step_id!r}'s result")
 
 
-def _resolve_last_run(path: str, last_run: Mapping[str, object]) -> object:
+def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> object:
     """The previous run's value, or ``None`` when there is nothing to look back at.
 
-    Deliberately not an error. The run before a playbook's first replay was
-    agentic, so a value the playbook expects to carry over may simply not exist
-    yet — and the first replay must still run.
+    A tool the previous run never called is deliberately not an error: the run
+    before a playbook's first replay was agentic, so a value the playbook expects
+    to carry over may simply not exist yet — and the first replay must still run.
+    A tool it DID call whose result lacks the path is: the playbook expects a
+    shape the tool no longer returns (or the result was recorded as text), and
+    calling the tool with ``None`` where a cursor belongs restarts from the top.
     """
     tool_name, _, rest = path.partition(".")
     if tool_name not in last_run:
         return None
-    value, found = _walk(last_run[tool_name], rest)
-    return value if found else None
+    recorded = last_run[tool_name]
+    value, found = _walk(recorded, rest)
+    if found:
+        return value
+    raise PlaceholderError(
+        message=f"{token} is not in what {tool_name} returned last run",
+        why=(
+            "that result was recorded as text, not JSON, so it has no fields to address"
+            if isinstance(recorded, str)
+            else "the previous run's result for that tool has no value at that path"
+        ),
+        fix="re-author the playbook against a run whose result has this shape",
+    )
 
 
 def _resolve_required(token: str, root: object, path: str, where: str) -> object:
@@ -280,9 +284,9 @@ def parse_result(digest: str) -> object:
 def _render(value: object) -> str:
     """A resolved value as it reads inside a larger string.
 
-    ``None`` renders as nothing rather than the word "None": the only value that
-    can be ``None`` here is an unresolved ``$last_run``, and a run with no
-    history should send an empty cursor, not the literal text.
+    ``None`` renders as nothing rather than the word "None": it is either a
+    ``$last_run`` with no history behind it or a recorded JSON null, and neither
+    should reach a tool as the literal text.
     """
     if value is None:
         return ""

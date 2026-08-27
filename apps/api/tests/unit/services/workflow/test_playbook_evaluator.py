@@ -1,9 +1,10 @@
 """Resolving a playbook step's placeholders against the run that is happening.
 
-The asymmetry is the whole point and every test here defends one half of it: an
-unresolvable ``$last_run`` is a first replay with no history and must resolve to
-``None``, while an unresolvable ``$steps`` / ``$trigger`` / ``$user`` means the
-playbook is stale and must stop the run by name.
+The asymmetry is the whole point and every test here defends one half of it: a
+``$last_run`` naming a tool the previous run never called is a first replay with
+no history and must resolve to ``None``, while every other miss — a ``$last_run``
+path the tool's recorded result lacks, an unresolvable ``$steps`` / ``$trigger``
+/ ``$user`` — means the playbook is stale and must stop the run by name.
 """
 
 from datetime import datetime
@@ -104,9 +105,45 @@ def test_unresolvable_last_run_is_none_not_an_error() -> None:
     assert resolve_value("$last_run.GMAIL_FETCH", context) is None
 
 
-def test_unresolvable_last_run_field_on_a_known_tool_is_also_none() -> None:
+def test_a_last_run_path_the_tool_did_not_return_stops_the_run_by_name() -> None:
+    """The previous run DID call the tool, so "not there" is not "no history":
+    it is a shape the playbook expects and the tool no longer returns. Resolving
+    it to ``None`` sent the tool a null cursor and silently restarted from page
+    one, repeating every side effect of the run before."""
     context = _context(last_run={"GMAIL_FETCH": {"other": 1}})
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$last_run.GMAIL_FETCH.next_page", context)
+    _assert_actionable(caught.value, "$last_run.GMAIL_FETCH.next_page")
+
+
+def test_a_last_run_result_recorded_as_text_cannot_be_addressed_into() -> None:
+    """A digest that was not JSON (a truncated or plain-text result) has no
+    fields; addressing one must say so rather than resolve to ``None``."""
+    context = _context(last_run={"GMAIL_FETCH": "12 messages, next page tok_2"})
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value("$last_run.GMAIL_FETCH.next_page", context)
+    _assert_actionable(caught.value, "$last_run.GMAIL_FETCH.next_page")
+    assert "text" in caught.value.why
+
+
+def test_a_last_run_value_that_is_really_null_resolves_to_none() -> None:
+    """A recorded JSON ``null`` (the last page's empty cursor) is a resolved
+    value, distinct from a path that is not there at all."""
+    context = _context(last_run={"GMAIL_FETCH": {"next_page": None}})
     assert resolve_value("$last_run.GMAIL_FETCH.next_page", context) is None
+
+
+def test_an_unknown_dollar_word_is_literal_text_whole_value_and_embedded() -> None:
+    """Only the closed namespaces are placeholders. A recorded ``bash`` step
+    legitimately says ``echo $HOME``, and ``$nowhere`` is not ``$now`` + text, so
+    both reach the tool exactly as written rather than raising or being cut."""
+    context = _context()
+    assert resolve_value("$HOME", context) == "$HOME"
+    assert resolve_value("echo $HOME $1", context) == "echo $HOME $1"
+    assert (
+        resolve_value("Email $sender.name on $today", context) == "Email $sender.name on 2026-03-14"
+    )
+    assert resolve_value("$nowhere", context) == "$nowhere"
 
 
 def test_unresolvable_step_raises_and_names_the_placeholder() -> None:

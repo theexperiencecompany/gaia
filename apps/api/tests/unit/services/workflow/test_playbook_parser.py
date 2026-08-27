@@ -376,23 +376,86 @@ synthesize: x
         assert result.valid is False
         assert "$ask.headline" in result.issues[0].problem
 
-    async def test_unknown_placeholder_namespace_is_rejected(self) -> None:
+    async def test_an_unknown_dollar_word_is_literal_text_not_a_placeholder(self) -> None:
+        """Only the closed namespaces are placeholders. A recorded ``bash`` step
+        says ``echo $HOME``; refusing every ``$identifier`` would refuse it."""
         body = _body(
             """
-description: Invented namespace
+description: Shell variable in a recorded command
 steps:
   - id: mail
     tool: send_email
     args:
       to: $sender.email
-      subject: hi
+      subject: echo $HOME $1
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
+
+    async def test_a_placeholder_embedded_in_text_is_checked_like_a_whole_one(self) -> None:
+        """The evaluator interpolates ``$x`` inside a larger string, so the
+        validator has to read it there too. It only looked at values that
+        START with ``$``, so ``"Sent $ask.headline"`` was accepted and then
+        replayed against an ask the playbook never declares."""
+        body = _body(
+            """
+description: Embedded undeclared ask
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: Sent $ask.headline about today
 synthesize: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
         assert result.valid is False
-        assert "$sender.email" in result.issues[0].problem
+        assert result.issues[0].where == "steps[0].args.subject"
+        assert "$ask.headline" in result.issues[0].problem
+
+    async def test_an_embedded_reference_to_an_undeclared_step_is_refused(self) -> None:
+        body = _body(
+            """
+description: Embedded stale step reference
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: Found $steps.agenda.count events
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.valid is False
+        assert "$steps.agenda.count" in result.issues[0].problem
+
+    async def test_an_embedded_reference_to_a_declared_step_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Embedded valid reference
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: Found $steps.agenda.count events on $today
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
 
     async def test_last_run_reference_is_accepted_unresolved(self) -> None:
         body = _body(
@@ -677,24 +740,6 @@ synthesize: x
             result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert "it takes: nothing" in result.issues[0].problem
-
-    async def test_an_unknown_namespace_lists_the_namespaces_that_exist(self) -> None:
-        """The closed namespace set is the whole vocabulary; the rejection has to
-        hand it over or the agent guesses again."""
-        body = _body(
-            """
-description: Invented namespace
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: $sender.email
-synthesize: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-        assert "ask, last_run, now, steps, today, trigger, user" in result.issues[0].problem
 
     async def test_a_deep_step_reference_resolves_against_the_step_id(self) -> None:
         """``$steps.agenda.organizer.email`` names step ``agenda``, not
