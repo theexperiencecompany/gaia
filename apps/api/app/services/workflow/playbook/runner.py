@@ -33,7 +33,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured, metered_config
+from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
 from app.agents.middleware.factory import create_middleware_stack
 from app.agents.prompts.playbook_prompts import PLAYBOOK_NARRATION_PROMPT
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
@@ -446,8 +446,9 @@ async def _narrate(
     that have not run yet, so a result written mid-run still describes the whole
     run rather than the part that happens to be finished.
     """
-    narration = await ainvoke_structured(
-        PlaybookNarration,
+    config = metered_config(playbook.user_id)
+    narration: PlaybookNarration = await ainvoke_llm(
+        background_structured_runnable(PlaybookNarration, config=config),
         PLAYBOOK_NARRATION_PROMPT.format(
             description=playbook.description,
             completed="\n".join(run.completed) or "nothing yet",
@@ -456,7 +457,7 @@ async def _narrate(
             synthesize=playbook.synthesize,
         ),
         label="playbook_narration",
-        config=metered_config(playbook.user_id),
+        config=config,
     )
     run.narration = narration
     run.asks = {answer.name: answer.text for answer in narration.asks}

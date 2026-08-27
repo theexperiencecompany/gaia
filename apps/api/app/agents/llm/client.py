@@ -284,10 +284,20 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    return _openrouter_wire_configurables(_build_custom_llm())
+
+
+def _build_custom_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
+    """The bare custom-endpoint chat model, before the configurable wiring.
+
+    Split out because a structured one-shot needs the model itself:
+    ``with_structured_output`` lives on the chat model, not on the configurable
+    wrapper ``init_custom_llm`` hands back.
+    """
     llm = without_sdk_retry(
         ChatOpenRouter(
             model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-            temperature=DEFAULT_LLM_TEMPERATURE,
+            temperature=temperature,
             streaming=True,
             stream_usage=True,
             max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
@@ -301,7 +311,7 @@ def init_custom_llm() -> LanguageModelLike:
     # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
     # and has no curated registry entry, so pin the shared default window here.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return _openrouter_wire_configurables(llm)
+    return llm
 
 
 def init_llm(
@@ -1130,6 +1140,30 @@ def _aux_structured_runnable(
     if session_id:
         structured = structured.bind(session_id=session_id)
     return structured
+
+
+def background_structured_runnable(
+    schema: type[_StructuredT],
+    *,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    config: RunnableConfig | None = None,
+) -> Runnable:
+    """A structured one-shot on the provider THIS deployment actually runs on.
+
+    ``_aux_structured_runnable`` is hardwired to OpenRouter, which is right when
+    that is the deployment's lane and wrong when it is not. A deployment pointed
+    at another endpoint replays a playbook's tool calls perfectly and then cannot
+    write the run's result, because the one model call in the whole replay goes
+    somewhere it has no key for.
+
+    So when the custom endpoint is what this deployment runs on, the one-shot
+    runs there too. The aux alias is deliberately NOT applied in that case: it
+    names a model id only the OpenRouter catalogue serves, and re-pointing a
+    custom endpoint at it asks for a model that endpoint does not have.
+    """
+    if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
+        return _build_custom_llm(temperature).with_structured_output(schema)
+    return _aux_structured_runnable(schema, temperature, config)
 
 
 async def ainvoke_structured(

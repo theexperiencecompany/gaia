@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Annotated, Any, ClassVar
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -181,7 +181,11 @@ async def _run(
             AsyncMock(return_value=None),
         ),
         patch(f"{TOOL_SPACE_MODULE}.get_subagent_by_id", return_value=subagent),
-        patch(f"{MODULE}.ainvoke_structured", llm),
+        # The narration runs on whatever provider the deployment uses, so the
+        # runnable is built then invoked. Both halves are stubbed: the test cares
+        # that ONE model call happens and what it returns, not which lane served it.
+        patch(f"{MODULE}.background_structured_runnable", MagicMock()),
+        patch(f"{MODULE}.ainvoke_llm", llm),
         _gate_policy(policy),
     ):
         result = await run_playbook(

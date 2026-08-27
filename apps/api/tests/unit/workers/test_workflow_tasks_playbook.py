@@ -420,3 +420,89 @@ class TestWorkflowHash:
         assert workflow_hash("Mail the agenda", forward) != workflow_hash(
             "Mail the agenda", list(reversed(forward))
         )
+
+
+@pytest.mark.asyncio
+class TestStoppedReplayWideEvent:
+    """What a partly-run replay leaves behind for the next run and for support.
+
+    A replay that stops is the one case where BOTH paths ran, so the record has
+    to say the replay was tried, name the playbook, and keep the replay's own
+    calls ahead of the agent's. Losing any of that either hides that a playbook
+    is drifting or lets the next run repeat a side effect.
+    """
+
+    @staticmethod
+    def _stopped(workflow):
+        return AsyncMock(
+            return_value=(
+                "conv_1",
+                PlaybookRunResult(
+                    ok=False,
+                    text="",
+                    trace=[RecordedCall(tool_name="list_todos")],
+                    llm_calls=1,
+                    failure="Playbook stopped at step 2 (send_email): rejected argument 'body'.",
+                ),
+            )
+        )
+
+    async def test_a_stopped_replay_is_reported_as_a_replay_that_stopped(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = self._stopped(workflow)
+
+        await _fire(harness)
+
+        event = harness.playbook_event()
+        assert event["mode"] == "agent", "the agent finished the run"
+        assert event["reason"] == "replay_stopped", (
+            "must be distinguishable from a workflow that never had a playbook"
+        )
+        assert event["playbook_id"] == playbook.playbook_id
+        assert event["llm_calls"] == 1, "the replay's own model call still cost the user"
+
+    async def test_the_stop_is_logged_with_the_failure_that_caused_it(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = self._stopped(workflow)
+
+        await _fire(harness)
+
+        warnings = [
+            call
+            for call in harness.log.warning.call_args_list
+            if "replay stopped" in str(call.args[0]).lower()
+        ]
+        assert len(warnings) == 1
+        kwargs = warnings[0].kwargs
+        assert kwargs["workflow_id"] == workflow.id
+        assert kwargs["playbook_id"] == playbook.playbook_id
+        assert "send_email" in kwargs["failure"], (
+            "without the failure text nobody can tell why the playbook drifted"
+        )
+
+    async def test_the_replays_calls_come_before_the_agents_on_the_record(self) -> None:
+        """Order is the record of what already happened, in the order it happened.
+
+        The next run reads this trace as its history and the fallback agent is
+        told not to repeat the replay's calls. Dropping them, or putting the
+        agent's first, tells the next run a side effect never occurred.
+        """
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = self._stopped(workflow)
+        harness.chat = AsyncMock(
+            return_value=("conv_1", [RecordedCall(tool_name="send_email")])
+        )
+
+        await _fire(harness)
+
+        trace = harness.complete_execution.await_args.kwargs["trace"]
+
+        assert [call.tool_name for call in trace] == ["list_todos", "send_email"]
