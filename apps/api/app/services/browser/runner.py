@@ -32,6 +32,7 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
+    BrowserAction,
     BrowserCardSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -60,14 +61,16 @@ RequestHandoffFn = Callable[[HandoffRequest], Awaitable[HandoffOutcome]]
 IsCancelledFn = Callable[[], Awaitable[bool]]
 
 
-def _summarize_actions(agent_output: AgentOutput) -> str:
-    """A human-readable summary of the step's actions, for the progress card."""
-    parts: list[str] = []
+def _extract_actions(agent_output: AgentOutput) -> list[BrowserAction]:
+    """The step's actions as the agent's own tool calls — name plus arguments."""
+    actions: list[BrowserAction] = []
     for action in getattr(agent_output, "action", None) or []:
         dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
         for action_name, params in dumped.items():
-            parts.append(f"{action_name}({params})" if params else action_name)
-    return "; ".join(parts)
+            actions.append(
+                BrowserAction(name=action_name, inputs=params if isinstance(params, dict) else {})
+            )
+    return actions
 
 
 class BrowserTaskRunner:
@@ -288,7 +291,7 @@ class BrowserTaskRunner:
             or getattr(agent_output, "thinking", "")
             or caption_from_actions(agent_output)
         )
-        action_detail = _summarize_actions(agent_output)
+        step_actions = _extract_actions(agent_output)
         raw_screenshot = getattr(browser_state_summary, "screenshot", None)
 
         # Per-step profiling: `since_prev_ms` is the wall-clock the agent spent on the
@@ -309,7 +312,7 @@ class BrowserTaskRunner:
             self._emit_step(
                 n_steps,
                 goal,
-                action_detail,
+                step_actions,
                 getattr(browser_state_summary, "url", None),
                 getattr(browser_state_summary, "title", None),
                 raw_screenshot,
@@ -324,7 +327,7 @@ class BrowserTaskRunner:
         self,
         n_steps: int,
         goal: str,
-        action_detail: str,
+        actions: list[BrowserAction],
         url: str | None,
         title: str | None,
         raw_screenshot: str | None,
@@ -341,7 +344,7 @@ class BrowserTaskRunner:
                 BrowserStepSnapshot(
                     index=n_steps,
                     goal=goal,
-                    action=action_detail or None,
+                    actions=actions,
                     url=url,
                     title=title,
                     screenshot=screenshot,

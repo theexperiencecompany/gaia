@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+from app.schemas.browser import BrowserAction
+
 if TYPE_CHECKING:
     from browser_use.agent.views import AgentOutput
 
@@ -62,12 +64,10 @@ def caption_from_actions(agent_output: AgentOutput) -> str:
     return _dedupe_join(parts)
 
 
-def caption_from_action_summary(action_summary: str | None) -> str:
-    """Same captions, from the flattened ``"name(params); name(params)"`` string a
-    step snapshot carries when the caller has no structured action data — params
-    aren't recoverable from that string, so each action is described by name alone."""
-    names = (part.strip().split("(")[0].strip() for part in (action_summary or "").split(";"))
-    return _dedupe_join([describe_action(name, {}) for name in names if name])
+def caption_from_action_list(actions: list[BrowserAction]) -> str:
+    """Same captions, from a step snapshot's structured actions — the params are
+    real here, so a caption can name what was opened or typed, not just the verb."""
+    return _dedupe_join([describe_action(a.name, a.inputs) for a in actions])
 
 
 def _dedupe_join(parts: list[str]) -> str:

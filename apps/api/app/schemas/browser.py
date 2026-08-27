@@ -7,7 +7,7 @@
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -35,13 +35,25 @@ class BrowserSessionSnapshot(BaseModel):
     detail: str | None = None
 
 
+class BrowserAction(BaseModel):
+    """One action the browser agent invoked in a step — its name and arguments.
+
+    The agent's own tool call. Kept structured (not flattened to a string) so the
+    chat thread can render it like any other tool call, and so captions can use
+    the real target ("Opening github.com") instead of just the verb.
+    """
+
+    name: str
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
 class BrowserStepSnapshot(BaseModel):
     """Immutable snapshot of one agent step for the task record."""
 
     kind: Literal[BrowserEventKind.STEP] = BrowserEventKind.STEP
     index: int
     goal: str
-    action: str | None = None
+    actions: list[BrowserAction] = Field(default_factory=list)
     url: str | None = None
     title: str | None = None
     screenshot: str | None = None

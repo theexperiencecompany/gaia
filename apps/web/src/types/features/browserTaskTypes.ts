@@ -33,11 +33,18 @@ export interface BrowserSessionSnapshot {
   detail?: string | null;
 }
 
+/** One action the browser agent invoked — its own tool call. */
+export interface BrowserAction {
+  name: string;
+  inputs: Record<string, unknown>;
+}
+
 export interface BrowserStepSnapshot {
   kind: "step";
   index: number;
   goal: string;
-  action?: string | null;
+  /** Mirrored into the chat's tool thread, not rendered in the step row. */
+  actions?: BrowserAction[];
   url?: string | null;
   title?: string | null;
   screenshot?: string | null;

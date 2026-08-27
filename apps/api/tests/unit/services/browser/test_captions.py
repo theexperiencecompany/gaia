@@ -1,4 +1,4 @@
-"""Tests for app.services.browser.captions — caption_from_action_summary, describe_action, et al.
+"""Tests for app.services.browser.captions — caption_from_action_list, describe_action, et al.
 
 Covers every action name branch in describe_action with exact expected strings
 from source, plus the two caption builders and _dedupe_join.
@@ -10,9 +10,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.schemas.browser import BrowserAction
 from app.services.browser.captions import (
     _dedupe_join,
-    caption_from_action_summary,
+    caption_from_action_list,
     caption_from_actions,
     describe_action,
 )
@@ -210,146 +211,39 @@ class TestDedupeJoin:
 
 
 # ---------------------------------------------------------------------------
-# caption_from_action_summary — flattened "name(params); name(params)" string
+# caption_from_action_list — a step snapshot's structured actions
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestCaptionFromActionSummary:
-    def test_none(self):
-        assert caption_from_action_summary(None) == ""
-
-    def test_empty_string(self):
-        assert caption_from_action_summary("") == ""
-
-    def test_whitespace_only(self):
-        assert caption_from_action_summary("   ") == ""
+class TestCaptionFromActionList:
+    def test_empty(self):
+        assert caption_from_action_list([]) == ""
 
     def test_single_click(self):
-        assert caption_from_action_summary("click") == "Clicking"
+        assert caption_from_action_list([BrowserAction(name="click")]) == "Clicking"
 
-    def test_single_click_with_params(self):
-        assert caption_from_action_summary('click({"x": 1})') == "Clicking"
+    def test_navigate_names_the_host(self):
+        """The whole point of structured actions: params survive, so the caption
+        says which site was opened instead of a generic phrase."""
+        actions = [BrowserAction(name="navigate", inputs={"url": "https://www.github.com/x"})]
+        assert caption_from_action_list(actions) == "Opening github.com"
 
-    def test_navigate_without_params_is_opening_the_page(self):
-        assert caption_from_action_summary("navigate") == "Opening the page"
+    def test_typing_quotes_the_text(self):
+        actions = [BrowserAction(name="input", inputs={"text": "hello"})]
+        assert caption_from_action_list(actions) == 'Typing "hello"'
 
-    def test_navigate_with_url_still_opening_the_page(self):
-        assert caption_from_action_summary("navigate(https://example.com)") == "Opening the page"
+    def test_consecutive_repeats_collapse(self):
+        actions = [BrowserAction(name="click"), BrowserAction(name="click")]
+        assert caption_from_action_list(actions) == "Clicking"
 
-    def test_typing_without_text_is_generic(self):
-        assert caption_from_action_summary("input") == "Typing"
-
-    def test_search_without_query_is_generic(self):
-        assert caption_from_action_summary("search") == "Searching"
-
-    def test_select_dropdown_generic(self):
-        assert caption_from_action_summary("select_dropdown") == "Choosing an option"
-
-    def test_scroll(self):
-        assert caption_from_action_summary("scroll") == "Scrolling"
-
-    def test_extract(self):
-        assert caption_from_action_summary("extract") == "Reading the page"
-
-    def test_upload_file(self):
-        assert caption_from_action_summary("upload_file") == "Uploading a file"
-
-    def test_go_back(self):
-        assert caption_from_action_summary("go_back") == "Going back"
-
-    def test_wait(self):
-        assert caption_from_action_summary("wait") == "Waiting for the page"
-
-    def test_request_human_takeover(self):
-        assert caption_from_action_summary("request_human_takeover") == "Handing this step to you"
-
-    def test_solve_captcha_with_help(self):
-        assert caption_from_action_summary("solve_captcha_with_help") == "Handing this step to you"
-
-    def test_done(self):
-        assert caption_from_action_summary("done") == "Wrapping up"
+    def test_distinct_actions_join(self):
+        actions = [BrowserAction(name="click"), BrowserAction(name="scroll")]
+        assert caption_from_action_list(actions) == "Clicking, Scrolling"
 
     def test_unknown_action_uses_fallback(self):
-        assert caption_from_action_summary("my_custom_action") == "my custom action"
-
-    def test_multiple_actions_joined(self):
-        assert (
-            caption_from_action_summary("click; scroll; go_back")
-            == "Clicking, Scrolling, Going back"
-        )
-
-    def test_multiple_with_params(self):
-        result = caption_from_action_summary("navigate(https://x); click({}); input(text)")
-        assert result == "Opening the page, Clicking, Typing"
-
-    def test_deduplicates_consecutive(self):
-        assert caption_from_action_summary("click; click") == "Clicking"
-
-    def test_deduplicates_non_consecutive_via_dict_keys(self):
-        assert caption_from_action_summary("click; scroll; click") == "Clicking, Scrolling"
-
-    def test_filters_empty_parts(self):
-        assert caption_from_action_summary("click;  ; scroll") == "Clicking, Scrolling"
-
-    def test_trailing_semicolon(self):
-        assert caption_from_action_summary("click;") == "Clicking"
-
-    def test_leading_semicolon(self):
-        assert caption_from_action_summary("; click") == "Clicking"
-
-    def test_semicolon_with_spaces(self):
-        assert caption_from_action_summary(" click ; scroll ") == "Clicking, Scrolling"
-
-    def test_parentheses_in_params_do_not_break_name(self):
-        assert caption_from_action_summary("click((nested))") == "Clicking"
-
-    def test_space_before_parenthesis_is_trimmed_from_name(self):
-        # The name is re-stripped after splitting on "(" so a space before the
-        # parenthesis doesn't leak into the action name lookup.
-        assert caption_from_action_summary("click (x)") == "Clicking"
-
-    def test_tab_before_parenthesis_is_trimmed_from_name(self):
-        assert caption_from_action_summary("navigate\t(https://example.com)") == "Opening the page"
-
-    def test_read_variants(self):
-        for name in ("extract", "read_file", "read_long_content", "find_text", "find_elements"):
-            assert caption_from_action_summary(name) == "Reading the page"
-
-    def test_all_action_types_full_sweep(self):
-        expected = {
-            "click": "Clicking",
-            "scroll": "Scrolling",
-            "scroll_to_text": "Scrolling",
-            "extract": "Reading the page",
-            "read_file": "Reading the page",
-            "read_long_content": "Reading the page",
-            "find_text": "Reading the page",
-            "find_elements": "Reading the page",
-            "upload_file": "Uploading a file",
-            "go_back": "Going back",
-            "wait": "Waiting for the page",
-            "request_human_takeover": "Handing this step to you",
-            "solve_captcha_with_help": "Handing this step to you",
-            "done": "Wrapping up",
-            "input": "Typing",
-            "send_keys": "Typing",
-            "select_dropdown": "Choosing an option",
-            "search": "Searching",
-            "search_page": "Searching",
-            "navigate": "Opening the page",
-        }
-        for name, want in expected.items():
-            assert caption_from_action_summary(name) == want, f"mismatch for {name}"
-
-    def test_click_and_typing_and_select_mixed(self):
-        result = caption_from_action_summary("click; input; select_dropdown")
-        assert result == "Clicking, Typing, Choosing an option"
-
-    def test_handoff_mixed(self):
-        assert (
-            caption_from_action_summary("request_human_takeover(); done()")
-            == "Handing this step to you, Wrapping up"
+        assert caption_from_action_list([BrowserAction(name="my_custom_action")]) == (
+            "my custom action"
         )
 
 

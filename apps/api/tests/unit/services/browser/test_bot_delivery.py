@@ -9,6 +9,7 @@ import pytest
 from app.constants.browser import HandoffStatus
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
+    BrowserAction,
     BrowserHandoffSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -87,14 +88,17 @@ class TestIsBlankTab:
 
 class TestStepCaption:
     def test_with_goal(self):
-        assert _step_caption(1, "Opening the page", "click") == "Step 1 · Opening the page"
+        assert (
+            _step_caption(1, "Opening the page", [BrowserAction(name="click")])
+            == "Step 1 · Opening the page"
+        )
 
     def test_strips_trailing_dot(self):
-        assert _step_caption(1, "Opening the page.", None) == "Step 1 · Opening the page"
+        assert _step_caption(1, "Opening the page.", []) == "Step 1 · Opening the page"
 
     def test_truncates_at_90(self):
         long_goal = "A" * 100
-        result = _step_caption(2, long_goal, None)
+        result = _step_caption(2, long_goal, [])
         # _CAPTION_MAX_CHARS is 90, truncated to 89 + ellipsis
         assert result.startswith("Step 2 · ")
         label = result.split(" · ", 1)[1]
@@ -103,45 +107,45 @@ class TestStepCaption:
 
     def test_exactly_90_not_truncated(self):
         goal = "A" * 90
-        result = _step_caption(1, goal, None)
+        result = _step_caption(1, goal, [])
         assert result == f"Step 1 · {goal}"
 
     def test_91_truncated(self):
         goal = "A" * 91
-        result = _step_caption(1, goal, None)
+        result = _step_caption(1, goal, [])
         assert result.endswith("…")
         # label should be 90 chars
         label = result.split(" · ", 1)[1]
         assert len(label) == 90
 
-    def test_falls_back_to_action_summary(self):
+    def test_falls_back_to_the_actions(self):
         # goal empty → uses caption_from_action_summary
-        result = _step_caption(3, "", "click({}); scroll({})")
+        result = _step_caption(3, "", [BrowserAction(name="click"), BrowserAction(name="scroll")])
         assert result == "Step 3 · Clicking, Scrolling"
 
     def test_falls_back_when_goal_whitespace(self):
-        result = _step_caption(1, "   ", "click({})")
+        result = _step_caption(1, "   ", [BrowserAction(name="click")])
         assert result == "Step 1 · Clicking"
 
     def test_no_label_returns_step_only(self):
-        assert _step_caption(5, None, None) == "Step 5"
+        assert _step_caption(5, None, []) == "Step 5"
         assert _step_caption(5, "", "") == "Step 5"
 
     def test_goal_stripped(self):
-        assert _step_caption(1, "  Hello world  ", None) == "Step 1 · Hello world"
+        assert _step_caption(1, "  Hello world  ", []) == "Step 1 · Hello world"
 
     def test_only_trailing_dot_is_stripped_not_letter_x(self):
         # rstrip(".") must strip only a trailing period — a padding mutant that
         # widens the strip set (e.g. to "XX.XX") would also eat a trailing "X",
         # which a real caption text like "Click X" must never lose.
-        assert _step_caption(1, "Click X", None) == "Step 1 · Click X"
+        assert _step_caption(1, "Click X", []) == "Step 1 · Click X"
 
     def test_truncation_rstrips_trailing_space_before_ellipsis(self):
         # 88 "A"s then a space then filler — the 90-char slice cuts right after
         # the space, so the truncated label must have it trimmed before the
         # ellipsis is appended, not "A"*88 + " …".
         goal = "A" * 88 + " " + "B" * 20
-        result = _step_caption(1, goal, None)
+        result = _step_caption(1, goal, [])
         label = result.split(" · ", 1)[1]
         assert label == "A" * 88 + "…"
         assert len(label) == 89
@@ -305,13 +309,17 @@ class TestBotProgressDeliveryStep:
             mm.assert_awaited_once()
             assert mm.call_args[0][2][0] == "Step 1 · Open"
 
-    async def test_empty_goal_uses_snapshot_action_for_caption(self, delivery):
+    async def test_empty_goal_uses_snapshot_actions_for_caption(self, delivery):
         # goal="" forces the caption to fall back to the *snapshot's own*
-        # action string — an arg-drop mutant that passes None instead of
-        # snapshot.action here would silently lose the action entirely and
+        # actions — an arg-drop mutant that passes [] instead of
+        # snapshot.actions here would silently lose the action entirely and
         # caption to "Step 1" instead of "Step 1 · Clicking".
         snap = BrowserStepSnapshot(
-            index=1, goal="", action="click({})", url="https://example.com", screenshot=None
+            index=1,
+            goal="",
+            actions=[BrowserAction(name="click")],
+            url="https://example.com",
+            screenshot=None,
         )
         with (
             patch(

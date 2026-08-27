@@ -16,6 +16,7 @@ from app.browser_host.screencast import (
     _DEFAULT_MAX_WIDTH,
     _FRAME_QUEUE_SIZE,
     _apply_input,
+    _Frame,
     _key_params,
     _mouse_params,
     _PageMeta,
@@ -223,8 +224,8 @@ async def test_send_frames_sends_json_with_meta() -> None:
     meta = _PageMeta()
     meta.url = "https://example.com"
     meta.title = "Title"
-    frames: asyncio.Queue[str] = asyncio.Queue()
-    await frames.put("base64data==")
+    frames: asyncio.Queue[_Frame] = asyncio.Queue()
+    await frames.put(_Frame("base64data==", 1280, 800))
     client_ws = MagicMock()
     client_ws.send_text = AsyncMock(side_effect=asyncio.CancelledError)
 
@@ -237,6 +238,9 @@ async def test_send_frames_sends_json_with_meta() -> None:
     sent = json.loads(client_ws.send_text.call_args[0][0])
     assert sent["type"] == "frame"
     assert sent["data"] == "base64data=="
+    # The page's CSS size rides every frame — it is what viewers map clicks through.
+    assert sent["cssWidth"] == 1280
+    assert sent["cssHeight"] == 800
     assert sent["url"] == "https://example.com"
     assert sent["title"] == "Title"
     assert sent["format"] == "jpeg"
@@ -245,8 +249,8 @@ async def test_send_frames_sends_json_with_meta() -> None:
 @pytest.mark.unit
 async def test_send_frames_with_none_meta() -> None:
     meta = _PageMeta()
-    frames: asyncio.Queue[str] = asyncio.Queue()
-    await frames.put("data")
+    frames: asyncio.Queue[_Frame] = asyncio.Queue()
+    await frames.put(_Frame("data", None, None))
     client_ws = MagicMock()
     client_ws.send_text = AsyncMock(side_effect=asyncio.CancelledError)
     with pytest.raises(asyncio.CancelledError):
@@ -394,7 +398,7 @@ async def test_register_frame_handler_drops_when_queue_full() -> None:
     registry = MagicMock()
     fake_cdp._event_registry = registry
     frames: asyncio.Queue[str] = asyncio.Queue(maxsize=1)
-    frames.put_nowait("existing")
+    frames.put_nowait(_Frame("existing", None, None))
     background: set[asyncio.Task] = set()
 
     with patch.object(screencast, "cdp_call", new=AsyncMock(return_value=None)):
@@ -404,7 +408,7 @@ async def test_register_frame_handler_drops_when_queue_full() -> None:
         handler({"data": "new", "sessionId": "s"}, None)
         await asyncio.sleep(0)
         assert frames.qsize() == 1
-        assert frames.get_nowait() == "existing"
+        assert frames.get_nowait().data == "existing"
         assert len(background) == 1
         for t in list(background):
             t.cancel()
@@ -827,7 +831,7 @@ async def test_register_frame_handler_ack_uses_exact_cdp_call_args() -> None:
         # the done callback discards the finished ack task from `background`
         assert background == set()
         # the queued frame is params["data"], not some other field
-        assert frames.get_nowait() == "abc"
+        assert frames.get_nowait().data == "abc"
 
 
 @pytest.mark.unit

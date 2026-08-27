@@ -20,6 +20,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
+    BrowserAction,
     BrowserHandoffSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -149,9 +150,7 @@ async def test_bot_delivery_outage_does_not_abort_run(
 
         async def run(self, task: str) -> BrowserResultSnapshot:
             await self._emit(
-                BrowserStepSnapshot(
-                    index=1, goal="g", action="a", url="https://x", title="t", screenshot=None
-                )
+                BrowserStepSnapshot(index=1, goal="g", url="https://x", title="t", screenshot=None)
             )
             await self._emit(
                 BrowserResultSnapshot(
@@ -679,7 +678,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
             BrowserStepSnapshot(
                 index=2,
                 goal="find the menu",
-                action="click",
+                actions=[BrowserAction(name="click", inputs={"index": 2})],
                 url="https://x",
                 title="Menu",
                 screenshot="https://cdn/2.png",
@@ -697,7 +696,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
         "kind": "step",
         "index": 2,
         "goal": "find the menu",
-        "action": "click",
+        "actions": [{"name": "click", "inputs": {"index": 2}}],
         "url": "https://x",
         "title": "Menu",
         "screenshot": "https://cdn/2.png",

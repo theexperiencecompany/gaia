@@ -16,9 +16,15 @@ import uuid
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+from langgraph.types import StreamWriter
 
 from app.config.settings import settings
-from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus, HandoffStatus
+from app.constants.browser import (
+    BROWSER_TASK_EVENT,
+    BROWSER_TOOL_CATEGORY,
+    BrowserSessionStatus,
+    HandoffStatus,
+)
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.decorators import with_doc, with_rate_limiting
@@ -41,6 +47,11 @@ from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import browser_session, keep_session_alive
 from app.services.browser.tasks import record_browser_task
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
+from app.utils.agent_utils import (
+    format_browser_action_entry,
+    format_subagent_end_event,
+    format_subagent_start_event,
+)
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -72,6 +83,76 @@ def _agent_result_message(result: BrowserResultSnapshot) -> str:
         f"Tell the user honestly and briefly that it couldn't be finished, and why if it's clear. "
         f"Do not fabricate a result. {_NO_META}"
     )
+
+
+class _BrowserThreadMirror:
+    """Mirrors the browser agent's own actions into the chat's tool thread.
+
+    The card shows *what the browser is doing*; this shows *what it called* —
+    every action with its arguments, grouped under one "Browser" row exactly
+    like a subagent's tool calls. Before this the thread carried a single
+    opaque ``browser_task`` row and the agent's real work was invisible.
+
+    Stateful because only the session snapshot carries the session id, and the
+    group id has to outlive it for the steps and the result that follow.
+    """
+
+    def __init__(self, writer: StreamWriter) -> None:
+        self._writer = writer
+        self._group_id: str | None = None
+        self._started_at = perf_counter()
+
+    def mirror(self, snapshot: BrowserCardSnapshot) -> None:
+        if isinstance(snapshot, BrowserSessionSnapshot):
+            self._open(snapshot)
+        elif isinstance(snapshot, BrowserStepSnapshot):
+            self._actions(snapshot)
+        elif isinstance(snapshot, BrowserResultSnapshot):
+            self._close()
+
+    def _open(self, snapshot: BrowserSessionSnapshot) -> None:
+        if self._group_id or not snapshot.session_id:
+            return
+        self._group_id = f"browser:{snapshot.session_id}"
+        self._started_at = perf_counter()
+        self._writer(
+            {
+                "subagent_start": format_subagent_start_event(
+                    subagent_name="Browser",
+                    agent_type="spawned",
+                    subagent_id=self._group_id,
+                    tool_category=BROWSER_TOOL_CATEGORY,
+                )
+            }
+        )
+
+    def _actions(self, snapshot: BrowserStepSnapshot) -> None:
+        if not self._group_id:
+            return
+        for position, action in enumerate(snapshot.actions):
+            self._writer(
+                {
+                    "tool_data": format_browser_action_entry(
+                        name=action.name,
+                        inputs=action.inputs,
+                        subagent_id=self._group_id,
+                        tool_call_id=f"{self._group_id}:{snapshot.index}:{position}",
+                    )
+                }
+            )
+
+    def _close(self) -> None:
+        if not self._group_id:
+            return
+        self._writer(
+            {
+                "subagent_end": format_subagent_end_event(
+                    subagent_id=self._group_id,
+                    duration_ms=int((perf_counter() - self._started_at) * 1000),
+                )
+            }
+        )
+        self._group_id = None
 
 
 @tool
@@ -108,6 +189,7 @@ async def browser_task(
         return "Browser automation is currently disabled."
 
     writer = get_stream_writer()
+    thread_mirror = _BrowserThreadMirror(writer)
 
     bot_delivery: BotProgressDelivery | None = None
     if is_bot and user_id and conversation_id:
@@ -135,6 +217,7 @@ async def browser_task(
         the browser run itself.
         """
         writer({BROWSER_TASK_EVENT: snapshot.model_dump(mode="json")})
+        thread_mirror.mirror(snapshot)
         if isinstance(snapshot, BrowserStepSnapshot):
             if snapshot.goal:
                 step_goals[snapshot.index] = snapshot.goal

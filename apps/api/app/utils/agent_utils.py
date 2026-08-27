@@ -9,6 +9,7 @@ from langchain_core.messages import ToolCall
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.agents import INTERNAL_AGENT_MARKERS
+from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
@@ -22,6 +23,7 @@ from app.models.stream_events import (
     ToolCallsDataEntry,
     ToolCallsDataEntryData,
 )
+from app.services.browser.captions import describe_action
 from app.services.chat.chunks import extract_tool_data
 from shared.py.wide_events import log
 
@@ -285,6 +287,45 @@ async def format_tool_call_entry(
             mcp_ui=mcp_ui,
             mcp_server_url=mcp_server_url,
         ).model_dump(),
+    )
+
+
+def format_browser_action_entry(
+    *,
+    name: str,
+    inputs: dict[str, Any],
+    subagent_id: str,
+    tool_call_id: str,
+) -> ToolDataEntry:
+    """Format one browser-agent action as a ``tool_calls_data`` entry.
+
+    The browser agent runs its own loop inside the ``browser_task`` tool, so its
+    actions never pass through the graph's tool node and cannot be formatted by
+    :func:`format_tool_call_entry`. Tagging them with ``subagent_id`` is what
+    nests them under the run's "Browser" group in the chat thread.
+    """
+    return cast(
+        ToolDataEntry,
+        {
+            **ToolCallsDataEntry(
+                tool_name="tool_calls_data",
+                tool_category=BROWSER_TOOL_CATEGORY,
+                data=ToolCallsDataEntryData(
+                    tool_name=name,
+                    tool_category=BROWSER_TOOL_CATEGORY,
+                    message=describe_action(name, inputs),
+                    show_category=False,
+                    tool_call_id=tool_call_id,
+                    inputs=inputs,
+                    icon_url=None,
+                    integration_name=None,
+                ),
+                timestamp=datetime.now(UTC).isoformat(),
+                mcp_ui=None,
+                mcp_server_url=None,
+            ).model_dump(),
+            "subagent_id": subagent_id,
+        },
     )
 
 

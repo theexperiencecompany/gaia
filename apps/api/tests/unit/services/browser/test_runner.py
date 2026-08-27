@@ -17,7 +17,7 @@ import pytest
 
 from app.constants.browser import BrowserEventKind, BrowserSessionStatus, HandoffStatus
 from app.constants.log_tags import LogTag
-from app.schemas.browser import HandoffOutcome
+from app.schemas.browser import BrowserAction, HandoffOutcome
 from app.services.browser import runner as runner_mod
 from app.services.browser.runner import BrowserTaskRunner
 from app.services.browser.session import BrowserHostSession
@@ -295,7 +295,7 @@ async def test_unexpected_agent_error_finishes_failed(patch_browser, monkeypatch
 
 
 # ---------------------------------------------------------------------------
-# _summarize_actions — the action detail line on the step card
+# _extract_actions — the agent's own tool calls, mirrored into the thread
 # ---------------------------------------------------------------------------
 
 
@@ -316,28 +316,34 @@ class _Opaque:
     """An action object Browser-Use never gave a ``model_dump``."""
 
 
-def test_summarize_actions_formats_every_action_with_its_params() -> None:
+def test_extract_actions_keeps_every_action_with_its_params() -> None:
     output = _Output("goal", [_Action("navigate", {"url": "x"}), _Action("click", {"index": 2})])
-    assert runner_mod._summarize_actions(output) == "navigate({'url': 'x'}); click({'index': 2})"
+    assert [(a.name, a.inputs) for a in runner_mod._extract_actions(output)] == [
+        ("navigate", {"url": "x"}),
+        ("click", {"index": 2}),
+    ]
 
 
-def test_summarize_actions_drops_the_parens_when_an_action_has_no_params() -> None:
+def test_extract_actions_gives_a_paramless_action_empty_inputs() -> None:
     output = _Output("goal", [_Action("go_back", {}), _Action("click", {"index": 1})])
-    assert runner_mod._summarize_actions(output) == "go_back; click({'index': 1})"
+    assert [(a.name, a.inputs) for a in runner_mod._extract_actions(output)] == [
+        ("go_back", {}),
+        ("click", {"index": 1}),
+    ]
 
 
-def test_summarize_actions_is_empty_without_actions() -> None:
-    assert runner_mod._summarize_actions(_Output("goal", [])) == ""
-    assert runner_mod._summarize_actions(_Opaque()) == ""
+def test_extract_actions_is_empty_without_actions() -> None:
+    assert runner_mod._extract_actions(_Output("goal", [])) == []
+    assert runner_mod._extract_actions(_Opaque()) == []
 
 
-def test_summarize_actions_ignores_actions_it_cannot_dump() -> None:
-    assert runner_mod._summarize_actions(_Output("goal", [_Opaque()])) == ""
+def test_extract_actions_ignores_actions_it_cannot_dump() -> None:
+    assert runner_mod._extract_actions(_Output("goal", [_Opaque()])) == []
 
 
-def test_summarize_actions_dumps_without_unset_params() -> None:
+def test_extract_actions_dumps_without_unset_params() -> None:
     action = _RecordingAction("click", {"index": 1})
-    runner_mod._summarize_actions(_Output("goal", [action]))
+    runner_mod._extract_actions(_Output("goal", [action]))
     assert action.dump_kwargs == {"exclude_none": True}
 
 
@@ -739,7 +745,7 @@ async def _drain(runner: BrowserTaskRunner) -> None:
         await task
 
 
-async def test_step_card_carries_the_goal_action_and_page(patch_browser) -> None:
+async def test_step_card_carries_the_goal_actions_and_page(patch_browser) -> None:
     events, emit = _collector()
     runner = _make_runner(emit=emit)
     state = _State("https://example.com/cart")
@@ -751,7 +757,7 @@ async def test_step_card_carries_the_goal_action_and_page(patch_browser) -> None
     assert step.kind == BrowserEventKind.STEP
     assert step.index == 3
     assert step.goal == "Check out"
-    assert step.action == "click({'index': 4})"
+    assert [(a.name, a.inputs) for a in step.actions] == [("click", {"index": 4})]
     assert step.url == "https://example.com/cart"
     assert step.title == "Your cart"
     assert runner._last_step == 3
@@ -779,13 +785,13 @@ async def test_step_goal_falls_back_to_a_caption_from_the_actions(patch_browser)
     assert events[-1].goal == "Opening example.com"
 
 
-async def test_a_step_with_no_actions_has_no_action_line(patch_browser) -> None:
+async def test_a_step_with_no_actions_carries_no_actions(patch_browser) -> None:
     events, emit = _collector()
     runner = _make_runner(emit=emit)
     await runner._on_step(_State("https://x"), _Output("Waiting", []), 1)
     await _drain(runner)
 
-    assert events[-1].action is None
+    assert events[-1].actions == []
 
 
 async def test_only_uploaded_screenshots_become_replay_frames(patch_browser, monkeypatch) -> None:
@@ -1214,7 +1220,7 @@ async def test_each_step_reports_the_wall_clock_since_the_previous_one(
         call(
             1,
             "Check out",
-            "click({'index': 4})",
+            [BrowserAction(name="click", inputs={"index": 4})],
             "https://example.com/cart",
             "Page",
             "ZmFrZQ==",
@@ -1223,7 +1229,7 @@ async def test_each_step_reports_the_wall_clock_since_the_previous_one(
         call(
             2,
             "Check out",
-            "click({'index': 4})",
+            [BrowserAction(name="click", inputs={"index": 4})],
             "https://example.com/cart",
             "Page",
             "ZmFrZQ==",
@@ -1270,7 +1276,9 @@ async def test_the_step_frame_is_uploaded_under_that_steps_index(
     _, emit = _collector()
     runner = _make_runner(emit=emit)
 
-    await runner._emit_step(7, "goal", "click()", "https://x", "Page", "ZmFrZQ==", 12)
+    await runner._emit_step(
+        7, "goal", [BrowserAction(name="click")], "https://x", "Page", "ZmFrZQ==", 12
+    )
 
     assert upload.await_args.args == (b"fake", "s1", 7)
 
@@ -1285,7 +1293,9 @@ async def test_the_step_timing_log_reports_the_screenshot_and_emit_cost(
     _, emit = _collector()
     runner = _make_runner(emit=emit)
 
-    await runner._emit_step(7, "goal", "click()", "https://x", "Page", "ZmFrZQ==", 12)
+    await runner._emit_step(
+        7, "goal", [BrowserAction(name="click")], "https://x", "Page", "ZmFrZQ==", 12
+    )
 
     logger.info.assert_called_once_with(
         f"{LogTag.BROWSER} step timing",

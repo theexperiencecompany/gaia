@@ -10,12 +10,13 @@ message instead of a pasted link.
 from app.constants.browser import HandoffStatus
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
+    BrowserAction,
     BrowserHandoffSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
     BrowserStepSnapshot,
 )
-from app.services.browser.captions import caption_from_action_summary
+from app.services.browser.captions import caption_from_action_list
 from app.services.browser.live_view import create_live_view_link
 from app.services.outbound_delivery import publish_outbound_message, publish_outbound_photo
 
@@ -58,7 +59,7 @@ class BotProgressDelivery:
             return
         # Caption with what the agent is DOING this step (its goal), not the page
         # URL — a raw link reads as noise and invites a mis-click.
-        caption = _step_caption(snapshot.index, snapshot.goal, snapshot.action)
+        caption = _step_caption(snapshot.index, snapshot.goal, snapshot.actions)
         # Only a real (http) CDN URL is worth sending as a photo; the dev-only
         # inline data URL fallback is not something to upload to a platform.
         if (
@@ -114,11 +115,11 @@ def _is_blank_tab(url: str | None) -> bool:
     return not url or url.startswith("about:") or url == "chrome://newtab/"
 
 
-def _step_caption(index: int, goal: str | None, action: str | None) -> str:
+def _step_caption(index: int, goal: str | None, actions: list[BrowserAction]) -> str:
     """A short, human caption for a step photo — what the agent is doing, in plain
     language (its goal), falling back to a clean action label; never a raw URL or
     an action's parameter dump."""
-    label = (goal or "").strip().rstrip(".") or caption_from_action_summary(action)
+    label = (goal or "").strip().rstrip(".") or caption_from_action_list(actions)
     if len(label) > _CAPTION_MAX_CHARS:
         label = label[: _CAPTION_MAX_CHARS - 1].rstrip() + "…"
     return f"Step {index} · {label}" if label else f"Step {index}"
