@@ -625,7 +625,6 @@ class TestBackgroundStructuredRunnable:
     class _Shape(BaseModel):
         text: str
 
-    @pytest.mark.regression
     @patch("app.agents.llm.client._build_custom_llm")
     @patch("app.agents.llm.client._sim_llm")
     @patch("app.agents.llm.client.settings")
