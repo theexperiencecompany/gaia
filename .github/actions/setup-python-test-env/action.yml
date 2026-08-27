@@ -8,6 +8,14 @@ description: >
   identically in CI and in the local Dagger harness.
 
 inputs:
+  services:
+    description: >
+      Start the Postgres/Redis/Mongo/Chroma/RabbitMQ containers and the
+      embedding sidecar. tests/unit + tests/meta pass without any of them
+      (verified: 10,542 passed, 0 errors, no containers), so the unit lane
+      passes "false" and skips ~30-40s of boot plus five containers' RAM.
+    required: false
+    default: "true"
   node:
     description: >
       Install Node + pnpm deps. Only tests/integration/real/test_device_bridge_e2e.py
@@ -66,6 +74,7 @@ runs:
     # Mongo / RabbitMQ / Chroma readiness) is pure waiting, and uv sync is
     # mostly I/O — they overlap. Started here, joined after the sync.
     - name: Start service containers (background)
+      if: inputs.services == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -82,6 +91,7 @@ runs:
       run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
 
     - name: Wait for service containers
+      if: inputs.services == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -131,8 +141,8 @@ runs:
     # where a failure is loud and names itself, and cache them so the download
     # happens once per key rather than on every run.
     - name: Restore embedding models
+      if: inputs.services == 'true' && runner.environment != 'self-hosted'
       id: model-cache
-      if: runner.environment != 'self-hosted'
       uses: actions/cache/restore@v6
       with:
         path: ${{ env.MODEL_CACHE_DIR }}
@@ -144,6 +154,7 @@ runs:
     # there), so decide from the disk: a populated model dir means nothing
     # to fetch — and this step loads ~1.4 GB of ONNX into RAM just to check.
     - name: Check embedding models on disk
+      if: inputs.services == 'true'
       id: models-on-disk
       shell: bash
       run: |
@@ -154,7 +165,7 @@ runs:
         fi
 
     - name: Prefetch embedding models
-      if: steps.model-cache.outputs.cache-hit != 'true' && steps.models-on-disk.outputs.present != 'true'
+      if: inputs.services == 'true' && (steps.model-cache.outputs.cache-hit != 'true' && steps.models-on-disk.outputs.present != 'true')
       shell: bash
       working-directory: apps/api
       # Goes through the app's own loaders, so the models, cache dir and ONNX
@@ -185,7 +196,7 @@ runs:
     # Only reached when the prefetch above succeeded, so a poisoned partial
     # download is never what gets cached for every later run.
     - name: Save embedding models
-      if: runner.environment != 'self-hosted' && steps.model-cache.outputs.cache-hit != 'true'
+      if: inputs.services == 'true' && (runner.environment != 'self-hosted' && steps.model-cache.outputs.cache-hit != 'true')
       uses: actions/cache/save@v6
       with:
         path: ${{ env.MODEL_CACHE_DIR }}
@@ -197,5 +208,6 @@ runs:
     # behind a file lock. The workflow owns teardown (stop-embedding-sidecar.sh
     # with if: always()) — composite actions have no post step.
     - name: Start embedding sidecar
+      if: inputs.services == 'true'
       shell: bash
       run: bash scripts/ci/start-embedding-sidecar.sh

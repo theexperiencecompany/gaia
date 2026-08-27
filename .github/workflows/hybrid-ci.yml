@@ -217,12 +217,15 @@ jobs:
         slice:
           # node: only the device-bridge e2e test (integration slice) drives the
           # real `gaia bridge` CLI via tsx; the unit slice skips the Node setup.
-          - { name: unit, paths: "tests/unit tests/contracts tests/meta", node: "false" }
+          # unit + meta need no service containers, sidecar or Node (verified on
+          # the box: 10,542 passed, 0 errors, nothing running). contracts needs
+          # Redis/Mongo, so it rides with integration.
+          - { name: unit, paths: "tests/unit tests/meta", node: "false", services: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
           # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration", node: "true" }
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", node: "true", services: "true" }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -231,6 +234,7 @@ jobs:
       - uses: ./.github/actions/setup-python-test-env
         with:
           node: ${{ matrix.slice.node }}
+          services: ${{ matrix.slice.services }}
       - name: Detect parallelism
         id: par
         run: |
