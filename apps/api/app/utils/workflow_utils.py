@@ -157,6 +157,16 @@ def get_user_id(config: RunnableConfig) -> str:
     return user_id
 
 
+def get_workflow_id(config: RunnableConfig) -> str:
+    """Extract workflow_id from config. Raises error if missing."""
+    workflow_id: str | None = agent_configurable(config).get("workflow_id")
+    if not workflow_id:
+        raise WorkflowConfigError(
+            "No workflow in this run's config: this tool only works inside a workflow run."
+        )
+    return workflow_id
+
+
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
     thread_id: str | None = agent_configurable(config).get("thread_id")

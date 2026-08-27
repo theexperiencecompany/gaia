@@ -136,6 +136,13 @@ def test_the_check_names_both_decision_tools_so_the_executor_can_act():
     assert "exactly one of" in PLAYBOOK_CHECK_BRIEF
 
 
+def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
+    # A handoff step must carry the calls its subagent ran, and the only place
+    # the executor can copy them from is the handoff's own result record.
+    assert "record of the calls" in PLAYBOOK_CHECK_BRIEF
+    assert "nested steps" in PLAYBOOK_CHECK_BRIEF
+
+
 def test_write_playbook_is_statically_bound_to_the_executor():
     """The check names write_playbook, so the executor must always be able to call it.
 
@@ -169,7 +176,10 @@ def test_the_tools_own_schema_carries_the_step_shape():
     """
     schema = write_playbook.tool_call_schema.model_json_schema()
 
-    assert {"workflow_id", "description", "steps", "synthesize", "ask"} <= set(schema["properties"])
+    assert {"description", "steps", "synthesize", "ask"} <= set(schema["properties"])
+    # The workflow is resolved from the run's config server-side. Exposing it as
+    # an argument is what let a live run hallucinate "inbox-triage" as an id.
+    assert "workflow_id" not in schema["properties"]
     step = schema["$defs"][PlaybookStepInput.__name__]
     assert {"id", "tool", "args", "handoff", "steps"} <= set(step["properties"])
 

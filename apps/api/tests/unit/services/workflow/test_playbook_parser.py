@@ -806,7 +806,8 @@ class TestStepShapeMessages:
             PlaybookStep.model_validate({"id": "delegate", "handoff": "mail_agent"})
 
         assert any(
-            "handoff mail_agent: carries no steps, so it would do nothing" in message
+            "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
+            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
             for message in _messages(exc)
         )
 
@@ -860,7 +861,8 @@ class TestStepShapeMessages:
             PlaybookStepInput.model_validate({"id": "delegate", "handoff": "mail_agent"})
 
         assert any(
-            "handoff mail_agent: carries no steps, so it would do nothing" in message
+            "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
+            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
             for message in _messages(exc)
         )
 

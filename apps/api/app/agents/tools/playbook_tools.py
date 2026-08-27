@@ -24,14 +24,19 @@ from app.models.playbook_models import (
 )
 from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.utils.workflow_utils import error_response, get_user_id, success_response
+from app.utils.workflow_utils import (
+    WorkflowConfigError,
+    error_response,
+    get_user_id,
+    get_workflow_id,
+    success_response,
+)
 from shared.py.wide_events import log
 
 
 @tool
 async def write_playbook(
     config: RunnableConfig,
-    workflow_id: Annotated[str, "The workflow this playbook replays."],
     description: Annotated[str, "What this playbook does, in one or two lines."],
     steps: Annotated[list[PlaybookStepInput], "The calls to replay, in the order you made them."],
     synthesize: Annotated[str, "How to write the run's result for the user."],
@@ -42,8 +47,9 @@ async def write_playbook(
     ] = None,
 ) -> dict[str, Any]:
     """
-    Freeze a workflow's settled tool sequence as a playbook, so later runs execute
-    it instead of reasoning it out again.
+    Freeze this workflow run's settled tool sequence as a playbook, so later runs
+    execute it instead of reasoning it out again. The playbook attaches to the
+    workflow this run is executing; there is no id to supply.
 
     The steps are checked against the real tools before anything is stored: if a
     tool or an argument does not exist, NOTHING is written and the problems come
@@ -53,6 +59,10 @@ async def write_playbook(
     Only write a playbook when the same order of calls would work tomorrow
     unchanged. A run whose order depends on what it finds is not a playbook.
     """
+    try:
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
     log.set(tool={"name": "write_playbook", "action": "write"}, workflow_id=workflow_id)
     try:
         user_id = get_user_id(config)
@@ -108,15 +118,18 @@ async def write_playbook(
 @tool
 async def read_playbook(
     config: RunnableConfig,
-    workflow_id: Annotated[str, "The workflow whose playbook you want to read."],
 ) -> dict[str, Any]:
     """
-    Read back a workflow's playbook: the YAML as written, when it was written,
+    Read back this workflow's playbook: the YAML as written, when it was written,
     and whether the most recent run replayed it or fell back to reasoning.
 
     Read before revising, so you edit the document that exists rather than
     guessing at it.
     """
+    try:
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
     log.set(tool={"name": "read_playbook", "action": "read"}, workflow_id=workflow_id)
     try:
         user_id = get_user_id(config)
@@ -144,8 +157,7 @@ async def read_playbook(
 
 @tool
 async def decline_playbook(
-    config: RunnableConfig,  # noqa: ARG001 -- LangGraph injects config into every tool
-    workflow_id: Annotated[str, "The workflow you decided not to freeze."],
+    config: RunnableConfig,
     reason: Annotated[
         str,
         "Why this run's SEQUENCE OF CALLS would not hold tomorrow. Content that "
@@ -161,6 +173,10 @@ async def decline_playbook(
     nothing about the workflow; the question is simply asked again on a later
     run, with your reason on record.
     """
+    try:
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
     log.set(tool={"name": "decline_playbook", "action": "decline"}, workflow_id=workflow_id)
     log.set_ns("playbook", declined=True, decline_reason=reason)
     return success_response(
@@ -172,15 +188,18 @@ async def decline_playbook(
 @tool
 async def disable_playbook(
     config: RunnableConfig,
-    workflow_id: Annotated[str, "The workflow that should go back to reasoning each run."],
     reason: Annotated[str, "Why this sequence no longer holds. Be specific."],
 ) -> dict[str, Any]:
     """
-    Delete a workflow's playbook so its runs go back to being reasoned out.
+    Delete this workflow's playbook so its runs go back to being reasoned out.
 
     Use this when the frozen order stopped matching reality and you cannot write
     a correct replacement, for example the run now depends on what it finds.
     """
+    try:
+        workflow_id = get_workflow_id(config)
+    except WorkflowConfigError as e:
+        return error_response("not_in_workflow_run", str(e))
     log.set(tool={"name": "disable_playbook", "action": "disable"}, workflow_id=workflow_id)
     try:
         user_id = get_user_id(config)

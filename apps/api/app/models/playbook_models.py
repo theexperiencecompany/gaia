@@ -78,7 +78,11 @@ class PlaybookStep(BaseModel):
                 f"step {self.id or '<unnamed>'}: set exactly one of 'tool' or 'handoff'"
             )
         if self.handoff and not self.steps:
-            raise ValueError(f"handoff {self.handoff}: carries no steps, so it would do nothing")
+            raise ValueError(
+                f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
+                "the calls that subagent ran (its handoff result records them) in this "
+                "step's 'steps' field"
+            )
         if self.tool and self.steps:
             raise ValueError(f"step {self.id or self.tool}: only a handoff may carry nested steps")
         return self
@@ -167,7 +171,11 @@ class PlaybookStepInput(BaseModel):
                 f"step {self.id or '<unnamed>'}: set exactly one of 'tool' or 'handoff'"
             )
         if self.handoff and not self.steps:
-            raise ValueError(f"handoff {self.handoff}: carries no steps, so it would do nothing")
+            raise ValueError(
+                f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
+                "the calls that subagent ran (its handoff result records them) in this "
+                "step's 'steps' field"
+            )
         if self.tool and self.steps:
             raise ValueError(f"step {self.id or self.tool}: only a handoff may carry nested steps")
         return self

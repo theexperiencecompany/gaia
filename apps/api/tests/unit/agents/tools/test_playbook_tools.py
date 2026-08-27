@@ -78,7 +78,10 @@ class _FakePlaybookStore:
 
 
 def _config() -> RunnableConfig:
-    return {"configurable": {"user_id": USER_ID}, "metadata": {"user_id": USER_ID}}
+    return {
+        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID},
+        "metadata": {"user_id": USER_ID},
+    }
 
 
 def _workflow() -> WorkflowDocument:
@@ -96,7 +99,10 @@ OTHER_USER = "507f1f77bcf86cd799439012"
 
 
 def _config_for(user_id: str) -> RunnableConfig:
-    return {"configurable": {"user_id": user_id}, "metadata": {"user_id": user_id}}
+    return {
+        "configurable": {"user_id": user_id, "workflow_id": WORKFLOW_ID},
+        "metadata": {"user_id": user_id},
+    }
 
 
 class _FakeWorkflowStore:
@@ -134,7 +140,6 @@ NEW_STEPS: list[dict[str, Any]] = [
 ]
 
 NEW_ARGS: dict[str, Any] = {
-    "workflow_id": WORKFLOW_ID,
     "description": "Read the day's events",
     "steps": NEW_STEPS,
     "synthesize": "Say what is on today.",
@@ -312,7 +317,7 @@ class TestWritePlaybook:
 class TestReadPlaybook:
     async def test_missing_playbook_is_a_clean_miss(self, store: _FakePlaybookStore) -> None:
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["success"] is True
         assert result["data"] == {"exists": False}
@@ -322,7 +327,7 @@ class TestReadPlaybook:
     ) -> None:
         _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["data"]["yaml"] == OLD_YAML
         assert result["data"]["last_run_used_it"] is True
@@ -346,7 +351,7 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "the call order depends on the inbox"},
+                {"reason": "the call order depends on the inbox"},
                 config=_config(),
             )
 
@@ -364,7 +369,7 @@ class TestDisablePlaybook:
         _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "the order now depends on the inbox"},
+                {"reason": "the order now depends on the inbox"},
                 config=_config(),
             )
 
@@ -376,11 +381,72 @@ class TestDisablePlaybook:
     ) -> None:
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "nothing to disable"}, config=_config()
+                {"reason": "nothing to disable"}, config=_config()
             )
 
         assert result["success"] is True
         assert result["data"] == {"disabled": False}
+
+
+@pytest.mark.unit
+class TestWorkflowIdFromConfig:
+    """The workflow id comes from the run's configurable, never from the model.
+
+    Regression: the tools used to take workflow_id as an argument, and a live
+    run hallucinated one ("inbox-triage") even though the server already knew
+    the real id from the executor's config.
+    """
+
+    async def test_a_write_lands_on_the_workflow_the_run_is_executing(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is True
+        workflows.get_for_user.assert_awaited_once_with(WORKFLOW_ID, USER_ID)
+        assert set(store.documents) == {(WORKFLOW_ID, USER_ID)}
+
+    async def test_a_read_resolves_the_workflow_from_the_configurable(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        _existing(store)
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({}, config=_config())
+
+        assert result["data"]["exists"] is True
+
+    @pytest.mark.parametrize(
+        ("playbook_tool", "args"),
+        [
+            (write_playbook, NEW_ARGS),
+            (read_playbook, {}),
+            (decline_playbook, {"reason": "r"}),
+            (disable_playbook, {"reason": "r"}),
+        ],
+        ids=["write", "read", "decline", "disable"],
+    )
+    async def test_outside_a_workflow_run_each_tool_refuses_with_the_reason(
+        self, store: _FakePlaybookStore, playbook_tool: BaseTool, args: dict[str, Any]
+    ) -> None:
+        # The tools are bound to the executor in chat runs too, where calling
+        # one is a model mistake; the error has to say so instead of failing
+        # deep in the repository with a missing id.
+        no_workflow: RunnableConfig = {
+            "configurable": {"user_id": USER_ID},
+            "metadata": {"user_id": USER_ID},
+        }
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await playbook_tool.ainvoke(args, config=no_workflow)
+
+        assert result["success"] is False
+        assert result["error"] == "not_in_workflow_run"
+        assert "workflow run" in result["message"]
+        assert store.documents == {}
 
 
 @pytest.mark.unit
@@ -448,7 +514,7 @@ class TestPlaybookToolContract:
         self, store: _FakePlaybookStore
     ) -> None:
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["success"] is True
         assert result["data"] == {"exists": False}
@@ -457,7 +523,7 @@ class TestPlaybookToolContract:
         store.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["success"] is False
         assert result["error"] == "read_failed"
@@ -468,9 +534,7 @@ class TestPlaybookToolContract:
         store.delete_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "r"}, config=_config()
-            )
+            result = await disable_playbook.ainvoke({"reason": "r"}, config=_config())
 
         assert result["success"] is False
         assert result["error"] == "disable_failed"
@@ -556,7 +620,7 @@ class TestReadPlaybookDetails:
             update={"last_run_status": PlaybookRunStatus.NOT_RUN}
         )
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["data"]["exists"] is True
         assert result["data"]["last_run_used_it"] is False
@@ -573,7 +637,7 @@ class TestReadPlaybookDetails:
             update={"updated_at": revised}
         )
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            result = await read_playbook.ainvoke({}, config=_config())
 
         assert result["data"]["written_at"] == revised.isoformat()
 
@@ -605,9 +669,7 @@ class TestPlaybookTenantIsolation:
     ) -> None:
         _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
-            result = await read_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID}, config=_config_for(OTHER_USER)
-            )
+            result = await read_playbook.ainvoke({}, config=_config_for(OTHER_USER))
 
         assert result["data"] == {"exists": False}
 
@@ -617,7 +679,7 @@ class TestPlaybookTenantIsolation:
         _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "not mine"},
+                {"reason": "not mine"},
                 config=_config_for(OTHER_USER),
             )
 
@@ -677,7 +739,7 @@ class TestPlaybookWideEvents:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
+            await read_playbook.ainvoke({}, config=_config())
 
         log.set.assert_called_once_with(
             tool={"name": "read_playbook", "action": "read"}, workflow_id=WORKFLOW_ID
@@ -692,7 +754,7 @@ class TestPlaybookWideEvents:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "the order now depends on the inbox"},
+                {"reason": "the order now depends on the inbox"},
                 config=_config(),
             )
 
@@ -710,8 +772,6 @@ class TestPlaybookWideEvents:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            await disable_playbook.ainvoke(
-                {"workflow_id": WORKFLOW_ID, "reason": "nothing to disable"}, config=_config()
-            )
+            await disable_playbook.ainvoke({"reason": "nothing to disable"}, config=_config())
 
         log.set_ns.assert_not_called()
