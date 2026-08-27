@@ -308,6 +308,11 @@ class Harness:
         outcome: HandoffOutcome = await self.runner_kwargs["request_handoff"](req)
         return outcome
 
+    def action_results(self, step_index: int, outputs: object) -> None:
+        # The tool wires this to the mirror's `results`; the runner calls it from
+        # `on_step_end`. Driving it directly mirrors that call.
+        self.runner_kwargs["action_results"](step_index, outputs)
+
 
 class RecordingDelivery:
     def __init__(self, harness: Harness) -> None:
@@ -543,7 +548,7 @@ async def test_runner_is_configured_from_settings_and_config(
     await browser_task.ainvoke({"task": "x"}, config=config)
 
     kwargs = dict(h.runner_kwargs)
-    for seam in ("emit", "request_handoff", "is_cancelled"):
+    for seam in ("emit", "request_handoff", "is_cancelled", "action_results"):
         assert callable(kwargs.pop(seam))
     assert kwargs == {
         "session": h.session,
@@ -739,6 +744,109 @@ async def test_mirrored_action_row_names_the_element_it_touched(
     rows = [w["tool_data"] for w in h.writes if "tool_data" in w]
     messages = [r["data"]["message"] for r in rows]
     assert 'Clicking "Submit"' in messages, messages
+
+
+async def test_action_output_lands_on_the_row_for_that_step_and_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A per-action output frame must key to the same tool_call_id as its row.
+
+    The row is emitted before the action runs (Browser-Use fires the step
+    callback pre-execution), so the output arrives later via on_step_end and has
+    to match the row by {group}:{step}:{position} or it renders detached.
+    """
+    from app.schemas.browser import BrowserActionOutput
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(
+            BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
+        )
+        await h.emit(
+            BrowserStepSnapshot(
+                index=3,
+                goal="read the total",
+                actions=[BrowserAction(name="extract", inputs={"index": 4}, target="Total")],
+                url="https://x",
+                title="Cart",
+                screenshot=None,
+            )
+        )
+        # The tool hands the mirror's `results` callback to the runner; call it
+        # the way the runner would after the step executes.
+        h.action_results(3, [BrowserActionOutput(position=0, output="Total: $42.00")])
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    rows = [w["tool_data"] for w in h.writes if "tool_data" in w]
+    outs = [w["tool_output"] for w in h.writes if "tool_output" in w]
+    row_id = rows[0]["data"]["tool_call_id"]
+    assert len(outs) == 1
+    assert outs[0]["tool_call_id"] == row_id, (outs[0]["tool_call_id"], row_id)
+    assert outs[0]["output"] == "Total: $42.00"
+
+
+async def test_action_output_arriving_before_its_row_is_buffered_then_flushed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live ordering: results arrive before the row.
+
+    The runner emits step rows through a background task that uploads the
+    screenshot first (~1s), while the action result arrives synchronously on the
+    next hook. So `results` can run before `_actions` for the same step. The
+    output must still attach — buffered, then flushed when the row lands.
+    """
+    from app.schemas.browser import BrowserActionOutput
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(
+            BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
+        )
+        # Result first — the row for step 2 has NOT been emitted yet.
+        h.action_results(2, [BrowserActionOutput(position=0, output="Total: $42.00")])
+        assert [w for w in h.writes if "tool_output" in w] == []  # buffered, not emitted
+        # Now the row lands; the buffered output flushes with it.
+        await h.emit(
+            BrowserStepSnapshot(
+                index=2,
+                goal="read the total",
+                actions=[BrowserAction(name="extract", inputs={"index": 4}, target="Total")],
+                url="https://x",
+                title="Cart",
+                screenshot=None,
+            )
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    rows = [w["tool_data"] for w in h.writes if "tool_data" in w]
+    outs = [w["tool_output"] for w in h.writes if "tool_output" in w]
+    assert len(outs) == 1
+    assert outs[0]["tool_call_id"] == rows[0]["data"]["tool_call_id"]
+    assert outs[0]["output"] == "Total: $42.00"
+
+
+async def test_action_output_for_an_unknown_row_is_dropped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An output whose row never arrives (an errored step emits no rows) stays
+    buffered and never produces an orphan frame the UI cannot attach."""
+    from app.schemas.browser import BrowserActionOutput
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.emit(
+            BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
+        )
+        h.action_results(9, [BrowserActionOutput(position=0, output="orphan")])
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    assert [w for w in h.writes if "tool_output" in w] == []
 
 
 # ---------------------------------------------------------------------------

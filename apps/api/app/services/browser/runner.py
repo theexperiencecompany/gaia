@@ -33,6 +33,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
     BrowserAction,
+    BrowserActionOutput,
     BrowserCardSnapshot,
     BrowserResultSnapshot,
     BrowserSessionSnapshot,
@@ -59,6 +60,8 @@ if TYPE_CHECKING:
 EmitFn = Callable[[BrowserCardSnapshot], Awaitable[None]]
 RequestHandoffFn = Callable[[HandoffRequest], Awaitable[HandoffOutcome]]
 IsCancelledFn = Callable[[], Awaitable[bool]]
+# Per-action results, keyed to the step whose rows the thread mirror emitted.
+ActionResultsFn = Callable[[int, list[BrowserActionOutput]], None]
 
 
 # Attributes worth naming an otherwise-unlabelled control by, in the order a
@@ -116,6 +119,31 @@ def _extract_actions(
     return actions
 
 
+_OUTPUT_MAX_CHARS = 200
+
+
+def _summarize_action_result(result: object) -> str | None:
+    """One action's outcome as short display text, or None when there is nothing
+    worth showing (a click that succeeded silently needs no output row)."""
+    error = getattr(result, "error", None)
+    if error:
+        text = str(error)
+    else:
+        text = str(
+            getattr(result, "extracted_content", None)
+            or getattr(result, "long_term_memory", None)
+            or ""
+        )
+    collapsed = " ".join(text.split())
+    if not collapsed:
+        return None
+    return (
+        collapsed
+        if len(collapsed) <= _OUTPUT_MAX_CHARS
+        else collapsed[: _OUTPUT_MAX_CHARS - 1].rstrip() + "…"
+    )
+
+
 class BrowserTaskRunner:
     """Orchestrates one browser task: session, agent loop, handoffs, delivery."""
 
@@ -128,6 +156,7 @@ class BrowserTaskRunner:
         emit: EmitFn,
         request_handoff: RequestHandoffFn,
         is_cancelled: IsCancelledFn,
+        action_results: ActionResultsFn | None = None,
         max_steps: int,
         max_actions_per_step: int,
         task_timeout_seconds: int,
@@ -146,6 +175,7 @@ class BrowserTaskRunner:
         self._emit = emit
         self._request_handoff = request_handoff
         self._is_cancelled = is_cancelled
+        self._action_results = action_results
         self._max_steps = max_steps
         self._max_actions_per_step = max_actions_per_step
         self._task_timeout = task_timeout_seconds
@@ -228,7 +258,8 @@ class BrowserTaskRunner:
 
         try:
             history = await asyncio.wait_for(
-                self._agent.run(max_steps=self._max_steps), timeout=self._wall_clock_timeout
+                self._agent.run(max_steps=self._max_steps, on_step_end=self._on_step_end),
+                timeout=self._wall_clock_timeout,
             )
         except (BrowserHandoffCancelled, InterruptedError):
             if self._handed_off:
@@ -368,6 +399,28 @@ class BrowserTaskRunner:
         )
         self._emit_tasks.add(task)
         task.add_done_callback(self._emit_tasks.discard)
+
+    async def _on_step_end(self, agent: object) -> None:
+        """After a step's actions execute, mirror each one's result into the thread.
+
+        Runs where the results actually exist: ``register_new_step_callback``
+        fires before the actions execute (Browser-Use calls it inside
+        _get_next_action), so ``_on_step`` has no outputs to show. ``on_step_end``
+        fires after execution with ``state.last_result`` populated, one entry per
+        action in order. Keyed by ``self._last_step`` — the step ``_on_step`` just
+        emitted rows for — so an output lands on the row it belongs to.
+        """
+        if self._action_results is None:
+            return
+        state = getattr(agent, "state", None)
+        results = getattr(state, "last_result", None) or []
+        outputs = [
+            BrowserActionOutput(position=position, output=text)
+            for position, result in enumerate(results)
+            if (text := _summarize_action_result(result))
+        ]
+        if outputs:
+            self._action_results(self._last_step, outputs)
 
     async def _emit_step(
         self,

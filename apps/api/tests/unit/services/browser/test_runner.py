@@ -9,6 +9,7 @@ actions), which is what the takeover tests below exercise directly.
 """
 
 import asyncio
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, Mock, call
 
@@ -61,12 +62,25 @@ class _History:
         return self._successful
 
 
+class _ActionResult:
+    def __init__(self, extracted_content=None, error=None):
+        self.extracted_content = extracted_content
+        self.error = error
+        self.long_term_memory = None
+
+
+class _AgentState:
+    def __init__(self, results):
+        self.last_result = [_ActionResult(**r) for r in results]
+
+
 class FakeAgent:
     script: ClassVar[list[dict]] = []
     history = _History()
     # What the runner actually handed Browser-Use, for the wiring assertions.
     last_kwargs: ClassVar[dict] = {}
     last_max_steps: ClassVar[int | None] = None
+    last_on_step_end: ClassVar[object] = None
     last: ClassVar["FakeAgent | None"] = None
 
     def __init__(self, **kwargs):
@@ -80,8 +94,9 @@ class FakeAgent:
     def stop(self):
         self.stopped = True
 
-    async def run(self, max_steps: int):
+    async def run(self, max_steps: int, on_step_end=None):
         type(self).last_max_steps = max_steps
+        type(self).last_on_step_end = on_step_end
         for i, step in enumerate(type(self).script, start=1):
             if await self._should_stop() or self.stopped:
                 break
@@ -90,6 +105,11 @@ class FakeAgent:
             if self.stopped:
                 break
             self.executed.append(step["goal"])
+            # Browser-Use fires on_step_end AFTER the actions execute, with the
+            # results on agent.state.last_result — model the same order here.
+            if on_step_end is not None:
+                self.state = _AgentState(step.get("results", []))
+                await on_step_end(self)
         return type(self).history
 
 
@@ -263,7 +283,7 @@ async def test_cancellation_stops_run(patch_browser):
 
 
 async def test_timeout_marks_failed(patch_browser, monkeypatch):
-    async def _slow_run(self, max_steps):
+    async def _slow_run(self, max_steps, on_step_end=None):
         await asyncio.sleep(1)
         return _History()
 
@@ -281,7 +301,7 @@ async def test_unexpected_agent_error_finishes_failed(patch_browser, monkeypatch
     honest summary instead of a forever-spinning progress card.
     """
 
-    async def _boom(self, max_steps: int):
+    async def _boom(self, max_steps: int, on_step_end=None):
         raise RuntimeError("LLM provider exploded")
 
     monkeypatch.setattr(FakeAgent, "run", _boom)
@@ -395,6 +415,43 @@ def test_init_derives_timeouts_and_starts_from_a_clean_slate() -> None:
 # ---------------------------------------------------------------------------
 # run — how the agent and browser are configured
 # ---------------------------------------------------------------------------
+
+
+async def test_on_step_end_reports_outputs_keyed_to_the_step_just_executed() -> None:
+    """Browser-Use runs on_step_end AFTER the actions, so results exist there.
+
+    The output must key to the step _on_step already emitted rows for
+    (self._last_step), and only actions with content or an error produce an
+    output — a silent success adds no row.
+    """
+    calls: list[tuple[int, list]] = []
+    runner = _make_runner(emit=AsyncMock())
+    runner._action_results = lambda step, outs: calls.append((step, outs))
+    runner._last_step = 4
+
+    agent = SimpleNamespace(
+        state=SimpleNamespace(
+            last_result=[
+                _ActionResult(extracted_content="Total: $42"),
+                _ActionResult(),  # silent success — no output row
+                _ActionResult(error="element not found"),
+            ]
+        )
+    )
+    await runner._on_step_end(agent)
+
+    assert len(calls) == 1
+    step, outputs = calls[0]
+    assert step == 4
+    by_position = {o.position: o.output for o in outputs}
+    assert by_position == {0: "Total: $42", 2: "element not found"}
+
+
+async def test_on_step_end_is_a_noop_without_an_action_results_sink() -> None:
+    runner = _make_runner(emit=AsyncMock())
+    assert runner._action_results is None
+    agent = SimpleNamespace(state=SimpleNamespace(last_result=[_ActionResult(error="x")]))
+    await runner._on_step_end(agent)  # must not raise
 
 
 def test_the_task_preamble_forbids_inventing_field_values() -> None:
@@ -536,7 +593,7 @@ async def test_run_bounds_the_agent_by_the_wall_clock_budget(patch_browser, monk
 
 
 async def _run_raising(monkeypatch, exc: BaseException, **runner_kwargs):
-    async def _boom(self, max_steps: int):
+    async def _boom(self, max_steps: int, on_step_end=None):
         raise exc
 
     monkeypatch.setattr(FakeAgent, "run", _boom)
@@ -583,7 +640,7 @@ async def test_interrupted_agent_is_treated_as_a_stop(patch_browser, monkeypatch
 async def test_timeout_stops_the_agent_and_names_the_task_budget(
     patch_browser, monkeypatch
 ) -> None:
-    async def _slow_run(self, max_steps):
+    async def _slow_run(self, max_steps, on_step_end=None):
         await asyncio.sleep(1)
         return _History()
 

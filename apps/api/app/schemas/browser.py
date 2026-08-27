@@ -52,6 +52,19 @@ class BrowserAction(BaseModel):
     target: str | None = None
 
 
+class BrowserActionOutput(BaseModel):
+    """The result text of one executed browser action, by its position in the step.
+
+    A step's action rows show what the agent *called*; this carries what each
+    call *returned* (extracted text, or an error) so the tool thread can show the
+    outcome, not just the attempt. Positional because it is matched back to the
+    action row the mirror already emitted for the same step and position.
+    """
+
+    position: int
+    output: str
+
+
 class BrowserStepSnapshot(BaseModel):
     """Immutable snapshot of one agent step for the task record."""
 

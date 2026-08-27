@@ -29,7 +29,9 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.decorators import with_doc, with_rate_limiting
 from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.stream_events import ToolOutputPayload
 from app.schemas.browser import (
+    BrowserActionOutput,
     BrowserCardSnapshot,
     BrowserHandoffSnapshot,
     BrowserResultSnapshot,
@@ -102,6 +104,15 @@ class _BrowserThreadMirror:
         self._writer = writer
         self._group_id: str | None = None
         self._started_at = perf_counter()
+        # tool_call_ids of the action rows emitted, so an output only ever
+        # lands on a row that exists (an errored step emits no rows).
+        self._emitted_ids: set[str] = set()
+        # Outputs can arrive before their row: the runner emits step rows through
+        # a background task that first uploads the screenshot (~1s), while the
+        # action results arrive synchronously on the very next Browser-Use hook.
+        # Buffer an early output and flush it when its row lands, so ordering
+        # between the two paths never drops a result.
+        self._pending_outputs: dict[str, str] = {}
 
     def mirror(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserSessionSnapshot):
@@ -131,6 +142,8 @@ class _BrowserThreadMirror:
         if not self._group_id:
             return
         for position, action in enumerate(snapshot.actions):
+            tool_call_id = f"{self._group_id}:{snapshot.index}:{position}"
+            self._emitted_ids.add(tool_call_id)
             self._writer(
                 {
                     "tool_data": format_browser_action_entry(
@@ -138,10 +151,33 @@ class _BrowserThreadMirror:
                         inputs=action.inputs,
                         target=action.target,
                         subagent_id=self._group_id,
-                        tool_call_id=f"{self._group_id}:{snapshot.index}:{position}",
+                        tool_call_id=tool_call_id,
                     )
                 }
             )
+            buffered = self._pending_outputs.pop(tool_call_id, None)
+            if buffered is not None:
+                self._emit_output(tool_call_id, buffered)
+
+    def results(self, step_index: int, outputs: list[BrowserActionOutput]) -> None:
+        """Attach each executed action's result to its row, or buffer it until the
+        row is emitted (the row's background task may still be uploading)."""
+        if not self._group_id:
+            return
+        for output in outputs:
+            tool_call_id = f"{self._group_id}:{step_index}:{output.position}"
+            if tool_call_id in self._emitted_ids:
+                self._emit_output(tool_call_id, output.output)
+            else:
+                self._pending_outputs[tool_call_id] = output.output
+
+    def _emit_output(self, tool_call_id: str, output: str) -> None:
+        payload = ToolOutputPayload(
+            tool_call_id=tool_call_id,
+            output=output,
+            subagent_id=self._group_id,
+        )
+        self._writer({"tool_output": payload.model_dump(exclude_none=True)})
 
     def _close(self) -> None:
         if not self._group_id:
@@ -320,6 +356,7 @@ async def browser_task(
                 emit=emit,
                 request_handoff=request_handoff,
                 is_cancelled=is_cancelled,
+                action_results=thread_mirror.results,
                 max_steps=settings.BROWSER_USE_MAX_STEPS,
                 max_actions_per_step=settings.BROWSER_USE_MAX_ACTIONS_PER_STEP,
                 task_timeout_seconds=settings.BROWSER_USE_TASK_TIMEOUT_SECONDS,
