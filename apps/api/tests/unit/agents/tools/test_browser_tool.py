@@ -704,6 +704,43 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
     }
 
 
+async def test_mirrored_action_row_names_the_element_it_touched(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tool-thread row must use the resolved target, like the step caption does.
+
+    The runner resolves each action's element against the DOM the model saw and
+    puts it on ``BrowserAction.target``. The step caption used it; the mirrored
+    row did not, so a form fill rendered as "Clicking" twice with nothing to tell
+    the two apart.
+    """
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        # The mirror opens its group on the session snapshot; without one there
+        # is no group to hang the action rows off.
+        await h.emit(
+            BrowserSessionSnapshot(task="x", status=BrowserSessionStatus.RUNNING, session_id="s1")
+        )
+        await h.emit(
+            BrowserStepSnapshot(
+                index=1,
+                goal="submit the form",
+                actions=[BrowserAction(name="click", inputs={"index": 7}, target="Submit")],
+                url="https://x",
+                title="Form",
+                screenshot=None,
+            )
+        )
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    h = _install(monkeypatch, run_body=body)
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+
+    rows = [w["tool_data"] for w in h.writes if "tool_data" in w]
+    messages = [r["data"]["message"] for r in rows]
+    assert 'Clicking "Submit"' in messages, messages
+
+
 # ---------------------------------------------------------------------------
 # browser_task — mid-run handoff
 # ---------------------------------------------------------------------------

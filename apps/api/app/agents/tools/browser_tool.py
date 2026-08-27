@@ -136,6 +136,7 @@ class _BrowserThreadMirror:
                     "tool_data": format_browser_action_entry(
                         name=action.name,
                         inputs=action.inputs,
+                        target=action.target,
                         subagent_id=self._group_id,
                         tool_call_id=f"{self._group_id}:{snapshot.index}:{position}",
                     )

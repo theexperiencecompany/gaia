@@ -294,6 +294,7 @@ def format_browser_action_entry(
     *,
     name: str,
     inputs: dict[str, Any],
+    target: str | None,
     subagent_id: str,
     tool_call_id: str,
 ) -> ToolDataEntry:
@@ -313,7 +314,7 @@ def format_browser_action_entry(
                 data=ToolCallsDataEntryData(
                     tool_name=name,
                     tool_category=BROWSER_TOOL_CATEGORY,
-                    message=describe_action(name, inputs),
+                    message=describe_action(name, inputs, target),
                     show_category=False,
                     tool_call_id=tool_call_id,
                     inputs=inputs,
