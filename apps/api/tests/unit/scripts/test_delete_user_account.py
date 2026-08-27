@@ -976,6 +976,7 @@ async def _run_build_footprint(
     uid: str = UID,
     composio_items: list[Any] | None = None,
     workos_users: list[Any] | None = None,
+    pg_counts: dict[str, int] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Call _build_footprint under the standard client patches.
 
@@ -1023,7 +1024,7 @@ async def _run_build_footprint(
         ) as mock_mongo_inv,
         patch(
             "app.scripts.delete_user_account._pg_inventory",
-            return_value={"memories": 1},
+            return_value={"memories": 1} if pg_counts is None else pg_counts,
         ) as mock_pg_inv,
         patch(
             "app.scripts.delete_user_account._chroma_inventory",
@@ -1124,6 +1125,15 @@ class TestBuildFootprint:
         assert "e2b sandboxes: ['sbx-1']" in out
         assert "conversations (checkpoint threads to sweep): 1" in out
         assert "platform_links: ['telegram']" in out
+
+    async def test_an_empty_postgres_inventory_prints_none_not_an_empty_dict(
+        self, capsys: Any
+    ) -> None:
+        """The footprint is read by a human before they approve a deletion —
+        `postgres: {}` reads as a bug, `postgres: none` reads as "nothing there"."""
+        await _run_build_footprint(MagicMock(), {}, pg_counts={})
+
+        assert "postgres: none" in capsys.readouterr().out.splitlines()
 
     @pytest.mark.parametrize("user", [{}, {"platform_links": None}, {"other": 1}])
     async def test_platform_links_fall_back_to_an_empty_dict(self, user: Any) -> None:
@@ -1319,6 +1329,8 @@ class TestRunExecuteMode:
         ]
         assert all(d is footprint for _, d in order)
         out = capsys.readouterr().out
-        assert "=== deleting ===" in out
+        # The exact line, not a substring: the banner is what tells the operator
+        # the destructive phase has begun, so its text is the assertion.
+        assert "=== deleting ===" in out.splitlines()
         assert "mode: EXECUTE" in out
         assert f"user: user@example.com  uid={UID}  name=U" in out

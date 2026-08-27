@@ -201,7 +201,6 @@ apps/api/tests/unit/memory/test_retrieval.py	PLR0913
 apps/api/tests/unit/services/test_todo_service.py	PLR0913
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	PLR0913
 apps/api/tests/unit/services/test_trigger_service.py	PLR0913
-apps/api/tests/unit/services/test_workflow_service_main.py	PLR0913
 apps/api/tests/unit/utils/test_weather_utils.py	PLR0913
 apps/voice-agent/src/agent.py	PLR0913
 apps/web/scripts/analyze-chunks.py	PLR0912

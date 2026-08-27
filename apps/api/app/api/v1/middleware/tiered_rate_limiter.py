@@ -161,15 +161,6 @@ class TieredRateLimiter:
         paid_has_access = paid_limits.day > 0 or paid_limits.month > 0
         return "pro" if (user_plan == PlanType.FREE and paid_has_access) else None
 
-    @staticmethod
-    def _period_plan_required(
-        feature_key: str, user_plan: PlanType, period: RateLimitPeriod
-    ) -> str | None:
-        """``"pro"`` when the FREE tier has a zero limit for this period only."""
-        free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
-        is_plan_gated = getattr(free_limits, period.value) == 0
-        return "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
-
     async def _snapshot_usage(
         self,
         user_id: str,
@@ -192,11 +183,13 @@ class TieredRateLimiter:
             usage_info[period.value] = UsageInfo(used=used, limit=limit, reset_time=reset_time)
 
             if used >= limit:
+                # No plan_required: an exhausted window is a spent budget, not a
+                # paywall. Both are only reachable when the CALLER's own limit for
+                # this period is non-zero, and a paywalled period is one whose
+                # limit is zero — so the two can never coincide. The whole-feature
+                # gate in _check_and_increment is where an upsell comes from.
                 raise RateLimitExceededException(
-                    feature_key,
-                    self._period_plan_required(feature_key, user_plan, period),
-                    reset_time,
-                    current_plan=user_plan.value,
+                    feature_key, reset_time=reset_time, current_plan=user_plan.value
                 )
         return usage_info
 
@@ -255,10 +248,11 @@ class TieredRateLimiter:
                         # Double-check limit hasn't been exceeded by concurrent requests
                         if current_val >= limit:
                             await pipe.unwatch()
+                            # No plan_required, for the same reason as in
+                            # _snapshot_usage: this branch needs limit > 0.
                             raise RateLimitExceededException(
                                 feature_key,
-                                self._period_plan_required(feature_key, user_plan, period),
-                                get_reset_time(period),
+                                reset_time=get_reset_time(period),
                                 current_plan=user_plan.value,
                             )
 

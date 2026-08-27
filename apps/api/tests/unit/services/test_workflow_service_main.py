@@ -110,10 +110,6 @@ def _make_workflow(
     activated: bool = True,
     steps: list | None = None,
     trigger_config: TriggerConfig | None = None,
-    description: str = "Test description",
-    prompt: str = "Execute test workflow",
-    user_id: str = USER_ID,
-    is_todo_workflow: bool = False,
     error_message: str | None = None,
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
@@ -123,14 +119,14 @@ def _make_workflow(
         trigger_config = _make_trigger_config()
     return Workflow(
         id=workflow_id,
-        user_id=user_id,
+        user_id=USER_ID,
         title="Test Workflow",
-        description=description,
-        prompt=prompt,
+        description="Test description",
+        prompt="Execute test workflow",
         activated=activated,
         steps=steps,
         trigger_config=trigger_config,
-        is_todo_workflow=is_todo_workflow,
+        is_todo_workflow=False,
         error_message=error_message,
     )
 
