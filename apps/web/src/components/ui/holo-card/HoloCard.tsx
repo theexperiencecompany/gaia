@@ -308,7 +308,7 @@ export const HoloCard = ({
   return (
     <button
       type="button"
-      className={`block w-full ${forceSide ? "" : "perspective-1000"}`}
+      className={`block w-full text-left ${forceSide ? "" : "perspective-1000"}`}
       onClick={handleCardClick}
       style={containerStyle}
     >

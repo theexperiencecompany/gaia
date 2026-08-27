@@ -379,6 +379,35 @@ const HiddenDownloadCards = ({
   </div>
 );
 
+// Fold a freshly-arrived card into the copy being edited.
+//
+// The card renders the EDITED copy, not `initialData`, so every field of the
+// incoming card has to come through: a refetch rewrites name, bio, account
+// number and member_since — connecting Gmail replaces the placeholder bio with
+// a generated one — and a version of this that patched only the overlay fields
+// froze everything else at whatever it was on first mount.
+//
+// The overlay is the one exception. A refetch must not yank it out from under
+// someone mid-pick, so the incoming overlay wins only where it actually differs
+// from the card we last saw; otherwise the local choice stands.
+export function mergeIncomingCard(
+  edited: HoloCardDisplayData,
+  incoming: HoloCardDisplayData,
+  previousIncoming: HoloCardDisplayData,
+): HoloCardDisplayData {
+  return {
+    ...incoming,
+    overlay_color:
+      incoming.overlay_color !== previousIncoming.overlay_color
+        ? incoming.overlay_color
+        : edited.overlay_color,
+    overlay_opacity:
+      incoming.overlay_opacity !== previousIncoming.overlay_opacity
+        ? incoming.overlay_opacity
+        : edited.overlay_opacity,
+  };
+}
+
 // Owns the overlay color/opacity state, its persistence to the API, and every
 // mutation path (picker, slider, randomize, reset).
 function useHoloCardColors(
@@ -388,24 +417,13 @@ function useHoloCardColors(
   const [data, setData] = useState<HoloCardDisplayData>(initialData);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Reset the editable copy during render when a new card object arrives —
-  // the React-recommended alternative to a post-render sync effect, so the
-  // stale overlay never paints. Only DEFINED overlay fields patch through:
-  // parents rebuild `initialData` per render and may omit overlay fields when
-  // the API has none — a whole-object replace would wipe the user's in-progress
-  // pick on every unrelated parent re-render.
+  // Reset the editable copy during render when a new card object arrives — the
+  // React-recommended alternative to a post-render sync effect, so nothing
+  // stale ever paints.
   const [prevInitialData, setPrevInitialData] = useState(initialData);
   if (prevInitialData !== initialData) {
     setPrevInitialData(initialData);
-    setData((prev) => ({
-      ...prev,
-      ...(initialData.overlay_color !== undefined
-        ? { overlay_color: initialData.overlay_color }
-        : {}),
-      ...(initialData.overlay_opacity !== undefined
-        ? { overlay_opacity: initialData.overlay_opacity }
-        : {}),
-    }));
+    setData((prev) => mergeIncomingCard(prev, initialData, prevInitialData));
   }
 
   // Overlay color/opacity are pure derivations of `data` — no mirrored state.
