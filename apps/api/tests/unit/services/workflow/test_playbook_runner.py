@@ -199,14 +199,15 @@ async def _run(
     subagent: _FakeSubagent | None = None,
     runnable: MagicMock | None = None,
     find_previous: AsyncMock | None = None,
+    llm: AsyncMock | None = None,
 ) -> tuple[PlaybookRunResult, AsyncMock]:
     """Run the playbook with mocked seams; hands back the result and the LLM mock.
 
-    ``runnable`` and ``find_previous`` let a test hold on to the seam it is
-    asserting about: how the one model call is built, and what the previous
-    execution's trace was looked up with.
+    ``runnable``, ``find_previous`` and ``llm`` let a test hold on to the seam
+    it is asserting about: how the one model call is built, what the previous
+    execution's trace was looked up with, and what the model call does.
     """
-    llm = AsyncMock(return_value=narration or _narration())
+    llm = llm or AsyncMock(return_value=narration or _narration())
     with (
         patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=registry)),
         patch(
@@ -529,6 +530,131 @@ async def test_an_unknown_handoff_target_stops_the_run() -> None:
     assert result.ok is False
     assert "calendar_agent" in (result.failure or "")
     assert recorder.calls == []
+
+
+class _FakeMcpSubagent(_FakeSubagent):
+    """The calendar subagent as an MCP integration: its live tools come from the
+    user's client and are nowhere in the registry's category."""
+
+    managed_by = "mcp"
+    mcp_config = object()
+
+
+async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() -> None:
+    """The validator accepted this step because the MCP tool is in the space.
+    The replay then refused it as "outside the bound tool set" because the ids
+    the handoff bound were only the registry ones — the same step, accepted at
+    write time and rejected at run time."""
+    recorder = _Recorder()
+    tools = _tools(recorder)
+    registry = _FakeRegistry(tools, spaces={"calendar": ["list_events"]})
+    playbook = _playbook(
+        [
+            PlaybookStep(
+                handoff="calendar_agent",
+                steps=[PlaybookStep(id="mail", tool="send_email", args={"to": "x@example.com"})],
+            )
+        ]
+    )
+
+    async def mcp_client(user_id: str) -> MagicMock:
+        client = MagicMock()
+        client.ensure_connected = AsyncMock(return_value=[tools["send_email"]])
+        return client
+
+    with patch(f"{TOOL_SPACE_MODULE}.get_mcp_client", mcp_client):
+        result, _ = await _run(playbook, registry, subagent=_FakeMcpSubagent())
+
+    assert result.ok is True, result.failure
+    assert [name for name, _ in recorder.calls] == ["send_email"]
+    assert [call.tool_name for call in result.trace] == ["handoff", "send_email"]
+
+
+# --- a step or the narration that raises ------------------------------------
+
+
+async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_record() -> None:
+    """An exception out of the step's graph used to escape ``run_playbook``
+    before any result existed, so the worker never saw ``ok=False`` and the
+    trace of the steps that had already run — with their side effects — was
+    lost with it."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    def exploding_agent(**kwargs: Any) -> Any:
+        if kwargs["llm"].script[0].name == "send_email":
+            raise RuntimeError("graph exploded")
+        return real_create_agent(**kwargs)
+
+    with patch(f"{MODULE}.create_agent", exploding_agent):
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+    assert result.ok is False
+    assert [call.tool_name for call in result.trace] == ["list_events"]
+    assert result.completed == ['events (list_events) -> {"count": 12}']
+    assert result.failure is not None
+    assert result.failure.startswith("Playbook stopped at step 2 (send_email): ")
+    assert "RuntimeError" in result.failure
+    assert "graph exploded" in result.failure
+    assert "events (list_events)" in result.failure
+
+
+async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    def exploding_agent(**kwargs: Any) -> Any:
+        raise RuntimeError("graph exploded")
+
+    with patch(f"{MODULE}.create_agent", exploding_agent), patch(f"{MODULE}.log") as log:
+        await _run(_playbook(AGENDA_STEPS), registry)
+
+    assert log.exception.call_count == 1
+    assert log.exception.call_args.kwargs["error_type"] == "RuntimeError"
+    assert log.exception.call_args.kwargs["tool_name"] == "list_events"
+
+
+async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record() -> None:
+    """The narration is the last thing a finished replay does; a raise there
+    dropped a trace in which EVERY step had already run."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    result, _ = await _run(
+        _playbook(AGENDA_STEPS), registry, llm=AsyncMock(side_effect=TimeoutError("model"))
+    )
+
+    assert result.ok is False
+    assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
+    assert len(result.completed) == 2
+    assert result.failure is not None
+    assert "narration" in result.failure
+    assert "TimeoutError" in result.failure
+    assert result.llm_calls == 0
+
+
+async def test_a_mid_run_narration_that_raises_stops_before_the_step_that_needed_it() -> None:
+    """A step addressing ``$ask`` triggers the narration first. If that raises,
+    the step must not run with the ask unfilled."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+            ),
+        ],
+        ask={"body": PlaybookAsk(prompt="Write the body", uses=["events"])},
+    )
+
+    result, _ = await _run(playbook, registry, llm=AsyncMock(side_effect=TimeoutError("model")))
+
+    assert result.ok is False
+    assert [name for name, _ in recorder.calls] == ["list_events"]
+    assert [call.tool_name for call in result.trace] == ["list_events"]
+    assert result.failure is not None
+    assert result.failure.startswith("Playbook stopped at step 2 (narration): ")
 
 
 def test_the_scripted_model_never_reaches_a_provider() -> None:

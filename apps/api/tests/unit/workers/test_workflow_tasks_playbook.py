@@ -202,7 +202,7 @@ async def test_a_successful_replay_records_success() -> None:
     await _fire(harness)
 
     harness.record_run_outcome.assert_awaited_once_with(
-        workflow.id, workflow.user_id, PlaybookRunStatus.SUCCESS
+        workflow.id, workflow.user_id, PlaybookRunStatus.SUCCESS, playbook_id="pb_1"
     )
 
 
@@ -226,7 +226,7 @@ async def test_a_stopped_replay_records_failure_and_falls_back_to_the_agent() ->
     await _fire(harness)
 
     harness.record_run_outcome.assert_awaited_once_with(
-        workflow.id, workflow.user_id, PlaybookRunStatus.FAILED
+        workflow.id, workflow.user_id, PlaybookRunStatus.FAILED, playbook_id="pb_1"
     )
     harness.chat.assert_awaited_once()
 
@@ -277,6 +277,61 @@ async def test_the_fallback_keeps_the_replays_calls_on_the_execution_record() ->
 
     trace = harness.complete_execution.call_args.kwargs["trace"]
     assert [call.tool_name for call in trace] == ["list_events", "agent_tool"]
+
+
+def _stopped_replay() -> tuple[str, PlaybookRunResult]:
+    return (
+        "conv_1",
+        PlaybookRunResult(
+            ok=False,
+            failure="Playbook stopped at step 2 (send_email): boom.",
+            completed=["events (list_events) -> 12 events"],
+            trace=[RecordedCall(tool_name="list_events")],
+        ),
+    )
+
+
+async def test_a_fallback_that_raises_still_records_the_replays_calls() -> None:
+    """The replay's calls happened whether or not the agent got to finish.
+
+    A raise out of the fallback used to reach the generic failure path with no
+    trace at all, so the record said this fire did nothing and the next fire
+    replayed from step one — repeating every side effect the first one caused.
+    """
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+    harness.playbook_run = AsyncMock(return_value=_stopped_replay())
+    harness.chat = AsyncMock(side_effect=RuntimeError("agent exploded"))
+
+    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+        await _fire(harness)
+
+    harness.complete_execution.assert_awaited_once()
+    kwargs = harness.complete_execution.await_args.kwargs
+    assert kwargs["status"] == "failed"
+    assert kwargs["error_message"] == "agent exploded"
+    assert kwargs["conversation_id"] == "conv_1"
+    assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
+
+
+async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -> None:
+    """Same rule one step earlier: the playbook bookkeeping failing must not
+    erase what the replay already did."""
+    workflow = _workflow()
+    harness = _Harness(workflow)
+    harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+    harness.playbook_run = AsyncMock(return_value=_stopped_replay())
+    harness.record_run_outcome = AsyncMock(side_effect=ConnectionError("mongo away"))
+
+    with patch(f"{MODULE}.notification_service.create_notification", AsyncMock()):
+        await _fire(harness)
+
+    kwargs = harness.complete_execution.await_args.kwargs
+    assert kwargs["status"] == "failed"
+    assert kwargs["error_message"] == "mongo away"
+    assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
+    harness.chat.assert_not_awaited()
 
 
 @pytest.mark.asyncio

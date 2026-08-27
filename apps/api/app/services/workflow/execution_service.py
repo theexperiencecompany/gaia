@@ -49,6 +49,25 @@ class WorkflowFireQueued(Exception):
         self.trace = trace
 
 
+class PlaybookFallbackFailed(Exception):
+    """A fire that failed AFTER its playbook replay had already run some steps.
+
+    The replay's calls are side effects that happened; if the record of this
+    fire does not carry them, the next fire reads an empty history and repeats
+    them. Wraps the real failure rather than replacing it, so the caller's
+    bookkeeping (rate-limit and budget classification, the user notification)
+    still sees the error that actually occurred.
+    """
+
+    def __init__(
+        self, cause: Exception, *, conversation_id: str, trace: list[RecordedCall]
+    ) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.conversation_id = conversation_id
+        self.trace = trace
+
+
 async def create_execution(
     workflow_id: str,
     user_id: str,

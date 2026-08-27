@@ -69,6 +69,7 @@ from app.services.workflow.conversation_service import (
     get_or_create_workflow_conversation,
 )
 from app.services.workflow.execution_service import (
+    PlaybookFallbackFailed,
     WorkflowFireQueued,
     complete_execution,
     create_execution,
@@ -457,17 +458,24 @@ async def _record_execution_failure(
     workflow: Workflow | None,
     workflow_id: str,
     execution_id: str | None,
+    *,
+    conversation_id: str | None = None,
+    trace: list[RecordedCall] | None = None,
 ) -> None:
     """Close out a failed run: mark the execution record, bump the failure count
     and notify the user. Every step is best-effort — none of this bookkeeping
     may mask ``error``. The error itself is recorded on the wide event by the
-    caller's except block (this helper is bookkeeping only)."""
+    caller's except block (this helper is bookkeeping only). ``trace`` is what
+    the fire had already done before it failed, so the next fire reads it as
+    history instead of repeating it."""
     if execution_id:
         try:
             await complete_execution(
                 execution_id=execution_id,
                 status="failed",
                 error_message=str(error),
+                conversation_id=conversation_id,
+                trace=trace,
             )
         except Exception as e2:
             log.debug(f"{LogTag.WORKER} Failed to complete execution record: %s" % e2)
@@ -569,10 +577,37 @@ async def _run_workflow(
         return await execute_workflow_as_chat(workflow, user, context)
 
     conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
+    # From here on the replay's calls are history that happened. Whatever ends
+    # this fire — a result, a queued hand-off, or a failure — carries them, or
+    # the next fire reads an empty record and repeats every side effect.
+    try:
+        return await _finish_after_replay(
+            workflow, workflow_id, context, user, playbook, conversation_id, result
+        )
+    except WorkflowFireQueued as queued:
+        queued.trace = [*result.trace, *queued.trace]
+        raise
+    except Exception as exc:
+        raise PlaybookFallbackFailed(
+            exc, conversation_id=conversation_id, trace=result.trace
+        ) from exc
+
+
+async def _finish_after_replay(
+    workflow: Workflow,
+    workflow_id: str,
+    context: dict[str, Any],
+    user: AuthenticatedUser,
+    playbook: PlaybookDocument,
+    conversation_id: str,
+    result: PlaybookRunResult,
+) -> tuple[str, list[RecordedCall]]:
+    """Record the replay's outcome and, if it stopped, let the agent finish the run."""
     await playbook_repository.record_run_outcome(
         workflow_id,
         workflow.user_id,
         PlaybookRunStatus.SUCCESS if result.ok else PlaybookRunStatus.FAILED,
+        playbook_id=playbook.playbook_id,
     )
     if result.ok:
         log.set_ns(
@@ -597,15 +632,9 @@ async def _run_workflow(
         playbook_id=playbook.playbook_id,
         failure=result.failure,
     )
-    try:
-        conversation_id, agent_trace = await execute_workflow_as_chat(
-            workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
-        )
-    except WorkflowFireQueued as queued:
-        # Same rule as the return below: the replay's calls belong on the record
-        # even when the agent hand-off never got to run.
-        queued.trace = [*result.trace, *queued.trace]
-        raise
+    conversation_id, agent_trace = await execute_workflow_as_chat(
+        workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
+    )
     # The replay's own calls stay on the record: they are what the agent was
     # told not to repeat, and the next run reads this trace as its history.
     return conversation_id, [*result.trace, *agent_trace]
@@ -852,7 +881,12 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
         return f"Workflow {workflow_id} did not run — queued behind its previous run"
 
-    except Exception as e:
+    except Exception as raised:
+        # A failure after a partial replay arrives wrapped with the replay's
+        # trace; the bookkeeping below classifies the real error, and the
+        # record keeps the calls that already happened.
+        after_replay = raised if isinstance(raised, PlaybookFallbackFailed) else None
+        e = after_replay.cause if after_replay is not None else raised
         # The caught error must land on the wide event from this block — the
         # bookkeeping helper below cannot vouch for it on its own.
         if isinstance(e, RateLimitExceededException):
@@ -873,7 +907,14 @@ async def execute_workflow_by_id(
                 error_type=type(e).__name__,
             )
 
-        await _record_execution_failure(e, workflow, workflow_id, execution_id)
+        await _record_execution_failure(
+            e,
+            workflow,
+            workflow_id,
+            execution_id,
+            conversation_id=after_replay.conversation_id if after_replay is not None else None,
+            trace=after_replay.trace if after_replay is not None else None,
+        )
 
         # Still arm the next occurrence — a transient failure (rate limit, LLM
         # error) must not permanently kill a recurring workflow.

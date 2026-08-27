@@ -88,6 +88,9 @@ _HANDOFF_TOOL = "handoff"
 #: What a replayed step's graph is metered and logged as.
 _REPLAY_AGENT_NAME = "playbook_replay"
 
+#: The label a failure report gives the run's one model call.
+_NARRATION_LABEL = "narration"
+
 #: A replayed step is one tool call plus the turn that ends the loop. The ceiling
 #: exists only so a tool whose result loops the graph cannot run away.
 _REPLAY_RECURSION_LIMIT = 8
@@ -200,6 +203,8 @@ async def run_playbook(
     space = _ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
+    if failure is None and run.narration is None:
+        failure = await _narrate_or_fail(playbook, run, pending=[])
     if failure is not None:
         return PlaybookRunResult(
             ok=False,
@@ -209,7 +214,9 @@ async def run_playbook(
             llm_calls=1 if run.narration is not None else 0,
         )
 
-    narration = run.narration or await _narrate(playbook, run, pending=[])
+    narration = run.narration
+    if narration is None:
+        raise RuntimeError("playbook replay finished every step without a narration")
     return PlaybookRunResult(
         ok=True,
         text=narration.result,
@@ -266,7 +273,11 @@ async def _run_tool_step(
     position = run.position
 
     if run.narration is None and _addresses_ask(step):
-        await _narrate(playbook, run, pending=_labels(playbook.steps)[position - 1 :])
+        failure = await _narrate_or_fail(
+            playbook, run, pending=_labels(playbook.steps)[position - 1 :]
+        )
+        if failure is not None:
+            return failure
 
     denial = _tool_space_denial(tool_name, space)
     if denial is not None:
@@ -277,7 +288,20 @@ async def _run_tool_step(
     except PlaceholderError as exc:
         return _StepFailure(position, tool_name, exc.message)
 
-    message = await _replay_call(ScriptedCall(name=tool_name, args=args), run, space)
+    # A raise out of the graph is a stopped step, not a dead run: the steps
+    # before it already had their side effects, and only a result that carries
+    # the trace lets the worker hand the rest to the agent without repeating them.
+    try:
+        message = await _replay_call(ScriptedCall(name=tool_name, args=args), run, space)
+    except Exception as exc:
+        log.exception(
+            f"{LogTag.WORKFLOW} Playbook step raised instead of returning a result",
+            playbook_id=playbook.playbook_id,
+            workflow_id=playbook.workflow_id,
+            tool_name=tool_name,
+            error_type=type(exc).__name__,
+        )
+        return _StepFailure(position, tool_name, f"raised {type(exc).__name__}: {exc}")
     if message is None:
         return _StepFailure(position, tool_name, "the graph produced no result for this call")
 
@@ -449,6 +473,29 @@ def _strings(value: object) -> list[str]:
     if isinstance(value, list):
         return [text for item in value for text in _strings(item)]
     return []
+
+
+async def _narrate_or_fail(
+    playbook: PlaybookDocument, run: _Run, *, pending: Sequence[str]
+) -> _StepFailure | None:
+    """Run the narration; a raise becomes the failure that stops the run.
+
+    Positioned at the step being run (or the last one, after every step ran)
+    so the report still says what had completed by the time the model call died.
+    """
+    try:
+        await _narrate(playbook, run, pending=pending)
+    except Exception as exc:
+        log.exception(
+            f"{LogTag.WORKFLOW} Playbook narration raised",
+            playbook_id=playbook.playbook_id,
+            workflow_id=playbook.workflow_id,
+            error_type=type(exc).__name__,
+        )
+        return _StepFailure(
+            run.position, _NARRATION_LABEL, f"the narration raised {type(exc).__name__}: {exc}"
+        )
+    return None
 
 
 async def _narrate(
