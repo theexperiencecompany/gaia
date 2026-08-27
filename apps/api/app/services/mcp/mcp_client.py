@@ -1637,9 +1637,10 @@ class MCPClient:
 
         try:
             # Decode JWT payload without verification (nonce is for replay protection)
-            payload_b64 = id_token.split(".")[1]
-            # Add padding
-            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            # A fixed three "=" rather than computed padding: JWT segments are
+            # emitted unpadded, base64 needs at most two, and the decoder ignores
+            # the surplus — so this is always enough and never wrong.
+            payload_b64 = id_token.split(".")[1] + "==="
             payload = _json.loads(base64.urlsafe_b64decode(payload_b64))
         except Exception as e:
             raise ValueError(

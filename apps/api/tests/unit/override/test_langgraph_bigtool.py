@@ -666,8 +666,13 @@ class TestShouldContinue:
 
         edge_fn = builder.branches["agent"]["should_continue"].path.func  # type: ignore[attr-defined]  # langgraph types branch paths without exposing .func
         result = edge_fn(state, store=store)
-        has_reject = any(getattr(s, "node", None) == "reject_unbound_tools" for s in result)
-        assert has_reject
+        rejects = [s for s in result if getattr(s, "node", None) == REJECT_UNBOUND_TOOLS_NODE]
+        assert len(rejects) == 1
+        # The Send payload IS the node's argument: without the unbound calls the
+        # node has nothing to answer and the model never learns why it stalled.
+        assert rejects[0].arg == [
+            {"id": "tc1", "name": "unknown_tool", "args": {}, "type": "tool_call"}
+        ]
 
     def test_each_dispatched_send_carries_the_full_state_for_injection(self) -> None:
         """ToolNode reads InjectedState from the Send payload — a None'd state
