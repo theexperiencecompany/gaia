@@ -196,10 +196,13 @@ jobs:
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 22
     steps:
+      # Depth 1 is enough: this lane runs pytest and the flake gate, neither of
+      # which reads git history. Full history is a 242 MB fetch, which on the
+      # home runner's residential uplink cost more than the tests it gated.
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: ./.github/actions/setup-python-test-env
       - name: Detect parallelism
         id: par

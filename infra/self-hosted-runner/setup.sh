@@ -68,9 +68,24 @@ echo "[setup] Shared local CI cache: $LOCAL_CACHE"
 need() { command -v "$1" >/dev/null 2>&1 || { echo "::error::Missing $1"; exit 1; }; }
 need curl
 need tar
+
+# Everything that needs root is optional: without it the runners still get
+# installed, configured and started, they just run under nohup instead of a
+# systemd unit and therefore do not survive a reboot. The summary at the end
+# says so explicitly rather than leaving a silently non-persistent setup.
+HAVE_SUDO=false
+if sudo -n true 2>/dev/null; then
+  HAVE_SUDO=true
+fi
+echo "[setup] Passwordless sudo: $HAVE_SUDO (systemd units and dependency install need it)"
+
 if ! command -v jq >/dev/null 2>&1; then
-  echo "[setup] jq not found — installing..."
-  sudo apt-get update -qq && sudo apt-get install -y -qq jq
+  if [[ "$HAVE_SUDO" == "true" ]]; then
+    echo "[setup] jq not found — installing..."
+    sudo apt-get update -qq && sudo apt-get install -y -qq jq
+  else
+    echo "::warning::jq not found and no passwordless sudo — falling back to python3 for JSON"
+  fi
 fi
 if ! docker info >/dev/null 2>&1; then
   echo "::warning::docker not reachable (rootless context may need XDG_RUNTIME_DIR). Continuing — the runner itself does not require docker, only CI jobs do."
@@ -128,7 +143,9 @@ install_runner() {
     echo "[setup]   runner binaries present — skipping extract."
   fi
 
-  if [[ -f "./bin/installdependencies.sh" ]]; then
+  # Only needed once per machine, and this box already runs a runner, so a
+  # skip here is normal rather than a problem.
+  if [[ -f "./bin/installdependencies.sh" && "$HAVE_SUDO" == "true" ]]; then
     sudo ./bin/installdependencies.sh > /dev/null 2>&1 || echo "::warning::installdependencies.sh failed for ${name} — continuing"
   fi
 
@@ -161,31 +178,126 @@ ENVFILE
     --replace 2>&1 | tail -n 5
 
   mkdir -p "_work"
+  seed_workdir "$dir"
 
-  # systemd user unit, so the instance survives a reboot — the previous
-  # nohup-based runner did not. Requires lingering (enabled below).
-  echo "[setup]   installing service..."
-  ./svc.sh stop > /dev/null 2>&1 || true
-  ./svc.sh uninstall > /dev/null 2>&1 || true
-  if ./svc.sh install 2>&1 | tail -n 3; then
-    ./svc.sh start 2>&1 | tail -n 3
-  else
-    echo "::warning::svc.sh install failed for ${name} — falling back to nohup"
+  # Persistence via a systemd USER unit rather than GitHub's svc.sh.
+  # svc.sh writes a system unit, so it needs root on every install and every
+  # restart. A user unit needs root exactly once, for lingering (below), which
+  # is the difference between "CI needs an admin" and "CI just comes back".
+  pkill -f "$dir/bin/Runner.Listener" 2>/dev/null || true
+  systemctl --user disable --now "gaia-runner@${idx}" > /dev/null 2>&1 || true
+
+  echo "[setup]   enabling gaia-runner@${idx}.service (user unit)..."
+  systemctl --user enable --now "gaia-runner@${idx}" 2>&1 | tail -n 2 || {
+    echo "::warning::user unit failed for ${name} — falling back to nohup"
     nohup ./run.sh > runner.log 2>&1 &
     echo "[setup]   run.sh PID $! (logs: $dir/runner.log)"
-  fi
+    NON_PERSISTENT=true
+  }
 
   echo "$idx" > "$dir/.runner_index"
   echo "[setup]   ${name} ready."
 }
 
+# --- git mirror -------------------------------------------------------------
+# A fresh runner's _work is empty, so actions/checkout does a full clone. This
+# repo's history is ~242 MB and the box is on a residential uplink, which made
+# the first checkout on a new instance take longer than the job it was setting
+# up (observed: 10+ minutes, still running). Keep one bare mirror on local disk
+# and seed each instance from it — `git clone --local` hardlinks the object
+# store, so seeding is effectively free and costs no bandwidth at all.
+#
+# Git object files are immutable, so sharing them via hardlinks is safe; the
+# instances still fetch their own refs from GitHub afterwards, incrementally.
+MIRROR="${LOCAL_CACHE}/gaia.git"
+SEED_FROM="${RUNNER_SEED_REPO:-/home/aryan/gaia}"
+
+if [[ ! -d "$MIRROR" ]]; then
+  if [[ -d "$SEED_FROM/.git" ]]; then
+    echo "[setup] Creating git mirror from local checkout $SEED_FROM (no network)..."
+    git clone --bare --local "$SEED_FROM/.git" "$MIRROR" 2>&1 | tail -n 2 || true
+  else
+    echo "[setup] Creating git mirror from $REPO_URL (one-time full clone)..."
+    git clone --bare "$REPO_URL" "$MIRROR" 2>&1 | tail -n 2 || true
+  fi
+fi
+if [[ -d "$MIRROR" ]]; then
+  git -C "$MIRROR" remote set-url origin "$REPO_URL" 2>/dev/null || \
+    git -C "$MIRROR" remote add origin "$REPO_URL" 2>/dev/null || true
+  echo "[setup] Refreshing mirror..."
+  git -C "$MIRROR" fetch --quiet --prune origin "+refs/heads/*:refs/heads/*" 2>&1 | tail -n 2 || \
+    echo "::warning::mirror fetch failed — instances will fall back to a full clone"
+  echo "[setup] Mirror: $MIRROR ($(du -sh "$MIRROR" 2>/dev/null | cut -f1))"
+fi
+
+# Lay down the checkout actions/checkout expects (_work/<repo>/<repo>) from the
+# mirror, so its first run is an incremental fetch instead of a cold clone.
+seed_workdir() {
+  local dir="$1"
+  local dest="$dir/_work/gaia/gaia"
+  [[ -d "$MIRROR" ]] || return 0
+  if [[ -d "$dest/.git" ]]; then
+    echo "[setup]   workdir already seeded — skipping."
+    return 0
+  fi
+  echo "[setup]   seeding $dest from the local mirror..."
+  mkdir -p "$dir/_work/gaia"
+  if git clone --local --no-checkout "$MIRROR" "$dest" 2>&1 | tail -n 2; then
+    git -C "$dest" remote set-url origin "$REPO_URL"
+    echo "[setup]   seeded ($(du -sh "$dest/.git" 2>/dev/null | cut -f1), 0 bytes over the network)"
+  else
+    echo "::warning::seeding failed — actions/checkout will do a full clone instead"
+    rm -rf "$dest"
+  fi
+}
+
+# One templated user unit serves every instance: `gaia-runner@2` runs the
+# runner in actions-runner-gaia-home-2. Restart=always covers the runner
+# exiting after an update; the runner handles its own job-level lifecycle.
+UNIT_DIR="$HOME/.config/systemd/user"
+mkdir -p "$UNIT_DIR"
+cat > "$UNIT_DIR/gaia-runner@.service" <<UNIT
+[Unit]
+Description=GitHub Actions runner (gaia-home instance %i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-%i
+ExecStart=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-%i/run.sh
+Restart=always
+RestartSec=5
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+Environment=RUNNER_INDEX=%i
+Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+
+[Install]
+WantedBy=default.target
+UNIT
+systemctl --user daemon-reload
+echo "[setup] Wrote $UNIT_DIR/gaia-runner@.service"
+
+NON_PERSISTENT=false
 for i in $(seq 1 "$RUNNER_COUNT"); do
   install_runner "$i"
 done
 
-# Without lingering, systemd user units stop when the last session for the
-# user ends — the runners would silently disappear after an ssh logout.
-sudo loginctl enable-linger aryan 2>/dev/null || echo "::warning::could not enable linger for aryan — runners may stop on logout"
+# The one and only step that needs root. Without lingering, user units stop
+# when the last session for the user ends, so the runners would vanish on ssh
+# logout and never return after a reboot.
+if loginctl show-user "$(id -un)" --property=Linger 2>/dev/null | grep -q "Linger=yes"; then
+  echo "[setup] Lingering already enabled for $(id -un)."
+elif sudo -n loginctl enable-linger "$(id -un)" 2>/dev/null; then
+  echo "[setup] Lingering enabled for $(id -un)."
+else
+  NON_PERSISTENT=true
+  echo "::warning::could not enable lingering (needs root once). The runners are"
+  echo "::warning::running now but will not survive a reboot or logout until you run:"
+  echo "::warning::  sudo loginctl enable-linger $(id -un)"
+fi
 
 # --- verify registration ------------------------------------------------------
 echo ""
@@ -213,10 +325,20 @@ curl -sSf --max-time 10 -H "Authorization: Bearer $GH_TOKEN_FALLBACK" \
 cat <<EOF
 
 [setup] Done. ${RUNNER_COUNT} instances labelled '${RUNNER_LABELS}'.
+$(if [[ "$NON_PERSISTENT" == "true" ]]; then
+cat <<'WARN'
+
+  ⚠  Not fully reboot-persistent yet. The runners are up, but user units only
+     survive logout/reboot once lingering is enabled — a one-time root step:
+       sudo loginctl enable-linger $(id -un)
+     No other part of this setup needs root, by design.
+WARN
+fi)
   Check:  gh api repos/${REPO_SLUG}/actions/runners --jq '.runners[] | select(.labels[].name=="gaia-home") | "\(.name) \(.status) busy=\(.busy)"'
-  Logs:   journalctl --user -u 'actions.runner.*' -f
-  Stop:   for d in ${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*; do (cd "\$d" && ./svc.sh stop); done
-  Remove: for d in ${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*; do (cd "\$d" && ./svc.sh uninstall && ./config.sh remove --token <new-token>); done
+  Logs:   journalctl --user -u 'gaia-runner@*' -f
+  Status: systemctl --user status 'gaia-runner@*'
+  Stop:   systemctl --user disable --now gaia-runner@{1..${RUNNER_COUNT}}
+  Remove: for d in ${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*; do (cd "\$d" && ./config.sh remove --token <new-token>); done
 
   Next: trigger hybrid CI and watch the lanes run concurrently:
     gh workflow run hybrid-ci.yml --ref \$(git branch --show-current) -f force_home=false
