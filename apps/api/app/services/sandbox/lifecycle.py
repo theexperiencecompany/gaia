@@ -45,6 +45,7 @@ from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.sandbox.artifact_watcher import start_watcher_for
+from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
@@ -67,14 +68,6 @@ MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
-
-
-class SandboxAcquisitionError(RuntimeError):
-    """Raised when a usable sandbox cannot be obtained for a user."""
-
-
-class SandboxRateLimitError(SandboxAcquisitionError):
-    """Raised when the user has exhausted their sandbox-creation rate limit."""
 
 
 def _now() -> datetime:
@@ -728,9 +721,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
         raise SandboxAcquisitionError("user_id is required")
 
     pool = get_sandbox_pool()
-    lock = await pool.get_lock(user_id)
-    await lock.acquire()
-    try:
+    async with pool.distributed_lock(user_id):
         async with fs_timer(FsOps.SBX_ACQUIRE):
             entry = await _acquire_or_create(user_id)
         entry.refcount += 1
@@ -759,5 +750,3 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
                     await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
                 if entry.refcount <= 0:
                     _schedule_pause(user_id, entry)
-    finally:
-        lock.release()

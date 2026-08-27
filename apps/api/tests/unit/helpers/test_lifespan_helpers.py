@@ -16,7 +16,7 @@ from app.helpers.lifespan_helpers import (
     close_workflow_scheduler,
     init_mongodb_async,
     init_reminder_service,
-    init_websocket_consumer,
+    init_websocket_broadcast_listener,
     init_workflow_service,
 )
 
@@ -60,24 +60,22 @@ class TestInitWorkflowService:
                 await init_workflow_service()
 
 
-class TestInitWebsocketConsumer:
+class TestInitWebsocketBroadcastListener:
     @pytest.mark.asyncio
     async def test_success(self) -> None:
         with patch(
-            "app.helpers.lifespan_helpers.start_websocket_consumer",
-            new_callable=AsyncMock,
+            "app.helpers.lifespan_helpers.start_websocket_broadcast_listener",
         ):
-            await init_websocket_consumer()
+            await init_websocket_broadcast_listener()
 
     @pytest.mark.asyncio
     async def test_error_reraises(self) -> None:
         with patch(
-            "app.helpers.lifespan_helpers.start_websocket_consumer",
-            new_callable=AsyncMock,
+            "app.helpers.lifespan_helpers.start_websocket_broadcast_listener",
             side_effect=RuntimeError("ws fail"),
         ):
             with pytest.raises(RuntimeError):
-                await init_websocket_consumer()
+                await init_websocket_broadcast_listener()
 
 
 class TestInitMongodbAsync:
@@ -161,7 +159,7 @@ class TestCloseWebsocketAsync:
     @pytest.mark.asyncio
     async def test_success(self) -> None:
         with patch(
-            "app.helpers.lifespan_helpers.stop_websocket_consumer",
+            "app.helpers.lifespan_helpers.stop_websocket_broadcast_listener",
             new_callable=AsyncMock,
         ):
             await close_websocket_async()
@@ -169,7 +167,7 @@ class TestCloseWebsocketAsync:
     @pytest.mark.asyncio
     async def test_error_swallowed(self) -> None:
         with patch(
-            "app.helpers.lifespan_helpers.stop_websocket_consumer",
+            "app.helpers.lifespan_helpers.stop_websocket_broadcast_listener",
             new_callable=AsyncMock,
             side_effect=RuntimeError("ws stop fail"),
         ):

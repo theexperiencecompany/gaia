@@ -65,7 +65,7 @@ from app.helpers.lifespan_helpers import (
     close_workflow_scheduler,
     init_mongodb_async,
     init_reminder_service,
-    init_websocket_consumer,
+    init_websocket_broadcast_listener,
     init_workflow_service,
 )
 from app.services.composio.composio_service import init_composio_service
@@ -250,10 +250,13 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         StartupService(declare_outbound_topology_on_startup, "outbound_topology", required=True)
     )
 
-    # Context-specific services: WebSocket only needed for web interface
+    # Context-specific services: only the web app holds user WebSockets, so only
+    # it subscribes to the broadcast fan-out. Workers publish without subscribing.
     if context == "main_app":
         eager_services.append(
-            StartupService(init_websocket_consumer, "websocket_consumer", required=True)
+            StartupService(
+                init_websocket_broadcast_listener, "websocket_broadcast_listener", required=True
+            )
         )
         # Re-sync active users whose skill catalog is stale (deploy shipped new
         # skills). Detached so it never blocks boot; runs only in the web app.
