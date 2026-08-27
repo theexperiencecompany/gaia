@@ -41,7 +41,7 @@
     "deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "preview": "npm run cf:build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@0.9.12"
   },
   "dependencies": {
     "@gaia/wake-word": "workspace:*",

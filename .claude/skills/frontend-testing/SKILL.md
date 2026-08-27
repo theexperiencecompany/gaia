@@ -60,6 +60,6 @@ For big refactor branches where you don't want permanent test files:
 - **Content-hash keys remount on growth**: keys derived from entry payloads change every streamed delta → cards unmount/remount mid-stream (state loss, flicker). Derive keys from creation-time identity (ids, timestamps stamped at synthesis), not content. See deriveStableKeys in useSubagentSynthesis.ts.
 - **Slice-splice status arrays corrupt on out-of-order writes**: `[...prev.slice(0,i), v, ...prev.slice(i+1)]` APPENDS when `i > prev.length`. Use index assignment on a copy with gap-fill.
 - **Biome unsafe fixes**: `--write` skips them; add `--unsafe` or apply by hand. `nx lint web` = biome check without write.
-- **react-doctor changed-scope gate**: fails the PR on ANY new warning vs merge-base. Run `npx react-doctor@latest --json -y --project apps/web --scope changed --base origin/master` locally before pushing.
+- **react-doctor changed-scope gate**: fails the PR on ANY new warning vs merge-base. Run `npx react-doctor@0.9.12 --json -y --project apps/web --scope changed --base origin/master` locally before pushing.
 - **Sonar S6759 readonly-props**: fires on every decomposed component's props interface; accepted noise (gate doesn't fail on it) unless the team opts in.
 - **Per-project config layering**: workspace-level checks (supplyChain) read ONLY the root config when invoked with `--project '*'`; per-project configs in apps/web layer for rule settings but not for supplyChain floors.
