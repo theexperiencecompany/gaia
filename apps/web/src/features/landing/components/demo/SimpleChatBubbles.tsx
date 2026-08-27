@@ -49,8 +49,7 @@ export function SimpleChatBubbleBot({
 
             return (
               <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: doesn't change so it's fine
-                key={`${baseId}-bubble-${index}`}
+                key={`${baseId}-bubble-${bubble}`}
                 className={cn(
                   "imessage-bubble imessage-from-them text-white",
                   groupedClasses,

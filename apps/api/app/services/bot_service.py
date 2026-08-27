@@ -13,6 +13,7 @@ from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.user_models import AuthenticatedUser
+from app.services.bot_session_merge import apply_merge, plan_merge
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
 
@@ -78,12 +79,51 @@ class BotService:
         and ``telegram:<id>:dm`` from workflow delivery — and the user's chat
         forked into a second conversation carrying none of the history.
 
-        Known gap: Discord and Slack DM channel ids are NOT the user id, so their
-        backend-originated deliveries still resolve a session the inbound DM never
-        touches. Closing that needs the bots to signal "this chat is a DM"; it is
-        not derivable server-side.
+        Discord and Slack DM channel ids are NOT the user id, so an inbound DM
+        there must not key off its channel: the bot flags those messages as DMs
+        and ``get_or_create_session`` drops the channel id before keying, which
+        lands them here on the user-id form a backend-originated delivery also
+        produces. The flag lives with the bot because a DM-channel key is
+        indistinguishable from a guild/channel key server-side.
         """
         return f"{platform}:{platform_user_id}:{channel_id or platform_user_id}"
+
+    @staticmethod
+    async def _absorb_channel_keyed_dm(
+        platform: str, platform_user_id: str, channel_id: str | None
+    ) -> None:
+        """Fold a DM session keyed by its platform channel onto the user-id key.
+
+        Discord and Slack DMs used to key off the DM channel id, which differs
+        from the user id there, so the same DM forked: inbound chat under
+        ``platform:<user>:<dm-channel>``, workflow delivery under
+        ``platform:<user>:<user>``. Now that the bot flags DMs, the first
+        flagged message finds the channel-keyed row and merges it onto the
+        canonical key — rename when the canonical key is free, otherwise the
+        more recently used conversation wins. Runs at most once per DM: after
+        the merge no channel-keyed row remains.
+        """
+        if not channel_id or channel_id == platform_user_id:
+            return
+        legacy_key = BotService.build_session_key(platform, platform_user_id, channel_id)
+        legacy = await bot_session_repository.get_by_session_key(legacy_key)
+        if legacy is None:
+            return
+        canonical_key = BotService.build_session_key(platform, platform_user_id, None)
+        canonical = await bot_session_repository.get_by_session_key(canonical_key)
+        merge = plan_merge(legacy, canonical, canonical_key)
+        if merge is None:
+            return
+        landed = await apply_merge(merge)
+        log.info(
+            "folded channel-keyed DM session onto the user-id key",
+            action=merge.action.value,
+            landed=landed,
+            legacy_key=legacy_key,
+            canonical_key=canonical_key,
+            surviving_conversation_id=merge.surviving_conversation_id,
+            orphaned_conversation_id=merge.orphaned_conversation_id,
+        )
 
     @staticmethod
     async def get_or_create_session(
@@ -91,6 +131,8 @@ class BotService:
         platform_user_id: str,
         channel_id: str | None,
         user: AuthenticatedUser,
+        *,
+        is_dm: bool = False,
     ) -> str:
         """
         Get existing bot session or create a new one.
@@ -109,6 +151,9 @@ class BotService:
         if not user.get("user_id") and user.get("_id"):
             user = {**user, "user_id": str(user["_id"])}
 
+        if is_dm:
+            await BotService._absorb_channel_keyed_dm(platform, platform_user_id, channel_id)
+            channel_id = None
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         now = datetime.now(UTC).isoformat()
 
@@ -166,7 +211,12 @@ class BotService:
 
     @staticmethod
     async def reset_session(
-        platform: str, platform_user_id: str, channel_id: str | None, user: AuthenticatedUser
+        platform: str,
+        platform_user_id: str,
+        channel_id: str | None,
+        user: AuthenticatedUser,
+        *,
+        is_dm: bool = False,
     ) -> str:
         """
         Reset bot session (delete existing and create new).
@@ -180,6 +230,12 @@ class BotService:
         Returns:
             New conversation ID
         """
+        if is_dm:
+            # The channel-keyed legacy row IS this DM: left in place, the next
+            # inbound merge would resurrect the conversation the user just reset.
+            legacy_key = BotService.build_session_key(platform, platform_user_id, channel_id)
+            await bot_session_repository.delete_by_session_key(legacy_key)
+            channel_id = None
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
         await bot_session_repository.delete_by_session_key(session_key)
 

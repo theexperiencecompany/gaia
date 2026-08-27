@@ -21,7 +21,9 @@ export function useModalKeyboardSubmit({
   handleSubmit,
 }: ModalKeyboardSubmitOptions): void {
   const stateRef = useRef({ loading, isMac, handleSubmit });
-  stateRef.current = { loading, isMac, handleSubmit };
+  useEffect(() => {
+    stateRef.current = { loading, isMac, handleSubmit };
+  });
 
   useEffect(() => {
     if (!isOpen) return;

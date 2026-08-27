@@ -30,14 +30,30 @@ interface MessagesRegionProps {
 }
 
 function MessagesRegionImpl({ state, stage }: MessagesRegionProps) {
+  // Narrowed to exactly the fields the transcript derives from so the memo
+  // skips recompute on unrelated updates (e.g. typing a draft).
+  const {
+    responses,
+    questionIndex,
+    clarifyQuestions,
+    clarifyAnswers,
+    clarifySubmitted,
+  } = state;
   const messages = useMemo(
-    () => getMessages(state),
+    () =>
+      getMessages({
+        responses,
+        questionIndex,
+        clarifyQuestions,
+        clarifyAnswers,
+        clarifySubmitted,
+      }),
     [
-      state.responses,
-      state.questionIndex,
-      state.clarifyAnswers,
-      state.clarifyQuestions,
-      state.clarifySubmitted,
+      responses,
+      questionIndex,
+      clarifyQuestions,
+      clarifyAnswers,
+      clarifySubmitted,
     ],
   );
 

@@ -41,8 +41,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import dataclass
-from enum import StrEnum
 
 from app.db.repositories.bot_sessions import (
     LEGACY_DM_SESSION_KEY_SUFFIX,
@@ -50,38 +48,13 @@ from app.db.repositories.bot_sessions import (
 )
 from app.models.bot_models import BotSessionDocument
 from app.services.bot_service import BotService
+from app.services.bot_session_merge import (
+    MergeAction,
+    SessionMerge,
+    apply_merge,
+    plan_merge,
+)
 from shared.py.wide_events import log
-
-
-class MergeAction(StrEnum):
-    RENAME = "rename"
-    REPOINT = "repoint"
-    DROP = "drop"
-
-
-@dataclass(frozen=True, slots=True)
-class SessionMerge:
-    """One legacy row's resolution, decided before anything is written."""
-
-    legacy_key: str
-    canonical_key: str
-    action: MergeAction
-    #: The conversation the canonical key points at once this is applied.
-    surviving_conversation_id: str
-    #: The conversation left unreferenced, or ``None`` when nothing is displaced.
-    orphaned_conversation_id: str | None
-    reason: str
-
-
-def last_used(session: BotSessionDocument) -> str:
-    """The row's recency marker for the newer-wins comparison.
-
-    ``updated_at``/``created_at`` are both written by ``datetime.now(UTC).isoformat()``
-    (see ``BotSessionsRepository.claim_session``), so the strings share one format
-    and one offset — lexicographic order is chronological order. A row missing
-    both sorts oldest, which is the safe way for an unstamped row to lose.
-    """
-    return session.updated_at or session.created_at or ""
 
 
 def canonical_key_for(session: BotSessionDocument) -> str:
@@ -94,65 +67,12 @@ def canonical_key_for(session: BotSessionDocument) -> str:
     return BotService.build_session_key(session.platform, session.platform_user_id, None)
 
 
-def plan_merge(
-    legacy: BotSessionDocument, canonical: BotSessionDocument | None
-) -> SessionMerge | None:
-    """What to do with one legacy ``:dm`` row, or ``None`` when it is not actionable."""
-    if not (legacy.session_key and legacy.platform and legacy.platform_user_id):
-        return None
-    if not legacy.conversation_id:
-        return None
-
-    canonical_key = canonical_key_for(legacy)
-    if canonical_key == legacy.session_key:
-        return None
-
-    if canonical is None:
-        return SessionMerge(
-            legacy_key=legacy.session_key,
-            canonical_key=canonical_key,
-            action=MergeAction.RENAME,
-            surviving_conversation_id=legacy.conversation_id,
-            orphaned_conversation_id=None,
-            reason="no session on the canonical key; the legacy row keeps its conversation",
-        )
-
-    if last_used(legacy) > last_used(canonical):
-        return SessionMerge(
-            legacy_key=legacy.session_key,
-            canonical_key=canonical_key,
-            action=MergeAction.REPOINT,
-            surviving_conversation_id=legacy.conversation_id,
-            orphaned_conversation_id=canonical.conversation_id,
-            reason="the legacy session was used more recently",
-        )
-
-    return SessionMerge(
-        legacy_key=legacy.session_key,
-        canonical_key=canonical_key,
-        action=MergeAction.DROP,
-        surviving_conversation_id=canonical.conversation_id,
-        orphaned_conversation_id=legacy.conversation_id,
-        reason="the canonical session was used more recently",
-    )
-
-
-def dm_channel_of(canonical_key: str) -> str:
-    """The canonical key's channel component — everything after the last colon.
-
-    ``build_session_key`` lays the key out as ``platform:user:channel``, so the
-    channel is the final segment. No maxsplit: taking ``[-1]`` makes every split
-    bound produce the same answer, and a bound that changes nothing reads as if
-    it were load-bearing.
-    """
-    return canonical_key.split(":")[-1]
-
-
 async def _build_merges(legacy_sessions: list[BotSessionDocument]) -> list[SessionMerge]:
     merges: list[SessionMerge] = []
     for legacy in legacy_sessions:
-        canonical = await bot_session_repository.get_by_session_key(canonical_key_for(legacy))
-        merge = plan_merge(legacy, canonical)
+        canonical_key = canonical_key_for(legacy)
+        canonical = await bot_session_repository.get_by_session_key(canonical_key)
+        merge = plan_merge(legacy, canonical, canonical_key)
         if merge is None:
             print(f"  SKIP {legacy.session_key!r}: incomplete row, left untouched")
             continue
@@ -164,20 +84,7 @@ async def _apply_merges(merges: list[SessionMerge]) -> int:
     """Write the planned merges. Returns the number that actually landed."""
     applied = 0
     for merge in merges:
-        if merge.action is MergeAction.RENAME:
-            landed = await bot_session_repository.rename_session_key(
-                session_key=merge.legacy_key,
-                new_session_key=merge.canonical_key,
-                channel_id=dm_channel_of(merge.canonical_key),
-            )
-        else:
-            if merge.action is MergeAction.REPOINT:
-                await bot_session_repository.repoint_conversation(
-                    session_key=merge.canonical_key,
-                    conversation_id=merge.surviving_conversation_id,
-                )
-            landed = await bot_session_repository.delete_by_session_key(merge.legacy_key) > 0
-
+        landed = await apply_merge(merge)
         if not landed:
             # Someone else moved the row between the plan and the write. Say so
             # rather than counting it — a silent miss leaves a fork in place.

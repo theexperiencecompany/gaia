@@ -96,10 +96,11 @@ Read the journal page for one specific date.
 Returns everything logged that day: what the user did and discussed, what you
 did for them, plus the day summary if the day is over. Use for questions like
 "what did we do three weeks ago?" or "what happened on May 21?": compute the
-date first, then call this.
+date first, then call this. Journal days follow the user's local timezone:
+for "today" simply omit the date and the user's local today is used.
 
 Args:
-    date: The day to read, as YYYY-MM-DD
+    date: The day to read, as YYYY-MM-DD; omit for the user's local today
     config: Runtime configuration containing user context
 
 Returns:

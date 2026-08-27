@@ -8,12 +8,16 @@ interface FAQ {
 }
 
 export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
+  const [firstFaq] = faqs;
   return (
-    <Accordion variant="light" className="p-0!" defaultSelectedKeys={["0"]}>
-      {faqs.map((faq, index) => (
+    <Accordion
+      variant="light"
+      className="p-0!"
+      defaultSelectedKeys={firstFaq ? [firstFaq.question] : []}
+    >
+      {faqs.map((faq) => (
         <AccordionItem
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable faq array
-          key={index}
+          key={faq.question}
           aria-label={faq.question}
           title={faq.question}
           classNames={{

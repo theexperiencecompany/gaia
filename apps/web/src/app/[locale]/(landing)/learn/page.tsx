@@ -131,7 +131,7 @@ export default async function LearnHubPage({ params }: PageProps) {
                   <Link
                     key={term.slug}
                     href={`/learn/${term.slug}`}
-                    className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                    className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                   >
                     <h3 className="mb-2 text-lg font-semibold text-white transition-colors group-hover:text-primary">
                       {term.term}

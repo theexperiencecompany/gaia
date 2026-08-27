@@ -52,6 +52,129 @@ const professionOptions = [
   { value: "other", label: "Other" },
 ];
 
+interface PreferenceValues {
+  profession: string;
+  response_style: string;
+  timezone: string;
+}
+
+/** Identity section: profession picker + timezone select/auto-detect. */
+function IdentitySettingsSection({
+  preferences,
+  onUpdate,
+  isUpdating,
+}: {
+  preferences: PreferenceValues;
+  /** Replaces the whole preference object and schedules the debounced save. */
+  onUpdate: (next: PreferenceValues) => void;
+  isUpdating: boolean;
+}) {
+  const timezoneOptions = getTimezoneList().map((tz) => ({
+    value: tz.value,
+    label: tz.formattedLabel,
+  }));
+
+  const handleProfessionChange = (keys: SharedSelection) => {
+    if (keys !== "all" && keys.size > 0) {
+      const profession = Array.from(keys)[0] as string;
+      onUpdate({ ...preferences, profession });
+    } else {
+      // Handle case when profession is deselected
+      onUpdate({ ...preferences, profession: "" });
+    }
+  };
+
+  const handleTimezoneChange = (keys: SharedSelection) => {
+    const selectedKeys = Array.from(keys);
+    const timezoneValue = selectedKeys[0] as string;
+    onUpdate({
+      ...preferences,
+      timezone: timezoneValue || "UTC", // Default to UTC if empty
+    });
+  };
+
+  const handleAutoDetectTimezone = () => {
+    const browserTimezone = getCurrentBrowserTimezone();
+    onUpdate({ ...preferences, timezone: browserTimezone.value });
+    toast.success(`Timezone set to ${browserTimezone.label}`);
+  };
+
+  return (
+    <SettingsSection title="Identity">
+      <SettingsRow label="Profession" stacked>
+        <Select
+          placeholder="Select your profession"
+          selectedKeys={
+            preferences.profession
+              ? new Set([preferences.profession])
+              : new Set()
+          }
+          onSelectionChange={handleProfessionChange}
+          isDisabled={isUpdating}
+          classNames={{
+            trigger:
+              "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
+            popoverContent: "bg-zinc-800 z-50",
+            listbox: "bg-zinc-800",
+            value: "text-white text-sm",
+          }}
+        >
+          {professionOptions.map((profession) => (
+            <SelectItem key={profession.value} textValue={profession.label}>
+              {profession.label}
+            </SelectItem>
+          ))}
+        </Select>
+      </SettingsRow>
+
+      <SettingsRow
+        label="Timezone"
+        description={
+          getCurrentBrowserTimezone().currentTime
+            ? `Current time: ${getCurrentBrowserTimezone().currentTime}`
+            : undefined
+        }
+        stacked
+      >
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="flat"
+            onPress={handleAutoDetectTimezone}
+            isDisabled={isUpdating}
+            className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
+          >
+            Auto Detect
+          </Button>
+          <Select
+            placeholder="Select your timezone"
+            selectedKeys={
+              preferences.timezone
+                ? new Set([preferences.timezone])
+                : new Set(["UTC"])
+            }
+            onSelectionChange={handleTimezoneChange}
+            isDisabled={isUpdating}
+            classNames={{
+              trigger:
+                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
+              popoverContent: "bg-zinc-800 z-50",
+              listbox: "bg-zinc-800",
+              value: "text-white text-sm",
+            }}
+          >
+            {timezoneOptions.map((timezone) => (
+              <SelectItem key={timezone.value} textValue={timezone.label}>
+                {timezone.label}
+              </SelectItem>
+            ))}
+          </Select>
+        </div>
+      </SettingsRow>
+    </SettingsSection>
+  );
+}
+
 export default function PreferencesSettings({
   setModalAction,
 }: {
@@ -62,15 +185,9 @@ export default function PreferencesSettings({
   const [isUpdating, setIsUpdating] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
-  // Get timezone options with enhanced display
-  const timezoneOptions = getTimezoneList().map((tz) => ({
-    value: tz.value,
-    label: tz.formattedLabel,
-  }));
-
   // custom_instructions is owned by Settings > Custom Instructions and saved
   // independently, so it's deliberately not part of this surface's payload.
-  const [preferences, setPreferences] = useState({
+  const [preferences, setPreferences] = useState<PreferenceValues>({
     profession: user.onboarding?.preferences?.profession || "",
     response_style: user.onboarding?.preferences?.response_style || "",
     timezone: normalizeTimezone(user.timezone || "UTC"),
@@ -162,20 +279,6 @@ export default function PreferencesSettings({
     [updatePreferences],
   );
 
-  const handleProfessionChange = (keys: SharedSelection) => {
-    if (keys !== "all" && keys.size > 0) {
-      const profession = Array.from(keys)[0] as string;
-      const updatedPreferences = { ...preferences, profession };
-      setPreferences(updatedPreferences);
-      debouncedUpdate(updatedPreferences);
-    } else {
-      // Handle case when profession is deselected
-      const updatedPreferences = { ...preferences, profession: "" };
-      setPreferences(updatedPreferences);
-      debouncedUpdate(updatedPreferences);
-    }
-  };
-
   const handleResponseStyleChange = (keys: SharedSelection) => {
     if (keys !== "all" && keys.size > 0) {
       const responseStyle = Array.from(keys)[0] as string;
@@ -202,26 +305,11 @@ export default function PreferencesSettings({
     debouncedUpdate(updatedPreferences);
   };
 
-  const handleTimezoneChange = (keys: SharedSelection) => {
-    const selectedKeys = Array.from(keys);
-    const timezoneValue = selectedKeys[0] as string;
-    const updatedPreferences = {
-      ...preferences,
-      timezone: timezoneValue || "UTC", // Default to UTC if empty
-    };
-    setPreferences(updatedPreferences);
-    debouncedUpdate(updatedPreferences);
-  };
-
-  const handleAutoDetectTimezone = () => {
-    const browserTimezone = getCurrentBrowserTimezone();
-    const updatedPreferences = {
-      ...preferences,
-      timezone: browserTimezone.value,
-    };
-    setPreferences(updatedPreferences);
-    debouncedUpdate(updatedPreferences);
-    toast.success(`Timezone set to ${browserTimezone.label}`);
+  // Replace the whole preference object and schedule the debounced save —
+  // shared by every control in the Identity section.
+  const updateIdentityPreferences = (next: PreferenceValues) => {
+    setPreferences(next);
+    debouncedUpdate(next);
   };
 
   // Cleanup on unmount
@@ -246,78 +334,11 @@ export default function PreferencesSettings({
 
   return (
     <SettingsPage>
-      <SettingsSection title="Identity">
-        <SettingsRow label="Profession" stacked>
-          <Select
-            placeholder="Select your profession"
-            selectedKeys={
-              preferences.profession
-                ? new Set([preferences.profession])
-                : new Set()
-            }
-            onSelectionChange={handleProfessionChange}
-            isDisabled={isUpdating}
-            classNames={{
-              trigger:
-                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-              popoverContent: "bg-zinc-800 z-50",
-              listbox: "bg-zinc-800",
-              value: "text-white text-sm",
-            }}
-          >
-            {professionOptions.map((profession) => (
-              <SelectItem key={profession.value} textValue={profession.label}>
-                {profession.label}
-              </SelectItem>
-            ))}
-          </Select>
-        </SettingsRow>
-
-        <SettingsRow
-          label="Timezone"
-          description={
-            getCurrentBrowserTimezone().currentTime
-              ? `Current time: ${getCurrentBrowserTimezone().currentTime}`
-              : undefined
-          }
-          stacked
-        >
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="flat"
-              onPress={handleAutoDetectTimezone}
-              isDisabled={isUpdating}
-              className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
-            >
-              Auto Detect
-            </Button>
-            <Select
-              placeholder="Select your timezone"
-              selectedKeys={
-                preferences.timezone
-                  ? new Set([preferences.timezone])
-                  : new Set(["UTC"])
-              }
-              onSelectionChange={handleTimezoneChange}
-              isDisabled={isUpdating}
-              classNames={{
-                trigger:
-                  "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                popoverContent: "bg-zinc-800 z-50",
-                listbox: "bg-zinc-800",
-                value: "text-white text-sm",
-              }}
-            >
-              {timezoneOptions.map((timezone) => (
-                <SelectItem key={timezone.value} textValue={timezone.label}>
-                  {timezone.label}
-                </SelectItem>
-              ))}
-            </Select>
-          </div>
-        </SettingsRow>
-      </SettingsSection>
+      <IdentitySettingsSection
+        preferences={preferences}
+        onUpdate={updateIdentityPreferences}
+        isUpdating={isUpdating}
+      />
 
       <SettingsSection title="Conversation">
         <SettingsRow label="Response Style" stacked>

@@ -123,9 +123,10 @@ function TodoProjectsView({
       <div className="mb-3 text-sm">Your Projects</div>
       <div className="space-y-2">
         {projects.map((project) => (
-          <div
+          <button
+            type="button"
             key={project.id}
-            className="flex cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-3 hover:bg-zinc-900/70"
+            className="flex w-full cursor-pointer items-center justify-between rounded-xl bg-zinc-900 p-3 text-left hover:bg-zinc-900/70"
             onClick={() => onOpenProject(project.id)}
           >
             <div className="flex items-center gap-3">
@@ -147,7 +148,7 @@ function TodoProjectsView({
                 <span>• {Math.round(project.completion_percentage)}%</span>
               )}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

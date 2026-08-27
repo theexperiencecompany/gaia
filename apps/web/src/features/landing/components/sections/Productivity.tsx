@@ -19,11 +19,13 @@ export default function UseCasesSectionLanding() {
         <div className="max-w-5xl">
           <UseCaseSection
             dummySectionRef={contentRef}
-            hideUserWorkflows={true}
-            useBlurEffect={true}
+            options={{
+              hideUserWorkflows: true,
+              useBlurEffect: true,
+              hideAllCategory: true,
+            }}
             rows={2}
             columns={3}
-            hideAllCategory={true}
             scroller={null}
           />
         </div>

@@ -28,7 +28,7 @@ export function WorkflowsRevealCard({ workflows }: WorkflowsRevealCardProps) {
         <div className="flex flex-col gap-2">
           {displayedWorkflows.map((workflow, index) => (
             <m.div
-              key={workflow.id ?? `workflow-${index}`}
+              key={workflow.id ?? workflow.title}
               className="flex items-start gap-2"
               initial={{ opacity: 0, x: -6 }}
               animate={{ opacity: 1, x: 0 }}

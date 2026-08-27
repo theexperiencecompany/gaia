@@ -3,7 +3,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { NotificationIcon } from "@icons";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -17,12 +17,31 @@ interface NotificationListSectionProps {
   title?: string;
 }
 
+// Optimistic read-state overlay keyed by notification id, applied on top of the
+// incoming prop so fresh notifications from the parent still show up after a
+// local mark-as-read (instead of being hidden behind a stale copied array).
+interface ReadUpdate {
+  status: NotificationStatus.READ;
+  read_at: string;
+}
+
 export default function NotificationListSection({
   notifications,
   title = "Notifications",
 }: NotificationListSectionProps) {
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
-  const [localNotifications, setLocalNotifications] = useState(notifications);
+  const [readUpdates, setReadUpdates] = useState<Record<string, ReadUpdate>>(
+    {},
+  );
+
+  const localNotifications = useMemo(
+    () =>
+      notifications.map((n) => {
+        const update = readUpdates[n.id];
+        return update ? { ...n, ...update } : n;
+      }),
+    [notifications, readUpdates],
+  );
 
   const unreadNotifications = localNotifications.filter(
     (n) => n.status === NotificationStatus.DELIVERED,
@@ -32,17 +51,13 @@ export default function NotificationListSection({
     try {
       await NotificationsAPI.markAsRead(notificationId);
       // Update local state
-      setLocalNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId
-            ? {
-                ...n,
-                status: NotificationStatus.READ,
-                read_at: new Date().toISOString(),
-              }
-            : n,
-        ),
-      );
+      setReadUpdates((prev) => ({
+        ...prev,
+        [notificationId]: {
+          status: NotificationStatus.READ,
+          read_at: new Date().toISOString(),
+        },
+      }));
       toast.success("Notification marked as read");
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -55,19 +70,17 @@ export default function NotificationListSection({
       setIsMarkingAllRead(true);
       try {
         const unreadIds = unreadNotifications.map((n) => n.id);
+        const unreadIdSet = new Set(unreadIds);
         await NotificationsAPI.bulkMarkAsRead(unreadIds);
         // Update local state
-        setLocalNotifications((prev) =>
-          prev.map((n) =>
-            unreadIds.includes(n.id)
-              ? {
-                  ...n,
-                  status: NotificationStatus.READ,
-                  read_at: new Date().toISOString(),
-                }
-              : n,
-          ),
-        );
+        const readAt = new Date().toISOString();
+        setReadUpdates((prev) => {
+          const next = { ...prev };
+          for (const id of unreadIdSet) {
+            next[id] = { status: NotificationStatus.READ, read_at: readAt };
+          }
+          return next;
+        });
         toast.success(`Marked ${unreadIds.length} notifications as read`);
       } catch (error) {
         console.error("Error marking all notifications as read:", error);
@@ -80,7 +93,7 @@ export default function NotificationListSection({
 
   if (localNotifications.length === 0) {
     return (
-      <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
+      <div className="mx-auto mb-3 w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
         <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
           <AccordionItem
             key="notifications"
@@ -110,7 +123,7 @@ export default function NotificationListSection({
   }
 
   return (
-    <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-all duration-300">
+    <div className="mx-auto w-full rounded-2xl bg-zinc-800 p-3 py-0 text-white transition-colors duration-300">
       <Accordion variant="light" defaultExpandedKeys={["notifications"]}>
         <AccordionItem
           key="notifications"

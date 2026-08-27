@@ -4,6 +4,45 @@ description: "A consolidated list of new features shipped across all GAIA releas
 icon: "sparkles"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
+- **Approvals Before Destructive Actions**: GAIA now pauses and asks you first before running a tool that deletes, sends, or overwrites something, and remembers the per-tool permissions you set.
+- **Device Bridge**: A secure local bridge lets GAIA reach MCP servers and files on your own machine, so it can work with what's actually on your computer.
+- **Documents Read In-House**: Text-based PDFs, plus DOCX, XLSX, PPTX, and CSV files, are now extracted on our own servers rather than sent to a cloud parser, so attachments process faster. Scanned and image-based PDFs are the exception — they still go to a third-party OCR service, because reading them requires it.
+- **Images and Screenshots**: GAIA reads images natively, keeps the screenshots it takes, and can download files from a URL to work with them.
+- **Gmail Inbox Summary**: A dedicated tool summarizes your inbox, with cleaner email bodies so long threads read properly.
+- **Plans and Usage Limits**: Free accounts now have clear daily caps and Pro runs on cost-based limits, with usage tracked per turn instead of guessed.
+- **Upgrade From the Conversation**: Ask GAIA to upgrade and it hands you a real checkout link for Pro, instead of pointing you at a pricing page.
+- **Ask About Your Own Billing**: GAIA can now answer "am I on Pro?", what you pay, when you renew, and what you were recently charged, from your live subscription rather than a canned pricing link — it will never cancel, refund, or discount anything on its own.
+- **iMessage as a Platform**: Link your number and talk to GAIA over iMessage like any other chat platform, included with Pro.
+- **A Faster Default Model**: DeepSeek V4 Flash 0731 is the new default model on every tier.
+- **Lifecycle Emails**: A new email engine sends onboarding and nurture sequences, built on a provider-agnostic email service.
+- **Better Workflow Creation**: Creating a workflow now runs through a structured pipeline that discovers the integrations it needs instead of guessing at them.
+
+## [Web v0.23.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.23.0)
+- **A New Marketing Site**: The homepage, navbar, footer, pricing page, and product demos were rebuilt from scratch.
+- **Explore Workflows, Redesigned**: A curated set of starter workflows with their own icons and cards, so there's something to run on day one.
+- **Pick Your Apps During Onboarding**: Onboarding now asks which integrations you use and suggests workflows built from them, instead of starting you on an empty page.
+- **Workflows Tell You What They Need**: Turning on a workflow whose steps need an app you haven't connected now explains which one is missing, rather than activating and failing later.
+- **A Better Composer**: The character limit is gone, pasted images become attachments, and you can upload files directly from the composer.
+- **Clearer Pricing**: Plan features show the platforms they cover inline, iMessage is marked as Pro, and the yearly plan gives two months free.
+- **Founder's Letter**: A letter from the founder with an early-bird discount for the first users.
+
+## [Mobile v0.8.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.8.0)
+- **The Full Tool Chain on Mobile**: Streaming now shows the same tool chain the web app does, including subagent activity and approval prompts you can answer from your phone.
+
+## [Desktop v0.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.6.0)
+- **Attachments and Inbox Tools**: The desktop app picks up local document extraction and the Gmail inbox summary alongside the rest of the apps.
+
+## [Bots v1.6.0](https://github.com/theexperiencecompany/gaia/releases/tag/bots-v1.6.0)
+- **iMessage**: GAIA is now available on iMessage for Pro users, joining Discord, Slack, Telegram, and WhatsApp.
+
+## [CLI v0.5.0](https://github.com/theexperiencecompany/gaia/releases/tag/cli-v0.5.0)
+- **Bridge Included**: The device bridge now ships inside the published CLI, and the device pairing page was reworked so connecting your machine takes one step.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [API v0.21.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.21.0)
@@ -197,13 +236,6 @@ icon: "sparkles"
 
 <Update label="Feb 20, 2026" description="Bots, CLI">
 
-## [Bots v1.0.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0)
-- **Shared Adapter Pattern**: `BaseBotAdapter` in `@gaia/shared` establishing the unified command dispatch system, GAIA API client, and platform-agnostic `RichMessageTarget` interface used by all three bots
-- **Bot API Key Authentication**: Dedicated middleware for authenticating bot-to-API requests independently from user session auth
-- **Nx Monorepo Integration**: All three bot packages integrated into the Nx workspace with build, lint, type-check, and release targets
-- **Docker Support**: Dockerfiles for each bot for containerized deployment alongside the rest of the GAIA stack
-- **E2E Test Package**: Dedicated `bots-e2e` test package with Vitest infrastructure for cross-bot integration testing
-
 ## [CLI v0.1.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.1.15...cli-v0.2.0)
 - **Core Commands**: `init`, `setup`, `start`, `stop`, `status`, and `logs` commands covering the full self-hosting lifecycle
 - **Interactive Terminal UI**: Built with Ink (React-in-terminal) for a rich, step-by-step setup experience with live progress display
@@ -303,16 +335,5 @@ icon: "sparkles"
 
 ## [Desktop v0.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.1.0)
 - **Initial release**: Electron desktop app bundling the Next.js standalone build for native desktop usage, bringing the full GAIA web experience to macOS, Windows, and Linux
-
-</Update>
-
-<Update label="Dec 19, 2025">
-
-## [Mobile v0.1.0](https://github.com/theexperiencecompany/gaia/releases/tag/mobile-v0.1.0)
-- **Expo SDK 54**: Built on Expo SDK 54 with Expo Router v6, React Compiler enabled, and the new React Native architecture turned on
-- **UI Component Library**: 18+ reusable components built on @rn-primitives, avatar, button, card, checkbox, dialog, dropdown-menu, input, popover, raised-button, select, skeleton, toggle, tooltip, and more
-- **NativeWind Styling**: Tailwind CSS for React Native with a surface color system, custom spacing, and full light and dark theme support
-- **Icon System**: @hugeicons/react-native and Lucide React Native for consistent iconography across the app
-- **Feature-Based Architecture**: Code organized into features/auth/ and features/chat/ with co-located components, hooks, utilities, and types
 
 </Update>

@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useElectron } from "@/hooks/useElectron";
 import { usePathname } from "@/i18n/navigation";
@@ -21,64 +21,46 @@ interface ElectronRouteGuardProps {
  */
 export function ElectronRouteGuard({ children }: ElectronRouteGuardProps) {
   const { isElectron, signalReady } = useElectron();
-  const router = useRouter();
   const pathname = usePathname();
   const user = useUser();
-  const hasSignaledReady = useRef(false);
-  const hasRedirected = useRef(false);
+  const signaledReadyRef = useRef(false);
   const [isUserCheckComplete, setIsUserCheckComplete] = useState(false);
 
-  // Track when user check is complete (either we have user data or we've waited long enough)
+  // Idempotent wrapper: `signalReady` is a fire-and-forget IPC that must be
+  // sent exactly once per window. The render-time root-page gate below may
+  // re-execute after an aborted pass (redirect() throws), so the once-guard
+  // lives inside this callback — where ref writes are allowed — instead of
+  // mutating refs during render.
+  const signalReadyOnce = useCallback(() => {
+    if (signaledReadyRef.current) return;
+    signaledReadyRef.current = true;
+    signalReady();
+  }, [signalReady]);
+
+  // Track when user check is complete — `useUser()` reads a persisted store
+  // that rehydrates synchronously on the client, so one pass after mount in
+  // Electron is enough before we commit to a redirect decision.
   useEffect(() => {
-    if (!isElectron) return;
+    if (isElectron) setIsUserCheckComplete(true);
+  }, [isElectron]);
 
-    // If user has email, they're authenticated - check complete
-    if (user?.email) {
-      setIsUserCheckComplete(true);
-      return;
-    }
-
-    setIsUserCheckComplete(true);
-  }, [isElectron, user?.email]);
-
+  // Signal ready immediately for non-root pages
   useEffect(() => {
-    // Only run in Electron environment
-    if (!isElectron) return;
+    if (!isElectron || pathname === "/") return;
 
-    // For non-root pages, signal ready immediately
-    if (pathname !== "/") {
-      if (!hasSignaledReady.current) {
-        signalReady();
-        hasSignaledReady.current = true;
-      }
-      return;
-    }
+    signalReadyOnce();
+  }, [isElectron, pathname, signalReadyOnce]);
 
-    // For root page ("/"), wait for user check before redirecting
-    if (pathname === "/" && isUserCheckComplete && !hasRedirected.current) {
-      hasRedirected.current = true;
-
-      if (user?.email) {
-        router.replace("/c");
-      } else {
-        router.replace("/desktop-login");
-      }
-
-      // Signal ready after redirect is initiated
-      // The redirect page will render and show content
-      if (!hasSignaledReady.current) {
-        signalReady();
-        hasSignaledReady.current = true;
-      }
-    }
-  }, [
-    isElectron,
-    pathname,
-    user?.email,
-    router,
-    signalReady,
-    isUserCheckComplete,
-  ]);
+  // For the root page ("/"), wait for the user check, then redirect at render
+  // time so there is no intermediate flash of the landing page. `redirect()`
+  // performs a replace-style client navigation and throws, so everything after
+  // it in this branch is unreachable by design. The branch stays pure: both
+  // calls are idempotent (same-target redirect; latched signalReadyOnce), so a
+  // replayed render cannot double-fire them.
+  if (isElectron && pathname === "/" && isUserCheckComplete) {
+    signalReadyOnce();
+    redirect(user?.email ? "/c" : "/desktop-login");
+  }
 
   return <>{children}</>;
 }

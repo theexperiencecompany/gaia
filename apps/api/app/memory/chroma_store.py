@@ -235,6 +235,25 @@ async def delete_user(user_id: str) -> None:
         await collection.delete(where={"user_id": user_id})
 
 
+async def delete_conversation_chunks(user_id: str, source_id: str) -> None:
+    """Hard-delete the verbatim chunks of one conversation.
+
+    Chunk metadata carries only ``{user_id, date}``, so the conversation is
+    identified by the id prefix ``{user_id}:{source_id}:`` that ingestion
+    stamps on every chunk. Called when a memory sourced from that conversation
+    is forgotten: forgetting a fact deliberately forfeits verbatim recall of
+    the conversation that produced it — the privacy-safe direction, since the
+    original sentence would otherwise stay quotable via conversation search
+    forever.
+    """
+    collection = await _get_collection(CHROMA_CONVERSATION_CHUNKS_COLLECTION)
+    result = await collection.get(where={"user_id": user_id}, include=[])
+    prefix = f"{user_id}:{source_id}:"
+    ids = [chunk_id for chunk_id in result["ids"] if chunk_id.startswith(prefix)]
+    if ids:
+        await collection.delete(ids=ids)
+
+
 async def upsert_conversation_chunks(items: list[ConversationChunkItem]) -> None:
     """Upsert raw conversation chunk vectors (verbatim retention tier)."""
     if not items:

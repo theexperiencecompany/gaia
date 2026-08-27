@@ -1,6 +1,6 @@
 import asyncio
 from functools import cache
-from typing import Any, TypeVar, cast
+from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -50,6 +50,8 @@ from app.constants.llm import (
     MODEL_KWARGS_FIELD_ID,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
+    OPENROUTER_DEV_APP_TITLE,
+    OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
     REASONING_FIELD_ID,
@@ -190,6 +192,38 @@ def init_gemini_llm() -> LanguageModelLike:
     return llm.configurable_fields(model=_MODEL_FIELD)
 
 
+class _AppAttribution(TypedDict):
+    """Keyword shape of ChatOpenRouter's attribution params, so ``**`` unpacking
+    stays precisely checked against the client's signature."""
+
+    app_url: str
+    app_title: str
+    app_categories: list[str]
+
+
+def _app_attribution() -> _AppAttribution:
+    """OpenRouter app-attribution params, for EVERY real OpenRouter client.
+
+    Production attributes to the public site; development sends a fixed
+    synthetic referer, because a localhost FRONTEND_URL lands the traffic in the
+    dashboard's "unknown app" bucket where it is indistinguishable from a
+    misconfigured caller. Shared by the graph lane and the aux lane — the aux
+    lane shipped without any attribution, so memory extraction, follow-ups and
+    onboarding were all reporting as "unknown" from production too.
+    """
+    if settings.ENV == "production":
+        return {
+            "app_url": settings.FRONTEND_URL,
+            "app_title": OPENROUTER_APP_TITLE,
+            "app_categories": OPENROUTER_APP_CATEGORIES,
+        }
+    return {
+        "app_url": OPENROUTER_DEV_APP_URL,
+        "app_title": OPENROUTER_DEV_APP_TITLE,
+        "app_categories": OPENROUTER_APP_CATEGORIES,
+    }
+
+
 @lazy_provider(
     name=LLMProviderKey.OPENROUTER,
     required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
@@ -221,9 +255,7 @@ def init_openrouter_llm() -> LanguageModelLike:
             # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-            app_url=settings.FRONTEND_URL,
-            app_title=OPENROUTER_APP_TITLE,
-            app_categories=OPENROUTER_APP_CATEGORIES,
+            **_app_attribution(),
             reasoning=OPENROUTER_REASONING,
         )
     )
@@ -483,6 +515,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
             stream_usage=True,
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
             api_key=settings.OPENROUTER_API_KEY,
+            **_app_attribution(),
             **_provider_order_kwargs(),
         )
     )

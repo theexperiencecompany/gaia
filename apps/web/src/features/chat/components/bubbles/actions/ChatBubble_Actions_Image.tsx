@@ -31,6 +31,9 @@ export default function ChatBubble_Actions_Image({
 
       // Fetch the image as a blob
       const response = await fetch(image_data.url);
+      if (!response.ok) {
+        throw new Error(`Image download failed with HTTP ${response.status}`);
+      }
       const blob = await response.blob();
 
       // Create URL from blob

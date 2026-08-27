@@ -421,6 +421,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#60a5fa",
     isImage: false,
   },
+  billing: {
+    icon: "CreditCardIcon",
+    bgColor: "bg-green-500/20 backdrop-blur",
+    iconColor: "text-green-400",
+    bgColorRaw: "rgba(34, 197, 94, 0.2)",
+    iconColorRaw: "#4ade80",
+    isImage: false,
+  },
   general: {
     icon: "ToolsIcon",
     bgColor: "bg-gray-500/20 backdrop-blur",

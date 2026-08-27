@@ -10,6 +10,8 @@ does, because the Chroma vector ids are derived from it after the insert.
 
 from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
+from difflib import SequenceMatcher
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
@@ -21,6 +23,7 @@ from app.constants.memory import (
     AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
+    EPISODE_ENTRY_DEDUPE_RATIO,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
@@ -36,7 +39,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
-from app.memory import ingestion
+from app.memory import ingestion, user_time
 from app.memory.ingestion import RetainResult, retain, retain_single, summarize_episode
 from app.memory.reconciliation import ReconciledFact
 from app.memory.schemas import (
@@ -157,6 +160,7 @@ class Boundaries:
     render_agenda_document: AsyncMock
     query_similar: AsyncMock
     forget_memory: AsyncMock
+    get_user: AsyncMock
     inserted_records: list[MemoryRecord] = field(default_factory=list)
 
     @property
@@ -230,8 +234,11 @@ def boundaries() -> Any:
         "forget_memory": AsyncMock(return_value=True),
     }
     vfs_mock = MagicMock(return_value=None)
+    # No user document by default -> journal days bucket in UTC.
+    get_user_mock = AsyncMock(return_value=None)
 
     with (
+        patch.object(user_time.user_repository, "get", get_user_mock),
         patch.multiple(ingestion.pg_store, insert_memories=insert_mock, **patches),
         patch.multiple(ingestion.chroma_store, **chroma_patches),
         patch.multiple(ingestion, schedule_memory_vfs_sync=vfs_mock, **module_patches),
@@ -274,6 +281,7 @@ def boundaries() -> Any:
             render_agenda_document=module_patches["render_agenda_document"],
             query_similar=chroma_patches["query_similar"],
             forget_memory=module_patches["forget_memory"],
+            get_user=get_user_mock,
             inserted_records=inserted,
         )
 
@@ -433,7 +441,7 @@ class TestStoreConversationChunks:
                 {"role": "assistant", "content": "ship the memory pipeline"},
             ],
             source_id="conv-1",
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert boundaries.chunk_documents == [
             "user: what is the plan\nassistant: ship the memory pipeline"
@@ -442,7 +450,7 @@ class TestStoreConversationChunks:
     async def test_turns_are_flushed_every_chunk_turn_limit(self, boundaries: Boundaries) -> None:
         messages = [{"role": "user", "content": f"turn {index}"} for index in range(9)]
         await ingestion._store_conversation_chunks(
-            USER, messages, source_id="c", now=datetime(2026, 1, 1, tzinfo=UTC)
+            USER, messages, source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
         documents = boundaries.chunk_documents
         assert [len(doc.splitlines()) for doc in documents] == [
@@ -453,7 +461,10 @@ class TestStoreConversationChunks:
 
     async def test_message_without_a_role_defaults_to_user(self, boundaries: Boundaries) -> None:
         await ingestion._store_conversation_chunks(
-            USER, [{"content": "no role"}], source_id="c", now=datetime(2026, 1, 1, tzinfo=UTC)
+            USER,
+            [{"content": "no role"}],
+            source_id="c",
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert boundaries.chunk_documents == ["user: no role"]
 
@@ -462,7 +473,7 @@ class TestStoreConversationChunks:
             USER,
             [{"role": "user", "content": ""}, {"role": "user", "content": "real"}],
             source_id="c",
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert boundaries.chunk_documents == ["user: real"]
 
@@ -473,7 +484,7 @@ class TestStoreConversationChunks:
             USER,
             [{"role": "user", "content": "   \n\t "}],
             source_id="c",
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         assert boundaries.chunk_documents == []
         boundaries.upsert_conversation_chunks.assert_not_awaited()
@@ -481,7 +492,7 @@ class TestStoreConversationChunks:
 
     async def test_no_messages_stores_nothing(self, boundaries: Boundaries) -> None:
         await ingestion._store_conversation_chunks(
-            USER, [], source_id="c", now=datetime(2026, 1, 1, tzinfo=UTC)
+            USER, [], source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
         boundaries.upsert_conversation_chunks.assert_not_awaited()
 
@@ -494,7 +505,7 @@ class TestStoreConversationChunks:
             USER,
             [{"role": "user", "content": body}],
             source_id="c",
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         documents = boundaries.chunk_documents
         assert len(documents) > 1
@@ -515,7 +526,7 @@ class TestStoreConversationChunks:
                 {"role": "assistant", "content": "x" * (TRANSCRIPT_CHUNK_MAX_CHARS + 50)},
             ],
             source_id="c",
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         documents = boundaries.chunk_documents
         assert documents[0] == "user: short one"
@@ -526,7 +537,7 @@ class TestStoreConversationChunks:
             {"role": "user", "content": f"turn {index} " + "y" * 400} for index in range(400)
         ]
         await ingestion._store_conversation_chunks(
-            USER, messages, source_id="c", now=datetime(2026, 1, 1, tzinfo=UTC)
+            USER, messages, source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
         assert len(boundaries.chunk_documents) == TRANSCRIPT_CHUNKS_PER_SESSION_CAP
 
@@ -537,7 +548,7 @@ class TestStoreConversationChunks:
             USER,
             [{"role": "user", "content": "a"}, {"role": "user", "content": "b"}] * 3,
             source_id="conv-7",
-            now=datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
+            local_now=datetime(2026, 3, 5, 12, 0, tzinfo=UTC),
         )
         items = boundaries.upsert_conversation_chunks.await_args.args[0]
         assert [item["id"] for item in items] == [
@@ -552,7 +563,7 @@ class TestStoreConversationChunks:
             USER,
             [{"role": "user", "content": "a"}],
             source_id=None,
-            now=datetime(2026, 1, 1, tzinfo=UTC),
+            local_now=datetime(2026, 1, 1, tzinfo=UTC),
         )
         chunk_id = boundaries.upsert_conversation_chunks.await_args.args[0][0]["id"]
         prefix, session_key, index = chunk_id.split(":")
@@ -565,7 +576,7 @@ class TestStoreConversationChunks:
     ) -> None:
         messages = [{"role": "user", "content": f"turn {index}"} for index in range(9)]
         await ingestion._store_conversation_chunks(
-            USER, messages, source_id="c", now=datetime(2026, 1, 1, tzinfo=UTC)
+            USER, messages, source_id="c", local_now=datetime(2026, 1, 1, tzinfo=UTC)
         )
         items = boundaries.upsert_conversation_chunks.await_args.args[0]
         # The stub embedder returns [index, 0.5] per input, in order.
@@ -576,22 +587,22 @@ class TestStoreConversationChunks:
 
 class TestAppendEpisodeEntries:
     async def test_no_entries_writes_nothing(self, boundaries: Boundaries) -> None:
-        count = await ingestion._append_episode_entries(
-            USER, [], source_type=MemorySourceType.CONVERSATION, now=datetime.now(UTC)
+        count, deduped = await ingestion._append_episode_entries(
+            USER, [], source_type=MemorySourceType.CONVERSATION, local_now=datetime.now(UTC)
         )
-        assert count == 0
+        assert (count, deduped) == (0, 0)
         boundaries.append_episode_entries.assert_not_awaited()
 
     async def test_entries_are_stamped_with_the_ingestion_time_and_day(
         self, boundaries: Boundaries
     ) -> None:
-        count = await ingestion._append_episode_entries(
+        count, deduped = await ingestion._append_episode_entries(
             USER,
             ["drafted the email", "booked the dentist"],
             source_type=MemorySourceType.TOOL,
-            now=datetime(2026, 3, 5, 23, 47, tzinfo=UTC),
+            local_now=datetime(2026, 3, 5, 23, 47, tzinfo=UTC),
         )
-        assert count == 2
+        assert (count, deduped) == (2, 0)
         user_id, day, entries = boundaries.append_episode_entries.await_args.args
         assert user_id == USER
         assert day == date_type(2026, 3, 5)
@@ -1395,7 +1406,10 @@ class TestRetain:
     ) -> None:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(episode_entries=["a line"])
         boundaries.get_unsummarized_episode_dates.return_value = [date_type(2026, 3, 4)]
+        # Three reads now: retain's journal snapshot, the append-time fresh
+        # dedupe read, then the rollover summarize of the previous day.
         boundaries.get_episode.side_effect = [
+            None,
             None,
             make_episode(entries=[{"time": "10:00", "text": "yesterday"}]),
         ]
@@ -1464,6 +1478,127 @@ class TestRetain:
         assert user_id == USER
         assert reconcile_facts == facts
         assert embeddings == [[0.0, 0.5], [1.0, 0.5]]
+
+
+@pytest.mark.unit
+class TestJournalDaysFollowTheUsersTimezone:
+    """Journal DAYS bucket on the user's wall clock, not UTC (rows stay UTC).
+
+    A UTC+5:30 user chatting at 2am local used to have the entry filed under
+    "yesterday" and "what did I do today" come back empty for the first 5.5
+    hours of every local day.
+    """
+
+    @staticmethod
+    def _journal_batch() -> ExtractedMemoryBatch:
+        return ExtractedMemoryBatch(episode_entries=["did a thing"])
+
+    async def test_kolkata_evening_utc_retain_files_under_the_next_local_day(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        _, day, entries = boundaries.append_episode_entries.await_args.args
+        assert day == date_type(2026, 8, 27)
+        assert entries[0]["time"] == "03:00"
+
+    async def test_todays_snapshot_rollover_and_chunks_use_the_local_day(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        assert boundaries.get_episode.await_args_list[0].args[1] == date_type(2026, 8, 27)
+        boundaries.get_unsummarized_episode_dates.assert_awaited_once_with(
+            USER, date_type(2026, 8, 27)
+        )
+        chunk = boundaries.upsert_conversation_chunks.await_args.args[0][0]
+        assert chunk["metadata"]["date"] == "2026-08-27"
+
+    async def test_extraction_sees_the_local_current_date(self, boundaries: Boundaries) -> None:
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        now = datetime(2026, 8, 26, 21, 30, tzinfo=UTC)
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=now,
+        )
+        current_date = boundaries.extract_memories.await_args.kwargs["current_date"]
+        assert current_date == now  # same instant
+        assert current_date.date() == date_type(2026, 8, 27)  # local wall clock
+
+    async def test_utc_minus_user_files_a_utc_morning_into_the_previous_local_day(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_user.return_value = SimpleNamespace(timezone="America/Los_Angeles")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 27, 3, 0, tzinfo=UTC),
+        )
+        _, day, entries = boundaries.append_episode_entries.await_args.args
+        assert day == date_type(2026, 8, 26)
+        assert entries[0]["time"] == "20:00"
+
+    async def test_missing_user_falls_back_to_utc_days(self, boundaries: Boundaries) -> None:
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        _, day, entries = boundaries.append_episode_entries.await_args.args
+        assert day == date_type(2026, 8, 26)
+        assert entries[0]["time"] == "21:30"
+
+    async def test_journal_reads_and_writes_are_scoped_to_the_ingesting_user(
+        self, boundaries: Boundaries
+    ) -> None:
+        """The timezone lookup, both episode reads (retain's snapshot and the
+        dedupe re-read) and the append itself all key on the ingesting user —
+        any other id files this user's journal under someone else's."""
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        boundaries.get_user.assert_awaited_once_with(USER)
+        assert [call.args[0] for call in boundaries.get_episode.await_args_list] == [USER, USER]
+        assert boundaries.append_episode_entries.await_args.args[0] == USER
+
+    async def test_invalid_timezone_falls_back_to_utc_without_failing_ingestion(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Not/AZone")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        result = await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        assert result.episode_entries == 1
+        _, day, _ = boundaries.append_episode_entries.await_args.args
+        assert day == date_type(2026, 8, 26)
 
 
 @pytest.mark.unit
@@ -2050,3 +2185,118 @@ class TestRetainSingleFreePlanCap:
 
         assert result.outcome is ReconcileOutcome.DUPLICATE
         assert row_to_entry.call_args.args[0] is existing
+
+
+class TestJournalNearDuplicateGate:
+    """The journal has no dedupe tier: facts get embedding reconciliation,
+    entries got appended blindly. In production one day's journal carried the
+    same discussion five times, reworded — the extractor's "do NOT repeat"
+    instruction cannot stop a paraphrase, and back-to-back retains race past
+    the journal read. The append is the one place every entry funnels through,
+    so near-duplicates are dropped there."""
+
+    _EXISTING = (
+        "Discussed the reality of GAIA's current traction metrics with Aryan "
+        "to ensure alignment on fundraising goals."
+    )
+    _REWORDED = (
+        "Discussed the reality of GAIA's current traction metrics to ensure "
+        "alignment on fundraising goals."
+    )
+    _NOVEL = "Drafted personalized win-back emails using the THANKYOU40 discount code."
+
+    @staticmethod
+    def _batch(entries: list[str]) -> ExtractedMemoryBatch:
+        return ExtractedMemoryBatch(episode_entries=entries)
+
+    async def test_a_reworded_duplicate_of_a_journaled_entry_is_dropped(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.get_episode.return_value = make_episode(
+            entries=[{"time": "10:00", "text": self._EXISTING}]
+        )
+        boundaries.extract_memories.return_value = self._batch([self._REWORDED, self._NOVEL])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == [self._NOVEL]
+        assert result.episode_entries == 1
+
+    async def test_near_identical_entries_within_one_batch_collapse_to_one(
+        self, boundaries: Boundaries
+    ) -> None:
+        boundaries.extract_memories.return_value = self._batch(
+            [self._EXISTING, self._REWORDED, self._NOVEL]
+        )
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == [self._EXISTING, self._NOVEL]
+        assert result.episode_entries == 2
+
+    async def test_distinct_entries_all_land(self, boundaries: Boundaries) -> None:
+        entries = [
+            "Identified four GAIA Pro subscribers with failed or cancelled payments.",
+            self._NOVEL,
+            "Analyzed the 'moat' concept for AI products.",
+        ]
+        boundaries.extract_memories.return_value = self._batch(entries)
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == entries
+        assert result.episode_entries == 3
+
+    def test_dedupe_compares_lowercased_whitespace_collapsed_text(self) -> None:
+        """The unit the gate compares: case and run-of-whitespace differences
+        never distinguish two entries, single spaces join the words back."""
+        assert (
+            ingestion._normalize_entry("  Discussed   GAIA's\ttraction Metrics ")
+            == "discussed gaia's traction metrics"
+        )
+
+    def test_a_similarity_exactly_at_the_dedupe_ratio_is_a_duplicate(self) -> None:
+        candidate = "a" * 17 + "xyz"
+        prior = "a" * 18 + "bc"
+        # This pair sits exactly ON the threshold (2*17 matching / 40 chars).
+        assert SequenceMatcher(None, candidate, prior).ratio() == EPISODE_ENTRY_DEDUPE_RATIO
+        assert ingestion._is_near_duplicate(candidate, [prior]) is True
+
+    async def test_a_stored_entry_without_text_never_masks_new_entries(
+        self, boundaries: Boundaries
+    ) -> None:
+        """A malformed stored entry (no ``text`` key) contributes an empty
+        string to the dedupe corpus — never a sentinel like ``"None"`` that
+        would silently swallow a real new entry restating it."""
+        boundaries.get_episode.return_value = make_episode(entries=[{"time": "10:00"}])
+        boundaries.extract_memories.return_value = self._batch(["None", "xxxx"])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == ["None", "xxxx"]
+        assert result.episode_entries == 2
+
+    async def test_a_fully_deduped_batch_appends_nothing(self, boundaries: Boundaries) -> None:
+        boundaries.get_episode.return_value = make_episode(
+            entries=[{"time": "10:00", "text": self._EXISTING}]
+        )
+        boundaries.extract_memories.return_value = self._batch([self._REWORDED])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        boundaries.append_episode_entries.assert_not_awaited()
+        assert result.episode_entries == 0

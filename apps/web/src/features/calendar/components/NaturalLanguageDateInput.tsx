@@ -253,11 +253,6 @@ export const NaturalLanguageDateRangeInput: React.FC<
     });
   }, [startValue, endValue]);
 
-  const formatDateDisplay = (dateStr: string) => {
-    if (!dateStr) return "";
-    return formatDateLocal(dateStr);
-  };
-
   const handleInputChange = (text: string) => {
     setInputValue(text);
 
@@ -338,9 +333,9 @@ export const NaturalLanguageDateRangeInput: React.FC<
       </Popover>
       {(startValue || endValue) && (
         <div className="px-1 text-xs text-zinc-500">
-          {startValue && formatDateDisplay(startValue)}
+          {startValue && formatDateLocal(startValue)}
           {startValue && endValue && " → "}
-          {endValue && startValue !== endValue && formatDateDisplay(endValue)}
+          {endValue && startValue !== endValue && formatDateLocal(endValue)}
         </div>
       )}
     </div>

@@ -53,6 +53,7 @@ from app.decorators.caching import Cacheable
 from app.memory import chroma_store, pg_store
 from app.memory.embeddings import embed_query, rerank
 from app.memory.mappers import row_to_entry
+from app.memory.user_time import local_today
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry, MemorySearchResult
 from shared.py.wide_events import MemoryContext, UserContext, log
@@ -155,9 +156,8 @@ async def recall(
     )
     timings["rerank_ms"] = _elapsed_ms(stage)
 
-    kept = _cap_weak_results(scored)[:limit]
+    kept = _cap_weak_results(_drop_below_relevance(scored))[:limit]
     entries = await _build_entries(kept)
-    entries = _drop_below_relevance(entries)
 
     timings["total_ms"] = _elapsed_ms(started)
     log.set(
@@ -188,7 +188,10 @@ async def recall_episodes(
     which extend coverage to any past day whose rollover summary matches.
     """
     tokens = _tokenize(query)
-    since = datetime.now(UTC).date() - timedelta(days=EPISODE_SEARCH_DAYS)
+    # Journal days are keyed by the user's LOCAL date (user_time.py); a UTC
+    # anchor started the window a day early/late at timezone edges and could
+    # exclude the newest local day entirely.
+    since = await local_today(user_id) - timedelta(days=EPISODE_SEARCH_DAYS)
     entry_rows, summary_hits = await asyncio.gather(
         pg_store.search_episode_entries(
             user_id, tokens, since=since, limit=EPISODE_ENTRY_CANDIDATES
@@ -274,9 +277,20 @@ async def _hydrate_candidates(
 
 @dataclass
 class _ScoredCandidate:
-    """A candidate with its blended score and absolute-confidence verdict."""
+    """A candidate with its blended relevance, boosted score, and confidence verdict.
+
+    ``base`` is the blended pre-boost relevance and decides ordering together
+    with the boosts folded into ``score``; ``relevance`` is the cross-encoder's
+    calibrated (sigmoid) verdict alone and decides survival against the
+    relevance dropoff — the blend's cosine leg is proportional to the pool's
+    best cosine, which floors every candidate high and cannot tell an
+    incidental graph sibling from a real answer the way the absolute
+    cross-encoder signal can.
+    """
 
     row: MemoryRecord
+    base: float
+    relevance: float
     score: float
     confident: bool
 
@@ -299,43 +313,49 @@ async def _rerank_and_boost(
               + (1 - RERANK_BLEND_WEIGHT) * retrieval_norm
         final = base * recency_boost * importance_boost
 
-    The retrieval signal is the candidate's normalized dense cosine (its real
-    closeness), not its rank position — rank exaggerates hair-thin gaps when
-    cosines cluster. FTS-only candidates (no cosine) fall back to their fused
-    rank position. Each candidate also gets an absolute-confidence verdict
-    (strong cosine, strong raw logit, or a keyword anchor) used to cap weak
-    results downstream.
+    Both normalizations are absolute-preserving: the cross-encoder logit maps
+    through a sigmoid (calibrated 0-1 relevance) and the dense cosine divides
+    by the pool's best cosine, so proportions between candidates survive and a
+    hair-thin raw gap stays hair-thin — min-max scaling would stretch it to
+    1.0 vs 0.0 and guarantee the runner-up falls under the relevance dropoff.
+    FTS-only candidates (no cosine) fall back to their fused rank position.
+    Each candidate also gets an absolute-confidence verdict (strong cosine,
+    strong raw logit, or a keyword anchor) used to cap weak results
+    downstream.
     """
     if not candidates:
         return []
     raw_scores = await rerank(query, [row.content for row in candidates])
-    rerank_norm = _min_max_normalize(raw_scores)
+    rerank_norm = [_sigmoid(score) for score in raw_scores]
     total = len(candidates)
     rank_fallback = [1.0 - (index / total) for index in range(total)]
     cosines = [ann_similarity.get(str(row.id)) for row in candidates]
     known = [value for value in cosines if value is not None]
-    low, high = (min(known), max(known)) if known else (0.0, 0.0)
-    span = (high - low) or 1.0
+    top_cosine = max(known) if known else 0.0  # pragma: no mutate — dead else: never read
     retrieval_norm = [
-        ((cosine - low) / span) if cosine is not None else rank_fallback[index]
+        ((cosine / top_cosine) if top_cosine > 0 else 0.0)
+        if cosine is not None
+        else rank_fallback[index]
         for index, cosine in enumerate(cosines)
     ]
     now = datetime.now(UTC)
 
-    scored = [
-        _ScoredCandidate(
-            row=row,
-            score=(RERANK_BLEND_WEIGHT * rr + (1.0 - RERANK_BLEND_WEIGHT) * rn)
-            * _recency_boost(row, now)
-            * _importance_boost(row),
-            confident=(
-                ann_similarity.get(str(row.id), 0.0) >= CONFIDENT_COSINE
-                or raw >= CONFIDENT_RERANK_LOGIT
-                or str(row.id) in fts_ids
-            ),
+    scored: list[_ScoredCandidate] = []
+    for row, rr, rn, raw in zip(candidates, rerank_norm, retrieval_norm, raw_scores):
+        base = RERANK_BLEND_WEIGHT * rr + (1.0 - RERANK_BLEND_WEIGHT) * rn
+        scored.append(
+            _ScoredCandidate(
+                row=row,
+                base=base,
+                relevance=rr,
+                score=base * _recency_boost(row, now) * _importance_boost(row),
+                confident=(
+                    ann_similarity.get(str(row.id), 0.0) >= CONFIDENT_COSINE
+                    or raw >= CONFIDENT_RERANK_LOGIT
+                    or str(row.id) in fts_ids
+                ),
+            )
         )
-        for row, rr, rn, raw in zip(candidates, rerank_norm, retrieval_norm, raw_scores)
-    ]
     scored.sort(key=lambda item: item.score, reverse=True)
     return scored
 
@@ -358,12 +378,12 @@ def _cap_weak_results(scored: list[_ScoredCandidate]) -> list[tuple[MemoryRecord
     return kept
 
 
-def _min_max_normalize(scores: list[float]) -> list[float]:
-    """Squash cross-encoder logits to [0, 1]; a degenerate range maps to 1.0."""
-    low, high = min(scores), max(scores)
-    if math.isclose(low, high):
-        return [1.0] * len(scores)
-    return [(score - low) / (high - low) for score in scores]
+def _sigmoid(logit: float) -> float:
+    """Calibrated 0-1 relevance from a cross-encoder logit (numerically stable)."""
+    if logit >= 0:  # pragma: no mutate — at 0 both branches yield exactly 0.5
+        return 1.0 / (1.0 + math.exp(-logit))
+    exp_logit = math.exp(logit)
+    return exp_logit / (1.0 + exp_logit)
 
 
 def _recency_boost(row: MemoryRecord, now: datetime) -> float:
@@ -415,7 +435,9 @@ async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[Memor
 
     Entries that superseded an older version also carry that version's content
     (``previous_content``) so "what was it before / where did I initially..."
-    questions are answerable straight from recalled context.
+    questions are answerable straight from recalled context. A parent the user
+    explicitly forgot (or whose ``forget_after`` expired) is excluded — deleted
+    content must never ride back into the prompt via its successor.
     """
     entities_by_memory = await pg_store.get_entities_for_memories([row.id for row, _ in scored])
     parent_ids = [
@@ -426,9 +448,12 @@ async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[Memor
     parents: dict[str, MemoryRecord] = {}
     if parent_ids:
         user_id = scored[0][0].user_id
+        now = datetime.now(UTC)
         parents = {
             str(parent.id): parent
             for parent in await pg_store.get_memories_by_ids(user_id, parent_ids)
+            if not parent.is_forgotten
+            and (parent.forget_after is None or parent.forget_after > now)
         }
     entries = []
     for row, score in scored:
@@ -492,22 +517,31 @@ def _tokenize(query: str) -> list[str]:
     ]
 
 
-def _drop_below_relevance(entries: list[MemoryEntry]) -> list[MemoryEntry]:
+def _drop_below_relevance(scored: list[_ScoredCandidate]) -> list[_ScoredCandidate]:
     """Trim the weak-match tail (and low-score graph siblings) below the cliff.
 
     Hybrid recall produces a sharp relevance cliff — a few strong matches, then
     a long tail of faintly-related facts. Injecting that tail into every prompt
     is noise: a query about a gift for the user's partner does not need their
-    GitHub bio or hometown. Keep only results scoring at least
-    ``RELEVANCE_DROPOFF_RATIO`` of the best hit (always keeps the top result).
+    GitHub bio or hometown.
+
+    Survival reads the CROSS-ENCODER's calibrated relevance, not the blended
+    base and not the boosted score: the blend's cosine leg is proportional to
+    the pool's best cosine, so it floors every candidate high (measured on the
+    real models: an off-topic entity sibling kept 72% of the top's blended
+    base while its calibrated relevance ratio was 9%). Boosts reorder, never
+    save. A CONFIDENT candidate (absolute cosine, strong raw logit, or a
+    keyword anchor) is never dropped — that is the existing escape hatch for
+    the query shapes the cross-encoder misjudges, which is the whole reason
+    the blend exists for ordering.
     """
-    if not entries:
-        return entries
-    top = entries[0].relevance_score or 0.0
+    if not scored:
+        return scored
+    top = max(item.relevance for item in scored)
     if top <= 0:
-        return entries
+        return scored
     floor = top * RELEVANCE_DROPOFF_RATIO
-    return [entry for entry in entries if (entry.relevance_score or 0.0) >= floor]
+    return [item for item in scored if item.confident or item.relevance >= floor]
 
 
 def _in_category(category_path: str, prefix: str) -> bool:

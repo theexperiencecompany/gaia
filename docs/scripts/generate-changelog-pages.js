@@ -17,6 +17,11 @@ const DOCS_DIR = path.resolve(__dirname, "..");
 const SOURCE = path.join(DOCS_DIR, "release-notes.mdx");
 const OUT_DIR = path.join(DOCS_DIR, "release-notes");
 
+// Shown as the page banner when the newest release ships without its own image.
+// Keeping the previous release's image would caption the new release with the
+// wrong picture, so the generic wallpaper is the correct fallback.
+const DEFAULT_HERO = "/images/changelog/release-notes-hero.png";
+
 // --- Parse ---
 
 function parseSource() {
@@ -113,15 +118,15 @@ function trimSeparators(lines) {
 // --- Extract category sections ---
 
 const CAT_HEADING = /^###\s+(.+)$/;
+// Section heading -> category page. Every value here needs a CATEGORY_META entry;
+// without one the section is collected and then silently dropped.
 const CAT_MAP = {
   "features": "features",
   "bug fixes": "bug-fixes",
   "improvements": "improvements",
   "performance": "performance",
   "infrastructure": "infrastructure",
-  "foundation": "features",
-  "content": "features",
-  "documentation": "improvements",
+  "documentation": "documentation",
 };
 
 function extractCategorySections(content) {
@@ -169,6 +174,8 @@ const CATEGORY_META = {
   "bug-fixes": { title: "Bug Fixes", description: "A consolidated list of bug fixes shipped across all GAIA releases, organized by version and platform.", icon: "bug" },
   "improvements": { title: "Improvements", description: "All improvements and enhancements shipped across GAIA releases.", icon: "arrow-up-right" },
   "performance": { title: "Performance", description: "All performance improvements shipped across GAIA releases.", icon: "gauge" },
+  "infrastructure": { title: "Infrastructure", description: "Deployment, CI, observability, testing, and internal architecture work shipped across GAIA releases.", icon: "screwdriver-wrench" },
+  "documentation": { title: "Documentation", description: "Documentation, guides, and policy updates shipped across GAIA releases.", icon: "book" },
 };
 
 const YEAR_DESCRIPTIONS = {
@@ -358,11 +365,7 @@ function syncHeroImage(blocks) {
   if (blocks.length === 0) return;
 
   // blocks[0] is the most recent release (entries are newest-first).
-  const latestImage = extractFirstImage(blocks[0].content);
-  if (!latestImage) {
-    console.log("  latest release has no image; page hero left unchanged");
-    return;
-  }
+  const latestImage = extractFirstImage(blocks[0].content) || DEFAULT_HERO;
 
   const raw = fs.readFileSync(SOURCE, "utf-8");
 
@@ -378,7 +381,8 @@ function syncHeroImage(blocks) {
     return;
   }
   if (heroMatch[1] === latestImage) {
-    console.log(`  page hero already current (${latestImage})`);
+    const how = latestImage === DEFAULT_HERO ? " (default wallpaper)" : "";
+    console.log(`  page hero already current (${latestImage})${how}`);
     return;
   }
 
@@ -387,7 +391,11 @@ function syncHeroImage(blocks) {
     `$1${latestImage}$2`,
   );
   fs.writeFileSync(SOURCE, updatedHead + raw.slice(firstUpdateIdx));
-  console.log(`  page hero synced to ${latestImage}`);
+  const how =
+    latestImage === DEFAULT_HERO
+      ? " (default wallpaper; newest release has no image)"
+      : "";
+  console.log(`  page hero synced to ${latestImage}${how}`);
 }
 
 // --- Main ---
