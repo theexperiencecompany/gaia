@@ -45,7 +45,7 @@ def _truncated_arg(value: object) -> object:
     return rendered[:MAX_RECORDED_ARG_CHARS] + ARG_TRUNCATION_MARKER
 
 
-def _parsed_result(message: ToolMessage) -> object | None:
+def parsed_result(message: ToolMessage) -> object | None:
     """The tool result as JSON when its content is a JSON document, else ``None``."""
     content = message.content
     if not isinstance(content, str):
@@ -57,7 +57,7 @@ def _parsed_result(message: ToolMessage) -> object | None:
     return parsed
 
 
-def _is_error_envelope(result: object) -> bool:
+def is_error_envelope(result: object) -> bool:
     """A "successful" tool message whose body says the call failed.
 
     Many tools answer with ``{"success": false, ...}`` or ``{"error": "..."}``
@@ -83,8 +83,8 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
     results: dict[str, object | None] = {}
     for message in messages:
         if isinstance(message, ToolMessage) and message.status != "error" and message.tool_call_id:
-            result = _parsed_result(message)
-            if not _is_error_envelope(result):
+            result = parsed_result(message)
+            if not is_error_envelope(result):
                 results[message.tool_call_id] = result
     lines: list[str] = []
     for message in messages:

@@ -79,6 +79,26 @@ PLAYBOOK_DECLINE_LIMIT = 3
 # the worker deletes the playbook rather than briefing every later fire to heal it.
 PLAYBOOK_HEAL_ATTEMPT_LIMIT = 2
 
+#: The tag both playbook briefs open with. The executor's graph loop reads it
+#: off the task turn to know the run owes a decision, so the briefs and the
+#: gate cannot drift apart on a string.
+PLAYBOOK_CHECK_TAG = "<playbook_check>"
+
+#: The tools that settle the decision a briefed run owes. ``read_playbook`` is
+#: not one: reading the sequence is how a heal run starts, not how it ends.
+PLAYBOOK_DECISION_TOOL_NAMES = frozenset({"write_playbook", "decline_playbook", "disable_playbook"})
+
+#: A briefed run that stops in plain text without a decision gets this back
+#: once, instead of ending. Bounded by MAX_PLAYBOOK_DECISION_NUDGES so a model
+#: that ignores it cannot loop. Seen live: 2 of 6 heal runs ended without one.
+PLAYBOOK_DECISION_NUDGE_MESSAGE = (
+    "[System: this run was asked to end by calling exactly one of write_playbook, "
+    "decline_playbook or disable_playbook, and it has not. Make that call now, "
+    "against the calls you actually made, then give the result again. A refused "
+    "write_playbook is not a decision: fix it or decline.]"
+)
+MAX_PLAYBOOK_DECISION_NUDGES = 1
+
 #: The playbook decision tools. Bookkeeping about a run, never the run itself:
 #: left out of the record the next run reads, or the model copies them as steps.
 PLAYBOOK_TOOL_NAMES = frozenset(

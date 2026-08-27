@@ -14,14 +14,23 @@ and was dead for the rest of it.
 
 from __future__ import annotations
 
+import json
+
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.middleware.completion import (
     completion_nudges_spent,
     current_delegation,
+    playbook_decision_pending,
+    playbook_nudges_spent,
     reply_promises_future_work,
     work_looks_unfinished,
+)
+from app.constants.agents import (
+    PLAYBOOK_CHECK_TAG,
+    PLAYBOOK_DECISION_NUDGE_MESSAGE,
+    PLAYBOOK_DECISION_TOOL_NAMES,
 )
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
@@ -362,3 +371,109 @@ class TestWorkLooksUnfinished:
         )
 
         assert work_looks_unfinished(state) is False
+
+
+def _asked_task() -> HumanMessage:
+    """A workflow delegation whose brief asks for a playbook decision."""
+    return HumanMessage(content=f"triage the inbox\n\n{PLAYBOOK_CHECK_TAG}\n...\n</playbook_check>")
+
+
+def _decision(name: str, *, ok: bool = True) -> list[AnyMessage]:
+    """One round-trip on a playbook decision tool, as the tool node records it."""
+    body = {"success": True, "data": {}} if ok else {"success": False, "error": "refused"}
+    return [
+        AIMessage(content="", tool_calls=[{"name": name, "args": {}, "id": "pb_1"}]),
+        ToolMessage(content=json.dumps(body), tool_call_id="pb_1", name=name),
+    ]
+
+
+class TestPlaybookDecisionPending:
+    """Seen live: 2 of 6 heal runs ended in plain text without calling
+    write_playbook, decline_playbook or disable_playbook. The brief says a run
+    that was asked and called neither is a lapse; the graph must not let that
+    plain-text stop stand."""
+
+    def test_a_run_that_was_not_asked_owes_nothing(self) -> None:
+        state = make_state(messages=[_task(), *_worked(2), AIMessage(content="done")])
+
+        assert playbook_decision_pending(state) is False
+
+    def test_an_asked_run_that_decided_nothing_is_pending(self) -> None:
+        state = make_state(messages=[_asked_task(), *_worked(2), AIMessage(content="done")])
+
+        assert playbook_decision_pending(state) is True
+
+    @pytest.mark.parametrize("name", sorted(PLAYBOOK_DECISION_TOOL_NAMES))
+    def test_each_decision_tool_settles_it(self, name: str) -> None:
+        state = make_state(
+            messages=[_asked_task(), *_worked(1), *_decision(name), AIMessage(content="done")]
+        )
+
+        assert playbook_decision_pending(state) is False
+
+    def test_a_refused_write_is_not_a_decision(self) -> None:
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_worked(1),
+                *_decision("write_playbook", ok=False),
+                AIMessage(content="done"),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is True
+
+    def test_reading_the_playbook_is_not_a_decision(self) -> None:
+        state = make_state(
+            messages=[_asked_task(), *_decision("read_playbook"), AIMessage(content="done")]
+        )
+
+        assert playbook_decision_pending(state) is True
+
+    def test_a_previous_delegations_decision_does_not_carry_over(self) -> None:
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_decision("decline_playbook"),
+                _asked_task(),
+                *_worked(1),
+                AIMessage(content="done"),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is True
+
+    def test_a_tool_call_still_in_flight_is_not_a_plain_text_stop(self) -> None:
+        """Only a plain-text stop is gated; the graph routes tool calls first."""
+        state = make_state(messages=[_asked_task(), _decision("write_playbook")[0]])
+
+        assert playbook_decision_pending(state) is False
+
+
+class TestPlaybookNudgesSpent:
+    def test_counts_only_the_current_delegations_decision_nudges(self) -> None:
+        state = make_state(
+            messages=[
+                _asked_task(),
+                HumanMessage(content=PLAYBOOK_DECISION_NUDGE_MESSAGE),
+                _asked_task(),
+                AIMessage(content="done"),
+                HumanMessage(content=PLAYBOOK_DECISION_NUDGE_MESSAGE),
+            ]
+        )
+
+        assert playbook_nudges_spent(state) == 1
+
+    def test_the_decision_nudge_is_not_a_delegation_boundary(self) -> None:
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_worked(1),
+                AIMessage(content="done"),
+                HumanMessage(content=PLAYBOOK_DECISION_NUDGE_MESSAGE),
+                AIMessage(content="still done"),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is True
+        assert completion_nudges_spent(state) == 0

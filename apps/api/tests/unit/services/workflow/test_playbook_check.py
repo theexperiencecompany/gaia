@@ -26,7 +26,7 @@ from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
 from app.agents.tools.playbook_tools import write_playbook
-from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunStatus,
@@ -421,3 +421,13 @@ def test_the_tools_own_schema_carries_the_step_shape():
 
     with pytest.raises(ValidationError, match="goal"):
         PlaybookStepInput.model_validate({"id": "agenda", "goal": "read the events"})
+
+
+class TestBriefsCarryTheDecisionTag:
+    """The executor graph recognises a briefed run by ``PLAYBOOK_CHECK_TAG`` on
+    the task turn. A brief that stops opening with it silently switches the
+    finish-gate off for every run it briefs."""
+
+    @pytest.mark.parametrize("brief", [PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF])
+    def test_every_brief_opens_with_the_tag(self, brief: str) -> None:
+        assert brief.startswith(PLAYBOOK_CHECK_TAG)

@@ -58,9 +58,15 @@ from app.agents.llm.client import ainvoke_llm, invoke_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.completion import (
     completion_nudges_spent,
+    playbook_decision_pending,
+    playbook_nudges_spent,
     work_looks_unfinished,
 )
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.constants.agents import (
+    MAX_PLAYBOOK_DECISION_NUDGES,
+    PLAYBOOK_DECISION_NUDGE_MESSAGE,
+)
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
@@ -647,10 +653,12 @@ def create_agent(
             # when work is demonstrably unfinished — nudge once and loop instead
             # of ending early. Bounded by MAX_COMPLETION_NUDGES so a genuinely
             # tool-free answer can't loop. Comms never opts in and ends normally.
-            if (
-                require_finish_to_end
-                and completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
-                and work_looks_unfinished(state)
+            if require_finish_to_end and (
+                _owes_playbook_decision(state)
+                or (
+                    completion_nudges_spent(state) < MAX_COMPLETION_NUDGES
+                    and work_looks_unfinished(state)
+                )
             ):
                 return "nudge_continue"
             return "end_graph_hooks" if end_graph_hooks else END
@@ -704,11 +712,24 @@ def create_agent(
         """Async twin of ``finish_task_node`` for the async graph path."""
         return finish_task_node(tool_calls, store=store)
 
+    def _owes_playbook_decision(state: State) -> bool:
+        # A briefed workflow run that stops without deciding about its playbook.
+        # Checked before the general completion nudge: it is the more specific
+        # ask, and its own bound keeps the two nudges from spending each other.
+        return playbook_nudges_spent(
+            state
+        ) < MAX_PLAYBOOK_DECISION_NUDGES and playbook_decision_pending(state)
+
     def nudge_continue_node(state: State) -> State:
-        # The message IS the tally: completion_nudges_spent counts these back out
-        # of the current delegation, so there is no counter to keep in sync.
-        del state
-        return State(messages=[HumanMessage(content=COMPLETION_NUDGE_MESSAGE)])
+        # The message IS the tally: completion_nudges_spent / playbook_nudges_spent
+        # count these back out of the current delegation, so there is no counter
+        # to keep in sync.
+        content = (
+            PLAYBOOK_DECISION_NUDGE_MESSAGE
+            if _owes_playbook_decision(state)
+            else COMPLETION_NUDGE_MESSAGE
+        )
+        return State(messages=[HumanMessage(content=content)])
 
     builder = StateGraph(State, context_schema=context_schema)
 
