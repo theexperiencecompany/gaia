@@ -225,12 +225,17 @@ jobs:
           # unit + meta need no service containers, sidecar or Node (verified on
           # the box: 10,542 passed, 0 errors, nothing running). contracts needs
           # Redis/Mongo, so it rides with integration.
-          - { name: unit, paths: "tests/unit tests/meta", node: "false", services: "false" }
+          - { name: unit, paths: "tests/unit tests/meta", ignore: "", node: "false", services: "false", workers: "" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
           # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", node: "true", services: "true" }
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "true", services: "true", workers: "" }
+          # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
+          # Postgres (clean_bridge_tables); under xdist another worker's fixture
+          # wipes its rows mid-test ("Refresh token is invalid"). main.yml runs
+          # this file alone for the same reason. Serial, in its own slice.
+          - { name: bridge, paths: "tests/integration/real/test_device_bridge_e2e.py", ignore: "", node: "true", services: "true", workers: "0" }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -261,7 +266,7 @@ jobs:
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} slice=${{ matrix.slice.name }}"
           /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n ${{ steps.par.outputs.py }} --dist worksteal ${{ matrix.slice.paths }} \
+            uv run --frozen pytest -n ${{ matrix.slice.workers || steps.par.outputs.py }} --dist worksteal ${{ matrix.slice.paths }} ${{ matrix.slice.ignore }} \
             -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report= --cov-fail-under=0 \
@@ -310,7 +315,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.* 
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit .coverage.integration
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit .coverage.integration .coverage.bridge
           uv run --frozen --package gaia --group dev coverage report --fail-under=80 | tail -n 5
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
       - uses: actions/upload-artifact@v4
