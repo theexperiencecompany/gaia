@@ -1075,6 +1075,7 @@ AGENT_KWARG_KEYS = {
     "max_actions_per_step",
     "step_timeout",
     "tools",
+    "extend_system_message",
 }
 
 

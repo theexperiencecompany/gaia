@@ -159,6 +159,14 @@ class BrowserTaskRunner:
             "task": task + BROWSER_TAKEOVER_PREAMBLE,
             "llm": self._llm,
             "browser": browser,
+            # Browser-Use's prompt suggests todo.md for long tasks, but small
+            # models write it even for 3-step forms — a measured ~7s and one
+            # whole step of pure bookkeeping. Steer it to act directly.
+            "extend_system_message": (
+                "Do NOT create or update todo.md (or any planning file) unless the task "
+                "genuinely needs more than 10 steps. For short tasks, act on the page "
+                "directly from the first step."
+            ),
             "register_new_step_callback": self._on_step,
             "register_should_stop_callback": self._should_stop,
             "use_vision": self._use_vision,
