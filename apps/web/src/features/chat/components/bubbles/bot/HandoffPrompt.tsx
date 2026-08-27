@@ -12,12 +12,13 @@ import {
   SquareArrowUpRight02Icon,
   StopCircleIcon,
 } from "@icons";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  browserApi,
   liveViewPageUrl,
   liveViewSocketUrl,
 } from "@/features/browser/api/browserApi";
+import type { SettledHandoffStatus } from "@/features/browser/hooks/useHandoffDecision";
+import { useHandoffDecision } from "@/features/browser/hooks/useHandoffDecision";
 import { useLiveViewToken } from "@/features/browser/hooks/useLiveViewToken";
 import type {
   BrowserHandoffSnapshot,
@@ -97,9 +98,8 @@ function HandoffPrimaryAction({
   if (showOpen && onOpenPanel) {
     return (
       <Button
-        color="warning"
         radius="full"
-        className="w-full font-semibold"
+        className="w-full bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<CursorInWindowIcon className="size-4" />}
         onPress={() => {
           onOpened();
@@ -117,9 +117,8 @@ function HandoffPrimaryAction({
         href={pageUrl}
         target="_blank"
         rel="noopener noreferrer"
-        color="warning"
         radius="full"
-        className="w-full font-semibold"
+        className="w-full bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<SquareArrowUpRight02Icon className="size-4" />}
         onPress={onOpened}
       >
@@ -129,9 +128,8 @@ function HandoffPrimaryAction({
   }
   return (
     <Button
-      color="warning"
       radius="full"
-      className="w-full font-semibold"
+      className="w-full bg-[#00bbff] font-semibold text-zinc-900"
       isLoading={pending}
       startContent={
         !pending ? <CheckmarkCircle02Icon className="size-4" /> : undefined
@@ -156,12 +154,11 @@ export function HandoffPrompt({
   /** Desktop web: the primary action opens the side panel instead of a new tab. */
   onOpenPanel?: () => void;
   /** Fires once when the handoff reaches a terminal status (this tab or elsewhere). */
-  onSettled?: (status: Exclude<BrowserHandoffStatus, "pending">) => void;
+  onSettled?: (status: SettledHandoffStatus) => void;
 }) {
-  const [decided, setDecided] = useState<"continue" | "cancel" | null>(null);
-  const [pending, setPending] = useState(false);
-  const [serverStatus, setServerStatus] = useState<BrowserHandoffStatus | null>(
-    null,
+  const { decide, decided, pending, settled } = useHandoffDecision(
+    handoff.handoff_id,
+    onSettled,
   );
   const [note, setNote] = useState("");
   // The primary action starts as "open the full browser"; only once the user has
@@ -176,57 +173,15 @@ export function HandoffPrompt({
       : null;
   const hasNote = note.trim().length > 0;
 
-  const settled = serverStatus && serverStatus !== "pending";
-
-  // Poll until the handoff settles — including after OUR OWN decision, or the
-  // "Stopping…" spinner would spin forever waiting for a state nothing updates.
-  useEffect(() => {
-    if (settled) return;
-    let active = true;
-    const poll = async () => {
-      const res = await browserApi.getHandoffStatus(handoff.handoff_id);
-      if (active && res && res.status !== "pending")
-        setServerStatus(res.status);
-    };
-    const id = setInterval(poll, 3000);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
-  }, [settled, handoff.handoff_id]);
-
-  useEffect(() => {
-    if (serverStatus && serverStatus !== "pending") onSettled?.(serverStatus);
-  }, [serverStatus, onSettled]);
-
-  const decide = async (decision: "continue" | "cancel", message?: string) => {
-    setPending(true);
-    setDecided(decision);
-    try {
-      const res = await browserApi.postHandoffDecision(
-        handoff.handoff_id,
-        decision,
-        message,
-      );
-      // The decision response carries the terminal status — settle immediately
-      // instead of waiting a poll cycle.
-      if (res && res.status !== "pending") setServerStatus(res.status);
-    } catch {
-      setDecided(null);
-    } finally {
-      setPending(false);
-    }
-  };
-
   return (
-    <div className="rounded-2xl bg-amber-950/30 p-3.5 ring-1 ring-amber-500/25">
+    <div className="rounded-2xl bg-zinc-900 p-3.5">
       <div className="flex items-start gap-2.5">
-        <span className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
-          <Icon className="size-4 text-amber-400" />
+        <span className="mt-px flex size-6 shrink-0 items-center justify-center rounded-full bg-zinc-800">
+          <Icon className="size-4 text-[#00bbff]" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-amber-50">{meta.title}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-amber-200/60">
+          <p className="text-sm font-semibold text-zinc-100">{meta.title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
             {handoff.reason}
           </p>
         </div>
@@ -235,8 +190,8 @@ export function HandoffPrompt({
       {!inPanel && handoff.live_view_url && liveToken && (
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
-            <CursorInWindowIcon className="size-3.5 text-amber-300/70" />
-            <span className="text-[11px] font-medium text-amber-200/60">
+            <CursorInWindowIcon className="size-3.5 text-zinc-400" />
+            <span className="text-[11px] font-medium text-zinc-400">
               Live browser, you're in control
             </span>
           </div>
@@ -249,24 +204,24 @@ export function HandoffPrompt({
 
       {/* Settled beats the in-flight spinner: once the server confirms the
           decision, show the outcome — never an eternal "Stopping…". */}
-      {serverStatus && serverStatus !== "pending" ? (
+      {settled ? (
         (() => {
-          const resolved = RESOLVED_META[serverStatus];
+          const resolved = RESOLVED_META[settled];
           const ResolvedIcon = resolved.icon;
           return (
-            <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-amber-200/80">
+            <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
               <ResolvedIcon className="size-4" />
               {resolved.label}
             </div>
           );
         })()
       ) : decided ? (
-        <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-amber-200/80">
-          <Spinner size="sm" color="warning" />
+        <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-zinc-300">
+          <Spinner size="sm" color="current" />
           {decided === "continue" ? "Continuing…" : "Stopping…"}
         </div>
       ) : (
-        <div className="mt-3 space-y-2.5 border-t border-amber-500/15 pt-3">
+        <div className="mt-3 space-y-2.5 pt-1">
           <HandoffPrimaryAction
             showOpen={!inPanel && !opened}
             cta={meta.cta}
@@ -289,8 +244,8 @@ export function HandoffPrompt({
               placeholder={'Or tell me what to do, e.g. "just grab the photo"'}
               classNames={{
                 inputWrapper:
-                  "bg-black/25 data-[hover=true]:bg-black/35 group-data-[focus=true]:bg-black/35",
-                input: "text-amber-50 placeholder:text-amber-200/35",
+                  "bg-zinc-800 data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
+                input: "text-zinc-100 placeholder:text-zinc-500",
               }}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -303,7 +258,8 @@ export function HandoffPrompt({
               variant="light"
               size="sm"
               radius="full"
-              className="shrink-0 text-amber-200/50"
+              color="danger"
+              className="shrink-0"
               startContent={<StopCircleIcon className="size-4" />}
               onPress={() => decide("cancel")}
             >

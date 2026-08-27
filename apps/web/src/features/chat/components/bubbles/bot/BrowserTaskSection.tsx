@@ -15,6 +15,7 @@ import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import { BROWSER_STATUS_META } from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { useUIStoreSidebar } from "@/stores/uiStore";
 import type {
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
@@ -90,6 +91,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const currentTask = working ? steps[steps.length - 1]?.goal : undefined;
 
   const isMobile = useIsMobile();
+  const { setOpen: setLeftSidebarOpen } = useUIStoreSidebar();
   const openSidebarWithContent = useRightSidebar(
     (state) => state.openWithContent,
   );
@@ -112,7 +114,10 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
     if (!sessionId) return;
     openPanelStore(sessionId);
     openSidebarWithContent(<BrowserLivePanel />, "artifact");
-  }, [sessionId, openPanelStore, openSidebarWithContent]);
+    // The panel takes real estate from the chat column — collapse the app
+    // sidebar so the conversation keeps a readable width beside the browser.
+    setLeftSidebarOpen(false);
+  }, [sessionId, openPanelStore, openSidebarWithContent, setLeftSidebarOpen]);
 
   // The card is the SSE-driven source of truth — while its session is shown in
   // the side panel, mirror everything the panel renders into the store.

@@ -23,6 +23,11 @@ export function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
   // bitmap size, or clicks land short of the target.
   const cssSizeRef = useRef<{ w: number; h: number }>({ w: 1280, h: 800 });
   const [status, setStatus] = useState<LiveStatus>("connecting");
+  // Latest page identity off the frame stream — drives the panel's tab + URL bar.
+  const [page, setPage] = useState<{
+    url: string | null;
+    title: string | null;
+  }>({ url: null, title: null });
 
   const send = useCallback((msg: BrowserLiveInputMessage) => {
     const ws = wsRef.current;
@@ -84,6 +89,11 @@ export function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
         if (msg.cssWidth && msg.cssHeight) {
           cssSizeRef.current = { w: msg.cssWidth, h: msg.cssHeight };
         }
+        setPage((prev) =>
+          prev.url === (msg.url ?? null) && prev.title === (msg.title ?? null)
+            ? prev
+            : { url: msg.url ?? null, title: msg.title ?? null },
+        );
         img.src = `data:image/jpeg;base64,${msg.data}`;
       };
     };
@@ -246,5 +256,5 @@ export function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
     };
   }, [interactive, socketUrl, send]);
 
-  return { canvasRef, status };
+  return { canvasRef, status, page };
 }

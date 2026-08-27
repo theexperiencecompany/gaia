@@ -80,7 +80,7 @@ export default function RightSidebar({
       {/* Artifact variant */}
       {isArtifact && (
         <aside
-          className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950 transition-[width,min-width] duration-300 ease-in-out"
+          className="relative flex h-full min-h-0 shrink-0 flex-col bg-zinc-900 transition-[width,min-width] duration-300 ease-in-out"
           style={{
             width: isOpen ? artifactWidth : "0px",
             minWidth: isOpen ? artifactWidth : "0px",

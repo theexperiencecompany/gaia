@@ -35,7 +35,7 @@ export function StepRow({ step }: { step: BrowserStepSnapshot }) {
         <button
           type="button"
           onClick={() => openDialog(step.screenshot as string)}
-          className="group mt-2.5 block w-full overflow-hidden rounded-xl ring-1 ring-white/5 transition hover:ring-white/20"
+          className="group mt-2.5 block w-full overflow-hidden rounded-xl transition hover:opacity-90"
           aria-label={`Enlarge step ${step.index} screenshot`}
         >
           <Image

@@ -65,7 +65,7 @@ export function LivePreview({
         <Button
           onPress={onOpenPanel}
           variant="flat"
-          className="aspect-[8/5] h-auto w-full rounded-xl bg-zinc-950 text-xs text-zinc-500 ring-1 ring-white/10"
+          className="aspect-[8/5] h-auto w-full rounded-xl bg-zinc-800 text-xs text-zinc-500"
         >
           Streaming in the side panel
         </Button>
