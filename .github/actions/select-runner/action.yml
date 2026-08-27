@@ -60,4 +60,16 @@ runs:
         FALLBACK_RUNNER_DOCKER: ${{ inputs.fallback-runner-docker }}
         RUNNER_FLAVOUR: ${{ inputs.flavour }}
         FORCE_HOME: ${{ inputs.force-home }}
-      run: bash "${{ github.action_path }}/../../scripts/ci/select-runner.sh"
+      run: |
+        set -euo pipefail
+        # Primary: colocated script (self-contained, no path fragility)
+        if [[ -f "${{ github.action_path }}/select-runner.sh" ]]; then
+          bash "${{ github.action_path }}/select-runner.sh"
+        elif [[ -f "${{ github.action_path }}/../../../scripts/ci/select-runner.sh" ]]; then
+          bash "${{ github.action_path }}/../../../scripts/ci/select-runner.sh"
+        else
+          echo "::error::select-runner.sh not found in action_path nor repo scripts/ci" >&2
+          ls -R "${{ github.action_path }}" >&2 | head -n 50
+          ls -R "scripts/ci" >&2 | head -n 50 || true
+          exit 127
+        fi
