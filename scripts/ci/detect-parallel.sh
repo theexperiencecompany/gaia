@@ -75,7 +75,10 @@ MEM_WORKERS="$(awk -v a="$MEM_AVAIL_GB" -v w="$PER_WORKER_GB" -v h="$HEADROOM_GB
 # alone to 435s. Subtract the xdist workers already running on this host so
 # concurrent lanes share the cores instead of fighting for them. Floor of 4
 # keeps a lane moving even on a crowded box.
-RUNNING_WORKERS="$(pgrep -fc '\[pytest-xdist' 2>/dev/null || echo 0)"
+# pgrep -c prints "0" AND exits 1 when nothing matches, so `|| echo 0` would
+# yield "0\n0"; capture, then default only when the capture is empty.
+RUNNING_WORKERS="$(pgrep -fc '\[pytest-xdist' 2>/dev/null || true)"
+RUNNING_WORKERS="${RUNNING_WORKERS:-0}"
 CPU_WORKERS=$(( NPROC - RUNNING_WORKERS ))
 (( CPU_WORKERS < 4 )) && CPU_WORKERS=4
 if (( CPU_WORKERS < PYTEST_XDIST_N )); then
