@@ -11,6 +11,11 @@ Exactly two entry points, both taking the run's ``ExecutorRun`` context:
   frontend sync reconciles by ``message_id == task_id``).
 
 Every executor terminal path goes through one of these.
+
+Neither reads the run's session: both take the cards their caller snapshotted
+before signalling the run done. By the time delivery runs, the comms consumer
+(chat stream or silent workflow path) has already drained that session and torn
+it down — see ``executor_runner._finalize_executor_run``.
 """
 
 import asyncio
@@ -22,7 +27,6 @@ from fastapi import HTTPException
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result_to_platforms,
@@ -53,6 +57,8 @@ async def deliver_result(
     result_text: str,
     result_type: str,
     returned_note: str = "",
+    *,
+    tool_data: list[ToolDataEntry] | None,
 ) -> tuple[str | None, str | None]:
     """Narrate, persist, and deliver a finished executor run's result.
 
@@ -72,25 +78,21 @@ async def deliver_result(
     Routing keys on the conversation, not the run that produced the message, so a
     background/scheduled run posting into a bot conversation still reaches it.
 
-    Tool cards: live runs have their tool_data attached to the comms ack by the
-    chat stream (the comms path owns it); queued and workflow runs self-attach
-    here (``run.executor_owns_tool_data``). Queued runs key the saved message on
+    Tool cards: ``tool_data`` is the caller's pre-signal snapshot, already gated
+    on ``run.executor_owns_tool_data`` — ``None`` for a live run, whose cards the
+    chat stream attaches to the comms ack instead (attaching them here too would
+    render every card twice). Queued runs key the saved message on
     ``message_id == task_id`` so the frontend sync reconciles it with the live
     placeholder by id — the WebSocket push is immediacy only.
     """
-    attach_tool_data = (
-        drain_executor_tool_data(run.stream_id) if run.executor_owns_tool_data else None
-    )
     try:
-        return await _narrate_and_deliver(
-            run, result_text, result_type, attach_tool_data, returned_note
-        )
+        return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
 
 
-async def persist_cancelled_run(run: ExecutorRun) -> None:
+async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:
     """Durably persist the tool cards a cancelled self-owning run already streamed.
 
     The cards were streamed live and the frontend already rendered + persisted
@@ -102,7 +104,6 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
       - no comms re-narration (the run was stopped) and no result text, mirroring
         the cards-only placeholder the user saw.
     """
-    tool_data = drain_executor_tool_data(run.stream_id)
     if not tool_data:
         log.info(
             f"{LogTag.AGENT} Cancelled executor produced no cards to persist",

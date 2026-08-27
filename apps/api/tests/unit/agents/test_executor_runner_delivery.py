@@ -22,10 +22,9 @@ from app.agents.core.background import executor_runner as er, result_delivery as
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
-    create_session,
 )
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.models.chat_models import ConversationSource, MessageModel
+from app.models.chat_models import ConversationSource, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log
@@ -62,12 +61,9 @@ def _run(
     return run
 
 
-def _session_with_cards(stream_id: str) -> None:
-    """Register a session holding one drainable executor tool card."""
-    session = create_session(stream_id, RunKind.QUEUED)
-    session.tool_events.append(
-        {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
-    )
+#: One executor tool card, in the shape ``_finalize_executor_run`` snapshots off
+#: the session and hands to delivery.
+CARDS: list[ToolDataEntry] = [{"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}]
 
 
 async def _deliver(
@@ -104,6 +100,7 @@ async def _deliver(
             _run(task_id=task_id),
             result_text=result_text,
             result_type="final",
+            tool_data=None,
         )
     return save, platform, ws
 
@@ -265,7 +262,9 @@ class TestWorkflowResultReachesThePlatformDelivery:
             ) as deliver,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
-            await rd.deliver_result(_run(workflow=True), result_text="done", result_type="final")
+            await rd.deliver_result(
+                _run(workflow=True), result_text="done", result_type="final", tool_data=None
+            )
 
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
@@ -318,7 +317,6 @@ class TestPersistCancelledRun:
     """
 
     async def test_persists_cards_only_message_keyed_by_task_id(self) -> None:
-        _session_with_cards("queued_s1")
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
         with (
@@ -326,7 +324,7 @@ class TestPersistCancelledRun:
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock) as narrate,
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
         ):
-            await rd.persist_cancelled_run(run)
+            await rd.persist_cancelled_run(run, CARDS)
 
         save.assert_awaited_once()
         saved = save.await_args.args[0].messages[0]
@@ -337,29 +335,31 @@ class TestPersistCancelledRun:
         ws.assert_not_awaited()  # no re-broadcast of already-streamed data
 
     async def test_no_cards_writes_nothing(self) -> None:
-        create_session("queued_s1", RunKind.QUEUED)  # session exists, zero events
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
         with patch.object(rd, "update_messages", new_callable=AsyncMock) as save:
-            await rd.persist_cancelled_run(run)
+            await rd.persist_cancelled_run(run, [])
 
         save.assert_not_awaited()
 
     async def test_save_failure_is_swallowed(self) -> None:
-        _session_with_cards("queued_s1")
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
         with patch.object(
             rd, "update_messages", new_callable=AsyncMock, side_effect=RuntimeError("mongo down")
         ):
-            await rd.persist_cancelled_run(run)  # must not raise
+            await rd.persist_cancelled_run(run, CARDS)  # must not raise
 
 
 class TestDeliverResultToolDataOwnership:
-    """deliver_result attaches drained cards only for self-owning runs, and
-    keys queued messages on task_id so sync dedups against the placeholder."""
+    """deliver_result attaches the cards its caller snapshotted, and keys queued
+    messages on task_id so sync dedups against the placeholder.
 
-    async def _deliver_with_session(self, run: ExecutorRun):
+    A live run arrives with ``tool_data=None`` — its cards belong to the comms
+    stream, and a second copy here would render every card twice.
+    """
+
+    async def _deliver_with_cards(self, run: ExecutorRun, tool_data: list[ToolDataEntry] | None):
         with (
             patch.object(
                 rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
@@ -372,14 +372,13 @@ class TestDeliverResultToolDataOwnership:
                 rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value=""
             ),
         ):
-            await rd.deliver_result(run, "raw result", "final")
+            await rd.deliver_result(run, "raw result", "final", tool_data=tool_data)
         return save, ws
 
     async def test_queued_run_attaches_cards_and_uses_task_id(self) -> None:
-        _session_with_cards("queued_s1")
         run = _run(RunKind.QUEUED, stream_id="queued_s1", task_id="task-9")
 
-        save, ws = await self._deliver_with_session(run)
+        save, ws = await self._deliver_with_cards(run, CARDS)
 
         saved = save.await_args.args[0].messages[0]
         assert saved.message_id == "task-9"
@@ -393,17 +392,16 @@ class TestDeliverResultToolDataOwnership:
         user carried on the run, so that user has to be the one handed over."""
         run = _run()
 
-        save, _ws = await self._deliver_with_session(run)
+        save, _ws = await self._deliver_with_cards(run, None)
 
         assert save.await_args.kwargs["user"] == {"user_id": "user-1"}
 
     async def test_live_run_never_self_attaches_cards(self) -> None:
-        """The comms stream owns a live run's cards — attaching here too would
-        render every card twice on the happy path."""
-        _session_with_cards("live_s1")
+        """The comms stream owns a live run's cards, so its snapshot is None —
+        delivery must not invent tool_data of its own from anywhere else."""
         run = _run(RunKind.LIVE, stream_id="live_s1", task_id="task-9")
 
-        save, ws = await self._deliver_with_session(run)
+        save, ws = await self._deliver_with_cards(run, None)
 
         saved = save.await_args.args[0].messages[0]
         assert not saved.tool_data
@@ -414,10 +412,9 @@ class TestDeliverResultToolDataOwnership:
         """Every live turn carries bot_message_id (for a possible HIL pause).
         Its presence alone must not route delivery down the HIL-merge path,
         which races the comms stream's save and drops results on a miss."""
-        _session_with_cards("live_s2")
         run = _run(RunKind.LIVE, stream_id="live_s2", task_id="task-10", bot_message_id="ack-msg-1")
         with patch.object(rd, "_merge_resumed_result", new_callable=AsyncMock) as merge:
-            save, ws = await self._deliver_with_session(run)
+            save, ws = await self._deliver_with_cards(run, None)
 
         merge.assert_not_awaited()
         saved = save.await_args.args[0].messages[0]
@@ -443,7 +440,7 @@ class TestDeliverResultToolDataOwnership:
             patch.object(rd, "deliver_message_to_platform", new_callable=AsyncMock) as platform,
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
         ):
-            await rd.deliver_result(run, "raw", "final")
+            await rd.deliver_result(run, "raw", "final", tool_data=None)
 
         # _get_conversation_source is now called before update_messages to
         # determine the delivery path; it IS called even when save fails.
@@ -462,7 +459,7 @@ class TestDeliverResultToolDataOwnership:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
         ):
-            await rd.deliver_result(run, "traceback...", "error")
+            await rd.deliver_result(run, "traceback...", "error", tool_data=None)
 
         follow_ups.assert_not_awaited()
 
@@ -572,7 +569,7 @@ class TestDeliverResultHilResume:
     the same class of trap ``_persist_follow_up_actions`` already guards
     against for follow-ups (see its docstring)."""
 
-    async def _deliver_resumed(self, run: ExecutorRun, *, existing_tool_data=None):
+    async def _deliver_resumed(self, run: ExecutorRun, *, existing_tool_data=None, tool_data=None):
         existing = MessageModel(type="bot", response="old text", date="2026-01-01")
         existing.tool_data = existing_tool_data
         with (
@@ -602,11 +599,10 @@ class TestDeliverResultHilResume:
                 return_value=True,
             ) as set_td,
         ):
-            result = await rd.deliver_result(run, "raw result", "final")
+            result = await rd.deliver_result(run, "raw result", "final", tool_data=tool_data)
         return result, save, ws, get_msg, set_resp, set_td
 
     async def test_merges_onto_original_message_instead_of_appending(self) -> None:
-        _session_with_cards("queued_s1")
         run = _run(
             RunKind.QUEUED,
             stream_id="queued_s1",
@@ -614,7 +610,9 @@ class TestDeliverResultHilResume:
             bot_message_id="orig-msg-1",
         )
 
-        (text, message_id), save, ws, get_msg, set_resp, set_td = await self._deliver_resumed(run)
+        (text, message_id), save, ws, get_msg, set_resp, set_td = await self._deliver_resumed(
+            run, tool_data=CARDS
+        )
 
         assert message_id == "orig-msg-1"  # reconciles onto the ORIGINAL message, not task_id
         save.assert_not_awaited()  # never $push's a rival array element
@@ -641,7 +639,6 @@ class TestDeliverResultHilResume:
         assert ws_message["task_id"] == "task-resume-1"
 
     async def test_merged_tool_data_carries_original_plus_new_cards(self) -> None:
-        _session_with_cards("queued_s1")
         run = _run(
             RunKind.QUEUED,
             stream_id="queued_s1",
@@ -651,7 +648,7 @@ class TestDeliverResultHilResume:
         existing_cards = [{"tool_name": "old_tool", "data": {}}]
 
         (_text, _mid), _save, ws, _get_msg, _set_resp, _set_td = await self._deliver_resumed(
-            run, existing_tool_data=existing_cards
+            run, existing_tool_data=existing_cards, tool_data=CARDS
         )
 
         # A WebSocket push replaces the client's stored message wholesale, so
@@ -678,7 +675,7 @@ class TestDeliverResultHilResume:
             ),
             patch.object(rd, "log") as mock_log,
         ):
-            text, message_id = await rd.deliver_result(run, "raw", "final")
+            text, message_id = await rd.deliver_result(run, "raw", "final", tool_data=None)
 
         assert text == "voiced"
         save.assert_awaited_once()
@@ -1275,7 +1272,7 @@ class TestDeliveredMessageIdentity:
                 rd, "_lookup_user_message_content", new_callable=AsyncMock, return_value="asked"
             ),
         ):
-            await rd.deliver_result(run, "raw", "final")
+            await rd.deliver_result(run, "raw", "final", tool_data=None)
         return ws.await_args.args[1]["message"]
 
     async def test_a_queued_run_is_keyed_on_its_task_id(self) -> None:
@@ -1342,7 +1339,7 @@ class TestDeliveredMessageIdentity:
             ),
             patch.object(rd, "get_approval", new=AsyncMock(return_value=None)),
         ):
-            await rd.deliver_result(run, "raw", "final")
+            await rd.deliver_result(run, "raw", "final", tool_data=None)
 
         assert "replyToMessage" not in ws.await_args.args[1]["message"]
 
@@ -1358,7 +1355,7 @@ class TestDeletedConversationDuringDelivery:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
         ):
-            result = await rd.deliver_result(_run(), "raw", "final")
+            result = await rd.deliver_result(_run(), "raw", "final", tool_data=None)
         return result, ws
 
     async def test_a_conversation_deleted_mid_run_ends_delivery_quietly(self) -> None:
@@ -1585,7 +1582,7 @@ class TestDeletedConversationIsNotAnError:
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock),
             patch.object(rd, "log") as log,
         ):
-            result = await rd.deliver_result(_run(), "raw", "final")
+            result = await rd.deliver_result(_run(), "raw", "final", tool_data=None)
         return result, log
 
     async def test_a_deleted_conversation_is_reported_at_info_with_its_id(self) -> None:
