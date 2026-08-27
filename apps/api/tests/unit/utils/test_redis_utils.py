@@ -70,7 +70,7 @@ class TestGetPool:
     async def test_returns_cached_pool_on_second_call(self) -> None:
         """If _pool is already set, get_pool returns it immediately."""
         sentinel = AsyncMock()
-        RedisPoolManager._pool = sentinel  # type: ignore[assignment]
+        RedisPoolManager._pool = sentinel
 
         pool = await RedisPoolManager.get_pool()
         assert pool is sentinel

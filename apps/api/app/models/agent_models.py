@@ -5,6 +5,7 @@ from typing import Any, Literal, TypedDict, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
+from langgraph.config import get_config
 
 #: One entry of an agent's middleware stack.
 #:
@@ -90,6 +91,14 @@ class AgentConfigurable(TypedDict, total=False):
     #: judge grounds gated calls against these, so they are never an agent's
     #: paraphrase of the request.
     user_messages: list[str] | None
+    #: The live turn's request, exactly as the user typed it and NOT clipped
+    #: (``user_messages`` is capped at ``HIL_JUDGE_MAX_TURN_CHARS`` per turn, so it
+    #: cannot serve as the verbatim copy). Established once by comms and inherited
+    #: parent-overrides, same rule as ``user_messages``. ``call_executor`` folds it
+    #: into the executor brief so the worker tier always sees the user's own words
+    #: next to the comms agent's paraphrase of them. Absent for non-chat roots
+    #: (workflow/trigger runs), which have no literal user turn.
+    user_request: str | None
     user_message_id: str
     #: The live comms turn's own bot message id (chat stream's ``state.bot_message_id``).
     #: Threaded into ``call_executor`` so a HIL pause that later resumes can reconcile
@@ -174,6 +183,21 @@ class AgentConfigurable(TypedDict, total=False):
     #: model switcher. The executor builds its own configurable rather than
     #: inheriting comms's lane wholesale, so the choice rides down here.
     dev_executor_model: str
+
+
+def current_run_config() -> RunnableConfig:
+    """The active ``RunnableConfig`` for the current graph run.
+
+    LangChain's middleware hooks are called as ``(state, runtime)`` and
+    ``(request, handler)`` — neither hands the config in as a parameter.
+    ``get_config()`` reads it from LangGraph's context-var, the same mechanism
+    nodes use. Returns an empty config outside a runnable context, so callers on
+    a sync fallback path never have to guard.
+    """
+    try:
+        return get_config()
+    except RuntimeError:
+        return RunnableConfig()
 
 
 def agent_configurable(config: RunnableConfig | None) -> AgentConfigurable:

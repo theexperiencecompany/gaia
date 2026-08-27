@@ -763,6 +763,17 @@ class TestActivitySignal:
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is False
 
+    async def test_a_system_generated_conversation_does_not_count(self, repo):
+        """A workflow execution appends to its system conversation and stamps
+        updatedAt — counting that let a user's own automation vouch for them as
+        "active" forever, so the dormancy sweep could never pause it."""
+        doc = _doc()
+        doc.is_system_generated = True
+        await repo.create(doc)
+
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        assert await repo.has_activity_since(doc.user_id, cutoff) is False
+
     async def test_another_users_activity_does_not_count(self, repo):
         mine = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
         theirs = _doc()

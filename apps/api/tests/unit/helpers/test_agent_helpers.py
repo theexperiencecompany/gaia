@@ -1,7 +1,9 @@
 """Comprehensive tests for app/helpers/agent_helpers.py."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
 from app.agents.llm.lane import ModelLane
@@ -359,6 +361,47 @@ class TestBuildAgentConfig:
         assert configurable["thread_id"] == "github_executor_conv-1"
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_parent_overrides_child_for_the_verbatim_user_request(self, mock_providers):
+        """Same rule as ``user_messages``, and for the same reason: comms establishes
+        the user's raw words once, and a child agent only ever has its parent's
+        paraphrase to offer. ``call_executor`` reads this to build the executor brief,
+        so a child winning here would put the paraphrase back where the verbatim copy
+        belongs — the exact failure this key exists to prevent."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="github_executor_conv-1",
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "conversation_id": "conv-1",
+                    "user_request": "delete the repo",
+                },
+                user_request="the agent's paraphrase",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "delete the repo"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_root_run_carries_its_own_verbatim_request(self, mock_providers):
+        """With no parent there is nothing to inherit, so the value passed in is the
+        one that lands — this is the comms root, where the raw message enters."""
+        mock_providers.get.return_value = None
+
+        configurable = (
+            await build_agent_config(
+                conversation_id="conv-1",
+                user=FAKE_USER,
+                agent_name="comms_agent",
+                user_request="pls archive the junk mail",
+            )
+        )["configurable"]
+
+        assert configurable["user_request"] == "pls archive the junk mail"
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_a_handoff_subagent_inherits_preferences_established_by_comms(
         self, mock_providers
     ) -> None:
@@ -645,19 +688,8 @@ class TestBuildInitialState:
 class TestExecuteGraphSilent:
     async def test_accumulates_message_content(self):
         """Verifies AIMessageChunk content from comms_agent is accumulated."""
-        chunk = MagicMock()
-        chunk.text = "Hello "
-        chunk.__class__.__name__ = "AIMessageChunk"
-        # Make isinstance check work
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk2 = MagicMock(spec=AIMC)
-        chunk2.text = "world"
-        chunk2.content = "world"
-
-        chunk1 = MagicMock(spec=AIMC)
-        chunk1.text = "Hello "
-        chunk1.content = "Hello "
+        chunk1 = AIMessageChunk(content="Hello ", id="msg-1")
+        chunk2 = AIMessageChunk(content="world", id="msg-1")
 
         events = [
             ((), "messages", (chunk1, {"agent_name": "comms_agent"})),
@@ -676,11 +708,7 @@ class TestExecuteGraphSilent:
         assert msg == "Hello world"
 
     async def test_skips_silent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "should be skipped"
-        chunk.content = "should be skipped"
+        chunk = AIMessageChunk(content="should be skipped", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent", "silent": True})),
@@ -698,11 +726,7 @@ class TestExecuteGraphSilent:
         assert msg == ""
 
     async def test_skips_non_comms_agent_chunks(self):
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "executor text"
-        chunk.content = "executor text"
+        chunk = AIMessageChunk(content="executor text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "executor_agent"})),
@@ -721,13 +745,20 @@ class TestExecuteGraphSilent:
 
     @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
     async def test_custom_events_merged(self, mock_process):
-        mock_process.return_value = {
-            "tool_data": [{"tool_name": "custom_tool"}],
-            "follow_up_actions": ["action1"],
-        }
+        """tool_data entries ACCUMULATE across events while every other key is
+        merged by name — a second event's tool_data must not replace the first
+        event's entries."""
+        mock_process.side_effect = [
+            {"tool_data": [{"tool_name": "first_tool"}]},
+            {
+                "tool_data": [{"tool_name": "custom_tool"}],
+                "follow_up_actions": ["action1"],
+            },
+        ]
 
         events = [
             ((), "custom", {"some": "data"}),
+            ((), "custom", {"other": "data"}),
         ]
 
         graph = AsyncMock()
@@ -738,7 +769,10 @@ class TestExecuteGraphSilent:
             {},
             {"configurable": {"user_id": USER_ID}},
         )
-        assert len(tool_data["tool_data"]) == 1
+        assert [e["tool_name"] for e in tool_data["tool_data"]] == [
+            "first_tool",
+            "custom_tool",
+        ]
         assert tool_data["follow_up_actions"] == ["action1"]
 
     async def test_todo_progress_accumulated(self):
@@ -906,6 +940,82 @@ class TestExecuteGraphSilent:
         assert mock_format.await_count == 1  # the duplicate is not formatted again
         assert len(tool_data["tool_data"]) == 1
 
+    async def test_a_handoff_preamble_is_never_persisted(self):
+        """Text that turns out to accompany a tool call is narration, not a
+        reply. The silent driver holds it by message id and drops it when the
+        node's own boundary reveals the handoff — the same rule the streaming
+        driver enforces, on the path workflows and background runs take."""
+        preamble = AIMessageChunk(content="let me get that set up", id="msg-1")
+        handoff = AIMessage(
+            content="let me get that set up",
+            id="msg-1",
+            tool_calls=[{"id": "tc_1", "name": "call_executor", "args": {"task": "x"}}],
+        )
+
+        events = [
+            ((), "messages", (preamble, {"agent_name": "comms_agent"})),
+            ((), "updates", {"agent": {"messages": [handoff]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        with patch(
+            "app.helpers.agent_helpers.format_tool_call_entry",
+            new_callable=AsyncMock,
+            return_value={"tool_name": "tool_calls_data", "data": {}},
+        ):
+            msg, tool_data = await execute_graph_silent(
+                graph,
+                {},
+                {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
+            )
+
+        assert msg == ""
+        # ...and silencing the narration did not silence the tool card.
+        assert len(tool_data["tool_data"]) == 1
+
+    async def test_a_tool_free_reply_survives_its_boundary(self):
+        """The other half of the same rule: a message that ends without a tool
+        call is the answer, and the boundary must release it."""
+        chunk = AIMessageChunk(content="all set up now.", id="msg-1")
+        reply = AIMessage(content="all set up now.", id="msg-1")
+
+        events = [
+            ((), "messages", (chunk, {"agent_name": "comms_agent"})),
+            ((), "updates", {"agent": {"messages": [reply]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        msg, _ = await execute_graph_silent(
+            graph,
+            {},
+            {"agent_name": "comms_agent", "configurable": {"user_id": USER_ID}},
+        )
+
+        assert msg == "all set up now."
+
+    async def test_a_non_comms_run_never_inspects_boundaries(self):
+        """The executor's text is read by comms, never by a person, so it is
+        never accumulated and its boundaries decide nothing."""
+        chunk = AIMessageChunk(content="executor text", id="msg-1")
+        reply = AIMessage(content="executor text", id="msg-1")
+
+        events = [
+            ((), "messages", (chunk, {"agent_name": "executor_agent"})),
+            ((), "updates", {"agent": {"messages": [reply]}}),
+        ]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        msg, _ = await execute_graph_silent(
+            graph,
+            {},
+            {"agent_name": "executor_agent", "configurable": {"user_id": USER_ID}},
+        )
+
+        assert msg == ""
+
 
 # ---------------------------------------------------------------------------
 # execute_graph_streaming
@@ -930,14 +1040,33 @@ class TestExecuteGraphStreaming:
         assert any("nostream" in r for r in results)
 
     @patch("app.helpers.agent_helpers.stream_manager")
+    async def test_a_run_that_was_never_cancelled_says_so_by_omission(self, mock_sm):
+        """The endpoint keys the cancel path off this marker. A run that always
+        reported itself cancelled would close every stream through the
+        interruption path — recording an interruption that never happened and
+        acking a cancel nobody asked for."""
+        mock_sm.is_cancelled = AsyncMock(return_value=False)
+
+        chunk = AIMessageChunk(content="done.", id="msg-1")
+        events = [((), "messages", (chunk, {"agent_name": "comms_agent"}))]
+        graph = AsyncMock()
+        graph.astream = MagicMock(return_value=_async_iter(events))
+
+        results = [
+            frame
+            async for frame in execute_graph_streaming(
+                graph, {}, {"agent_name": "comms_agent", "configurable": {"stream_id": "s1"}}
+            )
+        ]
+
+        marker = next(r for r in results if r.startswith("nostream: "))
+        assert json.loads(marker.removeprefix("nostream: ")) == {"complete_message": "done."}
+
+    @patch("app.helpers.agent_helpers.stream_manager")
     async def test_cancellation(self, mock_sm):
         mock_sm.is_cancelled = AsyncMock(return_value=True)
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "text"
-        chunk.content = "text"
+        chunk = AIMessageChunk(content="text", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),
@@ -961,11 +1090,7 @@ class TestExecuteGraphStreaming:
         mock_sm.is_cancelled = AsyncMock(return_value=False)
         mock_format_sse.return_value = "data: Hello\n\n"
 
-        from langchain_core.messages import AIMessageChunk as AIMC
-
-        chunk = MagicMock(spec=AIMC)
-        chunk.text = "Hello"
-        chunk.content = "Hello"
+        chunk = AIMessageChunk(content="Hello", id="msg-1")
 
         events = [
             ((), "messages", (chunk, {"agent_name": "comms_agent"})),

@@ -4,31 +4,31 @@
 #
 # Appended as the final section of EXTRACTION_SYSTEM_PROMPT, so it must OVERRIDE
 # the permissive "capture anyone the user interacts with" guidance written above
-# it for the conversation case. Uses "the user" literally (never {placeholders}) —
+# it for the conversation case. Uses "the user" literally (never {placeholders}):
 # this string is inserted as a .format() value and its braces are not substituted.
-EMAIL_MEMORY_EXTRACTION_PROMPT = """## This transcript is the user's email inbox — read it that way
+EMAIL_MEMORY_EXTRACTION_PROMPT = """## This transcript is the user's email inbox: read it that way
 
 Everything above frames the transcript as a conversation between the user and
 GAIA. It is NOT. This is the user's inbox: a stream of mostly INBOUND mail where
 the user is the recipient, not a participant in a relationship. Most senders are
-strangers contacting the user for their own reasons — a customer, a lead, sales,
+strangers contacting the user for their own reasons: a customer, a lead, sales,
 support, billing, a newsletter, an automated notification. A few are real: people
 the user actually knows and corresponds with. Telling these apart is your job, and
 on the PEOPLE question this section overrides the general "capture anyone the user
-interacts with" guidance above — in an inbox the default flips to SKIP.
+interacts with" guidance above: in an inbox the default flips to SKIP.
 
-### The person judgment — reason it through, don't apply a rule
+### The person judgment: reason it through, don't apply a rule
 
 Someone emailing the user does NOT make them a contact. Before you register any
 person or write any fact about them, reason about the relationship the email
 actually reveals:
 
-  Does this email show the user genuinely KNOWS this person — shared history,
-  mutual familiarity, an ongoing collaboration, personal or collegial warmth —
+  Does this email show the user genuinely KNOWS this person (shared history,
+  mutual familiarity, an ongoing collaboration, personal or collegial warmth),
   or is this person reaching out for a transactional reason where the user just
   happens to be the recipient?
 
-Weigh the whole character of it. No single signal decides — a founder replies to
+Weigh the whole character of it. No single signal decides: a founder replies to
 customers, so "they wrote back" proves nothing. Read the tone, the history, and
 what the message is FOR.
 
@@ -45,24 +45,24 @@ or templated, no-reply and unsubscribe footers. -> register no person, store no
 fact about them.
 
 When the relationship is genuinely unclear, lean toward NOT registering the
-person — an inbox is strangers by default. But do NOT drop the user's actual
+person: an inbox is strangers by default. But do NOT drop the user's actual
 friends, family, and teammates just because they arrived as email: when the
 evidence of a real relationship is there, capture it confidently.
 
-### What you DO keep from email — the user-centric signal
+### What you DO keep from email: the user-centric signal
 
 Even a stranger's or a robot's email can reveal a durable fact ABOUT THE USER:
-- Services and tools the user uses — a Vercel receipt means "the user uses
+- Services and tools the user uses. A Vercel receipt means "the user uses
   Vercel", a Linear notification means "the user uses Linear". Keep the service,
   never the vendor's billing contact or any name inside the receipt.
-- The user's own identity — their email addresses, usernames, handles, account or
+- The user's own identity: their email addresses, usernames, handles, account or
   customer IDs, role, company, the product they run.
 - The user's own projects, the subscriptions they chose, the newsletters they
-  genuinely follow (store as an interest, "the user follows X" — never the
+  genuinely follow (store as an interest, "the user follows X", never the
   newsletter's authors as people).
 
 For a person you DID decide to keep, store the durable RELATIONSHIP ("Riley is the
-user's cofounder", "Sam is the user's sister") — not the transactional content of
+user's cofounder", "Sam is the user's sister"), not the transactional content of
 this one thread ("Riley asked to move the demo" is an event, not a durable fact).
 
 ### Worked examples

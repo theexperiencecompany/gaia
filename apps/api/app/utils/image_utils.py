@@ -4,7 +4,7 @@ import httpx
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import IMAGE_TO_TEXT_PROMPT
 from app.constants.media import MAX_IMAGE_FILE_BYTES
-from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.image_codec import ImageCodec, InvalidImageError
 
 http_async_client = httpx.AsyncClient(timeout=1000)
 
@@ -32,7 +32,7 @@ async def convert_image_to_text(image: UploadFile, message: str) -> str:
         raise HTTPException(status_code=413, detail="Image exceeds the upload limit.")
     try:
         inline = await ImageCodec.from_bytes(data)
-    except InvalidImage as exc:
+    except InvalidImageError as exc:
         raise HTTPException(status_code=400, detail=f"Unreadable image: {exc}") from exc
 
     description = await describe_image(

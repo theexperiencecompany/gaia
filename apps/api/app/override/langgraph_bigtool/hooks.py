@@ -45,7 +45,7 @@ async def execute_hooks(
         if inspect.iscoroutine(result):
             state = await result
         else:
-            state = result  # type: ignore[assignment]
+            state = result  # type: ignore[assignment]  # inspect.iscoroutine() can't narrow HookType union; sync branch yields State
     return state
 
 

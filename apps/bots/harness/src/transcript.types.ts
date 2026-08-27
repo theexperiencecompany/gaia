@@ -10,7 +10,7 @@
  * faithful record of exactly what the platform SDK would have received.
  */
 
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 
 /** Fields stamped on every event by the recorder. */
 export interface TranscriptEventBase {

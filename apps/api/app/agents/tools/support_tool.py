@@ -68,11 +68,11 @@ async def create_support_ticket(
         if not user_email:
             return "User email is required to create a support ticket."
 
-        request_type = SupportRequestType(type.lower())
+        ticket_type = SupportRequestType(type.lower())
 
         # Prepare support ticket data for streaming
         support_ticket_data = {
-            "type": request_type.value,
+            "type": ticket_type.value,
             "title": title.strip(),
             "description": description.strip(),
             "user_name": user_name,
@@ -88,7 +88,7 @@ async def create_support_ticket(
 
         # Return confirmation message
         ticket_type_display = (
-            "feature request" if request_type == SupportRequestType.FEATURE else "support ticket"
+            "feature request" if ticket_type == SupportRequestType.FEATURE else "support ticket"
         )
         return f"I've prepared a {ticket_type_display} draft for you to review. Please check the details and click 'Submit Ticket' when you're ready to send it to our support team."
 

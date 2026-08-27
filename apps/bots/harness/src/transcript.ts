@@ -8,7 +8,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
-import type { PlatformName } from "@gaia/shared";
+import type { PlatformName } from "@gaia/shared/bots";
 import type { TranscriptEvent, TranscriptEventInput } from "./transcript.types";
 
 /**

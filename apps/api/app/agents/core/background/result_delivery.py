@@ -177,8 +177,15 @@ async def _narrate_and_deliver(
     )
     # If comms is unavailable, fall back to the raw executor text rather than
     # dropping the message entirely.
-    if not notification_text:
+    narrated = bool(notification_text)
+    if not narrated:
         notification_text = result_text
+    log.set_ns(
+        "result_delivery",
+        result_type=result_type,
+        narrated=narrated,
+        text_length=len(notification_text),
+    )
 
     bot_message = MessageModel(
         type="bot",
@@ -292,6 +299,7 @@ async def _narrate_and_deliver(
                 user=run.user,
                 user_id=user_id,
                 notification_text=notification_text,
+                origin=_delivery_origin(run),
             )
         await _dispatch_workflow_notification(
             msg_type=result_type,
@@ -343,15 +351,34 @@ async def _narrate_and_deliver(
         delivered = True
         transport = "websocket"
 
-    log.info(
-        f"{LogTag.AGENT} deliver_result: delivered message",
-        message_id=bot_message.message_id,
-        task_id=run.task_id,
-        conversation_id=run.conversation_id,
-        conversation_source=conversation_source.value if conversation_source else None,
+    # Delivery is the last step that can silently lose a finished run: the answer
+    # is saved to the conversation either way, so a failed send leaves a run whose
+    # outcome is "success" and whose user got nothing. Put the verdict ON the
+    # executor_run wide event (not just this line) so that state is queryable.
+    log.set_ns(
+        "result_delivery",
         transport=transport,
         delivered=delivered,
+        source=conversation_source.value if conversation_source else None,
     )
+    if delivered:
+        log.info(
+            f"{LogTag.AGENT} deliver_result: delivered message",
+            message_id=bot_message.message_id,
+            task_id=run.task_id,
+            conversation_id=run.conversation_id,
+            conversation_source=conversation_source.value if conversation_source else None,
+            transport=transport,
+        )
+    else:
+        log.error(
+            f"{LogTag.AGENT} deliver_result: result saved but NOT delivered to the user",
+            message_id=bot_message.message_id,
+            task_id=run.task_id,
+            conversation_id=run.conversation_id,
+            conversation_source=conversation_source.value if conversation_source else None,
+            transport=transport,
+        )
     return notification_text, bot_message.message_id
 
 
@@ -879,3 +906,13 @@ async def _get_conversation_source(conversation_id: str, user_id: str) -> Conver
     except Exception as e:
         log.warning(f"{LogTag.AGENT} _get_conversation_source: lookup failed", error=str(e))
         return None
+
+
+def _delivery_origin(run: ExecutorRun) -> str:
+    """Name what produced this run's result, with machine ids, so a delivered
+    message recorded in a platform thread can be traced back to its source."""
+    name = f' "{run.workflow_title}"' if run.workflow_title else ""
+    origin = f"workflow{name} (id {run.workflow_id})"
+    if run.active_todo_id:
+        origin += f", tracked todo (id {run.active_todo_id})"
+    return origin

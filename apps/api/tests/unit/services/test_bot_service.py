@@ -134,19 +134,35 @@ class TestEnforceRateLimit:
 
 
 class TestBuildSessionKey:
-    """Tests for build_session_key formatting, including the DM fallback for missing channels."""
+    """The exact key each surface resolves. A DM has to key the same whether the
+    caller came in from the chat (real channel id) or from a background delivery
+    that only knows the platform link (no channel id) — otherwise one DM becomes
+    two conversations."""
 
-    def test_with_channel_id(self):
-        key = BotService.build_session_key("discord", "user123", "channel456")
-        assert key == "discord:user123:channel456"
+    #: The prod user whose Telegram chat forked across the two key formats.
+    TELEGRAM_USER = "6222050155"
 
-    def test_without_channel_id_uses_dm(self):
-        key = BotService.build_session_key("slack", "user789", None)
-        assert key == "slack:user789:dm"
+    def test_a_telegram_dm_keys_the_same_inbound_and_backend_originated(self):
+        """Telegram's private chat id IS the user id, so the inbound path sends it
+        as ``channel_id`` while a workflow delivery has none. Both are the same DM."""
+        inbound = BotService.build_session_key("telegram", self.TELEGRAM_USER, self.TELEGRAM_USER)
+        backend_originated = BotService.build_session_key("telegram", self.TELEGRAM_USER, None)
 
-    def test_empty_string_channel_uses_dm(self):
-        key = BotService.build_session_key("telegram", "user000", "")
-        assert key == "telegram:user000:dm"
+        assert inbound == f"telegram:{self.TELEGRAM_USER}:{self.TELEGRAM_USER}"
+        assert backend_originated == inbound
+
+    def test_a_telegram_group_keys_on_the_group_chat(self):
+        key = BotService.build_session_key("telegram", self.TELEGRAM_USER, "-1001234567890")
+        assert key == f"telegram:{self.TELEGRAM_USER}:-1001234567890"
+
+    def test_another_platform_keys_its_channel_the_same_way(self):
+        assert BotService.build_session_key("discord", "user123", "channel456") == (
+            "discord:user123:channel456"
+        )
+        assert BotService.build_session_key("slack", "user789", None) == "slack:user789:user789"
+
+    def test_an_empty_channel_is_a_dm_not_a_channel_named_empty(self):
+        assert BotService.build_session_key("telegram", "user000", "") == "telegram:user000:user000"
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +316,7 @@ class TestResetSession:
         result = await BotService.reset_session("discord", "user123", None, sample_user)
 
         assert result is not None
-        mock_bot_repo.delete_by_session_key.assert_awaited_once_with("discord:user123:dm")
+        mock_bot_repo.delete_by_session_key.assert_awaited_once_with("discord:user123:user123")
 
     async def test_reset_with_channel_id(
         self,

@@ -174,10 +174,7 @@ def can_create_directly(draft: FinalizedOutput) -> bool:
         return False
 
     # Integration triggers ALWAYS need confirmation (have config_fields like calendar_ids, channel_ids)
-    if draft.trigger_type == "integration":
-        return False
-
-    return True
+    return draft.trigger_type != "integration"
 
 
 async def create_workflow_directly(

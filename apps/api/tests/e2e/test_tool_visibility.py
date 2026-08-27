@@ -559,7 +559,9 @@ class TestStreamShape:
         )
 
         wire = [chunk for chunk in transcript.raw() if not chunk.startswith("nostream: ")]
-        assert len(wire) == 5
+        # tool_data, tool_output, message_boundary (the agent update closes that
+        # message), progress, response, [DONE].
+        assert len(wire) == 6
         for chunk in wire:
             assert _SSE_FRAME.fullmatch(chunk), f"malformed SSE frame: {chunk!r}"
 

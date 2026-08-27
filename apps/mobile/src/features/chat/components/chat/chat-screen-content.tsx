@@ -23,6 +23,7 @@ import Reanimated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors } from "@/lib/design-tokens";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
 import { pinMessage } from "../../api/chat-api";
@@ -140,7 +141,7 @@ function MessageSkeleton() {
 // ---------------------------------------------------------------------------
 
 type ListItem =
-  | { type: "message"; data: Message }
+  | { type: "message"; data: Message; isLast: boolean }
   | { type: "date-separator"; date: string; id: string };
 
 function getDateKey(date: Date): string {
@@ -152,8 +153,10 @@ function buildListItems(messages: Message[]): ListItem[] {
   let lastDateKey: string | null = null;
   const todayKey = getDateKey(new Date());
   const seenDateKeys = new Set<string>();
+  const lastMsgIndex = messages.length - 1;
 
-  for (const message of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i];
     const msgDate = new Date(message.timestamp);
     const dateKey = getDateKey(msgDate);
 
@@ -167,7 +170,7 @@ function buildListItems(messages: Message[]): ListItem[] {
       lastDateKey = dateKey;
     }
 
-    items.push({ type: "message", data: message });
+    items.push({ type: "message", data: message, isLast: i === lastMsgIndex });
   }
 
   // Hide "Today" separator when it's the only date group — adds no value
@@ -195,6 +198,7 @@ export function ChatScreenContent({
     progressToolName,
     flatListRef,
     sendMessage,
+    retryMessage,
     cancelStream,
     scrollToBottom,
     refetch,
@@ -266,11 +270,18 @@ export function ChatScreenContent({
 
   const displayMessage = progress || thinkingMessage;
 
+  // Follow the stream: tokens grow the last item WITHOUT changing the list
+  // length, so keying on messages (any change) is required. Throttled so a
+  // fast token rate doesn't flood scrollToEnd calls, and only while the user
+  // is parked at the bottom — scrolling up pauses follow, like web.
+  const lastFollowTsRef = useRef(0);
   useEffect(() => {
-    if (isAtBottomRef.current) {
-      scrollToBottom();
-    }
-  }, [messages.length, scrollToBottom]);
+    if (!isAtBottomRef.current) return;
+    const now = Date.now();
+    if (now - lastFollowTsRef.current < 60) return;
+    lastFollowTsRef.current = now;
+    flatListRef.current?.scrollToEnd({ animated: false });
+  }, [messages, flatListRef]);
 
   useEffect(() => {
     if (
@@ -481,8 +492,7 @@ export function ChatScreenContent({
       }
 
       const message = item.data;
-      const msgIndex = messages.findIndex((m) => m.id === message.id);
-      const isLastMessage = msgIndex === messages.length - 1;
+      const isLastMessage = item.isLast;
       const isEmptyAiMessage =
         !message.isUser && (!message.text || message.text.trim() === "");
       const showLoading = isLastMessage && isEmptyAiMessage && isTyping;
@@ -493,6 +503,7 @@ export function ChatScreenContent({
           onFollowUpAction={handleFollowUpAction}
           onReply={handleReply}
           onLongPress={handleLongPressMessage}
+          onRetry={() => retryMessage(message.id)}
           isLoading={isLastMessage && isTyping}
           isLastMessage={isLastMessage}
           loadingMessage={showLoading ? displayMessage : undefined}
@@ -507,9 +518,9 @@ export function ChatScreenContent({
       handleLongPressMessage,
       handleReply,
       isTyping,
-      messages,
       progress,
       progressToolName,
+      retryMessage,
     ],
   );
 
@@ -578,7 +589,7 @@ export function ChatScreenContent({
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={handleRefresh}
-                  tintColor="#00bbff"
+                  tintColor={colors.brand}
                 />
               }
               onLoad={() => {

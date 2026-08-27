@@ -1,13 +1,13 @@
 /**
  * Shared @gaia/shared mock factory for bot adapter tests.
  *
- * All adapter tests mock @gaia/shared identically except for platform name,
+ * All adapter tests mock @gaia/shared/bots identically except for platform name,
  * STREAMING_DEFAULTS, and platform-specific converters. This factory avoids
  * duplicating the common ~40-line BaseBotAdapter stub across every test file.
  *
  * Usage in a test file:
  *
- *   vi.mock("@gaia/shared", async () => {
+ *   vi.mock("@gaia/shared/bots", async () => {
  *     const { makeGaiaSharedMock } = await import("../shared/mocks/gaiaSharedBase");
  *     return makeGaiaSharedMock("whatsapp", {
  *       streamingDefaults: { whatsapp: { editIntervalMs: 2000, streaming: false, platform: "whatsapp" } },
@@ -29,7 +29,7 @@ interface GaiaSharedMockOptions {
 }
 
 /**
- * Creates the @gaia/shared mock object with a BaseBotAdapter stub and shared
+ * Creates the @gaia/shared/bots mock object with a BaseBotAdapter stub and shared
  * helper mocks. Callers supply platform-specific overrides.
  */
 export function makeGaiaSharedMock(

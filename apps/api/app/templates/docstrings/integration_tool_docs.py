@@ -1,7 +1,7 @@
 """Docstrings for integration management tools."""
 
 LIST_INTEGRATIONS = """
-INTEGRATIONS — LIST: This tool lists all available integrations with their connection status.
+INTEGRATIONS (LIST): This tool lists all available integrations with their connection status.
 
 Use this tool when the user asks:
 - "What integrations do you have?"
@@ -38,7 +38,7 @@ Examples:
 """
 
 CONNECT_INTEGRATION = """
-INTEGRATIONS — CONNECT: This tool initiates the connection flow for one or more integrations.
+INTEGRATIONS (CONNECT): This tool initiates the connection flow for one or more integrations.
 
 Use this tool when the user asks to:
 - "Connect Gmail"
@@ -50,7 +50,7 @@ Use this tool when the user asks to:
 
 PARAMETERS:
 - `integration_ids` (List[str]): List of exact integration IDs to connect.
-  - Use integration IDs (e.g., "gmail", "notion", "twitter") — call list_integrations first if unsure
+  - Use integration IDs (e.g., "gmail", "notion", "twitter"); call list_integrations first if unsure
   - Can be a single ID or multiple IDs
 
 BEHAVIOR:
@@ -79,7 +79,7 @@ Examples:
 """
 
 CHECK_INTEGRATIONS_STATUS = """
-INTEGRATIONS — CHECK STATUS: This tool checks the connection status of specific integrations.
+INTEGRATIONS (CHECK STATUS): This tool checks the connection status of specific integrations.
 
 Use this tool when the user asks:
 - "Is Gmail connected?"

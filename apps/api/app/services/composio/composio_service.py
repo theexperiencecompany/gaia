@@ -24,7 +24,7 @@ from app.models.trigger_config import TriggerConfig
 # not only where an entrypoint remembers to `import app.patches`. Without the
 # user_id-injection patch, custom tools 500 with "Missing user_id in
 # auth_credentials".
-import app.patches  # noqa: F401
+import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before patched SDKs are used
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import (
     LangchainProvider,

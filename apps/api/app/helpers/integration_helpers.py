@@ -29,6 +29,9 @@ SEARCH_STOPWORDS = {
 }
 
 
+_SLUG_STRIP_CHARS = "-"
+
+
 def build_search_patterns(query: str) -> list[str]:
     """Split a query into individual lowercase words for flexible matching.
 
@@ -68,20 +71,19 @@ def generate_integration_slug(
     No longer appends a hash suffix — the slug is human-readable and
     stored/indexed in MongoDB for direct lookup.
     """
-    name_slug = slugify(name, max_length=40)
-    category_slug = slugify(category, max_length=20)
-
-    slug = f"{name_slug}-mcp-{category_slug}"
+    # Named constant, not an inline literal: the strip charset is part of the
+    # slug format contract, and rstrip("XX-XX")-style mutations of an inline
+    # "-" are behaviorally identical to the original (the set still contains
+    # '-'), which makes them untestable. A named reference has no value to
+    # mutate.
+    slug = f"{slugify(name, max_length=40)}-mcp-{slugify(category, max_length=20)}"
 
     if len(slug) > max_length:
         truncated = slug[:max_length]
-        last_hyphen = truncated.rfind("-")
-        if last_hyphen > 0:
-            slug = truncated[:last_hyphen]
-        else:
-            slug = truncated
+        last_hyphen = truncated.rfind(_SLUG_STRIP_CHARS)
+        slug = truncated[:last_hyphen] if last_hyphen > 0 else truncated
 
-    return slug.rstrip("-")
+    return slug.rstrip(_SLUG_STRIP_CHARS)
 
 
 def parse_integration_slug(slug: str) -> dict:

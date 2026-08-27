@@ -62,7 +62,7 @@ export { PeopleSearchCard } from "./cards/people-search-card";
 export { RateLimitCard } from "./cards/rate-limit-card";
 export { RedditCard } from "./cards/reddit-card";
 export { SearchResultsCard } from "./cards/search-results-card";
-export { MCPAppCard, ToolCallsCard } from "./cards/streaming-meta-cards";
+export { MCPAppCard } from "./cards/streaming-meta-cards";
 export type {
   SupportTicketData,
   SupportTicketType,

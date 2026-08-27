@@ -140,7 +140,7 @@ const displayEntries: TriggerDisplayEntry[] = [
     triggerSlugs: [
       "notion_new_page_in_db",
       "notion_page_updated",
-      "notion_all_page_events",
+      "notion_page_content_updated",
     ],
     getDisplayInfo: (config) => {
       const triggerName =
@@ -148,7 +148,8 @@ const displayEntries: TriggerDisplayEntry[] = [
       let label = "on notion event";
       if (triggerName === "notion_new_page_in_db") label = "on new page in db";
       if (triggerName === "notion_page_updated") label = "on page updated";
-      if (triggerName === "notion_all_page_events") label = "on any page event";
+      if (triggerName === "notion_page_content_updated")
+        label = "on page content updated";
       return {
         label,
         integrationId: "notion",

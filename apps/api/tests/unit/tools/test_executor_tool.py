@@ -289,7 +289,7 @@ class TestCallExecutorLockContention:
         await drain_background_tasks()
 
         assert second == (
-            "That task is already running from this same message — not "
+            "That task is already running from this same message, not "
             "starting it again. The results are on the way."
         )
         assert first.startswith("Task accepted")
@@ -558,7 +558,7 @@ class TestCancelExecutor:
         response = await run_cancel_executor(config=config_for(), task_ids=["q2"])
 
         assert response == (
-            "Cancelled: q2. Currently running task was not in the cancel list — still running."
+            "Cancelled: q2. Currently running task was not in the cancel list, still running."
         )
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
         cancel_stream.assert_not_awaited()
@@ -751,7 +751,7 @@ class TestCancelWithMalformedQueueItems:
         response = await run_cancel_executor(config=config_for(), task_ids=["q1"])
 
         assert response == (
-            "Cancelled: q1. Currently running task was not in the cancel list — still running."
+            "Cancelled: q1. Currently running task was not in the cancel list, still running."
         )
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
         assert await fake_redis.lrange(QUEUE_KEY, 0, -1) == ["5"]
@@ -864,11 +864,15 @@ class TestDispatchThreadsTheTurnsIdentity:
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """The executor's brief carries the verbatim request alongside comms'
-        paraphrase, so a detail comms dropped is still recoverable downstream."""
+        paraphrase, so a detail comms dropped is still recoverable downstream.
+
+        Sourced from the configurable, so it rides along whatever the comms model
+        did or did not emit — the tool call below passes no verbatim argument
+        because the schema no longer has one.
+        """
         await call_executor_with(
-            config=config_for(),
+            config=config_for(user_request="pls archive the junk mail and flag the offer thing"),
             task="triage the inbox",
-            verbatim_request="pls archive the junk mail and flag the offer thing",
         )
         await drain_background_tasks()
 
@@ -877,6 +881,27 @@ class TestDispatchThreadsTheTurnsIdentity:
             "Original request (verbatim):\npls archive the junk mail and flag the offer thing"
         )
         assert "triage the inbox" in brief
+
+    async def test_identifiers_survive_a_paraphrase_that_mangles_them(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Regression: a pasted billing table went to the executor with 3 of its 4
+        recipient addresses corrupted by the comms model's rewrite, and no verbatim
+        copy to check against. The brief must still carry the exact bytes even when
+        the model's `task` gets the identifiers wrong."""
+        pasted = (
+            "writetokhair@gmail.com\tFailed\t$30.00\tsub_0Ni7oWIA6kMF0ogWiKC3x\n"
+            "tmunson750@gmail.com\tCancelled\t$30.00\tsub_0NfdUP7ekmLIw59KBtWwa"
+        )
+        await call_executor_with(
+            config=config_for(user_request=pasted),
+            task="email writetokhair@gmail.com and tmndo.send@gmail.com about sub_0Ni7cWqI5",
+        )
+        await drain_background_tasks()
+
+        brief = spawned_runs[0]["task"]
+        assert pasted in brief
+        assert "sub_0NfdUP7ekmLIw59KBtWwa" in brief
 
 
 @pytest.mark.unit
@@ -897,7 +922,7 @@ class TestDispatchAcknowledgement:
         task_id = task_id_from(response)
 
         assert response == (
-            f"Task accepted (task_id: {task_id}). Nothing has run yet — this only means the "
+            f"Task accepted (task_id: {task_id}). Nothing has run yet: this only means the "
             "work has STARTED. Do not tell the user anything was sent, created, deleted, or "
             "finished. Risky actions pause for the user's approval first and they see an "
             "approval card; if that happens the work waits on them, not on you. Acknowledge "

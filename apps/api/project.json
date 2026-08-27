@@ -21,14 +21,18 @@
       "executor": "nx:noop",
       "cache": true,
       "inputs": [
-        "production"
+        "default",
+        "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/apps/api/uv.lock",
+        "{workspaceRoot}/libs/shared/py/**/*",
+        "^production"
       ],
       "outputs": []
     },
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build --platform linux/amd64 --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/api/Dockerfile -t apps-api -t ghcr.io/theexperiencecompany/gaia:latest . && docker push ghcr.io/theexperiencecompany/gaia:latest",
+        "command": "docker buildx build --platform linux/amd64 --cache-from type=registry,ref=ghcr.io/theexperiencecompany/gaia:buildcache --cache-to type=registry,ref=ghcr.io/theexperiencecompany/gaia:buildcache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/api/Dockerfile -t apps-api -t ghcr.io/theexperiencecompany/gaia:latest --load .",
         "cwd": "."
       },
       "cache": false,
@@ -62,7 +66,7 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff check .",
+        "command": "uv run --group dev ruff check .",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -70,6 +74,8 @@
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
         "{workspaceRoot}/apps/api/ruff.toml",
+        "{workspaceRoot}/apps/api/uv.lock",
+        "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],
       "outputs": []
@@ -77,7 +83,7 @@
     "lint:fix": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff check . --fix",
+        "command": "uv run --group dev ruff check . --fix",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -85,7 +91,7 @@
     "format": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff format .",
+        "command": "uv run --group dev ruff format .",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -93,7 +99,7 @@
     "format:check": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uvx ruff format . --check",
+        "command": "uv run --group dev ruff format . --check",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -113,6 +119,8 @@
       "inputs": [
         "default",
         "{workspaceRoot}/apps/api/pyproject.toml",
+        "{workspaceRoot}/apps/api/uv.lock",
+        "{workspaceRoot}/libs/shared/py/**/*",
         "^production"
       ],
       "outputs": [

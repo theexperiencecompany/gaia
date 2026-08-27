@@ -305,9 +305,11 @@ def _process_messages_payload(
             complete_message += content
 
         # Stream the model's thinking interleaved with tool events, so the
-        # UI can show what it reasoned about between each step. Carries the
-        # subagent_id so the client nests it in the right step (same routing
-        # as tool_data/tool_output). Empty for non-reasoning models.
+        # UI can show what it reasoned about between each step, token by token.
+        # Carries the subagent_id so the client nests it in the right step (same
+        # routing as tool_data/tool_output). Empty for non-reasoning models.
+        # These deltas are per model chunk; the stream writer coalesces them for
+        # the persistence collector (see redis_writer), never for the publish.
         if stream_writer:
             reasoning_delta = _extract_reasoning_delta(chunk)
             if reasoning_delta:
@@ -467,7 +469,7 @@ async def execute_subagent_stream(
     if not tool_ran and not emitted_tool_calls and complete_message:
         log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
         final_message = (
-            f"The {ctx.agent_name} subagent ended without running any tool — it only "
+            f"The {ctx.agent_name} subagent ended without running any tool; it only "
             f'produced planning text: "{complete_message}". Re-issue the handoff with an '
             "explicit instruction to perform the action."
         )
@@ -603,7 +605,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
     message park two tasks in the same step, and the caller stamps re-dispatch context
     onto each id this returns (``executor_runner._record_pause``). Returning only the
     first left the second with no ``resume_item`` at all, so approving it raised
-    ``ApprovalNotResumable`` and the decision could never be applied.
+    ``ApprovalNotResumableError`` and the decision could never be applied.
 
     The first payload's own fields stay at the top level, so callers that read a single
     approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch

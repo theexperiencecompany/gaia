@@ -119,7 +119,7 @@ class TestBlockedToolStreamsItsCard:
     async def test_the_card_describes_the_blocked_feature_and_the_users_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -144,7 +144,7 @@ class TestBlockedToolStreamsItsCard:
         upgrade."""
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
                 writer=writer,
@@ -155,7 +155,7 @@ class TestBlockedToolStreamsItsCard:
         assert card["tool_data"]["data"]["current_plan"] == "free"
 
     async def test_the_raised_exception_carries_the_limit_details(self) -> None:
-        with pytest.raises(rl.LangChainRateLimitException) as raised:
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -168,10 +168,57 @@ class TestBlockedToolStreamsItsCard:
         assert raised.value.reset_time == RESET_AT.isoformat()
         assert raised.value.detail["plan_required"] == "pro"
 
+    async def test_the_agent_facing_message_is_pinned_exactly(self) -> None:
+        """The message is the agent's whole instruction sheet — every clause
+        (base line, reset, upsell) is pinned so the mutation gate notices if
+        any of them stops reaching the model."""
+        exc = rl.LangChainRateLimitError(
+            feature="generate_image",
+            detail={"plan_required": "pro", "current_plan": "free"},
+            reset_time=RESET_AT.isoformat(),
+        )
+
+        assert str(exc) == (
+            "Rate limit exceeded for generate_image."
+            f" Resets at {RESET_AT.isoformat()}."
+            " Upgrade to PRO for higher limits."
+            " This user is on the free plan: offer to upgrade them and call"
+            " `create_upgrade_link` for a checkout link if they want it."
+        )
+
+    async def test_a_free_user_is_pointed_at_the_upgrade_tool(self) -> None:
+        """A wall with no way past it reads as a dead end, so the agent-facing
+        message names the tool that mints a checkout link."""
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image", reset_time=RESET_AT, current_plan="free"
+                )
+            )
+
+        assert str(raised.value) == (
+            "Rate limit exceeded for generate_image."
+            f" Resets at {RESET_AT.isoformat()}."
+            " This user is on the free plan: offer to upgrade them and call"
+            " `create_upgrade_link` for a checkout link if they want it."
+        )
+
+    async def test_a_pro_user_is_not_pitched_an_upgrade(self) -> None:
+        with pytest.raises(rl.LangChainRateLimitError) as raised:
+            await _call_blocked_tool(
+                RateLimitExceededException(
+                    feature="generate_image", reset_time=RESET_AT, current_plan="pro"
+                )
+            )
+
+        assert str(raised.value) == (
+            f"Rate limit exceeded for generate_image. Resets at {RESET_AT.isoformat()}."
+        )
+
     async def test_no_streaming_context_still_blocks_the_call(self) -> None:
         """The card is decoration; outside a LangGraph run there is no writer
         and the refusal must still reach the agent."""
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(feature="generate_image", reset_time=RESET_AT),
                 stream_writer_error=RuntimeError("not in a streaming context"),
@@ -229,7 +276,7 @@ class TestBlockedCallLabelsANonEnumPlan:
     async def test_the_card_carries_the_stringified_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await _call_blocked_tool(
                 RateLimitExceededException(
                     feature="generate_image",
@@ -400,7 +447,7 @@ class TestToolPlanLabelling:
     async def test_the_refusal_card_carries_the_blocked_users_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await self._run(PlanType.PRO, writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == PlanType.PRO.value
@@ -408,7 +455,7 @@ class TestToolPlanLabelling:
     async def test_the_refusal_card_stringifies_a_non_enum_plan(self) -> None:
         writer = MagicMock()
 
-        with pytest.raises(rl.LangChainRateLimitException):
+        with pytest.raises(rl.LangChainRateLimitError):
             await self._run("legacy_plan", writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"

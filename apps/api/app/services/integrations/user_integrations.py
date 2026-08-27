@@ -196,11 +196,9 @@ async def add_user_integration(
     if await user_integration_repository.exists(user_id, integration_id):
         raise ValueError(f"Integration '{integration_id}' already added to workspace")
 
-    status: Literal["created", "connected"]
-    if initial_status:
-        status = initial_status
-    else:
-        status = "connected" if not integration.requires_auth else "created"
+    status: Literal["created", "connected"] = initial_status or (
+        "connected" if not integration.requires_auth else "created"
+    )
     now = datetime.now(UTC)
     connected_at = now if status == "connected" else None
 

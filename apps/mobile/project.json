@@ -70,6 +70,13 @@
         "command": "rm -rf .expo node_modules",
         "cwd": "apps/mobile"
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
+        "cwd": "{projectRoot}"
+      }
     }
   },
   "tags": ["type:app", "platform:mobile", "scope:typescript"]

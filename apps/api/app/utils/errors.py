@@ -71,8 +71,8 @@ class EmptyUpdateError(AppError):
 
 
 @dataclass
-class RepositoryMisconfigured(AppError):
+class RepositoryMisconfiguredError(AppError):
     """A repository subclass is missing required ClassVars (raised at import)."""
 
 
-__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfigured", "create_error"]
+__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfiguredError", "create_error"]

@@ -349,7 +349,7 @@ async def edit_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to edit"],
     user_request: Annotated[
-        str, "The user's change request in their words. Pass verbatim — do not parse it yourself."
+        str, "The user's change request in their words. Pass verbatim: do not parse it yourself."
     ],
 ) -> dict[str, Any]:
     """Edit an existing workflow's behavior, schedule, or trigger.
@@ -374,7 +374,7 @@ async def edit_workflow(
         if not user_request or not user_request.strip():
             return error_response(
                 "missing_request",
-                "user_request is required — pass the user's change in their words.",
+                "user_request is required: pass the user's change in their words.",
             )
 
         workflow = await WorkflowService.get_workflow(workflow_id, user_id)

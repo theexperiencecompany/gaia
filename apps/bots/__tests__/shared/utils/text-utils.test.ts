@@ -1,4 +1,8 @@
-import { chunkResponse, parseTextArgs, renderForPlatform } from "@gaia/shared";
+import {
+  chunkResponse,
+  parseTextArgs,
+  renderForPlatform,
+} from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
 
 /** A wide GFM table — renders to a Telegram <pre> block whose column padding

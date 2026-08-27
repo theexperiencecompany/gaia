@@ -19,6 +19,12 @@ export interface SSEOptions {
   body?: unknown;
   maxRetries?: number;
   initialRetryDelayMs?: number;
+  /**
+   * Kill the connection (via onError) after this many ms of complete silence.
+   * The backend sends keepalive events during long tool runs, so silence means
+   * the stream is genuinely stalled — without this the UI spins forever.
+   */
+  stallTimeoutMs?: number;
 }
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -53,6 +59,7 @@ export async function createSSEConnection(
 
   let retryCount = 0;
   let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  let stallTimeoutId: ReturnType<typeof setTimeout> | null = null;
   let hasReceivedData = false;
   let isDone = false;
   // Guard against double-close: [DONE] fires onClose via onMessage, then the
@@ -64,6 +71,18 @@ export async function createSSEConnection(
     if (retryTimeoutId !== null) {
       clearTimeout(retryTimeoutId);
       retryTimeoutId = null;
+    }
+    if (stallTimeoutId !== null) {
+      clearTimeout(stallTimeoutId);
+      stallTimeoutId = null;
+    }
+  };
+
+  /** Disarm the watchdog without ending the connection (used before retries). */
+  const disarmStallWatchdog = () => {
+    if (stallTimeoutId !== null) {
+      clearTimeout(stallTimeoutId);
+      stallTimeoutId = null;
     }
   };
 
@@ -81,6 +100,23 @@ export async function createSSEConnection(
 
     const url = `${API_BASE_URL}${endpoint}`;
 
+    const armStallWatchdog = () => {
+      if (!options.stallTimeoutMs) return;
+      if (stallTimeoutId !== null) clearTimeout(stallTimeoutId);
+      stallTimeoutId = setTimeout(() => {
+        stallTimeoutId = null;
+        if (isDone || controller.signal.aborted) return;
+        cleanup();
+        es.removeAllEventListeners();
+        es.close();
+        callbacks.onError?.(
+          new Error(
+            `No data received for ${Math.round(options.stallTimeoutMs! / 1000)}s — response timed out`,
+          ),
+        );
+      }, options.stallTimeoutMs);
+    };
+
     const es = new EventSource(url, {
       method: "POST",
       headers: {
@@ -95,10 +131,15 @@ export async function createSSEConnection(
       timeoutBeforeConnection: 0,
     });
 
+    // Cover the silent window before the first byte arrives, too.
+    armStallWatchdog();
+
     const handleAbort = () => {
+      // Caller-initiated cancellation — the aborting code owns its own
+      // cleanup. Firing onClose here would make an intentional cancel
+      // indistinguishable from an unexpected transport failure.
       es.removeAllEventListeners();
       es.close();
-      callbacks.onClose?.();
     };
 
     controller.signal.addEventListener("abort", handleAbort);
@@ -108,6 +149,7 @@ export async function createSSEConnection(
       if (event.data) {
         hasReceivedData = true;
         retryCount = 0;
+        armStallWatchdog();
 
         // Detect [DONE] sentinel before forwarding so we can set doneReceived
         // and prevent the subsequent onclose from calling onClose a second time.
@@ -131,6 +173,9 @@ export async function createSSEConnection(
 
       if (retryCount < maxRetries) {
         retryCount += 1;
+        // Disarm before backoff — a stale watchdog firing mid-retry would
+        // cleanup() and cancel the scheduled reconnect.
+        disarmStallWatchdog();
         const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
         console.warn(
           `[SSE] Connection error (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,
@@ -166,6 +211,7 @@ export async function createSSEConnection(
         cleanup();
       } else {
         retryCount += 1;
+        disarmStallWatchdog();
         const delay = computeRetryDelay(retryCount - 1, initialRetryDelayMs);
         console.warn(
           `[SSE] Unexpected close (attempt ${retryCount}/${maxRetries}), retrying in ${delay}ms`,

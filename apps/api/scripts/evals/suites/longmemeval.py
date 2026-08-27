@@ -136,7 +136,7 @@ class LongMemEvalSuite(Suite):
             by_type.setdefault(item.get("question_type", "?"), []).append(item)
         rng = random.Random(7)
         sampled: list[dict[str, Any]] = []
-        for qtype, bucket in by_type.items():
+        for bucket in by_type.values():
             rng.shuffle(bucket)
             sampled.extend(bucket)
         cases: list[Case] = []
