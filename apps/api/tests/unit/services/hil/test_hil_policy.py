@@ -286,6 +286,158 @@ class TestHasPausingSibling:
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
+    async def test_a_forced_gate_sibling_suppresses_auto_approval_with_hil_off(self) -> None:
+        """The stamp scan runs BEFORE the always_allow fast path.
+
+        Every other case in this class resolves siblings to no tool meta, so
+        the forced-gate branch never runs. A sibling stamped always_gate WILL
+        interrupt, and this call auto-running before it means the replay runs
+        it twice.
+        """
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "update_preferences", "args": {"timezone": "UTC"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda name: (
+                SimpleNamespace(always_gate=True, tool=None)
+                if name == "update_preferences"
+                else None
+            )
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ) as read_prefs,
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+        # The stamp is not preference-driven, so it must not need a prefs read.
+        read_prefs.assert_not_awaited()
+
+    async def test_a_sibling_gated_by_its_arguments_suppresses_auto_approval(self) -> None:
+        """The argument gate reads the sibling's OWN args.
+
+        ``manage_linked_account`` only pauses when it is disconnecting, so the
+        args have to travel with the name. Passing None (or the wrong key)
+        makes a disconnect look like an ordinary call and auto-approve beside
+        it.
+        """
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {
+                    "id": "call-2",
+                    "name": "manage_linked_account",
+                    "args": {"platform": "telegram", "action": "disconnect"},
+                },
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_the_same_tool_with_non_gating_arguments_does_not_suppress(self) -> None:
+        """The mirror of the case above: generate_link is not a disconnect.
+
+        Without this, a scan that ignored the args and paused on the tool NAME
+        alone would look correct.
+        """
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {
+                    "id": "call-2",
+                    "name": "manage_linked_account",
+                    "args": {"platform": "telegram", "action": "generate_link"},
+                },
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode="always_allow")),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is False
+
+    async def test_a_siblings_arguments_reach_the_preference_gate(self) -> None:
+        """In a gating mode, the per-sibling classification also gets the args.
+
+        ``is_gated`` re-checks the argument gate and can key on args itself, so
+        a scan that passed None there would classify every sibling as if it had
+        been called bare.
+        """
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "delete_file", "args": {"path": "/tmp/x"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        seen: list[object] = []
+
+        async def gated(_prefs, name, _tool, args=None):
+            seen.append((name, args))
+            return False
+
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_gated", new=gated),
+        ):
+            await has_pausing_sibling(request, USER_ID, "call-1")
+
+        assert seen == [("delete_file", {"path": "/tmp/x"})]
+
+    async def test_a_sibling_called_with_no_arguments_gates_on_none(self) -> None:
+        """An empty args dict is normalized to None, not passed as ``{}``.
+
+        The gate treats "no arguments" as absent; forwarding a falsy dict makes
+        the argument-gate checks read a value that was never supplied.
+        """
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "delete_file", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        seen: list[object] = []
+
+        async def gated(_prefs, name, _tool, args=None):
+            seen.append((name, args))
+            return False
+
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_gated", new=gated),
+        ):
+            await has_pausing_sibling(request, USER_ID, "call-1")
+
+        assert seen == [("delete_file", None)]
+
     async def test_a_safe_sibling_does_not_suppress_auto_approval(self) -> None:
         state_messages = [
             ai_message_with_calls(

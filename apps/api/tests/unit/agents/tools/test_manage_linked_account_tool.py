@@ -53,6 +53,29 @@ class TestGenerateLink:
         limit.assert_awaited_once_with("user-1", account_tools.LINK_GENERATION_FEATURE_KEY)
         connect.assert_awaited_once_with("user-1", "telegram", phone=None)
 
+    async def test_imessage_forwards_the_phone_number_to_the_connect_flow(self) -> None:
+        """iMessage is the one platform whose connect flow REQUIRES a phone.
+
+        Every other case here connects without one, so a tool that dropped the
+        argument would look correct in all of them while iMessage linking from
+        chat failed with "phone required" on every attempt.
+        """
+        flow = AsyncMock()
+        flow.auth_url = None
+        flow.instructions = "Text /auth to +15550000000"
+        flow.action_link = None
+        with (
+            patch(f"{MODULE}.enforce_rate_limit", new=AsyncMock()),
+            patch(f"{MODULE}.start_platform_connect", new=AsyncMock(return_value=flow)) as connect,
+        ):
+            result = await account_tools.manage_linked_account.ainvoke(
+                {"platform": "imessage", "action": "generate_link", "phone": "+15551234567"},
+                config=CONFIG,
+            )
+
+        connect.assert_awaited_once_with("user-1", "imessage", phone="+15551234567")
+        assert "Text /auth to +15550000000" in result
+
     async def test_oauth_platform_returns_the_authorize_url(self) -> None:
         flow = AsyncMock()
         flow.auth_url = "https://discord.com/api/oauth2/authorize?state=s1"

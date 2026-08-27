@@ -78,7 +78,7 @@ def _prune_stale_json(account_root: Path, expected: set[str], preserve: set[str]
     for existing in account_root.rglob("*.json"):
         rel = existing.relative_to(account_root).as_posix()
         full = f"{prefix}{rel}"
-        if full == "" or full in expected or full in preserve:
+        if full in expected or full in preserve:
             continue
         existing.chmod(0o644)
         existing.unlink(missing_ok=True)

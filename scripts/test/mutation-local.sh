@@ -74,14 +74,19 @@ print(
     bash scripts/ci/mutation-shard.sh > "$LOG_DIR/$slug.out" 2>&1
   local rc=$?
   if [ "$rc" = "0" ]; then
-    echo "  pass  $module"
+    echo "  pass      $module"
+  elif grep -q "MUTATION FAILED" "$LOG_DIR/$slug.log" 2> /dev/null; then
+    echo "  SURVIVORS $module  ($LOG_DIR/$slug.log)"
   else
-    echo "  FAIL  $module  ($LOG_DIR/$slug.log)"
+    # mutmut never produced a result — a crash, or the suite's pytest-timeout
+    # firing under load. Reporting this as "survivors" would send you hunting
+    # for a test gap that does not exist.
+    echo "  ERROR     $module  (run produced no result; $LOG_DIR/$slug.log)"
   fi
   return $rc
 }
 
-JOBS="${MUTATION_JOBS:-4}"
+JOBS="${MUTATION_JOBS:-2}"
 rc=0
 running=0
 declare -a FAILED=()
@@ -100,18 +105,31 @@ while [ "$running" -gt 0 ]; do
 done
 
 # Re-derive the verdict from the logs: `wait -n` gives a count, not a name, and
-# a list of which modules failed is the only output worth acting on.
+# which modules failed — and how — is the only output worth acting on.
 FAILED=()
+ERRORED=()
 while IFS=$'\t' read -r module _ _; do
   [ -n "$module" ] || continue
   slug="${module//\//_}"
-  grep -q "MUTATION FAILED" "$LOG_DIR/$slug.log" 2> /dev/null && FAILED+=("$module")
+  if grep -q "MUTATION FAILED" "$LOG_DIR/$slug.log" 2> /dev/null; then
+    FAILED+=("$module")
+  elif ! grep -q "^Mutation: OK" "$LOG_DIR/$slug.log" 2> /dev/null; then
+    ERRORED+=("$module")
+  fi
 done < "$TSV"
 
+if [ "${#ERRORED[@]}" -gt 0 ]; then
+  echo
+  echo "mutation: ${#ERRORED[@]} module(s) produced NO result (crash or timeout, not survivors):"
+  printf '  %s\n' "${ERRORED[@]}"
+  echo "  Retry these with MUTATION_JOBS=1 before believing anything about them."
+fi
 if [ "${#FAILED[@]}" -gt 0 ]; then
   echo
   echo "mutation: ${#FAILED[@]} module(s) with survivors on changed lines:"
   printf '  %s\n' "${FAILED[@]}"
+fi
+if [ "${#FAILED[@]}" -gt 0 ] || [ "${#ERRORED[@]}" -gt 0 ]; then
   exit 1
 fi
 [ "$rc" = "0" ] || exit "$rc"

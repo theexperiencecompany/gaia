@@ -227,6 +227,31 @@ class TestToolRegistry:
         assert len(core_tools) == 1
         assert core_tools[0].name == "core_1"
 
+    def test_core_tools_receive_the_hil_stamps_too(self):
+        """A category registers its HIL sets for BOTH tool lists.
+
+        `_add_category` calls `add_tools` twice — once for `core_tools`, once
+        for `tools` — and every existing test passes its risk sets through the
+        `tools=` call only. A forced-gate tool registered as a core tool would
+        silently lose its stamp and stop asking for approval, which is the
+        whole point of the flag.
+        """
+        registry = ToolRegistry()
+        registry._add_category(
+            "mixed",
+            core_tools=[_make_mock_tool("core_gated"), _make_mock_tool("core_plain")],
+            tools=[_make_mock_tool("reg_dangerous")],
+            destructive_tools={"reg_dangerous", "core_gated"},
+            always_gate_tools={"core_gated"},
+        )
+
+        stamps = {t.name: t for t in registry.get_category("mixed").tools}
+        assert stamps["core_gated"].always_gate is True
+        assert stamps["core_gated"].destructive is True
+        assert stamps["core_plain"].always_gate is False
+        assert stamps["core_plain"].destructive is False
+        assert stamps["reg_dangerous"].destructive is True
+
     def test_replacing_category_drops_stale_name_index(self):
         """Re-registering a category must evict its previous tools from the
         name index, or removed tools keep resolving to a dead category."""

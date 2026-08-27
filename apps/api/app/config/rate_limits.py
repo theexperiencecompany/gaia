@@ -380,7 +380,9 @@ def get_feature_limits(feature_key: str) -> TieredRateLimits:
 def get_limits_for_plan(feature_key: str, plan_type: PlanType) -> RateLimitConfig:
     """Get rate limits for a specific feature and plan."""
     limits = get_feature_limits(feature_key)
-    return limits.free if plan_type == PlanType.FREE else limits.pro
+    # Dispatch on PRO, not "not FREE": an unrecognized plan should fall back to
+    # the restrictive tier, never silently receive the paid allowance.
+    return limits.pro if plan_type == PlanType.PRO else limits.free
 
 
 def get_reset_time(period: RateLimitPeriod) -> datetime:

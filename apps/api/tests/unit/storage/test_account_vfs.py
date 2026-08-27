@@ -126,6 +126,32 @@ def test_stale_projection_leaving_the_manifest_is_pruned(tmp_path: Path) -> None
 
 
 @pytest.mark.unit
+def test_a_kept_file_does_not_stop_the_prune_from_reaching_later_stale_ones(
+    tmp_path: Path,
+) -> None:
+    """The prune SKIPS files it keeps; it must not STOP at them.
+
+    Every existing prune test has one file in the tree, so a loop that gave up
+    on its first keeper would still pass them all. With a kept file sorting
+    before a stale one, abandoning the walk leaves the stale view on disk
+    forever — the exact bug this pass exists to prevent.
+    """
+    kept_rel = f"{ACCOUNT_DIR}/aaa-kept.json"
+    preserved_rel = f"{ACCOUNT_DIR}/bbb-preserved.json"
+    stale_rel = f"{ACCOUNT_DIR}/zzz-stale.json"
+    materialize_account_files(
+        tmp_path,
+        [projection(kept_rel, {}), projection(preserved_rel, {}), projection(stale_rel, {})],
+    )
+
+    _prune_stale_json(tmp_path / ACCOUNT_DIR, {kept_rel}, {preserved_rel})
+
+    assert (tmp_path / kept_rel).is_file()
+    assert (tmp_path / preserved_rel).is_file()
+    assert not (tmp_path / stale_rel).exists()
+
+
+@pytest.mark.unit
 def test_stale_read_only_projections_are_made_writable_before_removal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

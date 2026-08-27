@@ -37,7 +37,7 @@ async def get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fea
         (feature_key, period)
         for feature_key in FEATURE_LIMITS
         for period in ["day", "month"]
-        if getattr(get_limits_for_plan(feature_key, user_plan), period, 0) > 0
+        if getattr(get_limits_for_plan(feature_key, user_plan), period) > 0
     ]
     usages = await asyncio.gather(
         *(
@@ -62,7 +62,7 @@ async def get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fea
         current_limits = get_limits_for_plan(feature_key, user_plan)
 
         for period in ["day", "month"]:
-            limit = getattr(current_limits, period, 0)
+            limit = getattr(current_limits, period)
             if limit > 0:
                 current_usage = used_by_key[(feature_key, period)]
                 reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
