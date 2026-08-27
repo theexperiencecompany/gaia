@@ -1,4 +1,8 @@
-import { TOOL_CALLS_DATA_TOOL_NAME } from "@shared/chat";
+import {
+  BROWSER_TASK_TOOL_NAME,
+  BROWSER_TOOL_CATEGORY,
+  TOOL_CALLS_DATA_TOOL_NAME,
+} from "@shared/chat";
 import React from "react";
 
 import {
@@ -135,6 +139,25 @@ function isSpawnCall(tc: ToolCallEntry, lowerMsg: string): boolean {
   return tc.tool_name === "spawn_subagent" || lowerMsg === "spawning subagent";
 }
 
+// `browser_task` opens its own "Browser" group (the agent's actions stream into
+// it), so the call and the group are the same thing — rendering both put two
+// near-identical rows next to each other. The call is consumed like a
+// handoff/spawn: its task and result move onto the group.
+function isBrowserTaskCall(tc: ToolCallEntry): boolean {
+  return tc.tool_name === BROWSER_TASK_TOOL_NAME;
+}
+
+function matchBrowserGroup(
+  groups: EnrichedSubagentGroup[],
+  emittedGroupIds: Set<string>,
+): EnrichedSubagentGroup | undefined {
+  return groups.find(
+    (g) =>
+      g.tool_category === BROWSER_TOOL_CATEGORY &&
+      !emittedGroupIds.has(g.subagent_id),
+  );
+}
+
 // ── Backend-provided groups: deduplicate + enrich ────────────────────────────
 
 function collectAllSubagentToolCallIds(
@@ -261,7 +284,10 @@ function emitGroupForCall(
 // the rendered timeline matches emission order. Each handoff/spawn tool call
 // is consumed (attaching its inputs.task and outputs to the matched group);
 // every other tool call passes through as a root-level timeline item.
-function buildBackendTimeline(
+// Exported for its unit test: this is the pure function that decides which
+// rows the thread shows, and the browser-task/group collapse is exactly the
+// behaviour worth pinning.
+export function buildBackendTimeline(
   toolCalls: ToolCallEntry[],
   subagentGroups: SubagentGroupData[],
 ): TimelineItem[] {
@@ -279,6 +305,20 @@ function buildBackendTimeline(
     // Drop tool calls the backend has already nested inside a group — they
     // render via that group's accordion, not at root level.
     if (tc.tool_call_id && subagentToolCallIds.has(tc.tool_call_id)) continue;
+
+    if (isBrowserTaskCall(tc)) {
+      const browserGroup = matchBrowserGroup(allGroups, emittedGroupIds);
+      if (browserGroup) {
+        attachHandoffPayload(
+          browserGroup,
+          extractTaskFromInputs(tc.inputs),
+          tc.output || undefined,
+        );
+        timeline.push({ kind: "subagent", data: browserGroup });
+        emittedGroupIds.add(browserGroup.subagent_id);
+        continue;
+      }
+    }
 
     const msg = (tc.message || "").toLowerCase();
     if (isHandoffCall(tc, msg) || isSpawnCall(tc, msg)) {

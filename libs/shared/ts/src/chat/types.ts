@@ -773,6 +773,12 @@ export const REASONING_TOOL_NAME = "reasoning";
 // tool_name marker for a subagent group entry in tool_data.
 export const SUBAGENT_GROUP_TOOL_NAME = "subagent_group";
 
+// The browser tool and the category its own actions carry. Mirrors
+// BROWSER_TOOL_NAME / BROWSER_TOOL_CATEGORY in app/constants/browser.py — the
+// call and the "Browser" group it opens are matched by these on the client.
+export const BROWSER_TASK_TOOL_NAME = "browser_task";
+export const BROWSER_TOOL_CATEGORY = "browser";
+
 export interface SubagentGroupData {
   subagent_id: string;
   subagent_name: string;

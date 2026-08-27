@@ -116,6 +116,8 @@ export type {
   WorkflowDraftData,
 } from "./types";
 export {
+  BROWSER_TASK_TOOL_NAME,
+  BROWSER_TOOL_CATEGORY,
   getToolData,
   isKnownTool,
   REASONING_TOOL_NAME,
