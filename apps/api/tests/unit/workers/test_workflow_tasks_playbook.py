@@ -497,9 +497,7 @@ class TestStoppedReplayWideEvent:
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         harness.playbook_run = self._stopped(workflow)
-        harness.chat = AsyncMock(
-            return_value=("conv_1", [RecordedCall(tool_name="send_email")])
-        )
+        harness.chat = AsyncMock(return_value=("conv_1", [RecordedCall(tool_name="send_email")]))
 
         await _fire(harness)
 
