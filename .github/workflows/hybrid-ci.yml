@@ -264,6 +264,43 @@ jobs:
           /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} 2>&1 | tee /tmp/tstest.time
           echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
 
+  # ── Docker image build — proves the api image still builds, and times it ──
+  # On the home box this uses the persistent shared `gaia-ci` builder created
+  # by infra/self-hosted-runner/setup.sh: the apt/uv cache mounts live inside
+  # that builder, so a warm build is ~40s against ~14-29 minutes cold over the
+  # residential uplink. On GitHub-hosted fallback a throwaway builder is used
+  # and the build is simply slower. The image is not pushed — build.yml on
+  # Blacksmith owns releases; this lane is validation plus a timing signal.
+  docker-image:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Use the persistent shared builder (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          if docker buildx inspect gaia-ci >/dev/null 2>&1; then
+            docker buildx use gaia-ci
+            echo "builder: gaia-ci (persistent)"
+          else
+            echo "::warning::gaia-ci builder missing — run infra/self-hosted-runner/setup.sh; using default builder"
+          fi
+      - uses: docker/setup-buildx-action@v3
+        if: runner.environment != 'self-hosted'
+      - name: Build api image (timed, not pushed)
+        run: |
+          set -euo pipefail
+          echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap 2>/dev/null | head -1 | awk '{print $2}')"
+          /usr/bin/time -v docker buildx build --progress=plain \
+            -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
+            --output type=cacheonly . 2>&1 | tail -n 40 | tee /tmp/docker.time
+          grep -E "Elapsed \(wall clock\)" /tmp/docker.time | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
+
   # ── Benchmark matrix — pins each workload to exact cpus for fair speedup curve
   benchmark:
     name: Benchmark (${{ matrix.workload }} @ ${{ matrix.cpus }}c)
@@ -334,7 +371,7 @@ jobs:
   quality-gate:
     name: quality-gate (hybrid)
     if: always()
-    needs: [select-runner, detect, probe, build, test-python, test-typescript]
+    needs: [select-runner, detect, probe, build, test-python, test-typescript, docker-image]
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -346,7 +383,8 @@ jobs:
           printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
           printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
           printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
-          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.test-typescript.result }}"; do
+          printf "  %-16s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
+          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.test-typescript.result }}" "${{ needs.docker-image.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job $r"
               exit 1

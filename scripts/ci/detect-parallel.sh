@@ -25,7 +25,11 @@ MEM_GB="$(free -g 2>/dev/null | awk '/^Mem:/{print $2}' || echo 4)"
 #   docker buildx: can parallelize layers, but I/O bound
 
 if (( NPROC >= 14 )); then
-  NX_PARALLEL=16
+  # Measured on the 16c box (benchmark run 33108678517, nx run-many -t build):
+  # --parallel=2 89s, =4 42s, =8 59s. Past 4 the Next.js/tsc workers contend
+  # for the same cores and memory; 6 leaves headroom for one more concurrent
+  # lane on the box without regressing the build itself.
+  NX_PARALLEL=6
   PYTEST_XDIST="auto"         # xdist auto == nproc (16)
   PYTEST_XDIST_N=16
   RUFF_JOBS="$NPROC"

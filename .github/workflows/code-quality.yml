@@ -396,7 +396,23 @@ jobs:
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
           echo "deps: OK"
+      # mypy is single-threaded (measured: ~50s regardless of core count) but
+      # incremental: with a warm .mypy_cache only changed modules are re-checked.
+      # The cache is ~50 MB, so the round-trip is cheap even from GitHub's
+      # side. restore-keys lets a lockfile bump start from the previous cache
+      # instead of cold.
+      - name: Restore mypy incremental cache
+        uses: actions/cache@v6
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: |
+            mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-
+            mypy-${{ runner.os }}-
+
       - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
+        env:
+          MYPY_CACHE_DIR: ${{ github.workspace }}/.mypy_cache
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
