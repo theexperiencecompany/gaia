@@ -97,8 +97,24 @@ runs:
         # a package at <store>/<key>/nx/... looks for <store>/<key>/node_modules
         # and finds nothing ("Cannot find module 'tslib'" on the first run of
         # this). <store>/<key>/node_modules/nx/... walks up correctly.
-        BASE="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/node_modules-store/${KEY}"
+        CACHE_ROOT="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}"
+        BASE="$CACHE_ROOT/${RUNNER_NAME:-default}/node_modules-store/${KEY}"
         DIR="$BASE/node_modules"
+        # Same lockfile hash → identical tree. Building it once per instance
+        # was the mistake: with node-linker=hoisted pnpm materialises ~250k
+        # files, three-plus minutes per instance, six instances. If any
+        # sibling instance already has this key, clone it with hardlinks —
+        # seconds, no extra disk — and pnpm's install below is a no-op check.
+        if [ ! -e "$DIR/.modules.yaml" ]; then
+          for sib in "$CACHE_ROOT"/*/node_modules-store/"$KEY"; do
+            [ -e "$sib/node_modules/.modules.yaml" ] || continue
+            [ "$sib" = "$BASE" ] && continue
+            echo "seeding from sibling $(basename "$(dirname "$(dirname "$sib")")") (hardlinks)"
+            mkdir -p "$BASE"
+            cp -al "$sib/node_modules" "$DIR" 2>/dev/null && { [ -d "$sib/pkgs" ] && cp -al "$sib/pkgs" "$BASE/pkgs"; } || rm -rf "$DIR"
+            break
+          done
+        fi
         mkdir -p "$DIR"
         touch "$BASE"   # mtime = last use, for LRU pruning
         rm -rf node_modules
