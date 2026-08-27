@@ -11,7 +11,7 @@
 
 </div>
 
-Connect Gmail and GAIA triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
+GAIA is a personal AI assistant that does the work you shouldn't be doing by hand. Connect Gmail and it triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
 
 You set none of that up. It's running the moment you connect.
 
@@ -109,6 +109,8 @@ Workflows run on their own. This is what you ask it directly.
 
 - **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
 - **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
+- **"Watch my email for anything from our investor and ping me on Telegram within 60 seconds."** Persistent background monitoring, cross-channel alert.
+- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Watches calendar changes and replans the afternoon against your pending todos.
 - **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
 - **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
 - **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
