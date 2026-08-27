@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -27,6 +28,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     SECONDS_PER_DAY,
     STRIKE_TTL_DAYS,
     WAITING_LABEL_MAX_DAYS,
+    _call_health_check_agent,
     _classify_tracked_todos,
     _has_upcoming_schedule,
     _health_check_dormant,
@@ -643,3 +645,27 @@ class TestMaintenanceSweep:
             summary == "archived:3 notified_expired:2 notified_overdue:4 requeued:1 digest_items:1"
         )
         digest.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestHealthCheckAgentCall:
+    async def test_a_queued_dispatch_is_not_a_health_check_result(self) -> None:
+        # The executor was busy, so the request was queued and answered with an
+        # acknowledgement; returning that text as the check's verdict marked a
+        # todo healthy on the strength of work that had not happened.
+        agent = AsyncMock(
+            return_value=SilentRunResult(
+                message="That task is queued behind the one already running.",
+                tool_data={},
+                queued_task_id="task-9",
+            )
+        )
+        with (
+            patch(f"{MODULE}.call_agent_silent", agent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
+
+        assert result.startswith("NEEDS_ATTENTION")
+        assert "queued" in result
+        assert "already running" not in result

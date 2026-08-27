@@ -555,6 +555,28 @@ class TestExecuteViaAgent:
         assert end.startswith("✓ ")
         assert "summary='Deploy verified. All green.'" in end
 
+    async def test_a_queued_dispatch_is_not_a_finished_run(self):
+        """The executor was busy, so the request was queued and answered with an
+        acknowledgement. Reading that acknowledgement as the result wrote a
+        success marker for work that had not happened (same shape as the
+        workflow fire bug fixed in #1129)."""
+        agent = AsyncMock(
+            return_value=SilentRunResult(
+                message="That task is queued behind the one already running.",
+                tool_data={},
+                queued_task_id="task-9",
+            )
+        )
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
+            result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
+
+        assert result == ""
+        start, end = self._entries()
+        assert start.startswith("▶ ")
+        assert not end.startswith("✓ ")
+        assert "queued" in end and "task-9" in end
+
     async def test_the_start_marker_is_written_before_the_agent_runs(self):
         """A run that dies inside the agent must still leave evidence."""
         order: list[str] = []
