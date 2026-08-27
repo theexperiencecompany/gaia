@@ -1,0 +1,307 @@
+name: Hybrid CI — home server with GitHub fallback
+
+# Demonstrates the elegant fallback pattern and provides an always-on
+# benchmark harness comparing:
+#   GitHub 2 vCPU (ubuntu-latest / blacksmith-2vcpu)  vs
+#   gaia-home-server 16 vCPU / 46 GiB (Intel i7-10700K)
+#
+# When gaia-home is online & idle, heavy lanes run there. When it is
+# offline / busy / unreachable, they fall back to GitHub-hosted in <15s
+# without ever queuing on the self-hosted label.
+#
+# Trigger:
+#   - PRs: automatic (home is tried, fallback is silent)
+#   - push to master: same
+#   - workflow_dispatch: optional force_home + benchmark knobs
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      force_home:
+        description: Fail if home runner unavailable (smoke test)
+        type: boolean
+        default: false
+      run_benchmark:
+        description: Run full profiling matrix (vs just the CI lanes)
+        type: boolean
+        default: false
+      cpus:
+        description: CSV of CPU counts to profile on home (e.g. 2,4,8,16)
+        required: false
+        default: "2,4,8,16"
+
+concurrency:
+  group: hybrid-ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NX_NO_CLOUD: "true"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22.15.1"
+  PNPM_VERSION: "10.17.1"
+
+jobs:
+  # ── Runner selection (always runs on GH — no Tailscale needed) ─────────
+  select-runner:
+    name: Select runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+      runner_docker: ${{ steps.pick-docker.outputs.runner }}
+      runner_label: ${{ steps.pick.outputs.runner_label }}
+      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Select standard runner (tests, lint, build)
+        id: pick
+        uses: ./.github/actions/select-runner
+        with:
+          runner-label: gaia-home
+          flavour: standard
+          force-home: ${{ inputs.force_home && 'true' || 'false' }}
+
+      - name: Select docker runner (image builds)
+        id: pick-docker
+        uses: ./.github/actions/select-runner
+        with:
+          runner-label: gaia-home
+          flavour: docker
+          force-home: ${{ inputs.force_home && 'true' || 'false' }}
+
+      - name: Summary
+        run: |
+          echo "Standard: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
+          echo "Docker:   ${{ steps.pick-docker.outputs.runner }}"
+
+  # ── Detect — always on ubuntu-latest (tiny, no benefit from home) ───────
+  detect:
+    needs: [select-runner]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      has_python: ${{ steps.affected.outputs.has_python }}
+      has_typescript: ${{ steps.affected.outputs.has_typescript }}
+      python_projects: ${{ steps.affected.outputs.python_projects }}
+      typescript_projects: ${{ steps.affected.outputs.typescript_projects }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: master
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Detect affected
+        id: affected
+        run: |
+          set -euo pipefail
+          normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
+          else
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+          fi
+          echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
+          echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
+          echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Affected Python: $PY"
+          echo "Affected TS: $TS"
+
+  # ── Probe the actual execution capability on the chosen runner ───────────
+  # This proves fallback works: the job lands wherever select-runner decided,
+  # and we echo the provenance so the experiment can measure it.
+  probe:
+    name: Probe execution (${{ needs.select-runner.outputs.runner_label }})
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - name: Runner provenance
+        run: |
+          echo "## Hybrid probe" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner label:** \`${{ needs.select-runner.outputs.runner_label }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **is_self_hosted:** \`${{ needs.select-runner.outputs.is_self_hosted }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner expression:** \`${{ needs.select-runner.outputs.runner }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Hostname:** \`$(hostname)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **nproc:** \`$(nproc)\` vCPUs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Mem:** \`$(free -h | awk '/^Mem:/{print $2}')\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Kernel:** \`$(uname -r)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Docker:** \`$(docker --version 2>&1 | head -n1)\`" >> "$GITHUB_STEP_SUMMARY"
+          printf "%-18s %s\n" "hostname:" "$(hostname)"
+          printf "%-18s %s\n" "nproc:" "$(nproc)"
+          printf "%-18s %s\n" "runner_label:" "${{ needs.select-runner.outputs.runner_label }}"
+          cat /proc/cpuinfo 2>/dev/null | grep -m1 "model name" || true
+          free -h 2>/dev/null | head -n 3 || vm_stat 2>/dev/null | head -n 10 || true
+          df -h . | head -n 5
+          echo "probe: OK — fallback contract verified (job landed, did not queue forever)"
+
+  # ── Build — insanely parallel on 16c (auto-detected), fallback 3 on 2c ---
+  build:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: ./.github/actions/restore-nextjs-cache
+      - name: Detect optimal parallelism
+        id: par
+        run: |
+          NX=$(bash scripts/ci/detect-parallel.sh --nx)
+          echo "nx=$NX" >> "$GITHUB_OUTPUT"
+          echo "NX parallel=$NX on $(nproc) vCPUs"
+      - name: Build (timed, 16c-optimized)
+        env:
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
+        run: |
+          echo "::group::env"
+          echo "runner=${{ needs.select-runner.outputs.runner_label }} is_self_hosted=${{ needs.select-runner.outputs.is_self_hosted }} nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
+          free -h | head -n 2; df -h . | head -n 2
+          echo "::endgroup::"
+          # On 16c we push to --parallel=16 and let Nx schedule; on 2c we cap at 3 to avoid OOM.
+          /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" 2>&1 | tail -n 60' 2>&1 | tee /tmp/build.time
+          echo "Build: OK (parallel=$NX_PARALLEL)"
+
+  # ── Test Python (live services) — scales linearly to 16 workers on 16c --
+  test-python:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Detect parallelism
+        id: par
+        run: |
+          PY=$(bash scripts/ci/detect-parallel.sh --pytest)
+          PYN=$(bash scripts/ci/detect-parallel.sh --pytest-n)
+          echo "py=$PY" >> "$GITHUB_OUTPUT"
+          echo "pyn=$PYN" >> "$GITHUB_OUTPUT"
+          echo "pytest xdist=$PY (n=$PYN) on $(nproc) vCPUs"
+      - name: Run Python tests (timed, 16-way)
+        working-directory: apps/api
+        run: |
+          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }}"
+          /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run --frozen pytest -n ${{ steps.par.outputs.py }} -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
+            --junitxml=test-results/pytest.xml --durations=50 2>&1 | tee /tmp/pytest.time
+          echo "Python tests: OK (xdist=${{ steps.par.outputs.py }})"
+
+  # ── Test TypeScript — Nx parallel scales with cores ----------------------
+  test-typescript:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Detect parallelism
+        id: par
+        run: echo "nx=$(bash scripts/ci/detect-parallel.sh --nx)" >> "$GITHUB_OUTPUT"
+      - name: Run TS tests (timed, adaptive)
+        env:
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+        run: |
+          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} 2>&1 | tee /tmp/tstest.time
+          echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
+
+  # ── Benchmark matrix — pins each workload to exact cpus for fair speedup curve
+  benchmark:
+    name: Benchmark (${{ matrix.workload }} @ ${{ matrix.cpus }}c)
+    if: inputs.run_benchmark == true
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        workload: [ruff, mypy, build, pytest-hermetic]
+        cpus: [2, 4, 8, 16]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          prune-cache: true
+      - name: Sync Python deps
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Run benchmark slice (pinned to ${{ matrix.cpus }}c)
+        env:
+          WORKLOAD: ${{ matrix.workload }}
+          CPUS: ${{ matrix.cpus }}
+        run: |
+          set -euo pipefail
+          echo "Workload=$WORKLOAD  CPUS=$CPUS  runner=${{ needs.select-runner.outputs.runner_label }} nproc=$(nproc)"
+          # On 16c we also show the adaptive (full-tilt) time alongside pinned for comparison
+          ADAPTIVE=$(bash scripts/ci/detect-parallel.sh --nx)
+          echo "Adaptive parallel on this runner would be $ADAPTIVE"
+          case "$WORKLOAD" in
+            ruff)  /usr/bin/time -v bash -c "taskset -c 0-$((CPUS-1)) uvx --no-build ruff@0.14.13 check . 2>&1 | tail -n 20" 2>&1 | tee /tmp/bench.time ;;
+            # mypy 1.18+ respects --follow-imports + parallelism via dmypy; pin with taskset and pass jobs flag when available
+            mypy)  /usr/bin/time -v bash -c "taskset -c 0-$((CPUS-1)) uv run --project apps/api --frozen --group backend --group dev mypy --no-error-summary apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports 2>&1 | tail -n 30" 2>&1 | tee /tmp/bench.time ;;
+            build) /usr/bin/time -v bash -c "pnpm exec nx run-many -t build --parallel=$CPUS --skip-nx-cache 2>&1 | tail -n 40" 2>&1 | tee /tmp/bench.time ;;
+            pytest-hermetic) /usr/bin/time -v bash -c "uv run --frozen pytest -n $CPUS -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=5 2>&1 | tail -n 40" 2>&1 | tee /tmp/bench.time ;;
+          esac
+          echo "workload=$WORKLOAD cpus=$CPUS runner=${{ needs.select-runner.outputs.runner_label }} adaptive=$ADAPTIVE" | tee -a "$GITHUB_STEP_SUMMARY"
+          cat /tmp/bench.time | tail -n 50
+
+  quality-gate:
+    name: quality-gate (hybrid)
+    if: always()
+    needs: [select-runner, detect, probe, build, test-python, test-typescript]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verdict
+        run: |
+          echo "Runner: ${{ needs.select-runner.outputs.runner }} (${{ needs.select-runner.outputs.runner_label }}, self_hosted=${{ needs.select-runner.outputs.is_self_hosted }})"
+          printf "  %-16s %s\n" "detect:" "${{ needs.detect.result }}"
+          printf "  %-16s %s\n" "probe:" "${{ needs.probe.result }}"
+          printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
+          printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
+          printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
+          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.test-typescript.result }}"; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "::error::Required job $r"
+              exit 1
+            fi
+          done
+          echo "Hybrid quality gate: PASSED"

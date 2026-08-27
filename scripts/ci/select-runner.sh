@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# select-runner.sh — decide whether the home self-hosted runner is usable,
+# with graceful fallback to GitHub-hosted runners.
+#
+# Elegant fallback contract:
+#   * Runs entirely on ubuntu-latest (no Tailscale needed from GH side).
+#   * Probes GitHub Actions API for runner liveness — no inbound ports, no SSH.
+#   * Timeout + retry so a flaky API never blocks the lane.
+#   * Downstream jobs use      runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+#   * Fallback is total: never leaves a job queued on an offline self-hosted label.
+#
+# Env:
+#   GITHUB_TOKEN            — required (Actions-provided). Repo scope is enough.
+#   GITHUB_REPOSITORY       — owner/repo
+#   RUNNER_LABEL            — label to probe (default: gaia-home)
+#   FALLBACK_RUNNER         — JSON array used when home is unavailable (default: ["ubuntu-latest"])
+#   FALLBACK_RUNNER_DOCKER  — same but for docker-heavy lanes (default: ["blacksmith-2vcpu-ubuntu-2404"])
+#   FORCE_HOME              — if "true", fail loudly instead of falling back (for smoke tests)
+#
+# Outputs (via $GITHUB_OUTPUT when present, else stdout):
+#   runner              — JSON array string, e.g. '["self-hosted","gaia-home"]'
+#   runner_label        — human label: gaia-home | ubuntu-latest | blacksmith-2vcpu-ubuntu-2404
+#   is_self_hosted      — true | false
+#
+# Step summary appended to $GITHUB_STEP_SUMMARY when available.
+set -euo pipefail
+
+LABEL="${RUNNER_LABEL:-gaia-home}"
+FALLBACK="${FALLBACK_RUNNER:-["ubuntu-latest"]}"
+FALLBACK_DOCKER="${FALLBACK_RUNNER_DOCKER:-["blacksmith-2vcpu-ubuntu-2404"]}"
+REPO="${GITHUB_REPOSITORY:-theexperiencecompany/gaia}"
+TOKEN="${GITHUB_TOKEN:-}"
+FORCE="${FORCE_HOME:-false}"
+
+# Allow callers to request docker flavour explicitly:
+#   RUNNER_FLAVOUR=docker ./select-runner.sh
+FLAVOUR="${RUNNER_FLAVOUR:-standard}"
+if [[ "$FLAVOUR" == "docker" ]]; then
+  FALLBACK="$FALLBACK_DOCKER"
+fi
+
+# Sensible defaults when running locally (outside Actions)
+if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
+  GITHUB_OUTPUT="/dev/stdout"
+fi
+
+API="https://api.github.com/repos/${REPO}/actions/runners"
+
+log() { echo "[select-runner] $*" >&2; }
+
+emit() {
+  local runner_json="$1" label="$2" is_self="$3" reason="$4"
+  {
+    echo "runner=${runner_json}"
+    echo "runner_label=${label}"
+    echo "is_self_hosted=${is_self}"
+    echo "reason=${reason}"
+  } >> "$GITHUB_OUTPUT"
+  # Also expose as env for local debugging
+  export SELECTED_RUNNER="$runner_json"
+  export SELECTED_LABEL="$label"
+}
+
+summary() {
+  local msg="$1"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  # Always log to stderr so it appears in job log
+  log "$msg"
+}
+
+# Fast-path: if FORCE_HOME=false and local override says skip probe
+if [[ -z "$TOKEN" ]]; then
+  log "No GITHUB_TOKEN — cannot probe API. Falling back to $FALLBACK (local run)."
+  emit "$FALLBACK" "ubuntu-latest" "false" "no-token"
+  summary "### Runner selection — fallback (no token)
+
+- **Selected:** \`$FALLBACK\` (no API token available)
+- **Home label probed:** \`$LABEL\`
+- **Reason:** local execution without GITHUB_TOKEN
+"
+  exit 0
+fi
+
+# Probe GitHub API with retries and hard timeout.
+# We call /actions/runners once, then filter locally with jq/python.
+ATTEMPTS=3
+TIMEOUT_SECS=10
+API_JSON=""
+api_ok=false
+
+for i in $(seq 1 $ATTEMPTS); do
+  log "Probing $API (attempt $i/$ATTEMPTS, ${TIMEOUT_SECS}s timeout)..."
+  # --max-time caps total, --connect-timeout caps TCP handshake
+  if API_JSON=$(curl -sSf --max-time "$TIMEOUT_SECS" --connect-timeout 5 \
+       -H "Authorization: Bearer $TOKEN" \
+       -H "Accept: application/vnd.github+json" \
+       -H "X-GitHub-Api-Version: 2022-11-28" \
+       "$API" 2>&1); then
+    api_ok=true
+    break
+  else
+    log "Attempt $i failed: ${API_JSON:0:300}"
+    API_JSON=""
+    if (( i < ATTEMPTS )); then
+      sleep $((i * 2))
+    fi
+  fi
+done
+
+if [[ "$api_ok" != "true" ]]; then
+  log "API unavailable after $ATTEMPTS attempts. Falling back."
+  if [[ "$FORCE" == "true" ]]; then
+    echo "::error::HOME runner forced but API probe failed"
+    exit 1
+  fi
+  emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "api-unavailable"
+  summary "### Runner selection — fallback (API unavailable)
+
+- **Selected:** \`$FALLBACK\`
+- **Home label:** \`$LABEL\`
+- **Reason:** GitHub API unreachable after ${ATTEMPTS} attempts (${TIMEOUT_SECS}s each)
+- **Fallback after:** ~$((ATTEMPTS * (TIMEOUT_SECS + 2)))s worst case
+"
+  exit 0
+fi
+
+# Parse runners JSON. Prefer jq, fallback to python3.
+parse_runner() {
+  local json="$1" label="$2"
+  if command -v jq >/dev/null 2>&1; then
+    echo "$json" | jq -r --arg L "$label" '
+      .runners[]? | select(.labels[]? | .name == $L) | "\(.name)|\(.status)|\(.busy)|\(.os)|\(.labels | map(.name) | join(","))"
+    ' | head -n1
+  else
+    echo "$json" | python3 -c "
+import json,sys
+label=sys.argv[1]
+d=json.load(sys.stdin)
+for r in d.get('runners',[]):
+    if any(l.get('name')==label for l in r.get('labels',[])):
+        print(f\"{r.get('name')}|{r.get('status')}|{r.get('busy')}|{r.get('os')}|{','.join(l.get('name') for l in r.get('labels',[]))}\")
+        break
+" "$label"
+  fi
+}
+
+RUNNER_LINE="$(parse_runner "$API_JSON" "$LABEL" || true)"
+
+if [[ -z "$RUNNER_LINE" ]]; then
+  log "No runner matching label '$LABEL' registered. Fallback."
+  if [[ "$FORCE" == "true" ]]; then
+    echo "::error::No runner with label $LABEL"
+    exit 1
+  fi
+  emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "not-registered"
+  summary "### Runner selection — fallback (not registered)
+
+- **Selected:** \`$FALLBACK\`
+- **Home label:** \`$LABEL\`
+- **Reason:** no runner with label \`$LABEL\` found (register via infra/self-hosted-runner/setup.sh)
+"
+  exit 0
+fi
+
+IFS='|' read -r R_NAME R_STATUS R_BUSY R_OS R_LABELS <<< "$RUNNER_LINE"
+log "Found runner: name=$R_NAME status=$R_STATUS busy=$R_BUSY os=$R_OS labels=$R_LABELS"
+
+if [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
+  SELF_JSON='["self-hosted","'"$LABEL"'"]'
+  log "Home runner ONLINE & IDLE → selecting self-hosted."
+  emit "$SELF_JSON" "$LABEL" "true" "online-idle"
+  summary "### Runner selection — home (fast path)
+
+- **Selected:** \`$SELF_JSON\` — 🟢 \`$R_NAME\` is **online** and **idle**
+- **Fallback would have been:** \`$FALLBACK\`
+- **Specs:** 16 vCPU (i7-10700K) / 46 GiB / NVMe — expect 3-6× vs 2 vCPU GH
+- **Reason:** probe succeeded in <${TIMEOUT_SECS}s
+"
+  exit 0
+fi
+
+# Runner exists but not usable right now
+if [[ "$R_STATUS" != "online" ]]; then
+  REASON="offline (status=$R_STATUS)"
+else
+  REASON="busy (status=$R_STATUS busy=$R_BUSY)"
+fi
+
+log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
+if [[ "$FORCE" == "true" ]]; then
+  echo "::error::Home runner $REASON but FORCE_HOME=true"
+  exit 1
+fi
+emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "$REASON"
+summary "### Runner selection — fallback (home not schedulable)
+
+- **Selected:** \`$FALLBACK\`
+- **Home runner:** \`$R_NAME\` — **$REASON**
+- **Home labels:** \`$R_LABELS\`
+- **Fallback type:** \`$FLAVOUR\` (standard=\`[\"ubuntu-latest\"]\`, docker=\`[\"blacksmith-2vcpu-ubuntu-2404\"]\`)
+"

@@ -1,0 +1,63 @@
+name: Select runner (home with fallback)
+description: >
+  Probe the GitHub self-hosted runner API for label `gaia-home`. If the
+  home server (16c/46Gi, 100.126.190.120 via Tailscale) is online and idle,
+  select ["self-hosted","gaia-home"]; otherwise fall back to the
+  GitHub-hosted runner so the job never queues forever. Never opens inbound
+  ports — the home runner polls GitHub over HTTPS:443 outbound.
+
+inputs:
+  runner-label:
+    description: Label of the home runner to probe
+    required: false
+    default: gaia-home
+  fallback-runner:
+    description: JSON array fallback for standard jobs (e.g. '["ubuntu-latest"]')
+    required: false
+    default: '["ubuntu-latest"]'
+  fallback-runner-docker:
+    description: JSON array fallback for docker-heavy jobs (e.g. '["blacksmith-2vcpu-ubuntu-2404"]')
+    required: false
+    default: '["blacksmith-2vcpu-ubuntu-2404"]'
+  flavour:
+    description: 'standard | docker — picks which fallback to use when home is unavailable'
+    required: false
+    default: standard
+  force-home:
+    description: 'If true, fail instead of falling back (for smoke tests)'
+    required: false
+    default: 'false'
+  github-token:
+    description: Token used to query the runners API (GITHUB_TOKEN is enough)
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  runner:
+    description: 'JSON array string for runs-on: e.g. ["self-hosted","gaia-home"] or ["ubuntu-latest"]'
+    value: ${{ steps.probe.outputs.runner }}
+  runner_label:
+    description: 'Human label: gaia-home | ubuntu-latest | blacksmith-2vcpu-ubuntu-2404'
+    value: ${{ steps.probe.outputs.runner_label }}
+  is_self_hosted:
+    description: 'true when home runner was selected'
+    value: ${{ steps.probe.outputs.is_self_hosted }}
+  reason:
+    description: 'Why this runner was chosen (online-idle | offline | busy | not-registered | api-unavailable)'
+    value: ${{ steps.probe.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - name: Probe home runner liveness
+      id: probe
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        RUNNER_LABEL: ${{ inputs.runner-label }}
+        FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
+        FALLBACK_RUNNER_DOCKER: ${{ inputs.fallback-runner-docker }}
+        RUNNER_FLAVOUR: ${{ inputs.flavour }}
+        FORCE_HOME: ${{ inputs.force-home }}
+      run: bash "${{ github.action_path }}/../../scripts/ci/select-runner.sh"
