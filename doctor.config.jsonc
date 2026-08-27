@@ -20,6 +20,28 @@
     // same call the Python scanners already make for these paths
     // ([tool.ruff] extend-exclude, [tool.bandit] exclude_dirs in
     // pyproject.toml) — kept consistent so one rule governs vendored code.
-    "files": [".agents/skills/**", ".claude/skills/**"]
+    "files": [".agents/skills/**", ".claude/skills/**"],
+    "overrides": [
+      // The wake-word controller's lifetime is managed imperatively (start()
+      // creates it, stop() disposes it), not by an effect, so the three
+      // listeners are attached in start() and released by detachListeners().
+      // effect-needs-cleanup only recognises subscribe-and-return-cleanup
+      // inside one effect and cannot follow that indirection — but the cleanup
+      // is structurally guaranteed: the `enabled` effect's cleanup calls
+      // stop(), and stop() calls detachListeners() synchronously before
+      // awaiting anything, so no listener outlives its controller on unmount,
+      // on an `enabled` flip, or on a failed start.
+      //
+      // Wiring them in an effect instead (as this branch briefly did) is the
+      // shape that is actually unsafe here: a ref assignment schedules no
+      // render, so calling the hook's exported start() from an event handler
+      // would attach no listeners at all, and the version that "worked" did so
+      // only because one effect happened to run after another in the same
+      // commit.
+      {
+        "files": ["src/internal/use-wake-word-base.ts"],
+        "rules": ["react-doctor/effect-needs-cleanup"]
+      }
+    ]
   }
 }
