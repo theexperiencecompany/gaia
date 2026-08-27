@@ -37,6 +37,8 @@ export interface BrowserSessionSnapshot {
 export interface BrowserAction {
   name: string;
   inputs: Record<string, unknown>;
+  /** On-page text of the element this action targeted, resolved from the DOM. */
+  target?: string | null;
 }
 
 export interface BrowserStepSnapshot {

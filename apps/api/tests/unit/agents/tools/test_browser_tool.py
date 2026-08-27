@@ -696,7 +696,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
         "kind": "step",
         "index": 2,
         "goal": "find the menu",
-        "actions": [{"name": "click", "inputs": {"index": 2}}],
+        "actions": [{"name": "click", "inputs": {"index": 2}, "target": None}],
         "url": "https://x",
         "title": "Menu",
         "screenshot": "https://cdn/2.png",

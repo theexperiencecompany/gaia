@@ -61,15 +61,37 @@ RequestHandoffFn = Callable[[HandoffRequest], Awaitable[HandoffOutcome]]
 IsCancelledFn = Callable[[], Awaitable[bool]]
 
 
-def _extract_actions(agent_output: AgentOutput) -> list[BrowserAction]:
-    """The step's actions as the agent's own tool calls — name plus arguments."""
+def _element_label(state: BrowserStateSummary, index: object) -> str | None:
+    """The on-page text of the element an action targets, by its DOM index.
+
+    Browser-Use addresses elements by index, which is meaningless to a reader.
+    The same step state the agent saw carries the DOM, so the index resolves to
+    the element's own text — that is what makes a caption say what was clicked.
+    """
+    if not isinstance(index, int):
+        return None
+    selector_map = getattr(getattr(state, "dom_state", None), "selector_map", None) or {}
+    node = selector_map.get(index)
+    if node is None:
+        return None
+    try:
+        return (node.get_meaningful_text_for_llm() or "").strip() or None
+    except Exception:  # a DOM node shape we don't recognise must not kill the step
+        return None
+
+
+def _extract_actions(
+    agent_output: AgentOutput, state: BrowserStateSummary | None = None
+) -> list[BrowserAction]:
+    """The step's actions as the agent's own tool calls — name, arguments, and
+    the on-page text of whatever each one targets."""
     actions: list[BrowserAction] = []
     for action in getattr(agent_output, "action", None) or []:
         dumped = action.model_dump(exclude_none=True) if hasattr(action, "model_dump") else {}
         for action_name, params in dumped.items():
-            actions.append(
-                BrowserAction(name=action_name, inputs=params if isinstance(params, dict) else {})
-            )
+            inputs = params if isinstance(params, dict) else {}
+            target = _element_label(state, inputs.get("index")) if state is not None else None
+            actions.append(BrowserAction(name=action_name, inputs=inputs, target=target))
     return actions
 
 
@@ -291,7 +313,7 @@ class BrowserTaskRunner:
             or getattr(agent_output, "thinking", "")
             or caption_from_actions(agent_output)
         )
-        step_actions = _extract_actions(agent_output)
+        step_actions = _extract_actions(agent_output, browser_state_summary)
         raw_screenshot = getattr(browser_state_summary, "screenshot", None)
 
         # Per-step profiling: `since_prev_ms` is the wall-clock the agent spent on the

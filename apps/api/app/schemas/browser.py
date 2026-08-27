@@ -45,6 +45,11 @@ class BrowserAction(BaseModel):
 
     name: str
     inputs: dict[str, Any] = Field(default_factory=dict)
+    # The element's own text, resolved from the DOM the agent was looking at —
+    # "Add to cart" rather than the bare index the action carries. Grounded in
+    # the page, so a caption states what was really touched, not what the model
+    # claimed it would touch.
+    target: str | None = None
 
 
 class BrowserStepSnapshot(BaseModel):

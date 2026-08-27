@@ -17,7 +17,21 @@ if TYPE_CHECKING:
     from browser_use.agent.views import AgentOutput
 
 
-def describe_action(name: str, params: dict[str, Any]) -> str:
+# Actions whose whole meaning is the element they hit — a bare verb reads as
+# noise ("Clicking"), the element's text reads as intent ("Clicking Add to cart").
+_TARGETED_ACTIONS = {"click", "select_dropdown", "upload_file"}
+
+_TARGET_MAX_CHARS = 40
+
+
+def _shorten(text: str) -> str:
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _TARGET_MAX_CHARS:
+        return collapsed
+    return collapsed[: _TARGET_MAX_CHARS - 1].rstrip() + "…"
+
+
+def describe_action(name: str, params: dict[str, Any], target: str | None = None) -> str:
     """A plain-language phrase for one action, using its real target (the URL it
     opens, the text it types, the query it searches) so a caption reads like intent,
     not "Clicking" five times."""
@@ -33,9 +47,11 @@ def describe_action(name: str, params: dict[str, Any]) -> str:
     if name in ("input", "send_keys"):
         return f'Typing "{text}"' if text else "Typing"
     if name == "select_dropdown":
-        return f'Choosing "{text}"' if text else "Choosing an option"
+        if text:
+            return f'Choosing "{text}"'
+        return f'Choosing in "{_shorten(target)}"' if target else "Choosing an option"
     if name == "click":
-        return "Clicking"
+        return f'Clicking "{_shorten(target)}"' if target else "Clicking"
     if name in ("scroll", "scroll_to_text"):
         return "Scrolling"
     if name in ("extract", "read_file", "read_long_content", "find_text", "find_elements"):
@@ -67,7 +83,7 @@ def caption_from_actions(agent_output: AgentOutput) -> str:
 def caption_from_action_list(actions: list[BrowserAction]) -> str:
     """Same captions, from a step snapshot's structured actions — the params are
     real here, so a caption can name what was opened or typed, not just the verb."""
-    return _dedupe_join([describe_action(a.name, a.inputs) for a in actions])
+    return _dedupe_join([describe_action(a.name, a.inputs, a.target) for a in actions])
 
 
 def _dedupe_join(parts: list[str]) -> str:
