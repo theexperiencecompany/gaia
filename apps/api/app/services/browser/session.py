@@ -10,10 +10,12 @@ ends, and exposes a live-view URL served from our own authenticated API.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
+from app.constants.browser import BROWSER_HANDOFF_KEEPALIVE_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
 from app.services.browser.exceptions import BrowserUnavailableError
@@ -35,6 +37,28 @@ class BrowserHostSession:
     cdp_url: str
     live_view_url: str
     context_id: str
+
+
+async def keep_session_alive(session_id: str) -> None:
+    """Periodically reset the host's idle clock while a handoff is pending.
+
+    A paused session has no CDP or live-view traffic — and if the user hasn't
+    opened the live view yet, no viewer either — so without this the idle
+    reaper disposes the very browser the user was asked to come back to
+    (idle TTL is shorter than the handoff timeout). Best-effort: a failed
+    touch is logged, and the resume itself fails loud if the session is gone.
+    Run under ``spawn_background_task`` and cancel when the handoff resolves.
+    """
+    while True:
+        await asyncio.sleep(BROWSER_HANDOFF_KEEPALIVE_SECONDS)
+        try:
+            await host_client.touch_session(session_id)
+        except BrowserUnavailableError as exc:
+            log.warning(
+                f"{LogTag.BROWSER} Browser handoff keepalive failed",
+                error_type=type(exc).__name__,
+                browser={"session_id": session_id, "operation": "handoff_keepalive"},
+            )
 
 
 @asynccontextmanager

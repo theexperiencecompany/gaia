@@ -65,6 +65,12 @@ class SessionInfoResponse(BaseModel):
     title: str | None = None
 
 
+class TouchSessionResponse(BaseModel):
+    """Acknowledgement that the session's activity clock was reset."""
+
+    session_id: str
+
+
 class HealthResponse(BaseModel):
     """Host health probe: process liveness plus a real CDP round-trip result."""
 
@@ -187,6 +193,20 @@ async def delete_session(request: Request, session_id: str) -> DeleteSessionResp
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="session not found") from exc
     return DeleteSessionResponse(storage_state=storage_state)
+
+
+@app.post("/sessions/{session_id}/touch")
+async def touch_session(request: Request, session_id: str) -> TouchSessionResponse:
+    """Reset the session's idle clock. The API calls this while a handoff is
+    pending: the user may take minutes to come sign in, no CDP or live-view
+    traffic flows in the meantime, and the idle reaper must not dispose the
+    very browser the user was asked to return to."""
+    _require_host_key(request)
+    log.set(browser={"session_id": session_id, "operation": "touch"})
+    if _host.get(session_id) is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    _host.touch(session_id)
+    return TouchSessionResponse(session_id=session_id)
 
 
 @app.get("/sessions/{session_id}")

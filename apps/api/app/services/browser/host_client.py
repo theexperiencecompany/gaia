@@ -103,6 +103,23 @@ async def delete_session(session_id: str) -> StorageState:
     return storage_state
 
 
+async def touch_session(session_id: str) -> None:
+    """Reset the session's idle clock on the host (handoff keepalive)."""
+    try:
+        async with httpx.AsyncClient(
+            base_url=settings.BROWSER_HOST_URL,
+            timeout=_DEFAULT_TIMEOUT_SECONDS,
+            headers=_host_headers(),
+        ) as client:
+            response = await client.post(f"/sessions/{session_id}/touch")
+    except httpx.HTTPError as exc:
+        raise BrowserUnavailableError(
+            f"Could not reach the browser host at {settings.BROWSER_HOST_URL}: {exc}"
+        ) from exc
+
+    _raise_for_status(response)
+
+
 async def get_session(session_id: str) -> HostSessionInfo:
     """Fetch the host's current view of a session."""
     try:

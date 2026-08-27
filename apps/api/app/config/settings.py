@@ -226,7 +226,12 @@ class CommonSettings(BaseAppSettings):
     BROWSER_USE_MAX_STEPS: int = 25
     BROWSER_USE_MAX_ACTIONS_PER_STEP: int = 5
     BROWSER_USE_TASK_TIMEOUT_SECONDS: int = 600
-    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 600
+    # How long a paused run waits for the human to finish a handoff step. People
+    # get pulled away mid-login (find the 2FA phone, dig out a card), so this is
+    # deliberately generous — the paused session is kept alive the whole time by
+    # the keepalive in session.py, and it costs nothing while idle. It bounds
+    # only the wait; the user resolving sooner resumes immediately.
+    BROWSER_USE_HANDOFF_TIMEOUT_SECONDS: int = 1800
     # Active work budget for a single step. The effective per-step timeout adds the
     # handoff timeout on top, so a step that pauses for a human live-view takeover
     # is never killed as "stuck" while the user is completing it.

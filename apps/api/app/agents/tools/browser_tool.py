@@ -9,6 +9,7 @@ session context manager owns capacity limits, saved-login persistence, live-view
 registration, and always releasing the browser context.
 """
 
+from time import perf_counter
 from typing import Annotated
 import uuid
 
@@ -31,12 +32,13 @@ from app.schemas.browser import (
     HandoffOutcome,
     HandoffRequest,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
 from app.services.browser.handoff import await_handoff, create_pending_handoff
 from app.services.browser.llm import build_browser_llm, resolve_use_vision
 from app.services.browser.runner import BrowserTaskRunner
-from app.services.browser.session import browser_session
+from app.services.browser.session import browser_session, keep_session_alive
 from app.services.browser.tasks import record_browser_task
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
 from app.utils.background_tasks import spawn_background_task
@@ -197,9 +199,19 @@ async def browser_task(
                         status=HandoffStatus.PENDING,
                     )
                 )
-                outcome = await await_handoff(
-                    handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
+                # The paused session produces no CDP/live-view traffic, so keep
+                # its idle clock fresh until the user decides — otherwise the
+                # host reaps the browser they were asked to come back to.
+                keepalive = spawn_background_task(
+                    keep_session_alive(session.session_id),
+                    name="browser_handoff_keepalive",
                 )
+                try:
+                    outcome = await await_handoff(
+                        handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
+                    )
+                finally:
+                    keepalive.cancel()
                 await emit(
                     BrowserHandoffSnapshot(
                         handoff_id=handoff_id,
@@ -231,7 +243,23 @@ async def browser_task(
                 user_id=user_id or None,
                 root_request_id=root_request_id,
             )
+            run_t0 = perf_counter()
             result = await runner.run(full_task)
+            if user_id:
+                # Graph-background execution has no authenticated request context,
+                # so the id must be explicit or the event lands on an anonymous
+                # profile (see analytics conventions in CLAUDE.md).
+                capture_event(
+                    user_id,
+                    AnalyticsEvents.BROWSER_TASK_FINISHED,
+                    {
+                        "status": result.status.value,
+                        "success": result.success,
+                        "steps": result.steps,
+                        "duration_ms": round((perf_counter() - run_t0) * 1000),
+                        "source": source_category or "web",
+                    },
+                )
             if user_id:
                 # Record the finished task for the user's browser history (settings).
                 # Best-effort background write: a completed task must still return
