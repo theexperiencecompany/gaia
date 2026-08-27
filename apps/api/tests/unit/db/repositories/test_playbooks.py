@@ -81,6 +81,7 @@ class TestUpsertForWorkflow:
             "created_at": NOW,
             "suspect_streak": 0,
         }
+        assert update["$inc"] == {"revision": 1}
         assert stored.playbook_id == "pb_first"
 
     async def test_a_rewrite_replaces_the_body_and_resets_the_outcome(
@@ -102,6 +103,12 @@ class TestUpsertForWorkflow:
         assert set_fields["steps"][0]["tool"] == "list_events"
         # The identity is never part of the rewrite: a replay in flight keeps its id.
         assert "playbook_id" not in set_fields
+        # The heal attempts counted runs spent on the body just replaced.
+        assert set_fields["heal_attempts"] == 0
+        # The id survives, so the revision is what tells a replay in flight
+        # that the body it ran is no longer the body stored.
+        assert update["$inc"] == {"revision": 1}
+        assert "revision" not in set_fields
 
     async def test_the_loser_of_a_concurrent_first_authoring_retries_onto_the_winner(
         self, repo: PlaybooksRepository, collection: MagicMock
@@ -160,11 +167,90 @@ class TestRecordRunOutcome:
             WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="list_events returned no items"
         )
 
-        _filter, update = collection.find_one_and_update.await_args.args
+        collection.find_one_and_update.assert_awaited_once()
+        filter_, update = collection.find_one_and_update.await_args.args
         assert update["$set"]["last_run_status"] is PlaybookRunStatus.SUSPECT
         assert update["$set"]["last_run_reason"] == "list_events returned no items"
         assert update["$inc"] == {"suspect_streak": 1}
         assert "suspect_streak" not in update["$set"]
+        # Grown only on a document not already suspect: two replays of one body
+        # racing to the same verdict are one suspect, not two.
+        assert filter_["last_run_status"] == {"$ne": "suspect"}
+
+    async def test_a_suspect_on_an_already_suspect_playbook_does_not_grow_the_streak(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update = AsyncMock(
+            side_effect=[None, _raw(last_run_status=PlaybookRunStatus.SUSPECT, suspect_streak=1)]
+        )
+
+        outcome = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty again"
+        )
+
+        assert collection.find_one_and_update.await_count == 2
+        filter_, update = collection.find_one_and_update.await_args_list[1].args
+        assert "last_run_status" not in filter_
+        assert "$inc" not in update
+        assert update["$set"]["last_run_status"] is PlaybookRunStatus.SUSPECT
+        assert update["$set"]["last_run_reason"] == "empty again"
+        assert outcome is not None
+        assert outcome.suspect_streak == 1
+
+    async def test_with_a_revision_the_write_lands_only_on_that_body(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        """``playbook_id`` survives a rewrite, so on its own it guarded nothing."""
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS, playbook_id="pb_first", revision=3
+        )
+
+        filter_, _update = collection.find_one_and_update.await_args.args
+        assert filter_ == {
+            "playbook_id": "pb_first",
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "revision": 3,
+        }
+
+    async def test_a_rewritten_body_records_nothing(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update = AsyncMock(return_value=None)
+
+        outcome = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id="pb_first", revision=2
+        )
+
+        assert outcome is None
+
+
+class TestIncrementHealAttempts:
+    async def test_counts_one_attempt_on_the_named_playbook(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update = AsyncMock(return_value=_raw(heal_attempts=1))
+
+        counted = await repo.increment_heal_attempts(WORKFLOW_ID, USER_ID, playbook_id="pb_first")
+
+        filter_, update = collection.find_one_and_update.await_args.args
+        assert filter_ == {
+            "workflow_id": WORKFLOW_ID,
+            "user_id": USER_ID,
+            "playbook_id": "pb_first",
+        }
+        assert update["$inc"] == {"heal_attempts": 1}
+        assert counted is not None
+        assert counted.heal_attempts == 1
+
+    async def test_a_replaced_playbook_counts_nothing(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update = AsyncMock(return_value=None)
+
+        assert (
+            await repo.increment_heal_attempts(WORKFLOW_ID, USER_ID, playbook_id="pb_gone") is None
+        )
 
     async def test_a_success_clears_the_reason_and_resets_the_streak(
         self, repo: PlaybooksRepository, collection: MagicMock

@@ -169,6 +169,11 @@ class AgentConfigurable(TypedDict, total=False):
     workflow_id: str
     workflow_title: str
     workflow_notify_on_completion: bool
+    #: A playbook replay stopped partway in THIS fire and the agent is finishing
+    #: it: the replay's own record of what already ran. Carried to the executor
+    #: verbatim (``call_executor`` folds it into the heal brief) because comms
+    #: cannot be trusted to transcribe "do not repeat these" into its task.
+    playbook_fallback: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit

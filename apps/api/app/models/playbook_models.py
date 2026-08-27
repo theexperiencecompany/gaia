@@ -228,6 +228,12 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     last_run_reason: str | None = None
     #: Consecutive suspect replays; the worker disables the playbook past a limit.
     suspect_streak: int = 0
+    #: Heal runs spent on the current body. A rewrite resets it; the worker
+    #: deletes the playbook past ``PLAYBOOK_HEAL_ATTEMPT_LIMIT``.
+    heal_attempts: int = 0
+    #: Bumped on every write. ``playbook_id`` survives a rewrite, so this is what
+    #: tells a replay's outcome that the body it ran is the body still stored.
+    revision: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -245,4 +251,5 @@ class PlaybookUpdate(BaseModel):
     last_run_status: PlaybookRunStatus | None = None
     last_run_reason: str | None = None
     suspect_streak: int | None = None
+    heal_attempts: int | None = None
     updated_at: datetime | None = None

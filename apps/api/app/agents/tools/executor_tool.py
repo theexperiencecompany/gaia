@@ -159,7 +159,15 @@ async def call_executor(
     last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
     # Asked here rather than at narration time: write_playbook is an executor
     # tool, and comms — which narrates the finished result — cannot reach it.
-    playbook_check = await playbook_check_brief(workflow_id, user_id) if is_workflow_run else ""
+    # A stopped replay's record rides along verbatim, off the configurable, for
+    # the same reason the verbatim request does: comms paraphrases.
+    playbook_check = (
+        await playbook_check_brief(
+            workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
+        )
+        if is_workflow_run
+        else ""
+    )
 
     composed_task = compose_executor_brief(
         task,

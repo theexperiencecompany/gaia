@@ -22,17 +22,42 @@ import pytest
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF
 from app.agents.tools.playbook_tools import write_playbook
+from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStep,
     PlaybookStepInput,
 )
+from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
 from app.services.workflow.playbook.check import playbook_check_brief
+from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 MODULE = "app.services.workflow.playbook.check"
 USER_ID = "user-1"
 WORKFLOW_ID = "wf-1"
+
+
+def _workflow(*, declines: int = 0, declined_hash: str | None = None) -> WorkflowDocument:
+    return WorkflowDocument(
+        id=WORKFLOW_ID,
+        user_id=USER_ID,
+        title="Daily agenda",
+        prompt="Mail the agenda",
+        steps=[],
+        trigger_config=TriggerConfig(type=TriggerType.SCHEDULE, enabled=True),
+        playbook_declines=declines,
+        playbook_declined_hash=declined_hash,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _workflow_lookup():
+    """The workflow read behind the decline gate; a fresh workflow by default."""
+    with patch(
+        f"{MODULE}.workflow_repository.get_for_user", AsyncMock(return_value=_workflow())
+    ) as lookup:
+        yield lookup
 
 
 def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookDocument:
@@ -152,6 +177,113 @@ async def test_a_swallowed_lookup_failure_is_still_reported():
     assert kwargs["error"] == "mongo down"
 
 
+@pytest.mark.asyncio
+class TestDeclinesAreRemembered:
+    """Declining used to persist nothing, so a workflow whose order genuinely
+    varies was asked the ~600-token question on every fire, forever."""
+
+    def _hash(self) -> str:
+        workflow = _workflow()
+        return workflow_hash(workflow.prompt, workflow.steps)
+
+    async def test_stays_silent_after_the_limit_on_the_same_workflow(self, _workflow_lookup):
+        _workflow_lookup.return_value = _workflow(
+            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
+        )
+        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
+            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
+
+    async def test_keeps_asking_below_the_limit(self, _workflow_lookup):
+        _workflow_lookup.return_value = _workflow(
+            declines=PLAYBOOK_DECLINE_LIMIT - 1, declined_hash=self._hash()
+        )
+        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
+            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
+
+    async def test_asks_again_once_the_workflow_is_edited(self, _workflow_lookup):
+        """The declines were about a different workflow; an edit changes the hash."""
+        _workflow_lookup.return_value = _workflow(
+            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash="hash-of-the-workflow-before-the-edit"
+        )
+        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
+            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
+
+    async def test_a_stored_playbook_never_consults_the_declines(self, _workflow_lookup):
+        _workflow_lookup.return_value = _workflow(
+            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
+        )
+        with patch(
+            f"{MODULE}.playbook_repository.get_for_workflow",
+            AsyncMock(return_value=_playbook(PlaybookRunStatus.FAILED, "boom")),
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+        assert "boom" in brief
+        _workflow_lookup.assert_not_awaited()
+
+
+FALLBACK_NOTE = (
+    "<playbook_fallback>\n"
+    "The playbook for this workflow was replayed first and it stopped partway.\n\n"
+    "Playbook stopped at step 2 (send_email): rejected argument 'body'.\n\n"
+    "These steps ALREADY RAN in this same execution, and their effects are real:\n"
+    "- events (list_events) -> 12 events\n\n"
+    "Do not repeat them. Pick up from where the replay stopped and finish the workflow.\n"
+    "</playbook_fallback>"
+)
+
+
+@pytest.mark.asyncio
+class TestSameFireFallbackBrief:
+    """A replay that stops partway is finished by the agent in the same fire.
+
+    ``call_executor`` then saw FAILED and injected the heal brief ("do the work
+    properly yourself") while the "these steps ALREADY RAN" note only reached
+    comms. The executor read one without the other and repeated side effects.
+    """
+
+    async def test_the_heal_brief_carries_the_already_ran_record_verbatim(self):
+        playbook = _playbook(PlaybookRunStatus.FAILED, "stopped at step 2")
+        with patch(
+            f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID, fallback_note=FALLBACK_NOTE)
+
+        assert FALLBACK_NOTE in brief
+        assert brief.startswith("<playbook_check>")
+        assert brief.rstrip().endswith("</playbook_check>")
+        assert "read_playbook" in brief, "still the heal brief"
+        assert brief.index("stopped at step 2") < brief.index(FALLBACK_NOTE)
+        assert brief.index(FALLBACK_NOTE) < brief.index("Do not lean on the playbook")
+
+    async def test_without_a_note_the_heal_brief_has_no_already_ran_block(self):
+        playbook = _playbook(PlaybookRunStatus.FAILED, "stopped at step 2")
+        with patch(
+            f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+        assert "same execution" not in brief
+        assert "\n\n\n" not in brief, "the empty slot must not leave a hole in the prompt"
+
+    async def test_a_note_reaches_the_executor_even_when_the_outcome_did_not_land(self):
+        """The note is proof the replay stopped this fire, whatever the stored status says."""
+        playbook = _playbook(PlaybookRunStatus.SUCCESS)
+        with patch(
+            f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID, fallback_note=FALLBACK_NOTE)
+
+        assert FALLBACK_NOTE in brief
+
+    async def test_a_note_with_no_playbook_left_still_reaches_the_executor(self):
+        with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID, fallback_note=FALLBACK_NOTE)
+
+        assert brief.startswith(FALLBACK_NOTE)
+        assert brief.endswith(PLAYBOOK_CHECK_BRIEF)
+
+
 def test_the_check_closes_the_executor_brief():
     brief = compose_executor_brief(
         "do the thing",
@@ -205,6 +337,19 @@ def test_the_heal_brief_names_the_tools_the_executor_needs():
     assert "{reason}" in PLAYBOOK_HEAL_BRIEF
     assert "\u2014" not in PLAYBOOK_HEAL_BRIEF, "no em dashes in model-facing text"
     assert "\u2014" not in PLAYBOOK_CHECK_BRIEF
+
+
+def test_the_heal_brief_makes_the_agent_probe_before_accepting_an_empty_result():
+    # A heal run that re-ran the frozen call, got nothing again, and rewrote
+    # the same sequence proved nothing: the call may simply be asking the
+    # wrong question. Emptiness has to be established more broadly than the
+    # frozen call before the same sequence is written back.
+    assert "probing more broadly than the frozen call" in PLAYBOOK_HEAL_BRIEF
+    assert "a longer window, the filter dropped" in PLAYBOOK_HEAL_BRIEF
+    assert "Say in the result what you checked" in PLAYBOOK_HEAL_BRIEF
+    assert "Only a broader probe that also comes back empty" in PLAYBOOK_HEAL_BRIEF
+    assert "the rewrite must use the args that found them" in PLAYBOOK_HEAL_BRIEF
+    assert "—" not in PLAYBOOK_HEAL_BRIEF
 
 
 def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():

@@ -69,3 +69,12 @@ PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2
+
+# After this many declines on one unchanged workflow the check brief stops
+# asking; an edit to the workflow (new hash) asks again.
+PLAYBOOK_DECLINE_LIMIT = 3
+
+# A playbook whose last replay was not trusted gets this many heal runs. A heal
+# that lapses, declines, or has its rewrite refused still counts; past the limit
+# the worker deletes the playbook rather than briefing every later fire to heal it.
+PLAYBOOK_HEAL_ATTEMPT_LIMIT = 2

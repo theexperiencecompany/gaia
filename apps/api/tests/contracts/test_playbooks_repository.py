@@ -86,23 +86,84 @@ class TestPlaybooksRepository:
         assert replaced.suspect_streak == 1
 
     async def test_suspect_runs_grow_the_streak_until_a_success_resets_it(self, repo) -> None:
+        """A suspect grows the streak once per verdict on a body: a second
+        suspect with no heal between (two replays of one body racing) counts
+        once, the rewrite a heal makes puts the body back to NOT_RUN, and the
+        next suspect grows it again."""
         await repo.create(make_doc())
 
         first = await repo.record_run_outcome(
             WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty once"
         )
+        repeated = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty again, same body"
+        )
+        await repo.upsert_for_workflow(make_doc(description="healed"))
         second = await repo.record_run_outcome(
             WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty twice"
         )
         cleared = await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
 
         assert (first.suspect_streak, first.last_run_reason) == (1, "empty once")
+        assert (repeated.suspect_streak, repeated.last_run_reason) == (1, "empty again, same body")
         assert (second.suspect_streak, second.last_run_reason) == (2, "empty twice")
         assert cleared.last_run_status is PlaybookRunStatus.SUCCESS
         assert cleared.suspect_streak == 0
         assert cleared.last_run_reason is None
         reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
         assert reread == cleared
+
+    async def test_every_write_bumps_the_revision_and_resets_the_heal_attempts(self, repo) -> None:
+        first = await repo.upsert_for_workflow(make_doc())
+        counted = await repo.increment_heal_attempts(
+            WORKFLOW_ID, USER_ID, playbook_id=first.playbook_id
+        )
+        second = await repo.upsert_for_workflow(make_doc(description="second"))
+
+        assert first.revision == 1
+        assert counted.heal_attempts == 1
+        assert second.revision == 2
+        assert second.heal_attempts == 0
+        assert second.playbook_id == first.playbook_id
+
+    async def test_increment_heal_attempts_ignores_a_replaced_playbook(self, repo) -> None:
+        await repo.create(make_doc())
+        assert (
+            await repo.increment_heal_attempts(WORKFLOW_ID, USER_ID, playbook_id="pb_not_this")
+            is None
+        )
+
+    async def test_record_run_outcome_scoped_to_the_replayed_revision(self, repo) -> None:
+        """A rewrite keeps the id, so a replay that finishes after the agent
+        rewrote the body must not stamp its verdict on the new body."""
+        replayed = await repo.upsert_for_workflow(make_doc())
+        rewritten = await repo.upsert_for_workflow(make_doc(description="second"))
+        assert rewritten.playbook_id == replayed.playbook_id
+
+        stale = await repo.record_run_outcome(
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunStatus.SUSPECT,
+            playbook_id=replayed.playbook_id,
+            revision=replayed.revision,
+            reason="empty",
+        )
+
+        assert stale is None
+        reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+        assert reread is not None
+        assert reread.last_run_status is PlaybookRunStatus.NOT_RUN
+        assert reread.suspect_streak == 0
+
+        current = await repo.record_run_outcome(
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunStatus.SUCCESS,
+            playbook_id=rewritten.playbook_id,
+            revision=rewritten.revision,
+        )
+        assert current is not None
+        assert current.last_run_status is PlaybookRunStatus.SUCCESS
 
     async def test_a_failure_keeps_the_streak_and_records_its_reason(self, repo) -> None:
         await repo.create(make_doc())

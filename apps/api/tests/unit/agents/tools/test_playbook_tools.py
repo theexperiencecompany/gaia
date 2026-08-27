@@ -22,6 +22,7 @@ from app.agents.tools.playbook_tools import (
     read_playbook,
     write_playbook,
 )
+from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.models.playbook_models import (
     PlaybookAsk,
     PlaybookBody,
@@ -30,7 +31,12 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     playbook_body_from_input,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
+from app.models.workflow_models import (
+    TriggerConfig,
+    TriggerType,
+    WorkflowDocument,
+    WorkflowUpdate,
+)
 from app.services.workflow.playbook.parser import dump_playbook
 from app.services.workflow.playbook.tool_space import SubagentTools
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -106,15 +112,27 @@ def _config_for(user_id: str) -> RunnableConfig:
 
 
 class _FakeWorkflowStore:
-    """A workflow lookup that is scoped per user, exactly as the repository is.
+    """A workflow lookup that is scoped per user, exactly as the repository is,
+    and that keeps the flat ``$set`` writes the decline bookkeeping makes.
 
     A MagicMock that answers for anybody cannot show a tenant leak; this can.
     """
 
+    def __init__(self) -> None:
+        self.workflow = _workflow()
+
     async def get_for_user(self, workflow_id: str, user_id: str) -> WorkflowDocument | None:
         if (workflow_id, user_id) == (WORKFLOW_ID, USER_ID):
-            return _workflow()
+            return self.workflow
         return None
+
+    async def update_for_user(
+        self, workflow_id: str, user_id: str, update: WorkflowUpdate
+    ) -> WorkflowDocument | None:
+        if (workflow_id, user_id) != (WORKFLOW_ID, USER_ID):
+            return None
+        self.workflow = self.workflow.model_copy(update=update.model_dump(exclude_unset=True))
+        return self.workflow
 
 
 def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
@@ -168,6 +186,7 @@ def store() -> _FakePlaybookStore:
 def workflows() -> MagicMock:
     repo = MagicMock()
     repo.get_for_user = AsyncMock(return_value=_workflow())
+    repo.update_for_user = AsyncMock(return_value=_workflow())
     return repo
 
 
@@ -336,18 +355,16 @@ class TestReadPlaybook:
 
 @pytest.mark.unit
 class TestDeclinePlaybook:
-    async def test_declining_records_the_reason_and_changes_nothing(
+    async def test_declining_records_the_reason_and_writes_no_playbook(
         self, store: _FakePlaybookStore
     ) -> None:
-        """Declining is a decision on record, never a mutation.
-
-        The check requires every asked run to end by calling exactly one of
-        write_playbook or decline_playbook. The decline must leave the store
-        untouched (a later run gets asked again) and carry its reason onto the
-        wide event, which is the only place a repeated decline can be diagnosed.
-        """
+        """The check requires every asked run to end by calling exactly one of
+        write_playbook or decline_playbook. The decline must leave the playbook
+        store untouched and carry its reason onto the wide event, which is the
+        only place a repeated decline can be diagnosed."""
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
@@ -357,10 +374,109 @@ class TestDeclinePlaybook:
 
         assert result["success"] is True
         assert result["data"] == {"declined": True}
-        assert store.documents == {}, "a decline must never write or delete anything"
-        log.set_ns.assert_called_once_with(
+        assert store.documents == {}, "a decline must never write a playbook"
+        log.set_ns.assert_any_call(
             "playbook", declined=True, decline_reason="the call order depends on the inbox"
         )
+
+    async def test_a_decline_is_counted_against_the_workflow_as_it_stands(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Nothing was persisted before, so a workflow whose order genuinely
+        varies was asked the whole check on every fire, forever."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert workflows.workflow.playbook_declines == 2
+        assert workflows.workflow.playbook_declined_hash == workflow_hash(
+            workflows.workflow.prompt, workflows.workflow.steps
+        )
+
+    async def test_declines_on_an_older_workflow_do_not_carry_over_an_edit(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        workflows.workflow = workflows.workflow.model_copy(
+            update={
+                "playbook_declines": PLAYBOOK_DECLINE_LIMIT,
+                "playbook_declined_hash": "hash-before-the-edit",
+            }
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert workflows.workflow.playbook_declines == 1
+
+    async def test_declining_during_a_heal_removes_the_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Inside a heal run, a decline means the stored sequence cannot hold.
+        Left FAILED/SUSPECT, every later fire would be briefed to heal it again."""
+        existing = _existing(store)
+        store.documents[(WORKFLOW_ID, USER_ID)] = existing.model_copy(
+            update={"last_run_status": PlaybookRunStatus.SUSPECT}
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert result["success"] is True
+        assert result["data"] == {"declined": True, "disabled": True}
+        assert "removed" in result["message"]
+        assert store.documents == {}
+
+    async def test_declining_outside_a_heal_keeps_a_working_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        before = _existing(store)
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert result["data"] == {"declined": True}
+        assert store.documents[(WORKFLOW_ID, USER_ID)] == before
+
+    async def test_a_write_resets_the_declines(self, store: _FakePlaybookStore) -> None:
+        workflows = _FakeWorkflowStore()
+        workflows.workflow = workflows.workflow.model_copy(
+            update={"playbook_declines": 2, "playbook_declined_hash": "h"}
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is True
+        assert workflows.workflow.playbook_declines == 0
+        assert workflows.workflow.playbook_declined_hash is None
+
+    async def test_declining_an_unknown_workflow_is_refused(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            result = await decline_playbook.ainvoke(
+                {"reason": "order varies"}, config=_config_for(OTHER_USER)
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "workflow_not_found"
 
 
 @pytest.mark.unit

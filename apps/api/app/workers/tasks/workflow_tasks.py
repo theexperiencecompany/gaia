@@ -7,7 +7,13 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
 
-from app.agents.prompts.playbook_prompts import PLAYBOOK_FALLBACK_TEMPLATE
+from app.agents.core.background.workflow_platform_delivery import (
+    deliver_workflow_result_to_platforms,
+)
+from app.agents.prompts.playbook_prompts import (
+    PLAYBOOK_FALLBACK_TEMPLATE,
+    PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
+)
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -19,6 +25,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    PLAYBOOK_HEAL_ATTEMPT_LIMIT,
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
@@ -75,6 +82,8 @@ from app.services.workflow.execution_service import (
     complete_execution,
     create_execution,
 )
+from app.services.workflow.notifications import send_workflow_completion_notification
+from app.services.workflow.playbook.check import HEAL_STATUSES
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import PlaybookRunResult, run_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -513,21 +522,55 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
 
 
 def _fallback_note(result: PlaybookRunResult) -> str:
-    """The stopped replay, addressed to the agent that has to finish the run."""
+    """The replay that did not hold, stopped or untrusted, addressed to the agent
+    that has to finish the run."""
     completed = "\n".join(f"- {line}" for line in result.completed) or "- nothing"
-    return wrap_agent_payload(
-        AgentTag.PLAYBOOK_FALLBACK,
-        PLAYBOOK_FALLBACK_TEMPLATE.format(
+    if result.ok:
+        body = PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE.format(
+            reason=result.suspect or "no reason was recorded", completed=completed
+        )
+    else:
+        body = PLAYBOOK_FALLBACK_TEMPLATE.format(
             failure=result.failure or "The replay stopped without saying why.",
             completed=completed,
-        ),
+        )
+    return wrap_agent_payload(AgentTag.PLAYBOOK_FALLBACK, body)
+
+
+#: The execution-record summary of a fire the agent reasoned out.
+AGENT_RUN_SUMMARY = "Workflow executed"
+
+
+async def _discard_playbook(
+    workflow_id: str, user_id: str, playbook: PlaybookDocument, *, reason: str, **details: object
+) -> None:
+    """Drop a playbook the worker has given up on, saying why. Never raises: the
+    fire still runs on the agent, and a failed delete only costs the next check."""
+    try:
+        await playbook_repository.delete_for_workflow(workflow_id, user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKER} Playbook delete failed; it stays on file for now",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            reason=reason,
+            error_type=type(e).__name__,
+        )
+        return
+    log.warning(
+        f"{LogTag.WORKER} Playbook discarded",
+        workflow_id=workflow_id,
+        playbook_id=playbook.playbook_id,
+        reason=reason,
+        **details,
     )
 
 
 async def _run_workflow(
     workflow: Workflow, workflow_id: str, context: dict[str, Any]
-) -> tuple[str, list[RecordedCall]]:
-    """Run the fire on whichever path can carry it. Returns the conversation and trace.
+) -> tuple[str, list[RecordedCall], str]:
+    """Run the fire on whichever path can carry it. Returns the conversation, the
+    trace, and the summary the execution record should carry.
 
     A playbook is replayed only while its ``workflow_hash`` still matches the
     workflow: the frozen sequence answered one particular prompt and set of
@@ -561,13 +604,19 @@ async def _run_workflow(
             error_type=type(e).__name__,
         )
         log.set_ns("playbook", mode="agent", reason="lookup_failed", llm_calls=0)
-        return await execute_workflow_as_chat(workflow, user, context)
+        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
 
     if playbook is None:
         log.set_ns("playbook", mode="agent", reason="no_playbook", llm_calls=0)
-        return await execute_workflow_as_chat(workflow, user, context)
+        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
 
     if playbook.workflow_hash != workflow_hash(workflow.prompt, workflow.steps):
+        # Deleted, not merely skipped: the check brief only asks for a playbook
+        # when there is none, so a stale one left on file would never be
+        # re-authored and the workflow would run at full agent cost forever.
+        await _discard_playbook(
+            workflow_id, workflow.user_id, playbook, reason="stale_workflow_hash"
+        )
         log.set_ns(
             "playbook",
             mode="agent",
@@ -575,23 +624,47 @@ async def _run_workflow(
             playbook_id=playbook.playbook_id,
             llm_calls=0,
         )
-        return await execute_workflow_as_chat(workflow, user, context)
+        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
 
     # A playbook the last run did not trust is not replayed again: the agent
     # runs this fire with the heal brief carrying the recorded reason, and ends
     # by rewriting the playbook or disabling it. Replaying it a second time
     # only repeats the same wrong result, and the streak limit then deletes
-    # the playbook before any agent has seen why.
-    if playbook.last_run_status in (PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT):
+    # the playbook before any agent has seen why. Each heal run is counted
+    # before it starts, so a heal that lapses, declines, or has its rewrite
+    # refused still spends an attempt; past the limit the playbook goes.
+    if playbook.last_run_status in HEAL_STATUSES:
+        counted = await playbook_repository.increment_heal_attempts(
+            workflow_id, workflow.user_id, playbook_id=playbook.playbook_id
+        )
+        attempts = counted.heal_attempts if counted is not None else 0
+        if attempts > PLAYBOOK_HEAL_ATTEMPT_LIMIT:
+            await _discard_playbook(
+                workflow_id,
+                workflow.user_id,
+                playbook,
+                reason="heal_attempts_exhausted",
+                heal_attempts=attempts,
+            )
+            log.set_ns(
+                "playbook",
+                mode="agent",
+                reason="heal_attempts_exhausted",
+                playbook_id=playbook.playbook_id,
+                heal_attempts=attempts,
+                llm_calls=0,
+            )
+            return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
         log.set_ns(
             "playbook",
             mode="agent",
             reason="heal",
             playbook_id=playbook.playbook_id,
             last_run_status=playbook.last_run_status.value,
+            heal_attempts=attempts,
             llm_calls=0,
         )
-        return await execute_workflow_as_chat(workflow, user, context)
+        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
 
     conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
     # From here on the replay's calls are history that happened. Whatever ends
@@ -610,20 +683,38 @@ async def _run_workflow(
         ) from exc
 
 
-SUSPECT_REPLAY_LABEL = "Replayed and flagged for review: {reason}."
-PLAYBOOK_DISABLED_LABEL = (
-    "The playbook was disabled after repeated suspect results; the next run reasons it out again."
-)
-
-
-def _delivered_replay_text(result: PlaybookRunResult, *, disabled: bool) -> str:
-    """The replay's text as the user should read it: labelled when not trusted."""
-    if not result.suspect:
-        return result.text
-    label = SUSPECT_REPLAY_LABEL.format(reason=result.suspect.rstrip("."))
-    if disabled:
-        label = f"{label} {PLAYBOOK_DISABLED_LABEL}"
-    return f"{label}\n\n{result.text}" if result.text else label
+async def _notify_replay_finished(
+    workflow: Workflow, user: AuthenticatedUser, conversation_id: str, text: str
+) -> None:
+    """Deliver a finished replay exactly as the executor path delivers an agent
+    run: into the user's linked platforms, then the in-app heads-up. Gated on
+    ``notify_on_completion`` like that path; best-effort like that path."""
+    if not workflow.notify_on_completion:
+        log.info(
+            f"{LogTag.WORKER} Replay completion notification skipped (workflow is silent)",
+            workflow_id=workflow.id,
+        )
+        return
+    try:
+        await deliver_workflow_result_to_platforms(
+            user=user,
+            user_id=workflow.user_id,
+            notification_text=text,
+            origin=f'workflow "{workflow.title}" (id {workflow.id})',
+        )
+        await send_workflow_completion_notification(
+            workflow_id=workflow.id or "",
+            workflow_title=workflow.title,
+            conversation_id=conversation_id,
+            user_id=workflow.user_id,
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKER} Replay completion notification failed",
+            workflow_id=workflow.id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def _finish_after_replay(
@@ -634,14 +725,16 @@ async def _finish_after_replay(
     playbook: PlaybookDocument,
     conversation_id: str,
     result: PlaybookRunResult,
-) -> tuple[str, list[RecordedCall]]:
-    """Record the replay's outcome, deliver its result, or let the agent finish the run.
+) -> tuple[str, list[RecordedCall], str]:
+    """Record the replay's outcome, then deliver its result or let the agent finish the run.
 
-    A finished replay whose result is not trusted (``result.suspect``) is
-    recorded as SUSPECT rather than SUCCESS. The user still gets the text, but
-    labelled, so a confident wrong brief never reads as a good one. Suspect
-    outcomes accumulate on the playbook; at ``PLAYBOOK_SUSPECT_STREAK_LIMIT``
-    the playbook is dropped and the next fire reasons the workflow out again.
+    Only a trusted result is delivered. A replay that stopped partway (FAILED)
+    or finished with a result the runner did not trust (SUSPECT, from either
+    the deterministic check or the narration) hands the fire to the agent WITH
+    its record, so the user gets one result per fire and never a confident
+    wrong brief. Suspect outcomes accumulate on the playbook; at
+    ``PLAYBOOK_SUSPECT_STREAK_LIMIT`` it is dropped before the agent runs, so
+    that run is asked to author afresh rather than to heal.
     """
     if not result.ok:
         status = PlaybookRunStatus.FAILED
@@ -657,22 +750,21 @@ async def _finish_after_replay(
         workflow.user_id,
         status,
         playbook_id=playbook.playbook_id,
+        revision=playbook.revision,
         reason=reason,
     )
-    if result.ok:
-        disabled = False
-        if status is PlaybookRunStatus.SUSPECT:
-            streak = updated.suspect_streak if updated is not None else 0
-            disabled = streak >= PLAYBOOK_SUSPECT_STREAK_LIMIT
-            if disabled:
-                await playbook_repository.delete_for_workflow(workflow_id, workflow.user_id)
-                log.warning(
-                    f"{LogTag.WORKER} Playbook disabled after repeated suspect replays",
-                    workflow_id=workflow_id,
-                    playbook_id=playbook.playbook_id,
-                    reason=reason,
-                    suspect_streak=streak,
-                )
+    if updated is None:
+        # Rewritten or removed while this replay ran: the verdict describes a
+        # body that is no longer there, so it is neither recorded nor counted.
+        log.warning(
+            f"{LogTag.WORKER} Playbook replay outcome not recorded; the playbook changed mid-run",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            revision=playbook.revision,
+            outcome=status.value,
+        )
+
+    if status is PlaybookRunStatus.SUCCESS:
         log.set_ns(
             "playbook",
             mode="replay",
@@ -680,41 +772,75 @@ async def _finish_after_replay(
             playbook_id=playbook.playbook_id,
             llm_calls=result.llm_calls,
             outcome=status.value,
-            suspect_reason=reason,
-            disabled=disabled,
         )
-        # Only a finished replay writes the turn. A stopped one leaves the
+        # Only a trusted replay writes the turn. The others leave the
         # conversation to the agent run that takes over, so the user sees one
         # result for one fire instead of a half-run followed by a real one.
         await add_playbook_run_messages(
             conversation_id=conversation_id,
             user_id=workflow.user_id,
             workflow=workflow,
-            response=_delivered_replay_text(result, disabled=disabled),
+            response=result.text,
             trace=result.trace,
             playbook=playbook,
         )
-        return conversation_id, result.trace
+        await _notify_replay_finished(workflow, user, conversation_id, result.text)
+        return conversation_id, result.trace, f"Replayed {len(playbook.steps)} step(s)"
 
-    log.set_ns(
-        "playbook",
-        mode="agent",
-        reason="replay_stopped",
-        playbook_id=playbook.playbook_id,
-        llm_calls=result.llm_calls,
-    )
-    log.warning(
-        f"{LogTag.WORKER} Playbook replay stopped; the agent is finishing this run",
-        workflow_id=workflow_id,
-        playbook_id=playbook.playbook_id,
-        failure=result.failure,
-    )
+    disabled = False
+    if status is PlaybookRunStatus.SUSPECT and updated is not None:
+        disabled = updated.suspect_streak >= PLAYBOOK_SUSPECT_STREAK_LIMIT
+        if disabled:
+            await playbook_repository.delete_for_workflow(workflow_id, workflow.user_id)
+            log.warning(
+                f"{LogTag.WORKER} Playbook disabled after repeated suspect replays",
+                workflow_id=workflow_id,
+                playbook_id=playbook.playbook_id,
+                reason=reason,
+                suspect_streak=updated.suspect_streak,
+            )
+    if status is PlaybookRunStatus.FAILED:
+        log.set_ns(
+            "playbook",
+            mode="agent",
+            reason="replay_stopped",
+            playbook_id=playbook.playbook_id,
+            llm_calls=result.llm_calls,
+            outcome=status.value,
+        )
+        log.warning(
+            f"{LogTag.WORKER} Playbook replay stopped; the agent is finishing this run",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            failure=result.failure,
+        )
+        summary = (
+            f"Replay stopped after {len(result.completed)} step(s); the agent finished the run"
+        )
+    else:
+        log.set_ns(
+            "playbook",
+            mode="agent",
+            reason="replay_suspect",
+            playbook_id=playbook.playbook_id,
+            llm_calls=result.llm_calls,
+            outcome=status.value,
+            suspect_reason=reason,
+            disabled=disabled,
+        )
+        log.warning(
+            f"{LogTag.WORKER} Playbook replay not trusted; the agent is finishing this run",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            reason=reason,
+        )
+        summary = f"Replay flagged ({(reason or '').rstrip('.')}); completed by the agent"
     conversation_id, agent_trace = await execute_workflow_as_chat(
         workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
     )
     # The replay's own calls stay on the record: they are what the agent was
     # told not to repeat, and the next run reads this trace as its history.
-    return conversation_id, [*result.trace, *agent_trace]
+    return conversation_id, [*result.trace, *agent_trace], summary
 
 
 async def execute_workflow_by_id(
@@ -882,18 +1008,20 @@ async def execute_workflow_by_id(
         # otherwise run the agent. A replay that stops partway hands the rest of
         # the run to the agent, carrying what it already did so the agent does
         # not repeat a side effect.
-        conversation_id, trace = await _run_workflow(workflow, workflow_id, context or {})
+        conversation_id, trace, summary = await _run_workflow(workflow, workflow_id, context or {})
 
         # Track successful execution
         await WorkflowService.increment_execution_count(
             workflow_id, workflow.user_id, is_successful=True
         )
 
-        # Complete execution record with success
+        # Complete execution record with success. The run did complete either
+        # way; the summary says how, so a flagged replay never reads as a clean
+        # one in the history.
         await complete_execution(
             execution_id=execution_id,
             status="success",
-            summary="Workflow executed",
+            summary=summary,
             conversation_id=conversation_id,
             trace=trace,
         )

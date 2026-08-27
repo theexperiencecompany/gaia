@@ -7,6 +7,7 @@ real; the only mocked boundaries are the executor graph itself
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from datetime import UTC, datetime
 import json
 import time
 from typing import Any, cast
@@ -34,6 +35,8 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.db.repositories.playbooks import playbook_repository
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
 from app.utils import background_tasks
 
 
@@ -929,6 +932,84 @@ class TestDispatchThreadsTheTurnsIdentity:
         brief = spawned_runs[0]["task"]
         assert pasted in brief
         assert "sub_0NfdUP7ekmLIw59KBtWwa" in brief
+
+
+FALLBACK_NOTE = (
+    "<playbook_fallback>\n"
+    "The playbook for this workflow was replayed first and it stopped partway.\n\n"
+    "These steps ALREADY RAN in this same execution, and their effects are real:\n"
+    "- events (list_events) -> 12 events\n\n"
+    "Do not repeat them. Pick up from where the replay stopped and finish the workflow.\n"
+    "</playbook_fallback>"
+)
+
+
+def _failed_playbook() -> PlaybookDocument:
+    now = datetime.now(UTC)
+    return PlaybookDocument(
+        playbook_id="pb-1",
+        workflow_id="wf-1",
+        user_id="user-1",
+        workflow_hash="h",
+        description="d",
+        steps=[PlaybookStep(id="events", tool="list_events", args={})],
+        synthesize="s",
+        last_run_status=PlaybookRunStatus.FAILED,
+        last_run_reason="stopped at step 2 (send_email)",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@pytest.mark.unit
+class TestStoppedReplayRecordReachesTheExecutor:
+    """A workflow fire whose replay stopped partway is finished by the executor.
+
+    The replay's record used to reach only comms, as part of the trigger
+    message, while the executor got the heal brief alone: "do the work properly
+    yourself" with no word that half of it had already happened. The record now
+    rides the configurable, like the verbatim request, and lands in the brief
+    exactly as the worker wrote it.
+    """
+
+    @pytest.mark.regression
+    async def test_the_fallback_note_reaches_the_brief_verbatim(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        spawned_runs: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(executor_tool, "get_last_run_brief", AsyncMock(return_value=""))
+        monkeypatch.setattr(
+            playbook_repository, "get_for_workflow", AsyncMock(return_value=_failed_playbook())
+        )
+
+        await call_executor_with(
+            config=config_for(workflow_id="wf-1", playbook_fallback=FALLBACK_NOTE),
+            task="finish the agenda run",
+        )
+        await drain_background_tasks()
+
+        brief = spawned_runs[0]["task"]
+        assert FALLBACK_NOTE in brief
+        assert "stopped at step 2 (send_email)" in brief, "still the heal brief"
+        assert brief.index("finish the agenda run") < brief.index(FALLBACK_NOTE)
+
+    async def test_a_fire_without_a_stopped_replay_carries_no_record(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        spawned_runs: list[dict[str, Any]],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(executor_tool, "get_last_run_brief", AsyncMock(return_value=""))
+        monkeypatch.setattr(
+            playbook_repository, "get_for_workflow", AsyncMock(return_value=_failed_playbook())
+        )
+
+        await call_executor_with(config=config_for(workflow_id="wf-1"), task="run the agenda")
+        await drain_background_tasks()
+
+        assert "playbook_fallback" not in spawned_runs[0]["task"]
 
 
 @pytest.mark.unit

@@ -36,13 +36,22 @@ Either way, keep all of this out of what you return. The result you hand back is
 PLAYBOOK_HEAL_BRIEF = """<playbook_check>
 This workflow has a stored playbook. On the last run it was replayed and {verdict}, for this reason:
 {reason}
-
+{already_ran}
 Do not lean on the playbook this run. Call read_playbook first so you can see the frozen sequence, then do the work properly yourself, checking each step against that reason as you go. If a step comes back empty, with an error, or partial, the frozen call or its args are what is wrong, and the fix is the call that actually produces the result, with the arguments that make it produce one.
+
+If the recorded reason is that a call returned nothing, do not accept that emptiness on the replay's terms. Before you call write_playbook with the same sequence, establish that the source genuinely has nothing by probing more broadly than the frozen call: a longer window, the filter dropped, a check that the integration actually answers at all. Say in the result what you checked. Only a broader probe that also comes back empty justifies rewriting the same sequence. If the broader probe finds items the frozen call missed, the args are wrong, and the rewrite must use the args that found them.
 
 When the work is finished (and only then), end this run by calling exactly one of write_playbook or disable_playbook. Call write_playbook with the corrected sequence, or with the same sequence if it turns out to have been right after all and the recorded reason was a one-off. Call disable_playbook with the reason if the sequence cannot hold, because the order of calls depends on what each run finds. Staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not mention playbooks or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
+
+#: Merged into the heal brief when the replay that stopped was THIS fire's: the
+#: heal brief on its own says "do the work properly yourself", and without this
+#: block that reads as "repeat the steps that already ran".
+PLAYBOOK_HEAL_ALREADY_RAN = """
+That replay was in this same execution, not a previous one. Its record follows. The steps it lists as already run happened, so finish from where it stopped and do not repeat them:
+{fallback_note}"""
 
 #: What the heal brief says happened, keyed by the recorded run status value.
 PLAYBOOK_HEAL_VERDICTS = {
@@ -89,3 +98,12 @@ These steps ALREADY RAN in this same execution, and their effects are real:
 {completed}
 
 Do not repeat them. Pick up from where the replay stopped and finish the workflow."""
+
+
+PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE = """The playbook for this workflow was replayed first. It ran to the end, but its result was not trusted, for this reason:
+{reason}
+
+These steps ALREADY RAN in this same execution, with these results, and their effects are real:
+{completed}
+
+Do not repeat them. Do the work properly yourself, checking each step against that reason, and end this run by rewriting the playbook or disabling it."""

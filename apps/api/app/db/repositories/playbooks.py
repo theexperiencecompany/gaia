@@ -55,12 +55,15 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             workflow_hash=playbook.workflow_hash,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
+            heal_attempts=0,
         ).model_dump(exclude_unset=True)
         # The streak survives a rewrite on purpose: a rewrite is how a heal run
         # answers a suspect replay, and a playbook that keeps coming back suspect
-        # must still reach the limit. Only a trusted replay clears it.
+        # must still reach the limit. Only a trusted replay clears it. The heal
+        # attempts do NOT survive: they count runs spent on the body just replaced.
         update = {
             "$set": body,
+            "$inc": {"revision": 1},
             "$setOnInsert": {
                 "playbook_id": playbook.playbook_id,
                 "created_at": playbook.created_at,
@@ -83,28 +86,60 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         status: PlaybookRunStatus,
         *,
         playbook_id: str | None = None,
+        revision: int | None = None,
         reason: str | None = None,
     ) -> PlaybookDocument | None:
-        """Record how the replay that just finished went, in one write.
+        """Record how the replay that just finished went.
 
         ``reason`` is why a run failed or was not trusted; a success clears it.
         ``suspect_streak`` counts consecutive suspect replays: it grows on
         ``SUSPECT``, resets on ``SUCCESS`` and is left alone by ``FAILED``, so
         the worker can disable a playbook that keeps completing with results
-        nobody trusts.
+        nobody trusts. A suspect landing on a playbook already marked suspect
+        does not grow it again: two replays of one body racing to the same
+        verdict are one suspect, not two.
 
-        With ``playbook_id`` — the id of the playbook that was actually replayed —
-        the write lands only while that playbook is still the workflow's, so a
-        replay finishing after the agent re-authored it cannot stamp the old
-        run's verdict on the new sequence. ``None`` when the workflow has no
-        playbook (an agentic run has nothing to record) or when the replayed one
-        has since been replaced.
+        ``playbook_id`` and ``revision`` scope the write to the body that was
+        actually replayed. The id alone is not enough, since a rewrite keeps it;
+        the revision is what changes. ``None`` when the workflow has no playbook
+        (an agentic run has nothing to record) or when the replayed body has
+        since been rewritten or deleted.
         """
         key: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         if playbook_id is not None:
             key["playbook_id"] = playbook_id
+        if revision is not None:
+            key["revision"] = revision
+        if status is not PlaybookRunStatus.SUSPECT:
+            return await self._apply_raw_update(
+                key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
+            )
+        # A plain ``$inc`` cannot be conditional on the stored status, so the
+        # growing write is tried first against a not-yet-suspect document and
+        # the plain one only when that matched nothing.
+        grown = await self._apply_raw_update(
+            {**key, "last_run_status": {"$ne": PlaybookRunStatus.SUSPECT.value}},
+            _outcome_update(status, reason, grow_streak=True),
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if grown is not None:
+            return grown
         return await self._apply_raw_update(
-            key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
+            key, _outcome_update(status, reason, grow_streak=False), scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def increment_heal_attempts(
+        self, workflow_id: str, user_id: str, *, playbook_id: str
+    ) -> PlaybookDocument | None:
+        """Count one heal run against the playbook, before that run starts.
+
+        Counted up front so a heal that lapses or has its rewrite refused still
+        spends an attempt. ``None`` when the playbook is no longer the workflow's.
+        """
+        return await self._apply_raw_update(
+            {"workflow_id": workflow_id, "user_id": user_id, "playbook_id": playbook_id},
+            {"$inc": {"heal_attempts": 1}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def delete_for_workflow(self, workflow_id: str, user_id: str) -> bool:
@@ -115,14 +150,16 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         return await self.delete(existing.playbook_id)
 
 
-def _outcome_update(status: PlaybookRunStatus, reason: str | None) -> dict[str, dict[str, object]]:
+def _outcome_update(
+    status: PlaybookRunStatus, reason: str | None, *, grow_streak: bool = False
+) -> dict[str, dict[str, object]]:
     """The update a run outcome writes, shaped by what the status means for the streak."""
     if status is PlaybookRunStatus.SUCCESS:
         return {"$set": {"last_run_status": status, "last_run_reason": None, "suspect_streak": 0}}
     update: dict[str, dict[str, object]] = {
         "$set": {"last_run_status": status, "last_run_reason": reason}
     }
-    if status is PlaybookRunStatus.SUSPECT:
+    if status is PlaybookRunStatus.SUSPECT and grow_streak:
         update["$inc"] = {"suspect_streak": 1}
     return update
 
