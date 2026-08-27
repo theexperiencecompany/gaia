@@ -207,7 +207,13 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
         while the date already churns daily."""
         tail = str((await _messages_for("relationships"))[-1].content)
 
-        assert "Aryan" in tail
+        # Verbatim: this sentence is the instruction that makes facts use the
+        # real name instead of "the user" — its wording is load-bearing, not
+        # decoration (the CI mutation gate proved looser asserts let it rot).
+        assert (
+            "The user in this transcript (`user:`) is Aryan. "
+            "Write every fact using this real name." in tail
+        )
         assert tail.index("Aryan") < tail.index("Today is"), (
             "the name churns less than the date, so placing it behind the "
             "date re-sends it uncached every day for no reason"
