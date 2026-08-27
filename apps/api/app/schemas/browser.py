@@ -45,6 +45,9 @@ class BrowserStepSnapshot(BaseModel):
     url: str | None = None
     title: str | None = None
     screenshot: str | None = None
+    # Wall-clock the agent spent reaching this step (previous step's LLM think +
+    # action execution). Surfaced in the card so speed is visible per step.
+    elapsed_ms: int | None = None
 
 
 class BrowserHandoffSnapshot(BaseModel):

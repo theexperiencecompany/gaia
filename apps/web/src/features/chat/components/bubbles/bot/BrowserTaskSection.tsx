@@ -5,12 +5,16 @@ import { Chip } from "@heroui/chip";
 import { Divider } from "@heroui/divider";
 import { Spinner } from "@heroui/spinner";
 import { AiWebBrowsingIcon, Alert01Icon, CheckmarkCircle02Icon } from "@icons";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   liveViewPageUrl,
   liveViewSocketUrl,
 } from "@/features/browser/api/browserApi";
 import { useLiveViewToken } from "@/features/browser/hooks/useLiveViewToken";
+import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
+import { BROWSER_STATUS_META } from "@/features/browser/utils";
+import { useIsMobile } from "@/hooks/ui/useMobile";
+import { useRightSidebar } from "@/stores/rightSidebarStore";
 import type {
   BrowserHandoffSnapshot,
   BrowserResultSnapshot,
@@ -19,6 +23,7 @@ import type {
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "@/types/features/browserTaskTypes";
+import { BrowserLivePanel } from "../../browser/BrowserLivePanel";
 import { HandoffPrompt } from "./HandoffPrompt";
 import { LivePreview } from "./LivePreview";
 import { RecapViewer } from "./RecapViewer";
@@ -35,22 +40,6 @@ interface FoldedState {
   handoffs: BrowserHandoffSnapshot[];
   result?: BrowserResultSnapshot;
 }
-
-// Machine states → plain language the user understands at a glance.
-const STATUS_META: Record<
-  BrowserSessionStatus,
-  {
-    label: string;
-    color: "default" | "primary" | "success" | "danger" | "warning";
-  }
-> = {
-  starting: { label: "Starting", color: "default" },
-  running: { label: "Working", color: "primary" },
-  paused: { label: "Needs you", color: "warning" },
-  completed: { label: "Done", color: "success" },
-  failed: { label: "Couldn't finish", color: "danger" },
-  cancelled: { label: "Stopped", color: "default" },
-};
 
 function fold(snapshots: BrowserTaskSnapshot[]): FoldedState {
   let session: BrowserSessionSnapshot | undefined;
@@ -88,16 +77,76 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   const status: BrowserSessionStatus =
     result?.status ??
     (pendingHandoff ? "paused" : (session?.status ?? "running"));
-  const statusMeta = STATUS_META[status];
+  const statusMeta = BROWSER_STATUS_META[status];
   const active = !result;
   const working = active && !pendingHandoff;
   // Only an active session has an owner — minting a live-view token after it
-  // ends 403s ("Not authorized for this session"). Fetch it only while the live
-  // view is actually shown; the done state renders the recap instead.
-  const liveViewToken = useLiveViewToken(working ? session?.session_id : null);
+  // ends 403s ("Not authorized for this session"). Fetch it while the session
+  // is active (working or paused on a handoff — the side panel streams during
+  // both); the done state renders the recap instead.
+  const liveViewToken = useLiveViewToken(active ? session?.session_id : null);
   // What the agent is doing right now — the latest step's goal, surfaced live
   // on the (collapsed) steps header so the user sees progress without expanding.
   const currentTask = working ? steps[steps.length - 1]?.goal : undefined;
+
+  const isMobile = useIsMobile();
+  const openSidebarWithContent = useRightSidebar(
+    (state) => state.openWithContent,
+  );
+  const panelSessionId = useBrowserPanel((state) => state.sessionId);
+  const openPanelStore = useBrowserPanel((state) => state.open);
+  const syncPanel = useBrowserPanel((state) => state.sync);
+  const sessionId = session?.session_id ?? null;
+  const inPanel = !!sessionId && panelSessionId === sessionId;
+
+  const socketUrl =
+    session?.live_view_url && liveViewToken
+      ? liveViewSocketUrl(session.live_view_url, liveViewToken)
+      : null;
+  const pageUrl =
+    session?.live_view_url && liveViewToken
+      ? liveViewPageUrl(session.live_view_url, liveViewToken)
+      : null;
+
+  const openPanel = useCallback(() => {
+    if (!sessionId) return;
+    openPanelStore(sessionId);
+    openSidebarWithContent(<BrowserLivePanel />, "artifact");
+  }, [sessionId, openPanelStore, openSidebarWithContent]);
+
+  // The card is the SSE-driven source of truth — while its session is shown in
+  // the side panel, mirror everything the panel renders into the store.
+  useEffect(() => {
+    if (!inPanel || !sessionId) return;
+    syncPanel({
+      sessionId,
+      socketUrl,
+      pageUrl,
+      status,
+      currentTask: currentTask ?? null,
+      pendingHandoff: pendingHandoff ?? null,
+    });
+  }, [
+    inPanel,
+    sessionId,
+    socketUrl,
+    pageUrl,
+    status,
+    currentTask,
+    pendingHandoff,
+    syncPanel,
+  ]);
+
+  // A handoff is the moment the user must act in the live browser — surface the
+  // side panel for them once per handoff (desktop only; mobile keeps the
+  // in-card flow). Closing the panel afterwards is respected.
+  const autoOpenedHandoffRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pendingHandoff || isMobile) return;
+    if (autoOpenedHandoffRef.current === pendingHandoff.handoff_id) return;
+    autoOpenedHandoffRef.current = pendingHandoff.handoff_id;
+    openPanel();
+  }, [pendingHandoff, isMobile, openPanel]);
 
   return (
     <div className="w-full max-w-lg rounded-2xl bg-zinc-800 p-4">
@@ -131,11 +180,13 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       )}
 
       <div className="mt-3 space-y-3">
-        {working && session?.live_view_url && liveViewToken && (
+        {working && socketUrl && pageUrl && (
           <LivePreview
-            socketUrl={liveViewSocketUrl(session.live_view_url, liveViewToken)}
-            pageUrl={liveViewPageUrl(session.live_view_url, liveViewToken)}
+            socketUrl={socketUrl}
+            pageUrl={pageUrl}
             currentTask={currentTask}
+            inPanel={inPanel}
+            onOpenPanel={isMobile ? undefined : openPanel}
           />
         )}
 
@@ -181,6 +232,8 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
           <HandoffPrompt
             key={pendingHandoff.handoff_id}
             handoff={pendingHandoff}
+            inPanel={inPanel}
+            onOpenPanel={isMobile ? undefined : openPanel}
           />
         )}
       </div>

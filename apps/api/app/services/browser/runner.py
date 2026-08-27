@@ -337,6 +337,7 @@ class BrowserTaskRunner:
                     url=url,
                     title=title,
                     screenshot=screenshot,
+                    elapsed_ms=since_prev_ms or None,
                 )
             )
             log.info(

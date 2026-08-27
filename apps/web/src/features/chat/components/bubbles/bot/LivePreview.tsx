@@ -2,21 +2,34 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
-import { EyeIcon, FullScreenIcon, SquareArrowUpRight02Icon } from "@icons";
+import {
+  EyeIcon,
+  FullScreenIcon,
+  SidebarRight01Icon,
+  SquareArrowUpRight02Icon,
+} from "@icons";
 import { useState } from "react";
 import { LiveBrowserCanvas } from "./LiveBrowserCanvas";
 import { ShimmerText } from "./ShimmerText";
 
-// The live browser, in its own surface. Full-screen expands only this preview
-// (not the whole card) and keeps the current action captioned at the bottom.
+// The live browser, in its own surface. On desktop the expanded view is the
+// right-side browser panel (chat shrinks next to it); the full-screen modal is
+// the mobile fallback. While the side panel is showing this session the card
+// hands the stream over instead of decoding the same frames twice.
 export function LivePreview({
   socketUrl,
   pageUrl,
   currentTask,
+  inPanel = false,
+  onOpenPanel,
 }: {
   socketUrl: string;
   pageUrl: string;
   currentTask?: string;
+  /** This session is currently streaming in the side panel. */
+  inPanel?: boolean;
+  /** Open the side panel (undefined on mobile — falls back to the modal). */
+  onOpenPanel?: () => void;
 }) {
   const [fullscreen, setFullscreen] = useState(false);
   // One socket: the canvas mounts inline OR in the modal, never both at once.
@@ -35,30 +48,61 @@ export function LivePreview({
           variant="light"
           radius="full"
           className="ml-auto size-6 min-w-6 text-zinc-400"
-          aria-label="Full screen live preview"
-          onPress={() => setFullscreen(true)}
+          aria-label={
+            onOpenPanel ? "Open in side panel" : "Full screen live preview"
+          }
+          onPress={() => (onOpenPanel ? onOpenPanel() : setFullscreen(true))}
         >
-          <FullScreenIcon className="size-4" />
+          {onOpenPanel ? (
+            <SidebarRight01Icon className="size-4" />
+          ) : (
+            <FullScreenIcon className="size-4" />
+          )}
         </Button>
       </div>
 
-      {!fullscreen && canvas}
-
-      <div className="mt-2 px-0.5">
+      {inPanel ? (
         <Button
-          as="a"
-          href={pageUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          size="sm"
-          variant="light"
-          radius="full"
-          className="h-7 px-2 text-xs text-zinc-400"
-          startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
+          onPress={onOpenPanel}
+          variant="flat"
+          className="aspect-video h-auto w-full rounded-xl bg-zinc-950 text-xs text-zinc-500 ring-1 ring-white/10"
         >
-          Open full browser
+          Streaming in the side panel
         </Button>
-      </div>
+      ) : (
+        !fullscreen && canvas
+      )}
+
+      {!inPanel && (
+        <div className="mt-2 px-0.5">
+          {onOpenPanel ? (
+            <Button
+              size="sm"
+              variant="light"
+              radius="full"
+              className="h-7 px-2 text-xs text-zinc-400"
+              startContent={<SidebarRight01Icon className="size-3.5" />}
+              onPress={onOpenPanel}
+            >
+              Open side panel
+            </Button>
+          ) : (
+            <Button
+              as="a"
+              href={pageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="sm"
+              variant="light"
+              radius="full"
+              className="h-7 px-2 text-xs text-zinc-400"
+              startContent={<SquareArrowUpRight02Icon className="size-3.5" />}
+            >
+              Open full browser
+            </Button>
+          )}
+        </div>
+      )}
 
       <Modal
         isOpen={fullscreen}

@@ -1,3 +1,22 @@
+import type { BrowserSessionStatus } from "@/types/features/browserTaskTypes";
+
+/** Machine states → plain language the user understands at a glance. Shared by
+ * the chat card and the browser side panel so the two never disagree. */
+export const BROWSER_STATUS_META: Record<
+  BrowserSessionStatus,
+  {
+    label: string;
+    color: "default" | "primary" | "success" | "danger" | "warning";
+  }
+> = {
+  starting: { label: "Starting", color: "default" },
+  running: { label: "Working", color: "primary" },
+  paused: { label: "Needs you", color: "warning" },
+  completed: { label: "Done", color: "success" },
+  failed: { label: "Couldn't finish", color: "danger" },
+  cancelled: { label: "Stopped", color: "default" },
+};
+
 /** Short relative time ("Just now", "5m ago", "Yesterday", "3d ago", then a date). */
 export function formatRelativeDate(dateString: string): string {
   const date = new Date(dateString);

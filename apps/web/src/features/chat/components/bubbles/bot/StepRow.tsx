@@ -4,6 +4,11 @@ import Image from "next/image";
 import { useImageDialog } from "@/stores/uiStore";
 import type { BrowserStepSnapshot } from "@/types/features/browserTaskTypes";
 
+// "820ms" under a second, "6.8s" above — the same rounding a person does.
+function formatStepDuration(ms: number): string {
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 export function StepRow({ step }: { step: BrowserStepSnapshot }) {
   const { openDialog } = useImageDialog();
   return (
@@ -20,6 +25,11 @@ export function StepRow({ step }: { step: BrowserStepSnapshot }) {
             <p className="mt-0.5 truncate text-xs text-zinc-500">{step.url}</p>
           )}
         </div>
+        {step.elapsed_ms != null && step.elapsed_ms > 0 && (
+          <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+            {formatStepDuration(step.elapsed_ms)}
+          </span>
+        )}
       </div>
       {step.screenshot && (
         <button

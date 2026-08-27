@@ -26,15 +26,36 @@ import type {
 } from "@/types/features/browserTaskTypes";
 import { LiveBrowserCanvas } from "./LiveBrowserCanvas";
 
-// Each sensitive category gets an icon + a title that says what the user does.
+// Each sensitive category gets an icon, a title that says what the user does,
+// and a call-to-action for the button that opens the live browser.
 const HANDOFF_META: Record<
   BrowserSensitiveCategory,
-  { icon: React.ComponentType<{ className?: string }>; title: string }
+  {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    cta: string;
+  }
 > = {
-  none: { icon: CursorInWindowIcon, title: "Take over for a moment" },
-  payment: { icon: CreditCardIcon, title: "Finish the payment yourself" },
-  credentials: { icon: ShieldUserIcon, title: "Sign in to continue" },
-  irreversible: { icon: Alert01Icon, title: "Confirm this step to continue" },
+  none: {
+    icon: CursorInWindowIcon,
+    title: "Take over for a moment",
+    cta: "Open the live browser",
+  },
+  payment: {
+    icon: CreditCardIcon,
+    title: "Finish the payment yourself",
+    cta: "Open the browser to pay",
+  },
+  credentials: {
+    icon: ShieldUserIcon,
+    title: "Sign in to continue",
+    cta: "Open the browser to sign in",
+  },
+  irreversible: {
+    icon: Alert01Icon,
+    title: "Confirm this step to continue",
+    cta: "Open the browser to confirm",
+  },
 };
 
 // Resolved elsewhere (chat, another device) or after a reload — server status
@@ -51,10 +72,88 @@ const RESOLVED_META: Record<
   timeout: { icon: StopCircleIcon, label: "Timed out, the task was stopped." },
 };
 
+// The step-appropriate primary action: first "open the live browser" (side
+// panel on desktop, tokened page on bots/mobile), then — once opened, or when
+// already inside the panel — the confirm that resumes the agent.
+function HandoffPrimaryAction({
+  showOpen,
+  cta,
+  pageUrl,
+  onOpenPanel,
+  onOpened,
+  pending,
+  hasNote,
+  onContinue,
+}: {
+  showOpen: boolean;
+  cta: string;
+  pageUrl: string | null;
+  onOpenPanel?: () => void;
+  onOpened: () => void;
+  pending: boolean;
+  hasNote: boolean;
+  onContinue: () => void;
+}) {
+  if (showOpen && onOpenPanel) {
+    return (
+      <Button
+        color="warning"
+        radius="full"
+        className="w-full font-semibold"
+        endContent={<CursorInWindowIcon className="size-4" />}
+        onPress={() => {
+          onOpened();
+          onOpenPanel();
+        }}
+      >
+        {cta}
+      </Button>
+    );
+  }
+  if (showOpen && pageUrl) {
+    return (
+      <Button
+        as="a"
+        href={pageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        color="warning"
+        radius="full"
+        className="w-full font-semibold"
+        endContent={<SquareArrowUpRight02Icon className="size-4" />}
+        onPress={onOpened}
+      >
+        {cta}
+      </Button>
+    );
+  }
+  return (
+    <Button
+      color="warning"
+      radius="full"
+      className="w-full font-semibold"
+      isLoading={pending}
+      startContent={
+        !pending ? <CheckmarkCircle02Icon className="size-4" /> : undefined
+      }
+      onPress={onContinue}
+    >
+      {hasNote ? "Send note and continue" : "I'm done, continue"}
+    </Button>
+  );
+}
+
 export function HandoffPrompt({
   handoff,
+  inPanel = false,
+  onOpenPanel,
 }: {
   handoff: BrowserHandoffSnapshot;
+  /** Rendered inside the browser side panel: the big interactive canvas is
+   * already above, so skip the embedded canvas and the open-browser button. */
+  inPanel?: boolean;
+  /** Desktop web: the primary action opens the side panel instead of a new tab. */
+  onOpenPanel?: () => void;
 }) {
   const [decided, setDecided] = useState<"continue" | "cancel" | null>(null);
   const [pending, setPending] = useState(false);
@@ -121,7 +220,7 @@ export function HandoffPrompt({
         </div>
       </div>
 
-      {handoff.live_view_url && liveToken && (
+      {!inPanel && handoff.live_view_url && liveToken && (
         <div className="mt-3">
           <div className="mb-1.5 flex items-center gap-1.5 px-0.5">
             <CursorInWindowIcon className="size-3.5 text-amber-300/70" />
@@ -154,36 +253,16 @@ export function HandoffPrompt({
         })()
       ) : (
         <div className="mt-3 space-y-2.5 border-t border-amber-500/15 pt-3">
-          {!opened && pageUrl ? (
-            <Button
-              as="a"
-              href={pageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              color="warning"
-              radius="full"
-              className="w-full font-semibold"
-              endContent={<SquareArrowUpRight02Icon className="size-4" />}
-              onPress={() => setOpened(true)}
-            >
-              Open the browser to sign in
-            </Button>
-          ) : (
-            <Button
-              color="warning"
-              radius="full"
-              className="w-full font-semibold"
-              isLoading={pending}
-              startContent={
-                !pending ? (
-                  <CheckmarkCircle02Icon className="size-4" />
-                ) : undefined
-              }
-              onPress={() => decide("continue", note.trim() || undefined)}
-            >
-              {hasNote ? "Send note and continue" : "I'm done, continue"}
-            </Button>
-          )}
+          <HandoffPrimaryAction
+            showOpen={!inPanel && !opened}
+            cta={meta.cta}
+            pageUrl={pageUrl}
+            onOpenPanel={onOpenPanel}
+            onOpened={() => setOpened(true)}
+            pending={pending}
+            hasNote={hasNote}
+            onContinue={() => decide("continue", note.trim() || undefined)}
+          />
 
           <div className="flex items-center gap-2">
             <Input
