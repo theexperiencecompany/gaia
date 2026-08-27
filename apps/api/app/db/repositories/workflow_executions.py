@@ -62,18 +62,21 @@ class WorkflowExecutionsRepository(
     async def find_latest_with_trace(
         self, workflow_id: str, user_id: str
     ) -> WorkflowExecutionDocument | None:
-        """The workflow's most recent successful run that recorded a trace.
+        """The workflow's most recent finished run that recorded a trace.
 
         What the next run reads to learn what the previous one did, now that its
         checkpoint threads are reset before every fire. Runs that recorded
         nothing are skipped: an empty trace would tell the next run nothing while
-        hiding the last one that had something to say.
+        hiding the last one that had something to say. A FAILED run counts: it
+        ran steps with side effects before it stopped, and hiding it would show
+        the next run the fire before, which then repeats them. The brief and
+        ``$last_run`` both carry the status, so a reader can tell.
         """
         rows = await self._find(
             {
                 "workflow_id": workflow_id,
                 "user_id": user_id,
-                "status": "success",
+                "status": {"$in": ["success", "failed"]},
                 "trace.0": {"$exists": True},
             },
             sort=[("started_at", -1)],

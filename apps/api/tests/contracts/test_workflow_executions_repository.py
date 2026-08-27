@@ -101,9 +101,7 @@ class TestWorkflowExecutionsRepository:
         older = await _completed(now - timedelta(hours=2), call)
         # Newer, but recorded nothing — it must not hide the run that has something to say.
         await _completed(now - timedelta(hours=1), [])
-        # A failed run and another owner's run must not leak in either.
-        failed = await repo.create(_execution(workflow_id=wf, user_id=owner, started_at=now))
-        await repo.complete(failed.execution_id, status="failed", trace=call)
+        # Another owner's run must not leak in.
         stranger = await repo.create(
             _execution(workflow_id=wf, user_id=_uid("other"), started_at=now)
         )
@@ -117,6 +115,34 @@ class TestWorkflowExecutionsRepository:
         assert found is not None and found.execution_id == newest
 
         assert await repo.find_latest_with_trace(_uid("missing"), owner) is None
+
+    @pytest.mark.regression
+    async def test_find_latest_with_trace_returns_a_failed_run_that_ran_steps(self, repo):
+        """A fire that ran steps (with side effects) and then failed carries its
+        trace on a FAILED record. Hiding it showed the next run the fire before,
+        and the agent repeated the side effect. A run still in flight is not
+        history yet and stays hidden."""
+        wf = _uid("wf")
+        owner = _uid("owner")
+        call = [RecordedCall(tool_name="GMAIL_SEND", result_digest="sent")]
+        now = datetime.now(UTC)
+        succeeded = await repo.create(
+            _execution(workflow_id=wf, user_id=owner, started_at=now - timedelta(hours=1))
+        )
+        await repo.complete(succeeded.execution_id, status="success", trace=call)
+        failed = await repo.create(
+            _execution(workflow_id=wf, user_id=owner, started_at=now - timedelta(minutes=30))
+        )
+        await repo.complete(failed.execution_id, status="failed", error_message="boom", trace=call)
+        await repo.create(
+            _execution(workflow_id=wf, user_id=owner, started_at=now, status="running", trace=call)
+        )
+
+        found = await repo.find_latest_with_trace(wf, owner)
+
+        assert found is not None
+        assert found.execution_id == failed.execution_id
+        assert found.status == "failed"
 
     async def test_complete_missing_returns_none(self, repo):
         assert await repo.complete(_uid("missing"), status="success") is None

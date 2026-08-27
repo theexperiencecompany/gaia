@@ -20,15 +20,20 @@ RESULT_DIGEST_MAX_CHARS = 4000
 
 
 def build_result_digest(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
-    """A tool's result, bounded to ``max_chars`` and never cut mid-structure.
+    """A tool's result, always within ``max_chars`` and never cut mid-structure.
 
     The digest is not decoration. ``$last_run.<TOOL>.<path>`` resolves against
     it and a replay's narration reads it as what the tool returned, so a blind
     slice breaks both at once: JSON cut mid-token stops parsing, a cursor then
     silently resolves to nothing, and the narration describes a fragment as if
     it were the whole result. A JSON payload is therefore re-serialised compactly
-    and, when it still does not fit, loses whole elements off the end rather than
-    half of one. Only a result that is not JSON is truncated as text.
+    and, when it still does not fit, has its long strings cut and marked, then
+    loses whole elements off the end rather than half of one. Only a result that
+    is not JSON is truncated as text.
+
+    The bound is guaranteed for every input: ``RecordedCall.result_digest``
+    enforces it, and a record that fails to build after the tool already ran
+    loses the trace the run was keeping.
 
     The record uses the default bound so history stops growing with the number
     of runs; a reader that writes from the result (a replay's narration) passes
@@ -51,8 +56,8 @@ def _compact(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-#: Longest string an element keeps once elements have to be trimmed to fit.
-#: Ids, subjects and dates survive whole; a body is cut, and says so.
+#: Longest string a value keeps once it has to be trimmed to fit. Ids, subjects
+#: and dates survive whole; a body is cut, and says so.
 _ELEMENT_STRING_MAX_CHARS = 200
 _CUT_MARKER = "…[cut]"
 
@@ -78,24 +83,31 @@ def _fit_elements(items: list[Any], rebuild: Callable[[list[Any]], object], max_
 
 
 def _bounded_json(value: object, max_chars: int) -> str:
-    """``value`` as compact JSON under the bound, dropping whole list elements.
+    """``value`` as compact JSON within the bound, valid JSON wherever that is possible.
 
-    When not even the first element fits (nine emails whose bodies each
-    outweigh the bound), dropping whole elements would drop all of them and
-    record the fetch as empty. The elements are trimmed instead, long strings
-    cut and marked, so the record keeps the items and what identifies them.
+    Long strings are cut before any element is shed: three emails whose bodies
+    each outweigh the bound must be recorded as three cut emails, not one whole
+    one, because the ids and subjects are the record and the bodies are not.
+    The cut applies to the whole value, so a big non-list sibling (a page's
+    ``html`` beside its ``links``) cannot hold the digest over the bound. When
+    that still does not fit, whole elements are shed off the end of the largest
+    list; when even that is not enough the string limit halves and both steps
+    repeat, down to strings that are only their cut marker. A value with no
+    strings left to cut and still too big is the one case sliced as text.
     """
-    items, rebuild = _largest_sequence(value)
-    if items is None:
-        # Nothing to shed element-wise (a huge scalar or a deep object): fall back
-        # to text, which parse_result reads as text rather than as broken JSON.
-        return _compact(value)[:max_chars]
-
-    digest = _fit_elements(items, rebuild, max_chars)
-    if items and not _largest_sequence(json.loads(digest))[0]:
-        trimmed = [_trim_strings(item, _ELEMENT_STRING_MAX_CHARS) for item in items]
-        digest = _fit_elements(trimmed, rebuild, max_chars)
-    return digest
+    digest = _compact(value)
+    if len(digest) <= max_chars:
+        return digest
+    limit = _ELEMENT_STRING_MAX_CHARS
+    while True:
+        trimmed = _trim_strings(value, limit)
+        items, rebuild = _largest_sequence(trimmed)
+        digest = _compact(trimmed) if items is None else _fit_elements(items, rebuild, max_chars)
+        if len(digest) <= max_chars:
+            return digest
+        if limit == 0:
+            return digest[:max_chars]
+        limit //= 2
 
 
 def _as_is(items: list[Any]) -> object:

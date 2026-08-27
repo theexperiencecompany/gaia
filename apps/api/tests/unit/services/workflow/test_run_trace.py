@@ -374,11 +374,53 @@ class TestResultDigest:
         assert parsed["successful"] is True
         assert parsed["data"]["fetched_count"] == 40
         assert parsed["data"]["messages"], "dropping every element defeats the digest"
-        assert parsed["data"]["messages"][0] == {
-            "id": "m0",
-            "subject": "Subject 0",
-            "body": "x" * 300,
-        }
+        first = parsed["data"]["messages"][0]
+        assert set(first) == {"id", "subject", "body"}, "whole elements, never half of one"
+        assert first["id"] == "m0"
+        assert first["subject"] == "Subject 0"
+
+    def test_the_bound_holds_when_the_bulk_is_not_in_a_list(self) -> None:
+        """Shedding only ever touched the largest list, so a big sibling (a
+        fetched page's ``html`` beside its ``links``) held the digest over the
+        bound and ``RecordedCall`` refused it AFTER the tool had already run."""
+        raw = json.dumps({"success": True, "data": {"html": "<p>" * 2000, "links": [1, 2]}})
+
+        digest = build_result_digest(raw)
+
+        assert len(digest) <= RESULT_DIGEST_MAX_CHARS
+        parsed = json.loads(digest)
+        assert parsed["success"] is True
+        assert parsed["data"]["links"] == [1, 2]
+        assert RecordedCall(tool_name="fetch", result_digest=digest).result_digest == digest
+
+    def test_an_oversized_object_with_no_list_stays_parseable(self) -> None:
+        """A large object with nothing to shed was sliced mid-token, so every
+        ``$last_run.<TOOL>.<path>`` against it failed on the next run."""
+        raw = json.dumps({"cursor": "tok_9", "page": {"text": "t" * 6000}})
+
+        parsed = json.loads(build_result_digest(raw))
+
+        assert parsed["cursor"] == "tok_9"
+        assert parsed["page"]["text"].startswith("t")
+        assert len(parsed["page"]["text"]) < 6000
+
+    def test_strings_are_cut_before_whole_elements_are_shed(self) -> None:
+        """Three messages whose bodies overflow together: one untrimmed message
+        survived the shedding, which read as a fetch of one. All three must,
+        with their bodies cut."""
+        raw = json.dumps(
+            {"messages": [{"id": f"m{index}", "body": "x" * 3000} for index in range(3)]}
+        )
+
+        parsed = json.loads(build_result_digest(raw))
+
+        assert [message["id"] for message in parsed["messages"]] == ["m0", "m1", "m2"]
+        assert all(len(message["body"]) < 3000 for message in parsed["messages"])
+
+    def test_the_bound_holds_for_a_value_with_nothing_left_to_cut(self) -> None:
+        raw = json.dumps({f"key_{index}": index for index in range(2000)})
+
+        assert len(build_result_digest(raw)) <= RESULT_DIGEST_MAX_CHARS
 
     def test_elements_too_big_to_fit_are_trimmed_rather_than_all_dropped(self) -> None:
         """Seen live: nine emails whose bodies each outweighed the whole bound
