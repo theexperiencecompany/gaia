@@ -237,9 +237,11 @@ jobs:
       # host port and the NEXT job on this box dies with
       # "bind: address already in use" (exit 125). Observed on run
       # 33101684877, where a leaked chroma on :8000 failed the lane.
-      - name: Tear down service containers
+      - name: Tear down service containers and sidecar
         if: always()
-        run: bash scripts/ci/stop-test-services.sh
+        run: |
+          bash scripts/ci/stop-embedding-sidecar.sh
+          bash scripts/ci/stop-test-services.sh
 
   # ── Test TypeScript — Nx parallel scales with cores ----------------------
   test-typescript:

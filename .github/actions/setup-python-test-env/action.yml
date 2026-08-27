@@ -144,3 +144,12 @@ runs:
       with:
         path: ${{ env.MODEL_CACHE_DIR }}
         key: fastembed-${{ runner.os }}-${{ hashFiles('apps/api/app/constants/memory.py', 'uv.lock') }}
+
+    # One shared embedding sidecar for the whole pytest run, started only once
+    # the models are guaranteed on disk (cache hit or prefetch above). Without
+    # it every xdist worker loads ~1.8 GB of ONNX weights itself, serialized
+    # behind a file lock. The workflow owns teardown (stop-embedding-sidecar.sh
+    # with if: always()) — composite actions have no post step.
+    - name: Start embedding sidecar
+      shell: bash
+      run: bash scripts/ci/start-embedding-sidecar.sh
