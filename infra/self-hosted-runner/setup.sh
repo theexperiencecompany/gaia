@@ -96,7 +96,10 @@ fi
 
 # Shared persistent cache: pnpm store, uv cache and the ~1.3 GB fastembed
 # models live here instead of travelling through actions/cache on every run.
-mkdir -p "$LOCAL_CACHE"
+# actions-archive: the runner re-downloads every `uses:` action tarball per
+# job unless ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE points somewhere persistent
+# — measured at 69s for actions/cache@v6 alone on the residential uplink.
+mkdir -p "$LOCAL_CACHE" "${LOCAL_CACHE}/actions-archive"
 
 TARBALL="actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${TARBALL}"
@@ -160,6 +163,7 @@ PATH=${RUNNER_PATH}
 MISE_NODE_COREPACK=1
 RUNNER_INDEX=${idx}
 RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE=${LOCAL_CACHE}/actions-archive
 ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
 ${NX_REMOTE_ENV}
