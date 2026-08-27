@@ -42,7 +42,7 @@ const INITIAL_SLASH_COMMAND_STATE: SlashCommandDropdownState = {
 };
 
 /** Matches of one category, or all of them for the "all" tab. */
-export function filterMatchesByCategory(
+function filterMatchesByCategory(
   category: string,
   matches: SlashCommandMatch[],
 ): SlashCommandMatch[] {

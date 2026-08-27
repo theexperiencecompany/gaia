@@ -44,6 +44,7 @@
     "doctor": "npx react-doctor@0.9.12"
   },
   "dependencies": {
+    "@gaia/shared": "workspace:*",
     "@gaia/wake-word": "workspace:*",
     "@heroui/accordion": "2.2.27",
     "@heroui/autocomplete": "2.3.32",
