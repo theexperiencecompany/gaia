@@ -480,6 +480,7 @@ class TestInitializeCategories:
     EXPECTED: ClassVar[dict[str, str]] = {
         "write_playbook": "playbooks",
         "read_playbook": "playbooks",
+        "decline_playbook": "playbooks",
         "disable_playbook": "playbooks",
         "create_tracked_todo": "tracked_todos",
         "finish_task": "control",
@@ -491,12 +492,12 @@ class TestInitializeCategories:
                 f"{tool_name} must stay in the {category!r} category"
             )
 
-    def test_the_playbook_category_holds_exactly_its_three_tools(
+    def test_the_playbook_category_holds_exactly_its_four_tools(
         self, registry: ToolRegistry
     ) -> None:
         names = {tool.name for tool in registry._categories["playbooks"].tools}
 
-        assert names == {"write_playbook", "read_playbook", "disable_playbook"}
+        assert names == {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
 
     def test_playbook_tools_are_curated_as_non_destructive(self, registry: ToolRegistry) -> None:
         """An empty set and ``None`` mean different things at the HIL gate.

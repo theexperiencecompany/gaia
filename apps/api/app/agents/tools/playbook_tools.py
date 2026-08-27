@@ -1,4 +1,4 @@
-"""Playbook tools: write, read, and disable a workflow's frozen tool sequence.
+"""Playbook tools: write, read, decline, and disable a workflow's frozen sequence.
 
 A workflow keeps at most one playbook. There is no edit path and no version
 history, because the agent revises by writing the whole document again, so a
@@ -143,6 +143,33 @@ async def read_playbook(
 
 
 @tool
+async def decline_playbook(
+    config: RunnableConfig,  # noqa: ARG001 -- LangGraph injects config into every tool
+    workflow_id: Annotated[str, "The workflow you decided not to freeze."],
+    reason: Annotated[
+        str,
+        "Why this run's SEQUENCE OF CALLS would not hold tomorrow. Content that "
+        "changes per run is not a reason; only a changing call order is.",
+    ],
+) -> dict[str, Any]:
+    """
+    Record that this run's sequence is not worth freezing as a playbook.
+
+    Calling this is how you say no: a run asked to decide must end by calling
+    exactly one of write_playbook or decline_playbook, so a missing decision is
+    visible instead of looking identical to a considered no. Declining changes
+    nothing about the workflow; the question is simply asked again on a later
+    run, with your reason on record.
+    """
+    log.set(tool={"name": "decline_playbook", "action": "decline"}, workflow_id=workflow_id)
+    log.set_ns("playbook", declined=True, decline_reason=reason)
+    return success_response(
+        {"declined": True},
+        "Noted. This workflow keeps reasoning out every run for now.",
+    )
+
+
+@tool
 async def disable_playbook(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The workflow that should go back to reasoning each run."],
@@ -173,4 +200,4 @@ async def disable_playbook(
         return error_response("disable_failed", str(e))
 
 
-tools = [write_playbook, read_playbook, disable_playbook]
+tools = [write_playbook, read_playbook, decline_playbook, disable_playbook]

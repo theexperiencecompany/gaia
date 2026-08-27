@@ -16,7 +16,12 @@ from pydantic import ValidationError
 import pytest
 import yaml
 
-from app.agents.tools.playbook_tools import disable_playbook, read_playbook, write_playbook
+from app.agents.tools.playbook_tools import (
+    decline_playbook,
+    disable_playbook,
+    read_playbook,
+    write_playbook,
+)
 from app.models.playbook_models import (
     PlaybookAsk,
     PlaybookBody,
@@ -322,6 +327,35 @@ class TestReadPlaybook:
         assert result["data"]["yaml"] == OLD_YAML
         assert result["data"]["last_run_used_it"] is True
         assert result["data"]["last_run_status"] == "success"
+
+
+@pytest.mark.unit
+class TestDeclinePlaybook:
+    async def test_declining_records_the_reason_and_changes_nothing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Declining is a decision on record, never a mutation.
+
+        The check requires every asked run to end by calling exactly one of
+        write_playbook or decline_playbook. The decline must leave the store
+        untouched (a later run gets asked again) and carry its reason onto the
+        wide event, which is the only place a repeated decline can be diagnosed.
+        """
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            result = await decline_playbook.ainvoke(
+                {"workflow_id": WORKFLOW_ID, "reason": "the call order depends on the inbox"},
+                config=_config(),
+            )
+
+        assert result["success"] is True
+        assert result["data"] == {"declined": True}
+        assert store.documents == {}, "a decline must never write or delete anything"
+        log.set_ns.assert_called_once_with(
+            "playbook", declined=True, decline_reason="the call order depends on the inbox"
+        )
 
 
 @pytest.mark.unit

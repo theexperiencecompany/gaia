@@ -22,11 +22,11 @@ Work through these five for yourself, against the calls you actually made. This 
 2. Which args are fixed on every run, and what does each of the others become? The placeholder vocabulary is: $now, $today, $now + 1d; $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>; $ask.<name>.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
 4. What did you have to write or judge from content, rather than copy straight out of a result? Each of those becomes an $ask.
-5. Would this exact order of calls work tomorrow, unchanged? Answer no if the order depended on what you found, if you reacted to a result mid-run, or if a step only made sense given today's data.
+5. Would this exact ORDER OF CALLS work tomorrow, unchanged? Judge the sequence, not the content: results and the words you write from them are SUPPOSED to differ every run, and that is what synthesize and $ask exist for, so changing data is never by itself a reason to answer no. Answer no only if the sequence itself would differ: the order depended on what you found, you reacted to a result by choosing different calls mid-run, or a step only made sense given today's data.
 
 If 5 is yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, a synthesize brief, and an ask entry for each thing you had to write. A step is EITHER a tool call OR a handoff carrying the steps that subagent ran. Use the real tool names and argument names you actually called, since they are checked against the live tools and a playbook naming a tool that does not exist is refused.
 
-If 5 is no, call nothing.
+If 5 is no, call decline_playbook with the reason. You MUST end this run by calling exactly one of write_playbook or decline_playbook: staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Either way, keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not list your answers, do not mention playbooks or freezing or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""

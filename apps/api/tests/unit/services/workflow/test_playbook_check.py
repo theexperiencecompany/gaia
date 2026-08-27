@@ -125,11 +125,15 @@ def test_the_brief_is_unchanged_when_there_is_no_check():
     assert "playbook_check" not in brief
 
 
-def test_the_check_names_write_playbook_so_the_executor_can_act_on_it():
+def test_the_check_names_both_decision_tools_so_the_executor_can_act():
     # Regression: the block first shipped into comms narration, which binds only
     # call_executor/cancel_executor/memory. Naming the tool is what makes the
     # brief actionable, and the executor is the only tier that has it.
     assert "write_playbook" in PLAYBOOK_CHECK_BRIEF
+    # A decision is mandatory now: silence used to be how "no" was expressed,
+    # which made a model lapse indistinguishable from a considered decline.
+    assert "decline_playbook" in PLAYBOOK_CHECK_BRIEF
+    assert "exactly one of" in PLAYBOOK_CHECK_BRIEF
 
 
 def test_write_playbook_is_statically_bound_to_the_executor():
@@ -152,6 +156,7 @@ def test_write_playbook_is_statically_bound_to_the_executor():
     executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
 
     assert '"write_playbook"' in executor_block
+    assert '"decline_playbook"' in executor_block
 
 
 def test_the_tools_own_schema_carries_the_step_shape():
