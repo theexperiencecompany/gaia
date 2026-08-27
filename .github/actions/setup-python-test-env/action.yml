@@ -73,8 +73,23 @@ runs:
     # Container boot (image pull on a cold daemon, then 10-30s of Postgres /
     # Mongo / RabbitMQ / Chroma readiness) is pure waiting, and uv sync is
     # mostly I/O — they overlap. Started here, joined after the sync.
-    - name: Start service containers (background)
-      if: inputs.services == 'true'
+    # Self-hosted: ONE persistent set of service containers per box, and this
+    # job gets its own namespace (Postgres database, Redis DB stripe, Mongo
+    # database, Chroma collection suffix, RabbitMQ vhost) keyed by RUNNER_INDEX.
+    # Measured: prepare 1s, reset 2s, versus 20-45s to boot five containers per
+    # job and ~0.6 GB of RAM instead of ~15 GB for six sets. The memory suite
+    # ran at identical speed against it. GitHub-hosted runners are ephemeral
+    # and keep the per-job containers below.
+    - name: Prepare shared services namespace (self-hosted)
+      if: inputs.services == 'true' && runner.environment == 'self-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        bash scripts/ci/shared-test-services.sh up
+        bash scripts/ci/shared-test-services.sh prepare "${RUNNER_INDEX:-0}"
+
+    - name: Start service containers (background, GitHub-hosted)
+      if: inputs.services == 'true' && runner.environment != 'self-hosted'
       shell: bash
       run: |
         set -euo pipefail
@@ -90,8 +105,8 @@ runs:
       # the same audited code as every other install path.
       run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
 
-    - name: Wait for service containers
-      if: inputs.services == 'true'
+    - name: Wait for service containers (GitHub-hosted)
+      if: inputs.services == 'true' && runner.environment != 'self-hosted'
       shell: bash
       run: |
         set -euo pipefail

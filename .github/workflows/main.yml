@@ -224,7 +224,11 @@ jobs:
         if: always()
         run: |
           bash scripts/ci/stop-embedding-sidecar.sh
-          bash scripts/ci/stop-test-services.sh
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            bash scripts/ci/shared-test-services.sh reset "${RUNNER_INDEX:-0}"
+          else
+            bash scripts/ci/stop-test-services.sh
+          fi
 
   test-fast:
     needs: [select-runner, detect]
@@ -401,7 +405,11 @@ jobs:
         if: always()
         run: |
           bash scripts/ci/stop-embedding-sidecar.sh
-          bash scripts/ci/stop-test-services.sh
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            bash scripts/ci/shared-test-services.sh reset "${RUNNER_INDEX:-0}"
+          else
+            bash scripts/ci/stop-test-services.sh
+          fi
 
   quality-gate:
     name: quality-gate

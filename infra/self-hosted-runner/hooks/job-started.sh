@@ -24,6 +24,9 @@ if [ -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" ]; then
   kill "$pid" 2>/dev/null && echo "killed leaked embedding sidecar (pid $pid)"
   rm -f "/tmp/gaia-embedding-sidecar-${IDX}.pid"
 fi
+# Shared-services namespace left by an interrupted job.
+S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
+[ -x "$S" ] && bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
 # Stale per-index env file so a new job cannot read old ports.
 rm -f "/tmp/gaia-test-services-${IDX}.env"
 # Report what the job is starting with — the numbers that decide parallelism.

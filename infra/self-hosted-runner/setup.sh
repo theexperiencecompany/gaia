@@ -374,6 +374,18 @@ BKCONF
   fi
 fi
 
+# Shared test-service containers (scripts/ci/shared-test-services.sh): one
+# persistent set per box with --restart unless-stopped; each job takes a
+# namespace by RUNNER_INDEX. Installed beside the hooks so they can reset a
+# namespace without a checkout.
+SHARED_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/ci/shared-test-services.sh"
+if [[ -f "$SHARED_SRC" ]]; then
+  install -m 0755 "$SHARED_SRC" "${LOCAL_CACHE}/shared-test-services.sh"
+  bash "${LOCAL_CACHE}/shared-test-services.sh" up > /dev/null 2>&1 \
+    && echo "[setup] Shared test services up" \
+    || echo "::warning::shared test services failed to start — jobs will fail at prepare"
+fi
+
 # Nightly cache prune as a user timer, so the persistent caches that make the
 # box fast stay size-bounded without anyone remembering to run anything.
 # prune-cache.sh is copied beside the runners so the timer does not depend on
@@ -389,7 +401,7 @@ Description=Prune the home runner's persistent CI caches to their size budgets
 Type=oneshot
 Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
 Environment=PATH=${RUNNER_PATH}
-ExecStart=/usr/bin/env bash ${LOCAL_CACHE}/prune-cache.sh --apply
+ExecStart=/usr/bin/env bash -c '${LOCAL_CACHE}/prune-cache.sh --apply; ${LOCAL_CACHE}/shared-test-services.sh janitor'
 UNIT
   cat > "$UNIT_DIR/gaia-ci-prune.timer" <<'UNIT'
 [Unit]
