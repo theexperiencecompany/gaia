@@ -41,6 +41,7 @@ from app.schemas.browser import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import BrowserConcurrencyLimit, BrowserUnavailableError
+from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerprint_seed
 from app.services.browser.handoff import await_handoff, create_pending_handoff
 from app.services.browser.llm import build_browser_llm, resolve_use_vision
 from app.services.browser.runner import BrowserTaskRunner
@@ -258,6 +259,10 @@ async def browser_task(
         log.warning(f"{LogTag.BROWSER} Browser LLM unavailable", error_type=type(exc).__name__)
         return f"I can't use the browser right now: {exc}"
 
+    # Pin this run's canvas/audio fingerprint to the user, so the same person
+    # always presents the same device rather than a new one per task.
+    seed_token = set_fingerprint_seed(user_id)
+
     full_task = task if not start_url else f"{task}\n\nStart at: {start_url}"
     use_vision = await resolve_use_vision()
 
@@ -373,3 +378,5 @@ async def browser_task(
             )
         )
         return f"I couldn't start the browser: {exc}"
+    finally:
+        reset_fingerprint_seed(seed_token)

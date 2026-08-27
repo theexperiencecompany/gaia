@@ -21,7 +21,8 @@ or `CDPSession` shape moves.
 
 from browser_use.browser.session import BrowserSession, CDPSession
 
-from app.browser_host.stealth import STEALTH_INIT_SCRIPT
+from app.browser_host.stealth import build_stealth_script
+from app.services.browser.fingerprint import current_fingerprint_seed
 from shared.py.wide_events import log
 
 _original_get_or_create_cdp_session = BrowserSession.get_or_create_cdp_session
@@ -43,7 +44,10 @@ async def _get_or_create_cdp_session(
         injected.add(cdp_session.target_id)
         try:
             await cdp_session.cdp_client.send.Page.addScriptToEvaluateOnNewDocument(
-                params={"source": STEALTH_INIT_SCRIPT, "runImmediately": True},
+                params={
+                    "source": build_stealth_script(current_fingerprint_seed()),
+                    "runImmediately": True,
+                },
                 session_id=cdp_session.session_id,
             )
         except Exception as exc:
