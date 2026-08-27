@@ -16,6 +16,7 @@ import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
 // ── Animation config (matches LoadingIndicator) ─────────────────────────────
@@ -109,6 +110,12 @@ function skillToolLabel(call: ToolCallEntry): string | null {
     : null;
 }
 
+// Strips separators so two labels can be compared for redundancy ("retrieve_tools"
+// vs "Retrieve tools"). Module scope keeps its identity stable across renders.
+function normalizeLabel(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function ToolCallRow({
   call,
   isLast,
@@ -157,9 +164,8 @@ function ToolCallRow({
   // Hide the secondary when it adds nothing — e.g. "retrieve_tools" under
   // "Retrieve tools". Compares with separators stripped so a tool name only
   // shows when it genuinely differs from the primary label.
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const normPrimary = normalize(primaryLabel);
-  const normSecondary = normalize(secondaryLabel);
+  const normPrimary = normalizeLabel(primaryLabel);
+  const normSecondary = normalizeLabel(secondaryLabel);
   const hasCategoryText =
     secondaryLabel.length > 0 &&
     normSecondary.length > 0 &&
@@ -236,9 +242,10 @@ function ToolCallRow({
         <AnimatePresence>
           {expanded && hasDetails && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -309,9 +316,10 @@ function ThinkingStepRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -400,6 +408,11 @@ export function SubagentRow({
   const visibleSteps = group.tool_calls.filter(
     (tc) => tc.tool_name !== "spawn_subagent",
   );
+  // One stable React key per step — derived from stream-stable structure
+  // (tool_call_id, else a slot anchored to the nearest preceding identified
+  // sibling), never payload content, so a growing reasoning delta keeps its
+  // row's `expanded` state across stream frames.
+  const stepKeys = deriveStepKeys(group.subagent_id, visibleSteps);
   // One of this subagent's steps is blocked on approval — the header shows the
   // amber marker instead of the neutral spinner so the pause reads as
   // intentional, not a hang.
@@ -467,7 +480,7 @@ export function SubagentRow({
                 <div className="space-y-0">
                   {visibleSteps.map((tc, tIdx) => (
                     <StepRow
-                      key={`${group.subagent_id}-live-${tc.tool_call_id || tIdx}`}
+                      key={stepKeys[tIdx]}
                       call={tc}
                       isLast={tIdx === visibleSteps.length - 1}
                       getIconUrl={getIconUrl}
@@ -528,9 +541,10 @@ export function SubagentRow({
         <AnimatePresence>
           {expanded && (
             <m.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
+              layout
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={expandTransition}
               className="overflow-hidden"
             >
@@ -548,7 +562,7 @@ export function SubagentRow({
                   <div className="space-y-0">
                     {visibleSteps.map((tc, tIdx) => (
                       <StepRow
-                        key={`${group.subagent_id}-tc-${tc.tool_call_id || tIdx}`}
+                        key={stepKeys[tIdx]}
                         call={tc}
                         isLast={
                           tIdx === visibleSteps.length - 1 &&

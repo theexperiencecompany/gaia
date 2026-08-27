@@ -12,7 +12,7 @@ import {
   Textarea,
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -48,7 +48,9 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
 
   // Use ref to always get latest callback (avoids stale closure in useModalForm)
   const onIntegrationCreatedRef = useRef(onIntegrationCreated);
-  onIntegrationCreatedRef.current = onIntegrationCreated;
+  useEffect(() => {
+    onIntegrationCreatedRef.current = onIntegrationCreated;
+  });
 
   const initialData = useMemo<MCPFormData>(
     () => ({

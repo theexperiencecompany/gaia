@@ -106,7 +106,7 @@ export default async function PersonasHubPage() {
           {heroPersona && (
             <Link
               href="/for/startup-founders"
-              className="group mb-4 flex flex-col gap-3 rounded-3xl bg-primary/10 p-6 transition-all hover:bg-primary/15"
+              className="group mb-4 flex flex-col gap-3 rounded-3xl bg-primary/10 p-6 transition-colors hover:bg-primary/15"
             >
               <div className="flex items-center gap-3">
                 <h2 className="text-2xl font-semibold text-primary">
@@ -129,7 +129,7 @@ export default async function PersonasHubPage() {
               <Link
                 key={persona.slug}
                 href={`/for/${persona.slug}`}
-                className="group flex flex-col gap-2 rounded-3xl bg-primary/10 p-5 transition-all hover:bg-primary/15"
+                className="group flex flex-col gap-2 rounded-3xl bg-primary/10 p-5 transition-colors hover:bg-primary/15"
               >
                 <h2 className="text-xl font-semibold text-primary transition-colors">
                   {persona.role}
@@ -157,7 +157,7 @@ export default async function PersonasHubPage() {
                 <Link
                   key={persona.slug}
                   href={`/for/${persona.slug}`}
-                  className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h2 className="text-base font-semibold text-white transition-colors group-hover:text-primary">
                     {persona.role}

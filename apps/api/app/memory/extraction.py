@@ -178,22 +178,30 @@ async def extract_memories(
     journal_section = (
         "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
     )
-    system_prompt = EXTRACTION_SYSTEM_PROMPT.format(user_name=user_name)
-    # The volatile context (today's date, the journal, the folder tree, the
-    # recently stored facts) rides in a TRAILING message, NOT inside the system
-    # prompt: the memory lane's cache is a byte-prefix cache, and with these
-    # churning inside the system prompt the prefix broke there and the whole
-    # (append-only) transcript re-sent uncached every turn — measured ~41% hit
-    # on the lane.
+    # The system prompt is deliberately user-agnostic: the user's name used to
+    # be formatted into it, so every user needed their own warm copy of the
+    # system+schema prefix and no user's traffic could warm another's
+    # (measured in production: 87% of extraction calls read zero cached
+    # tokens). One universal prompt is the only version an upstream has to
+    # hold; the name rides the volatile tail instead.
+    system_prompt = EXTRACTION_SYSTEM_PROMPT
+    # The volatile context (the user's name, today's date, the journal, the
+    # folder tree, the recently stored facts) rides in a TRAILING message, NOT
+    # inside the system prompt: the memory lane's cache is a byte-prefix
+    # cache, and with these churning inside the system prompt the prefix broke
+    # there and the whole (append-only) transcript re-sent uncached every turn
+    # — measured ~41% hit on the lane.
     #
     # WITHIN the tail, order is by churn rate, slowest first, because the tail
     # is over half of a real extraction call (measured live: the cached prefix
-    # stops at system+transcript, ~47%). The date is stable all day; the
-    # journal only APPENDS during a day; the folder tree gains a line rarely;
-    # the recent-facts window ROLLS on every ingestion and the hints are
-    # per-run. With the rolling window ahead of the journal, one new fact
-    # re-sent the whole journal on every extraction.
+    # stops at system+transcript, ~47%). The name never changes; the date is
+    # stable all day; the journal only APPENDS during a day; the folder tree
+    # gains a line rarely; the recent-facts window ROLLS on every ingestion
+    # and the hints are per-run. With the rolling window ahead of the journal,
+    # one new fact re-sent the whole journal on every extraction.
     volatile_context = (
+        f"The user in this transcript (`user:`) is {user_name}. "
+        "Write every fact using this real name.\n"
         f"Today is {current_date:%A, %d %B %Y}.\n"
         "## Today's journal so far (do NOT repeat these events, even reworded)\n"
         f"{journal_section}\n"

@@ -580,6 +580,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           platform: "telegram",
           platformUserId: userId,
           channelId: chatId.toString(),
+          isDm: ctx.chat?.type === "private",
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -887,6 +888,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       platform: "telegram",
       userId,
       channelId: chatId?.toString(),
+      isDm: !isGroup,
       profile,
 
       send: async (text: string): Promise<SentMessage> => {

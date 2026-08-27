@@ -70,7 +70,7 @@ function collectRelations(
   entityIds: Set<string>,
 ): RelationsByMemoryId {
   const memoryIds = new Set(
-    response.memories.map((memory) => memory.id).filter(Boolean),
+    response.memories.flatMap((memory) => (memory.id ? [memory.id] : [])),
   );
   const relationsByMemoryId: RelationsByMemoryId = new Map();
   const addRelation = (

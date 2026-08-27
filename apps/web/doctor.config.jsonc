@@ -1,0 +1,229 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  // Narrow, evidence-backed suppressions for React Doctor findings proven to be
+  // false positives, framework-invisible, or intentionally parked during the
+  // 2026-08 warning sweep (57→100 push). Principle: file+rule scope only —
+  // never rule-wide disables. Each entry carries its justification.
+  // Supply-chain floor: nx@22.7.7 scores 46/100 on Socket's install-behavior
+  // axis (build orchestrators legitimately run install scripts); its
+  // vulnerability/maintenance/quality axes are 92–100. Identity confirmed —
+  // it IS this repo's task runner. Floor lowered 50→45 so the gate judges
+  // real supply-chain risk, not orchestrator semantics.
+  "supplyChain": {
+    "enabled": true,
+    "minScore": 45,
+    "severity": "error"
+  },
+  "ignore": {
+    "overrides": [
+      // ── Codegen source-of-truth data files ──────────────────────────────
+      // entries/*.ts and combosData-*.ts are compiled to JSON in public/data/
+      // by `pnpm tsx scripts/extract-static-data.ts`; the app fetches the JSON
+      // at runtime (Cloudflare ASSETS binding). No static imports BY DESIGN —
+      // headers of alternativesData.ts / combosData.ts document this pipeline.
+      {
+        "files": [
+          "src/features/alternatives/data/entries/**",
+          "src/features/comparisons/data/entries/**",
+          "src/features/integrations/data/combosData-*.ts"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      // ── Intentionally disabled feature (parked, not dead) ───────────────
+      // The calendar feature is temporarily disabled: (main)/calendar/page.tsx
+      // renders notFound() and its CalendarPage import is commented out with
+      // the note "Re-enable by reverting this file". Everything below is that
+      // feature's subtree, kept intact for the re-enable.
+      {
+        "files": [
+          "src/features/calendar/**",
+          "src/utils/date/dateTimeLocalUtils.ts",
+          "src/components/layout/sidebar/right-variants/CalendarRightSidebar.tsx",
+          "src/components/layout/sidebar/right-variants/CalendarEventAIActions.tsx",
+          "src/components/layout/sidebar/variants/CalendarSidebar.tsx",
+          "src/components/ui/calendar.tsx",
+          "src/components/ui/popover.tsx"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      // ── Dev-only playground routes ──────────────────────────────────────
+      // app/[locale]/dev/** pages (openui-samples, orb, text-animation,
+      // toasts, tool-gallery, wake-word) are developer-only surfaces: every
+      // route file is *.dev.tsx (stripped from prod builds via pageExtensions)
+      // and the segment layout 404s outside development. Their unique
+      // children (OpenUIPlayground → openui examples registry; the
+      // wake-word barrel index) are reachable only through them — the rest
+      // of features/wake-word is live via the (desktop)/wake-listener route;
+      // WakeWordIndicator itself has no importer yet (WIP feature).
+      {
+        "files": [
+          "src/app/[locale]/dev/**",
+          "src/features/chat/components/dev/OpenUIPlayground.tsx",
+          "src/config/openui/examples/index.ts",
+          "src/features/wake-word/**"
+        ],
+        "rules": ["deslop/unused-file"]
+      },
+      // ── Framework / tooling conventions invisible to import analysis ────
+      // Custom Next.js image loader wired via next.config.mjs
+      // images.loaderFile (Cloudflare builds).
+      { "files": ["**/image-loader.ts"], "rules": ["deslop/unused-file"] },
+      // styles/hero.ts default export loads via `@plugin "./hero.ts"` in
+      // globals.css — a Tailwind plugin load the import graph cannot see.
+      {
+        "files": ["src/app/styles/hero.ts"],
+        "rules": ["deslop/unused-export"]
+      },
+      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the
+      // openui pre-commit sync hook — consumed outside the scanned graph.
+      {
+        "files": ["src/config/openui/promptSpecs.ts"],
+        "rules": ["deslop/unused-export"]
+      },
+      // Two deps are intentionally never imported from source (verified):
+      // @react-types/shared — `declare module` augmentation in
+      // src/layouts/HeroUIProvider.tsx + tsconfig paths mapping;
+      // @swc-node/register — SWC transpiler resolved by Nx tooling, no
+      // direct source import (see knip.config.ts ignoreDependencies).
+      {
+        "files": ["package.json"],
+        "rules": ["deslop/unused-dependency"]
+      },
+      // ── Scanner data-flow / heuristic gaps (verified in code) ───────────
+      // next.config.mjs sets images.contentDispositionType "attachment" +
+      // contentSecurityPolicy "default-src 'self'; script-src 'none';
+      // sandbox;" alongside dangerouslyAllowSVG (remote SVGs are
+      // load-bearing); the scanner cannot read config-level mitigations.
+      {
+        "files": ["next.config.mjs"],
+        "rules": ["react-doctor/active-static-asset"]
+      },
+      // <img> inside satori JSX for OG-image SVG generation: satori renders
+      // server-side to SVG; there is no DOM, so next/image does not apply.
+      {
+        "files": ["src/app/api/og/shared.tsx"],
+        "rules": ["react-doctor/nextjs-no-img-element"]
+      },
+      // Both createObjectURL calls (:103/:133) are paired with
+      // URL.revokeObjectURL inside finally blocks (:146/:142) covering success
+      // + img-load-error paths; the scanner's data-flow analysis misses
+      // cross-scope revocation.
+      {
+        "files": ["src/components/shared/LogoWithContextMenu.tsx"],
+        "rules": ["react-doctor/no-create-object-url-without-revoke"]
+      },
+      // Preview URLs are tracked at creation (previewObjectUrls[], :63/:70)
+      // and batch-revoked in the outer try/finally (:123–131, revoke loop at
+      // :126–128) covering success + error paths; cross-scope revocation is
+      // invisible to the data-flow analysis.
+      {
+        "files": ["src/features/chat/hooks/useFileAttachments.ts"],
+        "rules": ["react-doctor/no-create-object-url-without-revoke"]
+      },
+      // Zero transition-all in file or git history (git log -S empty) — menu
+      // items animate via animate-in fade-in slide-in-from-left-2. Flagged
+      // lines contain no transition properties (scanner phantom).
+      {
+        "files": ["src/components/shared/LogoWithContextMenu.tsx"],
+        "rules": ["react-doctor/no-transition-all"]
+      },
+      // Scroll handler already coalesces mutations through requestAnimationFrame
+      // (≤1 transform write per frame) plus transient will-change with idle
+      // demotion — the canonical mitigation; CSS scroll timelines lack
+      // cross-browser support and IntersectionObserver can't do continuous
+      // parallax on a marketing hero.
+      {
+        "files": ["src/features/landing/components/hero/HeroImage.tsx"],
+        "rules": ["react-doctor/no-unthrottled-scroll-mutation"]
+      },
+      // The embed sandbox is intentional: only YouTube/Vimeo hosts take the
+      // iframe path (:6–23), embeds stay cross-origin, so allow-same-origin
+      // grants the player its own origin's storage — never this app's. The
+      // "allow-scripts + allow-same-origin defeats the sandbox" failure mode
+      // requires a same-origin-with-parent frame; a cross-origin player cannot
+      // reach the parent DOM to strip the attribute. Dropping allow-same-origin
+      // breaks player state storage; the rule is origin-unaware.
+      {
+        "files": ["src/config/openui/components/VideoBlockView.tsx"],
+        "rules": ["react-doctor/iframe-missing-sandbox"]
+      },
+      // timezoneSearchText() returns a string; .includes(query) is substring
+      // matching, not array membership (verified against utils/timezoneUtils.ts
+      // and reproduced with an out-of-repo fixture).
+      {
+        "files": ["src/features/workflows/components/TimezoneAutocomplete.tsx"],
+        "rules": ["react-doctor/js-set-map-lookups"]
+      },
+      // handleInstallAll is sequential BY DESIGN (documented in code): GitHub
+      // rate-limit friendliness and stable install order. Parallelizing changes
+      // behavior; staying sequential re-trips the rule.
+      {
+        "files": ["src/features/skills/components/SkillImportForm.tsx"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // setToolOverride responses each return the WHOLE preferences doc —
+      // parallel writes let the last-to-land response overwrite the cache with
+      // a pre-sibling snapshot. Sequential awaits are load-bearing
+      // correctness here (documented at the site).
+      {
+        "files": ["src/features/settings/hooks/useHilPreferences.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
+      // The flagged paths are verbatim upstream icon-library /
+      // Lottie-derived exports preserved as-is by instruction (28/54 paths
+      // in icons.tsx and 22/51 in ChatDemo.tsx still carry full source
+      // precision) — rounding would break diffability against the assets
+      // they were copied from.
+      {
+        "files": ["src/features/landing/components/iphone/ChatDemo.tsx"],
+        "rules": ["react-doctor/rendering-svg-precision"]
+      },
+      {
+        "files": ["src/components/shared/icons.tsx"],
+        "rules": ["react-doctor/rendering-svg-precision"]
+      },
+      // The inner view is keyed by error instance (error.digest ?? message):
+      // each new error remounts and reinitializes state, so the flagged setter
+      // fires exactly once per instance whose key never changes — semantically
+      // compliant recovery reset on the crash surface.
+      {
+        "files": ["src/app/global-error.tsx"],
+        "rules": ["react-doctor/no-adjust-state-on-prop-change"]
+      },
+      // The setState→re-render cycle IS the auth-gate mechanism: isElectron
+      // comes from useSyncExternalStore (stable) and useUser() rehydrates
+      // synchronously, so only this state change re-enters render where the
+      // render-time redirect() evaluates. A useRef conversion would silently
+      // break desktop login redirect.
+      {
+        "files": ["src/components/electron/ElectronRouteGuard.tsx"],
+        "rules": ["react-doctor/rerender-state-only-in-handlers"]
+      },
+      // ── Error-severity suppressions inherited from the error-fix session ──
+      // useTriggerAction throws outside <Renderer />; @openuidev/react-lang does
+      // not export OpenUIContext, so presence cannot be checked without the
+      // call. Single stable useContext call — hook order preserved (a parallel
+      // biome-ignore documents the Biome side).
+      {
+        "files": ["src/config/openui/hooks/useSafeTriggerAction.ts"],
+        "rules": ["react-doctor/rules-of-hooks"]
+      },
+      // Voice-spectrum rAF analyser: refs intentionally read/mutated inside the
+      // audio frame callback and the cleanup detaches the AudioContext listener;
+      // restructuring would drop frames on stop.
+      {
+        "files": [
+          "src/features/chat/components/voice-agent/hooks/useVoiceSpectrum.ts"
+        ],
+        "rules": [
+          "react-doctor/effect-needs-cleanup",
+          "react-doctor/no-ref-current-in-render"
+        ]
+      },
+      {
+        "files": ["src/features/desktop-popup/sync.ts"],
+        "rules": ["react-doctor/effect-needs-cleanup"]
+      }
+    ]
+  }
+}

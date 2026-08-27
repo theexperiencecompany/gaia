@@ -28,5 +28,9 @@ export const mentionedIntegrationIds = (
       mentionable.map((i) => i.name),
     ),
   );
-  return mentionable.filter((i) => mentioned.has(i.name)).map((i) => i.id);
+  const ids: string[] = [];
+  for (const integration of mentionable) {
+    if (mentioned.has(integration.name)) ids.push(integration.id);
+  }
+  return ids;
 };

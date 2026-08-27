@@ -189,3 +189,9 @@ apps/api/scripts/sidecar_benchmark/results/
 .mutation-*/
 mutants/
 verify-logs/
+
+# Piolium security-scanner artifacts (CodeQL DBs, run transcripts)
+piolium/
+
+# Local agent-session tooling (untracked workspace scripts)
+.agents/gateway-adapter/

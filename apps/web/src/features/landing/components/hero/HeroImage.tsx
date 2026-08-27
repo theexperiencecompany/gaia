@@ -35,11 +35,15 @@ export default function HeroImage({
   const rafRef = useRef<number | null>(null);
 
   const [previousTime, setPreviousTime] = useState<TimeOfDay | null>(null);
-  const lastTimeRef = useRef<TimeOfDay>(timeOfDay);
+  const [lastTime, setLastTime] = useState<TimeOfDay>(timeOfDay);
 
-  if (timeOfDay !== lastTimeRef.current) {
-    setPreviousTime(lastTimeRef.current);
-    lastTimeRef.current = timeOfDay;
+  // Adjust state when the prop changes (the documented "adjusting state on prop
+  // change" pattern) so the crossfade can render the outgoing wallpaper while
+  // the new one animates in. Calling setState during render re-runs immediately
+  // before commit; a ref mutation here is unsafe (React can discard the render).
+  if (timeOfDay !== lastTime) {
+    setPreviousTime(lastTime);
+    setLastTime(timeOfDay);
   }
 
   const [shouldPreloadOthers, setShouldPreloadOthers] = useState(false);
@@ -49,11 +53,22 @@ export default function HeroImage({
   }, []);
 
   useEffect(() => {
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     const handleScroll = () => {
       if (rafRef.current !== null) return;
       rafRef.current = requestAnimationFrame(() => {
-        if (transformRef.current)
-          transformRef.current.style.transform = `translateY(${-(window.scrollY * parallaxSpeed)}px)`;
+        const el = transformRef.current;
+        if (!el) return;
+        // Promote the layer only while the parallax is actively moving; a
+        // permanent will-change pins GPU memory for the page's lifetime.
+        el.style.willChange = "transform";
+        el.style.transform = `translateY(${-(window.scrollY * parallaxSpeed)}px)`;
+        if (idleTimer !== null) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          if (transformRef.current) {
+            transformRef.current.style.willChange = "auto";
+          }
+        }, 150);
         rafRef.current = null;
       });
     };
@@ -61,6 +76,7 @@ export default function HeroImage({
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       window.removeEventListener("scroll", handleScroll);
+      if (idleTimer !== null) clearTimeout(idleTimer);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [parallaxSpeed]);
@@ -74,29 +90,25 @@ export default function HeroImage({
           aria-hidden="true"
           className="pointer-events-none fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
         >
-          {Object.entries(WALLPAPERS)
-            .filter(([t]) => t !== timeOfDay)
-            .map(([t, { webp }]) => (
-              <NextImage
-                key={t}
-                src={webp}
-                alt=""
-                width={1920}
-                height={1080}
-                sizes="100vw"
-                loading="eager"
-              />
-            ))}
+          {Object.entries(WALLPAPERS).flatMap(([t, { webp }]) =>
+            t === timeOfDay
+              ? []
+              : [
+                  <NextImage
+                    key={t}
+                    src={webp}
+                    alt=""
+                    width={1920}
+                    height={1080}
+                    sizes="100vw"
+                    loading="eager"
+                  />,
+                ],
+          )}
         </div>
       )}
 
-      <div
-        ref={transformRef}
-        style={{
-          willChange: "transform",
-        }}
-        className="absolute inset-0 h-full w-full"
-      >
+      <div ref={transformRef} className="absolute inset-0 h-full w-full">
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 

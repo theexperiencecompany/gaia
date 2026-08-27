@@ -41,7 +41,6 @@ import {
 } from "@gaia/shared/bots";
 import {
   ActionRowBuilder,
-  ActivityType,
   ButtonBuilder,
   ButtonStyle,
   type ChatInputCommandInteraction,
@@ -55,120 +54,7 @@ import {
   Partials,
 } from "discord.js";
 import { downloadDiscordAttachment, extractDiscordMedia } from "./media";
-
-// ---------------------------------------------------------------------------
-// Rotating presence statuses
-// ---------------------------------------------------------------------------
-
-// Discord renders the activity type itself: ActivityType.Listening shows as
-// "Listening to {name}" and ActivityType.Competing as "Competing in {name}".
-// So Listening/Competing names must NOT repeat that preposition, otherwise the
-// client shows "Listening to to …". Watching/Playing take the name verbatim.
-const ROTATING_STATUSES: { type: ActivityType; name: string }[] = [
-  { type: ActivityType.Watching, name: "over your goals" },
-  { type: ActivityType.Listening, name: "your inner procrastinator" },
-  { type: ActivityType.Playing, name: "personal assistant to legends" },
-  { type: ActivityType.Competing, name: "the productivity Olympics" },
-  { type: ActivityType.Watching, name: "your productivity soar" },
-  { type: ActivityType.Listening, name: "the sound of getting things done" },
-  { type: ActivityType.Playing, name: "life admin simulator" },
-  { type: ActivityType.Competing, name: "the rematch with your past self" },
-  { type: ActivityType.Watching, name: "for tasks worth automating" },
-  { type: ActivityType.Listening, name: "great ideas happen" },
-  { type: ActivityType.Playing, name: "the long game with you" },
-  { type: ActivityType.Competing, name: "the race for most helpful AI" },
-  { type: ActivityType.Watching, name: "your potential unfold" },
-  { type: ActivityType.Listening, name: "your todo list grow" },
-  { type: ActivityType.Playing, name: "chess with your calendar" },
-  { type: ActivityType.Competing, name: "the task completion marathon" },
-  { type: ActivityType.Watching, name: "the chaos become clarity" },
-  { type: ActivityType.Listening, name: "your ambitions" },
-  { type: ActivityType.Playing, name: "catch-up with your goals" },
-  { type: ActivityType.Watching, name: "your habits build momentum" },
-  { type: ActivityType.Listening, name: "your 3am ideas" },
-  { type: ActivityType.Playing, name: "scheduler extraordinaire" },
-  { type: ActivityType.Competing, name: "a rematch against yesterday's you" },
-  { type: ActivityType.Watching, name: "your dreams take shape" },
-  { type: ActivityType.Listening, name: "the rhythm of your workflow" },
-  { type: ActivityType.Playing, name: "productivity coach unlocked" },
-  { type: ActivityType.Watching, name: "out for your deadlines" },
-  { type: ActivityType.Listening, name: "your best ideas yet" },
-  { type: ActivityType.Playing, name: "your favorite AI companion" },
-  { type: ActivityType.Competing, name: "the best-assistant league" },
-  { type: ActivityType.Watching, name: "you crush it today" },
-  { type: ActivityType.Listening, name: "'I should write that down' moments" },
-  { type: ActivityType.Playing, name: "executive assistant" },
-  { type: ActivityType.Watching, name: "your workflow evolve" },
-  { type: ActivityType.Listening, name: "a todo list that never quits" },
-  { type: ActivityType.Playing, name: "the AI you didn't know you needed" },
-  { type: ActivityType.Watching, name: "your future unfold" },
-  { type: ActivityType.Listening, name: "your daily wins" },
-  { type: ActivityType.Playing, name: "personal concierge" },
-  { type: ActivityType.Competing, name: "the AI showdown (and winning)" },
-  { type: ActivityType.Watching, name: "every task you complete" },
-  { type: ActivityType.Listening, name: "the grind (it's paying off)" },
-  { type: ActivityType.Playing, name: "co-pilot to your ambitions" },
-  { type: ActivityType.Watching, name: "your back (and your calendar)" },
-  { type: ActivityType.Listening, name: "success stories (yours)" },
-  { type: ActivityType.Playing, name: "second brain for first-class minds" },
-  { type: ActivityType.Watching, name: "for shortcuts to suggest" },
-  { type: ActivityType.Listening, name: "the future you're building" },
-  { type: ActivityType.Playing, name: "AI companion to visionaries" },
-  { type: ActivityType.Watching, name: "you level up" },
-  { type: ActivityType.Listening, name: "creative sparks ignite" },
-  { type: ActivityType.Playing, name: "Swiss Army AI" },
-  { type: ActivityType.Competing, name: "the habit-building championship" },
-  { type: ActivityType.Watching, name: "your productivity metrics" },
-  { type: ActivityType.Listening, name: "plans become reality" },
-  { type: ActivityType.Playing, name: "assistant to the ambitious" },
-  { type: ActivityType.Watching, name: "you outpace expectations" },
-  { type: ActivityType.Listening, name: "ambitions become plans" },
-  { type: ActivityType.Playing, name: "the AI that actually remembers" },
-  { type: ActivityType.Watching, name: "for the next big breakthrough" },
-  { type: ActivityType.Listening, name: "the productivity beat" },
-  { type: ActivityType.Playing, name: "life optimizer" },
-  { type: ActivityType.Competing, name: "the race for your favorite app slot" },
-  { type: ActivityType.Watching, name: "you build good habits" },
-  { type: ActivityType.Listening, name: "ideas worth capturing" },
-  { type: ActivityType.Playing, name: "the kindest productivity nag" },
-  { type: ActivityType.Watching, name: "you turn chaos into clarity" },
-  { type: ActivityType.Listening, name: "your workflow's rhythm" },
-  { type: ActivityType.Playing, name: "your personal AI, always on" },
-  { type: ActivityType.Watching, name: "for things you might forget" },
-  { type: ActivityType.Listening, name: "for 'hey GAIA'" },
-  { type: ActivityType.Playing, name: "the long game (like you)" },
-  { type: ActivityType.Competing, name: "the focus championship" },
-  { type: ActivityType.Watching, name: "1,000 tasks at once" },
-  { type: ActivityType.Listening, name: "every whisper of an idea" },
-  { type: ActivityType.Playing, name: "digital chief of staff" },
-  { type: ActivityType.Watching, name: "deadlines approach (very calmly)" },
-  { type: ActivityType.Listening, name: "your calendar breathe" },
-  { type: ActivityType.Playing, name: "memory palace curator" },
-  { type: ActivityType.Competing, name: "the race to be most proactive" },
-  { type: ActivityType.Watching, name: "your goals get checked off" },
-  { type: ActivityType.Listening, name: "every great plan you make" },
-  { type: ActivityType.Playing, name: "task whisperer" },
-  { type: ActivityType.Watching, name: "you build something great" },
-  { type: ActivityType.Listening, name: "your procrastinator's excuses" },
-  { type: ActivityType.Playing, name: "your cognitive offloading device" },
-  { type: ActivityType.Competing, name: "the inbox zero marathon" },
-  { type: ActivityType.Watching, name: "the todo pile (it's growing)" },
-  { type: ActivityType.Listening, name: "your inner visionary" },
-  { type: ActivityType.Playing, name: "second brain, first priority" },
-  { type: ActivityType.Watching, name: "patterns in your day" },
-  { type: ActivityType.Listening, name: "the future being planned" },
-  { type: ActivityType.Playing, name: "accountability partner" },
-  { type: ActivityType.Competing, name: "the deep work tournament" },
-  { type: ActivityType.Watching, name: "you stay ahead of the curve" },
-  { type: ActivityType.Listening, name: "your morning intentions" },
-  { type: ActivityType.Playing, name: "the AI that has your back" },
-  { type: ActivityType.Watching, name: "every goal inch closer" },
-  { type: ActivityType.Listening, name: "tasks get done" },
-  { type: ActivityType.Playing, name: "your productivity operating system" },
-  { type: ActivityType.Watching, name: "over everything, so you can focus" },
-];
-
-const STATUS_ROTATION_INTERVAL_MS = 3 * 60 * 1000;
+import { ROTATING_STATUSES, STATUS_ROTATION_INTERVAL_MS } from "./statuses";
 
 /** Discord shows the typing indicator for ~10s; refresh just before it expires. */
 const TYPING_REFRESH_INTERVAL_MS = 8000;
@@ -430,6 +316,7 @@ export class DiscordAdapter extends BaseBotAdapter {
     const message = interaction.options.getString("message", true);
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
+    const isDm = !interaction.guild;
 
     await interaction.deferReply();
     let isFirstMessage = true;
@@ -438,7 +325,7 @@ export class DiscordAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "discord", platformUserId: userId, channelId },
+      { message, platform: "discord", platformUserId: userId, channelId, isDm },
       async (content: string) => {
         if (isFirstMessage) {
           await interaction.editReply({ content });
@@ -573,6 +460,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         platform: "discord",
         platformUserId: userId,
         channelId,
+        isDm: !interaction.guild,
       },
       async (text: string) => {
         replied = true;
@@ -715,6 +603,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: userId,
           channelId: message.channelId,
+          isDm: true,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -971,6 +860,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           platform: "discord",
           platformUserId: message.author.id,
           channelId: message.channelId,
+          isDm: !message.guild,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -1042,6 +932,7 @@ export class DiscordAdapter extends BaseBotAdapter {
       platform: "discord",
       userId: interaction.user.id,
       channelId: interaction.channelId,
+      isDm: !interaction.guild,
       profile: {
         username: interaction.user.username,
         displayName: interaction.user.globalName ?? interaction.user.username,

@@ -184,7 +184,13 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(client, channelId, userId, content);
+      await this.handleSlackStreaming(
+        client,
+        channelId,
+        userId,
+        content,
+        false,
+      );
     });
 
     // DM messages
@@ -195,7 +201,13 @@ export class SlackAdapter extends BaseBotAdapter {
       if (msg.channel_type !== "im") return;
       if (!msg.text || !msg.user || !msg.channel) return;
 
-      await this.handleSlackStreaming(client, msg.channel, msg.user, msg.text);
+      await this.handleSlackStreaming(
+        client,
+        msg.channel,
+        msg.user,
+        msg.text,
+        true,
+      );
     });
   }
 
@@ -307,7 +319,13 @@ export class SlackAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleSlackStreaming(client, channelId, userId, message);
+      await this.handleSlackStreaming(
+        client,
+        channelId,
+        userId,
+        message,
+        channelId.startsWith("D"),
+      );
     });
   }
 
@@ -322,6 +340,7 @@ export class SlackAdapter extends BaseBotAdapter {
     channelId: string,
     userId: string,
     message: string,
+    isDm: boolean,
   ): Promise<void> {
     const result = await client.chat.postMessage({
       channel: channelId,
@@ -357,7 +376,7 @@ export class SlackAdapter extends BaseBotAdapter {
 
     await handleStreamingChat(
       this.gaia,
-      { message, platform: "slack", platformUserId: userId, channelId },
+      { message, platform: "slack", platformUserId: userId, channelId, isDm },
       async (text: string) => {
         await client.chat.update({
           channel: channelId,
@@ -449,6 +468,7 @@ export class SlackAdapter extends BaseBotAdapter {
       platform: "slack",
       userId,
       channelId,
+      isDm: channelId.startsWith("D"),
       profile: userName ? { username: userName } : undefined,
 
       send: async (text: string): Promise<SentMessage> => {

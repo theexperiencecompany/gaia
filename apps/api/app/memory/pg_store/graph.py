@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.memory.pg_store._session import memory_session, rowcount
+from app.memory.pg_store.memories import _not_expired_clause
 from app.models.memory_db_models import (
     MemoryEntity,
     MemoryEntityLink,
@@ -277,14 +278,28 @@ async def get_graph(
 
 
 async def get_entities_by_type(user_id: str, entity_type: str) -> list[MemoryEntity]:
-    """A user's entities of one type (e.g. every person), alphabetical."""
+    """A user's entities of one type that still have a LIVE memory, alphabetical.
+
+    This is the entity register fed to the people.md rewrite, and "known
+    people" means people a live fact still mentions. Without the live join,
+    names whose every supporting memory is gone (forgotten, superseded,
+    expired) stayed in the register forever — public figures from one-off
+    lookups ended up listed in the relationship document as if they were
+    contacts.
+    """
     async with memory_session() as session:
         result = await session.execute(
             select(MemoryEntity)
+            .join(MemoryEntityLink, MemoryEntityLink.entity_id == MemoryEntity.id)
+            .join(MemoryRecord, MemoryRecord.id == MemoryEntityLink.memory_id)
             .where(
                 MemoryEntity.user_id == user_id,
                 MemoryEntity.entity_type == entity_type,
+                MemoryRecord.is_latest.is_(True),
+                MemoryRecord.is_forgotten.is_(False),
+                _not_expired_clause(),
             )
+            .distinct()
             .order_by(MemoryEntity.name)
         )
         return list(result.scalars().all())

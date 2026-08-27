@@ -36,6 +36,7 @@ export default function GeneratedImageSheet({
               fill={true}
               src={imageData.src}
               objectFit="contain"
+              sizes="(max-width: 640px) 100vw, 640px"
             />
           )}
         </div>

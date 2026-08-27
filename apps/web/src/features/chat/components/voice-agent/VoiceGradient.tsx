@@ -496,7 +496,9 @@ export function VoiceGradient({
   // stable. Stash in a ref so the draw loop always reads the latest values
   // without re-running init.
   const spectrumRef = useRef(spectrum);
-  spectrumRef.current = spectrum;
+  useEffect(() => {
+    spectrumRef.current = spectrum;
+  });
 
   // The draw loop polls pausedRef each frame and parks itself when true;
   // resumeRef (installed by initGL) restarts it on unpause.

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.7.0...mobile-v0.8.0) (2026-08-25)
+
+
+### Features
+
+* Extract PDF/DOCX/XLSX/PPTX/CSV locally via anydoc + pdf-inspector ([#890](https://github.com/theexperiencecompany/gaia/issues/890)) ([e6c71c4](https://github.com/theexperiencecompany/gaia/commit/e6c71c4285347c134a5db6857cb46926033e97c6))
+* free-tier usage caps + pro cost-based limits ([#855](https://github.com/theexperiencecompany/gaia/issues/855)) ([606b495](https://github.com/theexperiencecompany/gaia/commit/606b49520b735f00d6199673728a263f3ac48839))
+* **gmail:** inbox summary tool, body normalization, and agent docs ([#783](https://github.com/theexperiencecompany/gaia/issues/783)) ([0edf4a4](https://github.com/theexperiencecompany/gaia/commit/0edf4a4e9e705e337d52cb6502c184da4d3d1144))
+* **hil:** dynamic human-in-the-loop approvals for destructive tools ([#856](https://github.com/theexperiencecompany/gaia/issues/856)) ([f63540f](https://github.com/theexperiencecompany/gaia/commit/f63540fce41aae798e3ce681e6de3f26e5ece70e))
+* **mobile:** unified streaming tool chain with subagent + HIL visibility, card contract sweep ([#1098](https://github.com/theexperiencecompany/gaia/issues/1098)) ([0924ce2](https://github.com/theexperiencecompany/gaia/commit/0924ce2e77dfab5643e719e379cf7892de33240e))
+* **observability:** wide-event enforcement across all surfaces — evlog gates, Babel bots scanner, min-score rework, gate simplification ([#884](https://github.com/theexperiencecompany/gaia/issues/884)) ([5040dca](https://github.com/theexperiencecompany/gaia/commit/5040dca5373f11f28394d234469e4d1c3cd6fb45))
+
+
+### Bug Fixes
+
+* **api:** drop removed ast aliases so config schema dump works on Python 3.12+ ([#878](https://github.com/theexperiencecompany/gaia/issues/878)) ([beebc92](https://github.com/theexperiencecompany/gaia/commit/beebc92c7b97487dcbc8ff5004932c43b3e45281))
+* **api:** gracefully handle Composio NotFoundError for unconnected accounts ([#932](https://github.com/theexperiencecompany/gaia/issues/932)) ([4fa33a4](https://github.com/theexperiencecompany/gaia/commit/4fa33a4b425e91291509ea1fc09a8ca4cfbf8493))
+* **bots:** stop truncating replies and losing bubbles; one splitter for message breaks ([#1051](https://github.com/theexperiencecompany/gaia/issues/1051)) ([c542095](https://github.com/theexperiencecompany/gaia/commit/c5420959cecab7a55fdf7f7879aa0fd827189461))
+* **mobile:** chat streaming correctness, markdown parity, and conversation sync ([#1077](https://github.com/theexperiencecompany/gaia/issues/1077)) ([a4d1381](https://github.com/theexperiencecompany/gaia/commit/a4d13810025b7971b848cd4d4d8b4a050822cd1c))
+* **quality:** repair lint errors blocking the PR quality gate ([#870](https://github.com/theexperiencecompany/gaia/issues/870)) ([d4b5605](https://github.com/theexperiencecompany/gaia/commit/d4b56055eb6e3e938f2dd2e85ba36c28f7d2bdce))
+* **security:** remediate 192 of 196 Dependabot alerts ([#860](https://github.com/theexperiencecompany/gaia/issues/860)) ([9984705](https://github.com/theexperiencecompany/gaia/commit/99847059fee66f46c6a7f94cd3569047f4eec470))
+
 ## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.6.1...mobile-v0.7.0) (2026-07-03)
 
 

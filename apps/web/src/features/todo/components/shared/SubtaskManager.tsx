@@ -171,15 +171,16 @@ export default function SubtaskManager({
                 </div>
               ) : (
                 <>
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => handleStartEdit(subtask)}
                     className={cn(
-                      "flex-1 cursor-pointer text-sm text-zinc-200 select-none",
+                      "flex-1 cursor-pointer p-0 text-left text-sm text-zinc-200 select-none",
                       subtask.completed && "text-zinc-500 line-through",
                     )}
-                    onClick={() => handleStartEdit(subtask)}
                   >
                     {subtask.title}
-                  </span>
+                  </button>
                   <Button
                     size="sm"
                     variant="ghost"

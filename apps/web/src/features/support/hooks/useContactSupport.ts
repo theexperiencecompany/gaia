@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "@/lib/toast";
 
 import { type SupportRequest, supportApi } from "../api/supportApi";
@@ -24,52 +24,52 @@ export interface ContactSupportInitialValues {
 }
 
 export function useContactSupport(initialValues?: ContactSupportInitialValues) {
-  const [formData, setFormData] = useState<ContactFormData>({
-    type: initialValues?.type || "",
-    title: initialValues?.title || "",
-    description: initialValues?.description || "",
-    attachments: [],
-  });
+  // Only the user's edits are stored. The form itself is derived during
+  // render with `initialValues` as the source of truth, so a changed preset
+  // is reflected immediately without a syncing effect (and its extra render).
+  const [textEdits, setTextEdits] = useState<Partial<ContactFormData>>({});
+  const [attachments, setAttachments] = useState<File[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Reset form when initialValues change (e.g., when modal opens with different type)
-  useEffect(() => {
-    setFormData({
-      type: initialValues?.type || "",
-      title: initialValues?.title || "",
-      description: initialValues?.description || "",
-      attachments: [],
-    });
-  }, [initialValues?.type, initialValues?.title, initialValues?.description]);
+  // A new preset (fresh initialValues object) wipes edits + attachments —
+  // master reset the whole form on preset change; ESC/backdrop closes fire
+  // onOpenChange only, so the reset lives here, not in an effect.
+  const [lastInitialValues, setLastInitialValues] = useState(initialValues);
+  if (initialValues !== lastInitialValues) {
+    setLastInitialValues(initialValues);
+    setTextEdits({});
+    setAttachments([]);
+  }
 
-  const handleInputChange = (field: keyof ContactFormData, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const formData: ContactFormData = {
+    type: textEdits.type ?? initialValues?.type ?? "",
+    title: textEdits.title ?? initialValues?.title ?? "",
+    description: textEdits.description ?? initialValues?.description ?? "",
+    attachments,
+  };
+
+  const handleInputChange = (
+    field: "type" | "title" | "description",
+    value: string,
+  ) => {
+    setTextEdits((prev) => {
+      const next: Partial<ContactFormData> = { ...prev };
+      next[field] = value;
+      return next;
+    });
   };
 
   const handleFileChange = (files: File[]) => {
-    setFormData((prev) => ({
-      ...prev,
-      attachments: files,
-    }));
+    setAttachments(files);
   };
 
   const removeFile = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      attachments: prev.attachments.filter((_, i) => i !== index),
-    }));
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const resetForm = () => {
-    setFormData({
-      type: "",
-      title: "",
-      description: "",
-      attachments: [],
-    });
+    setTextEdits({});
+    setAttachments([]);
   };
 
   const validateForm = (): boolean => {

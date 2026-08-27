@@ -10,6 +10,7 @@ import math
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
+from freezegun import freeze_time as _freeze_time
 import pytest
 
 from app.constants.memory import (
@@ -43,12 +44,10 @@ from app.memory.retrieval import (
     _hydrate_candidates,
     _importance_boost,
     _in_category,
-    _min_max_normalize,
     _recall_cache_key,
     _recency_boost,
     _rerank_and_boost,
     _rrf_fuse,
-    _ScoredCandidate,
     _tokenize,
     invalidate_recall_cache,
     recall,
@@ -56,9 +55,16 @@ from app.memory.retrieval import (
     recall_transcripts,
 )
 from app.models.memory_db_models import MemoryRecord
-from app.models.memory_models import MemoryEntry
 
 USER = "507f1f77bcf86cd799439011"
+
+
+def freeze_time(*args, **kwargs):
+    """freeze_time that skips transformers — its module-restore walk trips on
+    the library's lazy attributes (same workaround as the worker lifecycle
+    tests)."""
+    kwargs.setdefault("ignore", ["transformers"])
+    return _freeze_time(*args, **kwargs)
 
 
 def make_row(
@@ -128,23 +134,49 @@ class TestRrfFuse:
 
 
 # ---------------------------------------------------------------------------
-# _min_max_normalize
+# _sigmoid
 # ---------------------------------------------------------------------------
 
 
-class TestMinMaxNormalize:
-    def test_maps_span_onto_unit_interval(self) -> None:
-        assert _min_max_normalize([-2.0, 0.0, 2.0]) == [0.0, 0.5, 1.0]
+class TestSigmoid:
+    # Replaced min-max normalization: the pinned invariant is now the stronger
+    # one — the mapping is absolute (a logit always maps to the same relevance
+    # regardless of what else is in the pool) and gap-preserving.
 
-    def test_degenerate_range_maps_every_score_to_one(self) -> None:
-        assert _min_max_normalize([3.0, 3.0, 3.0]) == [1.0, 1.0, 1.0]
+    def test_zero_logit_is_the_midpoint(self) -> None:
+        assert retrieval._sigmoid(0.0) == pytest.approx(0.5)
 
-    def test_single_score_maps_to_one(self) -> None:
-        assert _min_max_normalize([-7.25]) == [1.0]
+    def test_is_strictly_monotonic(self) -> None:
+        assert (
+            retrieval._sigmoid(-5.0)
+            < retrieval._sigmoid(-1.0)
+            < retrieval._sigmoid(0.0)
+            < retrieval._sigmoid(1.0)
+            < retrieval._sigmoid(5.0)
+        )
 
-    def test_negative_logits_are_ordered_not_clipped(self) -> None:
-        out = _min_max_normalize([-10.0, -5.0])
-        assert out == [0.0, 1.0]
+    def test_stays_within_the_unit_interval(self) -> None:
+        for logit in (-12.0, -3.0, 0.0, 3.0, 12.0):
+            assert 0.0 < retrieval._sigmoid(logit) < 1.0
+
+    def test_a_thin_raw_gap_stays_thin(self) -> None:
+        # Min-max would stretch 2.01 vs 2.00 to 1.0 vs 0.0; the sigmoid keeps
+        # near-identical logits at near-identical relevance.
+        assert retrieval._sigmoid(2.01) - retrieval._sigmoid(2.00) < 0.01
+
+    def test_is_symmetric_around_zero(self) -> None:
+        assert retrieval._sigmoid(3.0) + retrieval._sigmoid(-3.0) == pytest.approx(1.0)
+
+    def test_extreme_logits_saturate_without_overflow(self) -> None:
+        assert retrieval._sigmoid(1000.0) == pytest.approx(1.0)
+        assert retrieval._sigmoid(-1000.0) == pytest.approx(0.0)
+
+    def test_each_side_of_zero_matches_the_closed_form_exactly(self) -> None:
+        # The two stable branches are algebraically equal but not bit-equal
+        # (e.g. at ±0.03), so exact equality pins which closed form serves
+        # which side — this calibrated relevance feeds the blend verbatim.
+        assert retrieval._sigmoid(0.03) == 1.0 / (1.0 + math.exp(-0.03))
+        assert retrieval._sigmoid(-0.03) == math.exp(-0.03) / (1.0 + math.exp(-0.03))
 
 
 # ---------------------------------------------------------------------------
@@ -279,11 +311,30 @@ def test_elapsed_ms_is_non_negative_integer() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _entry(score: float | None, content: str = "c") -> MemoryEntry:
-    return MemoryEntry(id=str(uuid.uuid4()), content=content, relevance_score=score)
+def _cand(
+    base: float,
+    content: str = "c",
+    *,
+    relevance: float | None = None,
+    score: float | None = None,
+    confident: bool = False,
+) -> retrieval._ScoredCandidate:
+    return retrieval._ScoredCandidate(
+        row=make_row(content),
+        base=base,
+        relevance=base if relevance is None else relevance,
+        score=base if score is None else score,
+        confident=confident,
+    )
 
 
 class TestDropBelowRelevance:
+    # Survival reads the cross-encoder's calibrated ``relevance`` — never the
+    # blended ``base`` (its cosine leg floors every candidate high) and never
+    # the boosted ``score``. Confident candidates are exempt: the absolute
+    # cosine/logit/keyword signals are the escape hatch for query shapes the
+    # cross-encoder misjudges.
+
     def test_empty_input_returns_empty(self) -> None:
         assert _drop_below_relevance([]) == []
 
@@ -291,25 +342,51 @@ class TestDropBelowRelevance:
         top = 1.0
         keep = top * RELEVANCE_DROPOFF_RATIO  # exactly at the floor -> kept
         drop = top * RELEVANCE_DROPOFF_RATIO - 0.01
-        entries = [_entry(top, "top"), _entry(keep, "keep"), _entry(drop, "drop")]
-        kept = _drop_below_relevance(entries)
-        assert [entry.content for entry in kept] == ["top", "keep"]
+        scored = [_cand(top, "top"), _cand(keep, "keep"), _cand(drop, "drop")]
+        kept = _drop_below_relevance(scored)
+        assert [item.row.content for item in kept] == ["top", "keep"]
 
     def test_always_keeps_the_top_result(self) -> None:
-        entries = [_entry(0.001, "only")]
-        assert len(_drop_below_relevance(entries)) == 1
+        scored = [_cand(0.001, "only")]
+        assert len(_drop_below_relevance(scored)) == 1
 
-    def test_non_positive_top_score_disables_the_filter(self) -> None:
-        entries = [_entry(0.0, "a"), _entry(0.0, "b")]
-        assert len(_drop_below_relevance(entries)) == 2
+    def test_non_positive_top_relevance_disables_the_filter(self) -> None:
+        scored = [_cand(0.0, "a"), _cand(0.0, "b")]
+        assert len(_drop_below_relevance(scored)) == 2
 
-    def test_none_scores_are_treated_as_zero_and_dropped(self) -> None:
-        entries = [_entry(1.0, "top"), _entry(None, "unscored")]
-        assert [entry.content for entry in _drop_below_relevance(entries)] == ["top"]
+    def test_exactly_zero_top_relevance_disables_the_filter_for_negatives(self) -> None:
+        # Boundary: top == 0.0 must disable the filter (not just top < 0) —
+        # a floor of exactly 0.0 would silently drop a negative-relevance
+        # candidate instead of switching off.
+        scored = [_cand(0.0, "zero"), _cand(-0.5, "negative")]
+        assert len(_drop_below_relevance(scored)) == 2
 
-    def test_none_top_score_disables_the_filter(self) -> None:
-        entries = [_entry(None, "a"), _entry(0.9, "b")]
-        assert len(_drop_below_relevance(entries)) == 2
+    @pytest.mark.regression
+    def test_a_high_blended_base_cannot_save_below_floor_relevance(self) -> None:
+        """The incidental-sibling shape, with the real measured proportions:
+        the off-topic sibling kept 72% of the top's blended base (the
+        proportional cosine leg floors everyone high) while its calibrated
+        cross-encoder relevance ratio was 9%. Survival on base kept it; on
+        relevance it dies."""
+        scored = [
+            _cand(0.473, "birthday", relevance=0.122, confident=True),
+            _cand(0.341, "sibling", relevance=0.011, confident=False),
+        ]
+        assert [item.row.content for item in _drop_below_relevance(scored)] == ["birthday"]
+
+    def test_a_boosted_score_cannot_save_below_floor_relevance(self) -> None:
+        scored = [_cand(1.0, "top"), _cand(0.1, "marginal", score=2.0)]
+        assert [item.row.content for item in _drop_below_relevance(scored)] == ["top"]
+
+    def test_a_confident_candidate_is_never_dropped(self) -> None:
+        """The escape hatch: a keyword/cosine-anchored result the
+        cross-encoder hates still reaches the prompt (the blend exists for
+        ordering precisely because the cross-encoder misjudges some shapes)."""
+        scored = [_cand(1.0, "top"), _cand(0.01, "anchored", confident=True)]
+        assert [item.row.content for item in _drop_below_relevance(scored)] == [
+            "top",
+            "anchored",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -320,32 +397,69 @@ class TestDropBelowRelevance:
 class TestCapWeakResults:
     def test_confident_results_are_never_capped(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row(f"c{i}"), score=1.0 - i / 100, confident=True)
+            retrieval._ScoredCandidate(
+                row=make_row(f"c{i}"),
+                base=1.0 - i / 100,
+                relevance=1.0 - i / 100,
+                score=1.0 - i / 100,
+                confident=True,
+            )
             for i in range(MAX_WEAK_RESULTS + 5)
         ]
         assert len(_cap_weak_results(scored)) == MAX_WEAK_RESULTS + 5
 
     def test_weak_results_are_capped_at_the_limit(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row(f"w{i}"), score=1.0 - i / 100, confident=False)
+            retrieval._ScoredCandidate(
+                row=make_row(f"w{i}"),
+                base=1.0 - i / 100,
+                relevance=1.0 - i / 100,
+                score=1.0 - i / 100,
+                confident=False,
+            )
             for i in range(MAX_WEAK_RESULTS + 5)
         ]
         assert len(_cap_weak_results(scored)) == MAX_WEAK_RESULTS
 
+    def test_a_confident_result_after_the_weak_cap_is_still_kept(self) -> None:
+        """Hitting the weak cap must SKIP further weak results, never stop the
+        scan: a confident result ranked below the capped weak tail still
+        belongs in the prompt."""
+        scored = [
+            _cand(1.0 - i / 100, f"w{i}", confident=False) for i in range(MAX_WEAK_RESULTS + 1)
+        ] + [_cand(0.5, "anchored-last", confident=True)]
+
+        kept = _cap_weak_results(scored)
+
+        assert [row.content for row, _ in kept][-1] == "anchored-last"
+        assert len(kept) == MAX_WEAK_RESULTS + 1
+
     def test_weak_cap_does_not_consume_the_confident_budget(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row("w1"), score=0.9, confident=False),
-            _ScoredCandidate(row=make_row("s1"), score=0.8, confident=True),
-            _ScoredCandidate(row=make_row("w2"), score=0.7, confident=False),
-            _ScoredCandidate(row=make_row("s2"), score=0.6, confident=True),
+            retrieval._ScoredCandidate(
+                row=make_row("w1"), base=0.9, relevance=0.9, score=0.9, confident=False
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("s1"), base=0.8, relevance=0.8, score=0.8, confident=True
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("w2"), base=0.7, relevance=0.7, score=0.7, confident=False
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("s2"), base=0.6, relevance=0.6, score=0.6, confident=True
+            ),
         ]
         kept = _cap_weak_results(scored)
         assert [row.content for row, _ in kept] == ["w1", "s1", "w2", "s2"]
 
     def test_ranking_order_and_scores_survive_the_cap(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row("first"), score=0.9, confident=True),
-            _ScoredCandidate(row=make_row("second"), score=0.5, confident=True),
+            retrieval._ScoredCandidate(
+                row=make_row("first"), base=0.9, relevance=0.9, score=0.9, confident=True
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("second"), base=0.5, relevance=0.5, score=0.5, confident=True
+            ),
         ]
         assert _cap_weak_results(scored) == [
             (scored[0].row, 0.9),
@@ -592,6 +706,45 @@ class TestRerankAndBoost:
             scored = await _rerank_and_boost("q", [first, second], ann_similarity={}, fts_ids=set())
         assert scored[0].row.content == "first"
         assert scored[0].score > scored[1].score
+        # The fallback is the exact rank position 1 - index/total, on the same
+        # 0-1 scale as the cosine ratio it stands in for — a shifted scale
+        # (e.g. 2 - index/total) would hand FTS-only rows more retrieval
+        # relevance than a perfect cosine match.
+        sig = 1.0 / (1.0 + math.exp(-1.0))
+        assert scored[0].base == 0.6 * sig + 0.4 * (1.0 - 0 / 2)
+        assert scored[1].base == 0.6 * sig + 0.4 * (1.0 - 1 / 2)
+
+    async def test_base_blends_sigmoid_and_cosine_ratio_at_60_40(self) -> None:
+        # The pre-boost relevance contract, numerically:
+        #   base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine)
+        # Exact equality on purpose — the blend weights and the
+        # divide-by-the-pool's-best normalization are the recall contract.
+        best, other = make_row("best"), make_row("other")
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.25, -0.75])):
+            scored = await _rerank_and_boost(
+                "q",
+                [best, other],
+                ann_similarity={str(best.id): 0.8, str(other.id): 0.4},
+                fts_ids=set(),
+            )
+        by_content = {item.row.content: item for item in scored}
+        assert by_content["best"].base == 0.6 * (1.0 / (1.0 + math.exp(-1.25))) + 0.4 * (0.8 / 0.8)
+        # ``relevance`` is the sigmoid leg alone — it is what survival reads.
+        assert by_content["best"].relevance == 1.0 / (1.0 + math.exp(-1.25))
+        assert by_content["other"].relevance == math.exp(-0.75) / (1.0 + math.exp(-0.75))
+        assert by_content["other"].base == 0.6 * (
+            math.exp(-0.75) / (1.0 + math.exp(-0.75))
+        ) + 0.4 * (0.4 / 0.8)
+
+    async def test_a_zero_top_cosine_contributes_no_retrieval_signal(self) -> None:
+        # A degenerate pool whose best cosine is 0.0 must neither divide by it
+        # nor award free retrieval relevance: base is the sigmoid term alone.
+        row = make_row("flat")
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.0])):
+            scored = await _rerank_and_boost(
+                "q", [row], ann_similarity={str(row.id): 0.0}, fts_ids=set()
+            )
+        assert scored[0].base == 0.6 * (1.0 / (1.0 + math.exp(-1.0)))
 
     async def test_the_query_reaches_the_reranker_with_candidate_contents(self) -> None:
         rows = [make_row("alpha"), make_row("beta")]
@@ -731,9 +884,14 @@ class TestBuildEntries:
             ),
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
-            ),
+            ) as fetch_parents,
         ):
             entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content == "lives in Bengaluru"
 
     async def test_no_parent_lookup_when_nothing_superseded_anything(self) -> None:
@@ -763,6 +921,31 @@ class TestBuildEntries:
         ):
             entries = await _build_entries([(child, 0.9)])
         fetch.assert_not_awaited()
+        assert entries[0].previous_content is None
+
+    async def test_parent_expiring_exactly_now_is_already_expired(self) -> None:
+        # forget_after == now is the deletion boundary: deleted content must
+        # not ride back into the prompt for even one instant past its expiry.
+        now = datetime(2026, 8, 27, 12, 0, 0, tzinfo=UTC)
+        parent = make_row("expired at this instant", forget_after=now)
+        child = make_row(
+            "successor", parent_id=parent.id, relation_type=MemoryRelationType.UPDATES.value
+        )
+        with (
+            freeze_time(now),
+            patch.object(
+                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+            ),
+            patch.object(
+                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+            ) as fetch_parents,
+        ):
+            entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content is None
 
     async def test_missing_parent_row_leaves_previous_content_empty(self) -> None:
@@ -920,7 +1103,11 @@ class TestRecall:
         base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
         sibling = make_row("the sibling that answers the query")
         harness = _RecallHarness()
-        harness.rerank_scores = {sibling.content: 5.0}
+        # Base rows rerank very low, the sibling very high: under absolute
+        # scoring the sibling must come out on top (the old min-max assertion
+        # that it was the ONLY survivor pinned relative-deletion behavior).
+        harness.rerank_scores = {row.content: -9.0 for row in base}
+        harness.rerank_scores[sibling.content] = 5.0
         result = await _run_recall(
             harness,
             harness.patches(
@@ -935,7 +1122,7 @@ class TestRecall:
         assert sibling.content in harness.rerank_inputs[0], (
             "graph sibling never reached the reranker"
         )
-        assert [memory.content for memory in result.memories] == [sibling.content]
+        assert result.memories[0].content == sibling.content
 
     async def test_base_pool_is_still_capped_at_the_rerank_budget(self) -> None:
         base = [make_row(f"base fact {i}") for i in range(RERANK_CANDIDATES + 5)]
@@ -975,12 +1162,145 @@ class TestRecall:
         assert [memory.content for memory in result.memories] == [row.content]
 
 
+class TestRecallQualityRegressions:
+    """Audited recall-quality defects — each test failed before its fix."""
+
+    @pytest.mark.regression
+    async def test_thin_raw_gap_keeps_the_runner_up(self) -> None:
+        """A hair-thin raw gap between two candidates must not delete the second.
+
+        Min-max normalization forced the weaker of two candidates to exactly
+        0.0 regardless of the absolute gap (cosine 0.72 vs 0.71 became 1.0 vs
+        0.0), so the relevance dropoff was guaranteed to cut the runner-up.
+        Absolute-preserving scaling keeps a thin gap thin: both facts survive.
+        """
+        dog = make_row("my dog is Rex")
+        allergy = make_row("Rex is allergic to chicken")
+        harness = _RecallHarness()
+        harness.rerank_scores = {dog.content: 2.01, allergy.content: 2.00}
+        result = await _run_recall(
+            harness,
+            harness.patches(
+                ann=[(str(dog.id), 0.72), (str(allergy.id), 0.71)],
+                fts=[],
+                rows=[dog, allergy],
+            ),
+            include_graph_expansion=False,
+        )
+        assert sorted(memory.content for memory in result.memories) == sorted(
+            [dog.content, allergy.content]
+        )
+
+    @pytest.mark.regression
+    async def test_boosts_decide_ordering_but_never_survival(self) -> None:
+        """A boosted marginal top hit must not push the real answer under the floor.
+
+        The dropoff floor was computed from the post-boost top score, so a
+        recent high-importance memory (boost up to 1.38x) taking the top slot
+        raised the floor above an un-boosted (0.8x) relevant answer. Survival
+        must be decided on pre-boost relevance; boosts only reorder.
+        """
+        now = datetime.now(UTC)
+        old_relevant = make_row(
+            "user is allergic to peanuts",
+            importance=0.0,
+            mentioned_at=now - timedelta(days=400),
+            created_at=now - timedelta(days=400),
+        )
+        boosted_marginal = make_row(
+            "user tried a new peanut butter brand", importance=1.0, mentioned_at=now
+        )
+        noise = make_row("user's favorite color is green", importance=0.5, mentioned_at=now)
+        harness = _RecallHarness()
+        harness.rerank_scores = {
+            old_relevant.content: 0.0,
+            boosted_marginal.content: 3.0,
+            noise.content: -5.0,
+        }
+        result = await _run_recall(
+            harness,
+            harness.patches(
+                ann=[
+                    (str(boosted_marginal.id), 0.80),
+                    (str(old_relevant.id), 0.55),
+                    (str(noise.id), 0.30),
+                ],
+                fts=[],
+                rows=[boosted_marginal, old_relevant, noise],
+            ),
+            include_graph_expansion=False,
+        )
+        contents = [memory.content for memory in result.memories]
+        # Boosts still order the list; the relevant-but-un-boosted answer
+        # survives; genuinely irrelevant noise is still cut.
+        assert contents == [boosted_marginal.content, old_relevant.content]
+
+    @pytest.mark.regression
+    async def test_forgotten_parent_content_is_not_injected(self) -> None:
+        """previous_content must not resurrect a version the user deleted."""
+        parent = make_row("lives at the old address", is_forgotten=True)
+        child = make_row(
+            "lives at the new address",
+            parent_id=parent.id,
+            relation_type=MemoryRelationType.UPDATES.value,
+        )
+        with (
+            patch.object(
+                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+            ),
+            patch.object(
+                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+            ) as fetch_parents,
+        ):
+            entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
+        assert entries[0].previous_content is None
+
+    async def test_expired_forget_after_parent_content_is_not_injected(self) -> None:
+        parent = make_row(
+            "temporary hotel address", forget_after=datetime.now(UTC) - timedelta(days=1)
+        )
+        child = make_row(
+            "permanent address",
+            parent_id=parent.id,
+            relation_type=MemoryRelationType.UPDATES.value,
+        )
+        with (
+            patch.object(
+                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+            ),
+            patch.object(
+                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+            ) as fetch_parents,
+        ):
+            entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
+        assert entries[0].previous_content is None
+
+
 # ---------------------------------------------------------------------------
 # recall_episodes / _episode_summary_search / recall_transcripts
 # ---------------------------------------------------------------------------
 
 
 class TestRecallEpisodes:
+    @pytest.fixture(autouse=True)
+    def _pin_local_today(self):
+        # recall_episodes anchors its window on the user's local day; pin it so
+        # these tests stay hermetic (no user_repository lookup).
+        with patch(
+            "app.memory.retrieval.local_today", AsyncMock(return_value=date_type(2026, 3, 15))
+        ):
+            yield
+
     async def test_entry_hits_outrank_summary_hits(self) -> None:
         entry_day, summary_day = date_type(2026, 3, 12), date_type(2025, 1, 1)
         with (
@@ -1047,6 +1367,20 @@ class TestRecallEpisodes:
             hits = await recall_episodes(USER, "entry", limit=2)
         assert len(hits) == 2
 
+    async def test_the_window_is_anchored_on_the_calling_users_local_day(self) -> None:
+        # The anchor must be THIS user's local today — another user's timezone
+        # (or a default one) shifts the window a day at timezone edges.
+        local_today = AsyncMock(return_value=date_type(2026, 3, 15))
+        with (
+            patch("app.memory.retrieval.local_today", local_today),
+            patch.object(
+                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=[])
+            ),
+            patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
+        ):
+            await recall_episodes(USER, "anything")
+        local_today.assert_awaited_once_with(USER)
+
     async def test_lookback_window_and_tokens_are_passed_to_the_store(self) -> None:
         from app.constants.memory import EPISODE_ENTRY_CANDIDATES, EPISODE_SEARCH_DAYS
 
@@ -1058,7 +1392,7 @@ class TestRecallEpisodes:
             await recall_episodes(USER, "Nadia's BIRTHDAY at 5")
         assert search.await_args.args == (USER, ["nadia's", "birthday"])
         assert search.await_args.kwargs["limit"] == EPISODE_ENTRY_CANDIDATES
-        expected_since = datetime.now(UTC).date() - timedelta(days=EPISODE_SEARCH_DAYS)
+        expected_since = date_type(2026, 3, 15) - timedelta(days=EPISODE_SEARCH_DAYS)
         assert search.await_args.kwargs["since"] == expected_since
 
 
@@ -1144,3 +1478,25 @@ class TestRecallTranscripts:
         ):
             await recall_transcripts(USER, "q", limit=11)
         assert query_chunks.await_args.args[2] == 11
+
+
+@pytest.mark.unit
+class TestEpisodeSearchWindowFollowsTheUsersTimezone:
+    async def test_the_lookback_window_starts_from_the_users_local_today(self) -> None:
+        """Journal days are keyed by the user's LOCAL date (see user_time.py);
+        a lookback computed from the UTC date starts one day early for a UTC+
+        user's evening, silently excluding the newest local day from 'since'.
+        The window must anchor on the same local day the write path files under.
+        """
+        local = date_type(2026, 8, 27)
+        search = AsyncMock(return_value=[])
+        with (
+            patch("app.memory.retrieval.local_today", AsyncMock(return_value=local)),
+            patch.object(retrieval.pg_store, "search_episode_entries", search),
+            patch.object(retrieval, "_episode_summary_search", AsyncMock(return_value=[])),
+        ):
+            await retrieval.recall_episodes("u1", "ran the release")
+
+        assert search.await_args.kwargs["since"] == local - timedelta(
+            days=retrieval.EPISODE_SEARCH_DAYS
+        )

@@ -12,13 +12,16 @@ from app.constants.memory import (
     DOCUMENT_PREVIEW_CHARS,
     MemoryDocType,
     MemoryEntityType,
+    MemoryKind,
     MemoryRelationType,
+    MemoryShelfLife,
     MemorySourceType,
 )
 from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.context import invalidate_core_context, invalidate_user_memory_caches
-from app.memory.embeddings import embed_query
+from app.memory.embeddings import embed_batch
 from app.memory.mappers import document_to_model, episode_to_model, row_to_entry
+from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import (
     MemoryDocument,
@@ -215,6 +218,14 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
     old = await _resolve_live_head(memory_id, user_id)
     memory_id = str(old.id)
 
+    # embed_batch, not embed_query: this vector is stored as the row's passage
+    # embedding, and mixing query-space vectors into the passage index
+    # measurably degrades ANN recall (see embeddings._embed_query_sync).
+    # Computed BEFORE the Postgres supersession (same shape as ingestion's
+    # _apply_reconciled) so an embedding failure aborts the whole correction
+    # instead of leaving the new live row permanently invisible to dense recall.
+    embedding = (await embed_batch([content]))[0]
+
     record = MemoryRecord(
         user_id=user_id,
         kind=old.kind,
@@ -233,7 +244,6 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
     entities = entities_by_memory.get(old.id, [])
     await pg_store.link_entities(row.id, [entity.id for entity in entities])
 
-    embedding = await embed_query(content)
     await chroma_store.set_memory_flags(memory_id, is_latest=False)
     await chroma_store.upsert_memories(
         [
@@ -251,9 +261,34 @@ async def update_memory(user_id: str, memory_id: str, content: str) -> MemoryEnt
             }
         ]
     )
+    await _reconsolidate_documents(user_id, row)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
     return row_to_entry(row, entities)
+
+
+async def _reconsolidate_documents(user_id: str, row: MemoryRecord) -> None:
+    """Schedule a rewrite of the core documents that quote this fact.
+
+    Without this, user.md (injected into every prompt) keeps asserting a
+    corrected or forgotten fact until an unrelated ingestion happens to touch
+    the same doc type.
+    """
+    from app.memory.consolidation import (  # noqa: PLC0415 -- breaks the consolidation <-> management import cycle
+        infer_doc_types,
+        schedule_consolidation,
+    )
+
+    fact = ExtractedFact(
+        content=row.content,
+        kind=MemoryKind(row.kind),
+        shelf_life=MemoryShelfLife(row.shelf_life),
+        category_path=row.category_path,
+        importance=row.importance,
+    )
+    doc_types = infer_doc_types([fact])
+    if doc_types:
+        await schedule_consolidation(user_id, doc_types)
 
 
 async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
@@ -276,6 +311,13 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
     if was_live:
         await cap_counter.adjust_live_count(user_id, -1)
     await chroma_store.set_memory_flags(memory_id, is_forgotten=True)
+    if before is not None:
+        if before.source_id:
+            # Forgetting a fact forfeits verbatim recall of the conversation
+            # that produced it: leaving the raw chunks searchable would keep
+            # the forgotten sentence quotable via search_conversations forever.
+            await chroma_store.delete_conversation_chunks(user_id, before.source_id)
+        await _reconsolidate_documents(user_id, before)
     await invalidate_user_memory_caches(user_id)
     schedule_memory_vfs_sync(user_id)
     return True
@@ -283,9 +325,9 @@ async def forget_memory(user_id: str, memory_id: str, reason: str) -> bool:
 
 async def delete_all(user_id: str) -> int:
     """Hard-wipe a user's entire memory. Returns deleted memory count."""
-    # Local import avoids a consolidation <-> management import cycle.
-    # Deferred import: breaks circular dependency between consolidation and management
-    from app.memory.consolidation import cancel_consolidation  # noqa: PLC0415 -- breaks
+    from app.memory.consolidation import (  # noqa: PLC0415 -- breaks the consolidation <-> management import cycle
+        cancel_consolidation,
+    )
 
     await cancel_consolidation(user_id)
     deleted = await pg_store.delete_all_memories(user_id)

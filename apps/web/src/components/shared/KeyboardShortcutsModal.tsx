@@ -2,11 +2,11 @@
 
 import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/modal";
 
+import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import {
   getShortcutsByCategory,
   type KeyboardShortcut,
-  ShortcutKeysDisplay,
-} from "@/config/keyboardShortcuts";
+} from "@/config/keyboardShortcutsData";
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;

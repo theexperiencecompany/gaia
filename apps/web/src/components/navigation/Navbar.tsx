@@ -4,7 +4,8 @@ import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import NumberFlow from "@number-flow/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChevronDown, Github, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,26 @@ const NAVBAR_ITEMS = [
   { type: "link", label: "Docs", href: "https://docs.heygaia.io" },
   { type: "dropdown", label: "Resources", menu: "resources" },
 ] as const;
+
+const emptySubscribe = () => () => {
+  /* no-op unsubscribe for server snapshot */
+};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
+
+// Function to control backdrop blur
+function toggleBackdrop(show: boolean) {
+  const backdrop = document.getElementById("navbar-backdrop");
+  if (backdrop) {
+    if (show) {
+      backdrop.style.opacity = "1";
+      backdrop.style.pointerEvents = "none";
+    } else {
+      backdrop.style.opacity = "0";
+      backdrop.style.pointerEvents = "none";
+    }
+  }
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -71,8 +92,13 @@ export default function Navbar() {
   // mismatch. useUser() reads a persisted (localStorage) store that rehydrates
   // synchronously on the client, so a returning logged-in user would otherwise
   // render a different CTA on the first client render than the server sent.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // `useSyncExternalStore` keeps the server/hydration snapshot false and flips
+  // to true on the client without an effect-driven extra render.
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    getClientSnapshot,
+    getServerSnapshot,
+  );
   const isAuthenticated = mounted ? !!user.email : false;
 
   // Handle scroll to change navbar appearance
@@ -85,20 +111,6 @@ export default function Navbar() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
-
-  // Function to control backdrop blur
-  const toggleBackdrop = (show: boolean) => {
-    const backdrop = document.getElementById("navbar-backdrop");
-    if (backdrop) {
-      if (show) {
-        backdrop.style.opacity = "1";
-        backdrop.style.pointerEvents = "none";
-      } else {
-        backdrop.style.opacity = "0";
-        backdrop.style.pointerEvents = "none";
-      }
-    }
-  };
 
   // Handle mouse leave for navbar container
   const handleNavbarMouseLeave = () => {
@@ -138,10 +150,26 @@ export default function Navbar() {
     return () => toggleBackdrop(false);
   }, [pathname]);
 
+  // Desktop nav links — one pass over the config, skipping the Home link.
+  const navLinks: ReactNode[] = [];
+  for (const link of appConfig.links.main) {
+    if (link.href === "/") continue;
+    navLinks.push(
+      <LinkButton
+        key={link.href}
+        size="sm"
+        className={`text-sm font-medium ${pathname === link.href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
+        href={link.href}
+        startContent={link.icon}
+        external={link.external}
+      >
+        {link.label}
+      </LinkButton>,
+    );
+  }
+
   return (
-    <div
-      className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
-    >
+    <div className="fixed top-0 left-0 z-50 w-full px-4 pt-4">
       <div
         ref={wrapperRef}
         className="relative mx-auto w-full max-w-7xl"
@@ -152,22 +180,7 @@ export default function Navbar() {
         >
           <LogoWithContextMenu className="px-2" />
 
-          <div className="hidden items-center gap-1 sm:flex">
-            {appConfig.links.main
-              .filter((link) => link.href !== "/") // Filter out Home link for desktop nav
-              .map(({ href, label, icon, external }) => (
-                <LinkButton
-                  key={href}
-                  size="sm"
-                  className={`text-sm font-medium ${pathname === href ? "text-primary" : "text-zinc-300 hover:text-zinc-100"}`}
-                  href={href}
-                  startContent={icon}
-                  external={external}
-                >
-                  {label}
-                </LinkButton>
-              ))}
-          </div>
+          <div className="hidden items-center gap-1 sm:flex">{navLinks}</div>
 
           {isMobileScreen ? (
             <MobileMenu />
@@ -212,7 +225,7 @@ export default function Navbar() {
                     }}
                   >
                     {hoveredItem === item.menu && (
-                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium!" />
                     )}
                     <div className="relative z-10 flex items-center gap-2">
                       <span>

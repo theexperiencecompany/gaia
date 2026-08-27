@@ -5,7 +5,6 @@ import {
   MessageScroller as MessageScrollerPrimitive,
   useMessageScroller,
   useMessageScrollerScrollable,
-  useMessageScrollerVisibility,
 } from "@shadcn/react/message-scroller";
 import type * as React from "react";
 
@@ -123,5 +122,4 @@ export {
   MessageScrollerViewport,
   useMessageScroller,
   useMessageScrollerScrollable,
-  useMessageScrollerVisibility,
 };

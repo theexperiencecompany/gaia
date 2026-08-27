@@ -630,6 +630,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           platform: "whatsapp",
           platformUserId: waId,
           channelId: waId,
+          isDm: true,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -853,6 +854,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       platform: "whatsapp",
       userId: waId,
       channelId: waId,
+      isDm: true,
 
       send: async (text: string): Promise<SentMessage> => {
         return this.sendWhatsAppText(waId, renderForPlatform(text, "whatsapp"));

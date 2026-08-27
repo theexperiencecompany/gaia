@@ -157,9 +157,13 @@ function measurePillRows(
     return { rowByPosition: [], clampHeight: null, hasMore: false };
   }
   const baseTop = children[0].offsetTop;
+  const rowTopSet = new Set<number>();
   const rowTops: number[] = [];
   for (const child of children) {
-    if (!rowTops.includes(child.offsetTop)) rowTops.push(child.offsetTop);
+    if (!rowTopSet.has(child.offsetTop)) {
+      rowTopSet.add(child.offsetTop);
+      rowTops.push(child.offsetTop);
+    }
   }
   rowTops.sort((a, b) => a - b);
   const rowByPosition = children.map((c) => rowTops.indexOf(c.offsetTop));

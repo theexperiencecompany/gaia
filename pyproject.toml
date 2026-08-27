@@ -49,6 +49,7 @@ exclude = [
   "*/site-packages/*",
   "*/node_modules/*",
   "*/.nx/*",
+  ".claude/skills/seo-geo/scripts/*",
 ]
 ignore_decorators = [
   "@field_validator",
@@ -106,12 +107,24 @@ extend-exclude = [
   ".dagger",
   "alembic",
   "migrations",
-  # Vendored agent skills: third-party scripts we install and run, not code we
-  # author. Linting them only yields findings we would be fixing in someone
-  # else's file, and reformatting them turns every upstream update into a
-  # conflict. Excluded from the Python scanners (also bandit and xenon below).
+  # Agent-skill bundles. .agents and .claude/skills are two copies of the same
+  # installed set — mostly upstream skills, plus a few authored here. Their
+  # scripts/ and templates/ are reference payloads an agent reads, never code
+  # this repo imports, builds or ships. Linting the upstream ones only yields
+  # findings we would be fixing in someone else's file, and reformatting them
+  # turns every skill update into a conflict — which already happened: the
+  # .claude/ copies of the seo-geo scripts differ from the .agents/ originals
+  # only by an applied ruff autofix. Also excluded from bandit and xenon below.
   ".agents",
+  ".claude/skills",
 ]
+
+# Honour the exclusions above even when a file is named explicitly on the
+# command line. Without this, pre-commit (which passes staged paths) and CI's
+# changed-files mode (`ruff check $FILES`) both bypass extend-exclude, so an
+# excluded file is linted by every surface except the whole-repo walk — which
+# is how vendored skill scripts came to be reformatted in place.
+force-exclude = true
 
 [tool.ruff.lint]
 # Strict, monorepo-wide rule set (matches the rules the user explicitly opted into).

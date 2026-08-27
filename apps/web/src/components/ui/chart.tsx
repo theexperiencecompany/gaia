@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
-import * as RechartsPrimitive from "recharts";
-
+import type * as RechartsPrimitive from "recharts";
+import { useRecharts } from "@/components/ui/chart-loader";
 import { cn } from "@/lib/utils";
+
+// recharts is heavy, so it is loaded on demand instead of shipping in the
+// initial bundle. Loading lives in ./chart-loader (shared with UsageView,
+// DayByDay and ChartDisplay so the whole app resolves one promise).
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
@@ -48,9 +52,11 @@ function ChartContainer({
 }) {
   const uniqueId = React.useId();
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
+  const recharts = useRecharts();
+  const contextValue = React.useMemo(() => ({ config }), [config]);
 
   return (
-    <ChartContext.Provider value={{ config }}>
+    <ChartContext.Provider value={contextValue}>
       <div
         data-slot="chart"
         data-chart={chartId}
@@ -61,9 +67,14 @@ function ChartContainer({
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        <RechartsPrimitive.ResponsiveContainer>
-          {children}
-        </RechartsPrimitive.ResponsiveContainer>
+        {recharts ? (
+          <recharts.ResponsiveContainer>
+            {children}
+          </recharts.ResponsiveContainer>
+        ) : (
+          // Placeholder reserving the box ResponsiveContainer fills (100%/100%).
+          <div className="size-full" data-slot="chart-placeholder" />
+        )}
       </div>
     </ChartContext.Provider>
   );
@@ -102,7 +113,97 @@ ${colorConfig
   );
 };
 
-const ChartTooltip = RechartsPrimitive.Tooltip;
+// Thin lazy forwarders that keep this file's public API while deferring the
+// recharts runtime. recharts identifies its chart children by `displayName`
+// (findAllByType compares display names), so each forwarder carries the
+// original component's name. They only ever render inside a ChartContainer,
+// which gates rendering on the module already being loaded.
+function ChartTooltip(
+  props: React.ComponentProps<typeof RechartsPrimitive.Tooltip>,
+) {
+  const Recharts = useRecharts();
+
+  if (!Recharts) {
+    return null;
+  }
+
+  return <Recharts.Tooltip {...props} />;
+}
+ChartTooltip.displayName = "Tooltip";
+
+function ChartLegend(
+  // Legend is a class component, so ComponentProps carries a JSX-level `ref`
+  // typed for ReactElement that cannot be re-spread onto it; these forwarders
+  // forward props only.
+  props: Omit<React.ComponentProps<typeof RechartsPrimitive.Legend>, "ref">,
+) {
+  const Recharts = useRecharts();
+
+  if (!Recharts) {
+    return null;
+  }
+
+  return <Recharts.Legend {...props} />;
+}
+ChartLegend.displayName = "Legend";
+
+type ChartTooltipContentProps = React.ComponentProps<
+  typeof RechartsPrimitive.Tooltip
+> &
+  React.ComponentProps<"div"> & {
+    hideLabel?: boolean;
+    hideIndicator?: boolean;
+    indicator?: "line" | "dot" | "dashed";
+    nameKey?: string;
+    labelKey?: string;
+  };
+
+// Renders the tooltip header. Kept as its own component so it is only built
+// when the tooltip actually renders, instead of via a useMemo that also ran
+// on renders that took the inactive-tooltip early return.
+function TooltipLabel({
+  hideLabel,
+  payload,
+  label,
+  labelFormatter,
+  labelClassName,
+  labelKey,
+  config,
+}: Pick<
+  ChartTooltipContentProps,
+  | "hideLabel"
+  | "payload"
+  | "label"
+  | "labelFormatter"
+  | "labelClassName"
+  | "labelKey"
+> & { config: ChartConfig }) {
+  if (hideLabel || !payload?.length) {
+    return null;
+  }
+
+  const [item] = payload;
+  const key = `${labelKey || item?.dataKey || item?.name || "value"}`;
+  const itemConfig = getPayloadConfigFromPayload(config, item, key);
+  const value =
+    !labelKey && typeof label === "string"
+      ? config[label as keyof typeof config]?.label || label
+      : itemConfig?.label;
+
+  if (labelFormatter) {
+    return (
+      <div className={cn("font-medium", labelClassName)}>
+        {labelFormatter(value, payload)}
+      </div>
+    );
+  }
+
+  if (!value) {
+    return null;
+  }
+
+  return <div className={cn("font-medium", labelClassName)}>{value}</div>;
+}
 
 function ChartTooltipContent({
   active,
@@ -118,57 +219,27 @@ function ChartTooltipContent({
   color,
   nameKey,
   labelKey,
-}: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-  React.ComponentProps<"div"> & {
-    hideLabel?: boolean;
-    hideIndicator?: boolean;
-    indicator?: "line" | "dot" | "dashed";
-    nameKey?: string;
-    labelKey?: string;
-  }) {
+}: ChartTooltipContentProps) {
   const { config } = useChart();
-
-  const tooltipLabel = React.useMemo(() => {
-    if (hideLabel || !payload?.length) {
-      return null;
-    }
-
-    const [item] = payload;
-    const key = `${labelKey || item?.dataKey || item?.name || "value"}`;
-    const itemConfig = getPayloadConfigFromPayload(config, item, key);
-    const value =
-      !labelKey && typeof label === "string"
-        ? config[label as keyof typeof config]?.label || label
-        : itemConfig?.label;
-
-    if (labelFormatter) {
-      return (
-        <div className={cn("font-medium", labelClassName)}>
-          {labelFormatter(value, payload)}
-        </div>
-      );
-    }
-
-    if (!value) {
-      return null;
-    }
-
-    return <div className={cn("font-medium", labelClassName)}>{value}</div>;
-  }, [
-    label,
-    labelFormatter,
-    payload,
-    hideLabel,
-    labelClassName,
-    config,
-    labelKey,
-  ]);
 
   if (!active || !payload?.length) {
     return null;
   }
 
   const nestLabel = payload.length === 1 && indicator !== "dot";
+
+  const renderTooltipLabel = (visible: boolean) =>
+    visible ? (
+      <TooltipLabel
+        hideLabel={hideLabel}
+        payload={payload}
+        label={label}
+        labelFormatter={labelFormatter}
+        labelClassName={labelClassName}
+        labelKey={labelKey}
+        config={config}
+      />
+    ) : null;
 
   return (
     <div
@@ -177,7 +248,7 @@ function ChartTooltipContent({
         className,
       )}
     >
-      {!nestLabel ? tooltipLabel : null}
+      {renderTooltipLabel(!nestLabel)}
       <div className="grid gap-1.5">
         {payload.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || "value"}`;
@@ -227,7 +298,7 @@ function ChartTooltipContent({
                     )}
                   >
                     <div className="grid gap-1.5">
-                      {nestLabel ? tooltipLabel : null}
+                      {renderTooltipLabel(nestLabel)}
                       <span className="text-zinc-400">
                         {itemConfig?.label || item.name}
                       </span>
@@ -247,8 +318,6 @@ function ChartTooltipContent({
     </div>
   );
 }
-
-const ChartLegend = RechartsPrimitive.Legend;
 
 function ChartLegendContent({
   className,
