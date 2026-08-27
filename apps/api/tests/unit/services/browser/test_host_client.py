@@ -367,6 +367,66 @@ class TestDeleteSession:
 
 
 # ---------------------------------------------------------------------------
+# touch_session
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestTouchSession:
+    async def test_success_posts_to_the_touch_endpoint(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", "k3")
+        resp = _mock_response(status_code=200, json_data={})
+        inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            await host_client.touch_session("sess-123")
+        assert cls_mock.call_args[1]["timeout"] == host_client._DEFAULT_TIMEOUT_SECONDS
+        assert cls_mock.call_args[1]["headers"] == {"X-Host-Key": "k3"}
+        inner.post.assert_awaited_once_with("/sessions/sess-123/touch")
+
+    async def test_http_error_raises_unavailable(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        inner = AsyncMock()
+        inner.post = AsyncMock(side_effect=httpx.ConnectError("down"))
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=inner)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        cls_mock = MagicMock(return_value=cm)
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserUnavailableError, match="Could not reach"):
+                await host_client.touch_session("s1")
+
+    async def test_server_error_raises_unavailable(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        err = _http_status_error(500, url="http://browser-host:8930/sessions/s1/touch")
+        resp = _mock_response(
+            status_code=500,
+            raise_for_status_side_effect=err,
+            url="http://browser-host:8930/sessions/s1/touch",
+        )
+        inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserUnavailableError, match="500"):
+                await host_client.touch_session("s1")
+
+    async def test_404_raises_unavailable(self, monkeypatch):
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_URL", "http://browser-host:8930")
+        monkeypatch.setattr(host_client.settings, "BROWSER_HOST_KEY", None)
+        err = _http_status_error(404, url="http://browser-host:8930/sessions/ghost/touch")
+        resp = _mock_response(
+            status_code=404,
+            raise_for_status_side_effect=err,
+            url="http://browser-host:8930/sessions/ghost/touch",
+        )
+        inner, cm, cls_mock = _patch_async_client(None, resp, verb="post")
+        with patch.object(host_client.httpx, "AsyncClient", cls_mock):
+            with pytest.raises(BrowserUnavailableError):
+                await host_client.touch_session("ghost")
+
+
+# ---------------------------------------------------------------------------
 # get_session
 # ---------------------------------------------------------------------------
 

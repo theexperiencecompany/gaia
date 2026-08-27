@@ -39,6 +39,7 @@ class _HostStub:
         self.start = AsyncMock()
         self.stop = AsyncMock()
         self.get = MagicMock(return_value=None)
+        self.touch = MagicMock()
 
 
 @pytest.fixture
@@ -85,6 +86,25 @@ def test_delete_unknown_session_404(client) -> None:
     host.dispose_context.side_effect = SessionNotFoundError()
     resp = client[0].delete("/sessions/ghost")
     assert resp.status_code == 404
+
+
+def test_touch_session_returns_200_and_touches_the_host(client) -> None:
+    _, host = client
+    host.get.return_value = SESSION
+    resp = client[0].post("/sessions/s1/touch")
+    assert resp.status_code == 200
+    assert resp.json() == {"session_id": "s1"}
+    host.get.assert_called_once_with("s1")
+    host.touch.assert_called_once_with("s1")
+
+
+def test_touch_unknown_session_404_and_never_touches(client) -> None:
+    _, host = client
+    host.get.return_value = None
+    resp = client[0].post("/sessions/ghost/touch")
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "session not found"}
+    host.touch.assert_not_called()
 
 
 def test_get_session_returns_info(client) -> None:

@@ -174,3 +174,24 @@ def test_render_live_view_page_differs_by_session_id():
     assert "sess-aaa" in page_a
     assert "sess-bbb" not in page_a
     assert "sess-bbb" in page_b
+
+
+@pytest.mark.unit
+def test_render_live_view_page_maps_pointer_input_via_per_frame_css_size():
+    # Regression: pointer math used to assume frame-bitmap pixels == CSS
+    # pixels, so takeover clicks landed short on a downscaled stream. The
+    # viewer must read the per-frame cssWidth/cssHeight and use a CDP
+    # modifiers bitmask for shift/ctrl/meta state.
+    page = live_view.render_live_view_page("x")
+
+    assert "cssWidth" in page
+    assert "toModifiers" in page
+
+
+@pytest.mark.unit
+def test_render_live_view_page_sends_carriage_return_on_enter_keydown():
+    # CDP only fires a key's default action (submit a form, insert a newline)
+    # when `text` is set; Enter must send "\r", not the literal key name.
+    page = live_view.render_live_view_page("x")
+
+    assert '"\\r"' in page

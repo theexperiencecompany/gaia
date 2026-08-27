@@ -1,5 +1,6 @@
 """Tests for browser_session lifecycle — including the registry-write gate."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -290,3 +291,47 @@ async def test_log_set_and_info_calls_on_create_and_release(
     messages = [message for message, _ in fake_log.info_calls]
     assert "[BROWSER] Browser session created" in messages
     assert "[BROWSER] Browser session released" in messages
+
+
+# ---------------------------------------------------------------------------
+# keep_session_alive — the handoff idle-clock keepalive
+# ---------------------------------------------------------------------------
+
+
+async def test_keep_session_alive_touches_the_session_each_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused handoff session gets no CDP/live-view traffic, so this loop is the
+    only thing resetting the host's idle clock — it must actually touch every
+    iteration, not just the first."""
+    sleep_mock = AsyncMock(side_effect=[None, None, asyncio.CancelledError()])
+    monkeypatch.setattr(session_mod.asyncio, "sleep", sleep_mock)
+    touch = AsyncMock()
+    monkeypatch.setattr(session_mod.host_client, "touch_session", touch)
+
+    with pytest.raises(asyncio.CancelledError):
+        await session_mod.keep_session_alive("sess-1")
+
+    assert touch.await_count == 2
+    touch.assert_awaited_with("sess-1")
+
+
+async def test_keep_session_alive_logs_a_failed_touch_and_keeps_looping(
+    monkeypatch: pytest.MonkeyPatch, fake_log: _FakeLog
+) -> None:
+    """A single failed touch must not break the loop -- the next iteration still
+    tries again, since the alternative is the host reaping the browser mid-handoff."""
+    sleep_mock = AsyncMock(side_effect=[None, None, asyncio.CancelledError()])
+    monkeypatch.setattr(session_mod.asyncio, "sleep", sleep_mock)
+    touch = AsyncMock(side_effect=[BrowserUnavailableError("host down"), None])
+    monkeypatch.setattr(session_mod.host_client, "touch_session", touch)
+
+    with pytest.raises(asyncio.CancelledError):
+        await session_mod.keep_session_alive("sess-1")
+
+    assert touch.await_count == 2
+    assert len(fake_log.warning_calls) == 1
+    message, kwargs = fake_log.warning_calls[0]
+    assert message == "[BROWSER] Browser handoff keepalive failed"
+    assert kwargs["error_type"] == "BrowserUnavailableError"
+    assert kwargs["browser"] == {"session_id": "sess-1", "operation": "handoff_keepalive"}

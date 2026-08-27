@@ -701,6 +701,7 @@ async def test_step_card_is_written_as_json_under_the_browser_event_key(
         "url": "https://x",
         "title": "Menu",
         "screenshot": "https://cdn/2.png",
+        "elapsed_ms": None,
     }
 
 
@@ -753,6 +754,75 @@ async def test_handoff_registers_emits_pending_then_resolution_and_returns_outco
             "status": "cancelled",
         },
     ]
+
+
+async def test_handoff_keepalive_is_cancelled_after_the_handoff_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused session gets no CDP/live-view traffic, so ``request_handoff``
+    spawns a keepalive to hold the host's idle clock open. Once the handoff
+    resolves, that keepalive must be cancelled -- otherwise it keeps touching a
+    session nobody is waiting on anymore."""
+    tasks: list[asyncio.Task[None]] = []
+
+    async def _fake_keep_alive(session_id: str) -> None:
+        await asyncio.Event().wait()  # runs until cancelled
+
+    def _spawn(coro: Any, **kwargs: Any) -> asyncio.Task[None]:
+        task = asyncio.create_task(coro)
+        if kwargs.get("name") == "browser_handoff_keepalive":
+            tasks.append(task)
+        return task
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(reason="verify"))
+        return _result(BrowserSessionStatus.COMPLETED, True, "done")
+
+    _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(tool_mod, "keep_session_alive", _fake_keep_alive)
+    monkeypatch.setattr(tool_mod, "spawn_background_task", _spawn)
+
+    await browser_task.ainvoke({"task": "x"}, config=UI_CONFIG)
+    await asyncio.sleep(0)
+
+    assert len(tasks) == 1
+    assert tasks[0].cancelled()
+
+
+async def test_handoff_keepalive_is_cancelled_when_await_handoff_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The keepalive must be cancelled on the failure path too -- a raised
+    ``await_handoff`` must not leak the keepalive task running forever."""
+    tasks: list[asyncio.Task[None]] = []
+
+    async def _fake_keep_alive(session_id: str) -> None:
+        await asyncio.Event().wait()
+
+    def _spawn(coro: Any, **kwargs: Any) -> asyncio.Task[None]:
+        task = asyncio.create_task(coro)
+        if kwargs.get("name") == "browser_handoff_keepalive":
+            tasks.append(task)
+        return task
+
+    async def _boom_await_handoff(*args: Any) -> HandoffOutcome:
+        raise RuntimeError("redis down")
+
+    async def body(h: Harness) -> BrowserResultSnapshot:
+        await h.request_handoff(HandoffRequest(reason="verify"))
+        return _result(BrowserSessionStatus.COMPLETED, True, "unreachable")
+
+    _install(monkeypatch, run_body=body)
+    monkeypatch.setattr(tool_mod, "keep_session_alive", _fake_keep_alive)
+    monkeypatch.setattr(tool_mod, "spawn_background_task", _spawn)
+    monkeypatch.setattr(tool_mod, "await_handoff", _boom_await_handoff)
+
+    with pytest.raises(RuntimeError, match="redis down"):
+        await browser_task.coroutine(config=UI_CONFIG, task="x")
+    await asyncio.sleep(0)
+
+    assert len(tasks) == 1
+    assert tasks[0].cancelled()
 
 
 async def test_each_handoff_gets_its_own_id(monkeypatch: pytest.MonkeyPatch) -> None:
