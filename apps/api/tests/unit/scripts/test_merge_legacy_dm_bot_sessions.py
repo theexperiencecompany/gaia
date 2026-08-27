@@ -11,12 +11,11 @@ repository's own filters and update documents are proven a tier down, in
 
 from typing import Any
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.models.bot_models import BotSessionDocument
 from app.scripts.merge_legacy_dm_bot_sessions import _apply_merges, canonical_key_for
-from pymongo.errors import DuplicateKeyError
-
 from app.services.bot_session_merge import (
     MergeAction,
     apply_merge,
