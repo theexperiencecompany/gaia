@@ -19,6 +19,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
 )
@@ -593,6 +594,22 @@ async def _run_workflow(
         ) from exc
 
 
+SUSPECT_REPLAY_LABEL = "Replayed and flagged for review: {reason}."
+PLAYBOOK_DISABLED_LABEL = (
+    "The playbook was disabled after repeated suspect results; the next run reasons it out again."
+)
+
+
+def _delivered_replay_text(result: PlaybookRunResult, *, disabled: bool) -> str:
+    """The replay's text as the user should read it: labelled when not trusted."""
+    if not result.suspect:
+        return result.text
+    label = SUSPECT_REPLAY_LABEL.format(reason=result.suspect.rstrip("."))
+    if disabled:
+        label = f"{label} {PLAYBOOK_DISABLED_LABEL}"
+    return f"{label}\n\n{result.text}" if result.text else label
+
+
 async def _finish_after_replay(
     workflow: Workflow,
     workflow_id: str,
@@ -602,20 +619,64 @@ async def _finish_after_replay(
     conversation_id: str,
     result: PlaybookRunResult,
 ) -> tuple[str, list[RecordedCall]]:
-    """Record the replay's outcome and, if it stopped, let the agent finish the run."""
-    await playbook_repository.record_run_outcome(
+    """Record the replay's outcome, deliver its result, or let the agent finish the run.
+
+    A finished replay whose result is not trusted (``result.suspect``) is
+    recorded as SUSPECT rather than SUCCESS. The user still gets the text, but
+    labelled, so a confident wrong brief never reads as a good one. Suspect
+    outcomes accumulate on the playbook; at ``PLAYBOOK_SUSPECT_STREAK_LIMIT``
+    the playbook is dropped and the next fire reasons the workflow out again.
+    """
+    if not result.ok:
+        status = PlaybookRunStatus.FAILED
+        reason = result.failure
+    elif result.suspect:
+        status = PlaybookRunStatus.SUSPECT
+        reason = result.suspect
+    else:
+        status = PlaybookRunStatus.SUCCESS
+        reason = None
+    updated = await playbook_repository.record_run_outcome(
         workflow_id,
         workflow.user_id,
-        PlaybookRunStatus.SUCCESS if result.ok else PlaybookRunStatus.FAILED,
+        status,
         playbook_id=playbook.playbook_id,
+        reason=reason,
     )
     if result.ok:
+        disabled = False
+        if status is PlaybookRunStatus.SUSPECT:
+            streak = updated.suspect_streak if updated is not None else 0
+            disabled = streak >= PLAYBOOK_SUSPECT_STREAK_LIMIT
+            if disabled:
+                await playbook_repository.delete_for_workflow(workflow_id, workflow.user_id)
+                log.warning(
+                    f"{LogTag.WORKER} Playbook disabled after repeated suspect replays",
+                    workflow_id=workflow_id,
+                    playbook_id=playbook.playbook_id,
+                    reason=reason,
+                    suspect_streak=streak,
+                )
         log.set_ns(
             "playbook",
             mode="replay",
             reason="workflow_hash_match",
             playbook_id=playbook.playbook_id,
             llm_calls=result.llm_calls,
+            outcome=status.value,
+            suspect_reason=reason,
+            disabled=disabled,
+        )
+        # Only a finished replay writes the turn. A stopped one leaves the
+        # conversation to the agent run that takes over, so the user sees one
+        # result for one fire instead of a half-run followed by a real one.
+        await add_playbook_run_messages(
+            conversation_id=conversation_id,
+            user_id=workflow.user_id,
+            workflow=workflow,
+            response=_delivered_replay_text(result, disabled=disabled),
+            trace=result.trace,
+            playbook=playbook,
         )
         return conversation_id, result.trace
 
@@ -1001,11 +1062,13 @@ async def execute_workflow_as_playbook(
     context: dict[str, Any],
     playbook: PlaybookDocument,
 ) -> tuple[str, PlaybookRunResult]:
-    """Replay the workflow's playbook and write the run into its conversation.
+    """Replay the workflow's playbook in its conversation.
 
     Returns the conversation id and the replay's own report. A stopped replay is
     NOT an exception: it comes back with ``ok=False`` so the caller can hand the
-    rest of the run to the agent knowing exactly what already happened.
+    rest of the run to the agent knowing exactly what already happened. The
+    turn itself is written by the caller once the outcome is recorded, because
+    how the text is labelled depends on that outcome.
     """
     user_id = user["user_id"]
     user_data = await _resolve_workflow_user(workflow, user_id)
@@ -1025,19 +1088,6 @@ async def execute_workflow_as_playbook(
         conversation_id=conversation_id,
         trigger=context,
     )
-
-    # Only a finished replay writes the turn. A stopped one leaves the
-    # conversation to the agent run that takes over, so the user sees one
-    # result for one fire instead of a half-run followed by a real one.
-    if result.ok:
-        await add_playbook_run_messages(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            workflow=workflow,
-            response=result.text,
-            trace=result.trace,
-            playbook=playbook,
-        )
     return conversation_id, result
 
 

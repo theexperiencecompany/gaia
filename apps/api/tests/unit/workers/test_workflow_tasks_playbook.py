@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, PLAYBOOK_SUSPECT_STREAK_LIMIT
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -86,7 +86,9 @@ class _Harness:
         self.chat = AsyncMock(return_value=("conv_1", [RecordedCall(tool_name="agent_tool")]))
         self.playbook_run = AsyncMock()
         self.get_for_workflow = AsyncMock(return_value=None)
-        self.record_run_outcome = AsyncMock()
+        self.record_run_outcome = AsyncMock(return_value=None)
+        self.delete_for_workflow = AsyncMock(return_value=True)
+        self.add_messages = AsyncMock()
         self.log = MagicMock()
 
     def playbook_event(self) -> dict[str, object]:
@@ -116,8 +118,18 @@ class _Harness:
                 f"{MODULE}.playbook_repository.record_run_outcome",
                 self.record_run_outcome,
             ),
+            patch(
+                f"{MODULE}.playbook_repository.delete_for_workflow",
+                self.delete_for_workflow,
+            ),
+            patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
             patch(f"{MODULE}.log", self.log),
         ]
+
+    def delivered_text(self) -> str:
+        """What the user reads in the conversation for this fire's replay."""
+        self.add_messages.assert_awaited_once()
+        return str(self.add_messages.await_args.kwargs["response"])
 
 
 async def _fire(harness: _Harness) -> str:
@@ -202,8 +214,10 @@ async def test_a_successful_replay_records_success() -> None:
     await _fire(harness)
 
     harness.record_run_outcome.assert_awaited_once_with(
-        workflow.id, workflow.user_id, PlaybookRunStatus.SUCCESS, playbook_id="pb_1"
+        workflow.id, workflow.user_id, PlaybookRunStatus.SUCCESS, playbook_id="pb_1", reason=None
     )
+    assert harness.delivered_text() == "done", "a trusted result is delivered as it is"
+    harness.delete_for_workflow.assert_not_awaited()
 
 
 async def test_a_stopped_replay_records_failure_and_falls_back_to_the_agent() -> None:
@@ -226,9 +240,15 @@ async def test_a_stopped_replay_records_failure_and_falls_back_to_the_agent() ->
     await _fire(harness)
 
     harness.record_run_outcome.assert_awaited_once_with(
-        workflow.id, workflow.user_id, PlaybookRunStatus.FAILED, playbook_id="pb_1"
+        workflow.id,
+        workflow.user_id,
+        PlaybookRunStatus.FAILED,
+        playbook_id="pb_1",
+        reason="Playbook stopped at step 2 (send_email): rejected argument 'body'.",
     )
     harness.chat.assert_awaited_once()
+    # A stopped replay leaves the turn to the agent run that takes over.
+    harness.add_messages.assert_not_awaited()
 
 
 async def test_the_fallback_run_is_told_what_already_happened() -> None:
@@ -332,6 +352,151 @@ async def test_a_failed_outcome_write_after_a_replay_still_records_its_calls() -
     assert kwargs["error_message"] == "mongo away"
     assert [call.tool_name for call in kwargs["trace"]] == ["list_events"]
     harness.chat.assert_not_awaited()
+
+
+def _suspect_replay(reason: str) -> tuple[str, PlaybookRunResult]:
+    return (
+        "conv_1",
+        PlaybookRunResult(
+            ok=True,
+            text="Nothing on the calendar today.",
+            suspect=reason,
+            trace=[RecordedCall(tool_name="list_events")],
+            llm_calls=1,
+        ),
+    )
+
+
+def _recorded(playbook: PlaybookDocument, streak: int) -> PlaybookDocument:
+    """The document ``record_run_outcome`` hands back after a suspect run."""
+    return playbook.model_copy(
+        update={"last_run_status": PlaybookRunStatus.SUSPECT, "suspect_streak": streak}
+    )
+
+
+@pytest.mark.asyncio
+class TestSuspectReplay:
+    """A replay that finished but whose result is not trusted.
+
+    It is neither a success (the playbook may be wrong) nor a failure (nothing
+    stopped, so the agent must not rerun the side effects). It has to be
+    recorded as its own thing, the user has to be told the result is flagged,
+    and a playbook that keeps producing suspect results has to go.
+    """
+
+    REASON = "step events (list_events) returned no items"
+
+    async def test_records_suspect_with_the_reason(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_suspect_replay(self.REASON))
+        harness.record_run_outcome = AsyncMock(return_value=_recorded(playbook, 1))
+
+        await _fire(harness)
+
+        harness.record_run_outcome.assert_awaited_once_with(
+            workflow.id,
+            workflow.user_id,
+            PlaybookRunStatus.SUSPECT,
+            playbook_id="pb_1",
+            reason=self.REASON,
+        )
+        # Nothing stopped, so the agent must not rerun the side effects.
+        harness.chat.assert_not_awaited()
+
+    async def test_the_delivered_text_is_labelled_so_the_user_can_see_it_is_flagged(
+        self,
+    ) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_suspect_replay(self.REASON))
+        harness.record_run_outcome = AsyncMock(return_value=_recorded(playbook, 1))
+
+        await _fire(harness)
+
+        text = harness.delivered_text()
+        assert text.startswith(f"Replayed and flagged for review: {self.REASON}.")
+        assert text.endswith("Nothing on the calendar today.")
+        assert "disabled" not in text, "one suspect run is a flag, not a verdict"
+        harness.delete_for_workflow.assert_not_awaited()
+
+    async def test_a_streak_at_the_limit_deletes_the_playbook_and_says_so(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_suspect_replay(self.REASON))
+        harness.record_run_outcome = AsyncMock(
+            return_value=_recorded(playbook, PLAYBOOK_SUSPECT_STREAK_LIMIT)
+        )
+
+        await _fire(harness)
+
+        harness.delete_for_workflow.assert_awaited_once_with(workflow.id, workflow.user_id)
+        text = harness.delivered_text()
+        assert text.startswith(f"Replayed and flagged for review: {self.REASON}.")
+        assert "The playbook was disabled after repeated suspect results" in text
+        assert text.endswith("Nothing on the calendar today.")
+        warnings = [
+            call
+            for call in harness.log.warning.call_args_list
+            if "disabled" in str(call.args[0]).lower()
+        ]
+        assert len(warnings) == 1
+        kwargs = warnings[0].kwargs
+        assert kwargs["workflow_id"] == workflow.id
+        assert kwargs["playbook_id"] == playbook.playbook_id
+        assert kwargs["reason"] == self.REASON
+
+    async def test_a_streak_below_the_limit_keeps_the_playbook(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_suspect_replay(self.REASON))
+        harness.record_run_outcome = AsyncMock(
+            return_value=_recorded(playbook, PLAYBOOK_SUSPECT_STREAK_LIMIT - 1)
+        )
+
+        await _fire(harness)
+
+        harness.delete_for_workflow.assert_not_awaited()
+
+    async def test_the_wide_event_names_the_outcome_and_reason(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_suspect_replay(self.REASON))
+        harness.record_run_outcome = AsyncMock(
+            return_value=_recorded(playbook, PLAYBOOK_SUSPECT_STREAK_LIMIT)
+        )
+
+        await _fire(harness)
+
+        event = harness.playbook_event()
+        assert event["mode"] == "replay"
+        assert event["outcome"] == "suspect"
+        assert event["suspect_reason"] == self.REASON
+        assert event["disabled"] is True
+
+    async def test_a_trusted_replay_reports_a_success_outcome(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(
+            return_value=("conv_1", PlaybookRunResult(ok=True, text="done", llm_calls=1))
+        )
+
+        await _fire(harness)
+
+        event = harness.playbook_event()
+        assert event["outcome"] == "success"
+        assert event["disabled"] is False
 
 
 @pytest.mark.asyncio

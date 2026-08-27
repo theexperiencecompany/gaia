@@ -20,7 +20,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
-from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF
+from app.agents.prompts.playbook_prompts import PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF
 from app.agents.tools.playbook_tools import write_playbook
 from app.models.playbook_models import (
     PlaybookDocument,
@@ -35,7 +35,7 @@ USER_ID = "user-1"
 WORKFLOW_ID = "wf-1"
 
 
-def _playbook(status: PlaybookRunStatus) -> PlaybookDocument:
+def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookDocument:
     now = datetime.now(UTC)
     return PlaybookDocument(
         playbook_id="pb-1",
@@ -46,6 +46,7 @@ def _playbook(status: PlaybookRunStatus) -> PlaybookDocument:
         steps=[PlaybookStep(id="s1", tool="create_todo", args={})],
         synthesize="s",
         last_run_status=status,
+        last_run_reason=reason,
         created_at=now,
         updated_at=now,
     )
@@ -58,10 +59,53 @@ async def test_asks_when_the_workflow_has_no_playbook():
 
 
 @pytest.mark.asyncio
-async def test_asks_again_when_the_last_replay_failed():
-    playbook = _playbook(PlaybookRunStatus.FAILED)
+@pytest.mark.parametrize("status", [PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT])
+async def test_asks_to_heal_when_the_last_replay_did_not_hold(status: PlaybookRunStatus):
+    """A broken playbook is healed, not re-decided from scratch.
+
+    The agent gets the recorded reason and is told to read the stored sequence,
+    so it fixes the step that went wrong instead of rediscovering everything.
+    """
+    reason = "step events (list_events) returned no items"
+    playbook = _playbook(status, reason)
     with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)):
-        assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == PLAYBOOK_CHECK_BRIEF
+        brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+    assert brief != PLAYBOOK_CHECK_BRIEF
+    assert brief.startswith("<playbook_check>")
+    assert brief.rstrip().endswith("</playbook_check>")
+    assert reason in brief
+    assert "read_playbook" in brief
+
+
+@pytest.mark.asyncio
+async def test_the_heal_brief_says_whether_the_replay_stopped_or_was_not_trusted():
+    """Same loop, different diagnosis: a stop points at a call that broke, a
+    suspect result at a call that answered with the wrong thing."""
+    with patch(
+        f"{MODULE}.playbook_repository.get_for_workflow",
+        AsyncMock(return_value=_playbook(PlaybookRunStatus.FAILED, "boom")),
+    ):
+        failed = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+    with patch(
+        f"{MODULE}.playbook_repository.get_for_workflow",
+        AsyncMock(return_value=_playbook(PlaybookRunStatus.SUSPECT, "empty")),
+    ):
+        suspect = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+    assert "stopped partway" in failed
+    assert "not trusted" in suspect
+    assert failed != suspect
+
+
+@pytest.mark.asyncio
+async def test_a_missing_reason_is_said_plainly_rather_than_rendered_as_none():
+    playbook = _playbook(PlaybookRunStatus.FAILED, None)
+    with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)):
+        brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+    assert "None" not in brief
+    assert "no reason was recorded" in brief
 
 
 @pytest.mark.asyncio
@@ -134,6 +178,33 @@ def test_the_check_names_both_decision_tools_so_the_executor_can_act():
     # which made a model lapse indistinguishable from a considered decline.
     assert "decline_playbook" in PLAYBOOK_CHECK_BRIEF
     assert "exactly one of" in PLAYBOOK_CHECK_BRIEF
+
+
+def test_the_check_asks_whether_every_frozen_call_actually_returned_the_data():
+    # Regression: a playbook froze a call that came back empty, because the
+    # agent had reasoned around the gap and the sequence still "worked". The
+    # sixth question makes an empty, errored or partial result a reason to fix
+    # the args or decline, and the decision rule has to read against it.
+    assert "6." in PLAYBOOK_CHECK_BRIEF
+    assert "these six" in PLAYBOOK_CHECK_BRIEF
+    assert "came back empty, with an error, or partial" in PLAYBOOK_CHECK_BRIEF
+    assert "If 5 and 6 are both yes, call write_playbook" in PLAYBOOK_CHECK_BRIEF
+    assert "If either 5 or 6 is no, call decline_playbook" in PLAYBOOK_CHECK_BRIEF
+    assert "exactly one of write_playbook or decline_playbook" in PLAYBOOK_CHECK_BRIEF
+
+
+def test_the_heal_brief_names_the_tools_the_executor_needs():
+    # read_playbook to see the sequence, then exactly one of the two verdicts.
+    # decline_playbook is the wrong tool here: there is a stored playbook, so
+    # "no" means disabling it, not declining to write one.
+    assert "read_playbook" in PLAYBOOK_HEAL_BRIEF
+    assert "write_playbook" in PLAYBOOK_HEAL_BRIEF
+    assert "disable_playbook" in PLAYBOOK_HEAL_BRIEF
+    assert "decline_playbook" not in PLAYBOOK_HEAL_BRIEF
+    assert "exactly one of write_playbook or disable_playbook" in PLAYBOOK_HEAL_BRIEF
+    assert "{reason}" in PLAYBOOK_HEAL_BRIEF
+    assert "\u2014" not in PLAYBOOK_HEAL_BRIEF, "no em dashes in model-facing text"
+    assert "\u2014" not in PLAYBOOK_CHECK_BRIEF
 
 
 def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
