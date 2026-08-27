@@ -69,6 +69,20 @@ MEM_AVAIL_GB="$(free -g 2>/dev/null | awk '/^Mem:/{print $7}' || echo "$MEM_GB")
 PER_WORKER_GB="${PYTEST_WORKER_GB:-1.5}"
 HEADROOM_GB=4   # OS, docker, the runner agent, the coordinating pytest process
 MEM_WORKERS="$(awk -v a="$MEM_AVAIL_GB" -v w="$PER_WORKER_GB" -v h="$HEADROOM_GB" 'BEGIN{n=int((a-h)/w); if(n<1)n=1; print n}')"
+# CPU guard, also measured: with per-worker RAM down to ~1 GB the memory cap
+# stopped throttling, and two test lanes on the box each took 16 workers —
+# 32 workers on 16 threads plus a build, and the unit lane went from 110s
+# alone to 435s. Subtract the xdist workers already running on this host so
+# concurrent lanes share the cores instead of fighting for them. Floor of 4
+# keeps a lane moving even on a crowded box.
+RUNNING_WORKERS="$(pgrep -fc '\[pytest-xdist' 2>/dev/null || echo 0)"
+CPU_WORKERS=$(( NPROC - RUNNING_WORKERS ))
+(( CPU_WORKERS < 4 )) && CPU_WORKERS=4
+if (( CPU_WORKERS < PYTEST_XDIST_N )); then
+  echo "detect-parallel: cpu-capped pytest workers ${PYTEST_XDIST_N} -> ${CPU_WORKERS} (${RUNNING_WORKERS} xdist workers already running on this host)" >&2
+  PYTEST_XDIST_N="$CPU_WORKERS"
+  PYTEST_XDIST="$CPU_WORKERS"
+fi
 if (( MEM_WORKERS < PYTEST_XDIST_N )); then
   echo "detect-parallel: memory-capped pytest workers ${PYTEST_XDIST_N} -> ${MEM_WORKERS} (${MEM_AVAIL_GB}G available, ${PER_WORKER_GB}G/worker)" >&2
   PYTEST_XDIST_N="$MEM_WORKERS"
