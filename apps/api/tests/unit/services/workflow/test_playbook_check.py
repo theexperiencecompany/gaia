@@ -33,8 +33,13 @@ from app.models.playbook_models import (
     PlaybookStep,
     PlaybookStepInput,
 )
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
-from app.services.workflow.playbook.check import playbook_check_brief
+from app.services.workflow.playbook.check import (
+    distrust_fresh_playbook,
+    frozen_on_empty,
+    playbook_check_brief,
+)
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
 MODULE = "app.services.workflow.playbook.check"
@@ -431,3 +436,151 @@ class TestBriefsCarryTheDecisionTag:
     @pytest.mark.parametrize("brief", [PLAYBOOK_CHECK_BRIEF, PLAYBOOK_HEAL_BRIEF])
     def test_every_brief_opens_with_the_tag(self, brief: str) -> None:
         assert brief.startswith(PLAYBOOK_CHECK_TAG)
+
+
+def _call(tool_name: str, digest: str) -> RecordedCall:
+    return RecordedCall(tool_name=tool_name, result_digest=digest)
+
+
+EMPTY = '{"data": {"fetched_count": 0, "messages": []}, "successful": true}'
+FULL = '{"data": {"fetched_count": 2, "messages": [{"id": "a"}, {"id": "b"}]}, "successful": true}'
+WRITTEN = '{"success": true, "data": {"playbook_id": "pb_1", "steps": 1}}'
+REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
+
+
+def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
+    if handoff:
+        steps = [
+            PlaybookStep(
+                id="h", handoff=handoff, steps=[PlaybookStep(id=t, tool=t, args={}) for t in tools]
+            )
+        ]
+    else:
+        steps = [PlaybookStep(id=t, tool=t, args={}) for t in tools]
+    return PlaybookDocument(
+        playbook_id="pb_1",
+        workflow_id=WORKFLOW_ID,
+        user_id=USER_ID,
+        workflow_hash="h",
+        description="triage",
+        steps=steps,
+        synthesize="say",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+
+class TestFrozenOnEmpty:
+    """Seen live: an authoring run froze a fetch that had returned no items, and
+    the replay's empty-vs-previous check could never fire because the previous
+    run was that same empty one. The run that writes a playbook is the one
+    place the emptiness is provable, deterministically."""
+
+    def test_a_frozen_call_that_returned_no_items_is_named(self) -> None:
+        reason = frozen_on_empty(
+            _frozen("GMAIL_FETCH_MESSAGES"), [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
+        )
+
+        assert reason is not None
+        assert "GMAIL_FETCH_MESSAGES" in reason
+
+    def test_a_frozen_call_with_items_is_fine(self) -> None:
+        assert (
+            frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), [_call("GMAIL_FETCH_MESSAGES", FULL)])
+            is None
+        )
+
+    def test_a_text_result_has_no_items_to_be_empty_of(self) -> None:
+        assert frozen_on_empty(_frozen("get_weather"), [_call("get_weather", "Sunny, 24C")]) is None
+
+    def test_the_last_attempt_is_the_one_that_counts(self) -> None:
+        """A first attempt that came back empty and a retry that found items is
+        the discovery the check brief tells the model to leave out."""
+        trace = [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("GMAIL_FETCH_MESSAGES", FULL)]
+
+        assert frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), trace) is None
+
+    def test_handoff_children_are_inspected(self) -> None:
+        reason = frozen_on_empty(
+            _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail"), [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
+        )
+
+        assert reason is not None
+
+    def test_a_frozen_tool_the_run_never_called_is_left_alone(self) -> None:
+        assert (
+            frozen_on_empty(_frozen("GMAIL_FETCH_MESSAGES"), [_call("list_todos", EMPTY)]) is None
+        )
+
+
+class TestDistrustFreshPlaybook:
+    async def test_a_run_that_wrote_nothing_reads_nothing(self) -> None:
+        with (
+            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock()) as get,
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID, USER_ID, [_call("GMAIL_FETCH_MESSAGES", EMPTY)]
+            )
+
+        assert reason is None
+        get.assert_not_awaited()
+        record.assert_not_awaited()
+
+    async def test_a_refused_write_is_not_a_written_playbook(self) -> None:
+        with (
+            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock()) as get,
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", REFUSED)],
+            )
+
+        assert reason is None
+        get.assert_not_awaited()
+        record.assert_not_awaited()
+
+    async def test_a_playbook_frozen_on_an_empty_result_is_recorded_suspect(self) -> None:
+        playbook = _frozen("GMAIL_FETCH_MESSAGES", handoff="gmail").model_copy(
+            update={"revision": 3}
+        )
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+            ),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+            )
+
+        assert reason is not None
+        record.assert_awaited_once_with(
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunStatus.SUSPECT,
+            playbook_id="pb_1",
+            revision=3,
+            reason=reason,
+        )
+
+    async def test_a_playbook_frozen_on_real_items_stays_trusted(self) -> None:
+        playbook = _frozen("GMAIL_FETCH_MESSAGES")
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+            ),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", FULL), _call("write_playbook", WRITTEN)],
+            )
+
+        assert reason is None
+        record.assert_not_awaited()

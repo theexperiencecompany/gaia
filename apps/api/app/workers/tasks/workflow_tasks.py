@@ -91,7 +91,7 @@ from app.services.workflow.execution_service import (
     create_execution,
 )
 from app.services.workflow.notifications import send_workflow_completion_notification
-from app.services.workflow.playbook.check import HEAL_STATUSES
+from app.services.workflow.playbook.check import HEAL_STATUSES, distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import PlaybookRunResult, run_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -1039,6 +1039,10 @@ async def execute_workflow_by_id(
             conversation_id=conversation_id,
             trace=trace,
         )
+
+        # A playbook this run wrote is checked against this run's own results:
+        # frozen on an empty result, it is distrusted before it is ever replayed.
+        await distrust_fresh_playbook(workflow_id, workflow.user_id, trace)
 
         # Analytics: the run-now endpoint already captures manual executions at
         # queue time (workflows.py); background-origin runs — scheduler,

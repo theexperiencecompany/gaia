@@ -1359,3 +1359,46 @@ class TestReplayHoldsTheConversationLock:
             )
 
         harness.scheduler.handle_recurring_task.assert_awaited_once()
+
+
+class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
+    """The fire that writes a playbook checks the frozen calls against what they
+    returned in that very run, so a playbook frozen on emptiness is distrusted
+    before it is ever replayed."""
+
+    async def test_an_agent_run_that_froze_an_empty_fetch_marks_it_suspect(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        written = _playbook(workflow).model_copy(
+            update={"steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})]}
+        )
+        harness.chat = AsyncMock(
+            return_value=(
+                "conv_1",
+                [
+                    RecordedCall(
+                        tool_name="GMAIL_FETCH_MESSAGES",
+                        result_digest='{"data": {"messages": []}, "successful": true}',
+                    ),
+                    RecordedCall(
+                        tool_name="write_playbook",
+                        result_digest='{"success": true, "data": {"playbook_id": "pb_1"}}',
+                    ),
+                ],
+            )
+        )
+        harness.get_for_workflow = AsyncMock(side_effect=[None, written])
+
+        await _fire(harness)
+
+        harness.record_run_outcome.assert_awaited_once()
+        assert harness.record_run_outcome.await_args.args[2] is PlaybookRunStatus.SUSPECT
+        assert harness.record_run_outcome.await_args.kwargs["playbook_id"] == written.playbook_id
+
+    async def test_an_agent_run_that_wrote_nothing_records_no_outcome(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+
+        await _fire(harness)
+
+        harness.record_run_outcome.assert_not_awaited()

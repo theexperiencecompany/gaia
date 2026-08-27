@@ -5,6 +5,8 @@ replay. A playbook that ran cleanly has already answered the question, and
 re-asking would spend output tokens re-deciding it on every fire.
 """
 
+from collections.abc import Sequence
+
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
     PLAYBOOK_HEAL_ALREADY_RAN,
@@ -16,8 +18,10 @@ from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
+from app.models.workflow_execution_models import RecordedCall, largest_list_len
 from app.models.workflow_models import WorkflowDocument
+from app.services.workflow.playbook.evaluator import parse_result
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
 
@@ -94,3 +98,74 @@ def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) 
         else ""
     )
     return PLAYBOOK_HEAL_BRIEF.format(verdict=verdict, reason=reason, already_ran=already_ran)
+
+
+def _frozen_tool_names(steps: Sequence[PlaybookStep]) -> list[str]:
+    names: list[str] = []
+    for step in steps:
+        if step.tool:
+            names.append(step.tool)
+        names.extend(_frozen_tool_names(step.steps))
+    return names
+
+
+def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -> str | None:
+    """Why a playbook written this run is already suspect: a frozen call returned no items.
+
+    Read by tool name, LAST match, the same way the replay's empty-vs-previous
+    check reads the previous run: an attempt that came back empty and a retry
+    that found items is discovery, and the retry is what was frozen. A result
+    with no list in it at all (plain text, a single record) has nothing to be
+    empty of.
+    """
+    for tool_name in _frozen_tool_names(playbook.steps):
+        call = next((c for c in reversed(trace) if c.tool_name == tool_name), None)
+        if call is not None and largest_list_len(parse_result(call.result_digest)) == 0:
+            return f"{tool_name} returned no items in the run that wrote this playbook"
+    return None
+
+
+def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
+    for call in trace:
+        if call.tool_name != "write_playbook":
+            continue
+        result = parse_result(call.result_digest)
+        if isinstance(result, dict) and result.get("success") is True:
+            return True
+    return False
+
+
+async def distrust_fresh_playbook(
+    workflow_id: str, user_id: str, trace: Sequence[RecordedCall]
+) -> str | None:
+    """After a run that wrote a playbook, distrust it if it froze an empty result.
+
+    The replay's own check compares against the previous run, so a playbook
+    frozen on emptiness replays emptiness with nothing to compare to. The run
+    that wrote it is the one place the frozen calls' results are on record.
+    Marked suspect, the next fire heals instead of replaying: it probes more
+    broadly and rewrites, or confirms the source really has nothing.
+    """
+    if not _wrote_a_playbook(trace):
+        return None
+    playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
+    if playbook is None or playbook.last_run_status is not PlaybookRunStatus.NOT_RUN:
+        return None
+    reason = frozen_on_empty(playbook, trace)
+    if reason is None:
+        return None
+    await playbook_repository.record_run_outcome(
+        workflow_id,
+        user_id,
+        PlaybookRunStatus.SUSPECT,
+        playbook_id=playbook.playbook_id,
+        revision=playbook.revision,
+        reason=reason,
+    )
+    log.warning(
+        f"{LogTag.WORKFLOW} Playbook written on an empty result; the next fire heals it",
+        workflow_id=workflow_id,
+        playbook_id=playbook.playbook_id,
+        reason=reason,
+    )
+    return reason
