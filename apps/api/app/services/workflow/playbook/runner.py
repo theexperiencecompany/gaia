@@ -28,12 +28,13 @@ Two properties are load-bearing:
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
 from typing import Any, Literal, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
 from app.agents.middleware.factory import create_middleware_stack
@@ -87,6 +88,10 @@ _FAILURE_QUOTE_MAX_CHARS = 120
 #: returns megabytes cannot blow the model's context; whole elements are shed,
 #: never half of one.
 _NARRATION_RESULT_MAX_CHARS = 60_000
+#: The arguments a step ran with, as the narration sees them. Seen live: told
+#: only the tool name and 20 results, the verdict called a month of read mail
+#: "unread, last 24 hours". The args are what it has to judge against.
+_NARRATION_ARGS_MAX_CHARS = 400
 
 #: The tool name a handoff node records itself under, matching what the agent
 #: path emits for the same delegation.
@@ -121,6 +126,17 @@ class PlaybookNarration(BaseModel):
     """What the end-of-run call produces: the result and a verdict on the steps that ran."""
 
     result: str = Field(description="The run's user-facing result")
+
+    @field_validator("result")
+    @classmethod
+    def _says_something(cls, value: str) -> str:
+        # Seen live: a narration answered "..." and it was delivered as the run's
+        # result. A result with no letter or digit in it is not one; refusing it
+        # here makes the call raise, which stops the run and hands it to the agent.
+        if not any(ch.isalnum() for ch in value):
+            raise ValueError("the result says nothing")
+        return value
+
     outcome: Literal["ok", "suspect"] = Field(
         default="ok",
         description="ok when the results plausibly fulfil the playbook, suspect otherwise",
@@ -368,8 +384,15 @@ async def _run_tool_step(
     # This line is the model's only view of what the tool returned, and it has
     # to write the user's result from it: bounded for the model, not the record.
     shown = build_result_digest(text, max_chars=_NARRATION_RESULT_MAX_CHARS)
-    run.completed.append(f"{step.id or tool_name} ({tool_name}) -> {shown}")
+    run.completed.append(f"{step.id or tool_name} ({tool_name} {_shown_args(args)}) -> {shown}")
     return None
+
+
+def _shown_args(args: dict[str, Any]) -> str:
+    rendered = json.dumps(args, separators=(",", ":"), default=str)
+    if len(rendered) <= _NARRATION_ARGS_MAX_CHARS:
+        return rendered
+    return rendered[:_NARRATION_ARGS_MAX_CHARS] + "..."
 
 
 async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolMessage | None:

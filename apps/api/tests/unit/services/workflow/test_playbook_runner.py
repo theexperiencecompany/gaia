@@ -24,6 +24,8 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 from langgraph.types import Command
+from pydantic import ValidationError
+import pytest
 
 from app.agents.middleware.factory import create_middleware_stack as real_create_middleware_stack
 from app.agents.workspace.offload import mark_offload
@@ -451,7 +453,7 @@ async def test_a_failing_step_leaves_the_earlier_calls_on_the_trace() -> None:
 
     assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
     assert result.trace[0].result_digest == '{"count": 12}'
-    assert result.completed == ['events (list_events) -> {"count": 12}']
+    assert result.completed == ['events (list_events {"calendar_id":"primary"}) -> {"count": 12}']
 
 
 async def test_the_failure_names_what_already_completed() -> None:
@@ -460,7 +462,7 @@ async def test_the_failure_names_what_already_completed() -> None:
 
     result, _ = await _run(_playbook(AGENDA_STEPS), registry)
 
-    assert "events (list_events)" in (result.failure or "")
+    assert "events (list_events " in (result.failure or "")
 
 
 async def test_a_step_whose_placeholder_is_stale_stops_the_run() -> None:
@@ -620,12 +622,12 @@ async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_reco
 
     assert result.ok is False
     assert [call.tool_name for call in result.trace] == ["list_events"]
-    assert result.completed == ['events (list_events) -> {"count": 12}']
+    assert result.completed == ['events (list_events {"calendar_id":"primary"}) -> {"count": 12}']
     assert result.failure is not None
     assert result.failure.startswith("Playbook stopped at step 2 (send_email): ")
     assert "RuntimeError" in result.failure
     assert "graph exploded" in result.failure
-    assert "events (list_events)" in result.failure
+    assert "events (list_events " in result.failure
 
 
 async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
@@ -815,8 +817,8 @@ class TestNarrationCall:
 
         prompt = str(llm.await_args.args[1])
         assert result.completed == [
-            'events (list_events) -> {"count": 12}',
-            "mail (send_email) -> sent",
+            'events (list_events {"calendar_id":"primary"}) -> {"count": 12}',
+            'mail (send_email {"to":"team@example.com"}) -> sent',
         ]
         assert playbook.description in prompt
         assert playbook.synthesize in prompt
@@ -984,8 +986,8 @@ async def test_a_finished_run_reports_every_step_it_completed() -> None:
 
     assert result.ok is True, result.failure
     assert result.completed == [
-        'events (list_events) -> {"count": 12}',
-        "mail (send_email) -> sent",
+        'events (list_events {"calendar_id":"primary"}) -> {"count": 12}',
+        'mail (send_email {"to":"team@example.com"}) -> sent',
     ]
 
 
@@ -1014,7 +1016,9 @@ async def test_a_run_that_stops_after_the_ask_fill_still_reports_the_call_it_mad
     assert result.ok is False
     assert llm.await_count == 1
     assert result.llm_calls == 1
-    assert result.completed == ["mail (send_email) -> sent"]
+    assert result.completed == [
+        'mail (send_email {"to":"team@example.com","body":"A quiet day."}) -> sent'
+    ]
 
 
 # --- how the replay graph is built -----------------------------------------
@@ -1200,7 +1204,7 @@ class TestNarrationSections:
             [
                 f"- body: {ask.prompt}",
                 f"  budget: about {ask.max_tokens} tokens",
-                '  works from: events (list_events) -> {"count": 12}; mail (send_email) -> sent',
+                '  works from: events (list_events {"calendar_id":"primary"}) -> {"count": 12}; mail (send_email {"to":"team@example.com"}) -> sent',
             ]
         )
 
@@ -1270,7 +1274,7 @@ class TestCallOrder:
         ]
         # The end call writes from the last step's actual result, which only
         # exists because it ran after that step.
-        assert "mail (send_email) -> sent" in _result_prompt(llm)
+        assert 'mail (send_email {"to":"team@example.com","body":' in _result_prompt(llm)
         assert result.llm_calls == 2
 
     async def test_the_result_call_lists_nothing_as_still_to_run_when_the_run_completed(
@@ -1438,7 +1442,7 @@ class TestFailureReport:
 
         assert result.ok is False
         assert (
-            'Completed: events (list_events) -> {"count": 12}; mail (send_email) -> sent.'
+            'Completed: events (list_events {"calendar_id":"primary"}) -> {"count": 12}; mail (send_email {"to":"team@example.com"}) -> sent.'
             in result.failure
         )
 
@@ -2052,3 +2056,28 @@ class TestSuspectVerdict:
         assert result.suspect == "send_email answered with nothing that looks like a delivery"
         assert result.suspect_source == "narration"
         assert result.text == "Twelve events, but the mail did not go out."
+
+
+class TestTheNarrationSeesTheArguments:
+    async def test_each_ran_line_carries_the_arguments_the_call_ran_with(self) -> None:
+        """Seen live: told only the tool name and twenty results, the verdict
+        called a month of read mail "unread, last 24 hours". The arguments are
+        what it has to judge against."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+
+        result, llm = await _run(_playbook(AGENDA_STEPS), registry)
+
+        prompt = str(llm.await_args.args[1])
+        assert '(list_events {"calendar_id":"primary"})' in prompt
+        assert '(send_email {"to":"team@example.com"})' in prompt
+        assert result.completed[0].startswith('events (list_events {"calendar_id":"primary"}) -> ')
+
+
+class TestANarrationMustSaySomething:
+    def test_a_result_with_no_letter_or_digit_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookNarration(result="...", outcome="ok")
+
+    def test_a_short_real_answer_is_fine(self) -> None:
+        assert PlaybookNarration(result="No new todos.", outcome="ok").result == "No new todos."

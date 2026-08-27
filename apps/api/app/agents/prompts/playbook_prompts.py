@@ -120,7 +120,7 @@ The asks section holds the fields written earlier in this run, for context only.
 Produce both of these in this one pass:
 
 1. The run's result for the user, written to this brief: {synthesize}
-2. A verdict on the run. Judge only the steps listed under ran, and judge them on their own results: whether they plausibly fulfil the playbook's description and the brief above. Answer suspect when a result is empty where the task expects items, contains an error, or contradicts the description; otherwise answer ok. Never answer suspect because some step is missing from the list. The list is complete, and a step that is not on it was not part of this run. When it is suspect, give a one line reason. Write the result either way, exactly as the data reads.
+2. A verdict on the run. Judge only the steps listed under ran. Each line shows the arguments the call ran with and what it returned; judge both against the playbook's description and the brief above. Answer suspect when a result is empty where the task expects items, contains an error, or contradicts the description, and also when the arguments contradict it: a wider window than the task names, a filter it does not ask for, a source it does not mention. Plenty of results do not make a wrong call right. Otherwise answer ok. Never answer suspect because some step is missing from the list. The list is complete, and a step that is not on it was not part of this run. When it is suspect, give a one line reason. Write the result either way, exactly as the data reads.
 
 Ground every word in what is listed above. Never invent a number, a name, a link, or an outcome that is not there, and if something did not happen, say that plainly instead of smoothing over it.
 
