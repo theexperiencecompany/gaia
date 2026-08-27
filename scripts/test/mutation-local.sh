@@ -19,6 +19,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 LOG_DIR="verify-logs/mutation"
+rm -rf "$LOG_DIR"
 mkdir -p "$LOG_DIR"
 
 if [ "$#" -gt 0 ]; then
@@ -73,64 +74,69 @@ print(
     SHARD_LOG="$LOG_DIR/$slug.log" \
     bash scripts/ci/mutation-shard.sh > "$LOG_DIR/$slug.out" 2>&1
   local rc=$?
+  # Recorded to a file, not inferred from the log afterwards: a clean run that
+  # generated no mutants at all (decorated functions, changed lines that hold
+  # only imports) never prints a verdict line, so grepping for one reports a
+  # pass as a crash. The exit code is the only honest signal.
   if [ "$rc" = "0" ]; then
+    echo "pass" > "$LOG_DIR/$slug.status"
     echo "  pass      $module"
   elif grep -q "MUTATION FAILED" "$LOG_DIR/$slug.log" 2> /dev/null; then
+    echo "survivors" > "$LOG_DIR/$slug.status"
     echo "  SURVIVORS $module  ($LOG_DIR/$slug.log)"
   else
     # mutmut never produced a result — a crash, or the suite's pytest-timeout
     # firing under load. Reporting this as "survivors" would send you hunting
     # for a test gap that does not exist.
+    echo "error" > "$LOG_DIR/$slug.status"
     echo "  ERROR     $module  (run produced no result; $LOG_DIR/$slug.log)"
   fi
   return $rc
 }
 
 JOBS="${MUTATION_JOBS:-2}"
-rc=0
+
+# Batch-and-wait rather than `wait -n`: macOS ships bash 3.2, where `wait -n`
+# does not exist. It fails instantly there, so the scheduler never waits, the
+# summary races the jobs still writing their results, and every run reports
+# whatever happened to be on disk at that moment.
 running=0
-declare -a FAILED=()
 while IFS=$'\t' read -r module testfiles ranges; do
   [ -n "$module" ] || continue
   run_one "$module" "$testfiles" "$ranges" &
   running=$((running + 1))
   if [ "$running" -ge "$JOBS" ]; then
-    wait -n 2> /dev/null || rc=1
-    running=$((running - 1))
+    wait
+    running=0
   fi
 done < "$TSV"
-while [ "$running" -gt 0 ]; do
-  wait -n 2> /dev/null || rc=1
-  running=$((running - 1))
-done
+wait
 
-# Re-derive the verdict from the logs: `wait -n` gives a count, not a name, and
-# which modules failed — and how — is the only output worth acting on.
-FAILED=()
-ERRORED=()
+# The verdict comes from the per-module status files the jobs wrote.
+failed=""
+errored=""
 while IFS=$'\t' read -r module _ _; do
   [ -n "$module" ] || continue
   slug="${module//\//_}"
-  if grep -q "MUTATION FAILED" "$LOG_DIR/$slug.log" 2> /dev/null; then
-    FAILED+=("$module")
-  elif ! grep -q "^Mutation: OK" "$LOG_DIR/$slug.log" 2> /dev/null; then
-    ERRORED+=("$module")
-  fi
+  case "$(cat "$LOG_DIR/$slug.status" 2> /dev/null)" in
+    pass) ;;
+    survivors) failed="$failed $module" ;;
+    *) errored="$errored $module" ;;
+  esac
 done < "$TSV"
 
-if [ "${#ERRORED[@]}" -gt 0 ]; then
+if [ -n "$errored" ]; then
   echo
-  echo "mutation: ${#ERRORED[@]} module(s) produced NO result (crash or timeout, not survivors):"
-  printf '  %s\n' "${ERRORED[@]}"
+  echo "mutation: module(s) produced NO result (crash or timeout, not survivors):"
+  for m in $errored; do echo "  $m"; done
   echo "  Retry these with MUTATION_JOBS=1 before believing anything about them."
 fi
-if [ "${#FAILED[@]}" -gt 0 ]; then
+if [ -n "$failed" ]; then
   echo
-  echo "mutation: ${#FAILED[@]} module(s) with survivors on changed lines:"
-  printf '  %s\n' "${FAILED[@]}"
+  echo "mutation: module(s) with survivors on changed lines:"
+  for m in $failed; do echo "  $m"; done
 fi
-if [ "${#FAILED[@]}" -gt 0 ] || [ "${#ERRORED[@]}" -gt 0 ]; then
+if [ -n "$failed" ] || [ -n "$errored" ]; then
   exit 1
 fi
-[ "$rc" = "0" ] || exit "$rc"
 echo "mutation: all $MODULE_COUNT module(s) clean"
