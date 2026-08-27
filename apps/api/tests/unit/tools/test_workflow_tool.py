@@ -530,8 +530,14 @@ class TestCreateWorkflowPins:
         assert kwargs["user_id"] == "507f1f77bcf86cd799439011"
         # The subagent receives the structured task prompt with the request embedded.
         assert '"daily digest"' in kwargs["task"]
+        # Every field the subagent runs on: dropping any one of them degrades the
+        # workflow it drafts (wrong name in the copy, wrong schedule hour, no
+        # inherited agent config) without failing anything else here.
         ctx = kwargs["context"]
         assert ctx.stream_writer is writer
+        assert ctx.user_name == "Test User"
+        assert ctx.user_timezone == "+05:30"
+        assert ctx.base_configurable == _make_config()["configurable"]
 
     async def test_parsed_mode_log_carries_the_mode(self) -> None:
         from app.agents.tools.workflow_tool import create_workflow

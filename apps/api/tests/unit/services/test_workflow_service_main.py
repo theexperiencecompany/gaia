@@ -2407,10 +2407,16 @@ class TestTriggerService:
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-        with pytest.raises(TriggerRegistrationError):
+        with pytest.raises(TriggerRegistrationError) as exc_info:
             await TriggerService.register_triggers(
                 USER_ID, WORKFLOW_ID, "trigger", trigger, raise_on_failure=True
             )
+
+        # The wrapper is what the caller sees, so it has to carry the original
+        # failure forward: which trigger, what went wrong, and the cause chain.
+        assert str(exc_info.value) == "Error registering triggers: RuntimeError: API down"
+        assert exc_info.value.trigger_name == "trigger"
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_generic_exception_no_raise(self, mock_get_handler):

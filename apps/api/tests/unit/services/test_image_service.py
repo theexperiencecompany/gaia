@@ -145,6 +145,9 @@ class TestApiGenerateImage:
                 await api_generate_image("test", improve_prompt=False)
 
             assert exc_info.value.status_code == 500
+            # The body reaches the client; pin it, not just the status.
+            assert exc_info.value.detail == "Internal Server Error"
+            assert isinstance(exc_info.value.__cause__, Exception)
 
     async def test_raises_when_improved_prompt_is_empty(self):
         """When both message and improved prompt resolve to empty, should raise."""

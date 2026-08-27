@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 import re
 from typing import Any, Literal
 
@@ -404,9 +404,13 @@ class RecurrenceRule(BaseModel):
             return self.until
         # An offset-aware value has to be shifted to UTC before it can wear a
         # Z: stamping "+05:30" as Z moves the series' end by 5.5 hours. A naive
-        # value is already the caller's UTC wall-clock, so it converts as-is.
-        if parsed.tzinfo is not None:
-            parsed = parsed.astimezone(UTC)
+        # value is already the caller's UTC wall-clock, so it needs no shift.
+        # Subtracting the offset rather than astimezone(UTC): only the wall
+        # clock is formatted, and this keeps the result independent of the
+        # host's local timezone.
+        offset = parsed.utcoffset()
+        if offset is not None:
+            parsed -= offset
         return parsed.strftime("%Y%m%dT%H%M%SZ")
 
     def to_rrule_string(self) -> str:
