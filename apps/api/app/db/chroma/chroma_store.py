@@ -41,6 +41,10 @@ from shared.py.wide_events import VectorContext, log
 FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
 
 
+class ChromaBatchWriteError(RuntimeError):
+    """At least one document in a batch failed to write to ChromaDB."""
+
+
 class ChromaStore(BaseStore):
     """ChromaDB-backed store with vector search capabilities.
 
@@ -559,6 +563,14 @@ class ChromaStore(BaseStore):
                     doc_id=d,
                     error_type=type(exc).__name__,
                 )
+            # Raise so a partially-written batch can never be recorded as a
+            # success. Logging alone let index_tools_to_store cache the
+            # namespace hash after N docs failed to embed, and the cache guard
+            # then skipped the namespace forever — tools that never made it in
+            # (browser_task) stayed permanently undiscoverable.
+            raise ChromaBatchWriteError(
+                f"{len(failures)} of {len(results)} ChromaDB writes failed"
+            ) from failures[0][1]
 
     async def _delete_item(self, doc_id: str, collection: AsyncCollection) -> None:
         """Delete a single item.

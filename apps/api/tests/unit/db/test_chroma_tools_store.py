@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langgraph.store.base import PutOp
 import pytest
 
+from app.db.chroma.chroma_store import ChromaBatchWriteError
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
     _compute_tool_diff,
@@ -366,6 +367,71 @@ class TestIndexToolsToStore:
 
         # Reached the write path instead of returning at the guard.
         mock_execute.assert_awaited_once()
+
+    async def test_failed_batch_write_does_not_cache_the_namespace_hash(self):
+        """A partial write must not be recorded as a success.
+
+        Regression: _apply_put_ops logged failures but returned normally, so
+        the hash was cached after N docs failed to embed. Every later boot then
+        hit the cache guard and skipped the namespace, leaving the tools that
+        never made it in (browser_task) permanently undiscoverable.
+        """
+        tool = SimpleNamespace(name="t", description="d")
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock
+            ) as mock_set_cache,
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.chroma_tools_store._execute_batch_operations",
+                new_callable=AsyncMock,
+                side_effect=ChromaBatchWriteError("1 of 1 ChromaDB writes failed"),
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        mock_set_cache.assert_not_awaited()
+
+    async def test_successful_batch_write_caches_the_namespace_hash(self):
+        """The other half of the contract: a clean write still caches."""
+        tool = SimpleNamespace(name="t", description="d")
+
+        mock_store = AsyncMock()
+        mock_collection = AsyncMock()
+        mock_collection.get.return_value = {"ids": [], "metadatas": []}
+        mock_store._get_collection = AsyncMock(return_value=mock_collection)
+
+        with (
+            patch(
+                "app.db.chroma.chroma_tools_store.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.db.chroma.chroma_tools_store.set_cache", new_callable=AsyncMock
+            ) as mock_set_cache,
+            patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
+            patch(
+                "app.db.chroma.chroma_tools_store._execute_batch_operations",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+            await index_tools_to_store([(tool, "ns")])
+
+        mock_set_cache.assert_awaited_once()
 
     async def test_skips_when_store_unavailable(self):
         tool = SimpleNamespace(name="t", description="d")

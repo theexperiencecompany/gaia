@@ -18,7 +18,7 @@ from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
 from shared.py.wide_events import VectorContext, log
 
-from .chroma_store import ChromaStore
+from .chroma_store import ChromaBatchWriteError, ChromaStore
 
 
 class IndexableTool(Protocol):
@@ -452,7 +452,18 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     )
 
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
-    await _execute_batch_operations(store, put_ops)
+    try:
+        await _execute_batch_operations(store, put_ops)
+    except ChromaBatchWriteError as exc:
+        # Leave the hash uncached so the next boot retries. Caching it here is
+        # what made a transient embedding outage permanent: the guard hit on
+        # every later boot and the missing tools were never re-indexed.
+        log.error(
+            f"{LogTag.CHROMA} index_tools_to_store: batch write failed, not caching namespace hash",
+            namespace=namespace,
+            error_type=type(exc).__name__,
+        )
+        return
 
     # Cache the hash after successful indexing (24 hour TTL)
     await set_cache(cache_key, tools_hash, ttl=86400)
