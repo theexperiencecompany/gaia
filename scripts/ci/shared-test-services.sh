@@ -29,11 +29,16 @@ set -euo pipefail
 
 # Fixed ports: there is exactly one shared set, so the per-runner port
 # arithmetic in start-test-services.sh has nothing to disambiguate here.
-POSTGRES_PORT="${GAIA_SHARED_POSTGRES_PORT:-5432}"
-REDIS_PORT="${GAIA_SHARED_REDIS_PORT:-6379}"
-MONGO_PORT="${GAIA_SHARED_MONGO_PORT:-27017}"
-CHROMA_PORT="${GAIA_SHARED_CHROMA_PORT:-8000}"
-RABBITMQ_PORT="${GAIA_SHARED_RABBITMQ_PORT:-5672}"
+# High, non-standard host ports: the home box runs its own Postgres/Redis/
+# Mongo/RabbitMQ/Chroma alongside CI (ports 5432/6379/27017/5672/8000 are
+# taken, and so are 15432/15673), and the per-lane CI containers use
+# <base>+index*100 below 10000. Surveyed free on 2026-08-28: 25432 16379
+# 37017 18000 25673.
+POSTGRES_PORT="${GAIA_SHARED_POSTGRES_PORT:-25432}"
+REDIS_PORT="${GAIA_SHARED_REDIS_PORT:-16379}"
+MONGO_PORT="${GAIA_SHARED_MONGO_PORT:-37017}"
+CHROMA_PORT="${GAIA_SHARED_CHROMA_PORT:-18000}"
+RABBITMQ_PORT="${GAIA_SHARED_RABBITMQ_PORT:-25673}"
 
 PG_NAME="gaia-shared-postgres"
 REDIS_NAME="gaia-shared-redis"
@@ -56,7 +61,7 @@ PULL_BACKOFF_SECS=5
 
 # Lanes are numbered 0..MAX_LANE; the Redis stripe arithmetic below assumes the
 # server has (MAX_LANE+1)*32 + 32 databases (256 covers six lanes with room).
-MAX_LANE=5
+MAX_LANE=6   # lanes 0-6: Redis --databases 256 holds 7 stripes of 32 above DB 8; RUNNER_INDEX 1-6 map directly
 REDIS_DATABASES=256
 REDIS_STRIPE=32
 REDIS_BLOCK_START=8
@@ -286,10 +291,16 @@ cmd_prepare() {
 
   # add_vhost is idempotent in RabbitMQ; set_permissions is not conditional and
   # is cheap, so it is applied every time (it also repairs a half-made vhost).
-  docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q add_vhost "$vhost" \
-    || echo "RabbitMQ: vhost ${vhost} already exists"
-  docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q \
-    set_permissions -p "$vhost" guest ".*" ".*" ".*"
+  # `rabbitmq-diagnostics ping` (the readiness probe) answers before the
+  # management subsystem accepts vhost commands, so right after `up` the first
+  # rabbitmqctl call can fail with a usage/"not running" error. Retry briefly.
+  local tries=0
+  until docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q add_vhost "$vhost" >/dev/null 2>&1 \
+     && docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q set_permissions -p "$vhost" guest ".*" ".*" ".*" >/dev/null 2>&1; do
+    tries=$((tries + 1))
+    ((tries < 30)) || die "RabbitMQ: could not provision vhost ${vhost} after 30 attempts"
+    sleep 1
+  done
   echo "RabbitMQ: vhost ${vhost} ready"
 
   # Mongo and Chroma need no provisioning: a Mongo database and a Chroma
