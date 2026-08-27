@@ -180,7 +180,11 @@ runs:
       id: models-on-disk
       shell: bash
       run: |
-        if [ -n "$(find "$MODEL_CACHE_DIR" -name 'model*.onnx' -size +10M 2>/dev/null | head -n 1)" ]; then
+        # The HF cache stores weights under blobs/ and reaches them through
+        # symlinks in snapshots/; `find -size` on a symlink sees the link, not
+        # the file, so the previous check never matched and the prefetch ran —
+        # and re-downloaded over the uplink — on every self-hosted job.
+        if [ -n "$(find -L "$MODEL_CACHE_DIR" -name 'model*.onnx' -size +10M 2>/dev/null | head -n 1)" ]; then
           echo "present=true" >> "$GITHUB_OUTPUT"; echo "embedding models already on disk"
         else
           echo "present=false" >> "$GITHUB_OUTPUT"
