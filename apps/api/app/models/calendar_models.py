@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from typing import Any, Literal
 
@@ -398,13 +398,16 @@ class RecurrenceRule(BaseModel):
             except ValueError:
                 return self.until.replace("-", "")
 
-        until_value = self.until.replace("+00:00", "Z")
-        if until_value.endswith("Z"):
-            return until_value
         try:
-            return datetime.fromisoformat(self.until).strftime("%Y%m%dT%H%M%SZ")
+            parsed = datetime.fromisoformat(self.until)
         except ValueError:
             return self.until
+        # An offset-aware value has to be shifted to UTC before it can wear a
+        # Z: stamping "+05:30" as Z moves the series' end by 5.5 hours. A naive
+        # value is already the caller's UTC wall-clock, so it converts as-is.
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(UTC)
+        return parsed.strftime("%Y%m%dT%H%M%SZ")
 
     def to_rrule_string(self) -> str:
         """Convert to an RFC 5545 RRULE string."""

@@ -416,7 +416,7 @@ class TestTheConversationGrowsAppendOnly:
         and everything behind it is re-read at full price.
         """
         async with comms_graph(
-            [call("call_executor", {"task": "do it"}, id="x1"), "done", "second reply"]
+            [call("call_executor", {"task": "do it"}, call_id="x1"), "done", "second reply"]
         ) as graph:
             requests = await self._requests_across_turns(
                 graph, ("delegate something", "and now this"), f"cache-tool-{uuid4()}"

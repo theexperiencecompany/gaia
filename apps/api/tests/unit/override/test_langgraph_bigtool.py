@@ -32,9 +32,9 @@ from app.override.langgraph_bigtool.agent_config import (
     ToolRetrievalConfig,
 )
 from app.override.langgraph_bigtool.create_agent import (
-    _AgentDeps,
     _after_model_result,
     _agent_sticky_key,
+    _AgentDeps,
     _bind_session_id,
     _end_graph_hooks_node,
     _executable_calls,
@@ -721,9 +721,7 @@ class TestRejectUnboundTools:
     def test_the_rejection_message_is_pinned_verbatim(self) -> None:
         """The model reads this to recover — the tool name must appear in both
         the prose and the retrieve_tools example, or the retry loops."""
-        result = reject_unbound_tools(
-            [{"id": "tc1", "name": "missing_tool"}], store=MagicMock()
-        )
+        result = reject_unbound_tools([{"id": "tc1", "name": "missing_tool"}], store=MagicMock())
 
         (msg,) = result["messages"]
         assert msg.content == (
@@ -1340,9 +1338,7 @@ class TestLogMessagePreviewDirect:
         assert kwargs["preview"] == [{"role": "HumanMessage", "content": "hello"}]
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_a_message_without_content_attr_logs_empty_content(
-        self, mock_log: MagicMock
-    ) -> None:
+    def test_a_message_without_content_attr_logs_empty_content(self, mock_log: MagicMock) -> None:
         _log_message_preview(_make_state(messages=[object()]))
 
         entry = mock_log.info.call_args.kwargs["preview"][0]
@@ -1364,9 +1360,7 @@ class TestLogMessagePreviewDirect:
         assert entry["content"] == "z" * 197 + "..."
 
     @patch(f"{_CREATE_AGENT_MODULE}.log")
-    def test_a_state_without_messages_previews_an_empty_list(
-        self, mock_log: MagicMock
-    ) -> None:
+    def test_a_state_without_messages_previews_an_empty_list(self, mock_log: MagicMock) -> None:
         _log_message_preview(cast("State", {}))
 
         mock_log.info.assert_called_once_with("acall_model message preview", preview=[])
@@ -1849,9 +1843,7 @@ class TestFinishTaskNodeMissingId:
         store = MagicMock()
         calls = [{"id": "c1", "args": {"result": 7}}]
 
-        with patch(
-            f"{_CREATE_AGENT_MODULE}.finish_task_node"
-        ) as sync_finish:
+        with patch(f"{_CREATE_AGENT_MODULE}.finish_task_node") as sync_finish:
             await afinish_task_node(calls, store=store)
 
         sync_finish.assert_called_once_with(calls, store=store)

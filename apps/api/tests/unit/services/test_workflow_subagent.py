@@ -141,7 +141,9 @@ class TestTheLaneItInherits:
                 f"{_MOD}.assemble_context",
                 new_callable=AsyncMock,
                 return_value=AssembledContext(
-                    stable=SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True}),
+                    stable=SystemMessage(
+                        content="ctx", additional_kwargs={"dynamic_context": True}
+                    ),
                     volatile=None,
                 ),
             ),
@@ -399,15 +401,18 @@ class TestStreamTurnModes:
         entries, and a dropped writer silently kills all streaming."""
         writer = MagicMock()
         dedup = {"tc0"}
-        with patch(
-            f"{_MOD}.extract_tool_entries_from_update",
-            new_callable=AsyncMock,
-            return_value=[],
-        ) as extract, patch.object(
-            WorkflowSubagentRunner,
-            "_consume_message_chunk",
-            return_value="",
-        ) as consume:
+        with (
+            patch(
+                f"{_MOD}.extract_tool_entries_from_update",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as extract,
+            patch.object(
+                WorkflowSubagentRunner,
+                "_consume_message_chunk",
+                return_value="",
+            ) as consume,
+        ):
             await WorkflowSubagentRunner._stream_turn(
                 _StreamGraph(
                     [

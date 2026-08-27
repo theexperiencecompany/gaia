@@ -190,7 +190,6 @@ apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913
 apps/api/tests/integration/real/test_schemathesis.py	PLR0912
 apps/api/tests/unit/agents/context/test_sections.py	PLR0913
-apps/api/tests/unit/agents/test_email_processor.py	PLR0913
 apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913
 apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
@@ -199,7 +198,6 @@ apps/api/tests/unit/memory/pg_store/test_memories.py	PLR0913
 apps/api/tests/unit/memory/test_ingestion.py	PLR0913
 apps/api/tests/unit/memory/test_management.py	PLR0913
 apps/api/tests/unit/memory/test_retrieval.py	PLR0913
-apps/api/tests/unit/scripts/test_delete_user_account.py	PLR0913
 apps/api/tests/unit/services/test_todo_service.py	PLR0913
 apps/api/tests/unit/services/test_trigger_handlers_extras.py	PLR0913
 apps/api/tests/unit/services/test_trigger_service.py	PLR0913

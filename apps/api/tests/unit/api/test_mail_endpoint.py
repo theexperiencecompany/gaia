@@ -1140,8 +1140,7 @@ class TestBuildGmailQuery:
             label="Work",
         )
         assert (
-            _build_gmail_query(filters)
-            == "report"
+            _build_gmail_query(filters) == "report"
             " from:boss@company.com"
             " to:me@company.com"
             " subject:Q3"
@@ -1156,9 +1155,7 @@ class TestBuildGmailQuery:
         [(True, "has:attachment"), (False, "-has:attachment")],
     )
     def test_has_attachment_flag(self, has_attachment: bool, expected: str) -> None:
-        assert (
-            _build_gmail_query(GmailSearchFilters(has_attachment=has_attachment)) == expected
-        )
+        assert _build_gmail_query(GmailSearchFilters(has_attachment=has_attachment)) == expected
 
     def test_has_attachment_none_omits_flag(self) -> None:
         assert _build_gmail_query(GmailSearchFilters(has_attachment=None)) == ""
@@ -1188,9 +1185,7 @@ class TestSearchEmailsQueryContract:
     async def test_search_passes_built_query_and_capped_results(
         self, mock_search: AsyncMock, mock_log: AsyncMock, client: AsyncClient
     ):
-        mock_search.return_value = GmailMessagesResponse(
-            messages=[{"id": "m-1"}, {"id": "m-2"}]
-        )
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "m-1"}, {"id": "m-2"}])
         response = await client.get(
             f"{MAIL_BASE}/gmail/search",
             params={

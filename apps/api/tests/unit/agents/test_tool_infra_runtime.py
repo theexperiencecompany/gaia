@@ -913,9 +913,7 @@ async def test_a_non_authoring_subagent_keeps_spawn_enabled():
 async def test_todo_factories_receive_the_provider_identity_exactly():
     """source/source_label key the todo tools' progress events to the right
     integration; a dropped kwarg falls back to a generic label."""
-    captured = await _run_factory_recording_wiring(
-        config=SubAgentToolConfig(source_label="Gmail")
-    )
+    captured = await _run_factory_recording_wiring(config=SubAgentToolConfig(source_label="Gmail"))
 
     assert captured["todo_calls"]["tools"] == {"source": "provider", "source_label": "Gmail"}
     assert captured["todo_calls"]["hook"] == {"source": "provider"}

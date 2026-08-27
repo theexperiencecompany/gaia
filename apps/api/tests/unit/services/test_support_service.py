@@ -1212,8 +1212,11 @@ class TestCreateSupportRequestWithAttachments:
         assert process.await_args.args[1] == stored.ticket_id
 
     async def test_email_failure_rolls_back_with_the_generated_ids_and_error(
-        self, mock_support_repo, mock_email_notifications, mock_upload_file_to_cloudinary,
-        sample_request_data
+        self,
+        mock_support_repo,
+        mock_email_notifications,
+        mock_upload_file_to_cloudinary,
+        sample_request_data,
     ):
         err = RuntimeError("smtp refused")
 
@@ -1274,9 +1277,7 @@ class TestCreateSupportRequestWithAttachments:
                 user_email=USER_EMAIL,
             )
 
-        assert exc_info.value.detail == (
-            "Failed to create support request: unexpected model error"
-        )
+        assert exc_info.value.detail == ("Failed to create support request: unexpected model error")
 
 
 # ===========================================================================
@@ -1632,7 +1633,11 @@ class TestProcessAttachmentsPins:
             pytest.raises(HTTPException),
         ):
             await _process_attachments(
-                [_make_upload_file("a.png"), _make_upload_file("b.png"), _make_upload_file("c.png")],
+                [
+                    _make_upload_file("a.png"),
+                    _make_upload_file("b.png"),
+                    _make_upload_file("c.png"),
+                ],
                 "GAIA-3",
                 datetime.now(UTC),
             )

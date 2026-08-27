@@ -320,8 +320,20 @@ class TestRecurrenceRuleToRruleString:
         assert "UNTIL=" in result
 
     def test_with_until_datetime_non_utc_exact_value(self):
+        """An offset is converted to UTC, not relabelled: 10:00+05:30 is 04:30Z."""
         m = RecurrenceRule(frequency="DAILY", until="2025-06-15T10:00:00+05:30")
-        assert m.to_rrule_string() == "RRULE:FREQ=DAILY;UNTIL=20250615T100000Z"
+        assert m.to_rrule_string() == "RRULE:FREQ=DAILY;UNTIL=20250615T043000Z"
+
+    def test_with_until_datetime_z_suffix_exact_value(self):
+        m = RecurrenceRule(frequency="DAILY", until="2025-12-31T23:59:59Z")
+        assert m.to_rrule_string() == "RRULE:FREQ=DAILY;UNTIL=20251231T235959Z"
+
+    def test_z_suffix_and_plus_zero_produce_same_compact_value(self):
+        z = RecurrenceRule(frequency="DAILY", until="2025-12-31T23:59:59Z").to_rrule_string()
+        plus = RecurrenceRule(
+            frequency="DAILY", until="2025-12-31T23:59:59+00:00"
+        ).to_rrule_string()
+        assert z == plus == "RRULE:FREQ=DAILY;UNTIL=20251231T235959Z"
 
     def test_with_by_month_day(self):
         m = RecurrenceRule(frequency="MONTHLY", by_month_day=[1, 15])

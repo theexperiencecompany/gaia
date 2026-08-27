@@ -4,8 +4,8 @@ import re
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from pydantic import BaseModel
+import pytest
 
 from app.decorators.caching import Cacheable, CacheInvalidator, _pattern_to_key
 from app.utils.cache_utils import create_cache_key_hash

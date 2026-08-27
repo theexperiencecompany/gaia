@@ -23,6 +23,8 @@ from app.scripts.delete_user_account import (
 )
 
 UID = "67689b80006f6eec3f6f6df8"
+# Deliberately unnormalized: the footprint must lowercase and strip it.
+RAW_EMAIL = "User@Example.COM "
 
 
 class FakeCollection:
@@ -183,11 +185,12 @@ class TestPgInventory:
         _pg_inventory(conn, UID)
 
         expected = [
-            f"SELECT count(*) FROM {table} WHERE user_id = %s" for table in PG_USER_TABLES
+            f"SELECT count(*) FROM {table} WHERE user_id = %s"  # noqa: S608 -- expected literal mirrors the hardcoded PG_USER_TABLES query, no user input
+            for table in PG_USER_TABLES
         ]
-        assert [call.args[0] for call in cursor.execute.call_args_list] == expected
-        for call in cursor.execute.call_args_list:
-            assert call.args[1] == (UID,)
+        assert [c.args[0] for c in cursor.execute.call_args_list] == expected
+        for c in cursor.execute.call_args_list:
+            assert c.args[1] == (UID,)
 
 
 # ---------------------------------------------------------------------------
@@ -393,9 +396,7 @@ class TestDeleteMongoData:
         }
         assert "[mongo] bot_sessions: deleted 6" in capsys.readouterr().out
 
-    def test_bot_sessions_without_platform_links_only_delete_by_user_id(
-        self, capsys: Any
-    ) -> None:
+    def test_bot_sessions_without_platform_links_only_delete_by_user_id(self, capsys: Any) -> None:
         from unittest.mock import MagicMock, patch
 
         from app.scripts.delete_user_account import _delete_mongo_data
@@ -470,7 +471,10 @@ class TestDeletePostgresData:
         calls = cur.execute.call_args_list
         # One DELETE per PG_USER_TABLES entry, each scoped to the uid...
         for i, table in enumerate(PG_USER_TABLES):
-            assert calls[i].args == (f"DELETE FROM {table} WHERE user_id = %s", (d.uid,))
+            assert calls[i].args == (
+                f"DELETE FROM {table} WHERE user_id = %s",  # noqa: S608 -- expected literal mirrors the hardcoded PG_USER_TABLES query, no user input
+                (d.uid,),
+            )
         # ...then the three checkpoint tables swept by a LIKE pattern that
         # matches derived threads embedding the conversation id.
         checkpoint_calls = calls[len(PG_USER_TABLES) :]
@@ -481,7 +485,9 @@ class TestDeletePostgresData:
         ]
         for c in checkpoint_calls:
             table = c.args[0].split("FROM ")[1].split(" ")[0]
-            assert c.args[0] == f"DELETE FROM {table} WHERE thread_id LIKE %s ESCAPE '\\'"
+            assert (
+                c.args[0] == f"DELETE FROM {table} WHERE thread_id LIKE %s ESCAPE '\\'"  # noqa: S608 -- table comes from the asserted call itself, one of three literal checkpoint names
+            )
             assert c.args[1] == ("%conv-1%",)
         d.pg.commit.assert_called_once()
 
@@ -495,9 +501,7 @@ class TestDeletePostgresData:
 
         _delete_postgres_data(d)
 
-        patterns = {
-            c.args[1][0] for c in cur.execute.call_args_list[len(PG_USER_TABLES) :]
-        }
+        patterns = {c.args[1][0] for c in cur.execute.call_args_list[len(PG_USER_TABLES) :]}
         # % _ and \\ are backslash-escaped so the id only ever matches itself.
         assert patterns == {"%a\\%b\\_c\\\\d%"}
 
@@ -834,9 +838,7 @@ class TestVerifyRemoval:
                 "app.scripts.delete_user_account._mongo_inventory",
                 return_value=mongo or {},
             ) as mongo_inv,
-            patch(
-                "app.scripts.delete_user_account._pg_inventory", return_value=pg or {}
-            ) as pg_inv,
+            patch("app.scripts.delete_user_account._pg_inventory", return_value=pg or {}) as pg_inv,
             patch(
                 "app.scripts.delete_user_account._chroma_inventory",
                 return_value=chroma or {},
@@ -871,9 +873,7 @@ class TestVerifyRemoval:
         assert "composio: CLEAN" in out
         assert "workos: CLEAN" in out
         # The operator is told, with the uid, what the server cannot delete.
-        assert (
-            f"MANUAL FOLLOW-UP: delete the PostHog person for distinct_id {UID}" in out
-        )
+        assert f"MANUAL FOLLOW-UP: delete the PostHog person for distinct_id {UID}" in out
         assert f"MANUAL FOLLOW-UP: delete Langfuse traces for user_id {UID}" in out
 
     async def test_a_surviving_remnant_returns_one(self, capsys: Any) -> None:
@@ -944,9 +944,7 @@ class TestVerifyRemoval:
         survivor = MagicMock()
         survivor.id = "wus-1"
         d = _footprint()
-        d.workos.user_management.list_users = AsyncMock(
-            return_value=MagicMock(data=[survivor])
-        )
+        d.workos.user_management.list_users = AsyncMock(return_value=MagicMock(data=[survivor]))
 
         rc = await self._verify(d)
 
@@ -976,10 +974,8 @@ async def _run_build_footprint(
     user: Any,
     *,
     uid: str = UID,
-    email: str = "User@Example.COM ",
     composio_items: list[Any] | None = None,
     workos_users: list[Any] | None = None,
-    redis_keys: list[bytes] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     """Call _build_footprint under the standard client patches.
 
@@ -990,7 +986,7 @@ async def _run_build_footprint(
 
     from app.scripts.delete_user_account import PG_USER_TABLES, _build_footprint
 
-    args = argparse.Namespace(email=email)
+    args = argparse.Namespace(email=RAW_EMAIL)
     conn = MagicMock()
     cur = MagicMock()
     cur.fetchone.side_effect = [(0,)] * len(PG_USER_TABLES)
@@ -1007,15 +1003,12 @@ async def _run_build_footprint(
     workos.user_management.list_users = AsyncMock(return_value=workos_result)
 
     redis_client = MagicMock()
-    redis_client.scan_iter.return_value = iter(redis_keys or [])
 
     with (
         patch(
             "app.scripts.delete_user_account.psycopg.connect", return_value=conn
         ) as mock_pg_connect,
-        patch(
-            "app.scripts.delete_user_account.chromadb.HttpClient"
-        ) as mock_chroma_cls,
+        patch("app.scripts.delete_user_account.chromadb.HttpClient") as mock_chroma_cls,
         patch(
             "app.scripts.delete_user_account.redislib.Redis.from_url",
             return_value=redis_client,
@@ -1122,9 +1115,7 @@ class TestBuildFootprint:
         db.e2b_sandboxes.find.assert_called_once_with({"user_id": UID}, {"sandbox_id": 1})
         db.conversations.find.assert_called_once_with({"user_id": UID}, {"conversation_id": 1})
         mocks["composio"].connected_accounts.list.assert_called_once_with(user_ids=[UID])
-        mocks["workos"].user_management.list_users.assert_awaited_once_with(
-            email="User@Example.COM "
-        )
+        mocks["workos"].user_management.list_users.assert_awaited_once_with(email=RAW_EMAIL)
         out = capsys.readouterr().out
         assert "mongo: {'todos': 5}" in out
         assert "postgres: {'memories': 1}" in out

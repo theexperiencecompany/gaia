@@ -234,9 +234,7 @@ def _insert_markdown(
             _append_table_block(composio, request, block, auth_credentials)
         elif anchor_uses_left > 0:
             anchor_uses_left = 0
-            _append_content_block(
-                composio, request, block, request.after, auth_credentials
-            )
+            _append_content_block(composio, request, block, request.after, auth_credentials)
         else:
             _append_content_block(composio, request, block, None, auth_credentials)
         blocks_added += 1

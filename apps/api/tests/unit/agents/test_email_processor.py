@@ -14,7 +14,6 @@ from app.agents.memory.email_processor import (
     OnboardingFetchOptions,
     _await_discovery_tasks,
     _collect_platform_results,
-    _collect_profile_extraction,
     _collect_storage_results,
     _crawl_and_store_discovered,
     _discover_and_store_linked_profiles,
@@ -44,6 +43,7 @@ USER_ID = "507f1f77bcf86cd799439011"
 # ---------------------------------------------------------------------------
 # Shared patch targets
 # ---------------------------------------------------------------------------
+_EMAIL_PROCESSOR_MODULE = "app.agents.memory.email_processor"
 _PATCH_USERS = "app.agents.memory.email_processor.user_repository"
 _PATCH_SEARCH = "app.agents.memory.email_processor.search_messages"
 _PATCH_EMIT = "app.agents.memory.email_processor.emit_progress"
@@ -1139,8 +1139,6 @@ class TestCollectStorageResultsDirect:
 
 class TestMarkProcessingCompletePins:
     async def test_incomplete_processing_skips_the_mark_write_but_stamps_the_time(self) -> None:
-        from app.agents.memory.email_processor import _mark_processing_complete
-
         timer = MagicMock()
         with (
             patch(_PATCH_USERS) as users,
@@ -1153,8 +1151,6 @@ class TestMarkProcessingCompletePins:
         users.set_gmail_scan_timestamp.assert_awaited_once()
 
     async def test_complete_processing_marks_and_logs_exact_args(self) -> None:
-        from app.agents.memory.email_processor import _mark_processing_complete
-
         timer = MagicMock()
         with (
             patch(_PATCH_USERS) as users,
@@ -1174,8 +1170,6 @@ class TestMarkProcessingCompletePins:
         assert done_logs[0].kwargs["user_id"] == USER_ID
 
     async def test_skipped_watermark_warning_names_the_user(self) -> None:
-        from app.agents.memory.email_processor import _mark_processing_complete
-
         timer = MagicMock()
         with (
             patch(_PATCH_USERS) as users,
@@ -1191,8 +1185,6 @@ class TestMarkProcessingCompletePins:
         users.set_gmail_scan_timestamp.assert_not_awaited()
 
     async def test_mark_failure_is_swallowed_and_timestamp_still_written(self) -> None:
-        from app.agents.memory.email_processor import _mark_processing_complete
-
         timer = MagicMock()
         with (
             patch(_PATCH_USERS) as users,
@@ -1992,40 +1984,36 @@ class TestProcessGmailToMemoryForwardingPins:
     """Every id and total the orchestrator computes must reach the stage
     helpers intact."""
 
-    @patch(_PATCH_LOG)
-    @patch(_PATCH_MARK_PROC, new_callable=AsyncMock)
-    @patch(
-        _PATCH_PROFILE_COLLECTION,
-        new_callable=AsyncMock,
-        return_value=(2, [{"platform": "github", "url": "u"}]),
-    )
-    @patch(_PATCH_COLLECT_STORAGE, new_callable=AsyncMock, return_value=0)
-    @patch(_PATCH_STORE_EMAILS, new_callable=AsyncMock)
-    @patch(_PATCH_PROCESS, return_value=([{"role": "user", "content": "c"}], 0))
-    @patch(_PATCH_SEARCH, new_callable=AsyncMock)
-    @patch(_PATCH_USERS)
-    @patch(_PATCH_EXTRACT_PROFILES, new_callable=AsyncMock, return_value={"profiles_stored": 0})
-    async def test_ids_and_totals_flow_intact_through_every_stage(
-        self,
-        mock_profiles: AsyncMock,
-        mock_users: MagicMock,
-        mock_search: AsyncMock,
-        mock_process: MagicMock,
-        mock_store: AsyncMock,
-        mock_collect_storage: AsyncMock,
-        mock_profile_collection: AsyncMock,
-        mock_mark: AsyncMock,
-        mock_log: MagicMock,
-    ) -> None:
+    async def test_ids_and_totals_flow_intact_through_every_stage(self) -> None:
+        mock_users = MagicMock()
         mock_users.get = AsyncMock(
             return_value=UserDocument(
                 id=USER_ID, email_memory_processed=False, name="N", email="n@x.com"
             )
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
-        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
+        mock_search = AsyncMock(return_value=GmailMessagesResponse(messages=[{"id": "1"}]))
+        mock_profiles = AsyncMock(return_value={"profiles_stored": 0})
+        mock_process = MagicMock(return_value=([{"role": "user", "content": "c"}], 0))
+        mock_store = AsyncMock()
+        mock_collect_storage = AsyncMock(return_value=0)
+        mock_profile_collection = AsyncMock(return_value=(2, [{"platform": "github", "url": "u"}]))
+        mock_mark = AsyncMock()
+        mock_log = MagicMock()
 
-        result = await process_gmail_to_memory(USER_ID)
+        with patch.multiple(
+            _EMAIL_PROCESSOR_MODULE,
+            user_repository=mock_users,
+            search_messages=mock_search,
+            _extract_profiles_from_parallel_searches=mock_profiles,
+            process_email_content=mock_process,
+            store_emails_to_memory=mock_store,
+            _collect_storage_results=mock_collect_storage,
+            _collect_profile_extraction=mock_profile_collection,
+            _mark_processing_complete=mock_mark,
+            log=mock_log,
+        ):
+            result = await process_gmail_to_memory(USER_ID)
 
         # The DB lookup, batch-fetch loop and profile track all see USER_ID.
         mock_users.get.assert_awaited_once_with(USER_ID)
@@ -2096,13 +2084,14 @@ class TestProcessGmailToMemoryForwardingPins:
         summaries = [
             c
             for c in mock_log.info.call_args_list
-            if c.args
-            and c.args[0] == f"{LogTag.MEMORY} Onboarding email pipeline timing breakdown"
+            if c.args and c.args[0] == f"{LogTag.MEMORY} Onboarding email pipeline timing breakdown"
         ]
         assert len(summaries) == 1
         summary = summaries[0].kwargs["summary"]
         lines = summary.splitlines()
-        matching = [l for l in lines if l.strip().startswith("Gmail fetch + parse phase (total)")]
+        matching = [
+            line for line in lines if line.strip().startswith("Gmail fetch + parse phase (total)")
+        ]
         assert len(matching) == 1
         elapsed = float(matching[0].split()[-1].rstrip("s"))
         assert elapsed < 100.0
