@@ -16,15 +16,21 @@ runs:
     # The self-hosted box keeps its NVMe between runs, so uv's cache lives
     # there directly. Pushing it through the GH cache would cost a WAN
     # round-trip over a residential uplink for data that never left the disk.
-    - name: Point uv at the persistent local cache (self-hosted)
+    #
+    # Passed as cache-local-path, not exported as UV_CACHE_DIR: setup-uv sets
+    # UV_CACHE_DIR itself to a per-job temp directory, and that silently wins
+    # over an env var exported before it runs. The temp dir is empty on every
+    # job, which turns "persistent cache" into a full PyPI download per run.
+    - name: Resolve the persistent uv cache path (self-hosted)
       if: runner.environment == 'self-hosted'
+      id: uvcache
       shell: bash
       run: |
         set -euo pipefail
         UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
         mkdir -p "$UV_DIR"
-        echo "UV_CACHE_DIR=$UV_DIR" >> "$GITHUB_ENV"
-        echo "uv cache (persistent, no GH cache): $UV_DIR"
+        echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
+        echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"
 
     - name: Setup uv (self-hosted — persistent local cache)
       if: runner.environment == 'self-hosted'
@@ -32,6 +38,7 @@ runs:
       with:
         version: "0.8.17"
         enable-cache: false
+        cache-local-path: ${{ steps.uvcache.outputs.path }}
 
     - name: Setup uv (GitHub-hosted — cache via actions/cache)
       if: runner.environment != 'self-hosted'

@@ -214,10 +214,20 @@ jobs:
           echo "pytest xdist=$PY (n=$PYN) on $(nproc) vCPUs"
       - name: Run Python tests (timed, 16-way)
         working-directory: apps/api
+        env:
+          # coverage's sys.monitoring core (Python 3.12+, coverage 7.4+). The
+          # default C tracer intercepts every line event and was the single
+          # largest per-test overhead; sysmon reduces it to a few percent.
+          # Line coverage only — branch coverage under sysmon needs 3.14 — and
+          # this suite measures lines ([coverage:run] sets no branch=true).
+          COVERAGE_CORE: sysmon
         run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }}"
+          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} coverage_core=$COVERAGE_CORE"
+          # --dist worksteal: idle workers pull from busy ones' queues. The
+          # default `load` scheduler hands out fixed chunks up front, so the
+          # 15s memory tests strand a worker while the others sit finished.
           /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n ${{ steps.par.outputs.py }} -m 'not composio and not model_onboarding and not schemathesis' \
+            uv run --frozen pytest -n ${{ steps.par.outputs.py }} --dist worksteal -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
             --junitxml=test-results/pytest.xml --durations=50 2>&1 | tee /tmp/pytest.time
@@ -269,23 +279,29 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      # Matches the cache-aware path the real lanes use. Left on actions/cache
-      # this step would spend minutes moving the uv cache over the home box's
-      # residential uplink, and the benchmark would be measuring the network
-      # rather than the CPU scaling it exists to measure.
-      - name: Point uv at the persistent local cache (self-hosted)
+      # Matches the cache-aware path the real lanes use. cache-local-path is
+      # the load-bearing input: setup-uv sets UV_CACHE_DIR itself, to a
+      # per-job temp directory that is empty every time, and that overrides
+      # anything exported beforehand. With the env-var approach every
+      # benchmark cell re-downloaded the full dependency set from PyPI over
+      # the home box's residential uplink — 6+ minutes at 3% CPU per cell —
+      # and the curve would have measured the network, not the CPU scaling
+      # it exists to measure.
+      - name: Resolve the persistent uv cache path (self-hosted)
         if: runner.environment == 'self-hosted'
+        id: uvcache
         run: |
           set -euo pipefail
           UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
           mkdir -p "$UV_DIR"
-          echo "UV_CACHE_DIR=$UV_DIR" >> "$GITHUB_ENV"
-      - uses: astral-sh/setup-uv@v5
+          echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         if: runner.environment == 'self-hosted'
         with:
           version: "0.8.17"
           enable-cache: false
-      - uses: astral-sh/setup-uv@v5
+          cache-local-path: ${{ steps.uvcache.outputs.path }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         if: runner.environment != 'self-hosted'
         with:
           version: "0.8.17"

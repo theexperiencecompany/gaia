@@ -188,23 +188,6 @@ import sys
 env = dict(os.environ)
 patch_dir = sys.argv[1]
 env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
-# TEMP DEBUG: dump the stack when the mangled-name assertion would fire
-import mutmut.__main__ as _mm
-_orig_mangle = _mm.mangled_name_from_mutant_name
-def _spy_mangle(name):
-    if '__mutmut_' not in str(name):
-        import traceback
-        traceback.print_stack()
-    return _orig_mangle(name)
-_mm.mangled_name_from_mutant_name = _spy_mangle
-import mutmut.mutation.trampoline as _tramp_mod
-_orig_tramp_mangle = _tramp_mod.mangled_name_from_mutant_name
-def _spy_tramp_mangle(name):
-    if '__mutmut_' not in str(name):
-        import traceback
-        traceback.print_stack()
-    return _orig_tramp_mangle(name)
-_tramp_mod.mangled_name_from_mutant_name = _spy_tramp_mangle
 max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
 run_args = ['run'] + (['--max-children', max_children] if max_children else [])
 # Pre-import the C-extension-heavy modules in the MUTMUT process BEFORE it
