@@ -110,9 +110,8 @@ interface UseSlashCommandDropdownStateParams {
  * while typing, selection, category tabs, keyboard navigation, click-outside,
  * and programmatic open/close.
  *
- * NB: keyboard and pointer navigation intentionally differ for "down" — the
- * pointer variant clamps to the unlocked-match count while the keyboard
- * variant scans the full filtered list. They are kept separate on purpose.
+ * NB: keyboard navigation, pointer navigation and Enter/Tab activation all
+ * address rows in the same unlocked-only index space (see clampSelection).
  */
 export function useSlashCommandDropdownState({
   inputRef,
@@ -363,21 +362,17 @@ export function useSlashCommandDropdownState({
         case "Enter":
         case "Tab": {
           e.preventDefault();
-          // Filter to only unlocked matches
+          // selectedIndex lives in unlocked-row space (see clampSelection), so
+          // activation must resolve against the unlocked list too — indexing
+          // the full list here picked a different row than the one rendered as
+          // highlighted whenever a locked match preceded an unlocked one.
           const unlockedFilteredMatches = currentFilteredMatches.filter(
             (match) => !match.enhancedTool?.isLocked,
           );
-
-          // If there's only one unlocked filtered match, automatically select it
-          if (unlockedFilteredMatches.length === 1) {
-            handleSlashCommandSelect(unlockedFilteredMatches[0]);
-          } else {
-            const selectedMatch =
-              currentFilteredMatches[slashCommandState.selectedIndex];
-            // Only select if the match exists and is not locked
-            if (selectedMatch && !selectedMatch.enhancedTool?.isLocked) {
-              handleSlashCommandSelect(selectedMatch);
-            }
+          const selectedMatch =
+            unlockedFilteredMatches[slashCommandState.selectedIndex];
+          if (selectedMatch) {
+            handleSlashCommandSelect(selectedMatch);
           }
           return true;
         }

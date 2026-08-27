@@ -10,5 +10,16 @@
   "supplyChain": {
     "enabled": true,
     "minScore": 45
+  },
+  "ignore": {
+    // Vendored agent skills: upstream-authored SKILL.md bundles and their
+    // example templates, installed here and read by agents — not code this
+    // repo ships or authors. The templates are byte-identical across the two
+    // trees, so a finding here is a finding in someone else's file, and
+    // "fixing" it turns every skill update into a merge conflict. This is the
+    // same call the Python scanners already make for these paths
+    // ([tool.ruff] extend-exclude, [tool.bandit] exclude_dirs in
+    // pyproject.toml) — kept consistent so one rule governs vendored code.
+    "files": [".agents/skills/**", ".claude/skills/**"]
   }
 }
