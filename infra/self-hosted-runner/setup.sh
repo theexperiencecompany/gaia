@@ -324,6 +324,36 @@ else
   NX_REMOTE_ENV=""
 fi
 
+# One persistent BuildKit builder shared by every runner instance. The slow
+# part of an image build here is the --mount=type=cache layers (apt, uv:
+# measured 29 minutes cold over the residential uplink, 5 seconds warm) and
+# those mounts live INSIDE the builder instance — no --cache-to exports them.
+# A per-job builder, which is what docker/setup-buildx-action creates by
+# default, throws them away every time. GC is bounded by SIZE (keep_bytes),
+# not age, so a busy week cannot grow it past the disk.
+if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; then
+  BUILDKIT_CONF="${LOCAL_CACHE}/buildkitd.toml"
+  cat > "$BUILDKIT_CONF" <<'BKCONF'
+# Shared CI builder. Cache bounded by size; see setup.sh.
+[worker.oci]
+  gc = true
+  [[worker.oci.gcpolicy]]
+    keepBytes = "20GB"
+    keepDuration = "168h"
+  [[worker.oci.gcpolicy]]
+    all = true
+    keepBytes = "30GB"
+BKCONF
+  if docker buildx inspect gaia-ci >/dev/null 2>&1; then
+    echo "[setup] buildx builder 'gaia-ci' already exists"
+  else
+    docker buildx create --name gaia-ci --driver docker-container \
+      --driver-opt network=host --config "$BUILDKIT_CONF" --bootstrap >/dev/null 2>&1 \
+      && echo "[setup] buildx builder 'gaia-ci' created (persistent, 30 GB cache cap)" \
+      || echo "::warning::could not create the gaia-ci buildx builder"
+  fi
+fi
+
 # Nightly cache prune as a user timer, so the persistent caches that make the
 # box fast stay size-bounded without anyone remembering to run anything.
 # prune-cache.sh is copied beside the runners so the timer does not depend on
