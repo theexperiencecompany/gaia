@@ -18,7 +18,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from hypothesis import settings as _hypothesis_settings
 import pytest
+
+# Hypothesis profiles. Profiled: 20 hypothesis tests were 10.4s of the 10.8s
+# of test time in tests/unit/utils — 100 examples each. PR lanes select the
+# "ci" profile (HYPOTHESIS_PROFILE=ci) to keep the feedback loop short; the
+# default (full) profile runs on master and locally, so nothing is lost.
+_hypothesis_settings.register_profile("ci", max_examples=20, deadline=None)
+_hypothesis_settings.register_profile("default", max_examples=100)
+_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.

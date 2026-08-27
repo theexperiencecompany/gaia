@@ -290,6 +290,7 @@ jobs:
           COVERAGE_CORE: ${{ github.event_name == 'pull_request' && 'sysmon' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
           COV_CONTEXT: ${{ github.event_name == 'pull_request' && '' || 'test' }}
+          HYPOTHESIS_PROFILE: ${{ github.event_name == 'pull_request' && 'ci' || 'default' }}
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
           SLICE_IGNORE: ${{ matrix.slice.ignore }}

@@ -161,9 +161,11 @@ runs:
           echo "USE_REAL_SERVICES=1"
           echo "MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
           echo "MEMORY_MODEL_CACHE_DIR=$MODEL_CACHE_DIR"
-          # .pyc files buy nothing in a throwaway CI checkout and cost writes
-          # on every one of the 16 xdist workers.
-          echo "PYTHONDONTWRITEBYTECODE=1"
+          # Deliberately NOT setting PYTHONDONTWRITEBYTECODE: on the persistent
+          # self-hosted workspace the .pyc files — and pytest's assertion-rewrite
+          # cache — survive between jobs. With the flag set every xdist worker
+          # recompiled all 13k test modules on every run (profiled: collection
+          # 71s per worker, builtins.compile 16.5s of 77s).
         } >> "$GITHUB_ENV"
 
     # The memory suite loads ~1.3 GB of ONNX weights (mxbai-embed-large plus the

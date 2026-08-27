@@ -30,6 +30,11 @@ if [ -n "${SLICE_IGNORE:-}" ]; then
   # shellcheck disable=SC2206 # same: SLICE_IGNORE is a flag list, not one argument
   EXTRA=(${SLICE_IGNORE})
 fi
+# Auto-loaded pytest plugins the suite never uses, each imported by EVERY xdist
+# worker: opik (profiled at 9.2s per process), langsmith, schemathesis (its
+# tests are marker-excluded; the plugin still loads). Blocking them by entry
+# point name is targeted — everything else keeps auto-loading.
+EXTRA+=(-p no:opik -p no:langsmith_plugin -p no:schemathesis)
 if [ -n "${COV_CONTEXT:-}" ]; then
   EXTRA+=(--cov-context="${COV_CONTEXT}")
 fi
