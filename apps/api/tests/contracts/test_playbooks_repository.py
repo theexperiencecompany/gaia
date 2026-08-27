@@ -30,7 +30,6 @@ def make_doc(**overrides) -> PlaybookDocument:
         "workflow_id": WORKFLOW_ID,
         "user_id": USER_ID,
         "workflow_hash": "hash-1",
-        "raw_yaml": "description: first\nsteps: []\nsynthesize: s\n",
         "description": "first",
         "steps": [{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
         "synthesize": "s",
@@ -66,7 +65,6 @@ class TestPlaybooksRepository:
         second = await repo.upsert_for_workflow(
             make_doc(
                 description="second",
-                raw_yaml="description: second\nsteps: []\nsynthesize: s\n",
                 workflow_hash="hash-2",
             )
         )

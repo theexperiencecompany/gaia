@@ -47,7 +47,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
                 ask=playbook.ask,
                 synthesize=playbook.synthesize,
                 workflow_hash=playbook.workflow_hash,
-                raw_yaml=playbook.raw_yaml,
                 last_run_status=PlaybookRunStatus.NOT_RUN,
             ),
         )

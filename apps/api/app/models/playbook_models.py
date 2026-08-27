@@ -201,9 +201,9 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     """A playbook as stored in Mongo.
 
     Identity is the business key ``playbook_id``; one active playbook per
-    workflow. ``raw_yaml`` is kept verbatim alongside the parsed body because it
-    is what the agent reads and edits — reserializing the model would quietly
-    reformat the author's own document.
+    workflow. The structured body is the only stored form: the YAML the agent
+    reads back is rendered from it on demand, so there is no second copy to
+    drift out of sync with the steps that actually replay.
     """
 
     playbook_id: str = Field(default_factory=lambda: f"pb_{uuid.uuid4().hex[:12]}")
@@ -213,7 +213,6 @@ class PlaybookDocument(PlaybookBody, MongoDocument):
     #: the user edited the workflow, so the frozen sequence no longer matches
     #: what was asked and the playbook is skipped rather than replayed blind.
     workflow_hash: str
-    raw_yaml: str
     last_run_status: PlaybookRunStatus = PlaybookRunStatus.NOT_RUN
     created_at: datetime
     updated_at: datetime
@@ -229,6 +228,5 @@ class PlaybookUpdate(BaseModel):
     ask: dict[str, PlaybookAsk] | None = None
     synthesize: str | None = None
     workflow_hash: str | None = None
-    raw_yaml: str | None = None
     last_run_status: PlaybookRunStatus | None = None
     updated_at: datetime | None = None

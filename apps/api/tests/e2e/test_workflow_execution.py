@@ -565,10 +565,17 @@ class TestWorkflowExecutionFailurePropagation:
     def workflow_execution_env(self, monkeypatch):
         """Patch every I/O edge of the execution path and expose the observable ones."""
         from app.api.v1.middleware import tiered_rate_limiter
+        from app.db.repositories.playbooks import playbook_repository
         from app.db.repositories.workflow_executions import workflow_executions_repository
         from app.db.repositories.workflows import workflow_repository
         from app.services.workflow.scheduler import WorkflowScheduler
         from app.workers.tasks import workflow_tasks
+
+        # These workflows have no playbook, so every run here takes the agentic
+        # path. Stubbed explicitly rather than left to the mocked Mongo client so
+        # the tests exercise the real "no playbook" branch instead of the
+        # lookup-failure fallback, which would hide a broken agentic path.
+        monkeypatch.setattr(playbook_repository, "get_for_workflow", AsyncMock(return_value=None))
 
         records = _InMemoryExecutionRecords()
         monkeypatch.setattr(workflow_executions_repository, "create", records.create)

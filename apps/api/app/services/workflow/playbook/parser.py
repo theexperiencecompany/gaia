@@ -1,25 +1,25 @@
-"""Parse a playbook's YAML and check it against the live tool registry.
+"""Check a playbook against the live tool registry, and render it for reading.
 
-Two stages, deliberately separate: ``parse_playbook`` turns text into a
-``PlaybookBody`` (or raises with the syntax/grammar problem), and
-``validate_playbook`` asks the registry whether the parsed document could
-actually run — the tools exist, their args are real, and every reference points
-at something the document already declared.
+``validate_playbook`` asks the registry whether an authored document could
+actually run: the tools exist, their args are real, and every reference points
+at something the document already declared. Its messages are read back by the
+authoring agent, so each one names the offending step and says what would be
+valid rather than reporting "invalid".
 
-Both failure shapes are read back by the authoring agent, so every message names
-the offending step and says what is wrong rather than reporting "invalid".
+``dump_playbook`` renders a body as YAML. That rendering is for humans and for
+the agent reading its own playbook back; the structured body is the only stored
+form, so nothing ever parses the YAML again.
 """
 
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Any
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 import yaml
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.models.playbook_models import PlaybookBody, PlaybookStep
-from app.utils.errors import AppError
 
 #: The placeholder namespaces a playbook may address. Everything else is a typo:
 #: placeholders are resolved by code, so an unrecognised one would be handed to a
@@ -39,11 +39,6 @@ _JSON_TYPE_TO_PYTHON: dict[str, tuple[type, ...]] = {
 }
 
 
-class PlaybookParseError(AppError):
-    """The YAML is not a playbook document: bad syntax, unknown keys, or a step
-    that is neither a tool call nor a handoff."""
-
-
 class PlaybookIssue(BaseModel):
     """One reason a parsed playbook cannot run, addressed to its author."""
 
@@ -58,40 +53,12 @@ class PlaybookValidation(BaseModel):
     issues: list[PlaybookIssue] = Field(default_factory=list)
 
 
-def parse_playbook(raw_yaml: str) -> PlaybookBody:
-    """Parse playbook YAML into its model. Raises ``PlaybookParseError``."""
-    try:
-        data = yaml.safe_load(raw_yaml)
-    except yaml.YAMLError as exc:
-        raise PlaybookParseError(
-            message=f"the playbook is not valid YAML: {exc}",
-            why="yaml.safe_load could not read the document",
-            fix="fix the YAML syntax and write the playbook again",
-        ) from exc
-
-    if not isinstance(data, dict):
-        raise PlaybookParseError(
-            message=f"a playbook must be a YAML mapping, got {type(data).__name__}",
-            why="the top level carries description, steps, synthesize and optionally ask",
-            fix="write the four top-level keys as a mapping",
-        )
-
-    try:
-        return PlaybookBody.model_validate(data)
-    except ValidationError as exc:
-        raise PlaybookParseError(
-            message=f"the playbook does not match the grammar: {_render_validation_error(exc)}",
-            why="only description, steps, ask and synthesize exist, and a step is a tool or a handoff",
-            fix="correct the reported keys and write the playbook again",
-        ) from exc
-
-
 def dump_playbook(body: PlaybookBody) -> str:
     """Serialize a playbook body to the YAML document the agent reads and edits.
 
-    The inverse of ``parse_playbook``: keys come out in authored order and
-    unset optional keys are left out entirely, so a stored playbook reads like
-    something a person wrote rather than a dump of every model field.
+    Keys come out in authored order and unset optional keys are left out
+    entirely, so a playbook reads like something a person wrote rather than a
+    dump of every model field.
     """
     document: dict[str, Any] = {
         "description": body.description,
@@ -293,10 +260,3 @@ def _split_placeholder(token: str) -> tuple[str, str]:
     head = token[1:].split(maxsplit=1)[0] if token[1:].strip() else ""
     root, _, rest = head.partition(".")
     return root, rest
-
-
-def _render_validation_error(exc: ValidationError) -> str:
-    return "; ".join(
-        f"{'.'.join(str(part) for part in error['loc']) or 'playbook'}: {error['msg']}"
-        for error in exc.errors()
-    )

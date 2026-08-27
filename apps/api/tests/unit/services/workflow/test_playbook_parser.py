@@ -1,21 +1,23 @@
-"""Parsing and validating a playbook document.
+"""The playbook grammar, and validation against the live tool registry.
 
-The parser is what the authoring agent argues with: a rejected write must say
-which node is wrong and why, so every assertion here is on the offending name
+Both are what the authoring agent argues with: a rejected write must say which
+node is wrong and why, so every assertion here is on the offending name
 appearing in the message, not merely on "it failed".
+
+The grammar itself is enforced by the models, since the structured tool schema
+is the only way a playbook is ever authored — nothing parses YAML back.
 """
 
 from typing import Annotated, Any
 from unittest.mock import patch
 
 from langchain_core.tools import BaseTool, tool
+from pydantic import ValidationError
 import pytest
+import yaml
 
-from app.services.workflow.playbook.parser import (
-    PlaybookParseError,
-    parse_playbook,
-    validate_playbook,
-)
+from app.models.playbook_models import PlaybookBody
+from app.services.workflow.playbook.parser import validate_playbook
 
 MODULE = "app.services.workflow.playbook.parser"
 
@@ -48,6 +50,15 @@ def _registry() -> _FakeRegistry:
     return _FakeRegistry({"send_email": send_email, "list_events": list_events})
 
 
+def _body(raw_yaml: str) -> PlaybookBody:
+    """Build a body from a YAML literal, so these cases stay readable as documents.
+
+    Production authors playbooks through the structured tool schema; YAML here is
+    only a convenient way to write the fixture.
+    """
+    return PlaybookBody.model_validate(yaml.safe_load(raw_yaml))
+
+
 VALID_YAML = """
 description: Mail the day's agenda
 steps:
@@ -70,72 +81,68 @@ synthesize: Say what was sent.
 
 
 @pytest.mark.unit
-class TestParsePlaybook:
-    def test_valid_yaml_round_trips(self) -> None:
-        body = parse_playbook(VALID_YAML)
-        assert body.description == "Mail the day's agenda"
-        assert [step.id for step in body.steps] == ["agenda", "mail"]
-        assert body.steps[1].args["subject"] == "Agenda for $today"
-        assert body.ask["body"].uses == ["agenda"]
-        assert body.synthesize == "Say what was sent."
+class TestPlaybookGrammar:
+    """A step is a tool call or a handoff, never both and never neither."""
 
-    def test_step_with_both_tool_and_handoff_is_rejected_by_name(self) -> None:
-        raw = """
-description: Confused
-steps:
-  - id: both_shapes
-    tool: send_email
-    handoff: mail_agent
-    steps:
-      - id: inner
-        tool: send_email
-synthesize: x
-"""
-        with pytest.raises(PlaybookParseError) as exc:
-            parse_playbook(raw)
-        assert "both_shapes" in exc.value.message
+    def test_a_step_carrying_both_a_tool_and_a_handoff_is_rejected_by_name(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookBody.model_validate(
+                {
+                    "description": "Confused",
+                    "steps": [
+                        {
+                            "id": "both_shapes",
+                            "tool": "send_email",
+                            "handoff": "mail_agent",
+                            "steps": [{"id": "inner", "tool": "send_email"}],
+                        }
+                    ],
+                    "synthesize": "x",
+                }
+            )
+        assert "both_shapes" in str(exc.value)
 
-    def test_handoff_without_children_is_rejected(self) -> None:
-        raw = """
-description: Empty handoff
-steps:
-  - id: delegate
-    handoff: mail_agent
-synthesize: x
-"""
-        with pytest.raises(PlaybookParseError) as exc:
-            parse_playbook(raw)
-        assert "mail_agent" in exc.value.message
+    def test_a_handoff_without_children_is_rejected_by_name(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookBody.model_validate(
+                {
+                    "description": "Empty handoff",
+                    "steps": [{"id": "delegate", "handoff": "mail_agent"}],
+                    "synthesize": "x",
+                }
+            )
+        assert "mail_agent" in str(exc.value)
 
-    def test_unknown_top_level_key_is_rejected_by_name(self) -> None:
-        raw = """
-description: Extra key
-version: 3
-steps:
-  - id: one
-    tool: send_email
-synthesize: x
-"""
-        with pytest.raises(PlaybookParseError) as exc:
-            parse_playbook(raw)
-        assert "version" in exc.value.message
+    def test_an_unknown_top_level_key_is_rejected_by_name(self) -> None:
+        with pytest.raises(ValidationError) as exc:
+            PlaybookBody.model_validate(
+                {
+                    "description": "Extra key",
+                    "version": 3,
+                    "steps": [{"id": "one", "tool": "send_email"}],
+                    "synthesize": "x",
+                }
+            )
+        assert "version" in str(exc.value)
 
-    def test_broken_yaml_is_rejected(self) -> None:
-        with pytest.raises(PlaybookParseError):
-            parse_playbook("description: [unclosed\nsteps:")
+    def test_a_playbook_with_no_steps_is_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookBody.model_validate(
+                {"description": "Nothing to do", "steps": [], "synthesize": "x"}
+            )
 
 
 @pytest.mark.unit
 class TestValidatePlaybook:
     async def test_valid_playbook_has_no_issues(self) -> None:
-        body = parse_playbook(VALID_YAML)
+        body = _body(VALID_YAML)
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body)
         assert result.valid is True
         assert result.issues == []
 
     async def test_unknown_tool_is_rejected_by_name(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Bogus tool
 steps:
@@ -151,7 +158,7 @@ synthesize: x
         assert any("send_owl" in issue.problem for issue in result.issues)
 
     async def test_unknown_arg_key_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Bad arg
 steps:
@@ -171,7 +178,7 @@ synthesize: x
         assert "bcc" in result.issues[0].problem
 
     async def test_wrong_arg_type_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Bad type
 steps:
@@ -191,7 +198,7 @@ synthesize: x
         assert "integer" in result.issues[0].problem
 
     async def test_forward_step_reference_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Reads a step that has not run
 steps:
@@ -214,7 +221,7 @@ synthesize: x
         assert "$steps.agenda" in result.issues[0].problem
 
     async def test_backward_step_reference_inside_handoff_resolves(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: A handoff reading an earlier step
 steps:
@@ -238,7 +245,7 @@ synthesize: x
         assert result.issues == []
 
     async def test_undeclared_ask_reference_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Reads an ask nobody declared
 steps:
@@ -256,7 +263,7 @@ synthesize: x
         assert "$ask.headline" in result.issues[0].problem
 
     async def test_unknown_placeholder_namespace_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Invented namespace
 steps:
@@ -274,7 +281,7 @@ synthesize: x
         assert "$sender.email" in result.issues[0].problem
 
     async def test_last_run_reference_is_accepted_unresolved(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Picks up where the last run stopped
 steps:
@@ -290,7 +297,7 @@ synthesize: x
         assert result.issues == []
 
     async def test_ask_uses_an_undeclared_step_is_rejected(self) -> None:
-        body = parse_playbook(
+        body = _body(
             """
 description: Ask reading a step that does not exist
 steps:

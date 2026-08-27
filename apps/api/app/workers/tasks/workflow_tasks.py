@@ -534,7 +534,21 @@ async def _run_workflow(
     await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
 
     user: AuthenticatedUser = {"user_id": workflow.user_id}
-    playbook = await playbook_repository.get_for_workflow(workflow_id, workflow.user_id)
+
+    # A playbook is an optimisation over the agentic path, never a precondition
+    # for it. If this read fails the user's workflow must still run, so the
+    # failure costs the replay and nothing else — without this guard a playbooks
+    # collection outage would take down every workflow run on the platform.
+    try:
+        playbook = await playbook_repository.get_for_workflow(workflow_id, workflow.user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} playbook lookup failed; running the workflow agentically",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
+        log.set_ns("playbook", mode="agent", reason="lookup_failed", llm_calls=0)
+        return await execute_workflow_as_chat(workflow, user, context)
 
     if playbook is None:
         log.set_ns("playbook", mode="agent", reason="no_playbook", llm_calls=0)

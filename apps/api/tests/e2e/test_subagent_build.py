@@ -21,7 +21,7 @@ import pytest
 
 from app.agents.core.subagents import base_subagent
 from app.agents.core.subagents.base_subagent import (
-    _build_scoped_tool_dict,
+    build_scoped_tool_dict,
     resolve_declared_tools,
 )
 
@@ -50,7 +50,7 @@ class TestScopedToolDict:
     ):
         """The precondition for everything below: until Composio registration
         runs, a provider's own tools simply are not there."""
-        scoped, _ = _build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert [name for name in GMAIL_AUTO_BIND if name in scoped] == []
 
@@ -58,12 +58,12 @@ class TestScopedToolDict:
         """A subagent always gets memory, file and shell access regardless of its
         provider, so an empty provider category is not an empty toolset — which
         is why the degradation is invisible."""
-        scoped, _ = _build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, _ = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert {"search_memory", "read", "bash"} <= set(scoped)
 
     async def test_finish_task_is_included_when_asked_for(self, registry):
-        scoped, initial = _build_scoped_tool_dict(registry, "gmail", None, True)
+        scoped, initial = build_scoped_tool_dict(registry, "gmail", None, True)
 
         assert "finish_task" in scoped
         assert "finish_task" in initial
@@ -71,7 +71,7 @@ class TestScopedToolDict:
     async def test_finish_task_is_absent_when_not_asked_for(self, registry):
         """Subagents that terminate on a plain reply must not be handed a tool
         that ends the run."""
-        scoped, initial = _build_scoped_tool_dict(registry, "gmail", None, False)
+        scoped, initial = build_scoped_tool_dict(registry, "gmail", None, False)
 
         assert "finish_task" not in scoped
         assert "finish_task" not in initial

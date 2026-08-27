@@ -14,17 +14,19 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from pydantic import ValidationError
 import pytest
+import yaml
 
 from app.agents.tools.playbook_tools import disable_playbook, read_playbook, write_playbook
 from app.models.playbook_models import (
     PlaybookAsk,
+    PlaybookBody,
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
     playbook_body_from_input,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
-from app.services.workflow.playbook.parser import parse_playbook
+from app.services.workflow.playbook.parser import dump_playbook
 
 TOOLS_MODULE = "app.agents.tools.playbook_tools"
 PARSER_MODULE = "app.services.workflow.playbook.parser"
@@ -83,14 +85,13 @@ def _workflow() -> WorkflowDocument:
     )
 
 
-def _existing(store: _FakePlaybookStore, raw_yaml: str) -> PlaybookDocument:
+def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
     now = datetime.now(UTC)
     document = PlaybookDocument(
         playbook_id="pb_existing",
         workflow_id=WORKFLOW_ID,
         user_id=USER_ID,
         workflow_hash="stale",
-        raw_yaml=raw_yaml,
         description="Old",
         steps=[{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
         synthesize="Old synthesis.",
@@ -113,8 +114,17 @@ NEW_ARGS: dict[str, Any] = {
     "synthesize": "Say what is on today.",
 }
 
+#: Exactly what read_playbook renders for the playbook ``_existing`` stores.
+#: Pinned as a literal rather than recomputed with dump_playbook, so a change to
+#: the rendering has to be an intentional edit here instead of passing silently.
 OLD_YAML = (
-    "description: Old\nsteps:\n  - id: one\n    tool: list_events\nsynthesize: Old synthesis.\n"
+    "description: Old\n"
+    "steps:\n"
+    "- id: one\n"
+    "  tool: list_events\n"
+    "  args:\n"
+    "    calendar_id: primary\n"
+    "synthesize: Old synthesis.\n"
 )
 
 
@@ -138,7 +148,7 @@ class TestWritePlaybook:
         # Regression: the playbook used to arrive as one YAML string, so an
         # invented key like `goal` got all the way to the parser. The bound
         # schema now refuses it before the tool body runs.
-        before = _existing(store, OLD_YAML)
+        before = _existing(store)
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -200,7 +210,7 @@ class TestWritePlaybook:
     async def test_valid_write_overwrites_the_existing_playbook(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
-        _existing(store, OLD_YAML)
+        _existing(store)
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -214,11 +224,12 @@ class TestWritePlaybook:
         assert stored.description == "Read the day's events"
         assert stored.workflow_hash != "stale"
 
-    async def test_the_stored_yaml_parses_back_to_the_arguments_it_was_written_from(
+    async def test_the_rendered_yaml_matches_the_arguments_it_was_written_from(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
-        # raw_yaml is what read_playbook hands the agent to edit, so it has to
-        # be the same document the arguments described, not an approximation.
+        # dump_playbook is what read_playbook hands the agent to read back, so the
+        # rendering has to be the same document the arguments described, not an
+        # approximation of it.
         steps: list[dict[str, Any]] = [
             {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
             {
@@ -244,7 +255,7 @@ class TestWritePlaybook:
             synthesize="Say what is on today.",
             ask={"subject": PlaybookAsk.model_validate(ask["subject"])},
         )
-        assert parse_playbook(stored.raw_yaml) == expected
+        assert PlaybookBody.model_validate(yaml.safe_load(dump_playbook(stored))) == expected
 
     async def test_unknown_workflow_is_refused(
         self, store: _FakePlaybookStore, workflows: MagicMock
@@ -272,7 +283,7 @@ class TestReadPlaybook:
     async def test_returns_the_yaml_and_the_last_run_outcome(
         self, store: _FakePlaybookStore
     ) -> None:
-        _existing(store, OLD_YAML)
+        _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await read_playbook.ainvoke({"workflow_id": WORKFLOW_ID}, config=_config())
 
@@ -284,7 +295,7 @@ class TestReadPlaybook:
 @pytest.mark.unit
 class TestDisablePlaybook:
     async def test_disabling_removes_the_playbook(self, store: _FakePlaybookStore) -> None:
-        _existing(store, OLD_YAML)
+        _existing(store)
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await disable_playbook.ainvoke(
                 {"workflow_id": WORKFLOW_ID, "reason": "the order now depends on the inbox"},

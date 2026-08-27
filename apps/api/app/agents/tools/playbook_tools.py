@@ -77,10 +77,12 @@ async def write_playbook(
                 workflow_id=workflow_id,
                 user_id=user_id,
                 workflow_hash=workflow_hash(workflow.prompt, workflow.steps),
-                raw_yaml=dump_playbook(body),
                 created_at=now,
                 updated_at=now,
-                **body.model_dump(),
+                description=body.description,
+                steps=body.steps,
+                ask=body.ask,
+                synthesize=body.synthesize,
             )
         )
         log.set_ns("playbook", id=stored.playbook_id, steps=len(stored.steps))
@@ -119,7 +121,7 @@ async def read_playbook(
         return success_response(
             {
                 "exists": True,
-                "yaml": playbook.raw_yaml,
+                "yaml": dump_playbook(playbook),
                 "written_at": playbook.updated_at.isoformat(),
                 "last_run_used_it": playbook.last_run_status is not PlaybookRunStatus.NOT_RUN,
                 "last_run_status": playbook.last_run_status.value,

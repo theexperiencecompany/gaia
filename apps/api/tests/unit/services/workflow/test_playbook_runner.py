@@ -135,7 +135,6 @@ def _playbook(
         workflow_id="wf_1",
         user_id="u_1",
         workflow_hash="hash_1",
-        raw_yaml="",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )

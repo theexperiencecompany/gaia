@@ -42,7 +42,6 @@ def _playbook(status: PlaybookRunStatus) -> PlaybookDocument:
         workflow_id=WORKFLOW_ID,
         user_id=USER_ID,
         workflow_hash="h",
-        raw_yaml="description: d\nsteps:\n  - id: s1\n    tool: create_todo\n    args: {}\nsynthesize: s\n",
         description="d",
         steps=[PlaybookStep(id="s1", tool="create_todo", args={})],
         synthesize="s",

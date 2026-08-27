@@ -65,7 +65,6 @@ def _playbook(workflow: Workflow, *, stale: bool = False) -> PlaybookDocument:
         workflow_hash=(
             "a-different-workflow" if stale else workflow_hash(workflow.prompt, workflow.steps)
         ),
-        raw_yaml="",
         description="Mail the day's agenda",
         steps=[PlaybookStep(id="events", tool="list_events", args={})],
         synthesize="Say what happened.",
@@ -155,6 +154,23 @@ async def test_the_agent_runs_when_the_workflow_hash_no_longer_matches() -> None
 
 async def test_the_agent_runs_when_the_workflow_has_no_playbook() -> None:
     harness = _Harness(_workflow())
+
+    await _fire(harness)
+
+    harness.playbook_run.assert_not_awaited()
+    harness.chat.assert_awaited_once()
+
+
+async def test_a_playbook_lookup_failure_still_runs_the_workflow() -> None:
+    """A playbooks-collection outage must cost the replay, never the user's run.
+
+    Regression: the lookup was awaited unguarded, so any error reading the
+    playbook propagated out of the fire and the workflow never ran at all. The
+    playbook is an optimisation over the agentic path, not a precondition for
+    it, so a failed read has to degrade to the agent.
+    """
+    harness = _Harness(_workflow())
+    harness.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
     await _fire(harness)
 
