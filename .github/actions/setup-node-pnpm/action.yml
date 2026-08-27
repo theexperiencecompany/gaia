@@ -30,18 +30,12 @@ runs:
         version: 10.17.1
         dest: ${{ runner.temp }}/setup-pnpm
 
-    # Content-addressed and concurrency-safe by design, so the four runner
-    # instances on the home box share one store and dedupe against each other.
-    - name: Point pnpm at the persistent local store (self-hosted)
-      if: runner.environment == 'self-hosted'
-      shell: bash
-      run: |
-        set -euo pipefail
-        STORE="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/pnpm-store"
-        mkdir -p "$STORE"
-        pnpm config set store-dir "$STORE" --global
-        echo "pnpm store (persistent, no GH cache): $STORE"
-
+    # No store-dir override on self-hosted: pnpm's default per-user store
+    # (~/.local/share/pnpm/store/v10) is the single store for the box's dev
+    # tooling and every runner instance alike — content-addressed and
+    # concurrency-safe, so the six instances dedupe against each other and
+    # against the owner's own installs. (It was ci-cache/pnpm-store before;
+    # two stores for one user is just double the downloads.)
     - name: Setup Node.js (self-hosted — persistent local store)
       if: runner.environment == 'self-hosted'
       uses: actions/setup-node@v7

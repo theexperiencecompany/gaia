@@ -45,7 +45,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
+        UV_DIR="$HOME/.cache/uv"   # uv's own default — one cache for dev tooling and every runner
         mkdir -p "$UV_DIR"
         echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
         echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"

@@ -13,7 +13,8 @@
 # fits.
 #
 # What it will delete, and nothing else:
-#   * pnpm store entries no packument still references  (pnpm store prune)
+#   * pnpm store (the user's default store, shared with dev tooling) entries
+#     nothing references  (pnpm store prune)
 #   * uv cache entries for versions no environment uses (uv cache prune)
 #   * Nx and Next.js cache entries, LRU, down to their budgets
 #   * STOPPED containers named gaia-test-*  (the test services, by exact name)
@@ -92,7 +93,7 @@ trim_lru() {
 if command -v pnpm >/dev/null 2>&1; then
   echo "[prune] pnpm store prune (drops packages no lockfile references)"
   if $APPLY; then
-    PNPM_HOME="${CACHE_ROOT}/pnpm-store" pnpm store prune 2>&1 | tail -3 || \
+    pnpm store prune 2>&1 | tail -3 || \
       echo "::warning::pnpm store prune failed — continuing"
   else
     echo "        would run: pnpm store prune"
@@ -102,7 +103,7 @@ fi
 if command -v uv >/dev/null 2>&1; then
   echo "[prune] uv cache prune (drops unused wheels/sdists)"
   if $APPLY; then
-    UV_CACHE_DIR="${CACHE_ROOT}/uv" uv cache prune 2>&1 | tail -3 || \
+    uv cache prune 2>&1 | tail -3 || \
       echo "::warning::uv cache prune failed — continuing"
   else
     echo "        would run: uv cache prune"
@@ -110,8 +111,8 @@ if command -v uv >/dev/null 2>&1; then
 fi
 
 # --- size-bounded stores ----------------------------------------------------
-trim_lru "${CACHE_ROOT}/pnpm-store" "$PNPM_BUDGET_GB" "pnpm store"
-trim_lru "${CACHE_ROOT}/uv"         "$UV_BUDGET_GB"   "uv cache"
+trim_lru "$(pnpm store path 2>/dev/null || echo "$HOME/.local/share/pnpm/store/v10")" "$PNPM_BUDGET_GB" "pnpm store"
+trim_lru "${UV_CACHE_DIR:-$HOME/.cache/uv}" "$UV_BUDGET_GB"   "uv cache"
 # The Nx remote cache server evicts LRU itself (NX_CACHE_MAX_BYTES); this is a
 # backstop at a slightly larger budget in case the server is down.
 trim_lru "${CACHE_ROOT}/nx-remote"  "${NX_REMOTE_BUDGET_GB:-9}" "nx remote cache"

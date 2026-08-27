@@ -410,7 +410,7 @@ jobs:
         id: uvcache
         run: |
           set -euo pipefail
-          UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
+          UV_DIR="$HOME/.cache/uv"   # uv's own default — one cache for dev tooling and every runner
           mkdir -p "$UV_DIR"
           echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0

@@ -94,8 +94,11 @@ if ! docker info >/dev/null 2>&1; then
   echo "::warning::docker not reachable (rootless context may need XDG_RUNTIME_DIR). Continuing — the runner itself does not require docker, only CI jobs do."
 fi
 
-# Shared persistent cache: pnpm store, uv cache and the ~1.3 GB fastembed
-# models live here instead of travelling through actions/cache on every run.
+# Shared persistent cache: the ~1.3 GB fastembed models, git mirror, per-
+# instance trees and the runner-side tooling live here instead of travelling
+# through actions/cache on every run. pnpm and uv use their own per-user
+# defaults (~/.local/share/pnpm/store, ~/.cache/uv) — one cache each for the
+# box's dev tooling and every runner instance.
 # actions-archive: the runner re-downloads every `uses:` action tarball per
 # job unless ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE points somewhere persistent
 # — measured at 69s for actions/cache@v6 alone on the residential uplink.
