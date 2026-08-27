@@ -218,6 +218,11 @@ class CommonSettings(BaseAppSettings):
     R2_BUCKET: str = "gaia-browser-shots"
     R2_PUBLIC_BASE_URL: str | None = None
     BROWSER_USE_LLM_BASE_URL: str | None = None
+    # Some OpenAI-wire endpoints route to vendors with no `json_schema` response
+    # format (Merge Gateway + zai/glm-* answers 400 "no vendor that supports the
+    # requested capabilities"). Browser-Use can instead put the schema in the
+    # system prompt and parse plain-text JSON back — set this for those lanes.
+    BROWSER_USE_LLM_SCHEMA_IN_PROMPT: bool = False
     # Vision (screenshots to the model) is the biggest cost driver — keep it on
     # for reliability, but a deployment optimizing cost can disable it.
     BROWSER_USE_VISION: bool = True

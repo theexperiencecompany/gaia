@@ -428,9 +428,42 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
+    # A configured custom lane takes precedence over OpenRouter for auxiliary
+    # work too, not just the chat agent. Without this, pointing DEV_LLM_* at a
+    # cheap endpoint still billed OpenRouter for every title, classification and
+    # structured-output helper — and when OpenRouter was out of credits those
+    # helpers failed while the agent itself ran fine, which reads as a random
+    # partial outage. DEV_LLM_* is unset in production, so prod is unchanged.
+    if _custom_lane_configured():
+        return _build_custom_default_llm(temperature)
     if not settings.OPENROUTER_API_KEY:
         raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
+
+
+def _custom_lane_configured() -> bool:
+    """Whether the env-defined custom endpoint (DEV_LLM_*) is fully configured."""
+    return bool(settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL)
+
+
+@cache
+def _build_custom_default_llm(temperature: float) -> BaseChatModel:
+    """The auxiliary-task model served by the custom endpoint (DEV_LLM_*)."""
+    llm = without_sdk_retry(
+        ChatOpenRouter(
+            model=settings.DEV_LLM_MODEL or "",
+            temperature=temperature,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
+        )
+    )
+    # Same reason as _build_default_llm: the middleware needs a context window
+    # and LangChain has no profile for an arbitrary custom endpoint's model.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
 
 
 @cache

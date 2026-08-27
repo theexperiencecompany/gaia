@@ -98,7 +98,17 @@ def build_browser_llm() -> BaseChatModel:
         base_url = settings.BROWSER_USE_LLM_BASE_URL or (
             _OPENROUTER_BASE_URL if provider == "openrouter" else None
         )
-        return ChatOpenAI(model=model, api_key=api_key, base_url=base_url)
+        # When the endpoint cannot serve `json_schema`, hand Browser-Use its own
+        # fallback: schema in the system prompt, plain-text JSON parsed back.
+        # Vision is unaffected — image input alone is fine on those lanes.
+        schema_in_prompt = settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT
+        return ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            add_schema_to_system_prompt=schema_in_prompt,
+            dont_force_structured_output=schema_in_prompt,
+        )
 
     raise BrowserUnavailableError(f"Unknown browser LLM provider: '{provider}'.")
 

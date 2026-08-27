@@ -87,12 +87,21 @@ class TestResolveApiKey:
 
 class TestBuildBrowserLlm:
     def _set_provider(
-        self, monkeypatch, provider, model="test-model", api_key="test-key", base_url=None
+        self,
+        monkeypatch,
+        provider,
+        model="test-model",
+        api_key="test-key",
+        base_url=None,
+        schema_in_prompt=False,
     ):
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_PROVIDER", provider)
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_MODEL", model)
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", api_key)
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", base_url)
+        monkeypatch.setattr(
+            "app.services.browser.llm.settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT", schema_in_prompt
+        )
 
     def test_anthropic(self, monkeypatch):
         mocks = _fake_browser_use_modules(monkeypatch)
@@ -146,7 +155,11 @@ class TestBuildBrowserLlm:
 
         build_browser_llm()
         mocks["ChatOpenAI"].assert_called_once_with(
-            model="test-model", api_key="test-key", base_url=None
+            model="test-model",
+            api_key="test-key",
+            base_url=None,
+            add_schema_to_system_prompt=False,
+            dont_force_structured_output=False,
         )
 
     def test_openai_with_base_url(self, monkeypatch):
@@ -156,7 +169,30 @@ class TestBuildBrowserLlm:
 
         build_browser_llm()
         mocks["ChatOpenAI"].assert_called_once_with(
-            model="test-model", api_key="test-key", base_url="https://my.openai.com/v1"
+            model="test-model",
+            api_key="test-key",
+            base_url="https://my.openai.com/v1",
+            add_schema_to_system_prompt=False,
+            dont_force_structured_output=False,
+        )
+
+    def test_schema_in_prompt_switches_off_response_format(self, monkeypatch):
+        """Endpoints whose vendors report supports_structured_outputs=false (e.g.
+        Merge Gateway's zai/glm-*) 400 on a json_schema response_format. The flag
+        moves the schema into the system prompt instead."""
+        mocks = _fake_browser_use_modules(monkeypatch)
+        self._set_provider(
+            monkeypatch, "openai", base_url="https://gw.example/v1", schema_in_prompt=True
+        )
+        from app.services.browser.llm import build_browser_llm
+
+        build_browser_llm()
+        mocks["ChatOpenAI"].assert_called_once_with(
+            model="test-model",
+            api_key="test-key",
+            base_url="https://gw.example/v1",
+            add_schema_to_system_prompt=True,
+            dont_force_structured_output=True,
         )
 
     def test_openrouter_uses_default_base_url(self, monkeypatch):
@@ -166,7 +202,11 @@ class TestBuildBrowserLlm:
 
         build_browser_llm()
         mocks["ChatOpenAI"].assert_called_once_with(
-            model="test-model", api_key="test-key", base_url="https://openrouter.ai/api/v1"
+            model="test-model",
+            api_key="test-key",
+            base_url="https://openrouter.ai/api/v1",
+            add_schema_to_system_prompt=False,
+            dont_force_structured_output=False,
         )
 
     def test_openrouter_custom_base_url_overrides(self, monkeypatch):
@@ -176,7 +216,11 @@ class TestBuildBrowserLlm:
 
         build_browser_llm()
         mocks["ChatOpenAI"].assert_called_once_with(
-            model="test-model", api_key="test-key", base_url="https://custom.openrouter.ai/v1"
+            model="test-model",
+            api_key="test-key",
+            base_url="https://custom.openrouter.ai/v1",
+            add_schema_to_system_prompt=False,
+            dont_force_structured_output=False,
         )
 
     def test_missing_api_key_raises(self, monkeypatch):
@@ -211,11 +255,18 @@ class TestBuildBrowserLlm:
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
         monkeypatch.setattr("app.services.browser.llm.settings.OPENAI_API_KEY", "fallback-openai")
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", None)
+        monkeypatch.setattr(
+            "app.services.browser.llm.settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT", False
+        )
         from app.services.browser.llm import build_browser_llm
 
         build_browser_llm()
         mocks["ChatOpenAI"].assert_called_once_with(
-            model="m", api_key="fallback-openai", base_url=None
+            model="m",
+            api_key="fallback-openai",
+            base_url=None,
+            add_schema_to_system_prompt=False,
+            dont_force_structured_output=False,
         )
 
 
