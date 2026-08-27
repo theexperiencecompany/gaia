@@ -7,6 +7,7 @@ fallback wrong sends the same email twice, so that hand-off is asserted on
 content, not on "the agent was called".
 """
 
+import asyncio
 from contextlib import ExitStack
 from datetime import UTC, datetime
 from typing import Literal
@@ -1402,3 +1403,23 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
         await _fire(harness)
 
         harness.record_run_outcome.assert_not_awaited()
+
+
+class TestAFireCutOffByTheJobTimeoutIsRecorded:
+    """Seen live: a same-fire heal ran into the worker's 30-minute job timeout
+    (three model calls stalled for minutes each). ARQ cancels the job, which
+    arrives as CancelledError, not Exception, so the execution record stayed
+    "running" forever and the next occurrence was never re-armed."""
+
+    async def test_the_execution_is_failed_with_the_reason_and_the_cancel_propagates(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.chat = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await _fire(harness)
+
+        harness.complete_execution.assert_awaited_once()
+        kwargs = harness.complete_execution.await_args.kwargs
+        assert kwargs["status"] == "failed"
+        assert "timed out" in kwargs["error_message"]

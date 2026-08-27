@@ -3,6 +3,7 @@ Workflow worker functions for ARQ task processing.
 Contains all workflow-related background tasks and execution logic.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
@@ -87,6 +88,7 @@ from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
     WorkflowFireOverlapped,
     WorkflowFireQueued,
+    WorkflowFireTimedOut,
     complete_execution,
     create_execution,
 )
@@ -101,6 +103,7 @@ from app.services.workflow.service import WorkflowService
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.errors import create_error
 from app.utils.timezone import Timezone, format_local_time
+from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from shared.py.wide_events import WorkflowContext, log
 
 # How far a fire may drift from its scheduled time before it is worth a warning.
@@ -1140,6 +1143,23 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
         return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
 
+    except asyncio.CancelledError:
+        # The worker's job timeout cancels the job rather than raising into it,
+        # so this is the only place a fire that ran out of time can be closed.
+        # Seen live: a heal run whose model calls stalled for minutes each was
+        # cut off at the limit and its record read "running" for good. Recorded
+        # as failed, re-armed like any other failure, and the cancel still
+        # propagates so ARQ sees the timeout it raised.
+        timed_out = WorkflowFireTimedOut(WORKER_JOB_TIMEOUT_SECONDS)
+        log.error(
+            f"{LogTag.WORKER} Workflow fire cut off by the job timeout",
+            workflow_id=workflow_id,
+            error=str(timed_out),
+            error_type=type(timed_out).__name__,
+        )
+        await _record_execution_failure(timed_out, workflow, workflow_id, execution_id)
+        await _rearm_quietly(scheduler, workflow, context, workflow_id)
+        raise
     except Exception as raised:
         # A failure after a partial replay arrives wrapped with the replay's
         # trace; the bookkeeping below classifies the real error, and the

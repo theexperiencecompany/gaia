@@ -49,6 +49,18 @@ class WorkflowFireQueued(Exception):
         self.trace = trace
 
 
+class WorkflowFireTimedOut(Exception):
+    """A fire the worker cut off at its job timeout; whatever it had started may still finish."""
+
+    def __init__(self, limit_seconds: int) -> None:
+        super().__init__(
+            f"This fire timed out after {limit_seconds // 60} minutes and was stopped by the "
+            "worker. Whatever it had started may still finish in the background; the next "
+            "occurrence is armed."
+        )
+        self.limit_seconds = limit_seconds
+
+
 class WorkflowFireOverlapped(Exception):
     """A playbook replay that found this workflow's conversation already busy.
 

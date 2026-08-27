@@ -11,6 +11,10 @@ from arq.typing import StartupShutdown
 
 from app.config.settings import settings
 
+#: The cap on one job. A workflow fire that reaches it is recorded as timed out
+#: (workflow_tasks) rather than left "running" forever.
+WORKER_JOB_TIMEOUT_SECONDS = 1800  # 30 minutes
+
 
 class WorkerSettings:
     """
@@ -43,7 +47,7 @@ class WorkerSettings:
     # Concurrency here is bounded by worker memory — each job holds agent
     # graphs and LLM contexts — so raise the container limit before raising it.
     max_jobs = 10
-    job_timeout = 1800  # 30 minutes
+    job_timeout = WORKER_JOB_TIMEOUT_SECONDS
     keep_result = 0  # Don't keep results in Redis
     log_results = True
     health_check_interval = 30  # seconds
