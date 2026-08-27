@@ -123,3 +123,95 @@ gh api repos/theexperiencecompany/gaia/actions/runners --jq '.total_count'
 * **Ephemeral token.** Registration tokens expire in ~1 h. Never commit one; generate on demand.
 * **Work dir isolation.** Each job runs in `~/actions-runner-gaia/_work/<repo>` and is cleaned between jobs. Secrets are masked; use `actions: read` minimal permissions on the probe job.
 * **Docker rootless.** CI jobs run under `aryan` (rootless Docker) — a job cannot escape to host root via Docker socket.
+
+## Shared test services (one container set for every lane)
+
+`scripts/ci/start-test-services.sh` boots five containers **per job**. With six
+lanes able to run at once on this box that is 30 containers: a measured 20-45 s
+of boot time on every job's critical path, and ~15-22 GB of RAM against 24 GB of
+machine. The same five containers started **once** and kept warm cost ~0.6 GB and
+zero boot time per job.
+
+`scripts/ci/shared-test-services.sh` is that harness. The containers are shared;
+what differs per lane is the namespace each lane writes into.
+
+### Namespace per service
+
+| Service | Namespace unit | Lane `r` gets | Provisioned by |
+| --- | --- | --- | --- |
+| PostgreSQL | database | `gaia_test_r<r>` | `prepare` (`CREATE DATABASE`) |
+| Redis | 32-DB stripe | DBs `8+r*32` … `39+r*32` | nothing — server runs `--databases 256` |
+| MongoDB | database name | `gaia_test_r<r>_gw<n>` | nothing — created on first write |
+| ChromaDB | collection **name suffix** | `…_r<r>` | nothing — created on first write |
+| RabbitMQ | vhost | `/r<r>` | `prepare` (`add_vhost` + `set_permissions`) |
+
+### Commands
+
+```bash
+scripts/ci/shared-test-services.sh up          # idempotent; no-op when healthy
+scripts/ci/shared-test-services.sh prepare 3   # lane 3's namespaces + env file
+scripts/ci/shared-test-services.sh reset 3     # destroy everything lane 3 made
+scripts/ci/shared-test-services.sh janitor     # reset lanes stale for >3 h
+```
+
+`up` is safe to call from every lane unconditionally — only the first job on a
+cold box does any work. The containers carry `--restart unless-stopped` and are
+named `gaia-shared-<svc>`; nothing in this script removes them. A cancelled job
+never runs its own `reset`, so `janitor` (cron, hourly) collects any lane whose
+`/tmp/gaia-test-services-<r>.env` has not been touched in `GAIA_SHARED_STALE_HOURS`
+(default 3).
+
+### The env contract a lane needs
+
+`prepare <r>` writes `/tmp/gaia-test-services-<r>.env` and appends it to
+`$GITHUB_ENV` when set. A lane needs exactly these, and nothing else:
+
+```
+DATABASE_URL=postgresql://gaia:gaia@localhost:5432/gaia_test_r<r>
+POSTGRES_URL=postgresql://gaia:gaia@localhost:5432/gaia_test_r<r>
+REDIS_URL=redis://localhost:6379/0
+GAIA_REDIS_DB_BASE=<8 + r*32>
+MONGODB_URL=mongodb://gaia:gaia@localhost:27017/gaia_test_r<r>?authSource=admin
+MONGO_DB=mongodb://gaia:gaia@localhost:27017/gaia_test_r<r>?authSource=admin
+MONGO_DB_NAME=gaia_test_r<r>
+GAIA_MONGO_DB_BASE=gaia_test_r<r>
+CHROMADB_HOST=localhost
+CHROMADB_PORT=8000
+GAIA_CHROMA_COLLECTION_SUFFIX=_r<r>
+RABBITMQ_URL=amqp://guest:guest@localhost:5672/r<r>
+```
+
+Three of those are new and are what make sharing possible:
+
+* **`GAIA_REDIS_DB_BASE`** — `tests/helpers.py:worker_redis_url` starts its
+  flushable block here instead of at the hardcoded DB 8. DB 0 is still never
+  used by any worker, so `flushdb()` teardown can never touch a live database.
+* **`MONGO_DB_NAME`** / **`GAIA_MONGO_DB_BASE`** — the app ignores the database
+  component of the Mongo URI by design (`app/db/mongodb/mongodb.py`), so the
+  *name* is the only namespace available. The first names the app's database,
+  the second the base that `worker_mongo_db_name()` suffixes per xdist worker.
+* **`GAIA_CHROMA_COLLECTION_SUFFIX`** — appended to every GAIA collection name
+  (`app/constants/chroma.py`, `constants/memory.py`, `constants/files.py`, and
+  the bootstrap list in `db/chroma/chromadb.py`).
+
+**Every one of them defaults to the current single-lane behaviour when unset**,
+so `start-test-services.sh` and local runs are unaffected.
+
+### Trade-off: one Chroma process for all lanes
+
+Postgres, Redis, Mongo and RabbitMQ all have a real server-side namespace, so a
+lane is isolated *and* independently resource-accounted. ChromaDB has neither —
+one process, one flat collection namespace, one shared HNSW index cache and one
+shared request queue. Isolation is by naming convention only, which means:
+
+* **Noisy neighbour.** A lane running the memory suite's embedding-heavy tests
+  slows every other lane's Chroma calls. There is no per-collection quota.
+* **Blast radius.** If the single Chroma process OOMs or wedges, all six lanes
+  fail together rather than one.
+* **Leak visibility.** A lane that dies without `reset` leaves its collections
+  resident in the shared process until `janitor` runs.
+
+Accepted deliberately: a per-lane Chroma is the single most expensive container
+of the five, and the alternative (six Chromas) is most of the RAM problem this
+scheme exists to solve. If Chroma contention shows up in lane timings, the next
+move is a per-lane Chroma while the other four services stay shared.
