@@ -149,6 +149,7 @@ class _FakeSubagentConfig:
 
 class _FakeSubagent:
     id = "calendar_agent"
+    managed_by = "internal"
     mcp_config = None
     config = _FakeSubagentConfig()
 

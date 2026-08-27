@@ -21,6 +21,7 @@ from app.models.subagent_models import Subagent
 from app.services.workflow.playbook.tool_space import resolve_subagent_tools
 
 MODULE = "app.services.workflow.playbook.tool_space"
+PROVIDER_MODULE = "app.agents.core.subagents.provider_subagents"
 
 USER_ID = "user-1"
 SUBAGENT_ID = "posthog"
@@ -66,6 +67,14 @@ def _lookup(subagent: Subagent):
     return lambda subagent_id: subagent if subagent_id == subagent.id else None
 
 
+def _composio_integration(integration_id: str) -> MagicMock:
+    """The OAuth integration a Composio subagent's toolkit is read from."""
+    assert integration_id == SUBAGENT_ID
+    integration = MagicMock()
+    integration.composio_config.toolkit = SUBAGENT_ID
+    return integration
+
+
 def _mcp_client(tools: list[BaseTool]):
     """A client that hands back ``tools`` only for this user and this subagent."""
 
@@ -86,6 +95,38 @@ def _mcp_client(tools: list[BaseTool]):
 
 @pytest.mark.unit
 class TestSubagentResolution:
+    @pytest.fixture(autouse=True)
+    def _composio_toolkit_lookup(self):
+        with patch(f"{PROVIDER_MODULE}.get_integration_by_id", _composio_integration):
+            yield
+
+    async def test_a_composio_subagent_on_a_cold_worker_loads_its_toolkit_first(self) -> None:
+        """The live handoff registers a Composio toolkit on demand. A replay on a
+        worker that has never handed off to that subagent must do the same, or it
+        resolves an empty space and stops at the first real step (seen live:
+        "no tool named 'GMAIL_FETCH_MESSAGES' is available" three minutes after
+        a worker restart)."""
+        subagent = _subagent(mcp=False)
+        registry = ToolRegistry()
+
+        async def register(
+            toolkit_name: str,
+            space_name: str,
+            specific_tools: list[str] | None = None,
+            exclude_tools: list[str] | None = None,
+        ) -> None:
+            assert (toolkit_name, space_name) == (SUBAGENT_ID, TOOL_SPACE)
+            registry._add_category(SUBAGENT_ID, tools=[_tool(REGISTRY_TOOL)], space=TOOL_SPACE)
+
+        with (
+            patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)),
+            patch.object(registry, "register_provider_tools", side_effect=register),
+        ):
+            space = await resolve_subagent_tools(SUBAGENT_ID, USER_ID, registry)
+
+        assert space is not None
+        assert REGISTRY_TOOL in space.tools
+
     async def test_an_unknown_subagent_resolves_to_nothing(self) -> None:
         """A handoff naming a subagent that does not exist has no tool space at all.
 

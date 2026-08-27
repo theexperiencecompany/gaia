@@ -16,6 +16,7 @@ replayed against a tool space that never had it.
 from langchain_core.tools import BaseTool
 
 from app.agents.core.subagents.base_subagent import build_scoped_tool_dict
+from app.agents.core.subagents.provider_subagents import register_composio_subagent_tools
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import ToolRegistry
 from app.constants.log_tags import LogTag
@@ -56,6 +57,12 @@ async def resolve_subagent_tools(
     subagent = get_subagent_by_id(subagent_id)
     if subagent is None:
         return None
+
+    # A Composio toolkit reaches the registry only when something loads it. The
+    # live handoff does so on demand; on a worker that has never handed off to
+    # this subagent, resolving without it finds an empty category.
+    if subagent.managed_by == "composio":
+        await register_composio_subagent_tools(subagent, registry)
 
     config = subagent.config
     scoped, initial = build_scoped_tool_dict(
