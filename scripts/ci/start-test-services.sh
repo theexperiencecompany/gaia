@@ -218,7 +218,7 @@ MONGO_DB=mongodb://gaia:gaia@localhost:${MONGO_PORT}/gaia_test?authSource=admin
 CHROMADB_HOST=localhost
 CHROMADB_PORT=${CHROMA_PORT}
 RABBITMQ_URL=amqp://guest:guest@localhost:${RABBITMQ_PORT}/
-GAIA_TEST_CONTAINERS=${PG_NAME} ${REDIS_NAME} ${MONGO_NAME} ${CHROMA_NAME} ${RABBITMQ_NAME}
+GAIA_TEST_CONTAINERS="${PG_NAME} ${REDIS_NAME} ${MONGO_NAME} ${CHROMA_NAME} ${RABBITMQ_NAME}"
 ENVEOF
 echo "Service endpoints written to $SERVICES_ENV_FILE"
 

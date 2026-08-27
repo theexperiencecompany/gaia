@@ -11,7 +11,7 @@ RUNNER_INDEX="${RUNNER_INDEX:-0}"
 SERVICES_ENV_FILE="${GAIA_TEST_SERVICES_ENV:-/tmp/gaia-test-services-${RUNNER_INDEX}.env}"
 
 if [ -f "$SERVICES_ENV_FILE" ]; then
-  CONTAINERS="$(grep '^GAIA_TEST_CONTAINERS=' "$SERVICES_ENV_FILE" | cut -d= -f2-)"
+  CONTAINERS="$(grep '^GAIA_TEST_CONTAINERS=' "$SERVICES_ENV_FILE" | cut -d= -f2- | tr -d '"')"
 else
   # The env file is gone (interrupted run, cleaned /tmp) — fall back to the
   # naming convention so containers are never left holding their ports.
