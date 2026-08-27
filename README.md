@@ -39,7 +39,7 @@ Your day is full of work that isn't your job — triaging mail, prepping for mee
 
 ## Workflows
 
-GAIA does the work before you ask, then tells you. A few workflows switch on by themselves the moment you connect a tool:
+A few workflows switch on by themselves the moment you connect a tool:
 
 | Workflow | Turns on with | What it does |
 | --- | --- | --- |
