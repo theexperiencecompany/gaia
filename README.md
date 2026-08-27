@@ -37,35 +37,6 @@ Your day is full of work that isn't your job — triaging mail, prepping for mee
 - **One workspace** — inbox, calendar, todos and notifications in a single app
 - **Self-hostable** — open source, your keys, your models, no caps
 
-## Workflows
-
-A few workflows switch on by themselves the moment you connect a tool:
-
-| Workflow | Turns on with | What it does |
-| --- | --- | --- |
-| **Inbox Triage** | Gmail | Every morning at 8, sorts the last day's mail, pulls out action items, creates the todos, and hands you one briefing |
-| **Auto-Draft Replies** | Gmail | Spots mail that needs an answer and writes the reply. You approve before anything sends |
-| **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
-| **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
-
-You'll never open a settings screen for those. Build your own from the **Workflows** page:
-
-- **Describe it in plain English** — GAIA writes the steps for you
-- **Run it on a schedule** — "every weekday at 9am"
-- **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
-- **Chain steps across tools** — fetch, summarise, post to Slack
-
-## Examples
-
-Workflows run on their own. This is what you ask it directly.
-
-- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
-- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
-- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
-- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
-- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
-- **"Now run that every Monday at 9am."** Any of the above becomes a standing job, running on a schedule without you.
-
 ## Getting started
 
 | If you want to… | Go here |
@@ -113,6 +84,35 @@ gaia start    # bring it back up
 Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
 
 Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
+
+## Workflows
+
+A few workflows switch on by themselves the moment you connect a tool:
+
+| Workflow | Turns on with | What it does |
+| --- | --- | --- |
+| **Inbox Triage** | Gmail | Every morning at 8, sorts the last day's mail, pulls out action items, creates the todos, and hands you one briefing |
+| **Auto-Draft Replies** | Gmail | Spots mail that needs an answer and writes the reply. You approve before anything sends |
+| **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
+| **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
+
+You'll never open a settings screen for those. Build your own from the **Workflows** page:
+
+- **Describe it in plain English** — GAIA writes the steps for you
+- **Run it on a schedule** — "every weekday at 9am"
+- **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
+- **Chain steps across tools** — fetch, summarise, post to Slack
+
+## Examples
+
+Workflows run on their own. This is what you ask it directly.
+
+- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
+- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
+- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
+- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
+- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Now run that every Monday at 9am."** Any of the above becomes a standing job, running on a schedule without you.
 
 ## Pricing
 
