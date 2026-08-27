@@ -3690,7 +3690,7 @@ class TestHandleConnectFailureExact:
         assert result is retried_tools
         client._try_refresh_token.assert_awaited_once_with(INTEGRATION_ID, mcp_config)
         client._do_connect.assert_awaited_once_with(INTEGRATION_ID)
-        assert not hasattr(client, f"_retry_{INTEGRATION_ID}")
+        assert client._refresh_attempts == set()
 
     async def test_failed_refresh_warns_then_resets_on_terminal_error(self):
         client = MCPClient(user_id=USER_ID)
@@ -3801,9 +3801,12 @@ class TestConnectFailureClassification:
     @pytest.mark.parametrize(
         "message",
         [
-            "401 Unauthorized",
-            "405 Method Not Allowed",
-            "403 Forbidden",
+            # Status codes alone — no prose, so the code tuple is the only
+            # clause that can match each of them.
+            "server returned 401",
+            "server returned 405",
+            "server returned 403",
+            # Prose alone — no status code in the string.
             "server said unauthorized",
             "server said method not allowed",
         ],
@@ -3841,19 +3844,61 @@ class TestConnectFailureClassification:
 
         client._try_refresh_token.assert_not_awaited()
 
-    async def test_the_retry_flag_stops_a_second_refresh_on_re_entry(self) -> None:
-        """The recursive _do_connect can land back here; without the flag the
-        two would refresh each other forever."""
+    async def test_the_retry_marker_stops_a_second_refresh_on_re_entry(self) -> None:
+        """The real loop: refresh succeeds, _do_connect retries, that connect
+        fails the same way and lands back here. Without the marker the two
+        refresh each other forever."""
         client = self._client()
-        setattr(client, f"_retry_{INTEGRATION_ID}", True)
-        with patch("app.services.mcp.mcp_client.log"):
-            await client._handle_connect_failure(
-                RuntimeError("401 Unauthorized"),
-                INTEGRATION_ID,
-                _make_mcp_config(requires_auth=True),
+        client._try_refresh_token = AsyncMock(return_value=True)
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        async def _reconnect_and_fail_again(iid: str) -> list[Any]:
+            return await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized"), iid, mcp_config
             )
 
-        client._try_refresh_token.assert_not_awaited()
+        client._do_connect = AsyncMock(side_effect=_reconnect_and_fail_again)
+
+        with patch("app.services.mcp.mcp_client.log"):
+            await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
+            )
+
+        # The inner frame saw the marker and did not refresh a second time.
+        client._try_refresh_token.assert_awaited_once()
+
+    async def test_a_later_failure_gets_its_own_refresh(self) -> None:
+        """The marker is scoped to one call stack, not to the client's lifetime —
+        leaving it set would cost every later reconnect its retry."""
+        client = self._client()
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        with patch("app.services.mcp.mcp_client.log"):
+            for _ in range(2):
+                await client._handle_connect_failure(
+                    RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
+                )
+
+        assert client._try_refresh_token.await_count == 2
+
+    async def test_a_refresh_for_one_integration_does_not_block_another(self) -> None:
+        client = self._client()
+        client._try_refresh_token = AsyncMock(return_value=True)
+        mcp_config = _make_mcp_config(requires_auth=True)
+
+        async def _fail_a_different_integration(_iid: str) -> list[Any]:
+            return await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized"), "other_integration", mcp_config
+            )
+
+        client._do_connect = AsyncMock(side_effect=_fail_a_different_integration)
+
+        with patch("app.services.mcp.mcp_client.log"):
+            await client._handle_connect_failure(
+                RuntimeError("401 Unauthorized"), INTEGRATION_ID, mcp_config
+            )
+
+        assert client._try_refresh_token.await_count == 2
 
     async def test_a_401_is_terminal_only_after_a_refresh_was_attempted(self) -> None:
         """Before a refresh, a 401 may just be an expired access token — keep the
@@ -3923,7 +3968,7 @@ class TestConnectFailureClassification:
         client._try_refresh_token = AsyncMock(return_value=True)
 
         async def _reconnect(_iid: str) -> list[Any]:
-            delattr(client, f"_retry_{INTEGRATION_ID}")
+            client._refresh_attempts.discard(INTEGRATION_ID)
             return []
 
         client._do_connect = AsyncMock(side_effect=_reconnect)
@@ -3936,7 +3981,7 @@ class TestConnectFailureClassification:
             )
 
         assert result == []
-        assert not hasattr(client, f"_retry_{INTEGRATION_ID}")
+        assert client._refresh_attempts == set()
 
 
 class TestDoConnectWiringExact:
@@ -4118,7 +4163,7 @@ class TestDoConnectWiringExact:
 
 
 class TestBuildOauthAuthUrlExactParams:
-    async def _build(self, redirect_path: str = "/integrations"):
+    async def _build(self, redirect_path: str | None = None):
         client = MCPClient(user_id=USER_ID)
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config(
@@ -4145,8 +4190,11 @@ class TestBuildOauthAuthUrlExactParams:
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             client.token_store.create_oauth_state = AsyncMock(return_value="state_abc")
 
+            # Omitted entirely when the test does not care: that is the only way
+            # the signature's own default is ever exercised.
+            kwargs = {} if redirect_path is None else {"redirect_path": redirect_path}
             url = await client.build_oauth_auth_url(
-                INTEGRATION_ID, "https://myapp.com/callback", redirect_path=redirect_path
+                INTEGRATION_ID, "https://myapp.com/callback", **kwargs
             )
 
         return url
@@ -4670,6 +4718,12 @@ class TestHandleOauthCallbackNonceEnforcement:
             patch.object(
                 client, "_exchange_code_for_tokens", new_callable=AsyncMock, return_value=tokens
             ) as exchange,
+            patch.object(
+                client,
+                "_resolve_token_exchange_credentials",
+                new_callable=AsyncMock,
+                return_value=("cid", None),
+            ) as credentials,
             patch("app.services.mcp.mcp_client._spawn_background", return_value=MagicMock()),
         ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
@@ -4679,6 +4733,7 @@ class TestHandleOauthCallbackNonceEnforcement:
             )
 
         discover.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config)
+        credentials.assert_awaited_once_with(INTEGRATION_ID, resolved.mcp_config, oauth_config)
         assert exchange.await_args.kwargs["integration_id"] == INTEGRATION_ID
         assert exchange.await_args.kwargs["token_endpoint"] == "https://auth.example.com/token"
         client._validate_oidc_nonce.assert_called_once_with(INTEGRATION_ID, "stored_nonce", tokens)

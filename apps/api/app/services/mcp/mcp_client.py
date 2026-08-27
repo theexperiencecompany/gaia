@@ -21,7 +21,6 @@ Features:
 import asyncio
 import base64
 from collections.abc import Awaitable, Callable
-import contextlib
 import json as _json
 import re
 import secrets
@@ -309,6 +308,10 @@ class MCPClient:
         self._tools: dict[str, list[BaseTool]] = {}
         self._connecting: dict[str, asyncio.Event] = {}
         self._connect_results: dict[str, list[BaseTool] | None] = {}
+        # Integrations whose token refresh is already in flight on this call
+        # stack. _handle_connect_failure recurses through _do_connect, and this
+        # is what stops the two refreshing each other forever.
+        self._refresh_attempts: set[str] = set()
 
     def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
@@ -952,14 +955,13 @@ class MCPClient:
             or "unauthorized" in error_str
             or "method not allowed" in error_str
         )
-        retry_flag = f"_retry_{integration_id}"
-        refresh_attempted = getattr(self, retry_flag, False)
+        refresh_attempted = integration_id in self._refresh_attempts
         if is_auth_error and mcp_config.requires_auth and not refresh_attempted:
             log.info(
                 f"{LogTag.MCP} Auth-related connection failure, attempting token refresh and retry",
                 integration_id=integration_id,
             )
-            setattr(self, retry_flag, True)
+            self._refresh_attempts.add(integration_id)
             refresh_attempted = True
             try:
                 refreshed = await self._try_refresh_token(integration_id, mcp_config)
@@ -976,8 +978,7 @@ class MCPClient:
                     error_type=type(e).__name__,
                 )
             finally:
-                with contextlib.suppress(AttributeError):
-                    delattr(self, retry_flag)
+                self._refresh_attempts.discard(integration_id)
 
         log.error(
             f"{LogTag.MCP} Failed to connect to MCP",
