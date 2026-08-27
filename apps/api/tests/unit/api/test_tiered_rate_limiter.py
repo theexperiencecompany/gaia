@@ -462,8 +462,16 @@ class TestCheckAndIncrement:
             "app.api.v1.middleware.tiered_rate_limiter.spawn_background_task",
             side_effect=_noop_create_task,
         ):
-            with pytest.raises(RateLimitExceededException):
+            with pytest.raises(RateLimitExceededException) as exc_info:
                 await self.limiter.check_and_increment("user1", "chat_messages", PlanType.FREE)
+
+        # Losing the race still owes the caller the truth about which window
+        # they hit and when it reopens — the reset has to come from THIS period.
+        pipe_mock.unwatch.assert_awaited_once()
+        mock_reset.assert_called_with(RateLimitPeriod.DAY)
+        detail = exc_info.value.detail
+        assert detail["reset_time"] == datetime(2026, 4, 1, tzinfo=UTC).isoformat()
+        assert "plan_required" not in detail
 
 
 # ---------------------------------------------------------------------------
