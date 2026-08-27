@@ -19,7 +19,7 @@ MEM_GB="$(free -g 2>/dev/null | awk '/^Mem:/{print $2}' || echo 4)"
 
 # Heuristics tuned for GAIA workloads (measured on both 2c GH and 16c home):
 #   nx build: scales to ~8 before I/O contention; beyond that use 16 with --parallel but cap per-batch memory
-#   pytest xdist: scales linearly to nproc (each worker ~600MB)
+#   pytest xdist: scales to nproc, but each worker is ~2.5 GB on this suite — memory caps first
 #   ruff: scales to nproc (tiny per-file)
 #   mypy: dmypy + --jobs nproc gives ~2.5× at 16c vs 2c (still partially serial due to graph)
 #   docker buildx: can parallelize layers, but I/O bound
@@ -49,12 +49,25 @@ else
   DOCKER_JOBS=2
 fi
 
-# Memory guard: pytest workers OOM at ~600MB each → 16 workers needs ~9.6GB
-# plus docker layer cache. Cap if MEM_GB is small.
+# Memory guard, measured not assumed: a pytest-xdist worker on this suite is
+# ~2.5 GB RSS (ps on the home box, 16 workers at 2.2-2.6 GB each — the
+# earlier 600 MB figure came from /usr/bin/time, which reports the parent
+# only). Sixteen workers is ~40 GB. Budget against memory AVAILABLE right now
+# rather than total: several runner instances share this box, and two
+# test-python lanes landing together must degrade to fewer workers each
+# instead of exhausting RAM and swap (observed: 46 GB + 8 GB swap full,
+# load 42, every core busy thrashing).
+MEM_AVAIL_GB="$(free -g 2>/dev/null | awk '/^Mem:/{print $7}' || echo "$MEM_GB")"
+PER_WORKER_GB="${PYTEST_WORKER_GB:-2.5}"
+HEADROOM_GB=4   # OS, docker, the runner agent, the coordinating pytest process
+MEM_WORKERS="$(awk -v a="$MEM_AVAIL_GB" -v w="$PER_WORKER_GB" -v h="$HEADROOM_GB" 'BEGIN{n=int((a-h)/w); if(n<1)n=1; print n}')"
+if (( MEM_WORKERS < PYTEST_XDIST_N )); then
+  echo "detect-parallel: memory-capped pytest workers ${PYTEST_XDIST_N} -> ${MEM_WORKERS} (${MEM_AVAIL_GB}G available, ${PER_WORKER_GB}G/worker)" >&2
+  PYTEST_XDIST_N="$MEM_WORKERS"
+  PYTEST_XDIST="$MEM_WORKERS"
+fi
 if (( NPROC >= 14 )) && (( MEM_GB < 12 )); then
   NX_PARALLEL=8
-  PYTEST_XDIST_N=8
-  PYTEST_XDIST="8"
 fi
 
 emit_env() {
@@ -66,6 +79,7 @@ emit_env() {
   echo "DOCKER_JOBS=$DOCKER_JOBS"
   echo "NPROC=$NPROC"
   echo "MEM_GB=$MEM_GB"
+  echo "MEM_AVAIL_GB=$MEM_AVAIL_GB"
 }
 
 case "${1:-}" in
