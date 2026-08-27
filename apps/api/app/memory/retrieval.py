@@ -279,13 +279,18 @@ async def _hydrate_candidates(
 class _ScoredCandidate:
     """A candidate with its blended relevance, boosted score, and confidence verdict.
 
-    ``base`` is pure query relevance (pre-boost) and decides survival against
-    the relevance dropoff; ``score`` folds in the recency/importance boosts and
-    decides ordering only.
+    ``base`` is the blended pre-boost relevance and decides ordering together
+    with the boosts folded into ``score``; ``relevance`` is the cross-encoder's
+    calibrated (sigmoid) verdict alone and decides survival against the
+    relevance dropoff — the blend's cosine leg is proportional to the pool's
+    best cosine, which floors every candidate high and cannot tell an
+    incidental graph sibling from a real answer the way the absolute
+    cross-encoder signal can.
     """
 
     row: MemoryRecord
     base: float
+    relevance: float
     score: float
     confident: bool
 
@@ -342,6 +347,7 @@ async def _rerank_and_boost(
             _ScoredCandidate(
                 row=row,
                 base=base,
+                relevance=rr,
                 score=base * _recency_boost(row, now) * _importance_boost(row),
                 confident=(
                     ann_similarity.get(str(row.id), 0.0) >= CONFIDENT_COSINE
@@ -517,20 +523,25 @@ def _drop_below_relevance(scored: list[_ScoredCandidate]) -> list[_ScoredCandida
     Hybrid recall produces a sharp relevance cliff — a few strong matches, then
     a long tail of faintly-related facts. Injecting that tail into every prompt
     is noise: a query about a gift for the user's partner does not need their
-    GitHub bio or hometown. Keep only candidates whose PRE-boost relevance is
-    at least ``RELEVANCE_DROPOFF_RATIO`` of the pool's best pre-boost relevance
-    (the best candidate always survives). Survival is decided on ``base``, not
-    the boosted ``score``: recency/importance boosts reorder results, but a
-    boosted-but-marginal top hit must never raise the floor above a relevant
-    un-boosted answer.
+    GitHub bio or hometown.
+
+    Survival reads the CROSS-ENCODER's calibrated relevance, not the blended
+    base and not the boosted score: the blend's cosine leg is proportional to
+    the pool's best cosine, so it floors every candidate high (measured on the
+    real models: an off-topic entity sibling kept 72% of the top's blended
+    base while its calibrated relevance ratio was 9%). Boosts reorder, never
+    save. A CONFIDENT candidate (absolute cosine, strong raw logit, or a
+    keyword anchor) is never dropped — that is the existing escape hatch for
+    the query shapes the cross-encoder misjudges, which is the whole reason
+    the blend exists for ordering.
     """
     if not scored:
         return scored
-    top = max(item.base for item in scored)
+    top = max(item.relevance for item in scored)
     if top <= 0:
         return scored
     floor = top * RELEVANCE_DROPOFF_RATIO
-    return [item for item in scored if item.base >= floor]
+    return [item for item in scored if item.confident or item.relevance >= floor]
 
 
 def _in_category(category_path: str, prefix: str) -> bool:

@@ -312,16 +312,28 @@ def test_elapsed_ms_is_non_negative_integer() -> None:
 
 
 def _cand(
-    base: float, content: str = "c", *, score: float | None = None
+    base: float,
+    content: str = "c",
+    *,
+    relevance: float | None = None,
+    score: float | None = None,
+    confident: bool = False,
 ) -> retrieval._ScoredCandidate:
     return retrieval._ScoredCandidate(
-        row=make_row(content), base=base, score=base if score is None else score, confident=True
+        row=make_row(content),
+        base=base,
+        relevance=base if relevance is None else relevance,
+        score=base if score is None else score,
+        confident=confident,
     )
 
 
 class TestDropBelowRelevance:
-    # The dropoff now reads PRE-boost relevance (``base``), never the boosted
-    # ``score`` — the stronger invariant: boosts reorder, but never delete.
+    # Survival reads the cross-encoder's calibrated ``relevance`` — never the
+    # blended ``base`` (its cosine leg floors every candidate high) and never
+    # the boosted ``score``. Confident candidates are exempt: the absolute
+    # cosine/logit/keyword signals are the escape hatch for query shapes the
+    # cross-encoder misjudges.
 
     def test_empty_input_returns_empty(self) -> None:
         assert _drop_below_relevance([]) == []
@@ -338,33 +350,43 @@ class TestDropBelowRelevance:
         scored = [_cand(0.001, "only")]
         assert len(_drop_below_relevance(scored)) == 1
 
-    def test_non_positive_top_base_disables_the_filter(self) -> None:
+    def test_non_positive_top_relevance_disables_the_filter(self) -> None:
         scored = [_cand(0.0, "a"), _cand(0.0, "b")]
         assert len(_drop_below_relevance(scored)) == 2
 
-    def test_exactly_zero_top_base_disables_the_filter_for_negative_bases(self) -> None:
+    def test_exactly_zero_top_relevance_disables_the_filter_for_negatives(self) -> None:
         # Boundary: top == 0.0 must disable the filter (not just top < 0) —
-        # otherwise a floor of 0.0 silently drops a negative base (possible
-        # via a strongly negative cosine) instead of switching off.
+        # a floor of exactly 0.0 would silently drop a negative-relevance
+        # candidate instead of switching off.
         scored = [_cand(0.0, "zero"), _cand(-0.5, "negative")]
         assert len(_drop_below_relevance(scored)) == 2
 
-    def test_survival_reads_the_pre_boost_base_not_the_boosted_score(self) -> None:
-        # The boosted score puts "boosted" on top, but its base is not the
-        # pool's best; "relevant" (highest base, small boosted score) sets the
-        # floor and both survive.
+    @pytest.mark.regression
+    def test_a_high_blended_base_cannot_save_below_floor_relevance(self) -> None:
+        """The incidental-sibling shape, with the real measured proportions:
+        the off-topic sibling kept 72% of the top's blended base (the
+        proportional cosine leg floors everyone high) while its calibrated
+        cross-encoder relevance ratio was 9%. Survival on base kept it; on
+        relevance it dies."""
         scored = [
-            _cand(0.5, "boosted", score=0.69),
-            _cand(1.0, "relevant", score=0.6),
+            _cand(0.473, "birthday", relevance=0.122, confident=True),
+            _cand(0.341, "sibling", relevance=0.011, confident=False),
         ]
-        assert [item.row.content for item in _drop_below_relevance(scored)] == [
-            "boosted",
-            "relevant",
-        ]
+        assert [item.row.content for item in _drop_below_relevance(scored)] == ["birthday"]
 
-    def test_a_boosted_score_cannot_save_a_below_floor_base(self) -> None:
+    def test_a_boosted_score_cannot_save_below_floor_relevance(self) -> None:
         scored = [_cand(1.0, "top"), _cand(0.1, "marginal", score=2.0)]
         assert [item.row.content for item in _drop_below_relevance(scored)] == ["top"]
+
+    def test_a_confident_candidate_is_never_dropped(self) -> None:
+        """The escape hatch: a keyword/cosine-anchored result the
+        cross-encoder hates still reaches the prompt (the blend exists for
+        ordering precisely because the cross-encoder misjudges some shapes)."""
+        scored = [_cand(1.0, "top"), _cand(0.01, "anchored", confident=True)]
+        assert [item.row.content for item in _drop_below_relevance(scored)] == [
+            "top",
+            "anchored",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +398,11 @@ class TestCapWeakResults:
     def test_confident_results_are_never_capped(self) -> None:
         scored = [
             retrieval._ScoredCandidate(
-                row=make_row(f"c{i}"), base=1.0 - i / 100, score=1.0 - i / 100, confident=True
+                row=make_row(f"c{i}"),
+                base=1.0 - i / 100,
+                relevance=1.0 - i / 100,
+                score=1.0 - i / 100,
+                confident=True,
             )
             for i in range(MAX_WEAK_RESULTS + 5)
         ]
@@ -385,26 +411,55 @@ class TestCapWeakResults:
     def test_weak_results_are_capped_at_the_limit(self) -> None:
         scored = [
             retrieval._ScoredCandidate(
-                row=make_row(f"w{i}"), base=1.0 - i / 100, score=1.0 - i / 100, confident=False
+                row=make_row(f"w{i}"),
+                base=1.0 - i / 100,
+                relevance=1.0 - i / 100,
+                score=1.0 - i / 100,
+                confident=False,
             )
             for i in range(MAX_WEAK_RESULTS + 5)
         ]
         assert len(_cap_weak_results(scored)) == MAX_WEAK_RESULTS
 
+    def test_a_confident_result_after_the_weak_cap_is_still_kept(self) -> None:
+        """Hitting the weak cap must SKIP further weak results, never stop the
+        scan: a confident result ranked below the capped weak tail still
+        belongs in the prompt."""
+        scored = [
+            _cand(1.0 - i / 100, f"w{i}", confident=False) for i in range(MAX_WEAK_RESULTS + 1)
+        ] + [_cand(0.5, "anchored-last", confident=True)]
+
+        kept = _cap_weak_results(scored)
+
+        assert [row.content for row, _ in kept][-1] == "anchored-last"
+        assert len(kept) == MAX_WEAK_RESULTS + 1
+
     def test_weak_cap_does_not_consume_the_confident_budget(self) -> None:
         scored = [
-            retrieval._ScoredCandidate(row=make_row("w1"), base=0.9, score=0.9, confident=False),
-            retrieval._ScoredCandidate(row=make_row("s1"), base=0.8, score=0.8, confident=True),
-            retrieval._ScoredCandidate(row=make_row("w2"), base=0.7, score=0.7, confident=False),
-            retrieval._ScoredCandidate(row=make_row("s2"), base=0.6, score=0.6, confident=True),
+            retrieval._ScoredCandidate(
+                row=make_row("w1"), base=0.9, relevance=0.9, score=0.9, confident=False
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("s1"), base=0.8, relevance=0.8, score=0.8, confident=True
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("w2"), base=0.7, relevance=0.7, score=0.7, confident=False
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("s2"), base=0.6, relevance=0.6, score=0.6, confident=True
+            ),
         ]
         kept = _cap_weak_results(scored)
         assert [row.content for row, _ in kept] == ["w1", "s1", "w2", "s2"]
 
     def test_ranking_order_and_scores_survive_the_cap(self) -> None:
         scored = [
-            retrieval._ScoredCandidate(row=make_row("first"), base=0.9, score=0.9, confident=True),
-            retrieval._ScoredCandidate(row=make_row("second"), base=0.5, score=0.5, confident=True),
+            retrieval._ScoredCandidate(
+                row=make_row("first"), base=0.9, relevance=0.9, score=0.9, confident=True
+            ),
+            retrieval._ScoredCandidate(
+                row=make_row("second"), base=0.5, relevance=0.5, score=0.5, confident=True
+            ),
         ]
         assert _cap_weak_results(scored) == [
             (scored[0].row, 0.9),
@@ -651,6 +706,13 @@ class TestRerankAndBoost:
             scored = await _rerank_and_boost("q", [first, second], ann_similarity={}, fts_ids=set())
         assert scored[0].row.content == "first"
         assert scored[0].score > scored[1].score
+        # The fallback is the exact rank position 1 - index/total, on the same
+        # 0-1 scale as the cosine ratio it stands in for — a shifted scale
+        # (e.g. 2 - index/total) would hand FTS-only rows more retrieval
+        # relevance than a perfect cosine match.
+        sig = 1.0 / (1.0 + math.exp(-1.0))
+        assert scored[0].base == 0.6 * sig + 0.4 * (1.0 - 0 / 2)
+        assert scored[1].base == 0.6 * sig + 0.4 * (1.0 - 1 / 2)
 
     async def test_base_blends_sigmoid_and_cosine_ratio_at_60_40(self) -> None:
         # The pre-boost relevance contract, numerically:
@@ -667,6 +729,9 @@ class TestRerankAndBoost:
             )
         by_content = {item.row.content: item for item in scored}
         assert by_content["best"].base == 0.6 * (1.0 / (1.0 + math.exp(-1.25))) + 0.4 * (0.8 / 0.8)
+        # ``relevance`` is the sigmoid leg alone — it is what survival reads.
+        assert by_content["best"].relevance == 1.0 / (1.0 + math.exp(-1.25))
+        assert by_content["other"].relevance == math.exp(-0.75) / (1.0 + math.exp(-0.75))
         assert by_content["other"].base == 0.6 * (
             math.exp(-0.75) / (1.0 + math.exp(-0.75))
         ) + 0.4 * (0.4 / 0.8)
@@ -819,9 +884,14 @@ class TestBuildEntries:
             ),
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
-            ),
+            ) as fetch_parents,
         ):
             entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content == "lives in Bengaluru"
 
     async def test_no_parent_lookup_when_nothing_superseded_anything(self) -> None:
@@ -868,9 +938,14 @@ class TestBuildEntries:
             ),
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
-            ),
+            ) as fetch_parents,
         ):
             entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content is None
 
     async def test_missing_parent_row_leaves_previous_content_empty(self) -> None:
@@ -1175,9 +1250,14 @@ class TestRecallQualityRegressions:
             ),
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
-            ),
+            ) as fetch_parents,
         ):
             entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content is None
 
     async def test_expired_forget_after_parent_content_is_not_injected(self) -> None:
@@ -1195,9 +1275,14 @@ class TestRecallQualityRegressions:
             ),
             patch.object(
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
-            ),
+            ) as fetch_parents,
         ):
             entries = await _build_entries([(child, 0.9)])
+
+        # The liveness fetch must be scoped to the OWNER of the recalled rows:
+        # unscoped (None) it returns nothing and every parent silently reads
+        # as deleted, dropping previous_content across the board.
+        assert fetch_parents.await_args.args[0] == child.user_id
         assert entries[0].previous_content is None
 
 

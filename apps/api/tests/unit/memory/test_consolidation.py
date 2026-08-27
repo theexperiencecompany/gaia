@@ -261,7 +261,6 @@ class TestVerificationPass:
         assert corrupted not in landed
         assert "- Sam is vegetarian" in landed
 
-    @pytest.mark.regression
     async def test_a_heading_is_never_removed_even_if_marked_struck(
         self, boundaries: MagicMock
     ) -> None:
