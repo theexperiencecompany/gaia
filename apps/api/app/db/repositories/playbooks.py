@@ -129,17 +129,23 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         )
 
     async def increment_heal_attempts(
-        self, workflow_id: str, user_id: str, *, playbook_id: str
+        self, workflow_id: str, user_id: str, *, playbook_id: str, revision: int | None = None
     ) -> PlaybookDocument | None:
-        """Count one heal run against the playbook, before that run starts.
+        """Count one completed heal run against the body it was healing.
 
-        Counted up front so a heal that lapses or has its rewrite refused still
-        spends an attempt. ``None`` when the playbook is no longer the workflow's.
+        ``revision`` scopes the count to that body: a heal run that rewrote the
+        playbook bumped the revision, and its attempt must not land on the new
+        body. ``None`` when the body is no longer the workflow's.
         """
+        key: dict[str, object] = {
+            "workflow_id": workflow_id,
+            "user_id": user_id,
+            "playbook_id": playbook_id,
+        }
+        if revision is not None:
+            key["revision"] = revision
         return await self._apply_raw_update(
-            {"workflow_id": workflow_id, "user_id": user_id, "playbook_id": playbook_id},
-            {"$inc": {"heal_attempts": 1}},
-            scope=REPO_GLOBAL_SCOPE,
+            key, {"$inc": {"heal_attempts": 1}}, scope=REPO_GLOBAL_SCOPE
         )
 
     async def delete_for_workflow(self, workflow_id: str, user_id: str) -> bool:

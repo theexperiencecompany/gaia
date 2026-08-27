@@ -133,12 +133,20 @@ async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | No
     """
     if not redis_cache.client:
         return LockState.OURS
-    raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
-    if raw is None:
+    holder = await get_lock_holder(conversation_id)
+    if holder is None:
         return LockState.FREE
-    if decode_raw_item(raw) == build_lock_value(stream_id, task_id or ""):
+    if holder == build_lock_value(stream_id, task_id or ""):
         return LockState.OURS
     return LockState.FOREIGN
+
+
+async def get_lock_holder(conversation_id: str) -> str | None:
+    """The busy lock's current value, or None when no run holds it (or Redis is down)."""
+    if not redis_cache.client:
+        return None
+    raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
+    return None if raw is None else decode_raw_item(raw)
 
 
 async def is_executor_busy(conversation_id: str) -> bool:

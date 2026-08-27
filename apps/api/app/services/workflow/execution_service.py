@@ -49,6 +49,28 @@ class WorkflowFireQueued(Exception):
         self.trace = trace
 
 
+class WorkflowFireOverlapped(Exception):
+    """A playbook replay that found this workflow's conversation already busy.
+
+    The replay holds the same per-conversation executor lock an agentic run
+    does, so two fires of one workflow cannot both replay its playbook (seen
+    live: two manual fires at the same moment, two "Replayed 1 step(s)"
+    results, every side effect doubled). Unlike :class:`WorkflowFireQueued`
+    nothing is put on the queue: the fire is dropped, and the run that holds
+    the lock delivers the workflow's one result. So it is neither a success to
+    record nor a failure to tell the user about. ``holder`` is the lock value
+    of the run that was in flight, for the record and the log.
+    """
+
+    def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:
+        super().__init__(
+            f"Workflow fire overlapped an in-flight run of the same workflow (holder: {holder})"
+        )
+        self.user_id = user_id
+        self.conversation_id = conversation_id
+        self.holder = holder
+
+
 class PlaybookFallbackFailed(Exception):
     """A fire that failed AFTER its playbook replay had already run some steps.
 

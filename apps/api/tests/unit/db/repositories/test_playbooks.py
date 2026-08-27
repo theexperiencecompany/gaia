@@ -243,6 +243,19 @@ class TestIncrementHealAttempts:
         assert counted is not None
         assert counted.heal_attempts == 1
 
+    async def test_a_revision_scopes_the_count_to_the_body_that_was_healed(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        collection.find_one_and_update = AsyncMock(return_value=None)
+
+        counted = await repo.increment_heal_attempts(
+            WORKFLOW_ID, USER_ID, playbook_id="pb_first", revision=3
+        )
+
+        filter_, _ = collection.find_one_and_update.await_args.args
+        assert filter_["revision"] == 3
+        assert counted is None
+
     async def test_a_replaced_playbook_counts_nothing(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:

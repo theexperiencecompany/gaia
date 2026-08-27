@@ -7,6 +7,12 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
 
+from app.agents.core.background.executor_queue import (
+    build_lock_value,
+    get_lock_holder,
+    release_lock_if_owned,
+    try_acquire_lock,
+)
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result_to_platforms,
 )
@@ -30,6 +36,7 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.playbooks import playbook_repository
@@ -78,6 +85,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
+    WorkflowFireOverlapped,
     WorkflowFireQueued,
     complete_execution,
     create_execution,
@@ -630,28 +638,27 @@ async def _run_workflow(
     # runs this fire with the heal brief carrying the recorded reason, and ends
     # by rewriting the playbook or disabling it. Replaying it a second time
     # only repeats the same wrong result, and the streak limit then deletes
-    # the playbook before any agent has seen why. Each heal run is counted
-    # before it starts, so a heal that lapses, declines, or has its rewrite
-    # refused still spends an attempt; past the limit the playbook goes.
+    # the playbook before any agent has seen why. An attempt is a heal run
+    # that completed and left the body still distrusted: it is counted after
+    # the agent returns and only against the revision it was healing, so a
+    # fire that never reached the agent (a DNS outage, a crashed worker) spends
+    # nothing, and a rewrite starts the new body at zero. Past the limit the
+    # playbook goes.
     if playbook.last_run_status in HEAL_STATUSES:
-        counted = await playbook_repository.increment_heal_attempts(
-            workflow_id, workflow.user_id, playbook_id=playbook.playbook_id
-        )
-        attempts = counted.heal_attempts if counted is not None else 0
-        if attempts > PLAYBOOK_HEAL_ATTEMPT_LIMIT:
+        if playbook.heal_attempts >= PLAYBOOK_HEAL_ATTEMPT_LIMIT:
             await _discard_playbook(
                 workflow_id,
                 workflow.user_id,
                 playbook,
                 reason="heal_attempts_exhausted",
-                heal_attempts=attempts,
+                heal_attempts=playbook.heal_attempts,
             )
             log.set_ns(
                 "playbook",
                 mode="agent",
                 reason="heal_attempts_exhausted",
                 playbook_id=playbook.playbook_id,
-                heal_attempts=attempts,
+                heal_attempts=playbook.heal_attempts,
                 llm_calls=0,
             )
             return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
@@ -661,10 +668,17 @@ async def _run_workflow(
             reason="heal",
             playbook_id=playbook.playbook_id,
             last_run_status=playbook.last_run_status.value,
-            heal_attempts=attempts,
+            heal_attempts=playbook.heal_attempts,
             llm_calls=0,
         )
-        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
+        healed = await execute_workflow_as_chat(workflow, user, context)
+        await playbook_repository.increment_heal_attempts(
+            workflow_id,
+            workflow.user_id,
+            playbook_id=playbook.playbook_id,
+            revision=playbook.revision,
+        )
+        return *healed, AGENT_RUN_SUMMARY
 
     conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
     # From here on the replay's calls are history that happened. Whatever ends
@@ -1086,6 +1100,42 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
         return f"Workflow {workflow_id} did not run — queued behind its previous run"
 
+    except WorkflowFireOverlapped as overlapped:
+        # This fire never ran either: its playbook replay found the workflow's
+        # conversation already held by another run of the same workflow, and
+        # dropped out rather than replay every side effect a second time. That
+        # run delivers the result, so — as with the queued case — this is
+        # recorded honestly and the user is told nothing.
+        log.set_ns(
+            "workflow",
+            overlapped=True,
+            lock_holder=overlapped.holder,
+            outcome="overlapped_in_flight_run",
+        )
+        log.warning(
+            f"{LogTag.WORKER} Workflow fire overlapped an in-flight run — nothing executed",
+            workflow_id=workflow_id,
+            conversation_id=overlapped.conversation_id,
+            lock_holder=overlapped.holder,
+        )
+        if execution_id:
+            await complete_execution(
+                execution_id=execution_id,
+                status="failed",
+                error_message=(
+                    "This fire did not run: another run of this workflow was still "
+                    "in flight in its conversation (lock holder: "
+                    f"{overlapped.holder}), so the playbook was not replayed a second "
+                    "time. That run delivers the result."
+                ),
+                conversation_id=overlapped.conversation_id,
+            )
+        await WorkflowService.increment_execution_count(
+            workflow_id, overlapped.user_id, is_successful=False
+        )
+        await _rearm_quietly(scheduler, workflow, context, workflow_id)
+        return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
+
     except Exception as raised:
         # A failure after a partial replay arrives wrapped with the replay's
         # trace; the bookkeeping below classifies the real error, and the
@@ -1213,6 +1263,13 @@ async def execute_workflow_as_playbook(
     rest of the run to the agent knowing exactly what already happened. The
     turn itself is written by the caller once the outcome is recorded, because
     how the text is labelled depends on that outcome.
+
+    The replay holds the conversation's executor busy lock for its whole
+    duration — the same lock ``call_executor`` takes for an agentic run — so
+    two fires of one workflow can never replay at once, and a replay can never
+    run alongside an agentic run of the same workflow. A held lock raises
+    :class:`WorkflowFireOverlapped` before any step runs; nothing waits and
+    nothing is queued.
     """
     user_id = user["user_id"]
     user_data = await _resolve_workflow_user(workflow, user_id)
@@ -1222,16 +1279,37 @@ async def execute_workflow_as_playbook(
         workflow_title=workflow.title,
     )
 
-    result = await run_playbook(
-        playbook,
-        user=PlaybookUser(
-            email=user_data.get("email") or "",
-            name=user_data.get("name") or "",
-            timezone=user_data.get("timezone") or Timezone.utc().value,
-        ),
-        conversation_id=conversation_id,
-        trigger=context,
-    )
+    # Same lock value shape as call_executor's; a replay has no stream, so the
+    # value is ":{task_id}" (build_lock_value(None, ...) == build_lock_value("", ...)).
+    task_id = str(uuid4())
+    if not await try_acquire_lock(
+        f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", build_lock_value(None, task_id)
+    ):
+        holder = await get_lock_holder(conversation_id) or ""
+        log.warning(
+            f"{LogTag.WORKER} Playbook replay skipped; another run of this workflow "
+            "holds its conversation",
+            workflow_id=workflow.id,
+            conversation_id=conversation_id,
+            lock_holder=holder,
+        )
+        raise WorkflowFireOverlapped(
+            user_id=user_id, conversation_id=conversation_id, holder=holder
+        )
+
+    try:
+        result = await run_playbook(
+            playbook,
+            user=PlaybookUser(
+                email=user_data.get("email") or "",
+                name=user_data.get("name") or "",
+                timezone=user_data.get("timezone") or Timezone.utc().value,
+            ),
+            conversation_id=conversation_id,
+            trigger=context,
+        )
+    finally:
+        await release_lock_if_owned(conversation_id, "", task_id)
     return conversation_id, result
 
 

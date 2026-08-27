@@ -126,6 +126,20 @@ class TestPlaybooksRepository:
         assert second.heal_attempts == 0
         assert second.playbook_id == first.playbook_id
 
+    async def test_a_heal_count_for_a_rewritten_body_lands_nowhere(self, repo) -> None:
+        first = await repo.upsert_for_workflow(make_doc())
+        second = await repo.upsert_for_workflow(make_doc(description="rewritten"))
+
+        stale = await repo.increment_heal_attempts(
+            WORKFLOW_ID, USER_ID, playbook_id=first.playbook_id, revision=first.revision
+        )
+        current = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
+
+        assert stale is None
+        assert current is not None
+        assert current.revision == second.revision
+        assert current.heal_attempts == 0
+
     async def test_increment_heal_attempts_ignores_a_replaced_playbook(self, repo) -> None:
         await repo.create(make_doc())
         assert (

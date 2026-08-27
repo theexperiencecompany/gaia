@@ -19,6 +19,7 @@ from app.constants.agents import (
     PLAYBOOK_HEAL_ATTEMPT_LIMIT,
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
 )
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -964,47 +965,69 @@ class TestHealAttemptsAreBounded:
     with the heal brief forever and the streak limit never fired (no replay
     ever happened again)."""
 
-    async def test_each_heal_run_is_counted_before_the_agent_runs(self) -> None:
+    async def test_a_heal_run_is_counted_only_after_the_agent_completes(self) -> None:
+        """Seen live: a DNS outage failed two fires in under a second, before any
+        agent ran, and each spent a heal attempt. An attempt is a heal run that
+        completed and still left the playbook distrusted; a fire that never
+        reached the agent is not one."""
         workflow = _workflow()
         harness = _Harness(workflow)
         playbook = _distrusted(workflow)
         harness.get_for_workflow = AsyncMock(return_value=playbook)
-        harness.increment_heal_attempts = AsyncMock(return_value=_distrusted(workflow, 1))
+        order: list[str] = []
+        harness.chat = AsyncMock(
+            side_effect=lambda *a, **k: (order.append("agent"), ("conv_1", []))[1]
+        )
+        harness.increment_heal_attempts = AsyncMock(
+            side_effect=lambda *a, **k: (order.append("count"), _distrusted(workflow, 1))[1]
+        )
 
         await _fire(harness)
 
+        assert order == ["agent", "count"]
         harness.increment_heal_attempts.assert_awaited_once_with(
-            workflow.id, workflow.user_id, playbook_id=playbook.playbook_id
+            workflow.id,
+            workflow.user_id,
+            playbook_id=playbook.playbook_id,
+            revision=playbook.revision,
         )
-        harness.chat.assert_awaited_once()
         harness.delete_for_workflow.assert_not_awaited()
         event = harness.playbook_event()
         assert event["reason"] == "heal"
-        assert event["heal_attempts"] == 1
+        assert event["heal_attempts"] == 0
+
+    async def test_a_heal_run_that_never_reaches_the_agent_is_not_counted(self) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_distrusted(workflow))
+        harness.chat = AsyncMock(side_effect=OSError("nodename nor servname provided"))
+
+        await _fire(harness)
+
+        harness.increment_heal_attempts.assert_not_awaited()
 
     async def test_the_last_allowed_attempt_still_heals(self) -> None:
         workflow = _workflow()
         harness = _Harness(workflow)
-        harness.get_for_workflow = AsyncMock(return_value=_distrusted(workflow))
-        harness.increment_heal_attempts = AsyncMock(
-            return_value=_distrusted(workflow, PLAYBOOK_HEAL_ATTEMPT_LIMIT)
+        harness.get_for_workflow = AsyncMock(
+            return_value=_distrusted(workflow, PLAYBOOK_HEAL_ATTEMPT_LIMIT - 1)
         )
 
         await _fire(harness)
 
         harness.delete_for_workflow.assert_not_awaited()
+        harness.chat.assert_awaited_once()
         assert harness.playbook_event()["reason"] == "heal"
 
     async def test_past_the_limit_the_playbook_is_deleted_and_the_agent_runs(self) -> None:
         workflow = _workflow()
         harness = _Harness(workflow)
-        playbook = _distrusted(workflow)
+        playbook = _distrusted(workflow, PLAYBOOK_HEAL_ATTEMPT_LIMIT)
         harness.get_for_workflow = AsyncMock(return_value=playbook)
-        harness.increment_heal_attempts = AsyncMock(
-            return_value=_distrusted(workflow, PLAYBOOK_HEAL_ATTEMPT_LIMIT + 1)
-        )
 
         await _fire(harness)
+
+        harness.increment_heal_attempts.assert_not_awaited()
 
         harness.delete_for_workflow.assert_awaited_once_with(workflow.id, workflow.user_id)
         harness.chat.assert_awaited_once()
@@ -1012,7 +1035,7 @@ class TestHealAttemptsAreBounded:
         event = harness.playbook_event()
         assert event["mode"] == "agent"
         assert event["reason"] == "heal_attempts_exhausted"
-        assert event["heal_attempts"] == PLAYBOOK_HEAL_ATTEMPT_LIMIT + 1
+        assert event["heal_attempts"] == PLAYBOOK_HEAL_ATTEMPT_LIMIT
         warnings = [
             call.kwargs
             for call in harness.log.warning.call_args_list
@@ -1020,7 +1043,7 @@ class TestHealAttemptsAreBounded:
         ]
         assert len(warnings) == 1
         assert warnings[0]["playbook_id"] == playbook.playbook_id
-        assert warnings[0]["heal_attempts"] == PLAYBOOK_HEAL_ATTEMPT_LIMIT + 1
+        assert warnings[0]["heal_attempts"] == PLAYBOOK_HEAL_ATTEMPT_LIMIT
 
     async def test_a_playbook_replaced_between_read_and_count_still_heals(self) -> None:
         """The count landing on nothing means the playbook changed under us; the
@@ -1124,3 +1147,215 @@ class TestOutcomeIsScopedToTheReplayedRevision:
         ]
         assert len(warnings) == 1
         assert warnings[0].kwargs["revision"] == 0
+
+
+class _LockedReplayHarness(_Harness):
+    """The real execute_workflow_as_playbook with its I/O and lock seams mocked.
+
+    The base harness stubs the replay function whole, which is right for the
+    path-choice tests and useless here: the lock is taken inside it.
+    """
+
+    def __init__(self, workflow: Workflow, *, lock_free: bool, holder: str = "") -> None:
+        super().__init__(workflow)
+        self.calls: list[str] = []
+        self.acquire = AsyncMock(side_effect=self._acquire)
+        self.release = AsyncMock(side_effect=self._release)
+        self.holder = AsyncMock(return_value=holder or None)
+        self.run_playbook = AsyncMock(side_effect=self._run)
+        self.notify = AsyncMock()
+        self.increment = AsyncMock()
+        self._lock_free = lock_free
+        self.replay_result: PlaybookRunResult | Exception = PlaybookRunResult(
+            ok=True, text="Agenda sent.", trace=[RecordedCall(tool_name="list_events")]
+        )
+
+    async def _acquire(self, lock_key: str, lock_value: str) -> bool:
+        self.calls.append("acquire")
+        return self._lock_free
+
+    async def _release(self, conversation_id: str, stream_id: str, task_id: str | None) -> None:
+        self.calls.append("release")
+
+    async def _run(self, *args: object, **kwargs: object) -> PlaybookRunResult:
+        self.calls.append("run")
+        if isinstance(self.replay_result, Exception):
+            raise self.replay_result
+        return self.replay_result
+
+    def patches(self) -> list:
+        return [
+            patcher
+            for patcher in super().patches()
+            if patcher.attribute not in {"execute_workflow_as_playbook", "WorkflowService"}
+        ] + [
+            patch(f"{MODULE}.WorkflowService", MagicMock(increment_execution_count=self.increment)),
+            patch(f"{MODULE}.try_acquire_lock", self.acquire),
+            patch(f"{MODULE}.release_lock_if_owned", self.release),
+            patch(f"{MODULE}.get_lock_holder", self.holder),
+            patch(f"{MODULE}.run_playbook", self.run_playbook),
+            patch(f"{MODULE}.notification_service.create_notification", self.notify),
+            patch(
+                f"{MODULE}.get_user_by_id",
+                AsyncMock(return_value={"user_id": self.workflow.user_id, "timezone": "UTC"}),
+            ),
+            patch(
+                f"{MODULE}.get_or_create_workflow_conversation",
+                AsyncMock(return_value="conv_1"),
+            ),
+        ]
+
+    def acquired_task_id(self) -> str:
+        """The task id the replay stamped into its lock value."""
+        self.acquire.assert_awaited_once()
+        lock_value = str(self.acquire.await_args.args[1])
+        stream_id, task_id = lock_value.split(":", 1)
+        assert stream_id == "", "a replay has no stream; the value must still parse as one"
+        return task_id
+
+
+class TestReplayHoldsTheConversationLock:
+    """Two fires of one workflow at the same moment both replayed its playbook.
+
+    Seen live: two "Replayed 1 step(s)" executions, two results in the
+    conversation, duplicate notifications. The agentic path cannot do this —
+    call_executor takes the conversation's busy lock and queues the second
+    dispatch — but the replay took no lock at all. It now holds the same lock
+    for its whole duration and drops out when it is already held.
+    """
+
+    async def test_the_replay_locks_the_workflows_conversation_and_frees_it_after(self) -> None:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=True)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        assert harness.acquire.await_args.args[0] == f"{EXECUTOR_BUSY_PREFIX}conv_1"
+        task_id = harness.acquired_task_id()
+        harness.release.assert_awaited_once_with("conv_1", "", task_id)
+        assert harness.calls == ["acquire", "run", "release"], (
+            "the lock must cover the whole replay, not just its start"
+        )
+        assert harness.complete_execution.await_args.kwargs["status"] == "success"
+
+    async def test_a_replay_that_raises_still_frees_the_lock(self) -> None:
+        """A wedged lock would block every later fire of this workflow — replay
+        and agent alike — until the TTL lapsed."""
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=True)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.replay_result = RuntimeError("tool exploded")
+
+        await _fire(harness)
+
+        harness.release.assert_awaited_once_with("conv_1", "", harness.acquired_task_id())
+        assert harness.calls == ["acquire", "run", "release"]
+        assert harness.complete_execution.await_args.kwargs["status"] == "failed"
+        assert harness.complete_execution.await_args.kwargs["error_message"] == "tool exploded"
+
+    async def test_a_held_lock_stops_the_replay_before_any_step_runs(self) -> None:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        harness.run_playbook.assert_not_awaited()
+        harness.chat.assert_not_awaited()
+        harness.release.assert_not_awaited()
+        harness.add_messages.assert_not_awaited()
+
+    async def test_a_held_lock_is_recorded_as_a_fire_that_did_not_run(self) -> None:
+        """Honest record: failed, naming the overlap and the run that held the lock."""
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        harness.complete_execution.assert_awaited_once()
+        kwargs = harness.complete_execution.await_args.kwargs
+        assert kwargs["status"] == "failed"
+        assert kwargs["conversation_id"] == "conv_1"
+        assert kwargs.get("trace") is None, "nothing ran, so there is nothing to replay from"
+        assert "did not run" in kwargs["error_message"]
+        assert "stream_9:task_9" in kwargs["error_message"]
+
+    async def test_a_held_lock_counts_as_an_unsuccessful_fire(self) -> None:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        harness.increment.assert_awaited_once_with(
+            workflow.id, workflow.user_id, is_successful=False
+        )
+
+    async def test_a_held_lock_tells_the_user_nothing(self) -> None:
+        """The run holding the lock delivers the result; a second notification
+        of either kind would be the very duplicate this lock exists to stop."""
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        harness.notify.assert_not_awaited()
+        harness.completion_notification.assert_not_awaited()
+        harness.platform_delivery.assert_not_awaited()
+
+    async def test_a_held_lock_leaves_the_playbooks_record_alone(self) -> None:
+        """No outcome was reached, so none is written: a skipped fire must not
+        reset a suspect streak or count as a run."""
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        harness.record_run_outcome.assert_not_awaited()
+        harness.delete_for_workflow.assert_not_awaited()
+
+    async def test_a_held_lock_is_visible_on_the_wide_event_with_the_holder(self) -> None:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+
+        await _fire(harness)
+
+        event: dict[str, object] = {}
+        for call in harness.log.set_ns.call_args_list:
+            if call.args and call.args[0] == "workflow":
+                event.update(call.kwargs)
+        assert event.get("overlapped") is True
+        assert event.get("outcome") == "overlapped_in_flight_run"
+        assert event.get("lock_holder") == "stream_9:task_9"
+        warnings = [
+            call
+            for call in harness.log.warning.call_args_list
+            if call.kwargs.get("lock_holder") == "stream_9:task_9"
+        ]
+        assert warnings, "the skip must be logged with the holder's lock value"
+        assert all(call.kwargs.get("conversation_id") == "conv_1" for call in warnings)
+
+    async def test_a_held_lock_still_arms_the_next_occurrence(self) -> None:
+        workflow = _workflow().model_copy(update={"repeat": "*/5 * * * *", "activated": True})
+        harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+
+        with ExitStack() as stack:
+            for patcher in harness.patches():
+                stack.enter_context(patcher)
+            await execute_workflow_by_id(
+                {},
+                workflow.id or "",
+                {
+                    "trigger_type": TriggerType.SCHEDULE.value,
+                    "scheduled_for": datetime.now(UTC).timestamp(),
+                },
+            )
+
+        harness.scheduler.handle_recurring_task.assert_awaited_once()
