@@ -1,47 +1,64 @@
 ## 1. Matchable-fields catalog
 
-- [ ] 1.1 Create `app/services/triggers/matchable_fields.py`: per-trigger curated field catalog (name, type, description, example) derived from verified `composio_schemas` payload models; exclusion reasons documented for omitted fields
-- [ ] 1.2 Unit test: catalog covers gmail, slack, calendar, github, linear, notion, sheets, todoist, asana; every catalog field exists on the corresponding payload model with matching type
+- [x] 1.1 Create `app/services/triggers/matchable_fields.py`: per-trigger curated field catalog (name, type, description, example) derived from verified `composio_schemas` payload models; exclusion reasons documented for omitted fields
+- [x] 1.2 Unit test: catalog covers every trigger name published by the `WorkflowTriggerSchema` catalog (23 today — gmail ×2, calendar ×2, google_docs ×3, google_sheets ×2, github ×4, linear ×3, notion ×3, slack ×2, todoist, asana), asserting against the live catalog rather than a hardcoded list so a new trigger fails the test; every catalog field exists on the corresponding payload model with matching type
 
 ## 2. Subscription data model + validation
 
-- [ ] 2.1 Add `TriggerSubscription` model and `trigger_subscriptions` field to `TodoDocument`; mirror type in `libs/shared/ts/src/types/todo.ts`
-- [ ] 2.2 Add condition model (`field`, `op`, `value`) with operator enum per field type; repository finders `find_active_by_trigger(trigger_id)` / `find_active_by_user_and_trigger`
-- [ ] 2.3 Implement validator: fields must be in matchable catalog, operators valid for type; mechanical repair (fuzzy field-name match, operator correction); rejection errors name alternatives
-- [ ] 2.4 Unit tests: valid conditions pass; unknown field / bad operator fail; `threadId→thread_id` repairs mechanically with no LLM call
+- [x] 2.1 Add `TriggerSubscription` model and `trigger_subscriptions` field to `TodoDocument` **and `TodoUpdate`** (which is `extra="forbid"`, so writes fail without it), and read-only on `TodoResponse` so the mirrored TS type is not a field the API never sends; mirror the type in `libs/shared/ts/src/types/todo.ts`
+- [x] 2.2 Add condition model (`field`, `op`, `value`) with operator enum per field type; record on the subscription whether it resolves by trigger instance ID or by user + trigger name
+- [x] 2.3 Repository finders on `todo_repository`: `find_active_by_composio_trigger(trigger_id)` and `find_active_by_user_and_trigger(user_id, trigger_name)` — both cross-user, following the existing `*_all_users` convention for unscoped reads
+- [x] 2.4 Add todos indexes in `app/db/mongodb/indexes.py` mirroring `workflows_collection.create_index("trigger_config.composio_trigger_ids", sparse=True)`: one on the subscription trigger-id array, one on `(user_id, subscription trigger_name)`, both sparse
+- [x] 2.5 Implement validator: fields must be in matchable catalog, operators valid for type; mechanical repair (fuzzy field-name match, operator correction); rejection errors name alternatives
+- [x] 2.6 Unit tests: valid conditions pass; unknown field / bad operator fail; `threadId→thread_id` repairs mechanically with no LLM call; both index-backed finders return only active subscriptions
 
 ## 3. Registration lifecycle
 
-- [ ] 3.1 Register subscriptions via existing handler `register()` path; store returned Composio trigger instance IDs on the subscription
-- [ ] 3.2 Extend trigger refcounting: `count_trigger_references` / `get_triggers_safe_to_delete` count todo references alongside workflows, with an `excluding_todo_id` exclusion (mirroring `excluding_workflow_id`) so a todo being deleted does not count its own subscription — or teardown MUST delete the todo's subscriptions before counting
-- [ ] 3.3 Teardown on terminal states: completing/archiving/failing a todo unregisters its subscriptions
-- [ ] 3.4 Include active todo subscriptions in OAuth reconnect resync and connection-expiry pause (paused → `blocked` label decision documented)
-- [ ] 3.5 Contract/integration tests: workflow-delete-while-todo-subscribed keeps Composio trigger; todo-delete releases it
+- [ ] 3.1 Rename the `workflow_id` parameter to a neutral owner ref across `TriggerHandler.register`, `TriggerService.register_triggers` / `unregister_triggers`, and every implementation and call site — no adapter layer
+- [ ] 3.2 Register subscriptions through the existing handler `register()` path; store returned Composio trigger instance IDs. An empty return from an account-level trigger (Gmail) is success — assert it is not treated as a registration failure
+- [ ] 3.3 Add `todo_repository.count_trigger_references(composio_trigger_id, *, excluding_todo_id=None)`; sum workflow + todo counts inside `TriggerService.get_triggers_safe_to_delete` so neither repository reads the other's collection
+- [ ] 3.4 Teardown on every terminal path: completion, archival, failure, **and deletion** — `TodoService.delete_todo`, `bulk_delete_todos`, `delete_all_for_user`. Unregister before the document is removed so nothing is orphaned
+- [ ] 3.5 Include active todo subscriptions in OAuth reconnect resync (`resync_user_workflow_triggers`)
+- [ ] 3.6 Connection-expiry pause: mark affected subscriptions paused and add the `blocked` label to their todos; resume and clear the label on reconnect (`services/workflow/integration_pause.py`)
+- [ ] 3.7 Contract/integration tests: workflow-delete-while-todo-subscribed keeps the Composio trigger; todo-delete-while-workflow-subscribed keeps it; deleting the last referencing todo releases it; expiry pauses and reconnect resumes
 
 ## 4. Dispatch fan-out
 
-- [ ] 4.1 Tap `TriggerHandler.process_event` before the no-workflow early return; resolve subscribed todos by trigger instance ID
-- [ ] 4.2 Condition evaluation in spawned task against typed payload models; AND-chain semantics; cooldown check via Redis key
-- [ ] 4.3 Enqueue execution through `execute_tracked_todo` stamped `todo_trigger` origin; route through daily cost-budget gate
-- [ ] 4.4 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
-- [ ] 4.5 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
-- [ ] 4.6 Unit + integration tests: thread-match executes todo; no-workflow event still fires todo; cooldown suppresses repeat; each of the four actions behaves per spec; budget gate blocks
+- [ ] 4.1 Tap `TriggerHandler.process_event` before the no-workflow early return (`base.py:373`); resolve subscribed todos by **both** strategies — trigger instance ID, and `(user_id, trigger_name)` for account-level triggers — mirroring `GmailTriggerHandler.find_workflows`
+- [ ] 4.2 Condition evaluation in the spawned task against typed payload models; AND-chain semantics; cooldown check via Redis key, written only when the action actually runs
+- [ ] 4.3 Add `TriggerType.TODO_TRIGGER` and `TriggerType.SCHEDULED_TODO`; replace the hardcoded `"scheduled_todo"` literals in `_run_execution` and `_execute_via_agent`
+- [ ] 4.4 Thread the origin + triggering payload as a new optional parameter through `execute_tracked_todo` → `_execute_todo_with_retry` → `_run_execution` → `_execute_via_agent`, **including the retry re-enqueue sites** (`tracked_todo_tasks.py:155`, `:192`) so a retried trigger run keeps its origin
+- [ ] 4.5 On a held execution lock, re-enqueue the `execute` action once with a short defer instead of returning `skipped` — the event must not be dropped
+- [ ] 4.6 Add `enforce_daily_cost_budget` to the triggered todo execution path with its own `feature_key` in `app/config/rate_limits.py` (the gate does not exist on this path today)
+- [ ] 4.7 Move `BLOCKING_LABELS` from `maintenance_sweep_tasks.py:54` to `app/constants/todos.py`, and `_todo_redirect_action` (`:427`) to a shared notification helper, before the dispatch path imports either
+- [ ] 4.8 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
+- [ ] 4.9 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
+- [ ] 4.10 Unit + integration tests: thread-match executes todo; account-level Gmail event with no trigger id still resolves subscribers; no-workflow event still fires todo; cooldown suppresses repeat; held lock defers rather than drops; retry preserves the `todo_trigger` origin; each of the four actions behaves per spec; budget gate blocks
 
 ## 5. Agent tool surface
 
-- [ ] 5.1 Add `subscribe_todo_to_trigger` tool (and unsubscribe/list variants) in `tracked_todo_tools.py`; result returns the trigger's matchable-fields catalog; description rich for ChromaDB retrieval
-- [ ] 5.2 Single LLM repair pass wired into tool failure path: ambiguous validation failures rewritten once against catalog fields, then accepted or rejected loudly
-- [ ] 5.3 E2E test: agent creates tracked todo, subscribes to gmail_new_message with a typo'd field, repair loop fixes it, subscription registers
+- [ ] 5.1 Add `subscribe_todo_to_trigger` (and unsubscribe/list variants) in `tracked_todo_tools.py`; the call returns the trigger's matchable-fields catalog
+- [ ] 5.2 Register the new tools in `initial_tool_ids` (`build_graph.py:106`) alongside the other tracked-todo tools, and update the tool lists in `comms_prompts.py:377` and `todo_prompts.py`
+- [ ] 5.3 Single LLM repair pass wired into the tool failure path: ambiguous validation failures rewritten once against catalog fields, then accepted or rejected loudly
+- [ ] 5.4 E2E test: agent creates tracked todo, subscribes to `gmail_new_message` with a typo'd field, repair loop fixes it, subscription registers
 
-## 6. Self-wiring flow
+## 6. Post-send subscription prompt
 
-- [ ] 6.1 On outbound Gmail send from a todo execution: capture sent `thread_id`, auto-arm reply-matching subscription, add `waiting-for-reply`
-- [ ] 6.2 Same for Slack outbound: arm channel-level subscription (documented limitation: no `thread_ts` upstream)
-- [ ] 6.3 Tests: auto-armed subscription passes the same validator; teardown when the todo completes
+- [ ] 6.1 Add an `AgentMiddleware.awrap_tool_call` middleware to `create_middleware_stack` (the seam `MediaDescriptionMiddleware` uses) that reads `active_todo_id` from `request.runtime.config["configurable"]` and, on success, appends a subscribe instruction to the `ToolMessage`. It performs no writes and calls no services. Composio's `after_execute` hooks are synchronous and context-free and cannot be used
+- [ ] 6.2 **Verify first**: whether Gmail sends run in a provider subagent whose tool set excludes the subscription tool. If so, decide between granting subagents the tool or carrying the identifier back to the executor on the subagent result — the instruction must reach an agent that can act on it
+- [ ] 6.3 Wire the watched tool set: `GMAIL_SEND_EMAIL`, draft-send and reply tools, and `GOOGLECALENDAR_CREATE_EVENT`; extract the returned `thread_id` / `event_id` for the instruction text. Keep the list as a named constant, not inline strings
+- [ ] 6.4 Same for Slack outbound: instruct a channel-level subscription (documented limitation: no `thread_ts` upstream)
+- [ ] 6.5 Tests: instruction appended only when `active_todo_id` is set and the call succeeded; absent on failure and on unbound runs; a subscription created from the instruction passes the ordinary validator; teardown when the todo completes
+
+## 6a. Calendar reminders
+
+- [ ] 6a.1 Add `calendar_event_starting_soon` matchable fields (`event_id`, `attendees`, `organizer_email`, `location`, `start_time`, `minutes_until_start`) to the catalog from `GoogleCalendarEventStartingSoonPayload`
+- [ ] 6a.2 Expose the reminder window as registration config on the subscription, passed through to `CalendarEventStartingSoonConfig.minutes_before_start` (1–1440); one subscription per window
+- [ ] 6a.3 Tests: an hour-before subscription registers a trigger carrying that window and fires on the matching `event_id`; two windows for one event store two subscriptions; two todos sharing a window share one Composio trigger instance and survive one of them completing
 
 ## 7. Observability + frontend
 
-- [ ] 7.1 Analytics: server-side `todo:trigger_fired` (+ registration/failure events) with explicit `capture_event(user_id)`; add names to `AnalyticsEvents`
-- [ ] 7.2 Notification source for `notify` action; deep-link redirect reusing maintenance-sweep pattern
-- [ ] 7.3 Web picker for trigger + conditions in todo UI reusing trigger config schema catalog; shared TS API client updates
+- [ ] 7.1 Analytics: server-side `todos:trigger_fired` (+ registration/failure events) with explicit `capture_event(user_id)` — the `todos:` prefix matches the existing todo events in `AnalyticsEvents`, which the webhook path must pass explicitly since it has no request context
+- [ ] 7.2 Notification source for the `notify` action; deep-link redirect via the shared helper extracted in 4.7
+- [ ] 7.3 Web picker for trigger + conditions in the todo UI reusing the trigger config schema catalog; shared TS API client updates
 - [ ] 7.4 Run `nx type-check api`, `nx lint api`, web/desktop type-check + lint; drive the full loop manually against the live stack (driving-gaia): create todo → send email → verify execution + Mongo state

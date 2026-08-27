@@ -23,6 +23,12 @@ from app.models.todo_models import (
     TodoSearchParams,
     TodoUpdate,
 )
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    SubscriptionStatus,
+    TriggerSubscription,
+)
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
@@ -45,6 +51,17 @@ def make_update() -> Callable[..., TodoUpdate]:
         return TodoUpdate.model_validate(fields or {"title": "edited"})
 
     return _make
+
+
+def _subscription(**overrides: object) -> TriggerSubscription:
+    return TriggerSubscription.model_validate(
+        {
+            "trigger_name": "gmail_new_message",
+            "action": SubscriptionAction.EXECUTE,
+            "resolution": SubscriptionResolution.ACCOUNT,
+            **overrides,
+        }
+    )
 
 
 def _all_params(**overrides: object) -> TodoSearchParams:
@@ -269,6 +286,109 @@ class TestTodosRepository(UserScopedRepositoryContract):
         due = await repo.find_due_tracked_all_users(now=now, max_retries=3, limit=100)
         assert len(due) == 1
         assert due[0].user_id == "u2"
+
+    # ---- trigger-subscription finders --------------------------------------
+
+    async def test_find_active_by_composio_trigger_spans_users(self, repo, make_doc):
+        shared = _subscription(
+            trigger_name="slack_new_message",
+            resolution=SubscriptionResolution.TRIGGER_ID,
+            composio_trigger_ids=["ti_shared"],
+        )
+        await repo.create(make_doc(user_id="u1", title="a", trigger_subscriptions=[shared]))
+        await repo.create(make_doc(user_id="u2", title="b", trigger_subscriptions=[shared]))
+        await repo.create(
+            make_doc(
+                user_id="u3",
+                title="other",
+                trigger_subscriptions=[
+                    _subscription(
+                        trigger_name="slack_new_message",
+                        resolution=SubscriptionResolution.TRIGGER_ID,
+                        composio_trigger_ids=["ti_other"],
+                    )
+                ],
+            )
+        )
+
+        found = await repo.find_active_by_composio_trigger("ti_shared")
+
+        assert sorted(t.title for t in found) == ["a", "b"]
+
+    async def test_find_active_by_composio_trigger_skips_completed_and_paused(self, repo, make_doc):
+        live = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_1"]
+        )
+        paused = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID,
+            composio_trigger_ids=["ti_1"],
+            status=SubscriptionStatus.PAUSED,
+        )
+        await repo.create(make_doc(user_id="u", title="live", trigger_subscriptions=[live]))
+        await repo.create(
+            make_doc(user_id="u", title="done", trigger_subscriptions=[live], completed=True)
+        )
+        await repo.create(make_doc(user_id="u", title="paused", trigger_subscriptions=[paused]))
+
+        found = await repo.find_active_by_composio_trigger("ti_1")
+
+        assert [t.title for t in found] == ["live"]
+
+    async def test_find_active_by_user_and_trigger_is_user_scoped(self, repo, make_doc):
+        gmail = _subscription()
+        await repo.create(make_doc(user_id="u1", title="mine", trigger_subscriptions=[gmail]))
+        await repo.create(make_doc(user_id="u2", title="theirs", trigger_subscriptions=[gmail]))
+
+        found = await repo.find_active_by_user_and_trigger("u1", "gmail_new_message")
+
+        assert [t.title for t in found] == ["mine"]
+
+    async def test_find_active_by_user_and_trigger_filters_by_trigger_name(self, repo, make_doc):
+        await repo.create(
+            make_doc(user_id="u", title="gmail", trigger_subscriptions=[_subscription()])
+        )
+        await repo.create(
+            make_doc(
+                user_id="u",
+                title="calendar",
+                trigger_subscriptions=[_subscription(trigger_name="calendar_event_starting_soon")],
+            )
+        )
+
+        found = await repo.find_active_by_user_and_trigger("u", "gmail_new_message")
+
+        assert [t.title for t in found] == ["gmail"]
+
+    async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
+        sub = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_1"]
+        )
+        await repo.create(make_doc(user_id="u1", trigger_subscriptions=[sub]))
+        await repo.create(make_doc(user_id="u2", trigger_subscriptions=[sub]))
+
+        assert await repo.count_trigger_references("ti_1") == 2
+        assert await repo.count_trigger_references("ti_missing") == 0
+
+    async def test_count_trigger_references_counts_paused_subscriptions(self, repo, make_doc):
+        # A paused subscription resumes on reconnect, so its trigger must survive.
+        paused = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID,
+            composio_trigger_ids=["ti_1"],
+            status=SubscriptionStatus.PAUSED,
+        )
+        await repo.create(make_doc(user_id="u", trigger_subscriptions=[paused]))
+
+        assert await repo.count_trigger_references("ti_1") == 1
+
+    async def test_count_trigger_references_can_exclude_the_todo_being_deleted(
+        self, repo, make_doc
+    ):
+        sub = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_1"]
+        )
+        doc = await repo.create(make_doc(user_id="u", trigger_subscriptions=[sub]))
+
+        assert await repo.count_trigger_references("ti_1", excluding_todo_id=doc.id) == 0
 
     # ---- bulk (base primitives) -------------------------------------------
 

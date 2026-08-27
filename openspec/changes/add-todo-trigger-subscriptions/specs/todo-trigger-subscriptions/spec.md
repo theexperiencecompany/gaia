@@ -3,9 +3,15 @@
 ### Requirement: Tracked todos can subscribe to integration triggers
 A tracked todo SHALL support zero or more trigger subscriptions, each referencing a supported GAIA-facing trigger name (from the existing `WorkflowTriggerSchema` catalog), a list of declarative conditions, an action (`execute`, `notify`, `complete`, or `unblock`), and a cooldown. A todo MUST NOT be able to subscribe to a trigger whose integration is not connected.
 
+Registration SHALL record how the subscription is resolved at dispatch time: by Composio trigger instance ID for per-resource triggers, or by user and trigger name for account-level triggers. An account-level registration that returns no Composio trigger IDs is a success, and MUST NOT be treated as a registration failure.
+
 #### Scenario: Agent subscribes a todo to a Gmail trigger
 - **WHEN** the agent calls the subscription tool with `trigger_name: gmail_new_message` and conditions on verified payload fields
-- **THEN** the subscription is stored on the todo document with its Composio trigger instance IDs and is live
+- **THEN** the subscription is stored on the todo document, marked account-level with no Composio trigger IDs, and is live
+
+#### Scenario: Agent subscribes a todo to a per-resource trigger
+- **WHEN** the agent subscribes a todo to a trigger that registers per resource (e.g. `slack_new_message` on a channel)
+- **THEN** the subscription is stored with the Composio trigger instance IDs returned by registration and is live
 
 #### Scenario: Subscription to disconnected integration
 - **WHEN** a subscription is requested for a trigger whose integration is not connected
@@ -33,20 +39,37 @@ On condition-validation failure, the system SHALL first attempt deterministic re
 - **WHEN** the user's intent requires a payload field no supported trigger provides
 - **THEN** the subscription is rejected and alternatives are surfaced; no approximating condition is stored
 
+### Requirement: Fired triggers resolve subscriptions by both matching strategies
+When a Composio trigger fires, the dispatch pipeline SHALL resolve candidate subscriptions using the same two strategies the workflow lookup uses: by Composio trigger instance ID for per-resource triggers, and by user and trigger name for account-level triggers that carry no instance IDs. Resolution MUST NOT depend on trigger instance IDs alone. Both lookups SHALL be served by an index on the todos collection.
+
+#### Scenario: Account-level Gmail event resolves its subscribers
+- **WHEN** a `GMAIL_NEW_GMAIL_MESSAGE` webhook arrives carrying a user id and no per-todo trigger instance id
+- **THEN** the user's active `gmail_new_message` subscriptions are resolved and their conditions evaluated against the payload
+
+#### Scenario: Per-resource event resolves its subscribers
+- **WHEN** a webhook arrives carrying a Composio trigger instance id
+- **THEN** subscriptions storing that instance id are resolved, regardless of whether the payload carries a user id
+
 ### Requirement: Fired triggers fan out to subscribed todos
-When a Composio trigger fires, the dispatch pipeline SHALL evaluate active todo subscriptions for the firing trigger before any no-matching-workflow short-circuit. For each matching todo whose conditions pass and whose cooldown has elapsed, the system SHALL perform the subscription's action, stamped with a distinct `todo_trigger` origin so analytics, budget gating, and rate limiting treat it as trigger-caused work. Actions:
+For each matching todo whose conditions pass and whose cooldown has elapsed, the system SHALL perform the subscription's action, stamped with a distinct `todo_trigger` origin so analytics, budget gating, and rate limiting treat it as trigger-caused work. Evaluation SHALL run before any no-matching-workflow short-circuit. Actions:
 - `execute` — enqueue execution through the existing tracked-todo execution path with the triggering payload in context.
-- `notify` — send a notification (reusing the maintenance-sweep deep-link pattern) without executing; no state change.
+- `notify` — send a notification (reusing the shared todo deep-link redirect helper) without executing; no state change.
 - `complete` — mark the todo completed (idempotent completion path) and tear down its subscriptions.
 - `unblock` — remove the matching blocking label (`waiting-for-reply`, `waiting-for-approval`, or `blocked`); if none of the blocking labels is present, the action degrades to `notify`.
 
+The `todo_trigger` origin SHALL be carried as an explicit execution parameter, not inferred, and SHALL survive the execution path's retry re-enqueue.
+
 #### Scenario: Reply arrives in watched thread
 - **WHEN** a Gmail message arrives whose `thread_id` matches a subscribed waiting-todo's condition under an `execute` action
-- **THEN** the todo executes immediately with the triggering payload in its context
+- **THEN** the todo executes immediately with the triggering payload in its context, stamped `todo_trigger`
 
 #### Scenario: Event matches no workflow but matches a todo
 - **WHEN** a fired trigger has no matching workflow but has a matching todo subscription
 - **THEN** the subscription's action still runs (the event must not be dropped)
+
+#### Scenario: Triggered execution is retried after failure
+- **WHEN** a `todo_trigger` execution fails and is re-enqueued by the retry backoff
+- **THEN** the retry still carries the `todo_trigger` origin and its triggering payload, not a scheduled-run origin
 
 #### Scenario: Cooldown suppresses repeat fires
 - **WHEN** a second qualifying event arrives for the same subscription within its cooldown
@@ -60,40 +83,81 @@ When a Composio trigger fires, the dispatch pipeline SHALL evaluate active todo 
 - **WHEN** a qualifying event matches a subscription with action `unblock` but the todo carries no blocking label
 - **THEN** the user receives a notification instead, and the todo's state is unchanged
 
+#### Scenario: Daily cost budget exhausted
+- **WHEN** a qualifying event would enqueue an `execute` action for a user whose daily cost budget is spent
+- **THEN** the execution is skipped cleanly by the budget gate before any execution record or LLM work
+
+### Requirement: A busy todo defers its triggered execution rather than dropping it
+The tracked-todo execution path takes a per-todo lock and abandons the run when it is already held. For a `todo_trigger` execution the event MUST NOT be discarded on a held lock: the system SHALL re-enqueue the action once after a short delay. The subscription's cooldown SHALL be recorded only when the action actually runs, so a deferred event is not suppressed as a repeat fire.
+
+#### Scenario: Event arrives while the todo is mid-execution
+- **WHEN** a qualifying event matches a todo whose execution lock is currently held
+- **THEN** the action is re-enqueued after a delay and eventually runs, rather than being dropped
+
 ### Requirement: Subscriptions share trigger lifecycle with workflows
-Subscription teardown SHALL use the same reference-counted Composio trigger deletion as workflows — a Composio trigger instance MUST NOT be deleted while any workflow or todo still references it. Completing, archiving, or failing a todo SHALL tear down its subscriptions. OAuth reconnect resync SHALL re-register active todo subscriptions alongside workflow triggers, and connection-expiry SHALL pause or block affected subscriptions rather than leave them silently dead.
+Subscription teardown SHALL use reference-counted Composio trigger deletion covering both consumers — a Composio trigger instance MUST NOT be deleted while any workflow or todo still references it. The count SHALL be summed across the workflow and todo repositories without either repository reading the other's collection.
+
+Every path that ends a todo's life SHALL tear down its subscriptions: completion, archival, failure, and deletion (single and bulk). OAuth reconnect resync SHALL re-register active todo subscriptions alongside workflow triggers.
 
 #### Scenario: Workflow deleted but todo shares trigger
 - **WHEN** a workflow sharing a Composio trigger instance with a subscribed todo is deleted
 - **THEN** the Composio trigger survives because the todo still references it
 
+#### Scenario: Todo deleted but workflow shares trigger
+- **WHEN** a subscribed todo sharing a Composio trigger instance with an active workflow is deleted
+- **THEN** the Composio trigger survives because the workflow still references it
+
 #### Scenario: Todo completes
 - **WHEN** a subscribed tracked todo reaches a terminal state
 - **THEN** its subscriptions are unregistered and their refcounts updated
 
-### Requirement: Self-wiring thread subscriptions
-When GAIA sends an outbound email or Slack message on behalf of a tracked todo that is still active, it SHALL automatically arm a subscription on that todo: capturing the sent message's thread identifier (Gmail) or channel identifier (Slack) as a subscription condition and adding the appropriate blocking label. Sends not made on behalf of a tracked todo MUST NOT arm subscriptions. Auto-armed subscriptions go through the same validation path as explicit ones.
+#### Scenario: Todo is deleted outright
+- **WHEN** a subscribed tracked todo is deleted rather than completed
+- **THEN** its subscriptions are unregistered before the document is removed, so no Composio trigger is orphaned
+
+### Requirement: Expired integrations pause subscriptions visibly
+When a connection an active subscription depends on expires, the system SHALL mark that subscription paused and add the `blocked` label to its todo, rather than leaving the subscription silently dead. Reconnecting the integration SHALL resume the paused subscriptions and clear the label.
+
+#### Scenario: Integration expires under an active subscription
+- **WHEN** the Gmail connection behind an active todo subscription expires
+- **THEN** the subscription is marked paused and its todo carries the `blocked` label
+
+#### Scenario: Integration reconnected
+- **WHEN** the user reconnects that integration
+- **THEN** the paused subscriptions are re-registered and the `blocked` label is cleared
+
+### Requirement: Successful outbound actions prompt the model to subscribe
+When a tool call that starts something worth watching succeeds inside a run bound to an active tracked todo — sending an email, sending a draft, replying to a thread, or creating a calendar event — the system SHALL append an instruction to that tool's result telling the model to subscribe the active todo, naming the identifier the response returned (`thread_id` for mail, `event_id` for calendar).
+
+The system MUST NOT create the subscription itself. Subscriptions created this way go through the ordinary subscription tool and its validator, so there is exactly one creation path. Tool calls made outside a todo-bound run MUST NOT be appended to.
 
 #### Scenario: Todo sends follow-up email
-- **WHEN** a tracked todo's execution sends an email via Gmail
-- **THEN** the todo gains a subscription matching replies to that exact thread and a `waiting-for-reply` label, requiring no manual configuration
+- **WHEN** a tracked todo's execution successfully sends an email via Gmail
+- **THEN** the tool result carries an instruction to subscribe that todo to replies on the returned `thread_id`, and the model's subscription call arms the watch and adds a `waiting-for-reply` label
+
+#### Scenario: Todo creates a calendar event
+- **WHEN** a tracked todo's execution successfully creates a calendar event
+- **THEN** the tool result carries an instruction to subscribe that todo to `calendar_event_starting_soon` for the returned `event_id`, with a reminder window
+
+#### Scenario: Model declines to subscribe
+- **WHEN** the model judges an outbound message not worth watching and makes no subscription call
+- **THEN** no subscription exists and no error is raised — the prompt is advisory, and its absence is visible in the run transcript
 
 #### Scenario: Regular chat email send
-- **WHEN** GAIA sends an email during ordinary conversation with no originating tracked todo
-- **THEN** no subscription is armed
+- **WHEN** GAIA sends an email during ordinary conversation with no active tracked todo bound to the run
+- **THEN** the tool result is unchanged and nothing prompts a subscription
 
-## ADDED Requirements
+### Requirement: Calendar reminder subscriptions
+A tracked todo SHALL be able to subscribe to `calendar_event_starting_soon` with a reminder window and a condition narrowing to a specific event. Because the window is registration config rather than a payload field, each distinct window SHALL be its own registration, and a todo wanting several reminders for one event SHALL hold one subscription per window.
 
-### Requirement: Matchable-fields catalog per trigger
-The system SHALL maintain, per supported trigger, a curated list of matchable payload fields derived from the verified Composio payload schemas (`app/models/composio_schemas/`). Each entry SHALL carry the field name, type, description, and example value. The catalog SHALL cover at minimum gmail, slack, calendar, github, linear, notion, sheets, todoist, and asana triggers.
+#### Scenario: Remind an hour before a specific event
+- **WHEN** a todo subscribes to `calendar_event_starting_soon` with a 60-minute window and a condition on the event's `event_id`
+- **THEN** the subscription registers a trigger carrying that window, and fires its action once the event is an hour away
 
-#### Scenario: Catalog reflects verified payloads
-- **WHEN** a trigger's payload schema lists a field absent from the matchable catalog
-- **THEN** the catalog documents why it was excluded (unreliable delivery or unsuitable for matching)
+#### Scenario: Two windows for the same event
+- **WHEN** a todo wants both a one-hour and a ten-minute reminder for one event
+- **THEN** two subscriptions are stored, each registering its own window
 
-### Requirement: Subscription tool returns the schema the model will get
-The agent-facing subscription tool SHALL return (and/or embed in its schema) the full matchable-fields catalog for the selected trigger — field names, types, descriptions, examples — so the model constructs conditions from known data rather than guessing. The tool description SHALL remain semantically rich enough for ChromaDB retrieval.
-
-#### Scenario: Model requests available fields
-- **WHEN** the agent asks what a trigger will deliver before subscribing
-- **THEN** it receives the complete typed matchable-fields catalog for that trigger
+#### Scenario: Two todos share a reminder window
+- **WHEN** a second todo subscribes with the same window on the same calendar
+- **THEN** both reference the same Composio trigger instance, and completing one todo leaves the trigger alive for the other

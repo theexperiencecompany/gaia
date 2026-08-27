@@ -1,8 +1,8 @@
 ## Context
 
-Tracked todos (`app/services/tracked_todo_service.py`, `app/workers/tasks/tracked_todo_tasks.py`) are durable Mongo documents executed on ARQ schedules; all reactivity is poll-based (30-min safety net, hourly maintenance sweep). Composio triggers (`app/services/triggers/`) fire integration events through `TriggerHandler.process_event` → workflow queueing; events matching no workflow are dropped. The only todo contact today is prompt text: `get_signal_matching_context` injects active todos into triggered runs.
+Tracked todos (`app/services/tracked_todo_service.py`, `app/workers/tasks/tracked_todo_tasks.py`) are durable Mongo documents executed on ARQ schedules; all reactivity is poll-based (30-min safety net, hourly maintenance sweep). Composio triggers (`app/services/triggers/`) fire integration events through `TriggerHandler.process_event` → workflow queueing; events matching no workflow are dropped at `base.py:373`. The only todo contact today is prompt text: `get_signal_matching_context` injects active todos into triggered runs (`base.py:425`).
 
-All 22 supported trigger payload schemas were verified against Composio's live API (PR #1096) — including the discovery that Slack's receive-message payload has no thread identifier while Gmail carries `thread_id`. That verified field set is the foundation for condition matching.
+The 23 GAIA-facing trigger names in `oauth_config.py` (22 distinct Composio slugs — `GMAIL_NEW_GMAIL_MESSAGE` backs both `gmail_new_message` and `gmail_poll_inbox`) had their payload schemas verified against Composio's live API in PR #1096 — including the discovery that Slack's receive-message payload has no thread identifier (`SlackReceiveMessagePayload`) while Gmail carries `thread_id` (`GmailNewMessagePayload`). That verified field set is the foundation for condition matching.
 
 ## Goals / Non-Goals
 
@@ -21,8 +21,18 @@ All 22 supported trigger payload schemas were verified against Composio's live A
 ## Decisions
 
 ### Dispatch: tap inside `TriggerHandler.process_event`, before the no-workflow return
-Fan out to todo subscribers inside the existing choke point rather than a second webhook task. The current early return at "no matching workflows" would drop todo-only events, so the todo lookup runs before it.
+Fan out to todo subscribers inside the existing choke point rather than a second webhook task. No handler overrides `process_event`, so the base method is the single tap point. The current early return at "no matching workflows" (`base.py:373-381`) would drop todo-only events, so the todo lookup runs before it.
 *Alternative*: endpoint-level second `spawn_logged_task` — rejected; duplicates signature/dedupe context and bypasses handler normalization.
+
+### Subscription resolution mirrors `find_workflows`' two strategies — not trigger IDs alone
+Gmail is account-level: `GmailTriggerHandler.register()` returns `[]` (`handlers/gmail.py:59`) and `find_workflows` matches by `data["user_id"]` (`handlers/gmail.py:93-98`); `resync_user_workflow_triggers` documents the same property ("Account-level triggers return no ids — nothing to repoint"). A subscription keyed solely on a Composio trigger instance ID therefore **never fires for Gmail** — which is the entire self-wiring case.
+
+Resolution runs both strategies per event, exactly as the Gmail handler does:
+1. **By trigger instance ID** — for per-resource triggers (calendar, slack, linear, notion, github, sheets, docs, todoist, asana, `gmail_poll_inbox`), matching subscriptions whose stored `composio_trigger_ids` contain the webhook's `trigger_id`.
+2. **By `(user_id, trigger_name)`** — for account-level triggers, when the payload carries a `user_id`. Every inbound message fires the account-level webhook; the subscription's declarative conditions (`thread_id == …`) do the narrowing.
+
+A subscription records which strategy it uses at registration time — account-level registration returning `[]` is success, not failure, and must not be treated as a registration error.
+*Alternative*: register a per-todo Composio trigger for Gmail — rejected; Composio offers no per-thread Gmail trigger, and account-level triggers cannot be duplicated per subscriber.
 
 ### Matching: declarative `{field, op, value}` chains evaluated in-process against typed payload models
 Three tiers total: single ops → AND-chains → optional LLM relevance check vs the todo canvas `Key Details` (cooldown-gated) for fuzzy intent. Declarative tiers cost ~nothing and are deterministic; tier 3 replaces any need for expression languages or sandboxes.
@@ -36,31 +46,93 @@ Full payload models stay loose (external webhooks omit fields); only the curated
 Field-name fuzzy match + operator-for-type table fixes most failures free; ambiguous cases get exactly one LLM rewrite restricted to catalog fields; unexpressible intent rejects with alternative triggers surfaced. Never water down intent — an approximating subscription executes todos on garbage.
 *Alternative*: open-ended agent repair loop — rejected; unbounded cost and silent-intent-drift risk.
 
-### Execution: reuse `execute_tracked_todo`, stamped as a new origin
-The Redis lock already prevents double-fire mid-execution; backoff/retry/canvas logging come free. Stamp context with `trigger_type: "todo_trigger"` so budget gating, rate limits, and analytics attribute correctly. `execute_tracked_todo` currently accepts its ARQ `ctx` without forwarding it to `_execute_todo_with_retry`, so implementation MUST add an explicit context handoff into the retry helper and a contract test asserting `trigger_type: "todo_trigger"` reaches gating/analytics.
+### Execution: reuse `execute_tracked_todo`, carrying origin as a task parameter
+The Redis lock, backoff/retry, and canvas logging come free. What does not come free is the origin stamp.
+
+`execute_tracked_todo(_ctx, todo_id)` (`tracked_todo_tasks.py:69`) takes ARQ's **worker** context — a dict the worker builds (redis pool, job id), not a channel from the enqueuer. Trigger data cannot travel through it. The origin and payload therefore travel as a **new optional task parameter** threaded through four signatures, all of which currently hardcode the origin:
+
+1. `execute_tracked_todo(_ctx, todo_id, trigger_origin=None)`
+2. `_execute_todo_with_retry(todo_id, pool, trigger_origin)` (`:94`)
+3. `_run_execution(...)` — stamps `"scheduled_todo"` literally for the workflow path
+4. `_execute_via_agent(...)` — builds `trigger_context` as a local literal (`:326-332`)
+
+Two consequences follow and are requirements, not details:
+- **Retry must carry the origin.** The backoff re-enqueues at `:155` and `:192` pass only `todo_id`; without threading the parameter a failed trigger run silently retries as an ordinary scheduled run, losing both attribution and payload.
+- **`todo_trigger` is an enum member, not a string.** `TriggerType` (`workflow_models.py:29`) holds `manual|schedule|integration`. Add `TODO_TRIGGER` and `SCHEDULED_TODO`, and replace the existing literals — a value written at one site and read at another is exactly what the Type Safety Ratchet requires be closed.
+
 *Alternative*: run through workflow queueing — rejected; wrong execution record surface and mislabeled analytics.
 
-### Teardown: extend refcounting to count todo references
-`get_triggers_safe_to_delete` counts workflows only today; Composio upserts identical configs onto shared trigger IDs across both consumers, so deleting a workflow could kill a live todo subscription. Extend `count_trigger_references` to include the todos collection.
+### A locked todo defers its event, it does not drop it
+`execute_tracked_todo` returns `skipped:{id} (lock held)` when the Redis lock is taken (`:85-87`) and nothing re-queues. For scheduled runs that is correct — the next scan picks it up. For a trigger it is data loss in the exact window self-wiring creates: GAIA sends the email, the run is still finishing, the reply lands, the event vanishes.
+
+An `execute` action that finds the lock held re-enqueues itself once with a short defer instead of returning. The cooldown key is written only when the action actually runs, so a deferred event is not suppressed as a repeat.
+
+### Fan-out is not batched, so cooldown is mandatory
+Workflows coalesce burst events from poll-based triggers via `coalesce_window_seconds` / `buffer_trigger_event` (`base.py:441-445`), keyed on `workflow.trigger_config`. The todo tap sits before that loop and has no equivalent config, so one poll returning 50 items reaches 50 subscription evaluations. Per-subscription cooldown is the only bound, which is why it is required rather than optional. Extending the coalesce buffer to subscriptions is deferred until a real poll-trigger subscription exists.
+
+### Teardown: refcount summed in `TriggerService`, across every terminal path
+`get_triggers_safe_to_delete` counts workflows only today; Composio upserts identical configs onto shared trigger IDs across both consumers, so deleting a workflow could kill a live todo subscription.
+
+The count is summed **in `TriggerService`** from two repositories — `workflow_repository.count_trigger_references` plus a new `todo_repository.count_trigger_references` — rather than teaching the workflow repository to query the todos collection. Each repository owns its own collection.
+
+Teardown covers every path that ends a todo's life, not only the graceful ones: completion, archival, failure, **and deletion** (`TodoService.delete_todo`, `bulk_delete_todos`, `delete_all_for_user`). Deletion is a separate code path from completion; leaving it out orphans the Composio trigger permanently with no record left to find it by. Account-level subscriptions hold no trigger IDs, so their teardown is a document update only.
 *Alternative*: separate Composio triggers per todo — rejected; wastes quota and breaks the shared-upsert property.
 
+### Dispatch reads must be indexed
+The by-trigger-ID lookup is cross-user and runs on every webhook event; the account-level lookup runs on every inbound Gmail message for every connected user. Both need indexes on `todos`, mirroring `workflows_collection.create_index("trigger_config.composio_trigger_ids", sparse=True)` (`db/mongodb/indexes.py:511`). Without them each event scans the collection.
+
+### Budget: the gate does not exist on this path yet and must be added
+`enforce_daily_cost_budget` is called from `workflow_tasks.py:619`, `chat.py:147` and `bot.py:340` — never from `tracked_todo_tasks.py`. Scheduled todos are covered only by the middleware wall (`get_budget_stop_reason`), which stops the model mid-run rather than skipping the run cleanly. A trigger-caused execution takes the explicit gate before any execution record or LLM work, with its own `feature_key` in `app/config/rate_limits.py` (workflows use `trigger_workflow_executions`) so chatty triggers are bounded separately from a user's chat budget.
+
+### Self-wiring prompts the model to subscribe; it does not subscribe behind its back
+After a successful outbound action from a todo-bound run — email sent, draft sent, thread replied to, calendar event created — the tool result is appended with a short instruction telling the model to subscribe the active todo, naming the identifier the response just returned (`thread_id`, `event_id`). The model then calls the ordinary subscription tool.
+
+This is deliberately not a silent auto-arm. Whether an outbound message deserves watching is a judgement — a "thanks, got it" needs no reply-watcher — and *what* to watch for (which action, which cooldown, which extra conditions) is context only the model has. Deterministic arming would have to guess all of it, and would guess wrong often enough to leave junk subscriptions behind for teardown to clean up. Routing through the same tool also means one creation path, one validator, one set of tests, and a subscription that appears in the transcript as a visible tool call instead of a side effect nobody can see.
+
+The trade is that the model can decline or forget, so this is a prompt, not a guarantee — the spec says SHALL prompt, not SHALL arm. That is the honest failure mode, and it fails visibly (no tool call in the transcript) rather than silently (a subscription armed on the wrong thing).
+
+The seam is still a new `AgentMiddleware.awrap_tool_call` in `create_middleware_stack` — the same shape `MediaDescriptionMiddleware` uses (`middleware/media.py:23-33`): async, wraps the handler, reads `request.runtime.config["configurable"]`. But it only rewrites the `ToolMessage` content; it performs no writes and calls no services. No `active_todo_id` in the configurable means no instruction is appended, which is what keeps ordinary conversation sends inert.
+
+*Alternative*: a dedicated `watch_this_thread` tool — rejected. It would be a second, narrower way to create the same record, diverging from the general subscription path the moment either side changes.
+
+**Open**: Gmail sends usually run inside a provider subagent, whose tool set is integration-scoped. The instruction must reach an agent that actually holds the subscription tool — either by giving provider subagents access to it, or by carrying the identifier back to the executor on the subagent's result. Verify which is true before implementing 6.2.
+
+### Calendar reminders reuse the same machinery, with the window set at registration
+`calendar_event_starting_soon` already carries `minutes_before_start` (1–1440, default 10) which the handler writes as `countdown_window_minutes` on the Composio trigger config (`handlers/calendar.py:118-119`), and its payload carries `event_id`, `attendees`, `organizer_email`, `location` and `minutes_until_start`. So "remind me an hour before the Acme call" is a subscription with `notify` (or `execute`) whose condition narrows on `event_id` — the calendar analog of Gmail's `thread_id`.
+
+The one asymmetry worth stating: the reminder window is **registration** config, not a payload condition. Distinct windows are therefore distinct Composio trigger instances, and two todos wanting the same window on the same calendar share one instance by Composio's upsert — which is exactly the sharing the todo refcount is there to protect. A todo that wants two reminders (an hour before *and* ten minutes before) holds two subscriptions, not one with two windows.
+
+Creating an event from a todo-bound run gets the same post-tool-call instruction as an outbound send, naming the returned `event_id`.
+
+### Expiry pause: subscription state, plus the existing `blocked` label
+Workflows pause by flipping `activated=False` (`services/workflow/integration_pause.py:22`). Todos have no such field, and adding a second activation concept to `TodoDocument` for this alone would be a new state machine nobody else reads. Instead the subscription itself carries a status, and the todo gets the `blocked` label that the maintenance sweep already understands. Reconnect clears both.
+
+The blocking labels (`waiting-for-reply`, `waiting-for-approval`, `blocked`) and the `_todo_redirect_action` notification builder that `notify` reuses currently live inside `app/workers/tasks/maintenance_sweep_tasks.py` (`:54`, `:427`). Both move to `app/constants/todos.py` and a shared notification helper before the dispatch path imports them — a service importing a worker task module is an import cycle waiting to happen, and `constants/todos.py` is already the home for `FAILED_LABEL` and friends for exactly this reason.
+
 ### Schema exposure: catalog returned by the subscription tool itself
-Tool description stays semantically rich (ChromaDB retrieval fuel); invoking it returns the selected trigger's matchable-fields with types/examples. Auto-armed self-wiring subscriptions pass through the identical validator.
+Invoking the tool returns the selected trigger's matchable-fields with types/examples, so the model constructs conditions from known data.
+
+The six existing tracked-todo tools are **always loaded** via `initial_tool_ids` (`build_graph.py:106-111`), not retrieved from ChromaDB. The subscription tools join them there — a tool the model cannot see when a reply-watching todo is being created is a tool that never gets used. The cost is a fixed prompt-budget increase on every executor turn, which is why the surface is kept to the smallest useful set and the field catalog is returned by the call rather than embedded in the description. The comms and todo prompts that enumerate the tracked-todo tools (`comms_prompts.py:377`, `todo_prompts.py`) are updated in the same change.
+
+### Registration takes an owner ref, not a `workflow_id`
+`TriggerService.register_triggers(user_id, workflow_id, trigger_name, trigger_config)` and `TriggerHandler.register` name their second parameter `workflow_id`. Passing a todo id into it would make every handler's logging and error text lie. The parameter is renamed to a neutral owner ref across the handlers and their callers in this change rather than wrapped in an adapter — a second name for the same thing is what the no-pass-through-wrappers rule forbids.
 
 ## Risks / Trade-offs
 
-- [Chatty triggers burn executions] → same daily cost-budget gate as triggered workflows + mandatory cooldowns
-- [Refcount bug strands or kills live triggers] → contract tests covering workflow-delete/todo-survives and reverse
+- [Chatty triggers burn executions] → explicit daily cost-budget gate on the todo execution path + mandatory per-subscription cooldowns (no batching upstream)
+- [Refcount bug strands or kills live triggers] → contract tests covering workflow-delete/todo-survives, the reverse, and todo-delete
+- [Account-level fan-out evaluates every user's inbound mail] → indexed `(user_id, trigger_name)` lookup on active subscriptions only; conditions evaluated in-process against a typed model
 - [LLM repair weakens intent silently] → repair constrained to catalog fields; rejection path always available; repair attempts logged to the wide event
-- [Self-wiring captures stale thread IDs after user deletes the todo draft] → teardown on terminal states covers it; orphan sweep re-checks armed subscriptions
+- [Self-wiring captures stale thread IDs after user deletes the todo draft] → teardown on terminal states *and deletion* covers it; orphan sweep re-checks armed subscriptions
 - [Payload drift upstream repeats this audit] → the verified-schema note lives in each model; periodic re-verification script can be rerun from `openspec` change notes
 
 ## Migration Plan
 
-Additive schema change (optional field on todo docs) — no migration needed. Rollback = feature-off: fan-out tap is behind the subscription records existing; empty subscriptions mean zero behavior change. Legacy broken Notion/Asana workflows are surfaced by existing failure paths, not migrated here.
+Additive schema change (optional field on todo docs) — no data migration needed. The new Mongo indexes are created by the existing `indexes.py` startup path. `TriggerType` gains members; no existing value changes meaning, so stored workflow documents are unaffected. Renaming the handler `register` parameter is source-only — no stored shape depends on it.
+
+Rollback = feature-off: the fan-out tap is behind the subscription records existing; empty subscriptions mean zero behavior change. Legacy broken Notion/Asana workflows are surfaced by existing failure paths, not migrated here.
 
 ## Open Questions
 
-- Should `unblock` action remove blocking labels only, or also reschedule execution?
-- Notification copy and deep-link target for the `notify` action — reuse maintenance-sweep redirect pattern?
-- Does the frontend picker ship with phase 1 or follow once API-proven?
+- Should `unblock` also reschedule execution, or only clear the blocking label and leave the next run to the existing schedule?
+- Does the frontend picker ship with phase 1 or follow once the API is proven?
