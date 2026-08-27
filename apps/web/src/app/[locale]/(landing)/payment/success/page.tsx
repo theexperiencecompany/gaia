@@ -1,13 +1,13 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Spinner } from "@heroui/spinner";
 import {
   Alert02Icon,
   CheckmarkCircle02Icon,
   CircleArrowRight02Icon,
   RedoIcon,
 } from "@icons";
-import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -131,46 +131,57 @@ export default function PaymentSuccessPage() {
       <PaymentBackdrop />
 
       {status !== "error" && (
-        <div className="relative z-10 w-full max-w-sm">
-          <AnimatePresence>
-            {printerStage === "complete" && (
-              <m.div
-                animate={{ height: "auto", opacity: 1 }}
-                className="overflow-hidden"
-                exit={{ height: 0, opacity: 0 }}
-                initial={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}
-              >
-                <div className="mb-6 rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
-                  <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
-                  <h1 className="mb-2 text-2xl font-semibold text-white">
-                    Welcome to GAIA Pro!
-                  </h1>
-                  <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-                    You're all set. Every Pro feature is unlocked. Let's get to
-                    work.
-                  </p>
-                  <RaisedButton
-                    color="#00bbff"
-                    className="w-full text-black!"
-                    onClick={() => router.push(continueDestination)}
-                  >
-                    Continue to chat
-                    <CircleArrowRight02Icon className="size-4" />
-                  </RaisedButton>
-                </div>
-              </m.div>
+        <div className="relative z-10 mt-8 w-full max-w-sm">
+          <div className="rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
+            {status === "verifying" ? (
+              <>
+                <Spinner size="lg" className="mb-5" />
+                <h1 className="mb-2 text-xl font-semibold text-white">
+                  Verifying payment
+                </h1>
+                <p className="text-balance text-sm font-light text-zinc-400">
+                  Hang tight while we confirm your payment with Dodo.
+                </p>
+              </>
+            ) : (
+              <>
+                <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
+                <h1 className="mb-2 text-2xl font-semibold text-white">
+                  Welcome to GAIA Pro!
+                </h1>
+                <p className="mb-6 text-balance text-sm font-light text-zinc-400">
+                  You're all set. Every Pro feature is unlocked. Let's get to
+                  work.
+                </p>
+                <RaisedButton
+                  color="#00bbff"
+                  className="w-full text-black!"
+                  onClick={() => router.push(continueDestination)}
+                >
+                  Continue to chat
+                  <CircleArrowRight02Icon className="size-4" />
+                </RaisedButton>
+              </>
             )}
-          </AnimatePresence>
-          <PostPaymentReceipt
-            billingPeriod={receipt.billingPeriod}
-            amount={receipt.amount}
-            currency={receipt.currency}
-            nextBillingDate={receipt.nextBillingDate}
-            planName={receipt.planName}
-            stage={printerStage}
-            subscriptionRef={receipt.subscriptionRef}
-          />
+          </div>
+          {status === "success" && (
+            <m.div
+              animate={{ opacity: 1, transform: "translateY(0px)" }}
+              className="mt-6"
+              initial={{ opacity: 0, transform: "translateY(8px)" }}
+              transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}
+            >
+              <PostPaymentReceipt
+                billingPeriod={receipt.billingPeriod}
+                amount={receipt.amount}
+                currency={receipt.currency}
+                nextBillingDate={receipt.nextBillingDate}
+                planName={receipt.planName}
+                stage={printerStage}
+                subscriptionRef={receipt.subscriptionRef}
+              />
+            </m.div>
+          )}
         </div>
       )}
 

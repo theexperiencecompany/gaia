@@ -19,9 +19,8 @@ export function PaymentBackdrop() {
         sizes="100vw"
         className="object-cover"
       />
-      {/* Soften for card contrast + blend into the page background */}
+      {/* Soften for card contrast */}
       <div className="absolute inset-0 bg-primary-bg/40" />
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-primary-bg to-transparent" />
     </div>
   );
 }
