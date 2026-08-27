@@ -269,7 +269,24 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Matches the cache-aware path the real lanes use. Left on actions/cache
+      # this step would spend minutes moving the uv cache over the home box's
+      # residential uplink, and the benchmark would be measuring the network
+      # rather than the CPU scaling it exists to measure.
+      - name: Point uv at the persistent local cache (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          set -euo pipefail
+          UV_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/uv"
+          mkdir -p "$UV_DIR"
+          echo "UV_CACHE_DIR=$UV_DIR" >> "$GITHUB_ENV"
       - uses: astral-sh/setup-uv@v5
+        if: runner.environment == 'self-hosted'
+        with:
+          version: "0.8.17"
+          enable-cache: false
+      - uses: astral-sh/setup-uv@v5
+        if: runner.environment != 'self-hosted'
         with:
           version: "0.8.17"
           enable-cache: true
