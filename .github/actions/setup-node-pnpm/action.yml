@@ -49,89 +49,13 @@ runs:
         node-version: "22.15.1"
         cache: "pnpm"
 
-    # Nx's local cache is the difference between rebuilding a project and
-    # reprinting its previous output. main.yml gets this on GitHub runners by
-    # pushing .nx/cache through actions/cache; hybrid-ci had no equivalent, so
-    # every home run rebuilt from cold — TS tests took 152s here against 26s on
-    # a GitHub runner with a cache hit. On a persistent box the cache can just
-    # stay on disk.
-    #
-    # Keyed per runner instance rather than shared. Nx 20+ backs the cache with
-    # SQLite (.nx/cache/nx.db), and pointing several concurrently-running job
-    # processes at one database file risks corrupting it. Per-instance still
-    # gives the win that matters — warm cache across runs — without that risk.
-    - name: Link persistent Nx cache (self-hosted)
-      if: runner.environment == 'self-hosted'
-      shell: bash
-      run: |
-        set -euo pipefail
-        NX_DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/nx-cache"
-        mkdir -p "$NX_DIR" .nx
-        rm -rf .nx/cache
-        ln -s "$NX_DIR" .nx/cache
-        echo "Nx cache (persistent, no GH cache): $NX_DIR ($(du -sh "$NX_DIR" 2>/dev/null | cut -f1))"
-
-    # actions/checkout runs `git clean -ffdx` before every job, which deletes
-    # node_modules — so on the persistent box pnpm re-links ~4 GB out of the
-    # store every single job (measured: 45-49s with a fully warm store). Keep
-    # node_modules in a per-runner directory keyed by the lockfile hash and
-    # symlink it in; the install below then verifies it in a few seconds.
-    # Cost: pnpm's node_modules is hardlinks into the content-addressed store,
-    # so a persisted tree adds little beyond the store itself. Per runner (not
-    # shared) because pnpm rewrites the tree in place during install.
-    # prune-cache.sh keeps only the newest few lockfile hashes per runner.
-    - name: Link persistent node_modules (self-hosted)
-      if: runner.environment == 'self-hosted'
-      shell: bash
-      run: |
-        set -euo pipefail
-        KEY="$(sha256sum pnpm-lock.yaml | cut -c1-16)"
-        # The persisted tree MUST itself be named node_modules: Node resolves
-        # the symlink to its real path before walking up for dependencies, so
-        # a package at <store>/<key>/nx/... looks for <store>/<key>/node_modules
-        # and finds nothing ("Cannot find module 'tslib'" on the first run of
-        # this). <store>/<key>/node_modules/nx/... walks up correctly.
-        CACHE_ROOT="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}"
-        BASE="$CACHE_ROOT/${RUNNER_NAME:-default}/node_modules-store/${KEY}"
-        DIR="$BASE/node_modules"
-        # Same lockfile hash → identical tree. Building it once per instance
-        # was the mistake: with node-linker=hoisted pnpm materialises ~250k
-        # files, three-plus minutes per instance, six instances. If any
-        # sibling instance already has this key, clone it with hardlinks —
-        # seconds, no extra disk — and pnpm's install below is a no-op check.
-        if [ ! -e "$DIR/.modules.yaml" ]; then
-          for sib in "$CACHE_ROOT"/*/node_modules-store/"$KEY"; do
-            [ -e "$sib/node_modules/.modules.yaml" ] || continue
-            [ "$sib" = "$BASE" ] && continue
-            echo "seeding from sibling $(basename "$(dirname "$(dirname "$sib")")") (hardlinks)"
-            mkdir -p "$BASE"
-            cp -al "$sib/node_modules" "$DIR" 2>/dev/null && { [ -d "$sib/pkgs" ] && cp -al "$sib/pkgs" "$BASE/pkgs"; } || rm -rf "$DIR"
-            break
-          done
-        fi
-        mkdir -p "$DIR"
-        touch "$BASE"   # mtime = last use, for LRU pruning
-        rm -rf node_modules
-        ln -s "$DIR" node_modules
-        # Workspace packages get their own node_modules (real packages under
-        # node-linker=hoisted, ~60 MB across six dirs). If those are missing
-        # pnpm treats the install as incomplete and re-links all ~4,000
-        # packages — three minutes on a warm store. Persist them at
-        # $BASE/pkgs/<rel>/node_modules: from that real path Node's walk-up
-        # passes $BASE/pkgs/<rel>/node_modules, ..., and reaches
-        # $BASE/node_modules — the root tree — so hoisted deps still resolve.
-        n=0
-        for abs in $(pnpm -r ls --depth -1 --parseable 2>/dev/null); do
-          pkg="${abs#"$PWD"/}"
-          [ "$pkg" = "$abs" ] && continue   # the root itself
-          NM="$BASE/pkgs/$pkg/node_modules"
-          mkdir -p "$NM"
-          rm -rf "$pkg/node_modules"
-          ln -s "$NM" "$pkg/node_modules"
-          n=$((n+1))
-        done
-        echo "node_modules (persistent, lockfile ${KEY}): $DIR ($(du -sh "$DIR" 2>/dev/null | cut -f1)) + ${n} workspace package trees"
-
+    # Persistent workspace (self-hosted): actions/checkout runs with
+    # clean: false there and the runner's job-started hook does one scoped
+    # `git clean` that spares node_modules, .venv, .nx/cache and
+    # apps/web/.next/cache — so they simply live in the instance's checkout
+    # between jobs, no symlinks. (The symlink design died with the isolated
+    # linker: pnpm recreates node_modules itself and fails with ENOTDIR on a
+    # symlink.) pnpm install below is then a verify pass, seconds.
     - name: Install dependencies
       shell: bash
       # On self-hosted the persisted tree is usually complete, so this is a

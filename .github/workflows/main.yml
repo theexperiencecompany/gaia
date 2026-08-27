@@ -33,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
       - id: pick
@@ -62,6 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           # Jobs below run PR-controlled code; none of them push/fetch after
           # checkout, so never leave the token in git config (zizmor artipacked).
@@ -114,6 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Without a warm compiler cache every PR pays a full cold `next build`
@@ -143,6 +146,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
           fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
@@ -238,6 +242,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -267,6 +272,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
@@ -292,6 +298,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
       - name: Run harness tooling tests
@@ -311,6 +318,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: actions/setup-node@v7
         with:
           node-version: "22.15.1"
@@ -366,6 +375,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: aquasecurity/trivy-action@0.35.0
         with:
@@ -391,6 +401,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-python-test-env

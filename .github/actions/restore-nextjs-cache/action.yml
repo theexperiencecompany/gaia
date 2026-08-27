@@ -15,20 +15,8 @@ description: >
 runs:
   using: composite
   steps:
-    - name: Link persistent Next.js cache (self-hosted)
-      if: runner.environment == 'self-hosted'
-      shell: bash
-      run: |
-        set -euo pipefail
-        DIR="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/${RUNNER_NAME:-default}/nextjs"
-        mkdir -p "$DIR" apps/web/.next
-        # checkout's `git clean -ffdx` removes the previous link, but be
-        # explicit so a stale real directory can never shadow the symlink.
-        rm -rf apps/web/.next/cache
-        ln -s "$DIR" apps/web/.next/cache
-        echo "Next.js cache (persistent, no GH cache): $DIR"
-        du -sh "$DIR" 2>/dev/null || true
-
+    # Self-hosted: nothing to do. apps/web/.next/cache persists in the
+    # instance's checkout (clean: false + the hook's scoped clean spares it).
     - uses: actions/cache@v6
       if: runner.environment != 'self-hosted'
       with:

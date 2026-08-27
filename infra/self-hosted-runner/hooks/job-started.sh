@@ -29,6 +29,15 @@ S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
 [ -x "$S" ] && bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
 # Stale per-index env file so a new job cannot read old ports.
 rm -f "/tmp/gaia-test-services-${IDX}.env"
+# Persistent workspace: actions/checkout runs with clean: false on this box,
+# so untracked build output would otherwise survive between jobs. Clean it
+# here, sparing only the caches that make the instance fast. Patterns are
+# gitignore-style, so `node_modules` matches at any depth.
+WS="$HOME/actions-runner-gaia-home-${IDX}/_work/gaia/gaia"
+if [ -d "$WS/.git" ]; then
+  n=$(git -C "$WS" clean -ffdx -e node_modules -e .venv -e .nx/cache -e apps/web/.next/cache -e .mypy_cache -e .pytest_cache 2>/dev/null | wc -l)
+  echo "scoped clean of persistent workspace: removed $n untracked path(s)"
+fi
 # Report what the job is starting with — the numbers that decide parallelism.
 echo "load=$(cut -d' ' -f1-3 /proc/loadavg) mem_avail=$(free -g | awk '/^Mem:/{print $7}')G disk_free=$(df -h / | awk 'NR==2{print $4}')"
 echo "::endgroup::"

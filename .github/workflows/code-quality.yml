@@ -46,6 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
       - id: pick
@@ -70,6 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - name: Detect changed languages
         id: detect
@@ -109,6 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Lint and format check across all TS/JS/JSON/CSS files
@@ -141,6 +144,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: ./.github/actions/setup-node-pnpm
       - name: All workspace packages agree on dep versions (syncpack)
         run: |
@@ -170,6 +175,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
         run: |
@@ -188,6 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Per-file line count (default 400, relaxed 700, hard cap 1200)
@@ -215,6 +223,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location enforcer
@@ -242,6 +251,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Components-per-file enforcer
@@ -269,6 +279,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: Copy-paste detection (jscpd, fails over 3% on changed lines)
@@ -294,6 +305,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: ./.github/actions/setup-node-pnpm
       - name: publint — validate packages/cli npm metadata
         run: |
@@ -324,6 +337,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: ./.github/actions/setup-node-pnpm
       - name: tsc --noEmit across web, desktop, mobile, cli, bots
@@ -356,6 +370,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -413,6 +428,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -502,6 +518,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -532,6 +549,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -573,6 +591,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -634,6 +653,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       # Node toolchain only for the bots scanner (TS compiler API needs
       # node_modules); the Python scanner stays stdlib-only.
@@ -720,6 +740,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -746,6 +768,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -790,6 +814,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "0.8.17"
@@ -854,6 +880,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - name: Scan the tree for suppressions not covered by the checked-in baseline
         run: |
           echo "::group::suppression baseline"
@@ -880,6 +908,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - name: Scan the PR diff for committed secrets
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
@@ -913,6 +942,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
         # image has no ENTRYPOINT, so the command must spell `semgrep`.
@@ -954,6 +985,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
@@ -996,6 +1028,8 @@ jobs:
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v7
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.

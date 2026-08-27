@@ -16,9 +16,9 @@ name: Hybrid CI — home server with GitHub fallback
 
 on:
   pull_request:
-    branches: [master, develop]
+    branches: [master]
   push:
-    branches: [master, develop]
+    branches: [master]
   workflow_dispatch:
     inputs:
       force_home:
@@ -61,6 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
 
@@ -106,6 +107,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
       - uses: nrwl/nx-set-shas@v4
@@ -171,6 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
@@ -229,6 +232,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
           fetch-depth: 1
       - uses: ./.github/actions/setup-python-test-env
@@ -287,6 +291,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -321,6 +326,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Detect parallelism
@@ -352,6 +358,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - name: Use the persistent shared builder (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -395,6 +402,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Matches the cache-aware path the real lanes use. cache-local-path is
