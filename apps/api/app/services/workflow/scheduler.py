@@ -127,9 +127,10 @@ class WorkflowScheduler(BaseSchedulerService):
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
         """Execute a workflow task via the BaseSchedulerService interface.
 
-        Workflows are normally executed via ARQ calling execute_workflow_by_id
-        directly (which handles execution tracking); this method is currently
-        unused but kept for BaseSchedulerService compatibility.
+        ARQ jobs call execute_workflow_by_id directly, so nothing reaches this
+        today; the base class requires it, and the one implementation is the
+        real fire. Calling the agent path directly here ran a workflow with no
+        quota check, no execution record and no playbook.
         """
         try:
             workflow: Workflow | None = task if isinstance(task, Workflow) else None
@@ -137,7 +138,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 raise ValueError("Task must be a Workflow instance")
 
             # Deferred import: breaks circular dependency: worker task modules import this scheduler/service stack
-            from app.workers.tasks import execute_workflow_as_chat  # noqa: PLC0415 -- deferred
+            from app.workers.tasks import execute_workflow_by_id  # noqa: PLC0415 -- deferred
 
             log.set(workflow={"id": workflow.id, "status": "executing"})
             log.info(f"{LogTag.WORKFLOW} Executing workflow", id=workflow.id)
@@ -145,14 +146,8 @@ class WorkflowScheduler(BaseSchedulerService):
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
 
-            # Runs the workflow as a silent chat turn; the completion
-            # notification is sent from the executor delivery path.
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
-
-            return TaskExecutionResult(
-                success=True,
-                message="Workflow executed via scheduler",
-            )
+            message = await execute_workflow_by_id({}, workflow.id)
+            return TaskExecutionResult(success=True, message=message)
         except Exception as e:
             log.error(
                 f"{LogTag.WORKFLOW} Error executing workflow",
