@@ -361,11 +361,11 @@ if command -v docker >/dev/null 2>&1 && docker buildx version >/dev/null 2>&1; t
 [worker.oci]
   gc = true
   [[worker.oci.gcpolicy]]
-    keepBytes = "20GB"
+    keepBytes = "45GB"
     keepDuration = "168h"
   [[worker.oci.gcpolicy]]
     all = true
-    keepBytes = "30GB"
+    keepBytes = "60GB"
 BKCONF
   if docker buildx inspect gaia-ci >/dev/null 2>&1; then
     echo "[setup] buildx builder 'gaia-ci' already exists"

@@ -42,19 +42,27 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
-COPY libs ./libs
 COPY apps/api/pyproject.toml ./apps/api/
+# Only libs' manifest is COPIED into the layer; the sources are bind-mounted
+# into the uv sync step below. A COPY here made every edit under libs/shared
+# invalidate the sync — and with it crawl4ai-setup and the runtime COPY
+# --from layers, ~420s for a one-line library change (measured).
+COPY libs/pyproject.toml ./libs/
 
 # UV_PROJECT_ENVIRONMENT=/usr/local tells uv sync to use the system Python dir
 # instead of creating a .venv — entry points (crawl4ai-setup etc.) land in /usr/local/bin
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=libs,target=/app/libs,rw \
     uv sync --frozen --package gaia --group backend
 
 # crawl4ai post-install. The Chromium revision is already in place from the
 # browsers stage, so this no longer downloads anything — it only runs
 # crawl4ai's own setup against the present browser.
 COPY --from=browsers /opt/browsers /opt/browsers
-RUN crawl4ai-setup
+# crawl4ai-setup writes its post-install state under ~/.cache/crawl4ai; without
+# a cache mount it redid that work on every deps change (measured 227s even
+# with Chromium already present above).
+RUN --mount=type=cache,target=/root/.cache/crawl4ai crawl4ai-setup
 
 # ---- Runtime: minimal production image ----
 FROM python:3.12-slim AS runtime
@@ -121,8 +129,11 @@ ENV ENV=production \
 
 # Copy workspace pyproject files (needed for uv run --group)
 COPY pyproject.toml uv.lock ./
-COPY libs ./libs
 COPY apps/api/pyproject.toml ./apps/api/
+# The runtime needs the real sources: gaia-shared is an editable install here
+# (see the chown note below), so this COPY stays — it is cheap (no sync
+# depends on it in this stage).
+COPY libs ./libs
 
 # Setup non-root user and permissions
 # - libs needs to be writable so setuptools can create gaia_shared.egg-info during editable install

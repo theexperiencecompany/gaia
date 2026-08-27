@@ -38,3 +38,9 @@ coverage
 .env
 .env.*
 !.env.example
+
+# Not inputs of the api image; keeps the cold build context small.
+apps/web
+docs
+**/test-results
+**/.turbo
