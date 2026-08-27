@@ -531,6 +531,7 @@ class TestBuildExecutorGraph:
             "list_tracked_todos",
             "save_learned_skill",
             "write_playbook",
+            "decline_playbook",
         ]
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
