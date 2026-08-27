@@ -16,9 +16,9 @@ name: Hybrid CI — home server with GitHub fallback
 
 on:
   pull_request:
-    branches: [master]
+    branches: [master, develop]
   push:
-    branches: [master]
+    branches: [master, develop]
   workflow_dispatch:
     inputs:
       force_home:
