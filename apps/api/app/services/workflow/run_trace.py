@@ -14,7 +14,7 @@ against plain dicts. The reads live in ``execution_service``.
 import json
 import re
 
-from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.agents import PLAYBOOK_TOOL_NAMES, AgentTag, wrap_agent_payload
 from app.models.chat_models import ToolDataEntry
 from app.models.workflow_execution_models import (
     RecordedCall,
@@ -90,12 +90,16 @@ def render_last_run(execution: WorkflowExecution) -> str:
     """The previous run as the ``<last_run>`` block folded into the next run's brief."""
     when = (execution.completed_at or execution.started_at).isoformat()
     lines = [f"at: {when}", f"status: {execution.status}"]
-    for call in execution.trace[:LAST_RUN_MAX_CALLS]:
+    # The playbook decision is bookkeeping about the run, not the run: shown as
+    # a step, the next run copies it (a workflow declined a fourth time after
+    # the check had gone silent, because the record said the last run declined).
+    work = [call for call in execution.trace if call.tool_name not in PLAYBOOK_TOOL_NAMES]
+    for call in work[:LAST_RUN_MAX_CALLS]:
         args = json.dumps(call.args, default=str)[:LAST_RUN_MAX_ARGS_CHARS]
         lines.append(f"{call.tool_name}({args})")
         if call.result_digest:
             lines.append(f"  -> {call.result_digest[:LAST_RUN_MAX_DIGEST_CHARS]}")
-    omitted = len(execution.trace) - LAST_RUN_MAX_CALLS
+    omitted = len(work) - LAST_RUN_MAX_CALLS
     if omitted > 0:
         lines.append(f"... and {omitted} more calls")
     if execution.summary:

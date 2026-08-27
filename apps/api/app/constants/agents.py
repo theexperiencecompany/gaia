@@ -78,3 +78,9 @@ PLAYBOOK_DECLINE_LIMIT = 3
 # that lapses, declines, or has its rewrite refused still counts; past the limit
 # the worker deletes the playbook rather than briefing every later fire to heal it.
 PLAYBOOK_HEAL_ATTEMPT_LIMIT = 2
+
+#: The playbook decision tools. Bookkeeping about a run, never the run itself:
+#: left out of the record the next run reads, or the model copies them as steps.
+PLAYBOOK_TOOL_NAMES = frozenset(
+    {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+)

@@ -379,6 +379,27 @@ class TestDeclinePlaybook:
             "playbook", declined=True, decline_reason="the call order depends on the inbox"
         )
 
+    async def test_a_decline_when_the_check_was_not_asked_is_refused_and_not_counted(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Seen live: past the decline limit the check goes silent, but the
+        tool is always bound and the model declined anyway, so the count kept
+        growing on a question nobody asked."""
+        workflows = _FakeWorkflowStore()
+        workflows.workflow.playbook_declines = PLAYBOOK_DECLINE_LIMIT
+        workflows.workflow.playbook_declined_hash = workflow_hash(
+            workflows.workflow.prompt, workflows.workflow.steps
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert result["success"] is False
+        assert result["error"] == "not_asked"
+        assert workflows.workflow.playbook_declines == PLAYBOOK_DECLINE_LIMIT
+
     async def test_a_decline_is_counted_against_the_workflow_as_it_stands(
         self, store: _FakePlaybookStore
     ) -> None:

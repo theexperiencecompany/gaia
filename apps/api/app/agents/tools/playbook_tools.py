@@ -23,7 +23,7 @@ from app.models.playbook_models import (
     playbook_body_from_input,
 )
 from app.models.workflow_models import WorkflowUpdate
-from app.services.workflow.playbook.check import HEAL_STATUSES
+from app.services.workflow.playbook.check import HEAL_STATUSES, declined_for_good
 from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.workflow_utils import (
@@ -198,6 +198,14 @@ async def decline_playbook(
         workflow = await workflow_repository.get_for_user(workflow_id, user_id)
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
+        # Past the limit the check is no longer asked; a decline now answers a
+        # question nobody put, and counting it would let a copied "step" grow
+        # the tally forever.
+        if declined_for_good(workflow):
+            return error_response(
+                "not_asked",
+                "This workflow is no longer asked about a playbook; nothing to decline.",
+            )
         current_hash = workflow_hash(workflow.prompt, workflow.steps)
         declines = (
             workflow.playbook_declines + 1 if workflow.playbook_declined_hash == current_hash else 1

@@ -147,6 +147,27 @@ class TestRenderLastRun:
         assert "-> 12 messages" in rendered
         assert "summary: Archived 12 promos" in rendered
 
+    def test_the_playbook_decision_is_not_part_of_the_run_it_shows(self) -> None:
+        """Seen live: a workflow declined three times, the check went silent,
+        and the fourth run declined anyway, because the previous run's record
+        listed decline_playbook as a call it made and the model copied the
+        "step". The decision is bookkeeping about the run, not the run."""
+        rendered = render_last_run(
+            _execution(
+                [
+                    RecordedCall(tool_name="web_search_tool", args={"q": "ai news"}),
+                    RecordedCall(tool_name="decline_playbook", args={"reason": "order varies"}),
+                    RecordedCall(tool_name="write_playbook", args={"description": "d"}),
+                    RecordedCall(tool_name="read_playbook", args={}),
+                    RecordedCall(tool_name="disable_playbook", args={"reason": "r"}),
+                ]
+            )
+        )
+
+        assert "web_search_tool" in rendered
+        for name in ("decline_playbook", "write_playbook", "read_playbook", "disable_playbook"):
+            assert name not in rendered
+
     def test_it_stays_bounded_when_the_run_made_hundreds_of_calls(self) -> None:
         calls = [
             RecordedCall(
