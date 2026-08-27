@@ -995,6 +995,7 @@ async def execute_workflow_as_playbook(
             workflow=workflow,
             response=result.text,
             trace=result.trace,
+            playbook=playbook,
         )
     return conversation_id, result
 

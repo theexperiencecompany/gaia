@@ -172,6 +172,9 @@ async def format_tool_call_entry(
         "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
         "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
         "plan_tasks": ("plan_tasks", "Plan tasks", False),
+        # Synthetic card a replayed workflow run leads with — never a callable
+        # tool. The playbooks category carries the icon the authoring tools use.
+        "run_playbook": ("playbooks", "Run playbook", True),
         "update_tasks": ("plan_tasks", "Update tasks", False),
         "finish_task": ("finish_task", "Finish task", False),
     }

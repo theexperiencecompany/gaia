@@ -17,6 +17,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.message_models import SelectedWorkflowData
+from app.models.playbook_models import PlaybookDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
@@ -117,14 +118,14 @@ async def add_playbook_run_messages(
     workflow: Workflow,
     response: str,
     trace: Sequence[RecordedCall],
+    playbook: PlaybookDocument,
 ) -> None:
     """Write a replayed run into the workflow's conversation as a normal turn.
 
-    A playbook run has to be indistinguishable in the UI from an agent run: the
-    same empty trigger message carrying the workflow card, then one assistant
-    message whose ``tool_data`` holds the same ``tool_calls_data`` entries the
-    live path collects. Only how the calls were chosen differs, and that is not
-    something the chat should show.
+    The calls render exactly as the live path renders them, led by a Run
+    playbook card so the reader can tell WHY the run finished in seconds: the
+    steps were replayed from the workflow's playbook, not reasoned out. Without
+    that provenance an instant run with two cards reads as broken, not fast.
     """
     trigger_message = MessageModel(
         type="user",
@@ -138,7 +139,7 @@ async def add_playbook_run_messages(
         response=response,
         date=datetime.now(UTC).isoformat(),
         message_id=str(uuid4()),
-        tool_data=await build_playbook_tool_data(trace, user_id),
+        tool_data=await build_playbook_tool_data(trace, user_id, playbook),
     )
     await add_workflow_execution_messages(
         conversation_id=conversation_id,
@@ -148,7 +149,7 @@ async def add_playbook_run_messages(
 
 
 async def build_playbook_tool_data(
-    trace: Sequence[RecordedCall], user_id: str
+    trace: Sequence[RecordedCall], user_id: str, playbook: PlaybookDocument
 ) -> list[ToolDataEntry]:
     """Replayed calls in the shape ``drain_executor_tool_data`` yields.
 
@@ -159,6 +160,20 @@ async def build_playbook_tool_data(
     """
     entries: list[ToolDataEntry] = []
     outputs: dict[str, str] = {}
+    lead_id = str(uuid4())
+    lead = await format_tool_call_entry(
+        ToolCall(
+            name="run_playbook",
+            args={"description": playbook.description, "steps": len(playbook.steps)},
+            id=lead_id,
+        ),
+        user_id=user_id,
+    )
+    if lead is not None:
+        outputs[lead_id] = (
+            f"Replayed {len(playbook.steps)} frozen step(s) from this workflow's playbook."
+        )
+        entries.append(lead)
     for call in trace:
         call_id = str(uuid4())
         entry = await format_tool_call_entry(
