@@ -98,6 +98,90 @@ function clampSelection(
   return Math.min(Math.max(currentIndex + delta, 0), unlockedCount - 1);
 }
 
+/**
+ * Everything the shared key map needs. `navigateUp`/`navigateDown` are optional
+ * because the dropdown also renders standalone (landing-page demo) with no
+ * external selection state to move.
+ */
+export interface SlashCommandKeyContext {
+  matches: SlashCommandMatch[];
+  selectedCategory: string;
+  categories: string[];
+  selectedIndex: number;
+  navigateUp?: () => void;
+  navigateDown?: () => void;
+  selectCategory: (category: string) => void;
+  onSelect: (match: SlashCommandMatch) => void;
+  onClose: () => void;
+}
+
+/**
+ * The single key map for the slash-command dropdown. Two surfaces route keys
+ * here — the composer textarea, which keeps focus while you type, and the
+ * dropdown itself, which takes focus when opened via the button. They used to
+ * carry separate copies of this switch, and the copies drifted: one indexed
+ * activation into the unlocked list and the other into the full filtered list,
+ * so Enter inserted a different tool than the highlighted one on whichever
+ * surface had the stale copy.
+ *
+ * Returns true when the key was consumed, so a caller can fall through to its
+ * own handling otherwise.
+ */
+export function handleSlashCommandKey(
+  e: React.KeyboardEvent,
+  ctx: SlashCommandKeyContext,
+): boolean {
+  switch (e.key) {
+    case "ArrowUp":
+      e.preventDefault();
+      ctx.navigateUp?.();
+      return true;
+
+    case "ArrowDown":
+      e.preventDefault();
+      ctx.navigateDown?.();
+      return true;
+
+    case "ArrowLeft":
+    case "ArrowRight": {
+      e.preventDefault();
+      const step = e.key === "ArrowLeft" ? -1 : 1;
+      const currentIndex = ctx.categories.indexOf(ctx.selectedCategory);
+      const nextIndex = Math.min(
+        Math.max(currentIndex + step, 0),
+        ctx.categories.length - 1,
+      );
+      const nextCategory = ctx.categories[nextIndex];
+      if (nextCategory) ctx.selectCategory(nextCategory);
+      return true;
+    }
+
+    case "Enter":
+    case "Tab": {
+      e.preventDefault();
+      // selectedIndex is an unlocked-row position (see clampSelection) and the
+      // rendered highlight compares against that same space, so activation has
+      // to index the unlocked list. Locked rows are absent from it by
+      // construction, which is what keeps a locked tool unactivatable.
+      const unlockedMatches = filterMatchesByCategory(
+        ctx.selectedCategory,
+        ctx.matches,
+      ).filter((match) => !match.enhancedTool?.isLocked);
+      const selectedMatch = unlockedMatches[ctx.selectedIndex];
+      if (selectedMatch) ctx.onSelect(selectedMatch);
+      return true;
+    }
+
+    case "Escape":
+      e.preventDefault();
+      ctx.onClose();
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 interface UseSlashCommandDropdownStateParams {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   searchbarText: string;
@@ -289,104 +373,27 @@ export function useSlashCommandDropdownState({
   }, []);
 
   const handleSlashCommandKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!slashCommandState.isActive) return false;
-
-      const currentFilteredMatches = filterMatchesByCategory(
-        slashCommandState.selectedCategory,
-        slashCommandState.matches,
-      );
-
-      switch (e.key) {
-        case "ArrowUp":
-          e.preventDefault();
-          navigateUp();
-          return true;
-
-        case "ArrowDown":
-          e.preventDefault();
-          setSlashCommandState((prev) => {
-            const filteredMatches = filterMatchesByCategory(
-              prev.selectedCategory,
-              prev.matches,
-            );
-            const unlockedCount = filteredMatches.filter(
-              (match) => !match.enhancedTool?.isLocked,
-            ).length;
-
-            return {
-              ...prev,
-              selectedIndex: clampSelection(
-                1,
-                prev.selectedIndex,
-                unlockedCount,
-              ),
-            };
-          });
-          return true;
-
-        case "ArrowLeft":
-          e.preventDefault();
-          setSlashCommandState((prev) => {
-            const newCategoryIndex = Math.max(
-              0,
-              prev.selectedCategoryIndex - 1,
-            );
-            const newCategory = prev.categories[newCategoryIndex];
-            return {
-              ...prev,
-              selectedCategory: newCategory,
-              selectedCategoryIndex: newCategoryIndex,
-              selectedIndex: 0, // Reset to first item when switching categories
-            };
-          });
-          return true;
-
-        case "ArrowRight":
-          e.preventDefault();
-          setSlashCommandState((prev) => {
-            const newCategoryIndex = Math.min(
-              prev.categories.length - 1,
-              prev.selectedCategoryIndex + 1,
-            );
-            const newCategory = prev.categories[newCategoryIndex];
-            return {
-              ...prev,
-              selectedCategory: newCategory,
-              selectedCategoryIndex: newCategoryIndex,
-              selectedIndex: 0, // Reset to first item when switching categories
-            };
-          });
-          return true;
-
-        case "Enter":
-        case "Tab": {
-          e.preventDefault();
-          // selectedIndex lives in unlocked-row space (see clampSelection), so
-          // activation must resolve against the unlocked list too — indexing
-          // the full list here picked a different row than the one rendered as
-          // highlighted whenever a locked match preceded an unlocked one.
-          const unlockedFilteredMatches = currentFilteredMatches.filter(
-            (match) => !match.enhancedTool?.isLocked,
-          );
-          const selectedMatch =
-            unlockedFilteredMatches[slashCommandState.selectedIndex];
-          if (selectedMatch) {
-            handleSlashCommandSelect(selectedMatch);
-          }
-          return true;
-        }
-
-        case "Escape":
-          e.preventDefault();
-          closeDropdown();
-          return true;
-
-        default:
-          return false;
-      }
-    },
-    [slashCommandState, handleSlashCommandSelect, navigateUp, closeDropdown],
+    (e: React.KeyboardEvent) =>
+      slashCommandState.isActive &&
+      handleSlashCommandKey(e, {
+        matches: slashCommandState.matches,
+        selectedCategory: slashCommandState.selectedCategory,
+        categories: slashCommandState.categories,
+        selectedIndex: slashCommandState.selectedIndex,
+        navigateUp,
+        navigateDown,
+        selectCategory,
+        onSelect: handleSlashCommandSelect,
+        onClose: closeDropdown,
+      }),
+    [
+      slashCommandState,
+      navigateUp,
+      navigateDown,
+      selectCategory,
+      handleSlashCommandSelect,
+      closeDropdown,
+    ],
   );
 
   // Close dropdown when clicking outside

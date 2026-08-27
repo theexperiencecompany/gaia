@@ -6,7 +6,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { filterMatchesByCategory } from "@/features/chat/hooks/useSlashCommandDropdownState";
+import { handleSlashCommandKey } from "@/features/chat/hooks/useSlashCommandDropdownState";
 import {
   useScrollSelectedToolIntoView,
   useSlashCommandItems,
@@ -171,90 +171,6 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   return null;
 };
 
-interface DropdownKeyHandlerContext {
-  matches: SlashCommandMatch[];
-  selectedCategory: string;
-  categories: string[];
-  selectedIndex: number;
-  changeCategory: (category: string) => void;
-  onNavigateUp?: () => void;
-  onNavigateDown?: () => void;
-  onSelect: (match: SlashCommandMatch) => void;
-  onClose: () => void;
-}
-
-/** Keyboard navigation within the dropdown (it holds focus when opened via button). */
-function handleDropdownKeyDown(
-  e: React.KeyboardEvent,
-  ctx: DropdownKeyHandlerContext,
-): void {
-  const currentFilteredMatches = filterMatchesByCategory(
-    ctx.selectedCategory,
-    ctx.matches,
-  );
-
-  switch (e.key) {
-    case "ArrowUp":
-      e.preventDefault();
-      ctx.onNavigateUp?.();
-      break;
-
-    case "ArrowDown":
-      e.preventDefault();
-      ctx.onNavigateDown?.();
-      break;
-
-    case "ArrowLeft": {
-      e.preventDefault();
-      const currentCategoryIndex = ctx.categories.indexOf(ctx.selectedCategory);
-      const newLeftIndex = Math.max(0, currentCategoryIndex - 1);
-      const newLeftCategory = ctx.categories[newLeftIndex];
-      ctx.changeCategory(newLeftCategory);
-      break;
-    }
-
-    case "ArrowRight": {
-      e.preventDefault();
-      const currentRightIndex = ctx.categories.indexOf(ctx.selectedCategory);
-      const newRightIndex = Math.min(
-        ctx.categories.length - 1,
-        currentRightIndex + 1,
-      );
-      const newRightCategory = ctx.categories[newRightIndex];
-      ctx.changeCategory(newRightCategory);
-      break;
-    }
-
-    case "Enter":
-    case "Tab": {
-      e.preventDefault();
-      // Only select unlocked items. ctx.selectedIndex is an UNLOCKED-list
-      // position (matches the highlight comparison), so index into the
-      // unlocked list — not the full filtered list.
-      const unlockedFilteredMatches = currentFilteredMatches.filter(
-        (match) => !match.enhancedTool?.isLocked,
-      );
-      if (unlockedFilteredMatches.length === 1) {
-        ctx.onSelect(unlockedFilteredMatches[0]);
-      } else {
-        const selectedMatch = unlockedFilteredMatches[ctx.selectedIndex];
-        if (selectedMatch) {
-          ctx.onSelect(selectedMatch);
-        }
-      }
-      break;
-    }
-
-    case "Escape":
-      e.preventDefault();
-      ctx.onClose();
-      break;
-
-    default:
-      break;
-  }
-}
-
 /** Estimated row heights for the virtualizer (measureElement corrects them). */
 function estimateVirtualItemHeight(
   index: number,
@@ -360,14 +276,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
 
   // Handle keyboard navigation within the dropdown
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    handleDropdownKeyDown(e, {
+    handleSlashCommandKey(e, {
       matches,
       selectedCategory,
       categories,
       selectedIndex,
-      changeCategory: handleCategoryChange,
-      onNavigateUp,
-      onNavigateDown,
+      selectCategory: handleCategoryChange,
+      navigateUp: onNavigateUp,
+      navigateDown: onNavigateDown,
       onSelect,
       onClose,
     });

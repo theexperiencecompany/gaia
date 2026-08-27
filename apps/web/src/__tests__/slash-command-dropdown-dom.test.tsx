@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -266,6 +266,83 @@ describe("composer tools dropdown DOM health", () => {
 
     await screen.findByText(/tools locked/);
     expect(container.querySelector("button button")).toBeNull();
+  });
+});
+
+// A locked tool ahead of two unlocked ones: the ordering that separates the
+// full-match index space from the unlocked-row one selectedIndex actually uses.
+const lockedFirstMatches: SlashCommandMatch[] = [
+  matches[1] as SlashCommandMatch,
+  matches[0] as SlashCommandMatch,
+  {
+    tool: {
+      name: "deep_research",
+      category: "search",
+      display_name: "Deep Research",
+      requires_integration: false,
+      locked: false,
+    },
+    matchedText: "/deep_research",
+  },
+];
+
+describe("dropdown keyboard activation", () => {
+  it("activates the highlighted unlocked row, not the same position in the full list", async () => {
+    const onSelect = vi.fn();
+    const { container } = withProviders(
+      <SlashCommandDropdown
+        matches={lockedFirstMatches}
+        // Second UNLOCKED row = Deep Research. Full-list index 1 is Web Search,
+        // which is what the dropdown's old private key handler picked.
+        selectedIndex={1}
+        onSelect={onSelect}
+        onClose={noop}
+        position={{ left: 0 }}
+        isVisible
+        openedViaButton
+      />,
+    );
+    await screen.findByText("Deep Research");
+
+    const dropdown = container.querySelector(".slash-command-dropdown");
+    expect(dropdown).not.toBeNull();
+    fireEvent.keyDown(dropdown as Element, { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: expect.objectContaining({ name: "deep_research" }),
+      }),
+    );
+  });
+
+  it("never activates a locked row", async () => {
+    const onSelect = vi.fn();
+    const { container } = withProviders(
+      <SlashCommandDropdown
+        matches={lockedFirstMatches}
+        selectedIndex={0}
+        onSelect={onSelect}
+        onClose={noop}
+        position={{ left: 0 }}
+        isVisible
+        openedViaButton
+      />,
+    );
+    await screen.findByText("Deep Research");
+
+    fireEvent.keyDown(
+      container.querySelector(".slash-command-dropdown") as Element,
+      { key: "Enter" },
+    );
+
+    // Index 0 of the unlocked list is Web Search; the locked Notion row sits at
+    // full-list index 0 and must be unreachable from the keyboard.
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tool: expect.objectContaining({ name: "web_search" }),
+      }),
+    );
   });
 });
 
