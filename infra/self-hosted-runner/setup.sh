@@ -280,6 +280,43 @@ UNIT
 systemctl --user daemon-reload
 echo "[setup] Wrote $UNIT_DIR/gaia-runner@.service"
 
+# Nightly cache prune as a user timer, so the persistent caches that make the
+# box fast stay size-bounded without anyone remembering to run anything.
+# prune-cache.sh is copied beside the runners so the timer does not depend on
+# a particular checkout existing.
+PRUNE_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prune-cache.sh"
+if [[ -f "$PRUNE_SRC" ]]; then
+  install -m 0755 "$PRUNE_SRC" "${LOCAL_CACHE}/prune-cache.sh"
+  cat > "$UNIT_DIR/gaia-ci-prune.service" <<UNIT
+[Unit]
+Description=Prune the home runner's persistent CI caches to their size budgets
+
+[Service]
+Type=oneshot
+Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+Environment=PATH=${RUNNER_PATH}
+ExecStart=/usr/bin/env bash ${LOCAL_CACHE}/prune-cache.sh --apply
+UNIT
+  cat > "$UNIT_DIR/gaia-ci-prune.timer" <<'UNIT'
+[Unit]
+Description=Nightly CI cache prune
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --now gaia-ci-prune.timer > /dev/null 2>&1 \
+    && echo "[setup] Nightly cache prune timer enabled (gaia-ci-prune.timer, 04:30)" \
+    || echo "::warning::could not enable gaia-ci-prune.timer"
+else
+  echo "::warning::prune-cache.sh not found beside setup.sh — no cache prune timer installed"
+fi
+
 NON_PERSISTENT=false
 for i in $(seq 1 "$RUNNER_COUNT"); do
   install_runner "$i"
@@ -336,6 +373,7 @@ WARN
 fi)
   Check:  gh api repos/${REPO_SLUG}/actions/runners --jq '.runners[] | select(.labels[].name=="gaia-home") | "\(.name) \(.status) busy=\(.busy)"'
   Logs:   journalctl --user -u 'gaia-runner@*' -f
+  Prune:  systemctl --user list-timers gaia-ci-prune.timer   (nightly; run now: systemctl --user start gaia-ci-prune)
   Status: systemctl --user status 'gaia-runner@*'
   Stop:   systemctl --user disable --now gaia-runner@{1..${RUNNER_COUNT}}
   Remove: for d in ${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*; do (cd "\$d" && ./config.sh remove --token <new-token>); done

@@ -20,10 +20,15 @@ inputs:
 runs:
   using: composite
   steps:
+    # dest is load-bearing. pnpm/action-setup self-installs into ~/setup-pnpm
+    # by default — one path shared by every runner instance on the home box.
+    # Three jobs starting together raced on it (ENOTEMPTY on rmdir, ENOENT on
+    # package.json) and all three failed. runner.temp is per instance.
     - name: Setup pnpm
       uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       with:
         version: 10.17.1
+        dest: ${{ runner.temp }}/setup-pnpm
 
     # Content-addressed and concurrency-safe by design, so the four runner
     # instances on the home box share one store and dedupe against each other.
