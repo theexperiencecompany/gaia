@@ -44,7 +44,8 @@ jobs:
 
   # --- Detect affected projects -------------------------------------------
   detect:
-    runs-on: ubuntu-latest
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     permissions:
       contents: read

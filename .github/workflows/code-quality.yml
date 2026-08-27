@@ -60,7 +60,8 @@ jobs:
   # exact changed files. Push/dispatch → __FULL__ → everything runs.
   changes:
     name: Detect changed languages
-    runs-on: ubuntu-latest
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}

@@ -87,10 +87,12 @@ jobs:
           echo "Standard: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
           echo "Docker:   ${{ steps.pick-docker.outputs.runner }}"
 
-  # ── Detect — always on ubuntu-latest (tiny, no benefit from home) ───────
+  # ── Detect — on the critical path of every lane. Measured 119s on a GitHub
+  # runner (cold pnpm install + nx graph); on the box with persistent
+  # node_modules and the git mirror it is seconds. ─────────────────────────
   detect:
     needs: [select-runner]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     permissions:
       contents: read
