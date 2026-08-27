@@ -64,7 +64,15 @@ async def write_playbook(
 
         validation = await validate_playbook(body, user_id)
         if not validation.valid:
-            log.warning(f"{LogTag.TOOL} write_playbook: rejected", issues=len(validation.issues))
+            # The issues themselves, not just how many. A refused playbook is
+            # diagnosed from the reason, and a count in a structured field that
+            # the console format drops tells whoever is watching nothing at all.
+            log.warning(
+                f"{LogTag.TOOL} write_playbook: rejected — "
+                + "; ".join(f"{issue.where}: {issue.problem}" for issue in validation.issues[:5]),
+                issues=len(validation.issues),
+                workflow_id=workflow_id,
+            )
             return error_response(
                 "invalid_playbook",
                 "The playbook was not written. Fix these and call write_playbook again: "
