@@ -155,7 +155,7 @@ function ReceiptPrinterHeader({
   return (
     <div
       className={cn(
-        "relative z-10 flex h-11 items-start justify-between",
+        "relative z-10 flex h-8 items-start justify-between",
         className,
       )}
       {...props}

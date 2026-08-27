@@ -1,7 +1,14 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Alert02Icon, RedoIcon } from "@icons";
+import {
+  Alert02Icon,
+  CheckmarkCircle02Icon,
+  CircleArrowRight02Icon,
+  RedoIcon,
+} from "@icons";
+import { AnimatePresence } from "motion/react";
+import * as m from "motion/react-m";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -125,12 +132,41 @@ export default function PaymentSuccessPage() {
 
       {status !== "error" && (
         <div className="relative z-10 w-full max-w-sm">
+          <AnimatePresence>
+            {printerStage === "complete" && (
+              <m.div
+                animate={{ height: "auto", opacity: 1 }}
+                className="overflow-hidden"
+                exit={{ height: 0, opacity: 0 }}
+                initial={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}
+              >
+                <div className="mb-6 rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
+                  <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
+                  <h1 className="mb-2 text-2xl font-semibold text-white">
+                    Welcome to GAIA Pro!
+                  </h1>
+                  <p className="mb-6 text-balance text-sm font-light text-zinc-400">
+                    You're all set. Every Pro feature is unlocked. Let's get to
+                    work.
+                  </p>
+                  <RaisedButton
+                    color="#00bbff"
+                    className="w-full text-black!"
+                    onClick={() => router.push(continueDestination)}
+                  >
+                    Continue to chat
+                    <CircleArrowRight02Icon className="size-4" />
+                  </RaisedButton>
+                </div>
+              </m.div>
+            )}
+          </AnimatePresence>
           <PostPaymentReceipt
             billingPeriod={receipt.billingPeriod}
             amount={receipt.amount}
             currency={receipt.currency}
             nextBillingDate={receipt.nextBillingDate}
-            onContinue={() => router.push(continueDestination)}
             planName={receipt.planName}
             stage={printerStage}
             subscriptionRef={receipt.subscriptionRef}

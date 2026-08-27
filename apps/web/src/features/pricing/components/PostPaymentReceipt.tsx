@@ -1,15 +1,9 @@
 "use client";
 
-import { CircleArrowRight02Icon } from "@icons";
-import { AnimatePresence } from "motion/react";
-import * as m from "motion/react-m";
 import Image from "next/image";
-import { RaisedButton } from "@/components/ui/raised-button";
 import { ReceiptPrinter } from "@/features/pricing/components/ReceiptPrinter";
 import type { ReceiptPrinterStage } from "@/features/pricing/components/receipt-printer.types";
 import { CENTS_PER_DOLLAR } from "@/features/pricing/constants";
-
-const easeOut = [0.23, 1, 0.32, 1] as const;
 
 type PostPaymentReceiptProps = {
   /** Current printer stage, driven by useReceiptPrinterStage. */
@@ -26,7 +20,6 @@ type PostPaymentReceiptProps = {
   nextBillingDate?: string | null;
   /** Dodo subscription id printed under the barcode. */
   subscriptionRef?: string | null;
-  onContinue: () => void;
 };
 
 /** Formats minor-unit money with the currency it was actually charged in. */
@@ -91,7 +84,6 @@ export function PostPaymentReceipt({
   billingPeriod,
   nextBillingDate,
   subscriptionRef,
-  onContinue,
 }: PostPaymentReceiptProps) {
   const displayName = planName ?? "GAIA Pro";
   const nextBilling = formatDate(nextBillingDate);
@@ -129,7 +121,7 @@ export function PostPaymentReceipt({
               {price && (
                 <div className="flex items-baseline justify-between">
                   <span className="text-sm text-zinc-300">Total</span>
-                  <strong className="text-lg tracking-tight text-zinc-50">
+                  <strong className="text-base tracking-tight text-zinc-50">
                     {price}
                   </strong>
                 </div>
@@ -144,7 +136,7 @@ export function PostPaymentReceipt({
             <dl className="space-y-2.5">
               <div className="flex justify-between gap-4">
                 <dt className="pt-0.5 text-sm">Total</dt>
-                <dd className="text-right text-xl tracking-tight">{price}</dd>
+                <dd className="text-right text-lg tracking-tight">{price}</dd>
               </div>
               <div className="flex justify-between gap-4 text-xs">
                 <dt className="opacity-60">{displayName}</dt>
@@ -181,28 +173,6 @@ export function PostPaymentReceipt({
           </ReceiptPrinter.Paper>
         </ReceiptPrinter.Output>
       </ReceiptPrinter.Root>
-
-      <AnimatePresence>
-        {stage === "complete" && (
-          <m.div
-            animate={{ opacity: 1, transform: "translateY(0px)" }}
-            aria-hidden={false}
-            className="w-full max-w-[21rem]"
-            exit={{ opacity: 0 }}
-            initial={{ opacity: 0, transform: "translateY(8px)" }}
-            transition={{ duration: 0.24, ease: easeOut }}
-          >
-            <RaisedButton
-              className="mt-6 w-full text-black!"
-              color="#00bbff"
-              onClick={onContinue}
-            >
-              Continue to chat
-              <CircleArrowRight02Icon className="size-4" />
-            </RaisedButton>
-          </m.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
