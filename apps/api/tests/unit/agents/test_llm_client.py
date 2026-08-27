@@ -57,6 +57,10 @@ from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    OPENROUTER_APP_CATEGORIES,
+    OPENROUTER_APP_TITLE,
+    OPENROUTER_DEV_APP_TITLE,
+    OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     STICKY_FLIP_RETRY_MIN_INPUT,
 )
@@ -466,6 +470,92 @@ class TestInitLlm:
 # ---------------------------------------------------------------------------
 # get_default_llm
 # ---------------------------------------------------------------------------
+
+
+class TestOpenRouterAppAttribution:
+    """Every real OpenRouter client must attribute itself, on both lanes.
+
+    The aux lane (_build_default_llm — memory extraction, follow-ups,
+    onboarding) shipped with no attribution at all, so its production traffic
+    reported as "unknown app" on the OpenRouter dashboard, indistinguishable
+    from a leaked key. And development used to send the localhost FRONTEND_URL,
+    which OpenRouter cannot attribute — same bucket.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        _build_default_llm.cache_clear()
+        yield
+        _build_default_llm.cache_clear()
+
+    @staticmethod
+    def _attribution_of(mock_chat_openrouter: MagicMock) -> dict[str, object]:
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        return {k: kwargs.get(k) for k in ("app_url", "app_title", "app_categories")}
+
+    @patch("app.agents.llm.client.without_sdk_retry", new=lambda llm: llm)
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_the_aux_lane_attributes_itself(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.ENV = "production"
+        mock_settings.FRONTEND_URL = "https://heygaia.io"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_settings.OPENROUTER_PROVIDER_ORDER = ""
+
+        _build_default_llm(0.7)
+
+        assert self._attribution_of(mock_chat_openrouter) == {
+            "app_url": "https://heygaia.io",
+            "app_title": OPENROUTER_APP_TITLE,
+            "app_categories": OPENROUTER_APP_CATEGORIES,
+        }
+
+    @patch("app.agents.llm.client.without_sdk_retry", new=lambda llm: llm)
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_development_reports_as_its_own_app_not_unknown(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        """A localhost referer is unattributable; dev must send the fixed dev
+        identity so its spend is legible on the dashboard."""
+        mock_settings.ENV = "development"
+        mock_settings.FRONTEND_URL = "http://localhost:3000"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+        mock_settings.OPENROUTER_PROVIDER_ORDER = ""
+
+        _build_default_llm(0.7)
+
+        assert self._attribution_of(mock_chat_openrouter) == {
+            "app_url": OPENROUTER_DEV_APP_URL,
+            "app_title": OPENROUTER_DEV_APP_TITLE,
+            "app_categories": OPENROUTER_APP_CATEGORIES,
+        }
+
+    @patch("app.agents.llm.client._openrouter_wire_configurables", new=lambda llm: llm)
+    @patch("app.agents.llm.client.without_sdk_retry", new=lambda llm: llm)
+    @patch("app.agents.llm.client.ChatOpenRouter")
+    @patch("app.agents.llm.client.settings")
+    def test_the_graph_lane_attributes_itself(
+        self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.ENV = "production"
+        mock_settings.FRONTEND_URL = "https://heygaia.io"
+        mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
+
+        # lazy_provider swaps the imported symbol for a registration hook; the
+        # real factory lives on the LazyLoader it returns. Running that is the
+        # only way to prove the GRAPH lane passes attribution through — the
+        # helper being correct proves nothing if this site never calls it.
+        client_module.init_openrouter_llm().loader_func()
+
+        assert self._attribution_of(mock_chat_openrouter) == {
+            "app_url": "https://heygaia.io",
+            "app_title": OPENROUTER_APP_TITLE,
+            "app_categories": OPENROUTER_APP_CATEGORIES,
+        }
 
 
 class TestGetDefaultLlm:

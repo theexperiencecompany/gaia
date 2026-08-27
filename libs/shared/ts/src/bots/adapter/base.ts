@@ -470,6 +470,7 @@ export abstract class BaseBotAdapter {
           target.userId,
           target.channelId,
           target.profile,
+          target.isDm,
         );
 
         const startMs = Date.now();
@@ -538,11 +539,13 @@ export abstract class BaseBotAdapter {
     userId: string,
     channelId?: string,
     profile?: { username?: string; displayName?: string },
+    isDm?: boolean,
   ): CommandContext {
     return {
       platform: this.platform,
       platformUserId: userId,
       channelId,
+      isDm,
       profile,
     };
   }
