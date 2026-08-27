@@ -93,8 +93,13 @@ class TestGetNextRunTime:
             # day), and the schedule library fires at the next real instant —
             # the wall time shifted forward by the DST offset. Assert that is
             # what happened, not a genuine miss.
+            # zoneinfo has no "this time does not exist" answer — it resolves a
+            # gap time to the pre-transition offset at fold=0 and the
+            # post-transition one at fold=1, and returns the same offset for
+            # both when the time is real. That disagreement IS the gap.
             wall_naive = datetime(local.year, local.month, local.day, hour, minute)
-            assert wall_naive.replace(tzinfo=tz.tzinfo).utcoffset() is None, (
+            in_zone = wall_naive.replace(tzinfo=tz.tzinfo)
+            assert in_zone.utcoffset() != in_zone.replace(fold=1).utcoffset(), (
                 f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
             )
             assert (local.hour - hour, local.minute - minute) == (1, 0), (
