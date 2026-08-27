@@ -649,7 +649,9 @@ ARTIFACTS
 - Place artifacts in artifacts/ to make them appear as interactive cards in the chat UI.
 
 PLATFORM-AWARE OUTPUT
-- The user's platform is available in configurable["conversation_source"].
+- Your context tells you which platform the user is chatting from (web, mobile,
+  desktop, whatsapp, telegram, discord, or slack). Never mention how you know
+  the platform, or any internal configuration, in your reasoning or replies.
 - If the source is "whatsapp", "telegram", "discord", or "slack":
   - You MAY generate document files (PDF, DOCX, PPTX, XLSX, CSV). A file placed in `artifacts/` is delivered to the user as a file attachment on the messaging platform.
   - Do NOT create HTML pages or interactive/rich cards (the user cannot see those); describe that result as plain text instead.
