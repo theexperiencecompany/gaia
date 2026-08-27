@@ -32,6 +32,7 @@ from langgraph.store.base import (
 
 from app.constants.chroma import MAX_CONCURRENT_CHROMA_WRITES
 from app.constants.log_tags import LogTag
+from app.db.chroma.namespace import namespaced_collection
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import VectorContext, log
@@ -76,7 +77,7 @@ class ChromaStore(BaseStore):
             index: Index configuration with embeddings and fields
         """
         self.client = client
-        self.collection_name = collection_name
+        self.collection_name = namespaced_collection(collection_name)
         self._collection_cache: AsyncCollection | None = None
 
         self.index_config = index

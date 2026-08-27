@@ -221,6 +221,10 @@ class CommonSettings(BaseAppSettings):
     # NOT measured: recovery-heavy tasks (stale element, failed click,
     # unexpected modal), where evaluation_previous_goal is the agent's
     # self-check. Turn this off if such tasks regress.
+    # Dev-only: suffixes every ChromaDB collection name so parallel worktrees,
+    # which share one local Chroma, stop deleting each other's indexed tools.
+    # Empty in production (dedicated Chroma); set per worktree by `mise run wt:env`.
+    CHROMA_COLLECTION_NAMESPACE: str = ""
     BROWSER_USE_FLASH_MODE: bool = True
     # Cloudflare R2 (S3-compatible, free tier) — the fast edge store for browser step
     # screenshots. Cloudinary stays the durable store for arbitrary user files. The S3

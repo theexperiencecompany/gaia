@@ -205,6 +205,10 @@ BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
 BOT_TELEGRAM_PORT=$(( 3202 + offset ))
 BOT_WHATSAPP_PORT=$(( 3203 + offset ))
+# All worktrees share one local ChromaDB; without a per-worktree namespace the
+# API that booted last deletes collections it does not recognise (e.g. a branch's
+# tools), so browser_task and friends silently vanish for the other worktree.
+CHROMA_COLLECTION_NAMESPACE=wt$offset
 EOF
 
 echo "wt:env → $root/.env.worktree (offset $offset): API_PORT=$api_port WEB_PORT=$web_port"
