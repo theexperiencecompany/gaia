@@ -51,14 +51,23 @@ def _compact(value: object) -> str:
     return json.dumps(value, separators=(",", ":"))
 
 
-def _bounded_json(value: object, max_chars: int) -> str:
-    """``value`` as compact JSON under the bound, dropping whole list elements."""
-    items, rebuild = _largest_sequence(value)
-    if items is None:
-        # Nothing to shed element-wise (a huge scalar or a deep object): fall back
-        # to text, which parse_result reads as text rather than as broken JSON.
-        return _compact(value)[:max_chars]
+#: Longest string an element keeps once elements have to be trimmed to fit.
+#: Ids, subjects and dates survive whole; a body is cut, and says so.
+_ELEMENT_STRING_MAX_CHARS = 200
+_CUT_MARKER = "…[cut]"
 
+
+def _trim_strings(value: object, limit: int) -> object:
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + _CUT_MARKER
+    if isinstance(value, list):
+        return [_trim_strings(item, limit) for item in value]
+    if isinstance(value, dict):
+        return {key: _trim_strings(item, limit) for key, item in value.items()}
+    return value
+
+
+def _fit_elements(items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int) -> str:
     kept: list[Any] = []
     for item in items:
         kept.append(item)
@@ -66,6 +75,27 @@ def _bounded_json(value: object, max_chars: int) -> str:
             kept.pop()
             break
     return _compact(rebuild(kept))
+
+
+def _bounded_json(value: object, max_chars: int) -> str:
+    """``value`` as compact JSON under the bound, dropping whole list elements.
+
+    When not even the first element fits (nine emails whose bodies each
+    outweigh the bound), dropping whole elements would drop all of them and
+    record the fetch as empty. The elements are trimmed instead, long strings
+    cut and marked, so the record keeps the items and what identifies them.
+    """
+    items, rebuild = _largest_sequence(value)
+    if items is None:
+        # Nothing to shed element-wise (a huge scalar or a deep object): fall back
+        # to text, which parse_result reads as text rather than as broken JSON.
+        return _compact(value)[:max_chars]
+
+    digest = _fit_elements(items, rebuild, max_chars)
+    if items and not _largest_sequence(json.loads(digest))[0]:
+        trimmed = [_trim_strings(item, _ELEMENT_STRING_MAX_CHARS) for item in items]
+        digest = _fit_elements(trimmed, rebuild, max_chars)
+    return digest
 
 
 def _as_is(items: list[Any]) -> object:

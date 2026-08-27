@@ -380,6 +380,35 @@ class TestResultDigest:
             "body": "x" * 300,
         }
 
+    def test_elements_too_big_to_fit_are_trimmed_rather_than_all_dropped(self) -> None:
+        """Seen live: nine emails whose bodies each outweighed the whole bound
+        were digested as ``"messages": []``, so the next run read the fetch as
+        empty and the replay's empty-result check had nothing to compare
+        against. Long strings inside an element are cut so the element itself
+        survives: its id and subject are the record, its body is not."""
+        envelope = json.dumps(
+            {
+                "data": {
+                    "fetched_count": 9,
+                    "messages": [
+                        {"id": f"m{index}", "subject": f"Subject {index}", "body": "x" * 6000}
+                        for index in range(9)
+                    ],
+                },
+                "successful": True,
+            }
+        )
+
+        digest = build_result_digest(envelope)
+
+        assert len(digest) <= RESULT_DIGEST_MAX_CHARS
+        parsed = json.loads(digest)
+        messages = parsed["data"]["messages"]
+        assert len(messages) >= 3, "the record must keep items, not just the count"
+        assert messages[0]["id"] == "m0"
+        assert messages[0]["subject"] == "Subject 0"
+        assert len(messages[0]["body"]) < 6000
+
     def test_an_oversized_json_result_stays_parseable(self) -> None:
         digest = build_result_digest(self._todos(200))
 
