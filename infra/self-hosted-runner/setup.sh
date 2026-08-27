@@ -163,7 +163,6 @@ PATH=${RUNNER_PATH}
 MISE_NODE_COREPACK=1
 RUNNER_INDEX=${idx}
 RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
-ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE=${LOCAL_CACHE}/actions-archive
 ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
 ${NX_REMOTE_ENV}
@@ -292,6 +291,9 @@ KillSignal=SIGTERM
 TimeoutStopSec=5min
 Environment=RUNNER_INDEX=%i
 Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+# Must be in the runner PROCESS environment, not .env (.env only feeds jobs):
+# caches downloaded action tarballs box-wide instead of once per instance.
+Environment=ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE=${LOCAL_CACHE}/actions-archive
 
 [Install]
 WantedBy=default.target
