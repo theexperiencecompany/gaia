@@ -20,6 +20,7 @@ DELETE ``app/agents/tools/account_tools.py`` → these tests FAIL.
 DELETE ``app/agents/tools/core/mutations.py`` → these tests FAIL.
 """
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -224,8 +225,6 @@ class TestAccountToolsThroughGraph:
             instructions="Open Telegram and message @gaia_bot with /auth",
             action_link="https://t.me/gaia_bot",
         )
-        from app.agents.tools import account_tools
-
         with patch(
             f"{account_tools.__name__}.start_platform_connect", new=AsyncMock(return_value=flow)
         ):
@@ -264,8 +263,6 @@ class TestAccountToolsThroughGraph:
 
 class TestHILWiring:
     def test_settings_tools_are_stamped_always_gate_and_link_is_not(self, real_tool_registry):
-        import asyncio
-
         async def grab():
             return await providers.aget("tool_registry")
 
@@ -278,16 +275,12 @@ class TestHILWiring:
         assert link_meta is not None and link_meta.always_gate is False
 
     async def test_resolve_policy_asks_for_settings_even_when_hil_is_off(self, real_tool_registry):
-        from unittest.mock import patch as sync_patch
-
-
-
         request = SimpleNamespace(
             tool_call={"id": "c1", "name": "update_preferences", "args": {"timezone": "UTC"}},
             state={"messages": []},
         )
         call = unpack_tool_call(request)
-        with sync_patch(
+        with patch(
             "app.services.hil.policy._preferences",
             new=AsyncMock(return_value=HILPreferences(mode="always_allow")),
         ):

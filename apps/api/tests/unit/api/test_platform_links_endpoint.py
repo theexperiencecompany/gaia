@@ -332,16 +332,22 @@ class TestDisconnectPlatform:
         mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
 
     @pytest.mark.asyncio
-    async def test_disconnect_maps_service_error_to_status_and_detail(
+    async def test_disconnect_propagates_service_apperror_with_why_and_fix(
         self, client: AsyncClient
     ) -> None:
-        """The service's AppError reaches the client with its status AND message."""
+        """The service's AppError reaches the client with status, message, why AND fix.
+
+        The endpoint re-raises AppError rather than rebuilding an HTTPException,
+        so the structured guidance the service attached survives to the client.
+        """
         with (
             patch(
                 "app.api.v1.endpoints.platform_links.disconnect_platform_account",
                 new_callable=AsyncMock,
                 side_effect=AppError(
                     message="Platform not linked",
+                    why="No link record exists for this user and platform",
+                    fix="Check account/linked-accounts for what is actually connected",
                     status_code=404,
                 ),
             ),
@@ -350,7 +356,11 @@ class TestDisconnectPlatform:
             resp = await client.delete(f"{BASE}/discord")
 
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Platform not linked"
+        assert resp.json() == {
+            "message": "Platform not linked",
+            "why": "No link record exists for this user and platform",
+            "fix": "Check account/linked-accounts for what is actually connected",
+        }
 
     @pytest.mark.asyncio
     async def test_disconnect_records_success_outcome(self, client: AsyncClient) -> None:
@@ -597,9 +607,12 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/imessage/connect", json={})
 
         assert resp.status_code == 422
-        assert resp.json()["detail"] == (
+        body = resp.json()
+        assert body["message"] == (
             "A phone number in E.164 format (e.g. +15551234567) is required for iMessage."
         )
+        # The endpoint re-raises AppError, so the actionable fix survives.
+        assert body["fix"] == "Pass a phone number in E.164 format (e.g. +15551234567)"
 
     @pytest.mark.asyncio
     async def test_pro_user_connect_malformed_phone_422(self, client: AsyncClient) -> None:

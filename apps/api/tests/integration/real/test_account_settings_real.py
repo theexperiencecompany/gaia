@@ -18,7 +18,7 @@ from unittest.mock import patch
 from bson import ObjectId
 import pytest
 
-from app.services import account_settings
+from app.services import account_settings, voice_service
 from app.services.platform_link_service import (
     PlatformLinkService,
     disconnect_platform_account,
@@ -118,8 +118,6 @@ class TestVoiceSelection:
             voices=[SimpleNamespace(voice_id="v-real-1", name="Rachel", starred=False)],
             selected_voice_id=None,
         )
-        from app.services import voice_service
-
         with (
             patch.object(account_settings, "list_voices", return_value=canned_catalog),
             patch.object(voice_service, "_known_voice_ids", return_value={"v-real-1"}),
@@ -132,8 +130,6 @@ class TestVoiceSelection:
 
     async def test_unknown_voice_writes_nothing_to_mongo(self, mongo_db):
         canned_catalog = SimpleNamespace(voices=[], selected_voice_id=None)
-        from app.services import voice_service
-
         with (
             patch.object(account_settings, "list_voices", return_value=canned_catalog),
             patch.object(voice_service, "_known_voice_ids", return_value=set()),

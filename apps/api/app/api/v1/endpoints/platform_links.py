@@ -3,7 +3,6 @@ from collections.abc import Mapping
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
 from app.models.platform_models import (
@@ -25,7 +24,7 @@ from app.services.platform_link_service import (
     require_platform_plan,
     start_platform_connect,
 )
-from app.utils.errors import AppError, create_error
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -191,11 +190,8 @@ async def disconnect_platform(
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="disconnect_platform", platform=platform)
 
-    try:
-        result = await disconnect_platform_account(user_id, platform)
-        schedule_account_sync(user_id)
-    except AppError:
-        raise
+    result = await disconnect_platform_account(user_id, platform)
+    schedule_account_sync(user_id)
     log.set(outcome="success")
     return result
 
@@ -224,11 +220,6 @@ async def initiate_platform_connect(
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
 
-    try:
-        result = await start_platform_connect(user_id, platform, phone=body.phone)
-    except AppError:
-        raise
-    except RateLimitExceededException:
-        raise
+    result = await start_platform_connect(user_id, platform, phone=body.phone)
     log.set(outcome="success", auth_type=result.auth_type)
     return result

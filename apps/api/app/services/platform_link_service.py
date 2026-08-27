@@ -293,8 +293,6 @@ async def start_platform_connect(
         )
 
     # iMessage manual flow: Photon's shared pool only delivers to registered
-
-    # iMessage manual flow: Photon's shared pool only delivers to registered
     # numbers, so the user's phone must be allowlisted before they can text.
     if not phone:
         raise create_error(
