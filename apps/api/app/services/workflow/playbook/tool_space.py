@@ -86,8 +86,14 @@ async def resolve_subagent_tools(
         )
         return SubagentTools(tools={}, initial_tool_ids=initial, subagent=subagent)
 
+    # The live subagent binds its MCP tools at startup (``build_scoped_tool_dict``
+    # with ``mcp_tools`` set), so they belong in ``initial_tool_ids`` here too:
+    # a handoff that cannot retrieve refuses every tool outside that set, and a
+    # replay bound to the registry-only ids would reject the very MCP step the
+    # validator just accepted.
+    bound = set(initial)
     return SubagentTools(
         tools={**scoped, **{tool.name: tool for tool in mcp_tools}},
-        initial_tool_ids=initial,
+        initial_tool_ids=[*initial, *[tool.name for tool in mcp_tools if tool.name not in bound]],
         subagent=subagent,
     )

@@ -191,8 +191,36 @@ class TestMcpBackedSubagent:
         assert space is not None
         assert LIVE_MCP_TOOL in space.tools
         assert REGISTRY_TOOL in space.tools
-        assert space.initial_tool_ids == [REGISTRY_TOOL, FINISH_TASK_NAME]
         assert space.subagent is subagent
+
+    async def test_the_live_tools_are_also_in_the_ids_the_handoff_binds(self) -> None:
+        """Being in the space is not enough. The runner builds the handoff's
+        runtime config from ``initial_tool_ids``, and a subagent that cannot
+        retrieve refuses every tool outside that set — so a live MCP tool merged
+        only into ``tools`` was accepted by the validator and then refused by the
+        replay as "outside the bound tool set"."""
+        subagent = _subagent(mcp=True)
+
+        with (
+            patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)),
+            patch(f"{MODULE}.get_mcp_client", _mcp_client([_tool(LIVE_MCP_TOOL)])),
+        ):
+            space = await resolve_subagent_tools(SUBAGENT_ID, USER_ID, _registry())
+
+        assert space is not None
+        assert space.initial_tool_ids == [REGISTRY_TOOL, FINISH_TASK_NAME, LIVE_MCP_TOOL]
+
+    async def test_a_live_tool_that_shadows_a_registry_one_is_bound_once(self) -> None:
+        subagent = _subagent(mcp=True)
+
+        with (
+            patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)),
+            patch(f"{MODULE}.get_mcp_client", _mcp_client([_tool(REGISTRY_TOOL)])),
+        ):
+            space = await resolve_subagent_tools(SUBAGENT_ID, USER_ID, _registry())
+
+        assert space is not None
+        assert space.initial_tool_ids == [REGISTRY_TOOL, FINISH_TASK_NAME]
 
     async def test_an_unreachable_integration_yields_an_empty_tool_set(self) -> None:
         """A briefly down integration must not kill authoring or replay.
