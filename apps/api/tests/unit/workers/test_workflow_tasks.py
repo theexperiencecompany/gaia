@@ -9,6 +9,7 @@ import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import ActionType, NotificationSourceEnum
 from app.models.workflow_execution_models import RecordedCall
 from app.services.analytics_service import AnalyticsEvents
@@ -832,7 +833,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Result text", {}),
+                return_value=SilentRunResult(message="Result text", tool_data={}),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -875,7 +876,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Step 1 done. Step 2 done.", {}),
+                return_value=SilentRunResult(message="Step 1 done. Step 2 done.", tool_data={}),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -907,7 +908,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Done", {}),
+                return_value=SilentRunResult(message="Done", tool_data={}),
             ) as mock_call_agent,
         ):
             await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
@@ -969,7 +970,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Fallback result", {}),
+                return_value=SilentRunResult(message="Fallback result", tool_data={}),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -1007,7 +1008,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Done", {}),
+                return_value=SilentRunResult(message="Done", tool_data={}),
             ) as mock_call_agent,
         ):
             await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
@@ -1044,7 +1045,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("None user result", {}),
+                return_value=SilentRunResult(message="None user result", tool_data={}),
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
@@ -1077,7 +1078,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("OK", {}),
+                return_value=SilentRunResult(message="OK", tool_data={}),
             ),
         ):
             await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
@@ -1112,7 +1113,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Done", {}),
+                return_value=SilentRunResult(message="Done", tool_data={}),
             ),
         ):
             await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
@@ -1153,7 +1154,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.agents.core.agent.call_agent_silent",
                 new_callable=AsyncMock,
-                return_value=("Done", tool_data),
+                return_value=SilentRunResult(message="Done", tool_data=tool_data),
             ),
         ):
             _conversation_id, trace = await execute_workflow_as_chat(

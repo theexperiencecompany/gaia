@@ -34,6 +34,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.models.agent_models import SilentRunResult
 from app.models.workflow_execution_models import (
     WorkflowExecutionDocument,
     WorkflowExecutionUpdate,
@@ -654,7 +655,7 @@ class TestWorkflowExecutionFailurePropagation:
                         },
                     }
                 )
-            return "", {"tool_data": tool_data}
+            return SilentRunResult(message="", tool_data={"tool_data": tool_data})
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
         return completed

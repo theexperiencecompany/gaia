@@ -68,7 +68,11 @@ from app.services.workflow.conversation_service import (
     build_selected_workflow_data,
     get_or_create_workflow_conversation,
 )
-from app.services.workflow.execution_service import complete_execution, create_execution
+from app.services.workflow.execution_service import (
+    WorkflowFireQueued,
+    complete_execution,
+    create_execution,
+)
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import PlaybookRunResult, run_playbook
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -593,9 +597,15 @@ async def _run_workflow(
         playbook_id=playbook.playbook_id,
         failure=result.failure,
     )
-    conversation_id, agent_trace = await execute_workflow_as_chat(
-        workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
-    )
+    try:
+        conversation_id, agent_trace = await execute_workflow_as_chat(
+            workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
+        )
+    except WorkflowFireQueued as queued:
+        # Same rule as the return below: the replay's calls belong on the record
+        # even when the agent hand-off never got to run.
+        queued.trace = [*result.trace, *queued.trace]
+        raise
     # The replay's own calls stay on the record: they are what the agent was
     # told not to repeat, and the next run reads this trace as its history.
     return conversation_id, [*result.trace, *agent_trace]
@@ -799,6 +809,48 @@ async def execute_workflow_by_id(
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
 
         return f"Workflow {workflow_id} executed successfully"
+
+    except WorkflowFireQueued as queued:
+        # This fire never ran: one executor runs per conversation, and the
+        # workflow's previous fire still held the lock, so this one went on the
+        # queue. Completing it as "success" is what made every fire after the
+        # first look like work on a workflow whose run outlasts its own cron
+        # period — and the fake record then became the "last run" the NEXT fire
+        # reads as its history. It is not a failure to notify about either: the
+        # queued task runs on its own and delivers its own result, so this path
+        # sends neither the completion nor the failure notification.
+        log.set_ns(
+            "workflow",
+            queued=True,
+            queued_task_id=queued.task_id,
+            outcome="queued_behind_in_flight_run",
+        )
+        log.warning(
+            f"{LogTag.WORKER} Workflow fire queued behind its previous run — nothing executed",
+            workflow_id=workflow_id,
+            queued_task_id=queued.task_id,
+        )
+        if execution_id:
+            await complete_execution(
+                execution_id=execution_id,
+                status="failed",
+                error_message=(
+                    "This fire did not run: the executor was still busy with this "
+                    "workflow's previous run, so the fire was queued behind it "
+                    f"(task_id: {queued.task_id}). The queued task runs on its own "
+                    "once that finishes. Give the workflow a longer interval than "
+                    "one run takes."
+                ),
+                conversation_id=queued.conversation_id,
+                trace=queued.trace,
+            )
+        # Counted like any other fire that produced no result, so the workflow's
+        # success ratio reflects what actually happened.
+        await WorkflowService.increment_execution_count(
+            workflow_id, queued.user_id, is_successful=False
+        )
+        await _rearm_quietly(scheduler, workflow, context, workflow_id)
+        return f"Workflow {workflow_id} did not run — queued behind its previous run"
 
     except Exception as e:
         # The caught error must land on the wide event from this block — the
@@ -1027,7 +1079,7 @@ async def execute_workflow_as_chat(
 
         # Same entry as chat, silent. workflow_id/title in the trigger context
         # routes the executor's final result to the completion notification.
-        _message, tool_data = await call_agent_silent(
+        result = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
@@ -1042,9 +1094,27 @@ async def execute_workflow_as_chat(
 
         # `call_agent_silent` returns the accumulated bag; its "tool_data" list is
         # the ordered entries (executor's and its subagents') this run emitted.
-        entries = cast(list[ToolDataEntry], tool_data.get("tool_data") or [])
-        return conversation_id, build_trace(entries)
+        entries = cast(list[ToolDataEntry], result.tool_data.get("tool_data") or [])
+        trace = build_trace(entries)
 
+        # Comms delegated, and the delegation was queued behind the workflow's
+        # PREVIOUS fire, which still holds this conversation's executor lock. The
+        # comms reply is an acknowledgement of work that has not started, so this
+        # fire produced nothing and must not come back as a normal result.
+        if result.queued_task_id:
+            raise WorkflowFireQueued(
+                task_id=result.queued_task_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                trace=trace,
+            )
+
+        return conversation_id, trace
+
+    except WorkflowFireQueued:
+        # Not an agent error — a fire that never started. Straight past the
+        # error logging below, to the caller's own terminal handling.
+        raise
     except Exception as e:
         # Re-raise so caller marks execution as failed instead of fake-success.
         log.error(

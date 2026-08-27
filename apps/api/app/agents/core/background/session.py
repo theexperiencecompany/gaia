@@ -50,6 +50,12 @@ class StreamSession:
     stream_id: str
     kind: RunKind
     executor_spawned: bool = False
+    #: task_id of a ``call_executor`` dispatch this stream put on the
+    #: per-conversation queue instead of running, because another run held the
+    #: busy lock. The counterpart of ``executor_spawned``: exactly one of the two
+    #: is written per dispatch, so a caller can tell "the work started" from "the
+    #: work was deferred" without reading the tool's prose.
+    executor_queued_task_id: str | None = None
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
@@ -228,6 +234,26 @@ def was_executor_spawned(stream_id: str) -> bool:
     """Return True if call_executor successfully spawned for this stream."""
     session = _sessions.get(stream_id)
     return bool(session and session.executor_spawned)
+
+
+def mark_executor_queued(stream_id: str, task_id: str) -> None:
+    """Record that call_executor queued this task instead of running it."""
+    get_or_create_session(stream_id).executor_queued_task_id = task_id
+
+
+def queued_without_run(stream_id: str) -> str | None:
+    """The task_id this stream queued when nothing ran for it at all.
+
+    ``None`` once an executor actually spawned: the turn then did real work and
+    a queued dispatch alongside it is extra work, not a substitute for it. This
+    is the truthful "nothing happened yet" signal — the alternative, reading the
+    queue acknowledgement out of the tool's returned prose, is a model-visible
+    string that says nothing about what the dispatch actually did.
+    """
+    session = _sessions.get(stream_id)
+    if session is None or session.executor_spawned:
+        return None
+    return session.executor_queued_task_id
 
 
 def signal_executor_done(stream_id: str) -> None:

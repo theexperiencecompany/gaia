@@ -343,12 +343,14 @@ async def _execute_via_agent(
 
     complete_message: str = ""
     try:
-        complete_message, _tool_data = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            trigger_context=trigger_context,
-        )
+        complete_message = (
+            await call_agent_silent(
+                request=request,
+                conversation_id=conversation_id,
+                user=user_data,
+                trigger_context=trigger_context,
+            )
+        ).message
     except Exception as exc:
         # End marker: failure
         fail_iso = datetime.now(UTC).isoformat()

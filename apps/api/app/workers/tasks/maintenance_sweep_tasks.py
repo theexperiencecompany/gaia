@@ -560,15 +560,17 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     )
 
     try:
-        complete_message, _tool_data = await call_agent_silent(
-            request=request,
-            conversation_id=conversation_id,
-            user=user_data,
-            trigger_context={
-                "trigger_type": "maintenance_health_check",
-                "todo_id": todo_id,
-            },
-        )
+        complete_message = (
+            await call_agent_silent(
+                request=request,
+                conversation_id=conversation_id,
+                user=user_data,
+                trigger_context={
+                    "trigger_type": "maintenance_health_check",
+                    "todo_id": todo_id,
+                },
+            )
+        ).message
     except Exception as exc:
         log.warning(
             "maintenance_sweep.health_check_agent_failed",

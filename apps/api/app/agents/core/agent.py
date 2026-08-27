@@ -20,6 +20,7 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
+from app.agents.core.background.session import queued_without_run
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
@@ -37,6 +38,7 @@ from app.models.agent_models import (
     AgentConfigurable,
     AgentRunnableConfig,
     ExecutionMode,
+    SilentRunResult,
     agent_configurable,
 )
 from app.models.message_models import MessageRequestWithHistory
@@ -304,17 +306,20 @@ async def call_agent_silent(
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     trigger_context: dict[str, Any] | None = None,
     source: str | None = None,
-) -> tuple[str, dict[str, Any]]:
+) -> SilentRunResult:
     """
     Execute agent in silent mode for background processing.
-
-    Returns a tuple of (complete_message, tool_data_dict).
 
     The comms agent may delegate to the executor, which runs as a detached
     background task. We register an executor capture for this run's stream_id,
     wait for the executor to finish, then merge its (and its subagents') grouped
     tool_data into the returned tool_data — so background/workflow runs render
     tool calls identically to live chat.
+
+    When that delegation was queued behind an in-flight run for the same
+    conversation, nothing ran this turn and the result carries the queued
+    ``task_id`` — read off the stream's session before it is torn down, since
+    the session is this function's own and no caller can reach it.
     """
     stream_id = str(uuid4())
     user_id = user.get("user_id")
@@ -375,7 +380,11 @@ async def call_agent_silent(
                 {"agent": "comms", "mode": "background", "conversation_id": conversation_id},
             )
 
-        return complete_message, tool_data
+        return SilentRunResult(
+            message=complete_message,
+            tool_data=tool_data,
+            queued_task_id=queued_without_run(stream_id),
+        )
 
     except Exception as exc:
         log.error(

@@ -17,6 +17,7 @@ from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import recent_user_messages
+from app.models.agent_models import SilentRunResult
 from app.models.message_models import (
     MessageRequestWithHistory,
     ReplyToMessageData,
@@ -698,7 +699,9 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        assert result == ("Hello!", {"tool": "data"})
+        assert result == SilentRunResult(
+            message="Hello!", tool_data={"tool": "data"}, queued_task_id=None
+        )
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):

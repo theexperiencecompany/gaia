@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.constants.todos import FAILED_LABEL
+from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -540,7 +541,9 @@ class TestExecuteViaAgent:
         return [c.kwargs["entry"] for c in self.timeline.call_args_list]
 
     async def test_writes_start_and_success_markers_around_the_agent_call(self):
-        agent = AsyncMock(return_value=("Deploy verified.\nAll green.", {}))
+        agent = AsyncMock(
+            return_value=SilentRunResult(message="Deploy verified.\nAll green.", tool_data={})
+        )
         p1, p2, p3, p4 = self._patches(agent=agent)
         with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
@@ -556,7 +559,12 @@ class TestExecuteViaAgent:
         """A run that dies inside the agent must still leave evidence."""
         order: list[str] = []
         timeline = AsyncMock(side_effect=lambda **kw: order.append("timeline"))
-        agent = AsyncMock(side_effect=lambda **kw: (order.append("agent"), ("ok", {}))[1])
+        agent = AsyncMock(
+            side_effect=lambda **kw: (
+                order.append("agent"),
+                SilentRunResult(message="ok", tool_data={}),
+            )[1]
+        )
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
             patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
@@ -567,7 +575,7 @@ class TestExecuteViaAgent:
         assert order == ["timeline", "agent", "timeline"]
 
     async def test_prompt_and_trigger_context_carry_the_todo_identity(self):
-        agent = AsyncMock(return_value=("ok", {}))
+        agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
         p1, p2, p3, p4 = self._patches(agent=agent, canvas="## Current State\nblocked")
         with p1, p2, p3, p4:
             await _execute_via_agent(
@@ -589,7 +597,7 @@ class TestExecuteViaAgent:
         assert "Canvas context:\n## Current State\nblocked" in prompt
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
-        agent = AsyncMock(return_value=("ok", {}))
+        agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
         p1, p2, p3, p4 = self._patches(agent=agent)
         with p1, p2, p3, p4:
             await _execute_via_agent(_doc(), "user-1", user_data={})
@@ -599,7 +607,7 @@ class TestExecuteViaAgent:
         assert first != second
 
     async def test_a_canvas_read_failure_does_not_abort_the_run(self):
-        agent = AsyncMock(return_value=("ok", {}))
+        agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
         p1, p2, p3, p4 = self._patches(agent=agent, canvas_side_effect=RuntimeError("mongo down"))
         with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
@@ -617,7 +625,7 @@ class TestExecuteViaAgent:
         assert "scheduled run failed (TimeoutError)" in end
 
     async def test_an_empty_agent_response_is_not_an_error(self):
-        agent = AsyncMock(return_value=("", {}))
+        agent = AsyncMock(return_value=SilentRunResult(message="", tool_data={}))
         p1, p2, p3, p4 = self._patches(agent=agent)
         with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
@@ -626,7 +634,7 @@ class TestExecuteViaAgent:
         assert "summary=''" in self._entries()[1]
 
     async def test_a_long_response_is_truncated_for_the_return_value_and_the_marker(self):
-        agent = AsyncMock(return_value=("x" * 500, {}))
+        agent = AsyncMock(return_value=SilentRunResult(message="x" * 500, tool_data={}))
         p1, p2, p3, p4 = self._patches(agent=agent)
         with p1, p2, p3, p4:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})

@@ -20,6 +20,35 @@ from app.services.workflow.run_trace import render_last_run
 from shared.py.wide_events import log
 
 
+class WorkflowFireQueued(Exception):
+    """A fire whose executor dispatch was queued behind an in-flight run.
+
+    One executor runs per conversation, so a fire that arrives while the
+    workflow's previous fire is still working gets put on that conversation's
+    queue and answered with an acknowledgement. Nothing this fire asked for has
+    happened, which is why it is a signal and not a result: completing its
+    execution record from the acknowledgement records work that never ran. The
+    queued task runs on its own once the lock frees, and delivers its own
+    result, so this is not a failure the user needs to be told about either.
+
+    Carries what the fire did produce so the record can still point somewhere.
+    """
+
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        user_id: str,
+        conversation_id: str,
+        trace: list[RecordedCall],
+    ) -> None:
+        super().__init__(f"Workflow fire queued behind an in-flight run (task_id: {task_id})")
+        self.task_id = task_id
+        self.user_id = user_id
+        self.conversation_id = conversation_id
+        self.trace = trace
+
+
 async def create_execution(
     workflow_id: str,
     user_id: str,

@@ -26,6 +26,7 @@ from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
+    mark_executor_queued,
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
@@ -251,6 +252,12 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
                 user_message_id=user_message_id,
             )
+            # The only record that this dispatch deferred rather than ran. The
+            # returned prose below is written for the comms model, so a caller
+            # that has to know whether work started cannot be left to parse it —
+            # a silent/workflow turn reads this instead (see queued_without_run).
+            if stream_id:
+                mark_executor_queued(stream_id, task_id)
             log.info(
                 f"{LogTag.TOOL} Executor busy — task queued",
                 task_id=task_id,

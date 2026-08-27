@@ -17,7 +17,11 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
-from app.agents.core.background.session import teardown_session, was_executor_spawned
+from app.agents.core.background.session import (
+    queued_without_run,
+    teardown_session,
+    was_executor_spawned,
+)
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
 from app.constants.cache import (
@@ -326,6 +330,29 @@ class TestCallExecutorLockContention:
         assert items[0]["configurable"]["stream_id"] == "stream-2"
         assert items[0]["configurable"]["active_todo_id"] == "todo-3"
         assert await fake_redis.ttl(QUEUE_KEY) == EXECUTOR_QUEUE_TTL
+
+    async def test_a_queued_dispatch_is_recorded_on_its_stream_not_only_in_its_prose(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        spawned_runs: list[dict[str, Any]],
+        fast_redirect: None,
+    ) -> None:
+        """The queue acknowledgement above is written for the comms model.
+
+        A silent caller — a workflow fire — has to know whether work actually
+        STARTED before it writes an execution record, and that string is the
+        wrong thing to ask: it is prose, the model may re-voice it, and it says
+        nothing the caller can trust. The session carries the fact instead.
+        """
+        await call_executor_with(config=config_for("stream-1"), task="first")
+
+        response = await call_executor_with(config=config_for("stream-2"), task="second")
+        await drain_background_tasks()
+
+        assert queued_without_run("stream-2") == task_id_from(response)
+        # The stream that actually ran deferred nothing, and says so.
+        assert was_executor_spawned("stream-1") is True
+        assert queued_without_run("stream-1") is None
 
     async def test_holder_without_a_stream_id_is_never_waited_on(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
