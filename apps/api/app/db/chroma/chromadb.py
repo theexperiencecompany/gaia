@@ -8,6 +8,8 @@ from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 
 from app.config.settings import settings
+from app.constants.chroma import CHROMA_CANVAS_COLLECTION, CHROMA_NOTES_COLLECTION
+from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.noop_telemetry import NOOP_PRODUCT_TELEMETRY_IMPL
@@ -193,7 +195,14 @@ async def init_chromadb_client() -> AsyncClientAPI:
     # Create default collections if they don't exist
     existing_collections = await client.list_collections()
     existing_collection_names = [col.name for col in existing_collections]
-    collection_names = ["notes", "documents", "gaia_canvas"]
+    # Named via the constants so the GAIA_CHROMA_COLLECTION_SUFFIX namespace
+    # applies here too: bootstrapping unsuffixed collections while the app
+    # reads suffixed ones would leave every lane querying an empty collection.
+    collection_names = [
+        CHROMA_NOTES_COLLECTION,
+        CHROMA_DOCUMENTS_COLLECTION,
+        CHROMA_CANVAS_COLLECTION,
+    ]
 
     # Create collections if they don't exist
     for collection_name in collection_names:

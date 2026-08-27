@@ -46,11 +46,27 @@ def pick_free_port() -> int:
 # so the resolved DB must NEVER be the application's live database. A URL with no
 # DB path (the repo default ``redis://localhost:6379``) and one that pins ``/0``
 # both resolve to DB 0 — the app's live DB — so an unguarded offset (``0 + gw0``)
-# would wipe it. Runs therefore land in a dedicated high-DB block (8–15) whenever
-# the URL pins no DB or DB 0, and the resolved DB is never 0 for any worker. An
-# explicitly configured non-zero DB is a deliberate caller choice and is preserved
-# (offset per worker).
-_TEST_REDIS_DB_BLOCK_START = 8  # first DB of the throwaway block (8–31)
+# would wipe it. Runs therefore land in a dedicated high-DB block whenever the URL
+# pins no DB or DB 0, and the resolved DB is never 0 for any worker. An explicitly
+# configured non-zero DB is a deliberate caller choice and is preserved (offset
+# per worker).
+#
+# GAIA_REDIS_DB_BASE moves that block so several CI lanes can share ONE Redis
+# (scripts/ci/shared-test-services.sh runs it with --databases 256 and hands lane
+# r the base ``8 + r*32``). Unset = 8, the historical single-lane block.
+try:
+    _TEST_REDIS_DB_BLOCK_START = int(os.environ.get("GAIA_REDIS_DB_BASE", "8"))
+except ValueError:
+    _TEST_REDIS_DB_BLOCK_START = 8
+# Each lane owns a 32-DB stripe. Within it the throwaway block starts at the
+# base's offset into the stripe, so a lane gets the same 24 flushable DBs the
+# single-lane layout always had (8-31 for base 8, 40-63 for base 40, ...) and
+# DB 0 of the server stays untouched.
+_TEST_REDIS_STRIPE = 32
+_TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
+    _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
+)
+_TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
 
 
 def worker_redis_url(base_url: str) -> str:
@@ -59,7 +75,12 @@ def worker_redis_url(base_url: str) -> str:
     Each xdist worker gets its own logical DB so ``flushdb()`` teardown cannot wipe
     another worker's in-flight keys, and the resolved DB is never 0 — so teardown
     can never touch the application's live database. When the URL pins no DB (or
-    pins DB 0), the run is relocated into a dedicated high-DB block (8–31).
+    pins DB 0), the run is relocated into a dedicated high-DB block of 24 DBs
+    starting at ``GAIA_REDIS_DB_BASE`` (default 8, i.e. the historical 8–31).
+
+    Setting ``GAIA_REDIS_DB_BASE`` to ``8 + lane*32`` gives each concurrent CI
+    lane a disjoint 32-DB stripe on one shared Redis, so lanes cannot flush each
+    other's keys either — see scripts/ci/shared-test-services.sh.
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -68,33 +89,40 @@ def worker_redis_url(base_url: str) -> str:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
     configured_db = int(match.group(1)) if match else 0
-    # The CI Redis runs with --databases 32 (scripts/ci/start-test-services.sh),
-    # so the throwaway block is 8-31: room for 24 workers with NO wrapping. The
-    # previous 8-15 block wrapped at eight workers, which on a 16-worker run put
-    # gw0 and gw8 on the same DB — and teardown is flushdb(), so each wiped the
-    # other's in-flight keys. Wrapping only happens past 24 workers, and is
-    # then a deliberate, documented degradation rather than a silent one.
-    block_size = 32 - _TEST_REDIS_DB_BLOCK_START
+    # The per-lane block is 24 DBs wide (start-test-services.sh runs Redis with
+    # --databases 32, shared-test-services.sh with 256): room for 24 workers with
+    # NO wrapping. The original 8-15 block wrapped at eight workers, which on a
+    # 16-worker run put gw0 and gw8 on the same DB — and teardown is flushdb(),
+    # so each wiped the other's in-flight keys. Wrapping only happens past 24
+    # workers, and is then a deliberate, documented degradation, not a silent one.
     if configured_db:
-        # Deliberate non-zero DB: offset per worker, but never land on DB 0.
-        db = (configured_db + worker_num) % 32 or _TEST_REDIS_DB_BLOCK_START
+        # Deliberate non-zero DB: offset per worker within this lane's stripe,
+        # but never land on the stripe's DB 0.
+        offset = (configured_db + worker_num) % _TEST_REDIS_STRIPE
+        db = _TEST_REDIS_STRIPE_BASE + offset if offset else _TEST_REDIS_DB_BLOCK_START
     else:
-        db = _TEST_REDIS_DB_BLOCK_START + (worker_num % block_size)
+        db = _TEST_REDIS_DB_BLOCK_START + (worker_num % _TEST_REDIS_DB_BLOCK_SIZE)
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
 
 
-def worker_mongo_db_name(base_name: str = "gaia_test") -> str:
+def worker_mongo_db_name(base_name: str | None = None) -> str:
     """Return a per-xdist-worker MongoDB database name.
 
     The same reason ``worker_redis_url`` exists: the service fixtures wipe collections
     with ``delete_many({})`` on setup and teardown, so on a shared database one worker
     clears another worker's in-flight documents and its conversation vanishes mid-test.
     Giving each worker its own database makes that impossible rather than unlikely.
+
+    The base defaults to ``GAIA_MONGO_DB_BASE`` (itself defaulting to ``gaia_test``)
+    so several CI lanes can share ONE mongod: lane r is handed
+    ``GAIA_MONGO_DB_BASE=gaia_test_r<r>`` and its workers land on
+    ``gaia_test_r<r>_gw<n>``, a namespace teardown in another lane cannot reach.
     """
+    base = base_name if base_name is not None else os.environ.get("GAIA_MONGO_DB_BASE", "gaia_test")
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
-    return f"{base_name}_{worker}"
+    return f"{base}_{worker}"
 
 
 class BindableToolsFakeModel(FakeMessagesListChatModel):

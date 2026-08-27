@@ -1,7 +1,11 @@
 """Constants for user-uploaded file operations."""
 
+from app.constants.chroma import CHROMA_COLLECTION_SUFFIX
+
 # ChromaDB collection holding uploaded-file/document summaries for semantic search.
-CHROMA_DOCUMENTS_COLLECTION = "documents"
+# Suffixed like every other GAIA collection so concurrent CI lanes sharing one
+# Chroma server do not read or delete each other's documents.
+CHROMA_DOCUMENTS_COLLECTION = "documents" + CHROMA_COLLECTION_SUFFIX
 
 # Timeout for downloading a Cloudinary-hosted upload when seeding it into a
 # freshly created conversation's sandbox.
