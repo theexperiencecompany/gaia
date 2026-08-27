@@ -22,6 +22,7 @@ from app.constants.browser import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.schemas.browser import HandoffOutcome, HandoffRecord
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.browser.exceptions import BrowserHandoffNotOwned, BrowserUnavailableError
 from shared.py.wide_events import log
 
@@ -100,6 +101,13 @@ async def resolve_handoff(
         await redis_cache.delete(_conv_key(record.conversation_id))
     log.info(
         f"{LogTag.BROWSER} Browser handoff resolved", handoff_id=handoff_id, status=new_status.value
+    )
+    # Explicit id: chat-message resolution runs in the stream's background task
+    # where no request context exists to attribute the event.
+    capture_event(
+        user_id,
+        AnalyticsEvents.BROWSER_HANDOFF_RESOLVED,
+        {"decision": decision.value, "with_note": note is not None},
     )
     return new_status
 

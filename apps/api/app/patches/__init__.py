@@ -3,6 +3,7 @@ This module contains patches for various components to ensure compatibility and 
 """
 
 from . import (
+    browser_use_page_ready_patch,
     browser_use_stealth_patch,
     composio_custom_tool_patch,
     composio_custom_tool_schema_patch,

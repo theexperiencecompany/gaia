@@ -31,6 +31,10 @@ class AnalyticsEvents(StrEnum):
     # Without it a refusal is a MISSING event, and missing is
     # indistinguishable from a user who never typed.
     CHAT_MESSAGE_REFUSED = "chat:message_refused"
+    # Browser automation — captured when the run finishes (never on start, so
+    # attempts don't count as successes) and when a human resolves a handoff.
+    BROWSER_TASK_FINISHED = "browser:task_finished"
+    BROWSER_HANDOFF_RESOLVED = "browser:handoff_resolved"
     WORKFLOW_CREATED = "workflow:created"
     WORKFLOW_EXECUTED = "workflow:executed"
     WORKFLOW_ACTIVATED = "workflow:activated"
