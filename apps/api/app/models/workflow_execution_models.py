@@ -68,18 +68,44 @@ def _bounded_json(value: object, max_chars: int) -> str:
     return _compact(rebuild(kept))
 
 
+def _as_is(items: list[Any]) -> object:
+    return items
+
+
 def _largest_sequence(
     value: object,
 ) -> tuple[list[Any] | None, Callable[[list[Any]], object]]:
-    """The list inside ``value`` worth shedding, and how to put it back."""
+    """The list inside ``value`` worth shedding, and how to put it back.
+
+    Searched at any depth under dicts, because tool results are envelopes: the
+    list that carries the bulk sits under ``data``, and a search that stopped
+    at the top level found nothing to shed and fell back to a blind slice.
+    """
     if isinstance(value, list):
-        return value, lambda items: items
-    if isinstance(value, dict):
-        lists = {key: item for key, item in value.items() if isinstance(item, list)}
-        if lists:
-            key = max(lists, key=lambda name: len(_compact(lists[name])))
-            return lists[key], lambda items, key=key: {**value, key: items}
-    return None, lambda items: items
+        return value, _as_is
+    if not isinstance(value, dict):
+        return None, _as_is
+
+    best: list[Any] | None = None
+    best_rebuild: Callable[[list[Any]], object] = _as_is
+    best_size = -1
+    for key, child in value.items():
+        items, rebuild_child = _largest_sequence(child)
+        if items is None:
+            continue
+        size = len(_compact(items))
+        if size > best_size:
+            best, best_size = items, size
+
+            def rebuild(
+                replacement: list[Any],
+                key: str = key,
+                rebuild_child: Callable[[list[Any]], object] = rebuild_child,
+            ) -> object:
+                return {**value, key: rebuild_child(replacement)}
+
+            best_rebuild = rebuild
+    return best, best_rebuild
 
 
 def largest_list_len(value: object) -> int | None:

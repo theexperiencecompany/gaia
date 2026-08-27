@@ -347,6 +347,39 @@ class TestResultDigest:
             }
         )
 
+    def test_an_oversized_envelope_sheds_the_nested_list_and_stays_parseable(self) -> None:
+        """Tool results are envelopes: the list lives under ``data``, not at the
+        top. Seen live: a Gmail fetch of five emails with bodies was digested as
+        a blind 4000-char slice, so the next run's ``$last_run`` and the replay's
+        empty-result check both read it as text."""
+        envelope = json.dumps(
+            {
+                "data": {
+                    "fetched_count": 40,
+                    "truncated": False,
+                    "messages": [
+                        {"id": f"m{index}", "subject": f"Subject {index}", "body": "x" * 300}
+                        for index in range(40)
+                    ],
+                },
+                "error": None,
+                "successful": True,
+            }
+        )
+
+        digest = build_result_digest(envelope)
+
+        assert len(digest) <= RESULT_DIGEST_MAX_CHARS
+        parsed = json.loads(digest)
+        assert parsed["successful"] is True
+        assert parsed["data"]["fetched_count"] == 40
+        assert parsed["data"]["messages"], "dropping every element defeats the digest"
+        assert parsed["data"]["messages"][0] == {
+            "id": "m0",
+            "subject": "Subject 0",
+            "body": "x" * 300,
+        }
+
     def test_an_oversized_json_result_stays_parseable(self) -> None:
         digest = build_result_digest(self._todos(200))
 
