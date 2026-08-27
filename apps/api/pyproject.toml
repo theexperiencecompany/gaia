@@ -229,3 +229,22 @@ source_paths = ["app"]
 also_copy = ["app", "tests", "scripts"]
 pytest_add_cli_args_test_selection = []
 pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']
+
+# coverage.py does not read pytest.ini (only .coveragerc, setup.cfg, tox.ini,
+# pyproject.toml), so the [coverage:*] sections that used to live there were
+# never applied — the CI lane passed --cov-fail-under explicitly, which is why
+# nobody noticed. relative_files is required at DATA-COLLECTION time: the two
+# test lanes write coverage on self-hosted runners and the combine job runs
+# wherever it lands; absolute runner paths there fail with "No source for code".
+[tool.coverage.run]
+source = ["app"]
+relative_files = true
+omit = ["app/patches.py", "app/static/*"]
+
+[tool.coverage.paths]
+source = ["app", "*/apps/api/app"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "if __name__ == .__main__.:"]
