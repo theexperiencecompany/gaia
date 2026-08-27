@@ -241,6 +241,8 @@ jobs:
           PY=$(bash scripts/ci/detect-parallel.sh --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
+      # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
+      # enforced by the coverage job below; one slice alone cannot reach it.
       - name: Run Python tests (${{ matrix.slice.name }})
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
@@ -256,7 +258,7 @@ jobs:
             uv run --frozen pytest -n ${{ steps.par.outputs.py }} --dist worksteal ${{ matrix.slice.paths }} \
             -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report= \
+            --cov=app --cov-report= --cov-fail-under=0 \
             --junitxml=test-results/pytest-${{ matrix.slice.name }}.xml --durations=30 2>&1 | tee /tmp/pytest.time
           echo "Python tests (${{ matrix.slice.name }}): OK (xdist=${{ steps.par.outputs.py }})"
       - name: Upload coverage data
