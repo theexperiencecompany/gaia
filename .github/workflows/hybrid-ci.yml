@@ -246,7 +246,9 @@ jobs:
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
-          fetch-depth: 1
+          # Selection diffs against the merge-base, which a depth-1 clone has not
+          # got. Master keeps depth 1 — it never selects.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 200 || 1 }}
       - uses: ./.github/actions/setup-python-test-env
         with:
           node: ${{ matrix.slice.node }}
@@ -257,6 +259,24 @@ jobs:
           PY=$(bash scripts/ci/detect-parallel.sh --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
+      # ── Test impact selection (PRs only, never the bridge slice) ───────────
+      # The bridge slice is one serial file; selecting inside it saves nothing
+      # and its e2e is the least safe thing to skip. See docs/ci/test-impact.md.
+      - name: Restore test impact map
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        uses: actions/cache/restore@v6
+        with:
+          path: .test-impact-map
+          key: test-impact-map-${{ matrix.slice.name }}-${{ github.sha }}
+          restore-keys: test-impact-map-${{ matrix.slice.name }}-
+      - name: Select impacted tests
+        id: impact
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        env:
+          SLICE_NAME: ${{ matrix.slice.name }}
+          SLICE_PATHS: ${{ matrix.slice.paths }}
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/ci/test-impact-select.sh
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
       # enforced by the coverage job below; one slice alone cannot reach it.
       - name: Run Python tests (${{ matrix.slice.name }})
@@ -264,19 +284,37 @@ jobs:
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
         # a lane with 'FLAKY TESTS DETECTED' reported success.
         shell: bash
-        working-directory: apps/api
         env:
-          COVERAGE_CORE: sysmon
+          # sysmon (sys.monitoring) cannot record dynamic contexts, so the map
+          # run drops it and pays the C tracer's cost. PRs keep sysmon.
+          COVERAGE_CORE: ${{ github.event_name == 'pull_request' && 'sysmon' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
+          COV_CONTEXT: ${{ github.event_name == 'pull_request' && '' || 'test' }}
+          SLICE_NAME: ${{ matrix.slice.name }}
+          SLICE_PATHS: ${{ matrix.slice.paths }}
+          SLICE_IGNORE: ${{ matrix.slice.ignore }}
+          # serial lanes get -n 0 (GitHub's expression engine treats the string "0" as
+          # falsy, hence the explicit flag); static shares otherwise, detected as fallback.
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (matrix.slice.workers != '' && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
-          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=${{ steps.par.outputs.py }} slice=${{ matrix.slice.name }}"
-          /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run --frozen pytest -n ${{ matrix.slice.serial == 'true' && '0' || (matrix.slice.workers != '' && matrix.slice.workers || steps.par.outputs.py) }} --dist worksteal ${{ matrix.slice.paths }} ${{ matrix.slice.ignore }} \
-            -m 'not composio and not model_onboarding and not schemathesis' \
-            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report= --cov-fail-under=0 \
-            --junitxml=test-results/pytest-${{ matrix.slice.name }}.xml --durations=30 2>&1 | tee /tmp/pytest.time
-          echo "Python tests (${{ matrix.slice.name }}): OK (xdist=${{ steps.par.outputs.py }})"
+          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
+          bash scripts/ci/run-python-slice.sh
+      # ── Record the map (master / dispatch only) ────────────────────────────
+      - name: Record test impact map
+        if: github.event_name != 'pull_request'
+        working-directory: apps/api
+        run: |
+          mkdir -p ../../.test-impact-map
+          uv run --frozen python ../../scripts/ci/test-impact.py record \
+            --coverage-db .coverage.${{ matrix.slice.name }} \
+            --out ../../.test-impact-map/test-impact-map-${{ matrix.slice.name }}.json \
+            --sha "$GITHUB_SHA" --slice ${{ matrix.slice.name }}
+      - name: Save test impact map
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: .test-impact-map
+          key: test-impact-map-${{ matrix.slice.name }}-${{ github.sha }}
       - name: Upload coverage data
         uses: actions/upload-artifact@v4
         with:
@@ -315,13 +353,20 @@ jobs:
           pattern: coverage-*
           path: apps/api
           merge-multiple: true
-      - name: Combine and gate (80%)
+      # On a PR the lanes may have run a test-impact selection, so the combined
+      # data covers only the impacted slice of app/ — 80% is unreachable by
+      # construction and would fail every PR. The gate stays enforced on master,
+      # which always runs the full suite.
+      - name: Combine and gate (80% on master, report-only on PRs)
         working-directory: apps/api
+        env:
+          FAIL_UNDER: ${{ github.event_name == 'pull_request' && '0' || '80' }}
         run: |
           set -euo pipefail
-          ls -la .coverage.* 
+          ls -la .coverage.*
           uv run --frozen --package gaia --group dev coverage combine .coverage.unit .coverage.integration .coverage.bridge
-          uv run --frozen --package gaia --group dev coverage report --fail-under=80 | tail -n 5
+          uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
+          echo "coverage gate: fail-under=$FAIL_UNDER (report-only on PRs — test impact selection runs a subset)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
       - uses: actions/upload-artifact@v4
         with:
