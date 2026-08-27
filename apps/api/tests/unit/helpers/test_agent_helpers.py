@@ -529,6 +529,37 @@ class TestBuildAgentConfig:
         assert with_parent["stream_id"] == "stream-9"
         assert without_parent["stream_id"] is None
 
+    @pytest.mark.regression
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_workflow_context_survives_into_a_child_agents_config(self, mock_providers):
+        """A workflow fire stamps its workflow on the comms configurable; the
+        executor and its handoff subagents must see the same workflow, or the
+        playbook tools inside the run refuse with "not in a workflow run"."""
+        mock_providers.get.return_value = None
+
+        child = (
+            await build_agent_config(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+                base_configurable={
+                    "workflow_id": "wf_123",
+                    "workflow_title": "Inbox Triage",
+                    "workflow_notify_on_completion": False,
+                },
+            )
+        )["configurable"]
+        top_level = (
+            await build_agent_config(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            )
+        )["configurable"]
+
+        assert child["workflow_id"] == "wf_123"
+        assert child["workflow_title"] == "Inbox Triage"
+        assert child["workflow_notify_on_completion"] is False
+        assert "workflow_id" not in top_level
+
     @patch("app.helpers.agent_helpers.providers")
     async def test_posthog_callback_added(self, mock_providers):
         mock_providers.get.return_value = MagicMock()  # posthog client present

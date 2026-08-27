@@ -470,6 +470,17 @@ async def build_agent_config(
     if plan := (inherited.get("plan_type") or (resolved_plan.value if resolved_plan else None)):
         configurable["plan_type"] = plan
 
+    # A workflow fire stamps its workflow on the comms configurable, and the
+    # executor and its handoff subagents run inside that same workflow. The
+    # playbook tools and the handoff call record read it from THEIR config, so
+    # it is inherited whole, the way root_request_id is.
+    if workflow_id := inherited.get("workflow_id"):
+        configurable["workflow_id"] = workflow_id
+        configurable["workflow_title"] = inherited.get("workflow_title", "")
+        configurable["workflow_notify_on_completion"] = inherited.get(
+            "workflow_notify_on_completion", True
+        )
+
     # Stash in configurable so child agents (spawned via asyncio.create_task)
     # re-emit the same trace_id from their own build_agent_config call.
     if effective_trace_id:
