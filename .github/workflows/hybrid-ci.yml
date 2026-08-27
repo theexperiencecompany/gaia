@@ -374,9 +374,28 @@ jobs:
           fi
       - uses: docker/setup-buildx-action@v3
         if: runner.environment != 'self-hosted'
+      # Rebuild the image on a PR only when its inputs changed: Dockerfile,
+      # Python deps, ignore file. Code-only changes rebuild the last COPY layer
+      # in seconds and prove nothing the test lanes don't.
+      - name: Decide whether the image inputs changed
+        id: inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_BRANCH="${{ github.base_ref || 'master' }}"
+          git fetch -q --depth=1 origin "$BASE_BRANCH" 2>/dev/null || true
+          BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD 2>/dev/null || echo HEAD~1)"
+          CHANGED="$(git diff --name-only "$BASE" HEAD -- apps/api/Dockerfile .dockerignore uv.lock pyproject.toml apps/api/pyproject.toml libs/pyproject.toml scripts/ci/check-playwright-pin.sh || true)"
+          if [ -n "$CHANGED" ] || [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"; echo "image inputs changed:"; echo "$CHANGED"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"; echo "image inputs unchanged since $BASE — skipping the build"
+          fi
       - name: Playwright pin matches uv.lock
+        if: steps.inputs.outputs.build == 'true'
         run: bash scripts/ci/check-playwright-pin.sh
       - name: Build api image (timed, not pushed)
+        if: steps.inputs.outputs.build == 'true'
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
         # a lane with 'FLAKY TESTS DETECTED' reported success.
