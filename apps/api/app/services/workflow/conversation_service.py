@@ -187,9 +187,7 @@ async def build_playbook_tool_data(
         user_id=user_id,
     )
     if lead is not None:
-        outputs[lead_id] = (
-            f"Replayed {len(plan)} frozen step(s): " + "; ".join(plan)
-        )
+        outputs[lead_id] = f"Replayed {len(plan)} frozen step(s): " + "; ".join(plan)
         entries.append(lead)
     for call in trace:
         call_id = str(uuid4())

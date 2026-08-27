@@ -38,7 +38,12 @@ from shared.py.wide_events import log
 async def write_playbook(
     config: RunnableConfig,
     description: Annotated[str, "What this playbook does, in one or two lines."],
-    steps: Annotated[list[PlaybookStepInput], "The calls to replay, in the order you made them."],
+    steps: Annotated[
+        list[PlaybookStepInput],
+        "The calls to replay, in the order you made them: only the calls that did "
+        "the work, never discovery or dead ends. Writing the result is not a step; "
+        "that is what synthesize is for.",
+    ],
     synthesize: Annotated[str, "How to write the run's result for the user."],
     ask: Annotated[
         dict[str, PlaybookAsk] | None,

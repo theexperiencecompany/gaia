@@ -22,8 +22,10 @@ ARG_TRUNCATION_MARKER = "…[truncated]"
 
 CALL_RECORD_LEAD_IN = (
     "Calls this subagent ran (successful only, in order). When writing a "
-    "playbook, copy these exact tool names and args as this handoff step's "
-    "nested steps."
+    "playbook, this handoff step's nested steps are the calls below that did "
+    "the work, with these exact tool names and args. Leave out discovery "
+    "(reading a skill file, a search that found nothing) the same way you "
+    "leave out your own."
 )
 
 

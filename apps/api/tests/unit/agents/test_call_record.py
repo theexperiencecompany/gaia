@@ -126,7 +126,7 @@ class TestAppendCallRecord:
         assert result.rstrip().endswith("</subagent_call_record>")
         assert 'GMAIL_FETCH_MESSAGES({"max_messages":5})' in result
         # The lead-in tells the model what the record is for.
-        assert "copy these" in result
+        assert "nested steps" in result
 
     def test_text_is_untouched_when_no_call_succeeded(self) -> None:
         messages: list[AnyMessage] = [
