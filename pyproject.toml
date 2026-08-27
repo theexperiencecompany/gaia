@@ -335,12 +335,10 @@ unfixable = [
 [tool.ruff.lint.per-file-ignores]
 # A002: chromadb's EmbeddingFunction protocol calls
 # `self._embedding_function(input=input)` by keyword (see
-# chromadb/api/models/CollectionCommon.py) — every implementation, including
-# these test doubles that stand in for the same registered embedding_function,
-# must keep the exact parameter name `input`.
+# chromadb/api/models/CollectionCommon.py), so the one implementation must
+# keep the exact parameter name `input`. The two integration tests that used
+# to carry their own copies now import this one, so they need no exemption.
 "apps/api/app/db/chroma/noop_embedding.py" = ["A002"]  # chromadb's EmbeddingFunction protocol passes `input=` by keyword
-"apps/api/tests/integration/db/test_chroma_store.py" = ["A002"]  # same chromadb `input=` keyword contract as noop_embedding above
-"apps/api/tests/integration/test_tool_registry_retrieval.py" = ["A002"]  # same chromadb `input=` keyword contract as noop_embedding above
 "apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
