@@ -10,6 +10,7 @@ does, because the Chroma vector ids are derived from it after the insert.
 
 from dataclasses import dataclass, field
 from datetime import UTC, date as date_type, datetime, timedelta
+from difflib import SequenceMatcher
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,6 +23,7 @@ from app.constants.memory import (
     AGENDA_ITEM_TTL_DAYS,
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
+    EPISODE_ENTRY_DEDUPE_RATIO,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
@@ -1565,6 +1567,24 @@ class TestJournalDaysFollowTheUsersTimezone:
         assert day == date_type(2026, 8, 26)
         assert entries[0]["time"] == "21:30"
 
+    async def test_journal_reads_and_writes_are_scoped_to_the_ingesting_user(
+        self, boundaries: Boundaries
+    ) -> None:
+        """The timezone lookup, both episode reads (retain's snapshot and the
+        dedupe re-read) and the append itself all key on the ingesting user —
+        any other id files this user's journal under someone else's."""
+        boundaries.get_user.return_value = SimpleNamespace(timezone="Asia/Kolkata")
+        boundaries.extract_memories.return_value = self._journal_batch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source_type=MemorySourceType.CONVERSATION,
+            now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
+        )
+        boundaries.get_user.assert_awaited_once_with(USER)
+        assert [call.args[0] for call in boundaries.get_episode.await_args_list] == [USER, USER]
+        assert boundaries.append_episode_entries.await_args.args[0] == USER
+
     async def test_invalid_timezone_falls_back_to_utc_without_failing_ingestion(
         self, boundaries: Boundaries
     ) -> None:
@@ -2189,7 +2209,6 @@ class TestJournalNearDuplicateGate:
     def _batch(entries: list[str]) -> ExtractedMemoryBatch:
         return ExtractedMemoryBatch(episode_entries=entries)
 
-    @pytest.mark.regression
     async def test_a_reworded_duplicate_of_a_journaled_entry_is_dropped(
         self, boundaries: Boundaries
     ) -> None:
@@ -2206,7 +2225,6 @@ class TestJournalNearDuplicateGate:
         assert [entry["text"] for entry in appended] == [self._NOVEL]
         assert result.episode_entries == 1
 
-    @pytest.mark.regression
     async def test_near_identical_entries_within_one_batch_collapse_to_one(
         self, boundaries: Boundaries
     ) -> None:
@@ -2238,7 +2256,38 @@ class TestJournalNearDuplicateGate:
         assert [entry["text"] for entry in appended] == entries
         assert result.episode_entries == 3
 
-    @pytest.mark.regression
+    def test_dedupe_compares_lowercased_whitespace_collapsed_text(self) -> None:
+        """The unit the gate compares: case and run-of-whitespace differences
+        never distinguish two entries, single spaces join the words back."""
+        assert (
+            ingestion._normalize_entry("  Discussed   GAIA's\ttraction Metrics ")
+            == "discussed gaia's traction metrics"
+        )
+
+    def test_a_similarity_exactly_at_the_dedupe_ratio_is_a_duplicate(self) -> None:
+        candidate = "a" * 17 + "xyz"
+        prior = "a" * 18 + "bc"
+        # This pair sits exactly ON the threshold (2*17 matching / 40 chars).
+        assert SequenceMatcher(None, candidate, prior).ratio() == EPISODE_ENTRY_DEDUPE_RATIO
+        assert ingestion._is_near_duplicate(candidate, [prior]) is True
+
+    async def test_a_stored_entry_without_text_never_masks_new_entries(
+        self, boundaries: Boundaries
+    ) -> None:
+        """A malformed stored entry (no ``text`` key) contributes an empty
+        string to the dedupe corpus — never a sentinel like ``"None"`` that
+        would silently swallow a real new entry restating it."""
+        boundaries.get_episode.return_value = make_episode(entries=[{"time": "10:00"}])
+        boundaries.extract_memories.return_value = self._batch(["None", "xxxx"])
+
+        result = await retain(
+            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+        )
+
+        appended = boundaries.append_episode_entries.await_args.args[2]
+        assert [entry["text"] for entry in appended] == ["None", "xxxx"]
+        assert result.episode_entries == 2
+
     async def test_a_fully_deduped_batch_appends_nothing(self, boundaries: Boundaries) -> None:
         boundaries.get_episode.return_value = make_episode(
             entries=[{"time": "10:00", "text": self._EXISTING}]

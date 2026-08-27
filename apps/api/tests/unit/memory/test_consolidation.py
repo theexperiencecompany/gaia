@@ -278,6 +278,20 @@ class TestVerificationPass:
 
         assert "## Identity" in boundaries.update_document.await_args.args[2]
 
+    async def test_an_indented_heading_survives_a_struck_verdict(
+        self, boundaries: MagicMock
+    ) -> None:
+        """The heading guard reads the line PAST its indentation — a nested
+        heading the model both indented and struck is still structure and must
+        stay, indentation intact."""
+        doc = "# About\n  ## Identity\n- a supported line"
+        boundaries.rewrite.return_value = doc
+        boundaries.verify.return_value = VerifiedDocument(content=doc, struck=["## Identity"])
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        assert "  ## Identity" in boundaries.update_document.await_args.args[2]
+
     async def test_the_source_facts_are_what_the_check_is_given(
         self, boundaries: MagicMock
     ) -> None:

@@ -75,3 +75,37 @@ class TestLocalToday:
         ):
             clock.now.return_value = fixed
             assert await user_time.local_today(USER) == date(2026, 8, 26)
+
+
+@pytest.mark.unit
+class TestRepositoryFailureFallsBackToUTC:
+    async def test_a_repository_error_resolves_to_utc_instead_of_raising(self) -> None:
+        """The repository raises for a malformed user id (bson InvalidId) and
+        for infra failures; timezone resolution is enrichment, so a lookup
+        failure must degrade to UTC — raising here crashed every retain in the
+        real-infra suite, whose synthetic user ids are not ObjectIds."""
+        with patch.object(
+            user_time.user_repository, "get", AsyncMock(side_effect=ValueError("bad id"))
+        ):
+            tz = await user_time.resolve_user_timezone("test-mem-notanobjectid")
+
+        assert tz == user_time.Timezone.utc()
+
+    async def test_the_degraded_lookup_is_visible_in_the_wide_event(self) -> None:
+        """Failing open must not fail silent: the fallback warns with the
+        event name and the structured fields (user, error type, message) that
+        make a broken timezone preference diagnosable from the wide event."""
+        with (
+            patch.object(
+                user_time.user_repository, "get", AsyncMock(side_effect=ValueError("bad id"))
+            ),
+            patch.object(user_time, "log") as mock_log,
+        ):
+            await user_time.resolve_user_timezone("test-mem-notanobjectid")
+
+        mock_log.warning.assert_called_once_with(
+            "memory_user_timezone_lookup_failed",
+            user_id="test-mem-notanobjectid",
+            error_type="ValueError",
+            error="bad id",
+        )

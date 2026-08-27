@@ -326,7 +326,7 @@ async def _rerank_and_boost(
     rank_fallback = [1.0 - (index / total) for index in range(total)]
     cosines = [ann_similarity.get(str(row.id)) for row in candidates]
     known = [value for value in cosines if value is not None]
-    top_cosine = max(known) if known else 0.0
+    top_cosine = max(known) if known else 0.0  # pragma: no mutate — dead else: never read
     retrieval_norm = [
         ((cosine / top_cosine) if top_cosine > 0 else 0.0)
         if cosine is not None
@@ -374,7 +374,7 @@ def _cap_weak_results(scored: list[_ScoredCandidate]) -> list[tuple[MemoryRecord
 
 def _sigmoid(logit: float) -> float:
     """Calibrated 0-1 relevance from a cross-encoder logit (numerically stable)."""
-    if logit >= 0:
+    if logit >= 0:  # pragma: no mutate — at 0 both branches yield exactly 0.5
         return 1.0 / (1.0 + math.exp(-logit))
     exp_logit = math.exp(logit)
     return exp_logit / (1.0 + exp_logit)

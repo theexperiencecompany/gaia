@@ -51,6 +51,8 @@ class TestGetCoreContextLocalDay:
         self, seams: SimpleNamespace
     ) -> None:
         await context.get_core_context(USER)
+        # "Today" comes from THIS user's stored timezone, not someone else's.
+        seams.get_user.assert_awaited_once_with(USER)
         assert seams.episodes.await_args.args == (
             USER,
             date_type(2026, 6, 30),

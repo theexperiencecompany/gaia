@@ -10,6 +10,7 @@ import math
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
+from freezegun import freeze_time as _freeze_time
 import pytest
 
 from app.constants.memory import (
@@ -47,8 +48,6 @@ from app.memory.retrieval import (
     _recency_boost,
     _rerank_and_boost,
     _rrf_fuse,
-    _ScoredCandidate,
-    _sigmoid,
     _tokenize,
     invalidate_recall_cache,
     recall,
@@ -58,6 +57,14 @@ from app.memory.retrieval import (
 from app.models.memory_db_models import MemoryRecord
 
 USER = "507f1f77bcf86cd799439011"
+
+
+def freeze_time(*args, **kwargs):
+    """freeze_time that skips transformers — its module-restore walk trips on
+    the library's lazy attributes (same workaround as the worker lifecycle
+    tests)."""
+    kwargs.setdefault("ignore", ["transformers"])
+    return _freeze_time(*args, **kwargs)
 
 
 def make_row(
@@ -137,26 +144,39 @@ class TestSigmoid:
     # regardless of what else is in the pool) and gap-preserving.
 
     def test_zero_logit_is_the_midpoint(self) -> None:
-        assert _sigmoid(0.0) == pytest.approx(0.5)
+        assert retrieval._sigmoid(0.0) == pytest.approx(0.5)
 
     def test_is_strictly_monotonic(self) -> None:
-        assert _sigmoid(-5.0) < _sigmoid(-1.0) < _sigmoid(0.0) < _sigmoid(1.0) < _sigmoid(5.0)
+        assert (
+            retrieval._sigmoid(-5.0)
+            < retrieval._sigmoid(-1.0)
+            < retrieval._sigmoid(0.0)
+            < retrieval._sigmoid(1.0)
+            < retrieval._sigmoid(5.0)
+        )
 
     def test_stays_within_the_unit_interval(self) -> None:
         for logit in (-12.0, -3.0, 0.0, 3.0, 12.0):
-            assert 0.0 < _sigmoid(logit) < 1.0
+            assert 0.0 < retrieval._sigmoid(logit) < 1.0
 
     def test_a_thin_raw_gap_stays_thin(self) -> None:
         # Min-max would stretch 2.01 vs 2.00 to 1.0 vs 0.0; the sigmoid keeps
         # near-identical logits at near-identical relevance.
-        assert _sigmoid(2.01) - _sigmoid(2.00) < 0.01
+        assert retrieval._sigmoid(2.01) - retrieval._sigmoid(2.00) < 0.01
 
     def test_is_symmetric_around_zero(self) -> None:
-        assert _sigmoid(3.0) + _sigmoid(-3.0) == pytest.approx(1.0)
+        assert retrieval._sigmoid(3.0) + retrieval._sigmoid(-3.0) == pytest.approx(1.0)
 
     def test_extreme_logits_saturate_without_overflow(self) -> None:
-        assert _sigmoid(1000.0) == pytest.approx(1.0)
-        assert _sigmoid(-1000.0) == pytest.approx(0.0)
+        assert retrieval._sigmoid(1000.0) == pytest.approx(1.0)
+        assert retrieval._sigmoid(-1000.0) == pytest.approx(0.0)
+
+    def test_each_side_of_zero_matches_the_closed_form_exactly(self) -> None:
+        # The two stable branches are algebraically equal but not bit-equal
+        # (e.g. at ±0.03), so exact equality pins which closed form serves
+        # which side — this calibrated relevance feeds the blend verbatim.
+        assert retrieval._sigmoid(0.03) == 1.0 / (1.0 + math.exp(-0.03))
+        assert retrieval._sigmoid(-0.03) == math.exp(-0.03) / (1.0 + math.exp(-0.03))
 
 
 # ---------------------------------------------------------------------------
@@ -291,8 +311,10 @@ def test_elapsed_ms_is_non_negative_integer() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _cand(base: float, content: str = "c", *, score: float | None = None) -> _ScoredCandidate:
-    return _ScoredCandidate(
+def _cand(
+    base: float, content: str = "c", *, score: float | None = None
+) -> retrieval._ScoredCandidate:
+    return retrieval._ScoredCandidate(
         row=make_row(content), base=base, score=base if score is None else score, confident=True
     )
 
@@ -353,7 +375,7 @@ class TestDropBelowRelevance:
 class TestCapWeakResults:
     def test_confident_results_are_never_capped(self) -> None:
         scored = [
-            _ScoredCandidate(
+            retrieval._ScoredCandidate(
                 row=make_row(f"c{i}"), base=1.0 - i / 100, score=1.0 - i / 100, confident=True
             )
             for i in range(MAX_WEAK_RESULTS + 5)
@@ -362,7 +384,7 @@ class TestCapWeakResults:
 
     def test_weak_results_are_capped_at_the_limit(self) -> None:
         scored = [
-            _ScoredCandidate(
+            retrieval._ScoredCandidate(
                 row=make_row(f"w{i}"), base=1.0 - i / 100, score=1.0 - i / 100, confident=False
             )
             for i in range(MAX_WEAK_RESULTS + 5)
@@ -371,18 +393,18 @@ class TestCapWeakResults:
 
     def test_weak_cap_does_not_consume_the_confident_budget(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row("w1"), base=0.9, score=0.9, confident=False),
-            _ScoredCandidate(row=make_row("s1"), base=0.8, score=0.8, confident=True),
-            _ScoredCandidate(row=make_row("w2"), base=0.7, score=0.7, confident=False),
-            _ScoredCandidate(row=make_row("s2"), base=0.6, score=0.6, confident=True),
+            retrieval._ScoredCandidate(row=make_row("w1"), base=0.9, score=0.9, confident=False),
+            retrieval._ScoredCandidate(row=make_row("s1"), base=0.8, score=0.8, confident=True),
+            retrieval._ScoredCandidate(row=make_row("w2"), base=0.7, score=0.7, confident=False),
+            retrieval._ScoredCandidate(row=make_row("s2"), base=0.6, score=0.6, confident=True),
         ]
         kept = _cap_weak_results(scored)
         assert [row.content for row, _ in kept] == ["w1", "s1", "w2", "s2"]
 
     def test_ranking_order_and_scores_survive_the_cap(self) -> None:
         scored = [
-            _ScoredCandidate(row=make_row("first"), base=0.9, score=0.9, confident=True),
-            _ScoredCandidate(row=make_row("second"), base=0.5, score=0.5, confident=True),
+            retrieval._ScoredCandidate(row=make_row("first"), base=0.9, score=0.9, confident=True),
+            retrieval._ScoredCandidate(row=make_row("second"), base=0.5, score=0.5, confident=True),
         ]
         assert _cap_weak_results(scored) == [
             (scored[0].row, 0.9),
@@ -630,6 +652,35 @@ class TestRerankAndBoost:
         assert scored[0].row.content == "first"
         assert scored[0].score > scored[1].score
 
+    async def test_base_blends_sigmoid_and_cosine_ratio_at_60_40(self) -> None:
+        # The pre-boost relevance contract, numerically:
+        #   base = 0.6 * sigmoid(logit) + 0.4 * (cosine / best cosine)
+        # Exact equality on purpose — the blend weights and the
+        # divide-by-the-pool's-best normalization are the recall contract.
+        best, other = make_row("best"), make_row("other")
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.25, -0.75])):
+            scored = await _rerank_and_boost(
+                "q",
+                [best, other],
+                ann_similarity={str(best.id): 0.8, str(other.id): 0.4},
+                fts_ids=set(),
+            )
+        by_content = {item.row.content: item for item in scored}
+        assert by_content["best"].base == 0.6 * (1.0 / (1.0 + math.exp(-1.25))) + 0.4 * (0.8 / 0.8)
+        assert by_content["other"].base == 0.6 * (
+            math.exp(-0.75) / (1.0 + math.exp(-0.75))
+        ) + 0.4 * (0.4 / 0.8)
+
+    async def test_a_zero_top_cosine_contributes_no_retrieval_signal(self) -> None:
+        # A degenerate pool whose best cosine is 0.0 must neither divide by it
+        # nor award free retrieval relevance: base is the sigmoid term alone.
+        row = make_row("flat")
+        with patch.object(retrieval, "rerank", new=AsyncMock(return_value=[1.0])):
+            scored = await _rerank_and_boost(
+                "q", [row], ann_similarity={str(row.id): 0.0}, fts_ids=set()
+            )
+        assert scored[0].base == 0.6 * (1.0 / (1.0 + math.exp(-1.0)))
+
     async def test_the_query_reaches_the_reranker_with_candidate_contents(self) -> None:
         rows = [make_row("alpha"), make_row("beta")]
         rerank = AsyncMock(return_value=[0.0, 0.0])
@@ -800,6 +851,26 @@ class TestBuildEntries:
         ):
             entries = await _build_entries([(child, 0.9)])
         fetch.assert_not_awaited()
+        assert entries[0].previous_content is None
+
+    async def test_parent_expiring_exactly_now_is_already_expired(self) -> None:
+        # forget_after == now is the deletion boundary: deleted content must
+        # not ride back into the prompt for even one instant past its expiry.
+        now = datetime(2026, 8, 27, 12, 0, 0, tzinfo=UTC)
+        parent = make_row("expired at this instant", forget_after=now)
+        child = make_row(
+            "successor", parent_id=parent.id, relation_type=MemoryRelationType.UPDATES.value
+        )
+        with (
+            freeze_time(now),
+            patch.object(
+                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+            ),
+            patch.object(
+                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+            ),
+        ):
+            entries = await _build_entries([(child, 0.9)])
         assert entries[0].previous_content is None
 
     async def test_missing_parent_row_leaves_previous_content_empty(self) -> None:
@@ -1210,6 +1281,20 @@ class TestRecallEpisodes:
         ):
             hits = await recall_episodes(USER, "entry", limit=2)
         assert len(hits) == 2
+
+    async def test_the_window_is_anchored_on_the_calling_users_local_day(self) -> None:
+        # The anchor must be THIS user's local today — another user's timezone
+        # (or a default one) shifts the window a day at timezone edges.
+        local_today = AsyncMock(return_value=date_type(2026, 3, 15))
+        with (
+            patch("app.memory.retrieval.local_today", local_today),
+            patch.object(
+                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=[])
+            ),
+            patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
+        ):
+            await recall_episodes(USER, "anything")
+        local_today.assert_awaited_once_with(USER)
 
     async def test_lookback_window_and_tokens_are_passed_to_the_store(self) -> None:
         from app.constants.memory import EPISODE_ENTRY_CANDIDATES, EPISODE_SEARCH_DAYS

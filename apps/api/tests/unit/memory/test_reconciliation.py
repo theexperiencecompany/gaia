@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 import uuid
 
+from freezegun import freeze_time as _freeze_time
 import pytest
 
 from app.constants.memory import MemoryKind, MemoryShelfLife, ReconcileOutcome
@@ -18,6 +19,16 @@ from app.models.memory_db_models import MemoryRecord
 
 USER = "user-1"
 EMBEDDING = [0.1, 0.2]
+
+
+def freeze_time(*args, **kwargs):
+    """freeze_time that skips transformers — its module-restore walk trips on
+    the library's lazy attributes (same workaround as the worker lifecycle
+    tests)."""
+    kwargs.setdefault("ignore", ["transformers"])
+    return _freeze_time(*args, **kwargs)
+
+
 NOW = datetime(2026, 8, 27, tzinfo=UTC)
 
 
@@ -101,6 +112,10 @@ class TestCandidateLiveness:
         (reconciled,) = results
         assert reconciled.outcome is ReconcileOutcome.NEW
         assert reconciled.target_memory_id is None
+        # The NEW verdict must carry the fact and its embedding through
+        # unchanged — ingestion stores exactly what is on the ReconciledFact.
+        assert reconciled.fact is fact
+        assert reconciled.embedding is EMBEDDING
         llm.assert_not_awaited()
 
     async def test_expired_candidate_yields_new_not_duplicate(self) -> None:
@@ -159,3 +174,85 @@ class TestCandidateLiveness:
         assert reconciled.outcome is ReconcileOutcome.UPDATES
         assert reconciled.target_memory_id == str(row.id)
         llm.assert_awaited_once()
+
+    async def test_candidate_expiring_exactly_now_is_already_dead(self) -> None:
+        """forget_after == now is the deletion boundary: at the very instant a
+        memory expires it must stop absorbing restatements."""
+        fact = make_fact()
+        row = make_row(content=fact.content, forget_after=NOW)
+
+        with freeze_time(NOW):
+            results, llm = await _reconcile_one(fact, row)
+
+        (reconciled,) = results
+        assert reconciled.outcome is ReconcileOutcome.NEW
+        assert reconciled.target_memory_id is None
+        llm.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "dead_row",
+        [
+            make_row(is_forgotten=True),
+            make_row(forget_after=NOW - timedelta(days=1)),
+        ],
+        ids=["forgotten", "expired"],
+    )
+    async def test_a_dead_first_neighbor_does_not_mask_a_live_duplicate(
+        self, dead_row: MemoryRecord
+    ) -> None:
+        """Skipping a dead neighbor must move on to the NEXT neighbor, not end
+        the scan: a live exact duplicate ranked behind a dead row still has to
+        collapse to DUPLICATE, or the store grows a copy per restatement."""
+        fact = make_fact()
+        live = make_row(content=fact.content)
+        llm = AsyncMock(return_value=ReconcileBatchResult())
+        with (
+            patch.object(
+                reconciliation.chroma_store,
+                "query_similar",
+                AsyncMock(return_value=[(str(dead_row.id), 0.99), (str(live.id), 0.98)]),
+            ),
+            patch.object(
+                reconciliation.pg_store,
+                "get_memories_by_ids",
+                AsyncMock(return_value=[dead_row, live]),
+            ),
+            patch.object(reconciliation, "reconcile_facts", llm),
+        ):
+            results = await reconciliation.reconcile(USER, [fact], [EMBEDDING])
+
+        (reconciled,) = results
+        assert reconciled.outcome is ReconcileOutcome.DUPLICATE
+        assert reconciled.target_memory_id == str(live.id)
+        llm.assert_not_awaited()
+
+    async def test_a_dead_shortcut_new_does_not_stop_reconciliation_of_later_facts(self) -> None:
+        """The all-neighbors-dead NEW shortcut settles ONE fact; the facts
+        after it must still get their own verdicts."""
+        first, second = make_fact("sam plays chess"), make_fact("sam likes green tea")
+        dead = make_row(content=first.content, is_forgotten=True)
+        live = make_row(content=second.content)
+        embeddings = [[0.1, 0.2], [0.3, 0.4]]
+        llm = AsyncMock(return_value=ReconcileBatchResult())
+        with (
+            patch.object(
+                reconciliation.chroma_store,
+                "query_similar",
+                AsyncMock(
+                    side_effect=[[(str(dead.id), 0.99)], [(str(live.id), 0.99)]],
+                ),
+            ),
+            patch.object(
+                reconciliation.pg_store,
+                "get_memories_by_ids",
+                AsyncMock(return_value=[dead, live]),
+            ),
+            patch.object(reconciliation, "reconcile_facts", llm),
+        ):
+            results = await reconciliation.reconcile(USER, [first, second], embeddings)
+
+        assert len(results) == 2
+        assert results[0].outcome is ReconcileOutcome.NEW
+        assert results[1].outcome is ReconcileOutcome.DUPLICATE
+        assert results[1].target_memory_id == str(live.id)
+        llm.assert_not_awaited()

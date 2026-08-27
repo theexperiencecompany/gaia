@@ -31,7 +31,6 @@ USER = "user-1"
 
 
 class TestGetEntitiesByType:
-    @pytest.mark.regression
     async def test_only_entities_with_a_live_memory_are_returned(self) -> None:
         """The register feeds the people.md rewrite, and an entity whose every
         supporting memory is gone (forgotten, superseded, expired) is exactly
@@ -45,9 +44,19 @@ class TestGetEntitiesByType:
 
         (stmt,) = _executed_stmts(session)
         sql, params = _compiled(stmt)
-        assert "JOIN memory_entity_links" in sql
-        assert "JOIN memories" in sql
+        # The join columns are the register's meaning: entity -> its links ->
+        # the memories those links support. Asserted ON-clause exact so a
+        # flipped or rewired join cannot pass as "some join happened".
+        assert "JOIN memory_entity_links ON memory_entity_links.entity_id = memory_entities.id" in (
+            sql
+        )
+        assert "JOIN memories ON memories.id = memory_entity_links.memory_id" in sql
         assert "memories.is_latest IS true" in sql
         assert "memories.is_forgotten IS false" in sql
         assert "memories.forget_after IS NULL OR memories.forget_after >" in sql
+        # One row per entity however many live memories support it, in the
+        # alphabetical order the people.md register renders.
+        assert sql.startswith("SELECT DISTINCT ")
+        assert sql.rstrip().endswith("ORDER BY memory_entities.name")
+        assert params["user_id_1"] == USER
         assert params["entity_type_1"] == "person"
