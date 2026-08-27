@@ -26,7 +26,9 @@ if [ -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" ]; then
 fi
 # Shared-services namespace left by an interrupted job.
 S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
-[ -x "$S" ] && bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
+# Only when this index actually prepared a namespace (the env file is the marker):
+# a reset is ~10-15s of docker execs, and it was running on every job, twice.
+[ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
 # Stale per-index env file so a new job cannot read old ports.
 rm -f "/tmp/gaia-test-services-${IDX}.env"
 # Persistent workspace: actions/checkout runs with clean: false on this box,

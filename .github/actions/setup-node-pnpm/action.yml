@@ -62,10 +62,22 @@ runs:
       # On self-hosted the persisted tree is usually complete, so this is a
       # verification pass; --prefer-offline keeps it off the network when the
       # store already has everything.
+      # Self-hosted: node_modules persists in the workspace. When the lockfile
+      # hash matches the marker the previous install left, the tree is by
+      # construction what pnpm would produce — skip the ~15s verify pass.
       run: |
+        set -euo pipefail
+        KEY="$(sha256sum pnpm-lock.yaml | cut -c1-16)"
+        MARK="node_modules/.gaia-installed-$KEY"
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -d node_modules/.pnpm ]; then
+          echo "node_modules already installed for lockfile $KEY — skipping pnpm install"
+          exit 0
+        fi
         echo "::group::pnpm install"
         pnpm install --frozen-lockfile --prefer-offline
         echo "::endgroup::"
+        rm -f node_modules/.gaia-installed-* 2>/dev/null || true
+        touch "$MARK"
 
     - name: Set NX_CLOUD_ACCESS_TOKEN
       if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''

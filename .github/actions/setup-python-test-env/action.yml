@@ -110,7 +110,19 @@ runs:
       # --no-build (Sonar S8541) is impossible: pysher ships no wheel in any
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
-      run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
+      # Self-hosted: .venv persists in the workspace; skip the sync when the
+      # uv.lock hash matches the marker the previous sync left (~10-20s).
+      run: |
+        set -euo pipefail
+        KEY="$(sha256sum uv.lock | cut -c1-16)"
+        MARK=".venv/.gaia-synced-$KEY"
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ]; then
+          echo ".venv already synced for uv.lock $KEY — skipping uv sync"
+          exit 0
+        fi
+        uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
+        rm -f .venv/.gaia-synced-* 2>/dev/null || true
+        touch "$MARK"
 
     - name: Wait for service containers (GitHub-hosted)
       if: inputs.services == 'true' && runner.environment != 'self-hosted'
