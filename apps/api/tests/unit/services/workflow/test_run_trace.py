@@ -18,7 +18,10 @@ from app.models.workflow_execution_models import (
     build_result_digest,
 )
 from app.services.workflow.run_trace import (
+    LAST_RUN_MAX_ARGS_CHARS,
     LAST_RUN_MAX_CALLS,
+    LAST_RUN_MAX_DIGEST_CHARS,
+    LAST_RUN_MAX_SUMMARY_CHARS,
     build_trace,
     render_last_run,
 )
@@ -160,6 +163,75 @@ class TestRenderLastRun:
         assert f"TOOL_{LAST_RUN_MAX_CALLS}" not in rendered
         # Whatever the run did, one previous run costs a bounded slice of context.
         assert len(rendered) < 40_000
+
+    def test_it_dates_an_unfinished_run_from_when_it_started(self) -> None:
+        """A run still in flight has no completed_at, and must not render None."""
+        execution = _execution([])
+        execution.completed_at = None
+
+        rendered = render_last_run(execution)
+
+        assert "at: 2026-08-27T09:00:00+00:00" in rendered
+        assert "None" not in rendered
+
+    def test_it_prefers_when_the_run_finished_over_when_it_started(self) -> None:
+        rendered = render_last_run(_execution([]))
+
+        assert "at: 2026-08-27T09:05:00+00:00" in rendered
+        assert "09:00:00" not in rendered
+
+    def test_a_call_with_no_result_gets_no_result_line(self) -> None:
+        """An empty digest must not render a bare arrow the agent reads as a result."""
+        rendered = render_last_run(
+            _execution([RecordedCall(tool_name="SEND", args={}, result_digest="")])
+        )
+
+        assert "SEND({})" in rendered
+        assert "->" not in rendered
+
+    def test_a_long_result_is_cut_to_the_prompt_budget_not_the_stored_one(self) -> None:
+        """The rendered digest has its own, much smaller bound than the record's."""
+        rendered = render_last_run(
+            _execution([RecordedCall(tool_name="FETCH", result_digest="z" * 3000)])
+        )
+
+        assert "z" * LAST_RUN_MAX_DIGEST_CHARS in rendered
+        assert "z" * (LAST_RUN_MAX_DIGEST_CHARS + 1) not in rendered
+
+    def test_long_args_are_cut_to_their_own_budget(self) -> None:
+        rendered = render_last_run(
+            _execution([RecordedCall(tool_name="FETCH", args={"blob": "y" * 2000})])
+        )
+
+        assert "y" * (LAST_RUN_MAX_ARGS_CHARS - 20) in rendered
+        assert "y" * (LAST_RUN_MAX_ARGS_CHARS + 1) not in rendered
+
+    def test_a_run_exactly_at_the_call_cap_reports_nothing_omitted(self) -> None:
+        """The boundary: 40 calls fit, so claiming "and 0 more" would be a lie."""
+        calls = [RecordedCall(tool_name=f"T{i}") for i in range(LAST_RUN_MAX_CALLS)]
+
+        rendered = render_last_run(_execution(calls))
+
+        assert "more calls" not in rendered
+        assert f"T{LAST_RUN_MAX_CALLS - 1}" in rendered
+
+    def test_one_call_past_the_cap_is_reported_as_omitted(self) -> None:
+        calls = [RecordedCall(tool_name=f"T{i}") for i in range(LAST_RUN_MAX_CALLS + 1)]
+
+        rendered = render_last_run(_execution(calls))
+
+        assert "... and 1 more calls" in rendered
+
+    def test_a_run_without_a_summary_renders_no_summary_line(self) -> None:
+        rendered = render_last_run(_execution([], summary=None))
+
+        assert "summary:" not in rendered
+
+    def test_a_long_summary_is_cut_to_its_budget(self) -> None:
+        rendered = render_last_run(_execution([], summary="s" * 5000))
+
+        assert "s" * LAST_RUN_MAX_SUMMARY_CHARS in rendered
+        assert "s" * (LAST_RUN_MAX_SUMMARY_CHARS + 1) not in rendered
 
 
 def test_reasoning_deltas_are_not_recorded_as_calls():
