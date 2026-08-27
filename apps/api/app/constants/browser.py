@@ -138,7 +138,14 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "in the task, call `request_human_takeover` and say which field is missing. "
     "The one exception is when the task itself says the run is a test or that dummy "
     "values are fine. Reporting a field as filled with a value you invented is a "
-    "failure, not a completion."
+    "failure, not a completion.\n"
+    # Measured on an Airtable form: three custom React dropdowns cost the agent
+    # four steps each by clicking them open and picking by eye, while the native
+    # actions read the option list and select in one step — it called them once.
+    "For any dropdown, select, combobox or multiple-choice control, call "
+    "`dropdown_options` to read the choices and `select_dropdown` to pick one. Do "
+    "not open it by clicking and choose by sight — that takes several steps and "
+    "mis-selects."
 )
 
 # Desktop viewport for the browser agent so pages render at a normal laptop

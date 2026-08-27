@@ -413,6 +413,21 @@ def test_the_task_preamble_forbids_inventing_field_values() -> None:
     assert "request_human_takeover" in BROWSER_TAKEOVER_PREAMBLE
 
 
+def test_the_task_preamble_routes_dropdowns_through_the_native_actions() -> None:
+    from app.constants.browser import BROWSER_TAKEOVER_PREAMBLE
+
+    assert "`dropdown_options`" in BROWSER_TAKEOVER_PREAMBLE
+    assert "`select_dropdown`" in BROWSER_TAKEOVER_PREAMBLE
+
+
+def test_the_tool_docs_say_each_call_is_a_fresh_browser() -> None:
+    """The executor re-ran a whole form fill believing the previous session's
+    values were still on the page. The docs must not let it believe that."""
+    from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
+
+    assert "Each call is a fresh browser" in BROWSER_TASK
+
+
 async def test_run_configures_the_agent_from_the_runner_settings(patch_browser) -> None:
     from app.constants.browser import BROWSER_TAKEOVER_PREAMBLE
 

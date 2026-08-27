@@ -30,6 +30,11 @@ toward the goal. So:
 For Gmail/Google specifically, prefer the Gmail integration (OAuth) — Google
 blocks automated logins, so the browser is the wrong tool for reading mail.
 
+Each call is a fresh browser: nothing typed, selected or navigated in an
+earlier call is still there. A second call to "fix one field" or "also read X"
+starts over from a blank page, so a task must carry everything you need from
+that page in one go.
+
 Args:
     task (str): A clear, self-contained description of what to accomplish in the
         browser, including the target site and any specifics the user gave
