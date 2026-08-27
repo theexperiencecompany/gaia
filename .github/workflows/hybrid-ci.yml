@@ -71,6 +71,7 @@ jobs:
           runner-label: gaia-home
           flavour: standard
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
       - name: Select docker runner (image builds)
         id: pick-docker
@@ -79,6 +80,7 @@ jobs:
           runner-label: gaia-home
           flavour: docker
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
       - name: Summary
         run: |
