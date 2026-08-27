@@ -136,6 +136,8 @@ jobs:
   # and we echo the provenance so the experiment can measure it.
   probe:
     name: Probe execution (${{ needs.select-runner.outputs.runner_label }})
+    # Diagnostic only — it held a runner instance on every PR for a 12s echo.
+    if: github.event_name == 'workflow_dispatch'
     needs: [select-runner]
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -212,7 +214,11 @@ jobs:
           # node: only the device-bridge e2e test (integration slice) drives the
           # real `gaia bridge` CLI via tsx; the unit slice skips the Node setup.
           - { name: unit, paths: "tests/unit tests/contracts tests/meta", node: "false" }
-          - { name: integration, paths: "tests/integration tests/e2e tests/stress", node: "true" }
+          # Long tests first. py-spy sampling of this lane showed 47% of worker
+          # time idle in the scheduler tail: the slice ends on a few 5-15s
+          # e2e/memory tests while the other workers sit finished. Handing
+          # those out first makes the tail out of quick tests instead.
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration", node: "true" }
     steps:
       - uses: actions/checkout@v7
         with:
