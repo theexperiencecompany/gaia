@@ -50,6 +50,11 @@ class BrowserAction(BaseModel):
     # the page, so a caption states what was really touched, not what the model
     # claimed it would touch.
     target: str | None = None
+    # Where on the step's screenshot this action acted, as (x, y) fractions of the
+    # viewport in [0, 1] — so the UI can draw a pulse at the click/type point
+    # without knowing the frame's pixel size. None for actions with no on-screen
+    # target (navigate, scroll, wait) or a target scrolled out of view.
+    point: tuple[float, float] | None = None
 
 
 class BrowserActionOutput(BaseModel):

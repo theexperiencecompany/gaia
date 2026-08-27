@@ -104,6 +104,35 @@ def _element_label(state: BrowserStateSummary, index: object) -> str | None:
         return None
 
 
+def _element_viewport_fraction(
+    state: BrowserStateSummary, index: object
+) -> tuple[float, float] | None:
+    """The element's centre as (x, y) fractions of the viewport, for the UI pulse.
+
+    Page coordinates minus the scroll offset give the viewport position; dividing
+    by the viewport size makes it resolution-independent, so the same fraction
+    lands correctly whatever size the screenshot is rendered at. Returns None when
+    the element has no box or its centre is off-screen (nothing to point at).
+    """
+    if not isinstance(index, int):
+        return None
+    selector_map = getattr(getattr(state, "dom_state", None), "selector_map", None) or {}
+    node = selector_map.get(index)
+    rect = getattr(node, "absolute_position", None)
+    page = getattr(state, "page_info", None)
+    if rect is None or page is None:
+        return None
+    viewport_w = getattr(page, "viewport_width", 0)
+    viewport_h = getattr(page, "viewport_height", 0)
+    if not viewport_w or not viewport_h:
+        return None
+    fx = (rect.x + rect.width / 2 - getattr(page, "scroll_x", 0)) / viewport_w
+    fy = (rect.y + rect.height / 2 - getattr(page, "scroll_y", 0)) / viewport_h
+    if not (0.0 <= fx <= 1.0 and 0.0 <= fy <= 1.0):
+        return None
+    return (round(fx, 4), round(fy, 4))
+
+
 def _extract_actions(
     agent_output: AgentOutput, state: BrowserStateSummary | None = None
 ) -> list[BrowserAction]:
@@ -115,7 +144,14 @@ def _extract_actions(
         for action_name, params in dumped.items():
             inputs = params if isinstance(params, dict) else {}
             target = _element_label(state, inputs.get("index")) if state is not None else None
-            actions.append(BrowserAction(name=action_name, inputs=inputs, target=target))
+            point = (
+                _element_viewport_fraction(state, inputs.get("index"))
+                if state is not None
+                else None
+            )
+            actions.append(
+                BrowserAction(name=action_name, inputs=inputs, target=target, point=point)
+            )
     return actions
 
 

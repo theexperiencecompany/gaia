@@ -417,6 +417,41 @@ def test_init_derives_timeouts_and_starts_from_a_clean_slate() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_element_viewport_fraction_maps_centre_minus_scroll_to_a_0_1_fraction() -> None:
+    """The pulse point is the element centre in viewport space, normalised.
+
+    A control at page-y 900 with the page scrolled 800 sits at viewport-y 100;
+    over an 800px viewport that is 0.125 down. Normalising means the UI needs no
+    pixel size to place the pulse.
+    """
+    node = SimpleNamespace(
+        absolute_position=SimpleNamespace(x=200.0, y=900.0, width=100.0, height=40.0)
+    )
+    state = SimpleNamespace(
+        dom_state=SimpleNamespace(selector_map={5: node}),
+        page_info=SimpleNamespace(
+            viewport_width=1280, viewport_height=800, scroll_x=0, scroll_y=800
+        ),
+    )
+    fx, fy = runner_mod._element_viewport_fraction(state, 5)
+    assert fx == round((200 + 50) / 1280, 4)
+    assert fy == round((900 + 20 - 800) / 800, 4)
+
+
+def test_element_viewport_fraction_is_none_when_the_centre_is_off_screen() -> None:
+    # A target scrolled far above the viewport has nothing to point at.
+    node = SimpleNamespace(
+        absolute_position=SimpleNamespace(x=10.0, y=10.0, width=20.0, height=20.0)
+    )
+    state = SimpleNamespace(
+        dom_state=SimpleNamespace(selector_map={1: node}),
+        page_info=SimpleNamespace(
+            viewport_width=1280, viewport_height=800, scroll_x=0, scroll_y=5000
+        ),
+    )
+    assert runner_mod._element_viewport_fraction(state, 1) is None
+
+
 async def test_on_step_end_reports_outputs_keyed_to_the_step_just_executed() -> None:
     """Browser-Use runs on_step_end AFTER the actions, so results exist there.
 

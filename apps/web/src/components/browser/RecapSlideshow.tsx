@@ -12,6 +12,8 @@ export interface RecapShot {
   url: string;
   /** What the agent was doing at this step ("Searching for …"). */
   caption?: string | null;
+  /** Where the agent acted on this frame, as [x, y] fractions of the viewport. */
+  point?: [number, number] | null;
 }
 
 /**
@@ -84,6 +86,19 @@ export function RecapSlideshow({
             className="h-auto w-full"
             unoptimized
           />
+          {current.point && (
+            <span
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: `${current.point[0] * 100}%`,
+                top: `${current.point[1] * 100}%`,
+              }}
+              aria-hidden
+            >
+              <span className="absolute inset-0 -m-3 animate-ping rounded-full bg-[#00bbff]/40" />
+              <span className="block size-3 rounded-full bg-[#00bbff] shadow-[0_0_0_2px_rgba(9,9,11,0.9)]" />
+            </span>
+          )}
           <span className="pointer-events-none absolute right-2.5 top-2.5 flex size-7 items-center justify-center rounded-full bg-black/45 text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100">
             <FullScreenIcon className="size-3.5" />
           </span>

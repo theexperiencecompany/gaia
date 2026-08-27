@@ -39,6 +39,8 @@ export interface BrowserAction {
   inputs: Record<string, unknown>;
   /** On-page text of the element this action targeted, resolved from the DOM. */
   target?: string | null;
+  /** Where this action acted, as [x, y] fractions of the viewport in [0, 1]. */
+  point?: [number, number] | null;
 }
 
 export interface BrowserStepSnapshot {
