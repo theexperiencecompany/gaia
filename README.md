@@ -19,49 +19,27 @@ And when something needs you, it comes to you — on iMessage, WhatsApp, Telegra
 
 ## Why GAIA
 
-Triaging mail. Prepping for a meeting. Chasing an update. Copying a task from one tool into another. Writing the same status post every Friday.
+Your day is full of work that isn't your job — triaging mail, prepping for meetings, chasing updates, copying tasks between tools. Each one costs two minutes. Together they cost your afternoon.
 
-None of it is your job. Each one costs two minutes. Together they cost your afternoon — and the focus you needed for the thing you were actually hired to do.
-
-**GAIA does that whole layer for you.** Not by giving you another app to drive, but by doing the work and telling you when it's done.
+**GAIA does that layer for you.** It does the work, then tells you when it's done.
 
 ## Features
 
-- **Proactive by default** — connect a tool and jobs start running on their own. No setup screen, no template to pick.
-- **Workflows** — scheduled or event-driven automations across your tools. Describe one in plain English and GAIA writes the steps.
-- **Memory** — remembers the people, projects and preferences that come up, and learns as you talk. Browse it as a list or a graph, and edit, export or delete any of it.
-- **Voice** — real-time, interruptible calls, plus a **"Hey GAIA"** wake word that runs [entirely on your device](libs/wake-word).
-- **Everywhere you already are** — iMessage, WhatsApp, Telegram, Slack and Discord, plus web, desktop and mobile. One account, one memory.
-- **32 integrations, or anything with an MCP server** — one-click OAuth for the popular ones, and no fixed catalogue beyond that.
-- **Runs real code** — a sandboxed Linux workspace per user. It can analyse a dataset and hand back a PDF, deck or spreadsheet.
-- **Deep research** — multi-source web research, not a single search box.
-- **37 built-in skills** — on the open [Agent Skills spec](https://agentskills.io), plus any you install from GitHub or write yourself.
-- **One workspace** — inbox, calendar, todos, workflows and notifications in a single app, with everything GAIA did while you were away waiting for approval.
-- **Yours to run** — open source and self-hostable, with your own keys, your own models and no usage caps.
+- **Proactive** — connect a tool and jobs start running on their own, no setup
+- **Workflows** — automations on a schedule or an event, written for you from plain English
+- **Memory** — learns people, projects and preferences as you talk; edit, export or delete any of it
+- **Voice** — real-time calls, plus a "Hey GAIA" wake word that runs [on your device](libs/wake-word)
+- **Multi-platform** — iMessage, WhatsApp, Telegram, Slack, Discord, web, desktop and mobile, on one account
+- **Integrations** — 32 services one click away, or anything with an MCP server
+- **Code execution** — a sandboxed workspace that hands back real PDFs, decks and spreadsheets
+- **Deep research** — multi-source web research with structured output
+- **Skills** — 37 built in, on the open [Agent Skills spec](https://agentskills.io); install more from GitHub
+- **One workspace** — inbox, calendar, todos and notifications in a single app
+- **Self-hostable** — open source, your keys, your models, no caps
 
-## Proactivity
+## Workflows
 
-GAIA does the work before you ask, then tells you. This is the part that makes it an assistant rather than a chat window.
-
-### A day with GAIA
-
-| | |
-| --- | --- |
-| **08:00** | Your inbox is already triaged. Newsletters and receipts filtered out, the three things that need you pulled to the top, todos created for each. One briefing waiting. |
-| **08:50** | A brief lands for your 9am — who you're meeting, what you shipped together last, what's still open between you. |
-| **08:55** | Heads-up ten minutes out, join link attached. |
-| **11:20** | Your 2pm cancels. Your afternoon replans itself around what's still pending. |
-| **14:00** | Drafts are waiting on the four emails you've been avoiding. You read them, you approve, they send. |
-| **17:30** | The Friday digest is in #eng-updates — merged PRs, closed issues, channel highlights. You didn't write it. |
-| **22:40** | "Anything from the investor?" It's been watching all week. The text arrives the moment it lands. |
-
-That's a normal day. You didn't open GAIA once.
-
-**$1 a day to never do busywork again.**
-
-### Built-in workflows
-
-The other half, and the reason GAIA isn't a chatbot. These are **workflows** — jobs it runs on its own — and a few switch on by themselves the moment you connect a tool.
+GAIA does the work before you ask, then tells you. A few workflows switch on by themselves the moment you connect a tool:
 
 | Workflow | Turns on with | What it does |
 | --- | --- | --- |
@@ -70,22 +48,16 @@ The other half, and the reason GAIA isn't a chatbot. These are **workflows** —
 | **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
 | **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 
-You'll never open a settings screen for those.
-
-### Custom workflows
-
-Build your own from the **Workflows** page:
+You'll never open a settings screen for those. Build your own from the **Workflows** page:
 
 - **Describe it in plain English** — GAIA writes the steps for you
 - **Run it on a schedule** — "every weekday at 9am"
 - **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
 - **Chain steps across tools** — fetch, summarise, post to Slack
 
-People automate email triage and follow-ups, meeting briefings, action items out of transcripts, todo creation and replanning, Friday digests pulled from GitHub, Linear and Slack, competitor research into a table, and the spreadsheet clean-up they'd otherwise do by hand at 6pm.
-
 ## Examples
 
-The day above runs on its own. This is what you ask it directly.
+Workflows run on their own. This is what you ask it directly.
 
 - **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
 - **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
