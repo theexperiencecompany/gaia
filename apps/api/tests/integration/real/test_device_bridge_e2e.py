@@ -59,6 +59,12 @@ _CLI_TSX = CLI_DIR / "node_modules" / ".bin" / "tsx"
 _ROOT_TSX = CLI_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
 TSX_BIN = _CLI_TSX if _CLI_TSX.exists() else _ROOT_TSX
 EVERYTHING_PACKAGE = "@modelcontextprotocol/server-everything"
+# Pinned: an unpinned spec makes npx re-resolve `latest` against
+# registry.npmjs.org on every run even when the package is already in its
+# cache — 15-19s on the CI box's residential uplink under load. To bump, run
+# `npx -y @modelcontextprotocol/server-everything@<new> stdio </dev/null` once
+# and set the new version here.
+EVERYTHING_VERSION = "2026.8.18"
 
 
 @cache
@@ -236,6 +242,21 @@ class BridgeDaemon:
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
 
+def _cached_everything_entry(cache_dir: str) -> Path | None:
+    """The pinned server's entry script if npx has already installed it, else None."""
+    for package in sorted(Path(cache_dir).glob(f"_npx/*/node_modules/{EVERYTHING_PACKAGE}")):
+        manifest = json.loads((package / "package.json").read_text())
+        if manifest["version"] != EVERYTHING_VERSION:
+            continue
+        # `bin` is either a string or a {name: path} map; this package ships one bin.
+        bin_field = manifest["bin"]
+        relative = bin_field if isinstance(bin_field, str) else next(iter(bin_field.values()))
+        entry = package / relative
+        if entry.is_file():
+            return entry
+    return None
+
+
 @pytest.fixture(scope="session")
 def everything_server_cached() -> Path:
     """Fetch the third-party MCP server once, before any test, and resolve it.
@@ -246,33 +267,39 @@ def everything_server_cached() -> Path:
     transport and exits 0 on its own, so the package is installed by exactly the
     command a user would run. What the tests then spawn is the entry script this
     resolves out of that install — see ``everything_server``.
+
+    A warm cache (the persistent home runner, a developer laptop) skips the npx
+    step entirely: the pinned version is already on disk, and npx would only
+    spend the time re-resolving the spec against the registry.
     """
     cache_dir = _npm_cache_dir()
-    # Generous: this is setup, and on a cold runner it is a real npm download.
-    warm = subprocess.run(
-        ["npx", "-y", EVERYTHING_PACKAGE, "stdio"],
-        stdin=subprocess.DEVNULL,
-        env={**os.environ, "npm_config_cache": cache_dir},
-        capture_output=True,
-        text=True,
-        timeout=180.0,
-        check=False,
+    entry = _cached_everything_entry(cache_dir)
+    if entry is None:
+        # Generous: this is setup, and on a cold runner it is a real npm download.
+        warm = subprocess.run(
+            [
+                "npx",
+                "-y",
+                "--prefer-offline",
+                f"{EVERYTHING_PACKAGE}@{EVERYTHING_VERSION}",
+                "stdio",
+            ],
+            stdin=subprocess.DEVNULL,
+            env={**os.environ, "npm_config_cache": cache_dir},
+            capture_output=True,
+            text=True,
+            timeout=180.0,
+            check=False,
+        )
+        assert warm.returncode == 0, (
+            f"could not install {EVERYTHING_PACKAGE}@{EVERYTHING_VERSION} "
+            f"(rc={warm.returncode}): {warm.stderr}"
+        )
+        entry = _cached_everything_entry(cache_dir)
+    assert entry is not None, (
+        f"{EVERYTHING_PACKAGE}@{EVERYTHING_VERSION} not found under {cache_dir}/_npx "
+        "after a successful fetch"
     )
-    assert warm.returncode == 0, (
-        f"could not install {EVERYTHING_PACKAGE} (rc={warm.returncode}): {warm.stderr}"
-    )
-
-    installs = sorted(Path(cache_dir).glob(f"_npx/*/node_modules/{EVERYTHING_PACKAGE}"))
-    assert installs, (
-        f"{EVERYTHING_PACKAGE} not found under {cache_dir}/_npx after a successful fetch"
-    )
-    package = installs[-1]
-    manifest = json.loads((package / "package.json").read_text())
-    # `bin` is either a string or a {name: path} map; this package ships one bin.
-    bin_field = manifest["bin"]
-    relative = bin_field if isinstance(bin_field, str) else next(iter(bin_field.values()))
-    entry = package / relative
-    assert entry.is_file(), f"resolved entry script does not exist: {entry}"
     return entry
 
 

@@ -221,6 +221,11 @@ jobs:
           # Static worker shares: the lanes start together, so a runtime probe of
           # "workers already running" sees zero on every lane and each took 16 —
           # 32+ workers on 16 threads (8 physical cores). Shares sum to the box.
+          # integration 4 / unit-b 7 / unit-a 5 (2026-08-28, box idle, -n 6..16):
+          # the integration slice's wall is FLAT from 6 to 16 workers (58-66 s,
+          # 53-58 % of its allotted threads — it waits on pg/mongo/chroma/sidecar)
+          # while each extra worker burns ~38 CPU-s of collection + imports, so
+          # its share goes to unit-b, whose wall is ~30 s fixed + ~270 CPU-s / n.
           # unit is two slices on two runner instances: xdist re-collects the
           # whole slice in EVERY worker (measured 20 s for 13.2k tests, CPU-bound),
           # so 10 workers on one slice burn ~200 s of CPU on collection alone.
@@ -228,12 +233,12 @@ jobs:
           # contention with integration off a single instance. services/agents/
           # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
           - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
-          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "5", serial: "false" }
+          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
           # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "false", services: "true", workers: "6", serial: "false" }
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "false", services: "true", workers: "4", serial: "false" }
           # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
           # Postgres (clean_bridge_tables); under xdist another worker's fixture
           # wipes its rows mid-test ("Refresh token is invalid"). Serial, in
