@@ -45,7 +45,12 @@ LINT_RUNNER_LABELS="${LINT_RUNNER_LABELS:-gaia-home-lint,16core,home-lab}"
 RUNNER_GROUP="${RUNNER_GROUP:-default}"
 INSTALL_ROOT="${RUNNER_INSTALL_ROOT:-/home/aryan}"
 LEGACY_DIR="${LEGACY_RUNNER_DIR:-/home/aryan/actions-runner-gaia}"
-RUNNER_VERSION="${RUNNER_VERSION:-2.336.0}"
+# 2.335.1, not latest: 2.336.0 wedges the worker around process spawn/exit
+# (actions/runner#4570; measured here 2026-08-28 as jobs stuck "in_progress"
+# after their step process had exited, both on cancel and on normal exit,
+# until the listener's 5-minute timeout or a unit restart). Self-update is
+# disabled below so the pin holds; bump deliberately after checking the issue.
+RUNNER_VERSION="${RUNNER_VERSION:-2.335.1}"
 RUNNER_ARCH="${RUNNER_ARCH:-x64}"
 LOCAL_CACHE="${RUNNER_LOCAL_CACHE:-/home/aryan/ci-cache}"
 
@@ -210,6 +215,7 @@ ENVFILE
     --labels "$labels" \
     --runnergroup "$RUNNER_GROUP" \
     --work "_work" \
+    --disableupdate \
     --unattended \
     --replace 2>&1 | tail -n 5
 
