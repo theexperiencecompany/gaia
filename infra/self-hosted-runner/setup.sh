@@ -30,7 +30,15 @@ set -euo pipefail
 
 REPO_URL="https://github.com/theexperiencecompany/gaia"
 REPO_SLUG="theexperiencecompany/gaia"
-RUNNER_COUNT="${RUNNER_COUNT:-12}"
+# 20 = 8 test runners (gaia-home) + 12 lint runners (gaia-home-lint). The
+# test pool matches the box: its lanes' xdist shares already sum to the 16
+# threads, so more test runners only add contention. The lint pool is the
+# opposite — Code Quality's 23 jobs are light (20-40 s, mostly one thread,
+# half of it I/O) and on a 4-runner pool queued up to 147 s each, pushing
+# the mutation shards (the long pole) to start at +190 s: wall 5.1 min for a
+# ~170 s dependency chain (run 33199775650). 12 lint runners start every job
+# within two waves. An idle runner costs ~100 MB.
+RUNNER_COUNT="${RUNNER_COUNT:-20}"
 # RUNNER_START lets a re-run add instances without re-registering the ones
 # already serving jobs: RUNNER_START=5 RUNNER_COUNT=6 registers only 5 and 6.
 RUNNER_START="${RUNNER_START:-1}"
