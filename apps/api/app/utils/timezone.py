@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone as _timezone, tzinfo as _tzinfo
 from enum import Enum
 import re
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.runnables import RunnableConfig
 
@@ -103,26 +103,35 @@ class Timezone:
         """
         if isinstance(raw, Timezone):
             return raw
-        if raw is None:
-            return None
         if isinstance(raw, _tzinfo):
             return cls(_canonical_from_tzinfo(raw), raw)
-        candidate = raw.strip()
+        candidate = (raw or "").strip()
         if not candidate:
             return None
         if candidate.upper() == "UTC":
             return cls.utc()
         if _OFFSET_RE.match(candidate):
-            hours = int(candidate[1:3])
-            minutes = int(candidate[4:6])
-            if hours > 23 or minutes > 59:
-                return None
-            sign = 1 if candidate[0] == "+" else -1
-            delta = timedelta(hours=hours, minutes=minutes)
-            return cls(candidate, _timezone(sign * delta))
+            return cls._from_offset(candidate)
+        return cls._from_zone_name(candidate)
+
+    @classmethod
+    def _from_offset(cls, candidate: str) -> Timezone | None:
+        """``±HH:MM`` → fixed-offset zone; ``None`` when out of range."""
+        hours = int(candidate[1:3])
+        minutes = int(candidate[4:6])
+        if hours > 23 or minutes > 59:
+            return None
+        sign = 1 if candidate[0] == "+" else -1
+        return cls(candidate, _timezone(sign * timedelta(hours=hours, minutes=minutes)))
+
+    @classmethod
+    def _from_zone_name(cls, candidate: str) -> Timezone | None:
+        """IANA name → zone; ``None`` when the tz database does not know it."""
         try:
             return cls(candidate, ZoneInfo(candidate))
-        except Exception:
+        except (ZoneInfoNotFoundError, ValueError):
+            # Unknown key or a key with a bad shape ("../x"): the caller treats
+            # None as "no usable zone" and its own log line says which input.
             return None
 
     @property

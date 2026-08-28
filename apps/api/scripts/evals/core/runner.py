@@ -733,10 +733,8 @@ def _finalize_experiment(
         project=suite.project,
         cases=cases,
         journal=journal,
-        scoring_metrics=scorers,
-        experiment_name=journal.dir.name,
-        tags=tags,
         replay=replay,
+        experiment=opiksink.Experiment(name=journal.dir.name, tags=tags, scoring_metrics=scorers),
     )
 
 

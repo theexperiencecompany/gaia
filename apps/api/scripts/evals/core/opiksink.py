@@ -11,6 +11,7 @@ Every write is keyed by ``CaseTrace.key`` (case + run), which is what lets
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 from http import HTTPStatus
@@ -167,15 +168,22 @@ def close_clients() -> None:
     _CLIENTS.clear()
 
 
+@dataclass(frozen=True)
+class Experiment:
+    """What to call the Opik experiment and how to score it."""
+
+    name: str
+    tags: list[str]
+    scoring_metrics: list[object]
+    nb_samples: int | None = None
+
+
 def finalize(
     project: str,
     cases: list[Case],
     journal: RunJournal,
-    scoring_metrics: list[object],
-    experiment_name: str,
-    tags: list[str],
     replay: Callable[[dict[str, object]], dict[str, object]],
-    nb_samples: int | None = None,
+    experiment: Experiment,
 ) -> object:
     """Evaluate the journal's stored outputs as an Opik experiment.
 
@@ -201,14 +209,14 @@ def finalize(
     result = evaluate(
         dataset=dataset,
         task=replay,
-        scoring_metrics=scoring_metrics,
-        experiment_name=experiment_name,
-        experiment_tags=tags,
-        nb_samples=nb_samples,
+        scoring_metrics=experiment.scoring_metrics,
+        experiment_name=experiment.name,
+        experiment_tags=experiment.tags,
+        nb_samples=experiment.nb_samples,
         task_threads=4,
         verbose=1,
     )
-    journal.update_meta(experiment_name=experiment_name)
+    journal.update_meta(experiment_name=experiment.name)
     return result
 
 
