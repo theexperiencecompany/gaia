@@ -301,8 +301,10 @@ jobs:
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/run-python-slice.sh
       # ── Record the map (master / dispatch only) ────────────────────────────
+      # !cancelled(): a lane with a red test still produced a valid file→test map,
+      # and a missing map makes every PR run the whole slice.
       - name: Record test impact map
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && !cancelled()
         working-directory: apps/api
         run: |
           mkdir -p ../../.test-impact-map
@@ -311,7 +313,7 @@ jobs:
             --out ../../.test-impact-map/test-impact-map-${{ matrix.slice.name }}.json \
             --sha "$GITHUB_SHA" --slice ${{ matrix.slice.name }}
       - name: Save test impact map
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && !cancelled()
         uses: actions/cache/save@v6
         with:
           path: .test-impact-map
