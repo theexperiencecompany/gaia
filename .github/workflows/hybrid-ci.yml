@@ -543,10 +543,148 @@ jobs:
           echo "workload=$WORKLOAD cpus=$CPUS runner=${{ needs.select-runner.outputs.runner_label }} adaptive=$ADAPTIVE" | tee -a "$GITHUB_STEP_SUMMARY"
           cat /tmp/bench.time | tail -n 50
 
+  # --- Test: harness tooling (runner-native, always) ----------------------
+  # Deliberately ungated. `tools/` belongs to no Nx project, so a PR touching
+  # only it leaves `has_python` false and every gated lane skips; `test-python`
+  # cannot cover it either, since it runs pytest from apps/api. Without this the
+  # custom lint rules and the sim stack's directive parser have no test gate at
+  # all. The suite is ~0.1s, so always-on costs nothing.
+  test-harness-tools:
+    needs: [select-runner, detect]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Run harness tooling tests
+        run: |
+          trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
+          echo "::group::pytest output"
+          uv run --no-project --with pytest --with defusedxml pytest tools/lints tools/llm-stub scripts/ci -q
+          echo "::endgroup::"
+          echo "### Harness tooling tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Harness tooling tests: OK (tools/lints + tools/llm-stub + scripts/ci)"
+
+  # --- Changelog sync check (always) --------------------------------------
+  # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
+  changelog-sync:
+    needs: [detect]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Regenerate changelog sub-pages
+        run: node docs/scripts/generate-changelog-pages.js
+      - name: Open fix PR if generated files are out of date
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if [ -z "$(git status --porcelain --untracked-files=all docs/release-notes/ docs/release-notes.mdx)" ]; then
+            echo "Changelog sub-pages are up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TARGET="$TARGET_REF"
+          FIX_BRANCH="fix/changelog-sync-${TARGET//\//-}"
+
+          git checkout -B "$FIX_BRANCH"
+          git add docs/release-notes/ docs/release-notes.mdx
+          git commit -m "chore(docs): regenerate changelog sub-pages"
+          git push --force origin "$FIX_BRANCH"
+
+          EXISTING_PR=$(gh pr list --head "$FIX_BRANCH" --base "$TARGET" --json url --jq '.[0].url')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --base "$TARGET" \
+              --head "$FIX_BRANCH" \
+              --title "chore(docs): regenerate changelog sub-pages" \
+              --body "$(printf 'Changelog sub-pages were out of date on \`%s\`.\n\nThis PR was created automatically by the \`changelog-sync\` CI job. Merge it to fix the failing check.' "$TARGET")"
+          else
+            echo "Fix PR already open: $EXISTING_PR"
+          fi
+
+          echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
+          exit 1
+
+  # --- Trivy scan -----------------------------------------------------
+  trivy-scan:
+    needs: [select-runner, detect]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          persist-credentials: false
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "fs"
+          severity: "CRITICAL,HIGH"
+          format: "table"
+          scan-ref: "."
+          # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
+          # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every PR;
+          # keep advisory until that PR merges, then flip to exit-code:1.
+          exit-code: "0"
+          ignore-unfixed: false
+
+  # --- Regression-proof: changed tests must FAIL on base -------------------
+  # FastAPI's lesson: run the PR's changed test files against origin/master
+  # and report any that PASS there (the fix may no longer be needed).
+  # Scoped to tests that opt in with `@pytest.mark.regression`, which only a
+  # test claiming to pin a bug carries: a diff with no such tests passes
+  # trivially, and one that has them must prove them.
+  regression-proof:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Changed test files must fail on base
+        working-directory: apps/api
+        run: bash ../../scripts/ci/regression-proof.sh origin/master
+
+  # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
-    name: quality-gate (hybrid)
+    name: quality-gate
     if: always()
-    needs: [select-runner, detect, probe, build, test-python, coverage, test-typescript, docker-image]
+    needs:
+      - select-runner
+      - detect
+      - probe
+      - build
+      - test-python
+      - coverage
+      - test-typescript
+      - docker-image
+      - test-harness-tools
+      - trivy-scan
+      - regression-proof
+      # test-fast dropped: it was the same hermetic selection the test-python
+      # slices already run, and main.yml's gate deliberately excluded it too.
+      # test-device-bridge dropped: the `bridge` slice of test-python is that
+      # exact file, run serially, with services + Node.
+      # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
+      # static checks + dead-code live in code-quality.yml (its own gate)
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -559,11 +697,54 @@ jobs:
           printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
           printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
           printf "  %-16s %s\n" "coverage:" "${{ needs.coverage.result }}"
-          printf "  %-16s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
-          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" "${{ needs.docker-image.result }}"; do
+          printf "  %-18s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
+          printf "  %-18s %s\n" "test-harness-tools:" "${{ needs.test-harness-tools.result }}"
+          printf "  %-18s %s\n" "trivy-scan:" "${{ needs.trivy-scan.result }}"
+          printf "  %-18s %s\n" "regression-proof:" "${{ needs.regression-proof.result }}"
+          for r in "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" \
+                   "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" \
+                   "${{ needs.docker-image.result }}" "${{ needs.test-harness-tools.result }}" \
+                   "${{ needs.trivy-scan.result }}" "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job $r"
               exit 1
             fi
           done
           echo "Hybrid quality gate: PASSED"
+
+  # --- Docker phase, split so the long part runs parallel to the gate -------
+  # build-images starts right after detect (master only) and builds/publishes
+  # the docker images while all test lanes run; trigger-build then runs the
+  # deploy plan + swarm deploy after quality-gate, using the build phase's
+  # outputs as inputs (see build.yml phase input). The deploy decision lives
+  # in compute-deploy-plan.sh with GATE_RESULT as an explicit input, so a
+  # failed gate still fires the publish-without-deploy orphan alert instead of
+  # silently skipping everything. Runners are owned by build.yml (Blacksmith)
+  # and deliberately not routed through select-runner.
+  build-images:
+    needs: [detect]
+    if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      phase: build
+    secrets: inherit # pragma: allowlist secret
+  trigger-build:
+    # always() is required to suppress the implicit success() check, which
+    # walks the transitive needs graph and returns false when any ancestor
+    # lane was skipped. Runs on every master run — gate failure must still
+    # reach the deploy plan so the orphan guardrail fires.
+    needs: [quality-gate, build-images]
+    if: ${{ always() && github.ref == 'refs/heads/master' }}
+    uses: ./.github/workflows/build.yml
+    with:
+      phase: deploy
+      gate_result: ${{ needs.quality-gate.result }}
+      api_affected: ${{ needs.build-images.outputs.api_affected }}
+      bots_affected: ${{ needs.build-images.outputs.bots_affected }}
+      images_published: ${{ needs.build-images.outputs.images_published }}
+      apps_image_tag: ${{ needs.build-images.outputs.apps_tag }}
+      bots_image_tag: ${{ needs.build-images.outputs.bots_tag }}
+      grafana_image_tag: ${{ needs.build-images.outputs.grafana_tag }}
+      web_image_tag: ${{ needs.build-images.outputs.web_tag }}
+      docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
+    secrets: inherit # pragma: allowlist secret

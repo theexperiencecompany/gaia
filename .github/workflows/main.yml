@@ -1,13 +1,8 @@
-name: Quality Checks
+name: Quality Checks (manual fallback)
 
-# Primary CI gate: validates code quality on every PR to master.
+# hybrid-ci.yml is THE pipeline for pull_request and push-to-master.
+# This workflow is a manual fallback only — dispatch it if hybrid-ci is broken.
 on:
-  pull_request:
-    branches:
-      - master
-  push:
-    branches:
-      - master
   workflow_dispatch:
 
 concurrency:

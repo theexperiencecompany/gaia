@@ -16,12 +16,12 @@ flowchart TD
 
   START["Feature branch changes<br/>(humans, contributors, bots)"]:::event --> PR_MASTER["PR to master"]:::event
   PR_MASTER --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
-  PR_MASTER --> MAIN_PR["main.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
+  PR_MASTER --> MAIN_PR["hybrid-ci.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
   MAIN_PR --> MASTER_MERGED{"Merged to master?"}:::decision
   MASTER_MERGED -- "No" --> STOP2["Stop"]:::terminal
   MASTER_MERGED -- "Yes" --> PUSH_MASTER["push -> master"]:::event
 
-  PUSH_MASTER --> MAIN_PUSH["main.yml<br/>quality-checks (push)"]:::ci
+  PUSH_MASTER --> MAIN_PUSH["hybrid-ci.yml<br/>quality checks (push)"]:::ci
   PUSH_MASTER --> RP["release-please.yml<br/>master-ref guard + run release-please"]:::release
 
   PUSH_MASTER --> BUILD_CALL["build-images -> build.yml phase=build<br/>(images build+publish, parallel to the checks;<br/>immutable :sha tags only — never :latest)"]:::build
@@ -87,8 +87,9 @@ flowchart TD
 ```
 
 ## Per-Workflow Steps
-### `.github/workflows/main.yml`
-1. Enter from PRs targeting `master` and pushes to `master`.
+### `.github/workflows/hybrid-ci.yml`
+0. THE pipeline for `pull_request` to `master` and pushes to `master`. `main.yml` holds the same lanes in their pre-consolidation shape but is `workflow_dispatch:`-only — a manual fallback, not a PR gate. Running both doubled every lane on the self-hosted box.
+1. `select-runner` picks the home box when it is online and idle and falls back to GitHub-hosted otherwise; compute lanes land on `fromJSON(needs.select-runner.outputs.runner)`.
 2. `detect`: validate the release manifest and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
 3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), `test-device-bridge` (the Node-driven e2e, its own lane so the shards can skip Node), and `test-python` — pytest sharded 6-way via pytest-split, run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness). The shards run `-p no:randomly` so collection order is identical everywhere and pytest-split's positional slices stay disjoint — per-shard random seeds left a third of the suite unrun. Each shard measures coverage with `--cov-fail-under=0`; `test-python-coverage` asserts the shards partitioned the suite (`scripts/ci/assert_shard_partition.py`), combines the shard files and enforces the repo gate (70% temporary, target 80%) plus diff-cover 90%, schemathesis, and gaia-shared tests. Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
 4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
@@ -157,7 +158,8 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI correctness gate (build + tests). Python tests run runner-native against live service containers.
+- `.github/workflows/hybrid-ci.yml`: THE CI correctness gate (build + tests + harness tooling + trivy + regression-proof + docker release trigger), home-runner-first with GitHub fallback. Python tests run runner-native against live service containers.
+- `.github/workflows/main.yml`: `workflow_dispatch:`-only manual fallback holding the pre-consolidation lane shapes (6-way pytest shards). Not a PR gate.
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
