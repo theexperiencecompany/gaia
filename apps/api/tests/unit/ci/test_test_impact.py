@@ -244,6 +244,30 @@ def test_dependency_change_under_apps_api_widens_to_all(suite) -> None:
     assert "non-source" in reason
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "apps/api/.pre-commit-config.yaml",
+        "apps/api/README.md",
+        "apps/api/docs/architecture.md",
+        "apps/api/.dockerignore",
+        "apps/api/CLAUDE.md",
+    ],
+)
+def test_inert_files_under_apps_api_select_nothing(suite, path: str) -> None:
+    # Tooling config and prose cannot change a test's outcome; widening on
+    # them made every lane run its whole slice after a lint-only master merge.
+    ids, _reason, n, _t = run_select(suite, [path])
+    assert ids == [] and n == 0
+
+
+def test_inert_file_beside_a_real_change_does_not_mask_it(suite) -> None:
+    ids, _reason, n, _t = run_select(
+        suite, ["apps/api/.pre-commit-config.yaml", "apps/api/app/alpha.py"]
+    )
+    assert n == 4 and all("test_alpha" in i for i in ids)
+
+
 def test_selection_over_the_threshold_falls_back_to_all(suite) -> None:
     # alpha (4) + beta (6) + filler (20) = 30 of 30: way past 30%, so paying
     # the argv cost to express "everything" as node ids would be silly.

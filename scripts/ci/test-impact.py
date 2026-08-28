@@ -47,6 +47,30 @@ GLOBAL_TEST_DEPS = ("conftest.py", "tests/helpers.py", "tests/factories.py")
 
 ALL_MARKER = "ALL"
 
+# Files under apps/api that no test can observe: tooling and prose. Anything
+# else that is not app/ or tests/ (pyproject.toml, uv.lock, pytest.ini, the
+# Dockerfile, scripts/) still widens to ALL. Measured 2026-08-28: a master
+# merge that touched only .pre-commit-config.yaml made all four lanes run
+# their full slice (2003 + 7160 + ... tests) for nothing.
+INERT_SUFFIXES = (".md", ".mdx", ".rst", ".txt")
+INERT_NAMES = frozenset(
+    {
+        ".pre-commit-config.yaml",
+        ".gitignore",
+        ".dockerignore",
+        ".editorconfig",
+        "CLAUDE.md",
+        "AGENTS.md",
+    }
+)
+INERT_DIRS = ("docs/",)
+
+
+def is_inert(rel: str) -> bool:
+    """True for a path under apps/api that cannot change any test's outcome."""
+    name = rel.rsplit("/", 1)[-1]
+    return name in INERT_NAMES or rel.endswith(INERT_SUFFIXES) or rel.startswith(INERT_DIRS)
+
 
 # ── map recording ────────────────────────────────────────────────────────────
 
@@ -204,6 +228,9 @@ def _classify_change(
         elif (repo_root / rel).exists():
             sel.widen(f"changed app file not in map (new or uncovered): {rel}")
         # A deleted app file that was never covered impacts nothing.
+        return
+
+    if is_inert(rel):
         return
 
     # apps/api/pyproject.toml, uv.lock, Dockerfile, a script — anything
