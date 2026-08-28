@@ -8,12 +8,9 @@ are embedded into ChromaDB for retrieval.
 
 import asyncio
 from pathlib import Path
-from typing import Union, cast
+from typing import TYPE_CHECKING, Union, cast
 
 from langchain_core.messages import BaseMessage
-from langchain_text_splitters import MarkdownTextSplitter
-from llama_cloud_services import LlamaParse
-from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
 from app.agents.llm.vision import describe_image
@@ -43,6 +40,9 @@ from app.utils import local_document_parser
 from app.utils.image_codec import ImageCodec, InvalidImageError
 from shared.py.wide_events import log
 
+if TYPE_CHECKING:
+    from llama_cloud_services import LlamaParse
+
 _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
 
 
@@ -52,6 +52,10 @@ def _chunk_markdown(markdown: str, max_chunk_chars: int = MAX_CHUNK_CHARS) -> li
     MarkdownTextSplitter guarantees the size bound and prefers natural cut
     points (heading > paragraph > line > character) over arbitrary offsets.
     """
+    from langchain_text_splitters import (  # noqa: PLC0415 -- the package __init__ pulls in nltk (~1s); only document uploads need it
+        MarkdownTextSplitter,
+    )
+
     splitter = MarkdownTextSplitter(chunk_size=max_chunk_chars, chunk_overlap=0)
     return splitter.split_text(markdown)
 
@@ -73,9 +77,16 @@ class DocumentProcessor:
         self.llm = get_helper_llm()
 
     @property
-    def parser(self) -> LlamaParse:
+    def parser(self) -> "LlamaParse":
         """LlamaCloud client, constructed on first use."""
         if self._parser is None:
+            from llama_cloud_services import (  # noqa: PLC0415 -- ~0.7s SDK import; only the scanned-PDF OCR fallback needs it
+                LlamaParse,
+            )
+            from llama_cloud_services.parse.utils import (  # noqa: PLC0415 -- same: deferred with LlamaParse
+                ResultType,
+            )
+
             self._parser = LlamaParse(
                 result_type=ResultType.MD,
                 api_key=settings.LLAMA_INDEX_KEY or "",
@@ -83,7 +94,7 @@ class DocumentProcessor:
         return self._parser
 
     @parser.setter
-    def parser(self, value: LlamaParse) -> None:
+    def parser(self, value: "LlamaParse") -> None:
         self._parser = value
 
     async def process_file(
