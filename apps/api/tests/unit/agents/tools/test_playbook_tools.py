@@ -513,16 +513,18 @@ class TestDisablePlaybook:
         assert result["data"] == {"disabled": True}
         assert store.documents == {}
 
-    async def test_disabling_a_workflow_without_one_is_not_an_error(
+    async def test_disabling_a_workflow_without_one_is_not_a_decision(
         self, store: _FakePlaybookStore
     ) -> None:
+        """A briefed run with no playbook owes write or decline; a disable that
+        removes nothing must not read as the decision being made."""
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await disable_playbook.ainvoke(
                 {"reason": "nothing to disable"}, config=_config()
             )
 
-        assert result["success"] is True
-        assert result["data"] == {"disabled": False}
+        assert result["success"] is False
+        assert result["error"] == "nothing_to_disable"
 
 
 @pytest.mark.unit
@@ -820,7 +822,7 @@ class TestPlaybookTenantIsolation:
                 config=_config_for(OTHER_USER),
             )
 
-        assert result["data"] == {"disabled": False}
+        assert result["success"] is False
         assert (WORKFLOW_ID, USER_ID) in store.documents
 
 

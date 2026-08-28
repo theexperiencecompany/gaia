@@ -136,7 +136,7 @@ def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
 
 
 async def distrust_fresh_playbook(
-    workflow_id: str, user_id: str, trace: Sequence[RecordedCall]
+    workflow_id: str, user_id: str, trace: Sequence[RecordedCall], *, healing: bool = False
 ) -> str | None:
     """After a run that wrote a playbook, distrust it if it froze an empty result.
 
@@ -145,8 +145,13 @@ async def distrust_fresh_playbook(
     that wrote it is the one place the frozen calls' results are on record.
     Marked suspect, the next fire heals instead of replaying: it probes more
     broadly and rewrites, or confirms the source really has nothing.
+
+    A heal run is exempt: its brief makes it probe more broadly before it may
+    rewrite the same sequence, so an empty result it froze is one it checked.
+    Auditing it again would send every fire of a quiet source back to the agent
+    for good.
     """
-    if not _wrote_a_playbook(trace):
+    if healing or not _wrote_a_playbook(trace):
         return None
     playbook = await playbook_repository.get_for_workflow(workflow_id, user_id)
     if playbook is None or playbook.last_run_status is not PlaybookRunStatus.NOT_RUN:

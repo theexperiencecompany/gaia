@@ -477,3 +477,14 @@ class TestPlaybookNudgesSpent:
 
         assert playbook_decision_pending(state) is True
         assert completion_nudges_spent(state) == 0
+
+    def test_the_tag_quoted_inside_a_users_own_request_is_not_a_brief(self) -> None:
+        state = make_state(
+            messages=[
+                HumanMessage(content=f"what does {PLAYBOOK_CHECK_TAG} mean in the code?"),
+                *_worked(1),
+                AIMessage(content="It marks a briefed run."),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is False

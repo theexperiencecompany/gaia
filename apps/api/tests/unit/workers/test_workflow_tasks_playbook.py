@@ -31,7 +31,16 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.playbook.runner import PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
-from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from app.workers.tasks.workflow_tasks import (
+    AGENT_RUN_SUMMARY,
+    HEAL_RUN_SUMMARY,
+    OVERLAPPED_SUMMARY,
+    REPLAY_FLAGGED_SUMMARY,
+    REPLAY_STOPPED_SUMMARY,
+    REPLAY_SUMMARY,
+    _fallback_note,
+    execute_workflow_by_id,
+)
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -511,7 +520,7 @@ class TestSuspectReplay:
         kwargs = harness.complete_execution.await_args.kwargs
         assert kwargs["status"] == "success"
         assert [call.tool_name for call in kwargs["trace"]] == ["list_events", "send_email"]
-        assert kwargs["summary"] == f"Replay flagged ({self.REASON}); completed by the agent"
+        assert kwargs["summary"] == REPLAY_FLAGGED_SUMMARY.format(reason=self.REASON)
 
     async def test_a_streak_at_the_limit_deletes_the_playbook_before_the_agent_runs(
         self,
@@ -1077,7 +1086,7 @@ class TestExecutionRecordSummary:
         await _fire(harness)
 
         assert harness.complete_execution.await_args.kwargs["status"] == "success"
-        assert harness.summary() == "Replayed 1 step(s)"
+        assert harness.summary() == REPLAY_SUMMARY
 
     async def test_a_flagged_replay_says_so_with_the_reason(self) -> None:
         workflow = _workflow()
@@ -1090,7 +1099,7 @@ class TestExecutionRecordSummary:
         await _fire(harness)
 
         assert harness.complete_execution.await_args.kwargs["status"] == "success"
-        assert harness.summary() == "Replay flagged (list_events was empty); completed by the agent"
+        assert harness.summary() == REPLAY_FLAGGED_SUMMARY.format(reason="list_events was empty")
 
     async def test_a_stopped_replay_says_the_agent_finished(self) -> None:
         workflow = _workflow()
@@ -1100,14 +1109,14 @@ class TestExecutionRecordSummary:
 
         await _fire(harness)
 
-        assert harness.summary() == "Replay stopped after 1 step(s); the agent finished the run"
+        assert harness.summary() == REPLAY_STOPPED_SUMMARY
 
     async def test_an_agent_run_keeps_the_plain_summary(self) -> None:
         harness = _Harness(_workflow())
 
         await _fire(harness)
 
-        assert harness.summary() == "Workflow executed"
+        assert harness.summary() == AGENT_RUN_SUMMARY
 
 
 @pytest.mark.asyncio
@@ -1268,7 +1277,8 @@ class TestReplayHoldsTheConversationLock:
         harness.add_messages.assert_not_awaited()
 
     async def test_a_held_lock_is_recorded_as_a_fire_that_did_not_run(self) -> None:
-        """Honest record: failed, naming the overlap and the run that held the lock."""
+        """Honest record: skipped, in plain words, with no lock value in the
+        text a user reads (the holder goes to the log)."""
         workflow = _workflow()
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
@@ -1277,11 +1287,11 @@ class TestReplayHoldsTheConversationLock:
 
         harness.complete_execution.assert_awaited_once()
         kwargs = harness.complete_execution.await_args.kwargs
-        assert kwargs["status"] == "failed"
+        assert kwargs["status"] == "skipped"
+        assert kwargs["summary"] == OVERLAPPED_SUMMARY
         assert kwargs["conversation_id"] == "conv_1"
         assert kwargs.get("trace") is None, "nothing ran, so there is nothing to replay from"
-        assert "did not run" in kwargs["error_message"]
-        assert "stream_9:task_9" in kwargs["error_message"]
+        assert "stream_9:task_9" not in kwargs["summary"]
 
     async def test_a_held_lock_counts_as_an_unsuccessful_fire(self) -> None:
         workflow = _workflow()
@@ -1422,4 +1432,110 @@ class TestAFireCutOffByTheJobTimeoutIsRecorded:
         harness.complete_execution.assert_awaited_once()
         kwargs = harness.complete_execution.await_args.kwargs
         assert kwargs["status"] == "failed"
-        assert "timed out" in kwargs["error_message"]
+        assert "stopped after 30 minutes" in kwargs["error_message"]
+
+
+class TestReviewFixes:
+    async def test_a_heal_runs_rewrite_is_not_audited_for_emptiness_again(self) -> None:
+        """A quiet source: the heal probes broadly, confirms nothing is there
+        and rewrites the same sequence. Auditing that rewrite would send every
+        later fire back to the agent for good."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        distrusted = _distrusted(workflow)
+        rewritten = distrusted.model_copy(
+            update={
+                "last_run_status": PlaybookRunStatus.NOT_RUN,
+                "revision": distrusted.revision + 1,
+                "steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})],
+            }
+        )
+        harness.get_for_workflow = AsyncMock(side_effect=[distrusted, rewritten])
+        harness.chat = AsyncMock(
+            return_value=(
+                "conv_1",
+                [
+                    RecordedCall(
+                        tool_name="GMAIL_FETCH_MESSAGES",
+                        result_digest='{"data": {"messages": []}, "successful": true}',
+                    ),
+                    RecordedCall(
+                        tool_name="write_playbook",
+                        result_digest='{"success": true, "data": {"playbook_id": "pb_1"}}',
+                    ),
+                ],
+            )
+        )
+
+        await _fire(harness)
+
+        assert harness.summary() == HEAL_RUN_SUMMARY
+        harness.record_run_outcome.assert_not_awaited()
+
+    async def test_the_same_fire_handover_after_a_suspect_replay_spends_a_heal_attempt(
+        self,
+    ) -> None:
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(
+            return_value=(
+                "conv_1",
+                PlaybookRunResult(
+                    ok=True,
+                    text="",
+                    trace=[RecordedCall(tool_name="list_events", replayed=True)],
+                    completed=["events (list_events {}) -> []"],
+                    llm_calls=0,
+                    suspect="list_events was empty",
+                    suspect_source="record",
+                ),
+            )
+        )
+        harness.record_run_outcome = AsyncMock(
+            return_value=playbook.model_copy(
+                update={"last_run_status": PlaybookRunStatus.SUSPECT, "suspect_streak": 1}
+            )
+        )
+
+        await _fire(harness)
+
+        harness.chat.assert_awaited_once()
+        harness.increment_heal_attempts.assert_awaited_once_with(
+            workflow.id,
+            workflow.user_id,
+            playbook_id=playbook.playbook_id,
+            revision=playbook.revision,
+        )
+
+    async def test_a_job_timeout_records_the_playbook_run_as_failed(self) -> None:
+        """The cancelled replay may have run its side effects; the next fire must
+        heal with that on record, not replay them again as if nothing happened."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.playbook_run = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await _fire(harness)
+
+        harness.record_run_outcome.assert_awaited_once()
+        args = harness.record_run_outcome.await_args
+        assert args.args[2] is PlaybookRunStatus.FAILED
+        assert "stopped after" in args.kwargs["reason"]
+
+    def test_the_fallback_note_bounds_each_completed_line(self) -> None:
+        result = PlaybookRunResult(
+            ok=False,
+            text="",
+            trace=[],
+            completed=["events (list_events {}) -> " + "x" * 10_000],
+            failure="stopped",
+            llm_calls=0,
+        )
+
+        note = _fallback_note(result)
+
+        assert len(note) < 3_000
+        assert "x" * 200 in note

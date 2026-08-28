@@ -117,6 +117,8 @@ async def build_executor_graph(
             # has to be reachable by hand.
             "write_playbook",
             "decline_playbook",
+            "read_playbook",
+            "disable_playbook",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,

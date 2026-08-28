@@ -355,7 +355,7 @@ def test_the_heal_brief_makes_the_agent_probe_before_accepting_an_empty_result()
     # frozen call before the same sequence is written back.
     assert "probing more broadly than the frozen call" in PLAYBOOK_HEAL_BRIEF
     assert "a longer window, the filter dropped" in PLAYBOOK_HEAL_BRIEF
-    assert "Say in the result what you checked" in PLAYBOOK_HEAL_BRIEF
+    assert "Put what you checked in the reason" in PLAYBOOK_HEAL_BRIEF
     assert "Only a broader probe that also comes back empty" in PLAYBOOK_HEAL_BRIEF
     assert "the rewrite must use the args that found them" in PLAYBOOK_HEAL_BRIEF
     assert "—" not in PLAYBOOK_HEAL_BRIEF
@@ -583,4 +583,23 @@ class TestDistrustFreshPlaybook:
             )
 
         assert reason is None
+        record.assert_not_awaited()
+
+    async def test_a_heal_runs_rewrite_is_exempt(self) -> None:
+        playbook = _frozen("GMAIL_FETCH_MESSAGES")
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+            ) as get,
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+                healing=True,
+            )
+
+        assert reason is None
+        get.assert_not_awaited()
         record.assert_not_awaited()

@@ -78,6 +78,12 @@ function ExecutionStatusBadge({
           Failed
         </Chip>
       );
+    case "skipped":
+      return (
+        <Chip size="sm" color="default" variant="flat" radius="sm">
+          Skipped
+        </Chip>
+      );
     case "running":
       return (
         <Chip

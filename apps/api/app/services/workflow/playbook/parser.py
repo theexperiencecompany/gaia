@@ -13,12 +13,14 @@ form, so nothing ever parses the YAML again.
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import json
 import re
 from typing import Any
 
 from pydantic import BaseModel, Field
 import yaml
 
+from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import PlaybookAsk, PlaybookBody, PlaybookStep
 from app.services.workflow.playbook.placeholders import placeholder_tokens
@@ -205,6 +207,19 @@ def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Wal
     schema: dict[str, Any] = space.tools[tool_name].args
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
+        if ARG_TRUNCATION_MARKER in json.dumps(value, default=str):
+            # The call record cuts long args to keep the record small and marks
+            # the cut; a step copied from it would send the stub forever.
+            walk.issues.append(
+                PlaybookIssue(
+                    where=where,
+                    problem=(
+                        f"{key!r} was cut short in the call record; pass the full value "
+                        "you actually sent, not the recorded stub"
+                    ),
+                )
+            )
+            continue
         arg_schema = schema.get(key)
         if arg_schema is None:
             walk.issues.append(

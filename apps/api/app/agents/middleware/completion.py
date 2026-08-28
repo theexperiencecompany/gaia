@@ -106,6 +106,12 @@ def work_looks_unfinished(state: State) -> bool:
     return not completed_work
 
 
+def _briefed(task_text: str) -> bool:
+    """The brief opens a paragraph with the tag; the same string quoted inside a
+    user's own request does not."""
+    return any(line.strip() == PLAYBOOK_CHECK_TAG for line in task_text.splitlines())
+
+
 def playbook_nudges_spent(state: State) -> int:
     """Decision nudges already injected into the CURRENT delegation."""
     return sum(1 for message in current_delegation(state) if _is_playbook_nudge(message))
@@ -124,9 +130,7 @@ def playbook_decision_pending(state: State) -> bool:
     if not delegation:
         return False
     task, last = delegation[0], delegation[-1]
-    if not isinstance(task, HumanMessage) or PLAYBOOK_CHECK_TAG not in extract_text_content(
-        task.content
-    ):
+    if not isinstance(task, HumanMessage) or not _briefed(extract_text_content(task.content)):
         return False
     if not isinstance(last, AIMessage) or last.tool_calls:
         return False

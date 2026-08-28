@@ -7,7 +7,7 @@ path the tool's recorded result lacks, an unresolvable ``$steps`` / ``$trigger``
 / ``$user`` — means the playbook is stale and must stop the run by name.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -369,3 +369,25 @@ def test_embedded_value_that_is_not_json_serialisable_still_renders() -> None:
     context = _context(trigger={"when": NOW})
     resolved = resolve_value("due $trigger.when", context)
     assert "2026-03-14 09:30:00+01:00" in resolved
+
+
+class TestACutRecordedValueIsNotReplayed:
+    def test_a_last_run_string_cut_when_stored_raises_instead_of_paging_from_nowhere(self) -> None:
+        from app.models.workflow_execution_models import RECORD_CUT_MARKER
+        from app.services.workflow.playbook.evaluator import (
+            PlaceholderError,
+            RunContext,
+            resolve_args,
+        )
+
+        context = RunContext(
+            now=datetime(2026, 1, 1, tzinfo=UTC),
+            user={},
+            trigger={},
+            steps={},
+            last_run={"list_events": {"next_page_token": "abc" + RECORD_CUT_MARKER}},
+            asks={},
+        )
+
+        with pytest.raises(PlaceholderError):
+            resolve_args({"page_token": "$last_run.list_events.next_page_token"}, context)

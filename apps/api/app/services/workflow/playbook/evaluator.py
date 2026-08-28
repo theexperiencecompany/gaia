@@ -23,7 +23,7 @@ import json
 import re
 from typing import Any
 
-from app.models.workflow_execution_models import RecordedCall
+from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 from app.utils.errors import AppError
 
@@ -116,6 +116,12 @@ def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]
         item = resolve_value(value, context)
         if item is None and isinstance(value, str) and PLACEHOLDER_TOKEN.fullmatch(value):
             continue
+        if isinstance(item, str) and item.endswith(RECORD_CUT_MARKER):
+            # A recorded string cut to fit the record (a page token, a long id)
+            # is not the value; sending the stub would page from nowhere.
+            raise PlaceholderError(
+                f"{key}: the recorded value was cut when it was stored and cannot be replayed"
+            )
         resolved[key] = item
     return resolved
 

@@ -94,7 +94,8 @@ PLAYBOOK_DECISION_TOOL_NAMES = frozenset({"write_playbook", "decline_playbook", 
 PLAYBOOK_DECISION_NUDGE_MESSAGE = (
     "[System: this run was asked to end by calling exactly one of write_playbook, "
     "decline_playbook or disable_playbook, and it has not. Make that call now, "
-    "against the calls you actually made, then give the result again. A refused "
+    "against the calls you actually made. Your result above is already recorded: "
+    "after the call, reply with one short line and do not repeat it. A refused "
     "write_playbook is not a decision: fix it or decline.]"
 )
 MAX_PLAYBOOK_DECISION_NUDGES = 1

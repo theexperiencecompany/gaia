@@ -59,7 +59,8 @@ def _compact(value: object) -> str:
 #: Longest string a value keeps once it has to be trimmed to fit. Ids, subjects
 #: and dates survive whole; a body is cut, and says so.
 _ELEMENT_STRING_MAX_CHARS = 200
-_CUT_MARKER = "…[cut]"
+RECORD_CUT_MARKER = "…[cut]"
+_CUT_MARKER = RECORD_CUT_MARKER
 
 
 def _trim_strings(value: object, limit: int) -> object:
@@ -72,13 +73,20 @@ def _trim_strings(value: object, limit: int) -> object:
     return value
 
 
-def _fit_elements(items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int) -> str:
+def _fit_elements(
+    items: list[Any], rebuild: Callable[[list[Any]], object], max_chars: int
+) -> str | None:
+    """The value with elements shed off the end until it fits; ``None`` when not
+    even the first element fits, so the caller keeps cutting strings instead of
+    recording a list that had items as an empty one."""
     kept: list[Any] = []
     for item in items:
         kept.append(item)
         if len(_compact(rebuild(kept))) > max_chars:
             kept.pop()
             break
+    if items and not kept:
+        return None
     return _compact(rebuild(kept))
 
 
@@ -102,9 +110,11 @@ def _bounded_json(value: object, max_chars: int) -> str:
     while True:
         trimmed = _trim_strings(value, limit)
         items, rebuild = _largest_sequence(trimmed)
-        digest = _compact(trimmed) if items is None else _fit_elements(items, rebuild, max_chars)
-        if len(digest) <= max_chars:
-            return digest
+        fitted = _compact(trimmed) if items is None else _fit_elements(items, rebuild, max_chars)
+        if fitted is not None:
+            digest = fitted
+            if len(digest) <= max_chars:
+                return digest
         if limit == 0:
             return digest[:max_chars]
         limit //= 2
@@ -177,7 +187,9 @@ def largest_list_len(value: object) -> int | None:
 # exactly one terminal write. Named once here because the document, the update
 # model, the repository's ``complete`` and the service's ``complete_execution``
 # all speak it (Type Safety items 3 and 5).
-WorkflowExecutionStatus = Literal["running", "success", "failed"]
+#: ``skipped``: the fire never ran because another run of the same workflow
+#: was in flight; that run delivered the result. Not a failure to show in red.
+WorkflowExecutionStatus = Literal["running", "success", "failed", "skipped"]
 
 
 class RecordedCall(BaseModel):
@@ -200,6 +212,10 @@ class RecordedCall(BaseModel):
     result_digest: str = Field(
         default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"
     )
+    #: True when a playbook replay made the call. The replay's empty-vs-previous
+    #: check compares only against replayed calls: an agent run probes the same
+    #: tool broadly, and its full result is not what the frozen call returned.
+    replayed: bool = False
 
 
 class WorkflowExecution(BaseModel):

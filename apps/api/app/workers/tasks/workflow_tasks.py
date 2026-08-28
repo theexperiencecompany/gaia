@@ -532,10 +532,20 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
     )
 
 
+#: A completed line as the fallback agent reads it. The narration reads the
+#: full result (its own bound); the agent needs to know what ran and roughly
+#: what came back, not the whole payload again in its brief.
+FALLBACK_LINE_MAX_CHARS = 1_500
+
+
+def _bounded_line(line: str) -> str:
+    return line if len(line) <= FALLBACK_LINE_MAX_CHARS else line[:FALLBACK_LINE_MAX_CHARS] + "..."
+
+
 def _fallback_note(result: PlaybookRunResult) -> str:
     """The replay that did not hold, stopped or untrusted, addressed to the agent
     that has to finish the run."""
-    completed = "\n".join(f"- {line}" for line in result.completed) or "- nothing"
+    completed = "\n".join(f"- {_bounded_line(line)}" for line in result.completed) or "- nothing"
     if result.ok:
         body = PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE.format(
             reason=result.suspect or "no reason was recorded", completed=completed
@@ -549,7 +559,25 @@ def _fallback_note(result: PlaybookRunResult) -> str:
 
 
 #: The execution-record summary of a fire the agent reasoned out.
-AGENT_RUN_SUMMARY = "Workflow executed"
+#: Execution summaries, as the workflows page shows them. Plain words: the
+#: reader is the workflow's owner, not the engineer who wrote the replay.
+AGENT_RUN_SUMMARY = "Ran the full workflow"
+HEAL_RUN_SUMMARY = "Ran the full workflow and repaired its saved shortcut"
+REPLAY_SUMMARY = "Ran from the saved shortcut"
+REPLAY_STOPPED_SUMMARY = "The saved shortcut stopped partway, so GAIA ran the rest itself"
+REPLAY_FLAGGED_SUMMARY = (
+    "The saved shortcut's result looked wrong ({reason}), so GAIA ran the workflow itself"
+)
+OVERLAPPED_SUMMARY = (
+    "Skipped: a previous run of this workflow was still going, and that run delivered the result"
+)
+QUEUED_MESSAGE = (
+    "This run started while the previous one was still going, so it waited and ran after "
+    "it. If this keeps happening, give the workflow a longer interval than one run takes."
+)
+SHORTCUT_DISCARDED_SUMMARY = (
+    "Ran the full workflow; the saved shortcut was discarded because the workflow changed"
+)
 
 
 async def _discard_playbook(
@@ -635,7 +663,7 @@ async def _run_workflow(
             playbook_id=playbook.playbook_id,
             llm_calls=0,
         )
-        return *await execute_workflow_as_chat(workflow, user, context), AGENT_RUN_SUMMARY
+        return *await execute_workflow_as_chat(workflow, user, context), SHORTCUT_DISCARDED_SUMMARY
 
     # A playbook the last run did not trust is not replayed again: the agent
     # runs this fire with the heal brief carrying the recorded reason, and ends
@@ -681,7 +709,7 @@ async def _run_workflow(
             playbook_id=playbook.playbook_id,
             revision=playbook.revision,
         )
-        return *healed, AGENT_RUN_SUMMARY
+        return *healed, HEAL_RUN_SUMMARY
 
     conversation_id, result = await execute_workflow_as_playbook(workflow, user, context, playbook)
     # From here on the replay's calls are history that happened. Whatever ends
@@ -802,7 +830,7 @@ async def _finish_after_replay(
             playbook=playbook,
         )
         await _notify_replay_finished(workflow, user, conversation_id, result.text)
-        return conversation_id, result.trace, f"Replayed {len(playbook.steps)} step(s)"
+        return conversation_id, result.trace, REPLAY_SUMMARY
 
     disabled = False
     if status is PlaybookRunStatus.SUSPECT and updated is not None:
@@ -831,9 +859,7 @@ async def _finish_after_replay(
             playbook_id=playbook.playbook_id,
             failure=result.failure,
         )
-        summary = (
-            f"Replay stopped after {len(result.completed)} step(s); the agent finished the run"
-        )
+        summary = REPLAY_STOPPED_SUMMARY
     else:
         log.set_ns(
             "playbook",
@@ -851,10 +877,20 @@ async def _finish_after_replay(
             playbook_id=playbook.playbook_id,
             reason=reason,
         )
-        summary = f"Replay flagged ({(reason or '').rstrip('.')}); completed by the agent"
+        summary = REPLAY_FLAGGED_SUMMARY.format(reason=(reason or "no reason recorded").rstrip("."))
     conversation_id, agent_trace = await execute_workflow_as_chat(
         workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
     )
+    # This was a heal run too: it carried the heal brief and ended with a
+    # decision, so it spends an attempt on the body it healed (a rewrite moved
+    # the revision on, and the count then lands nowhere).
+    if not disabled:
+        await playbook_repository.increment_heal_attempts(
+            workflow_id,
+            workflow.user_id,
+            playbook_id=playbook.playbook_id,
+            revision=playbook.revision,
+        )
     # The replay's own calls stay on the record: they are what the agent was
     # told not to repeat, and the next run reads this trace as its history.
     return conversation_id, [*result.trace, *agent_trace], summary
@@ -1045,7 +1081,9 @@ async def execute_workflow_by_id(
 
         # A playbook this run wrote is checked against this run's own results:
         # frozen on an empty result, it is distrusted before it is ever replayed.
-        await distrust_fresh_playbook(workflow_id, workflow.user_id, trace)
+        await distrust_fresh_playbook(
+            workflow_id, workflow.user_id, trace, healing=summary != AGENT_RUN_SUMMARY
+        )
 
         # Analytics: the run-now endpoint already captures manual executions at
         # queue time (workflows.py); background-origin runs — scheduler,
@@ -1089,13 +1127,7 @@ async def execute_workflow_by_id(
             await complete_execution(
                 execution_id=execution_id,
                 status="failed",
-                error_message=(
-                    "This fire did not run: the executor was still busy with this "
-                    "workflow's previous run, so the fire was queued behind it "
-                    f"(task_id: {queued.task_id}). The queued task runs on its own "
-                    "once that finishes. Give the workflow a longer interval than "
-                    "one run takes."
-                ),
+                error_message=QUEUED_MESSAGE,
                 conversation_id=queued.conversation_id,
                 trace=queued.trace,
             )
@@ -1128,13 +1160,8 @@ async def execute_workflow_by_id(
         if execution_id:
             await complete_execution(
                 execution_id=execution_id,
-                status="failed",
-                error_message=(
-                    "This fire did not run: another run of this workflow was still "
-                    "in flight in its conversation (lock holder: "
-                    f"{overlapped.holder}), so the playbook was not replayed a second "
-                    "time. That run delivers the result."
-                ),
+                status="skipped",
+                summary=OVERLAPPED_SUMMARY,
                 conversation_id=overlapped.conversation_id,
             )
         await WorkflowService.increment_execution_count(
@@ -1158,6 +1185,13 @@ async def execute_workflow_by_id(
             error_type=type(timed_out).__name__,
         )
         await _record_execution_failure(timed_out, workflow, workflow_id, execution_id)
+        if workflow is not None:
+            # Whatever the fire was replaying may have run its side effects
+            # before the cut. Recorded as a failed run so the next fire heals
+            # with that on record instead of replaying them again.
+            await playbook_repository.record_run_outcome(
+                workflow_id, workflow.user_id, PlaybookRunStatus.FAILED, reason=str(timed_out)
+            )
         await _rearm_quietly(scheduler, workflow, context, workflow_id)
         raise
     except Exception as raised:

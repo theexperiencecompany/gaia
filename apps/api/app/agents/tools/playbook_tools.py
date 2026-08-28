@@ -260,8 +260,12 @@ async def disable_playbook(
         user_id = get_user_id(config)
         removed = await playbook_repository.delete_for_workflow(workflow_id, user_id)
         if not removed:
-            return success_response(
-                {"disabled": False}, f"Workflow {workflow_id} had no playbook to disable."
+            # Not a decision: there was nothing to decide about. A briefed run
+            # that has no playbook must write or decline, not disable air.
+            return error_response(
+                "nothing_to_disable",
+                f"Workflow {workflow_id} has no playbook. Call write_playbook or "
+                "decline_playbook instead.",
             )
         log.set_ns("playbook", disabled=True, reason=reason)
         return success_response(

@@ -54,9 +54,9 @@ class WorkflowFireTimedOut(Exception):
 
     def __init__(self, limit_seconds: int) -> None:
         super().__init__(
-            f"This fire timed out after {limit_seconds // 60} minutes and was stopped by the "
-            "worker. Whatever it had started may still finish in the background; the next "
-            "occurrence is armed."
+            f"This run was stopped after {limit_seconds // 60} minutes, the most one run may "
+            "take. Anything it had started may still finish on its own; the next scheduled "
+            "run is unaffected."
         )
         self.limit_seconds = limit_seconds
 

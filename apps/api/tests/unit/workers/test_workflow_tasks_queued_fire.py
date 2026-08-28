@@ -23,7 +23,11 @@ from uuid import uuid4
 from app.models.agent_models import SilentRunResult
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import AnalyticsEvents
-from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from app.workers.tasks.workflow_tasks import (
+    AGENT_RUN_SUMMARY,
+    QUEUED_MESSAGE,
+    execute_workflow_by_id,
+)
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
@@ -137,11 +141,12 @@ async def test_a_queued_fire_is_not_recorded_as_a_successful_execution() -> None
     harness.complete_execution.assert_awaited_once()
     kwargs = harness.complete_execution.await_args.kwargs
     assert kwargs["status"] != "success"
-    assert kwargs.get("summary") != "Workflow executed"
+    assert kwargs.get("summary") != AGENT_RUN_SUMMARY
 
 
-async def test_a_queued_fire_records_why_it_did_not_run_and_names_the_queued_task() -> None:
-    """The record has to be readable: which task is carrying the work forward."""
+async def test_a_queued_fire_records_why_it_did_not_run_in_plain_words() -> None:
+    """The record is read by the workflow's owner: what happened and what to
+    change, no task ids (those go to the log)."""
     harness = _Harness(_workflow(), queued_task_id=QUEUED_TASK_ID)
 
     await _fire(harness)
@@ -149,8 +154,8 @@ async def test_a_queued_fire_records_why_it_did_not_run_and_names_the_queued_tas
     kwargs = harness.complete_execution.await_args.kwargs
     assert kwargs["status"] == "failed"
     error_message = kwargs["error_message"]
-    assert QUEUED_TASK_ID in error_message
-    assert "queued" in error_message.lower()
+    assert error_message == QUEUED_MESSAGE
+    assert QUEUED_TASK_ID not in error_message
 
 
 async def test_a_queued_fire_is_not_counted_as_a_successful_run() -> None:
@@ -207,6 +212,6 @@ async def test_a_fire_whose_executor_actually_ran_still_records_success() -> Non
     assert "executed successfully" in result
     kwargs = harness.complete_execution.await_args.kwargs
     assert kwargs["status"] == "success"
-    assert kwargs["summary"] == "Workflow executed"
+    assert kwargs["summary"] == AGENT_RUN_SUMMARY
     harness.increment.assert_awaited_once()
     assert harness.increment.await_args.kwargs["is_successful"] is True

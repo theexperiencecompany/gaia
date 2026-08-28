@@ -1816,12 +1816,15 @@ class TestSuspectVerdict:
     decides what a distrusted result is worth."""
 
     PREVIOUS_HAD_THREE = RecordedCall(
-        tool_name="list_events", result_digest='{"items": [{"id": 1}, {"id": 2}, {"id": 3}]}'
+        replayed=True,
+        tool_name="list_events",
+        result_digest='{"items": [{"id": 1}, {"id": 2}, {"id": 3}]}',
     )
 
-    async def test_empty_where_the_previous_run_had_items_is_suspect_but_completes(
-        self,
-    ) -> None:
+    async def test_empty_where_the_previous_replay_had_items_stops_the_run_there(self) -> None:
+        """The record's verdict is known the moment the step returns, so the steps
+        after it (the send) do not run on data nobody trusts. No narration
+        either: there is nothing to deliver, the agent finishes this fire."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
@@ -1831,9 +1834,24 @@ class TestSuspectVerdict:
 
         assert result.ok is True, result.failure
         assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert result.suspect_source == "record"
+        assert [name for name, _ in recorder.calls] == ["list_events"]
+        assert result.text == ""
+        assert llm.await_count == 0
+
+    async def test_a_previous_agent_runs_call_is_not_what_the_replay_is_compared_with(self) -> None:
+        """An authoring or heal run probes the same tool broadly; its full result
+        says nothing about what the frozen call should return."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        previous = _previous_run(
+            RecordedCall(tool_name="list_events", result_digest='{"items": [1, 2, 3]}')
+        )
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+
+        assert result.suspect is None
         assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
-        assert result.text == "Twelve events, mail sent."
-        assert llm.await_count == 1
 
     async def test_an_empty_list_inside_a_result_envelope_counts_as_empty(self) -> None:
         """GAIA tools answer in envelopes: the list is at ``data.messages``, not
@@ -1845,6 +1863,7 @@ class TestSuspectVerdict:
         )
         previous = _previous_run(
             RecordedCall(
+                replayed=True,
                 tool_name="list_events",
                 result_digest='{"data": {"fetched_count": 2, "messages": [{"id": 1}, {"id": 2}]}}',
             )
@@ -1868,7 +1887,7 @@ class TestSuspectVerdict:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         previous = _previous_run(
-            RecordedCall(tool_name="list_events", result_digest='{"items": []}')
+            RecordedCall(replayed=True, tool_name="list_events", result_digest='{"items": []}')
         )
 
         result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
@@ -1879,7 +1898,7 @@ class TestSuspectVerdict:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         previous = _previous_run(
-            RecordedCall(tool_name="send_email", result_digest='{"items": [1, 2]}'),
+            RecordedCall(replayed=True, tool_name="send_email", result_digest='{"items": [1, 2]}'),
             self.PREVIOUS_HAD_THREE,
         )
 
@@ -1894,7 +1913,7 @@ class TestSuspectVerdict:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
         previous = _previous_run(
-            RecordedCall(tool_name="list_events", result_digest='{"items": []}'),
+            RecordedCall(replayed=True, tool_name="list_events", result_digest='{"items": []}'),
             self.PREVIOUS_HAD_THREE,
         )
 
@@ -2000,9 +2019,7 @@ class TestSuspectVerdict:
 
     async def test_a_stopped_run_never_carries_a_suspect_reason(self) -> None:
         recorder = _Recorder()
-        registry = _FakeRegistry(
-            _tools(recorder, failing="send_email", events_result='{"items": []}')
-        )
+        registry = _FakeRegistry(_tools(recorder, failing="list_events"))
 
         result, _ = await _run(
             _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)

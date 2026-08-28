@@ -238,6 +238,17 @@ async def run_playbook(
     space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
+    if failure is None and run.suspect is not None:
+        # Stopped on the record's word: no narration, nothing to deliver. The
+        # agent finishes this fire from the list of what ran.
+        return PlaybookRunResult(
+            ok=True,
+            trace=run.trace,
+            completed=run.completed,
+            llm_calls=run.llm_calls,
+            suspect=run.suspect,
+            suspect_source="record",
+        )
     if failure is None:
         failure = await _narrate_or_fail(playbook, run)
     if failure is not None:
@@ -270,7 +281,13 @@ async def _run_steps(
     run: _Run,
     space: ToolSpace,
 ) -> _StepFailure | None:
-    """Run one level of the playbook in order. The first failure stops everything."""
+    """Run one level of the playbook in order. The first failure stops everything.
+
+    So does the first step the record shows to be suspect: a fetch that came
+    back empty where the previous replay had items is answered by the agent,
+    and the steps after it (the send, the create) must not run first on data
+    nobody trusts. The agent gets the list of what did run.
+    """
     for step in steps:
         run.position += 1
         failure = (
@@ -280,6 +297,8 @@ async def _run_steps(
         )
         if failure is not None:
             return failure
+        if run.suspect is not None:
+            return None
     return None
 
 
@@ -469,7 +488,10 @@ def _empty_where_previous_had_items(
     """
     if largest_list_len(value) != 0:
         return None
-    earlier = next((call for call in reversed(previous) if call.tool_name == tool_name), None)
+    earlier = next(
+        (call for call in reversed(previous) if call.tool_name == tool_name and call.replayed),
+        None,
+    )
     if earlier is None:
         return None
     before = largest_list_len(parse_result(earlier.result_digest))
@@ -504,6 +526,7 @@ def _record(
             subagent_id=subagent_id,
             args=args,
             result_digest=build_result_digest(text),
+            replayed=True,
         )
     )
 
