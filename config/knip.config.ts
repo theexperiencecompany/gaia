@@ -111,6 +111,11 @@ const config: KnipConfig = {
     ".agents/skills/**",
     ".claude/skills/**",
 
+    // "entire" checkpoint tooling: editor-loaded plugins (opencode, pi), never
+    // imported by the workspace.
+    ".opencode/**",
+    ".pi/**",
+
     // Builtin docgen skill templates: .mjs/.typ/.py/.tex files materialized into
     // the agent workspace and executed by the skills' build.sh scripts (e.g.
     // `node report.mjs`), never imported as modules — so knip reads them as
