@@ -7,7 +7,7 @@
 #
 # Why N instances rather than one:
 #   A runner instance executes exactly ONE job at a time. With a single
-#   instance the hybrid-ci lanes (build, test-python, test-typescript) queue
+#   instance the main.yml lanes (build, test-python, test-typescript) queue
 #   behind each other — measured at 15+ minutes of pure queueing — while 16
 #   cores sat at a load average of 3.5. Four instances let the lanes run
 #   concurrently, which is where the core count actually pays off.
@@ -487,8 +487,8 @@ fi)
   Stop:   systemctl --user disable --now gaia-runner@{1..${RUNNER_COUNT}}
   Remove: for d in ${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*; do (cd "\$d" && ./config.sh remove --token <new-token>); done
 
-  Next: trigger hybrid CI and watch the lanes run concurrently:
-    gh workflow run hybrid-ci.yml --ref \$(git branch --show-current) -f force_home=false
+  Next: trigger Quality Checks and watch the lanes run concurrently:
+    gh workflow run main.yml --ref \$(git branch --show-current) -f force_home=false
 EOF
 
 cat <<'SECURITY'

@@ -69,9 +69,8 @@ A job never waits on a dead self-hosted label because nothing ever does `runs-on
 
 | Workflow | How it opts in |
 |---|---|
-| `.github/workflows/hybrid-ci.yml` | Dedicated hybrid demo + benchmark matrix; always goes through `select-runner`. |
-| `.github/workflows/main.yml` | Opt-in via `workflow_dispatch` input `use_home_runner: true` (keeps branch protection green on `ubuntu-latest` by default). Future: flip default once burn-in is green for a week. |
-| `.github/workflows/build.yml` | Docker builds use `fallback-runner-docker`; probe flavour `docker`. |
+| `.github/workflows/main.yml` ("Quality Checks") | Every compute lane goes through `select-runner` on every PR and master push — home box first, GitHub-hosted fallback. `workflow_dispatch` adds `force_home` (fail instead of falling back) and the `run_benchmark` matrix. |
+| `.github/workflows/build.yml` | Does **not** use the home runner — every job is `ubuntu-latest`. Release image builds stay off the box on purpose. |
 
 ## Benchmarks
 

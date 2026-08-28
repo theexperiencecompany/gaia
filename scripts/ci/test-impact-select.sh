@@ -44,7 +44,7 @@ fi
 git diff --name-only "$MERGE_BASE" HEAD >"$OUT_DIR/changed-files.txt"
 
 # tests/contracts is the API contract and always runs; the bridge slice never
-# reaches this script at all (see hybrid-ci.yml).
+# reaches this script at all (see main.yml).
 RESTRICT=()
 for p in $SLICE_PATHS; do RESTRICT+=(--restrict-to "$p"); done
 

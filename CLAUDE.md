@@ -418,7 +418,7 @@ Rules for GitHub Actions, Nx affected, and Cloudflare deploys. Follow exactly �
 - **Single affected detection.** One `detect` job runs `nrwl/nx-set-shas` and exports `base`/`head`; all lanes reuse it via `nx show projects --affected` / `nx affected`. Never duplicate `changed-files.sh` greps.
 - **Use `nx affected -t <target>` with `cache: true`, not raw tools.** Lanes run `nx affected -t lint type-check build` so unaffected projects hit cache and skip. Do not call `biome`, `ruff`, or `tsc` directly outside Nx unless wrapped via `nx run-many`.
 - **Keep `nx.json` inputs correct.** `api:build` (and similar) must list `pyproject.toml`, `uv.lock`, `libs/shared/py/**` etc. A missing input causes false cache hits that hide real changes.
-- **Shard the bottleneck.** `test-python` (~10 m) is sharded into 2 via `pytest-split` (`--splits 2 --group N`). `test-fast` stays a non-blocking budget probe — never gate the PR on it alone.
+- **Split the bottleneck by directory, not by count.** `main.yml: test-python` is a three-slice matrix — `unit` (`tests/unit tests/meta`, no services/Node), `integration` (real/e2e/stress/integration/contracts, services + Node), `bridge` (`test_device_bridge_e2e.py` alone, serial). Slices run concurrently, so wall clock is `max(slice)` not the sum. Each slice sets its own worker share; do not reintroduce `pytest-split` count-based sharding.
 - **Next.js cache key is minimal.** `restore-nextjs-cache` hashes only `pnpm-lock.yaml` + `next.config.*` + `open-next.config.ts` + `wrangler.jsonc`, never `apps/web/src/**`. Hashing sources thrashes the cache every commit.
 - **Emit timing summaries every lane.** Each job appends duration + cache hit/miss to `$GITHUB_STEP_SUMMARY` and uses `::group::` for install logs plus `::error file=,line=` / `::warning` annotations. No lane fails silently.
 - **Cloudflare deploys only via GitHub.** `deploy-web.yml` builds `pnpm --filter web cf:build`, uploads `apps/web/.open-next`, then deploys with `cloudflare/wrangler-action@v3` using `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` (minimal scope: Workers Scripts Write + R2 Write/Read + Routes Write). Workers Dashboard → Settings → Builds must stay Disconnected (`version_upload` only). PR previews deploy as `pr-<number>`; prod only on `refs/heads/master`.
@@ -452,17 +452,17 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 - Upgrades that already landed: `nrwl/nx-set-shas@v4→v5`, `astral-sh/setup-uv@v5.4.2→v9.0.0` (12 occurrences), `gitleaks-action@v2→v3`, `docker/login-action@v3→v4`, `aquasecurity/trivy-action@0.35→0.36`, `actions/cache@v4→v5/v6`, `actions/upload-artifact@v4→v6/v7`, `actions/download-artifact@v4→v7`. `actions/github-script@v7→v8` where used.
 - **When adding a new `uses:`:** fetch its `action.yml` via `raw.githubusercontent.com/<owner>/<repo>/<tag>/action.yml` and verify `runs.using: node24`. If it is `node20`, bump the tag until it is `node24` before merging. Pin the SHA at that tag.
 
-### 4. Coverage — 70% Temporary, Target 80%
+### 4. Coverage — 80% Combined on Master, Report-Only on PRs
 
-- `main.yml: test-python-coverage` enforces `--cov-fail-under=70` on the **merged** shard coverage (not per-shard). Per-shard runs use `--cov-fail-under=0` — a single shard covers a subset and must not gate.
-- **Why 70:** repo TOTAL is 78% today; the long-standing gate is 80%. `da968e1ca` relaxed 80→70 to unblock PRs (TOTAL 78% < 80 would red every PR for pre-existing debt, not the PR's change). The gate header and `quality-gate` job both carry `TODO: bump to 80% when coverage improves`.
-- **Do not raise to 80** until TOTAL is ≥80 and stays there. When you do, update both the `coverage report --fail-under` line and the `quality-gate` comment in the same PR. Diff-cover (`--fail-under=90` on changed lines) stays at 90 regardless.
+- Coverage is its own `main.yml: coverage` job, off the test lanes' critical path. Each `test-python` slice writes `.coverage.<slice>` with `--cov-fail-under=0` — a single slice covers a subset and must not gate. The `coverage` job downloads all three artifacts, runs `coverage combine .coverage.unit .coverage.integration .coverage.bridge`, then `coverage report --fail-under=$FAIL_UNDER`.
+- **`FAIL_UNDER` is 80 on master and 0 on PRs.** 80 matches `fail_under` in `apps/api/pyproject.toml`. PRs are report-only because test-impact selection may have run only a subset of the suite, which makes 80 unreachable by construction. Keep both sides in step: if you change `fail_under` in `apps/api/pyproject.toml`, change the `FAIL_UNDER` master value in `main.yml` in the same PR.
+- There is **no diff-cover step** in `main.yml` — do not document or lint for one.
 
-### 5. Trivy — Blocking (Was Advisory)
+### 5. Trivy — Advisory, With A TODO To Make It Blocking
 
-- `main.yml: trivy-scan` is now **blocking**: `scan-type: fs`, `severity: CRITICAL,HIGH`, `scan-ref: .`, `exit-code: 1`, `ignore-unfixed: false`, `format: table`. `continue-on-error: false` (no silent pass). The job is in `quality-gate.needs` — a HIGH/CRITICAL fails the gate.
-- **Was advisory:** `continue-on-error: true` with 12 known HIGH in `pnpm-lock.yaml` (axios, brace-expansion, fast-uri, next CVEs, postcss, sharp) — flipping to blocking then would red every PR for pre-existing findings.
-- **Now:** lock already has overrides for those 12; trivy currently reports ~25 HIGH (axios 1.19.0, undici 6.28/7.29, tar 7.5.22, adm-zip 0.5.18, brace-expansion 5.0.9, etc.) — those must be fixed via `pnpm.overrides` before trivy goes green. **Do not set `ignore-unfixed: true`** to hide them; fix the package or add a per-finding allowlist with a linked CVE and expiry, reviewed in the same PR.
+- `main.yml: trivy-scan` runs `scan-type: fs`, `severity: CRITICAL,HIGH`, `scan-ref: .`, `format: table`, `ignore-unfixed: false`, and **`exit-code: "0"` — advisory, it cannot red a PR**. The job is nonetheless in `quality-gate.needs`, so the gate fails if the job itself errors or is cancelled; findings alone do not.
+- **Why still advisory:** ~25 HIGH from `pnpm-lock.yaml` (axios, undici, tar, adm-zip, brace-expansion, …) would red every PR for pre-existing debt. The workflow carries the TODO: flip `exit-code` to `1` once `chore/trivy-npm-audit` lands. Do that in the same PR that fixes the findings — and update this section then.
+- **Do not set `ignore-unfixed: true`** to hide findings; fix the package via `pnpm.overrides` or add a per-finding allowlist with a linked CVE and expiry, reviewed in the same PR.
 
 ### 6. Dead-Code — `wrangler` Is an Ignored Binary (Not Dead Code)
 
@@ -480,10 +480,10 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 ### 8. Skipped / Non-Gated Lanes — Intentional, Not Forgotten
 
 - **`main.yml: quality-gate` deliberately excludes `changelog-sync`.** That job auto-opens a fix PR (`fix/changelog-sync-<branch>`) when `docs/release-notes/` is stale — it is non-blocking by design and must not red the gate.
-- **`main.yml: trivy-scan` is now included** (was excluded when advisory). Keep it in `quality-gate.needs` while blocking.
+- **`main.yml: trivy-scan` is in `quality-gate.needs`** even though it is advisory (`exit-code: "0"`): the gate catches a job that errors or is cancelled, not the findings. Keep it there when it flips to blocking.
 - **`code-quality.yml: quality-gate` enforces 20 lanes** (biome, deps, circular, file-size, types-location, components-per-file, duplicates, package-hygiene, type-check, python-static (ruff + custom lints + escape-hatch whys + xenon + interrogate + bandit + pip-audit, each step `continue-on-error` behind an aggregating verdict), python-mypy, observability, wide-event-conformance, dead-code, alert-rules, suppression-hygiene, gitleaks, semgrep, `test-mutation`). `test-mutation-plan` is the planner; `test-mutation` (sharded, `max-parallel: 12`, per-module `timeout-minutes: 20`) is the gated lane.
 - **`build.yml: docker-grafana` is not a quality gate gate** — it publishes `gaia-grafana:latest` unconditionally; the Swarm deploy pins `grafana_image_tag` only when that lane succeeded. Do not add it to `main.yml:quality-gate`.
-- **`main.yml: trigger-build` is `always() && quality-gate == success && github.ref == refs/heads/master`** — `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes but `quality-gate` is still success). `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
+- **`main.yml: trigger-build` is `always() && github.ref == 'refs/heads/master'`** — it does *not* require `quality-gate == success`. `always()` suppresses the implicit `success()` that would false-negative on skipped ancestors (e.g. `build` skips on Python-only changes); the gate's verdict is passed down as the `gate_result` input, so `compute-deploy-plan.sh` decides whether to deploy and a failed gate still fires the publish-without-deploy orphan alert instead of silently skipping. `build.yml` uses `cancel-in-progress: false` (deploys must queue, never cancel); `main.yml`/`code-quality.yml` use `cancel-in-progress: true` on `refs/heads/master` (5 rapid merges coalesce to 1 final verification via `nrwl/nx-set-shas` base = last successful master).
 
 ### 9. How To Bump Packages Safely — The `chore/pip-audit-aiohttp` Pattern
 

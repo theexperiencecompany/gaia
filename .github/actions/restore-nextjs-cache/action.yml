@@ -2,7 +2,7 @@ name: Restore Next.js build cache
 description: >
   Persist apps/web/.next/cache across runs so `next build` compiles warm.
   Single source of truth for the cache key — used by main.yml (build),
-  hybrid-ci.yml and desktop-pr-build.yml (prepare).
+  deploy-web.yml (build) and desktop-pr-build.yml (prepare).
 
   Two strategies, picked by runner kind. GitHub-hosted runners are ephemeral,
   so the cache has to travel through actions/cache. The self-hosted home

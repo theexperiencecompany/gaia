@@ -16,12 +16,12 @@ flowchart TD
 
   START["Feature branch changes<br/>(humans, contributors, bots)"]:::event --> PR_MASTER["PR to master"]:::event
   PR_MASTER --> PR_TITLE["pr-naming-conventions.yml<br/>Validate PR title"]:::ci
-  PR_MASTER --> MAIN_PR["hybrid-ci.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
+  PR_MASTER --> MAIN_PR["main.yml + code-quality.yml<br/>quality gates (PR)"]:::ci
   MAIN_PR --> MASTER_MERGED{"Merged to master?"}:::decision
   MASTER_MERGED -- "No" --> STOP2["Stop"]:::terminal
   MASTER_MERGED -- "Yes" --> PUSH_MASTER["push -> master"]:::event
 
-  PUSH_MASTER --> MAIN_PUSH["hybrid-ci.yml<br/>quality checks (push)"]:::ci
+  PUSH_MASTER --> MAIN_PUSH["main.yml<br/>quality checks (push)"]:::ci
   PUSH_MASTER --> RP["release-please.yml<br/>master-ref guard + run release-please"]:::release
 
   PUSH_MASTER --> BUILD_CALL["build-images -> build.yml phase=build<br/>(images build+publish, parallel to the checks;<br/>immutable :sha tags only — never :latest)"]:::build
@@ -87,13 +87,14 @@ flowchart TD
 ```
 
 ## Per-Workflow Steps
-### `.github/workflows/hybrid-ci.yml`
-0. THE pipeline for `pull_request` to `master` and pushes to `master`. `main.yml` holds the same lanes in their pre-consolidation shape but is `workflow_dispatch:`-only — a manual fallback, not a PR gate. Running both doubled every lane on the self-hosted box.
-1. `select-runner` picks the home box when it is online and idle and falls back to GitHub-hosted otherwise; compute lanes land on `fromJSON(needs.select-runner.outputs.runner)`.
-2. `detect`: validate the release manifest and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
-3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), `test-device-bridge` (the Node-driven e2e, its own lane so the shards can skip Node), and `test-python` — pytest sharded 6-way via pytest-split, run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness). The shards run `-p no:randomly` so collection order is identical everywhere and pytest-split's positional slices stay disjoint — per-shard random seeds left a third of the suite unrun. Each shard measures coverage with `--cov-fail-under=0`; `test-python-coverage` asserts the shards partitioned the suite (`scripts/ci/assert_shard_partition.py`), combines the shard files and enforces the repo gate (70% temporary, target 80%) plus diff-cover 90%, schemathesis, and gaia-shared tests. Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
-4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
-5. On `master` pushes only, `build.yml` is called in two phases: `build-images` (`phase=build`, needs only `detect`) builds and publishes the Docker images in parallel with the test lanes — immutable `:<sha>`/version tags only, never `:latest`, and its deploy-side jobs (`deployment-plan`, orphan alert, `trigger-deploy`, `promote-latest`) are guarded off with `inputs.phase != 'build'`; then `trigger-build` (`phase=deploy`, needs `quality-gate` + `build-images`, `if: always()` so a failed gate still reaches the orphan guardrail) calls `build.yml` again with `gate_result` and the build phase's outputs to run the deploy plan, `:latest` promotion, and the Swarm deploy.
+### `.github/workflows/main.yml` ("Quality Checks")
+0. THE pipeline for `pull_request` to `master` and pushes to `master`, plus `workflow_dispatch` (which additionally enables the `probe` job and the `benchmark` matrix). Concurrency group `ci-<ref>` with `cancel-in-progress: true`.
+1. `select-runner` picks the home box when it is online and idle and falls back to GitHub-hosted otherwise; compute lanes land on `fromJSON(needs.select-runner.outputs.runner)`. It resolves both a `standard` and a `docker` flavour.
+2. `detect`: compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
+3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — a three-slice matrix (`unit` = `tests/unit tests/meta`, no services/Node; `integration` = the real/e2e/stress/integration/contracts trees with services + Node; `bridge` = `tests/integration/real/test_device_bridge_e2e.py` alone, serial, because it TRUNCATEs `bridge_devices` on the lane's shared Postgres). Tests run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers (`scripts/ci/start-test-services.sh`, or the shared namespaces via `scripts/ci/shared-test-services.sh` on the box). Each slice writes its own `.coverage.<slice>` with `--cov-fail-under=0`; the separate `coverage` job downloads all three, `coverage combine`s them and enforces the threshold — `fail_under` 80 (`apps/api/pyproject.toml`) on master, report-only (`0`) on PRs because PRs may have run a test-impact selection. Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
+4. Supporting lanes: `docker-image` (times an api image build on the persistent `gaia-ci` buildx builder; skipped on a PR whose image inputs are unchanged, never pushed), `test-harness-tools` (`tools/lints`, `tools/llm-stub`, `scripts/ci`), `trivy-scan` (fs scan, CRITICAL/HIGH — **advisory today**: `exit-code: "0"` with a TODO to flip it to `1` once `chore/trivy-npm-audit` lands), `regression-proof` (PRs only — `@pytest.mark.regression` tests must fail on `origin/master`), and `changelog-sync` (ubuntu-latest; auto-opens a fix PR — deliberately **excluded** from the gate).
+5. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass. It needs `select-runner`, `detect`, `probe`, `build`, `test-python`, `coverage`, `test-typescript`, `docker-image`, `test-harness-tools`, `trivy-scan`, `regression-proof`.
+6. On `master` pushes only, `build.yml` is called in two phases: `build-images` (`phase=build`, needs only `detect`) builds and publishes the Docker images in parallel with the test lanes — immutable `:<sha>`/version tags only, never `:latest`, and its deploy-side jobs (`deployment-plan`, orphan alert, `trigger-deploy`, `promote-latest`) are guarded off with `inputs.phase != 'build'`; then `trigger-build` (`phase=deploy`, needs `quality-gate` + `build-images`, `if: always()` so a failed gate still reaches the orphan guardrail) calls `build.yml` again with `gate_result` and the build phase's outputs to run the deploy plan, `:latest` promotion, and the Swarm deploy.
 
 ### `.github/workflows/code-quality.yml`
 1. Enter from PRs targeting `master`, pushes to `master`, and manual dispatch.
@@ -158,8 +159,7 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/hybrid-ci.yml`: THE CI correctness gate (build + tests + harness tooling + trivy + regression-proof + docker release trigger), home-runner-first with GitHub fallback. Python tests run runner-native against live service containers.
-- `.github/workflows/main.yml`: `workflow_dispatch:`-only manual fallback holding the pre-consolidation lane shapes (6-way pytest shards). Not a PR gate.
+- `.github/workflows/main.yml` ("Quality Checks"): THE CI correctness gate (build + tests + coverage + docker image + harness tooling + trivy + regression-proof + docker release trigger), home-runner-first with GitHub fallback. Python tests run runner-native against live service containers, split into the `unit` / `integration` / `bridge` slices.
 - `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.

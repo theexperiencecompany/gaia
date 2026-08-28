@@ -26,7 +26,7 @@ fi
 # pytest-cov exits 1 on a coverage-threshold miss even when every test
 # passed. Rerunning with --lf against an empty/stale lastfailed cache would
 # then replay the WHOLE suite (which passes) and get misreported as
-# "FLAKY TESTS DETECTED" — while main.yml's diff-cover step, which would
+# "FLAKY TESTS DETECTED" — while main.yml's `coverage` job, which would
 # give the correct diagnosis, never runs because this step already failed.
 if grep -qE '^FAIL Required test coverage of [0-9.]+% not reached\.' "$tmp_out" \
   && ! grep -qE '^FAILED ' "$tmp_out" \
