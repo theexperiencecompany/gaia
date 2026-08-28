@@ -465,11 +465,7 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
         id: ruff
         continue-on-error: true
@@ -643,11 +639,7 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Install api dev + backend dependencies (uv sync)
         run: |
           echo "::group::uv sync"
@@ -744,11 +736,7 @@ jobs:
       # Node toolchain only for the bots scanner (TS compiler API needs
       # node_modules); the Python scanner stays stdlib-only.
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       # This lane's verdict is only worth what its rules are worth, and those
       # rules have been silently wrong (a discarded-error except matrix, route
       # resolution that found 2 of 283 paths). Both still printed a score — so
@@ -833,11 +821,7 @@ jobs:
           fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Emit real events from both runtimes and diff their shapes
         run: |
           trap 'echo "::error::repro: python3 scripts/ci/wide-event-conformance/run.py --show-capture"' ERR
@@ -865,11 +849,7 @@ jobs:
           fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Install vulture (Python dead-code detector)
         run: |
           echo "::group::uv tool install vulture"
@@ -914,11 +894,7 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Install pint + promtool (pinned release binaries, same versions prod runs)
         run: |
           echo "::group::install"
@@ -998,11 +974,7 @@ jobs:
       # check_ignore_staleness re-runs rules through `uvx ruff` (repo-pinned),
       # so this lane needs uv on PATH even though the other two steps are
       # stdlib-only scripts.
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Fail on any inline suppression without a same-line reason
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
@@ -1204,11 +1176,7 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
+      - uses: ./.github/actions/setup-uv
       - name: Sync Python dependencies
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required)
