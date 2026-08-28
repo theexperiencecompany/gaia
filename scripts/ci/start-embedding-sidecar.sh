@@ -22,10 +22,24 @@ LOG="${GAIA_SIDECAR_LOG:-/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.log}"
 PIDFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
 
 # A sidecar left behind by an interrupted job would hold the port.
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+# Keep-warm (self-hosted): loading the two ONNX models costs 8 s per lane
+# (measured run 33171716529) and the sidecar is stateless, so a healthy one
+# left by the previous job on this runner is reused when nothing it depends
+# on changed. STAMP covers the sidecar package and the locked dependency set;
+# a PR that touches either gets a fresh process. Everything else — a dead
+# pid, a failed health probe, a GitHub-hosted runner — cold-starts as before.
+STAMPFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.stamp"
+STAMP="$(git -C "$REPO_ROOT" rev-parse "HEAD:apps/api/app/services/embedding_sidecar" 2>/dev/null || echo none)-$(git -C "$REPO_ROOT" hash-object uv.lock 2>/dev/null || echo none)"
+REUSED=""
+if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null \
+   && [ "$(cat "$STAMPFILE" 2>/dev/null)" = "$STAMP" ] && curl -sf --max-time 5 "${URL}/health" > /dev/null 2>&1; then
+  echo "embedding sidecar reused at ${URL} (pid $(cat "$PIDFILE"), warm)"
+  REUSED=1
+elif [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   kill "$(cat "$PIDFILE")" 2>/dev/null || true; sleep 1
 fi
 
+if [ -z "$REUSED" ]; then
 cd "$REPO_ROOT/apps/api"
 # --no-sync: the environment is already synced by the caller; this must not
 # touch the network. The model cache dir is inherited from the environment.
@@ -50,7 +64,9 @@ until curl -sf "${URL}/health" > /dev/null 2>&1; do
   fi
   sleep 1
 done
+echo "$STAMP" > "$STAMPFILE"
 echo "embedding sidecar ready at ${URL} (pid $(cat "$PIDFILE"), $((SECONDS))s)"
+fi
 
 # Retry backoff for the test lane. The client sleeps a FIXED
 # MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS between attempts, and the sidecar 503s a

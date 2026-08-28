@@ -350,10 +350,11 @@ cmd_reset() {
 
   # Flush the lane's whole 32-DB stripe, not just the 24 the workers use: a
   # stray key outside the block is still this lane's litter.
-  local db
-  for ((db = redis_base; db < redis_base + REDIS_STRIPE; db++)); do
-    docker exec "$REDIS_NAME" redis-cli -n "$db" flushdb >/dev/null
-  done
+  # One docker exec, not one per DB: 32 execs cost 3.2 s of every services
+  # lane's teardown (run 33171716529); a single exec with the loop inside the
+  # container is ~0.3 s.
+  docker exec "$REDIS_NAME" sh -c \
+    "for db in \$(seq $redis_base $((redis_base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"
   echo "Redis: flushed DBs ${redis_base}-$((redis_base + REDIS_STRIPE - 1))"
 
   # Every worker database of this lane: gaia_test_r<lane>_gw0, _gw1, ...

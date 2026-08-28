@@ -18,11 +18,14 @@ if [ -n "$LEFT" ]; then
   # shellcheck disable=SC2086
   timeout 60 docker rm -f $LEFT >/dev/null 2>&1 && echo "removed leaked service containers: $(echo "$LEFT" | wc -l)"
 fi
-# A sidecar from an interrupted job.
+# The sidecar is left warm between jobs on purpose (scripts/ci/
+# stop-embedding-sidecar.sh); only a dead or unresponsive one is a leak.
 if [ -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" ]; then
   pid="$(cat "/tmp/gaia-embedding-sidecar-${IDX}.pid")"
-  kill "$pid" 2>/dev/null && echo "killed leaked embedding sidecar (pid $pid)"
-  rm -f "/tmp/gaia-embedding-sidecar-${IDX}.pid"
+  if ! kill -0 "$pid" 2>/dev/null || ! curl -sf --max-time 5 "http://127.0.0.1:$((18200 + IDX * 100))/health" >/dev/null 2>&1; then
+    kill "$pid" 2>/dev/null && echo "killed unresponsive embedding sidecar (pid $pid)"
+    rm -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" "/tmp/gaia-embedding-sidecar-${IDX}.stamp"
+  fi
 fi
 # Shared-services namespace left by an interrupted job.
 S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"

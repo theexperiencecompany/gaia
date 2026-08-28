@@ -212,8 +212,9 @@ jobs:
       fail-fast: false
       matrix:
         slice:
-          # node: only the device-bridge e2e test (integration slice) drives the
-          # real `gaia bridge` CLI via tsx; the unit slice skips the Node setup.
+          # node: only the bridge slice (tests/integration/real/test_device_bridge_e2e.py)
+          # drives the real `gaia bridge` CLI via tsx; every other slice skips the
+          # Node setup (pnpm self-installer alone cost the integration lane 8 s).
           # unit + meta need no service containers, sidecar or Node (verified on
           # the box: 10,542 passed, 0 errors, nothing running). contracts needs
           # Redis/Mongo, so it rides with integration.
@@ -232,7 +233,7 @@ jobs:
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
           # those out first makes the tail out of quick tests instead.
-          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "true", services: "true", workers: "6", serial: "false" }
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "false", services: "true", workers: "6", serial: "false" }
           # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
           # Postgres (clean_bridge_tables); under xdist another worker's fixture
           # wipes its rows mid-test ("Refresh token is invalid"). Serial, in
