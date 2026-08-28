@@ -50,5 +50,5 @@ fi
   -m 'not composio and not model_onboarding and not schemathesis' \
   --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
   --cov=app --cov-report= --cov-fail-under=0 \
-  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee /tmp/pytest.time
+  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee "/tmp/pytest-${SLICE}.time"
 echo "Python tests ($SLICE): OK (xdist=$XDIST_N)"

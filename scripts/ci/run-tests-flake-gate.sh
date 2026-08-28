@@ -53,7 +53,11 @@ for arg in "$@"; do
   fi
   rerun_args+=("$arg")
 done
-rerun_args+=(--lf -q)
+# One process for the rerun. Measured 2026-08-28 on the integration slice: the
+# rerun of a single 3.7 s test cost 295 s because it replayed "-n 6" — six
+# workers each re-importing conftest and re-collecting 2003 tests. A later
+# "-n" wins in pytest's parser, so this overrides whatever the caller passed.
+rerun_args+=(-n 0 --lf -q)
 
 set +e
 "${rerun_args[@]}"

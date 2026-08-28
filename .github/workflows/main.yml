@@ -222,7 +222,14 @@ jobs:
           # Static worker shares: the lanes start together, so a runtime probe of
           # "workers already running" sees zero on every lane and each took 16 —
           # 32+ workers on 16 threads (8 physical cores). Shares sum to the box.
-          - { name: unit, paths: "tests/unit tests/meta", ignore: "", node: "false", services: "false", workers: "10", serial: "false" }
+          # unit is two slices on two runner instances: xdist re-collects the
+          # whole slice in EVERY worker (measured 20 s for 13.2k tests, CPU-bound),
+          # so 10 workers on one slice burn ~200 s of CPU on collection alone.
+          # Halving the slice halves per-worker collection and takes the lane's
+          # contention with integration off a single instance. services/agents/
+          # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
+          - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
+          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "5", serial: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
@@ -361,7 +368,7 @@ jobs:
         run: |
           set -euo pipefail
           ls -la .coverage.*
-          uv run --frozen --package gaia --group dev coverage combine .coverage.unit .coverage.integration .coverage.bridge
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (report-only on PRs — test impact selection runs a subset)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
