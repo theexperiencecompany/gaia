@@ -34,6 +34,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import subprocess
 
 import httpx
 import pytest
@@ -55,12 +56,25 @@ CLI_DIR = next(
 _CLI_TSX = CLI_DIR / "node_modules" / ".bin" / "tsx"
 _ROOT_TSX = CLI_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
 TSX_BIN = _CLI_TSX if _CLI_TSX.exists() else _ROOT_TSX
+EVERYTHING_PACKAGE = "@modelcontextprotocol/server-everything"
+# `--offline` (not `-y`) is load-bearing, not a micro-optimization. The daemon
+# only spawns a stdio server when the cloud opens a tunnel session, i.e. *inside*
+# the /api/v1/mcp/test request the round-trip test times. With `-y`, npm resolves
+# the package against the registry on every spawn, and a registry request that
+# stalls is retried with npm's default backoff (fetch-retries=2,
+# fetch-retry-mintimeout=10s, doubling) — 10s + 20s = 30s added to the spawn
+# before it falls back to the cache. That is exactly the 30s dead gap seen
+# between "[MCP] Opening device-tunnel MCP session" and the tools coming back on
+# a loaded CI box, and it blew the client read timeout below.
+# `--offline` resolves from the npx cache only, so the spawn is bounded by local
+# work: measured 0.87-0.90s vs 1.5-2.1s idle / 3.3-4.4s at load average 12 for
+# `-y` on the CI runner. `everything_server_cached` fills that cache first.
 EVERYTHING_SERVER = {
     "type": "stdio",
     "key": "everything",
     "name": "Everything Test Server",
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-everything", "stdio"],
+    "args": ["--offline", EVERYTHING_PACKAGE, "stdio"],
     "env": {},
 }
 
@@ -174,14 +188,47 @@ class BridgeDaemon:
         await asyncio.gather(*self._tasks, return_exceptions=True)
 
 
+@pytest.fixture(scope="session")
+def everything_server_cached() -> None:
+    """Fetch the third-party MCP server into the npx cache once, before any test.
+
+    The daemon spawns it with ``npx --offline`` from inside the request under
+    test, and offline mode reads the cache instead of the registry — so the
+    fetch has to happen somewhere, and here is the only place where it is not
+    being timed. Feeding the real spawn a closed stdin is what makes this a
+    fetch rather than an approximation of one: the server sees EOF on its stdio
+    transport and exits 0 on its own, so the cache is populated by exactly the
+    command the daemon will run.
+    """
+    # Generous: this is setup, and on a cold runner it is a real npm download.
+    warm = subprocess.run(
+        ["npx", "-y", EVERYTHING_PACKAGE, "stdio"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=180.0,
+        check=False,
+    )
+    assert warm.returncode == 0, (
+        f"could not fetch {EVERYTHING_PACKAGE} into the npx cache "
+        f"(rc={warm.returncode}): {warm.stderr}"
+    )
+
+
 def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     headers = {"x-test-user-id": user_id} if user_id else {}
+    # Sized from the measured cost of the slowest call these clients make — the
+    # /api/v1/mcp/test round trip: open the tunnel session (the daemon spawns the
+    # local MCP server from the npx cache, measured 0.87-0.90s), then initialize
+    # + list_tools over Redis pub/sub. Well under a second of real work; 35s is
+    # the headroom for a loaded runner, not a budget for network fetches. Keep
+    # the npx spawn cache-only (see EVERYTHING_SERVER) rather than raising this.
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
 class TestFullDeviceLifecycle:
     async def test_pair_up_real_mcp_round_trip_then_revoke(
-        self, tmp_path, live_api_server, clean_bridge_tables
+        self, tmp_path, live_api_server, clean_bridge_tables, everything_server_cached
     ):
         """The golden path, end to end, with no shortcuts anywhere in the chain."""
         daemon = BridgeDaemon(tmp_path / "home")
