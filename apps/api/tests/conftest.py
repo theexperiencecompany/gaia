@@ -321,8 +321,11 @@ def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None
     leaked = {
         key: (baseline.get(key), os.environ.get(key))
         for key in set(os.environ) | set(baseline)
-        if key.startswith("PYTEST_") is False and baseline.get(key) != os.environ.get(key)
+        if key.startswith(("PYTEST_", "KMP_")) is False and baseline.get(key) != os.environ.get(key)
     }
+    # KMP_*: set by the OpenMP runtime (onnxruntime/fastembed) on first import,
+    # not by a test. Only visible when embeddings run in-process (no sidecar,
+    # i.e. GitHub-hosted lanes).
     assert not leaked, f"tests leaked environment changes: {leaked}"
 
 

@@ -204,12 +204,26 @@ if [[ "$R_STATUS" == "online" && "$R_BUSY" == "false" ]]; then
   exit 0
 fi
 
-# Runner exists but not usable right now
-if [[ "$R_STATUS" != "online" ]]; then
-  REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
-else
-  REASON="all ${R_ONLINE} online instance(s) busy"
+# Online but every instance is busy: QUEUE on the box rather than fall back.
+# Measured 2026-08-28: a lane that fell back to ubuntu-latest spent 357-422 s
+# in environment setup alone (cold uv sync, service containers, model
+# download) — longer than any realistic wait for a home slot, where the same
+# setup is 13 s. Fallback is for offline/unreachable, not for "busy".
+if [[ "$R_STATUS" == "online" ]]; then
+  SELF_JSON='["self-hosted","'"$LABEL"'"]'
+  log "Home pool online but all ${R_ONLINE} instance(s) busy → queueing on self-hosted (setup there is ~30x cheaper than GitHub's)."
+  emit "$SELF_JSON" "$LABEL" "true" "online-busy-queued"
+  summary "### Runner selection — home (queued)
+
+- **Selected:** \`$SELF_JSON\` — 🟡 all ${R_ONLINE} online instance(s) busy; job queues for the next free slot
+- **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered
+- **Why not fall back:** GitHub-hosted env setup measured at 357-422 s vs 13 s on the box
+"
+  exit 0
 fi
+
+# Runner registered but offline
+REASON="offline (${R_ONLINE}/${R_TOTAL} online)"
 
 log "Home runner not schedulable: $REASON. Falling back to $FALLBACK."
 if [[ "$FORCE" == "true" ]]; then
