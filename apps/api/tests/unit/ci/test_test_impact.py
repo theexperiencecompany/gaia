@@ -53,6 +53,10 @@ def recorded_map(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     (src / "alpha.py").write_text("def a():\n    return 1\n")
     (src / "beta.py").write_text("def b():\n    return 2\n")
     monkeypatch.chdir(tmp_path)
+    # The sysmon core (CI sets COVERAGE_CORE=sysmon on PR runs for speed) does
+    # not implement switch_context, so every line would land in one context.
+    # The real recording lanes run with the C tracer; mirror that here.
+    monkeypatch.setenv("COVERAGE_CORE", "ctrace")
     sys.path.insert(0, str(tmp_path))
     try:
         cov = Coverage(
