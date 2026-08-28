@@ -168,7 +168,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler deploy --config apps/web/wrangler.jsonc
+          # wrangler is a dependency of apps/web; under the isolated linker its
+          # bin only exists in that package's node_modules, not the repo root.
+          pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc
 
       - name: Report deploy duration
         if: always()
@@ -234,7 +236,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
+          pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc
 
       - name: Report preview duration
         if: always()

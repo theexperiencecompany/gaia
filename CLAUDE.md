@@ -467,14 +467,15 @@ Audits of all 12 workflows + 4 composites (`audit-*.md` in `.agents/plans/`) fou
 ### 6. Dead-Code — `wrangler` Is an Ignored Binary (Not Dead Code)
 
 - `deploy-web.yml` switched from `cloudflare/wrangler-action@v3` to `pnpm exec wrangler deploy` / `versions upload` (wrangler is already in `pnpm-lock.yaml` at 4.110.0; `wrangler-action` tried `npm i wrangler@3.90.0`/`pnpm add` without `-w` and failed with `ERESOLVE` / `ERR_PNPM_ADDING_TO_ROOT` in the pnpm workspace).
-- `knip` then flagged `wrangler` as an unlisted binary. Fix: `config/knip.config.ts: ignoreBinaries: ["wrangler", ...]` — correct, because wrangler is provided by the monorepo root `pnpm-lock.yaml` and invoked via `pnpm exec`, not listed per `apps/web/package.json`. `wrangler` is already in the root-deps allowlist comment ("Binaries provided by monorepo root, mise, Nx, or pnpm scripts").
+- `knip` then flagged `wrangler` as an unlisted binary. Fix: `config/knip.config.ts: ignoreBinaries: ["wrangler", ...]` — correct, because wrangler is a CLI invoked from CI (declared in `apps/web/package.json`, executed via `pnpm --filter ./apps/web exec`), not a runtime import. `wrangler` is already in the root-deps allowlist comment ("Binaries provided by monorepo root, mise, Nx, or pnpm scripts").
 - **Do not remove `wrangler` from `ignoreBinaries`** and do not add it to `apps/web` `dependencies` to silence knip — it is a CLI invoked from CI, not a runtime import. Same rule applies to `biome`, `nx`, `uv`, `tsx`, `playwright` etc. already listed.
 
-### 7. Preview Deploy — `pnpm exec wrangler` (Not `wrangler-action`)
+### 7. Preview Deploy — `pnpm --filter ./apps/web exec wrangler` (Not `wrangler-action`)
 
 - **Build:** `pnpm --filter ./apps/web cf:build` (path filter; `pnpm-workspace.yaml` globs resolve `./apps/web` — package name is `gaia` but path filter is canonical in this repo). Keep the `--filter ./apps/web` form; `pnpm --filter gaia` also works but is not the convention here.
-- **Prod deploy:** `pnpm exec wrangler deploy --config apps/web/wrangler.jsonc` with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `env:` (not inline `${{ }}`). Minimal token scopes: `Workers Scripts Write + R2 Write/Read + Routes Write` on `d65fe47d…`, expires 2027-08-21.
-- **Preview deploy:** `pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc` — not `wrangler-action` `packageManager: npm` workaround (removed in `45632ba66`). Preview reuses `setup-node-pnpm` + built `.open-next` artifact (`path: apps/web/.open-next`, `include-hidden-files: true`).
+- **Prod deploy:** `pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc` with `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` in `env:` (not inline `${{ }}`). Minimal token scopes: `Workers Scripts Write + R2 Write/Read + Routes Write` on `d65fe47d…`, expires 2027-08-21.
+- **Preview deploy:** `pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc` — not `wrangler-action` `packageManager: npm` workaround (removed in `45632ba66`). Preview reuses `setup-node-pnpm` + built `.open-next` artifact (`path: apps/web/.open-next`, `include-hidden-files: true`).
+- **Why the `--filter`:** wrangler is a dependency of `apps/web`, and under pnpm's isolated linker a package's bins live only in that package's `node_modules/.bin` — a bare `pnpm exec wrangler` from the repo root fails with `Command "wrangler" not found`. The filtered form runs inside `apps/web`, so `--config` is relative to it.
 - **Why not `wrangler-action`:** it auto-detects `pnpm` and runs `pnpm add wrangler` without `-w` in a workspace root, which fails; forcing `packageManager: npm` then fails with peer `react@19.1.0 vs 19.2.3` `ERESOLVE`. `pnpm exec wrangler` avoids both by using the already-installed binary.
 
 ### 8. Skipped / Non-Gated Lanes — Intentional, Not Forgotten
