@@ -22,26 +22,17 @@ ARTIFACT="test-impact-map-${SLICE}"
 WORKFLOW="main.yml"
 mkdir -p "$MAP_DIR"
 
-# Newest completed run on a branch that carries the artifact: "<created_at> <run_id>".
-newest_run_with_map() {
-  local branch="$1"
-  gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${WORKFLOW}/runs?branch=${branch}&status=completed&per_page=15" \
-    --jq '.workflow_runs[] | "\(.created_at) \(.id)"' 2>/dev/null \
-  | while read -r created id; do
-      if gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/artifacts" \
-           --jq ".artifacts[] | select(.name == \"${ARTIFACT}\" and .expired == false) | .id" 2>/dev/null | grep -q .; then
-        echo "$created $id"
-        return 0
-      fi
-    done
-  return 0
-}
-
-candidates="$(newest_run_with_map master)"
-if [ -n "${GITHUB_HEAD_REF:-}" ]; then
-  candidates="$(printf '%s\n%s\n' "$candidates" "$(newest_run_with_map "$GITHUB_HEAD_REF")")"
-fi
-pick="$(echo "$candidates" | grep -E '^[0-9]{4}-' | sort | tail -n1 || true)"
+# One call: the repo-wide artifact list filtered by name carries each
+# artifact's run id and head branch (walking runs and asking each for its
+# artifacts cost 27 s per lane). Newest unexpired one on master or the head
+# branch wins.
+branches="master"
+[ -n "${GITHUB_HEAD_REF:-}" ] && branches="master ${GITHUB_HEAD_REF}"
+pick="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${ARTIFACT}&per_page=50" \
+  --jq '.artifacts[] | select(.expired == false) | "\(.created_at) \(.workflow_run.id) \(.workflow_run.head_branch)"' 2>/dev/null \
+  | while read -r created id branch; do
+      for b in $branches; do [ "$branch" = "$b" ] && echo "$created $id"; done
+    done | sort | tail -n1 || true)"
 if [ -z "$pick" ]; then
   echo "test impact ($SLICE): no map artifact on master or ${GITHUB_HEAD_REF:-<no head ref>} yet"
   exit 0

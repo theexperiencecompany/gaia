@@ -479,7 +479,9 @@ jobs:
         run: |
           set -euo pipefail
           BASE_BRANCH="${{ github.base_ref || 'master' }}"
-          git fetch -q --depth=1 origin "$BASE_BRANCH" 2>/dev/null || true
+          # No --depth: it re-shallows the box's persistent workspace, and the
+          # next checkout then re-unshallows from GitHub (100 s).
+          git fetch -q --no-tags origin "$BASE_BRANCH" 2>/dev/null || true
           BASE="$(git merge-base "origin/$BASE_BRANCH" HEAD 2>/dev/null || echo HEAD~1)"
           CHANGED="$(git diff --name-only "$BASE" HEAD -- apps/api/Dockerfile .dockerignore uv.lock pyproject.toml apps/api/pyproject.toml libs/pyproject.toml scripts/ci/check-playwright-pin.sh || true)"
           if [ -n "$CHANGED" ] || [ "${{ github.event_name }}" != "pull_request" ]; then

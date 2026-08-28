@@ -326,7 +326,11 @@ WorkingDirectory=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-%i
 ExecStart=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-%i/run.sh
 Restart=always
 RestartSec=5
-KillMode=process
+# control-group, not process: a unit restart must also take the Runner.Worker
+# with it. With KillMode=process a wedged worker (runner 2.336.0, see
+# RUNNER_VERSION above) survived the restart, GitHub kept handing it jobs,
+# and every one of them stuck "in_progress".
+KillMode=control-group
 KillSignal=SIGTERM
 TimeoutStopSec=5min
 Environment=RUNNER_INDEX=%i

@@ -35,7 +35,10 @@ if [ ! -f "$MAP" ]; then
 fi
 
 # The merge-base, not the base tip: we only want what this PR changed.
-git fetch --no-tags --depth=200 origin "$BASE_REF" >/dev/null 2>&1 || true
+# No --depth: on the box's persistent workspace a depth-limited fetch marks
+# the repo shallow again, and the next checkout pays a full re-unshallow
+# from GitHub (measured 104 s per job).
+git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 || true
 MERGE_BASE=$(git merge-base "origin/$BASE_REF" HEAD 2>/dev/null || true)
 if [ -z "$MERGE_BASE" ]; then
   echo "ALL" >"$SELECTED"
