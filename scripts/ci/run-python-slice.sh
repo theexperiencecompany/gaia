@@ -30,11 +30,16 @@ if [ -n "${SLICE_IGNORE:-}" ]; then
   # shellcheck disable=SC2206 # same: SLICE_IGNORE is a flag list, not one argument
   EXTRA=(${SLICE_IGNORE})
 fi
-# Auto-loaded pytest plugins the suite never uses, each imported by EVERY xdist
-# worker: opik (profiled at 9.2s per process), langsmith, schemathesis (its
-# tests are marker-excluded; the plugin still loads). Blocking them by entry
-# point name is targeted — everything else keeps auto-loading.
-EXTRA+=(-p no:opik -p no:langsmith_plugin -p no:schemathesis)
+# Plugin auto-discovery off, explicit list on. Every xdist worker imports every
+# installed pytest plugin at startup; measured on the box for tests/unit:
+# collection 116s with a cold bytecode cache and all 16 auto-loaded plugins,
+# 52s warm, 24s warm with only the plugins the suite uses. opik alone is ~4s
+# of import per worker, schemathesis ~2s; neither is used by these lanes.
+# If a fixture goes missing after a dependency change, the plugin belongs in
+# this list — that is a visible error, unlike the silent per-worker cost.
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+EXTRA+=(-p pytest_asyncio -p xdist -p pytest_cov -p pytest_timeout -p pytest_mock -p randomly
+        -p hypothesis.extra.pytestplugin -p respx.plugin -p time_machine -p anyio.pytest_plugin -p pytest_check)
 if [ -n "${COV_CONTEXT:-}" ]; then
   EXTRA+=(--cov-context="${COV_CONTEXT}")
 fi
