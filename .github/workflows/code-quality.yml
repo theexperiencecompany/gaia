@@ -146,13 +146,15 @@ jobs:
   # 2026-08-29: mutation shards 104 s -> 156-179 s, jscpd 91 -> 177 s) with
   # the long pole — mutation plan -> shards -> gate — starved. The long and
   # CPU-heavy jobs (mutation shards, jscpd, Python static, mypy, knip) start
-  # first; the ~30 s checks below wait for the heavy lint jobs and fill in
-  # after. `!cancelled()` keeps them running when a heavy job fails or is
+  # first; the ~30 s checks below wait for Python static, mypy and knip (done
+  # by ~145 s) and fill in alongside jscpd and the shards — not behind jscpd,
+  # which is the slowest lint job (measured: gating on it pushed the light
+  # wave to t=176 s and the gate to 246 s). `!cancelled()` keeps them running when a heavy job fails or is
   # skipped, so no check is ever hidden by ordering. On GitHub-hosted fallback
   # this serialises two waves (~+60 s); the box is the primary target.
   biome:
     name: Biome lint + format
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
@@ -207,7 +209,7 @@ jobs:
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -246,7 +248,7 @@ jobs:
   # --- Circular dependency check ------------------------------------------
   circular:
     name: No circular imports
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -269,7 +271,7 @@ jobs:
   # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
     name: File size limits
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -299,7 +301,7 @@ jobs:
   # --- Types must live in dedicated type files ----------------------------
   types-location:
     name: Types live in dedicated *.types.ts files
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -329,7 +331,7 @@ jobs:
   # --- Components-per-file ------------------------------------------------
   components-per-file:
     name: At most 2 React components per file
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
@@ -385,7 +387,7 @@ jobs:
   # --- Published package hygiene ------------------------------------------
   package-hygiene:
     name: Published package hygiene (publint + attw)
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
@@ -422,7 +424,7 @@ jobs:
   # --- TypeScript strict type-check ---------------------------------------
   type-check:
     name: TypeScript strict type-check (all workspaces)
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
@@ -733,7 +735,7 @@ jobs:
   # test suites (first step).
   observability:
     name: Observability score (evlog map)
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
@@ -820,7 +822,7 @@ jobs:
   # actually stops the two halves drifting apart between reviews.
   wide-event-conformance:
     name: Wide events have one shape across Python and TypeScript
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
@@ -894,7 +896,7 @@ jobs:
   # Prometheus pass — see infra/docker/observability/CLAUDE.md.
   alert-rules:
     name: Grafana alert rules (pint + promtool)
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() && (needs.changes.outputs.has_alert_rules == 'true') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
@@ -967,7 +969,7 @@ jobs:
   # checks are working-tree scans, reproducible locally with the commands below.
   suppression-hygiene:
     name: "Suppression hygiene (every # noqa / # type: ignore / biome-ignore has a why)"
-    needs: [select-runner, changes, python-static, python-mypy, dead-code, duplicates]
+    needs: [select-runner, changes, python-static, python-mypy, dead-code]
     if: ${{ !cancelled() }}
     # No job-level language gate on purpose: check_tool_pins reads the WORKFLOW
     # FILES themselves (code-quality.yml, main.yml), so a workflow-only PR is
