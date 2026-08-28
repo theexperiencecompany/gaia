@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from hypothesis import settings as _hypothesis_settings
+from hypothesis import HealthCheck, settings as _hypothesis_settings
 import pytest
 
 # Hypothesis profiles. Profiled: 20 hypothesis tests were 10.4s of the 10.8s
@@ -27,8 +27,23 @@ import pytest
 # default (full) profile runs on master and locally, so nothing is lost.
 # The property tests do not set ``max_examples`` themselves (a per-test value
 # would silently override the profile); ``deadline=None`` stays per-test.
-_hypothesis_settings.register_profile("ci", max_examples=25, deadline=None)
-_hypothesis_settings.register_profile("default", max_examples=200)
+# differing_executors: hypothesis flags a @given method whose class is
+# instantiated anew between calls — exactly what mutmut's in-process runner
+# does when it re-runs the suite per mutant (the "clean" run of the registry
+# shard failed on test_property_cron_datetime). The explicit per-test
+# @settings(max_examples=...) used to mask it; the profiles carry it now.
+_hypothesis_settings.register_profile(
+    "ci",
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "default",
+    max_examples=200,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
 _hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # ---------------------------------------------------------------------------
