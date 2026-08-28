@@ -18,16 +18,20 @@ record` reads that database and inverts it into
  "test_files": {"tests/unit/test_foo.py": ["tests/unit/test_foo.py::test_a"]}}
 ```
 
-One map per slice, cached under `test-impact-map-<slice>-<sha>`.
+One map per slice, uploaded as the workflow artifact `test-impact-map-<slice>`
+(30-day retention). Not `actions/cache`: a pull_request run can only restore
+caches written on its merge ref or on master, so a map recorded by a dispatch
+run on the PR's own branch would be invisible to it.
 
-`COVERAGE_CORE=sysmon` is dropped for that run only: `sys.monitoring` cannot
-record dynamic contexts, so the map run pays for the C tracer. PRs keep sysmon —
-they do not record a map.
+Those runs trace with the C tracer (`sys.monitoring` cannot record the per-test
+contexts the map needs). PR runs do not trace coverage at all — they do not
+record a map, and their coverage total would be meaningless after selection.
 
 ## How a PR uses it
 
-`scripts/ci/test-impact-select.sh` restores the newest map for its slice
-(`restore-keys: test-impact-map-<slice>-`), diffs against
+`scripts/ci/test-impact-fetch.sh` downloads the newest map artifact for the slice
+(master or the PR's head branch, whichever recorded later); then
+`scripts/ci/test-impact-select.sh` diffs against
 `git merge-base origin/$BASE HEAD`, and runs `test-impact.py select`. The result
 is the union of:
 
@@ -52,7 +56,7 @@ slice when:
 - any `.py` outside `apps/api` changed (`libs/shared/py`, tooling) — the map
   only covers `app/**`;
 - a non-source file under `apps/api` changed (`pyproject.toml`, `uv.lock`, …);
-- no map is cached yet, or the checkout has no merge-base;
+- no map artifact exists yet, or the checkout has no merge-base;
 - the selection would exceed 30% of the slice. A 10k-id argv is ~1 MB, close to
   `ARG_MAX`, and the saving at that size is not worth the risk.
 

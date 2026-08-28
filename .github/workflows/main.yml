@@ -280,13 +280,14 @@ jobs:
       # ── Test impact selection (PRs only, never the bridge slice) ───────────
       # The bridge slice is one serial file; selecting inside it saves nothing
       # and its e2e is the least safe thing to skip. See docs/ci/test-impact.md.
-      - name: Restore test impact map
+      # Artifact, not actions/cache: a PR run cannot restore a cache written on
+      # its head branch, only on its merge ref or master (scripts/ci/test-impact-fetch.sh).
+      - name: Fetch test impact map
         if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
-        uses: actions/cache/restore@v6
-        with:
-          path: .test-impact-map
-          key: test-impact-map-${{ matrix.slice.name }}-${{ github.sha }}
-          restore-keys: test-impact-map-${{ matrix.slice.name }}-
+        env:
+          SLICE_NAME: ${{ matrix.slice.name }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/test-impact-fetch.sh
       - name: Select impacted tests
         id: impact
         if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
@@ -331,12 +332,14 @@ jobs:
             --coverage-db .coverage.${{ matrix.slice.name }} \
             --out ../../.test-impact-map/test-impact-map-${{ matrix.slice.name }}.json \
             --sha "$GITHUB_SHA" --slice ${{ matrix.slice.name }}
-      - name: Save test impact map
+      - name: Upload test impact map
         if: github.event_name != 'pull_request' && !cancelled()
-        uses: actions/cache/save@v6
+        uses: actions/upload-artifact@v4
         with:
-          path: .test-impact-map
-          key: test-impact-map-${{ matrix.slice.name }}-${{ github.sha }}
+          name: test-impact-map-${{ matrix.slice.name }}
+          path: .test-impact-map/test-impact-map-${{ matrix.slice.name }}.json
+          include-hidden-files: true
+          retention-days: 30
       - name: Upload coverage data
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4

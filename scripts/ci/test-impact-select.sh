@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Decide which tests this PR's slice has to run.
 #
-# Reads the map restored from the newest master run, diffs the PR against its
-# merge-base, and writes apps/api/.test-impact/selected-<slice>.txt — either a
+# Reads the map fetched by test-impact-fetch.sh (newest master / head-branch
+# artifact), diffs the PR against its merge-base, and writes
+# apps/api/.test-impact/selected-<slice>.txt — either a
 # list of pytest node ids or the single line ALL. run-python-slice.sh consumes
 # it; every failure mode here falls back to ALL rather than skipping tests.
 #
@@ -29,7 +30,7 @@ emit() {
 MAP="$MAP_DIR/test-impact-map-$SLICE.json"
 if [ ! -f "$MAP" ]; then
   echo "ALL" >"$SELECTED"
-  emit all "ran ALL (no map cached for slice $SLICE yet)"
+  emit all "ran ALL (no map artifact for slice $SLICE yet)"
   exit 0
 fi
 
