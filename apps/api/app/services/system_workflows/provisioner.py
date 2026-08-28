@@ -251,7 +251,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         try:
             new_trigger_ids = await TriggerService.register_triggers(
                 user_id=user_id,
-                workflow_id=workflow_id,
+                owner_id=workflow_id,
                 trigger_name=trigger_config.trigger_name,
                 trigger_config=trigger_config,
                 raise_on_failure=False,

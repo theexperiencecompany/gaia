@@ -368,6 +368,24 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             }
         )
 
+    async def find_paused_by_user_and_trigger(
+        self, user_id: str, trigger_name: str
+    ) -> list[TodoDocument]:
+        """One user's incomplete todos whose ``trigger_name`` subscription is paused —
+        the resync set after the integration behind it is reconnected."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "trigger_subscriptions": {
+                    "$elemMatch": {
+                        "trigger_name": trigger_name,
+                        "status": SubscriptionStatus.PAUSED.value,
+                    }
+                },
+            }
+        )
+
     async def count_trigger_references(
         self, composio_trigger_id: str, *, excluding_todo_id: str | None = None
     ) -> int:

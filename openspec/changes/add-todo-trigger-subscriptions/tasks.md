@@ -14,13 +14,13 @@
 
 ## 3. Registration lifecycle
 
-- [ ] 3.1 Rename the `workflow_id` parameter to a neutral owner ref across `TriggerHandler.register`, `TriggerService.register_triggers` / `unregister_triggers`, and every implementation and call site — no adapter layer
-- [ ] 3.2 Register subscriptions through the existing handler `register()` path; store returned Composio trigger instance IDs. An empty return from an account-level trigger (Gmail) is success — assert it is not treated as a registration failure
-- [ ] 3.3 Add `todo_repository.count_trigger_references(composio_trigger_id, *, excluding_todo_id=None)`; sum workflow + todo counts inside `TriggerService.get_triggers_safe_to_delete` so neither repository reads the other's collection
-- [ ] 3.4 Teardown on every terminal path: completion, archival, failure, **and deletion** — `TodoService.delete_todo`, `bulk_delete_todos`, `delete_all_for_user`. Unregister before the document is removed so nothing is orphaned
-- [ ] 3.5 Include active todo subscriptions in OAuth reconnect resync (`resync_user_workflow_triggers`)
-- [ ] 3.6 Connection-expiry pause: mark affected subscriptions paused and add the `blocked` label to their todos; resume and clear the label on reconnect (`services/workflow/integration_pause.py`)
-- [ ] 3.7 Contract/integration tests: workflow-delete-while-todo-subscribed keeps the Composio trigger; todo-delete-while-workflow-subscribed keeps it; deleting the last referencing todo releases it; expiry pauses and reconnect resumes
+- [x] 3.1 Rename the `workflow_id` parameter to a neutral owner ref across `TriggerHandler.register`, `TriggerService.register_triggers` / `unregister_triggers`, and every implementation and call site — no adapter layer
+- [x] 3.2 Register subscriptions through the existing handler `register()` path; store returned Composio trigger instance IDs. An empty return from an account-level trigger (Gmail) is success — assert it is not treated as a registration failure
+- [x] 3.3 Add `todo_repository.count_trigger_references(composio_trigger_id, *, excluding_todo_id=None)`; sum workflow + todo counts inside `TriggerService.get_triggers_safe_to_delete` so neither repository reads the other's collection
+- [x] 3.4 Teardown on every terminal path: completion, archival, failure, **and deletion** — `TodoService.delete_todo`, `bulk_delete_todos`, `delete_all_for_user`. Unregister before the document is removed so nothing is orphaned
+- [x] 3.5 Include active todo subscriptions in OAuth reconnect resync (`resync_user_workflow_triggers`)
+- [x] 3.6 Connection-expiry pause: mark affected subscriptions paused and add the `blocked` label to their todos; resume and clear the label on reconnect (`services/workflow/integration_pause.py`)
+- [x] 3.7 Tests: the refcount cases live in `tests/unit/services/workflow/test_trigger_service_refcount.py` (service-level sum) backed by real-Mongo counting in `tests/contracts/test_todos_repository.py`; delete-orders-teardown-first in `test_todo_service.py`; expiry/reconnect in `test_integration_pause.py`
 
 ## 4. Dispatch fan-out
 
@@ -30,7 +30,7 @@
 - [ ] 4.4 Thread the origin + triggering payload as a new optional parameter through `execute_tracked_todo` → `_execute_todo_with_retry` → `_run_execution` → `_execute_via_agent`, **including the retry re-enqueue sites** (`tracked_todo_tasks.py:155`, `:192`) so a retried trigger run keeps its origin
 - [ ] 4.5 On a held execution lock, re-enqueue the `execute` action once with a short defer instead of returning `skipped` — the event must not be dropped
 - [ ] 4.6 Add `enforce_daily_cost_budget` to the triggered todo execution path with its own `feature_key` in `app/config/rate_limits.py` (the gate does not exist on this path today)
-- [ ] 4.7 Move `BLOCKING_LABELS` from `maintenance_sweep_tasks.py:54` to `app/constants/todos.py`, and `_todo_redirect_action` (`:427`) to a shared notification helper, before the dispatch path imports either
+- [x] 4.7 Move `BLOCKING_LABELS` from `maintenance_sweep_tasks.py:54` to `app/constants/todos.py`, and `_todo_redirect_action` (`:427`) to a shared notification helper, before the dispatch path imports either
 - [ ] 4.8 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
 - [ ] 4.9 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
 - [ ] 4.10 Unit + integration tests: thread-match executes todo; account-level Gmail event with no trigger id still resolves subscribers; no-workflow event still fires todo; cooldown suppresses repeat; held lock defers rather than drops; retry preserves the `todo_trigger` origin; each of the four actions behaves per spec; budget gate blocks

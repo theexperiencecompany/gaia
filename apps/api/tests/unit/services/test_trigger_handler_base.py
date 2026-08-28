@@ -158,7 +158,7 @@ class TestQueueOneWorkflowDispatch:
                 "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
             ),
             patch(
-                "app.services.triggers.base.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value="todos!"),
             ),
         ):
@@ -189,7 +189,7 @@ class TestQueueOneWorkflowDispatch:
                 "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
             ),
             patch(
-                "app.services.triggers.base.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value=""),
             ),
         ):
@@ -215,7 +215,7 @@ class TestQueueOneWorkflowDispatch:
                 "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
             ),
             patch(
-                "app.services.triggers.base.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value=""),
             ),
         ):
@@ -244,7 +244,7 @@ class TestQueueOneWorkflowDispatch:
                 "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution", queue
             ),
             patch(
-                "app.services.triggers.base.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value=""),
             ),
         ):

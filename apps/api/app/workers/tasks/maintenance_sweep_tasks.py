@@ -10,6 +10,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
+from app.constants.todos import BLOCKING_LABELS
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -50,8 +51,6 @@ SECONDS_PER_DAY = 86400
 # so reminders never arrive in the middle of the night.
 DAYTIME_START_HOUR = 9
 DAYTIME_END_HOUR = 21
-
-BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
 
 # What a tier's health check decided, so the caller's counter branches are checked.
 ExpiredOutcome = Literal["archived", "notified", "muted"]

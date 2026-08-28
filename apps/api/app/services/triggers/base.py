@@ -17,7 +17,7 @@ from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
@@ -106,19 +106,32 @@ class TriggerHandler(ABC):
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
 
+    @property
+    def registers_instances(self) -> bool:
+        """Whether ``register`` returns per-owner Composio trigger instance ids.
+
+        False for account-level triggers, which Composio fires on the connected
+        account itself: there is no per-owner instance to register, so the only
+        way to find their subscribers is by user and trigger name. Dispatch and
+        subscription storage both branch on this, so it lives with the handler
+        that decides it rather than in a list somewhere that can drift.
+        """
+        return True
+
     @abstractmethod
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register triggers for a workflow.
+        """Register triggers for whatever owns them.
 
         Args:
             user_id: The user ID
-            workflow_id: The workflow ID
+            owner_id: The workflow or tracked-todo that owns this registration.
+                Handlers use it for logging only — Composio keys on the config.
             trigger_name: The trigger name (e.g., 'calendar_event_created')
             trigger_config: The complete TriggerConfig with typed trigger_data
 
@@ -422,7 +435,7 @@ class TriggerHandler(ABC):
                 try:
                     signal_context_by_user[
                         workflow.user_id
-                    ] = await tracked_todo_service.get_signal_matching_context(workflow.user_id)
+                    ] = await get_signal_matching_context(workflow.user_id)
                 except Exception as e:
                     log.warning(
                         "trigger.signal_context_fetch_failed",

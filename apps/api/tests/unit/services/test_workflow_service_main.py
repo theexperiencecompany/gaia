@@ -2301,48 +2301,12 @@ class TestTriggerService:
         result = await TriggerService.get_all_workflow_triggers()
         assert result == []
 
-    # Reference counting (the Mongo $ne/trigger-id query) is the repository's
-    # contract (tests/contracts/test_workflows_repository.py::test_count_trigger_references).
-    # Here we verify the service's safe-to-delete filtering over that count.
-    @patch("app.services.workflow.trigger_service.workflow_repository")
-    async def test_get_triggers_safe_to_delete_all_safe(self, mock_repo):
-        mock_repo.count_trigger_references = AsyncMock(return_value=0)
-
-        safe = await TriggerService.get_triggers_safe_to_delete(["t1", "t2"])
-        assert safe == ["t1", "t2"]
-
-    @patch("app.services.workflow.trigger_service.workflow_repository")
-    async def test_get_triggers_safe_to_delete_none_safe(self, mock_repo):
-        mock_repo.count_trigger_references = AsyncMock(return_value=2)
-
-        safe = await TriggerService.get_triggers_safe_to_delete(["t1"])
-        assert safe == []
-
-    @patch("app.services.workflow.trigger_service.workflow_repository")
-    async def test_get_triggers_safe_to_delete_partial(self, mock_repo):
-        # t1 has references, t2 does not
-        mock_repo.count_trigger_references = AsyncMock(side_effect=[1, 0])
-
-        safe = await TriggerService.get_triggers_safe_to_delete(["t1", "t2"])
-        assert safe == ["t2"]
-
-    @patch("app.services.workflow.trigger_service.workflow_repository")
-    async def test_get_triggers_safe_to_delete_with_excluding_workflow_id(self, mock_repo):
-        mock_repo.count_trigger_references = AsyncMock(return_value=0)
-
-        await TriggerService.get_triggers_safe_to_delete(["t1"], excluding_workflow_id="wf_123")
-
-        mock_repo.count_trigger_references.assert_awaited_once_with(
-            "t1", excluding_workflow_id="wf_123"
-        )
-
-    @patch("app.services.workflow.trigger_service.workflow_repository")
-    async def test_get_triggers_safe_to_delete_error_skips(self, mock_repo):
-        """On error, trigger should not be included in safe-to-delete list."""
-        mock_repo.count_trigger_references = AsyncMock(side_effect=Exception("DB error"))
-
-        safe = await TriggerService.get_triggers_safe_to_delete(["t1"])
-        assert safe == []
+    # Safe-to-delete filtering moved to
+    # tests/unit/services/workflow/test_trigger_service_refcount.py when the count
+    # became a sum over workflows AND todos: patching only workflow_repository here
+    # left the todo count hitting the real repository, so three of these five passed
+    # vacuously (the unpatched call raised, and the except branch returned the
+    # empty list the test expected).
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_no_handler(self, mock_get_handler):

@@ -30,6 +30,11 @@ from app.models.todo_models import (
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
+from app.models.trigger_subscription_models import (
+    SubscriptionAction,
+    SubscriptionResolution,
+    TriggerSubscription,
+)
 from app.services.analytics_service import AnalyticsEvents
 from app.services.todos.todo_bulk_service import (
     bulk_complete_todos,
@@ -482,6 +487,51 @@ class TestDeleteTodo:
         mock_capture.assert_called_once_with(
             FAKE_USER_ID, AnalyticsEvents.TODO_DELETED, {"todo_id": FAKE_TODO_ID}
         )
+
+    async def test_a_subscribed_todo_unregisters_before_the_document_goes(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Once the document is deleted nothing names its Composio trigger, so a
+        teardown that ran after the delete — or not at all — leaks it forever."""
+        doc = _make_todo_doc(todo_id=FAKE_TODO_ID)
+        doc.trigger_subscriptions = [
+            TriggerSubscription(
+                trigger_name="gmail_new_message",
+                action=SubscriptionAction.EXECUTE,
+                resolution=SubscriptionResolution.ACCOUNT,
+            )
+        ]
+        mock_todo_repo.get = AsyncMock(return_value=doc)
+        order: list[str] = []
+
+        async def _teardown(*_args: object, **_kwargs: object) -> int:
+            order.append("teardown")
+            return 1
+
+        async def _delete(*_args: object, **_kwargs: object) -> bool:
+            order.append("delete")
+            return True
+
+        mock_todo_repo.delete = AsyncMock(side_effect=_delete)
+        with patch(
+            "app.services.todos.todo_service.teardown_subscriptions",
+            AsyncMock(side_effect=_teardown),
+        ):
+            await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        assert order == ["teardown", "delete"]
+
+    async def test_an_unsubscribed_todo_skips_teardown(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
+        mock_todo_repo.delete = AsyncMock(return_value=True)
+        teardown = AsyncMock()
+        with patch("app.services.todos.todo_service.teardown_subscriptions", teardown):
+            await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
+
+        teardown.assert_not_awaited()
+
 
 
 class TestBulkOps:

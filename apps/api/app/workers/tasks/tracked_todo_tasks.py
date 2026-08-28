@@ -31,6 +31,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_canvas
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_service import get_user_by_id
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.redis_utils import RedisPoolManager
@@ -378,6 +379,9 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
     then send an in-app notification to the user.
     """
     await todo_repository.add_labels(todo_id, user_id=user_id, labels=[FAILED_LABEL])
+    # The execution path skips failed todos until a manual reset, so leaving the
+    # subscriptions armed would burn events on a todo that can never run.
+    await teardown_subscriptions(todo_id, user_id, reason="failed")
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
     title: str = doc.title

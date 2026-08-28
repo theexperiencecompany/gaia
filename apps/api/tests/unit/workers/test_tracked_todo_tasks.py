@@ -645,13 +645,18 @@ class TestMarkTodoFailed:
         repo = MagicMock()
         repo.add_labels = AsyncMock()
         notify = AsyncMock()
+        teardown = AsyncMock(return_value=1)
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
             await _mark_todo_failed("todo-1", "user-1", _doc(title="Nightly backup"))
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id="user-1", labels=[FAILED_LABEL])
+        # A failed todo is skipped by the execution path until a manual reset, so
+        # leaving its subscriptions armed would burn events on a todo that cannot run.
+        teardown.assert_awaited_once_with("todo-1", "user-1", reason="failed")
         request = notify.await_args.args[0]
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
@@ -669,6 +674,7 @@ class TestMarkTodoFailed:
                 f"{MODULE}.notification_service.create_notification",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
             ),
+            patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
             await _mark_todo_failed("todo-1", "user-1", _doc())
 
