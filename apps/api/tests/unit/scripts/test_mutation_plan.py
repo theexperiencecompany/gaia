@@ -27,7 +27,7 @@ PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation-plan.sh"
 # and a full setup per job. The packing below is also what keeps a huge diff
 # producing a matrix at all, rather than blowing GitHub's 256-job hard limit
 # and yielding none — and a lane with no matrix is a lane that counts as a pass.
-MAX_SHARDS = 2
+MAX_SHARDS = 4
 
 
 @pytest.fixture
@@ -155,7 +155,7 @@ class TestPackingAHugeDiff:
         labels = [item["label"] for item in json.loads(outputs["matrix"])]
         # Every shard says which slice it is and how much it carries, so a red
         # check is locatable without opening it.
-        assert labels[0] == f"shard 1/{MAX_SHARDS} (215 modules)"
+        assert labels[0] == f"shard 1/{MAX_SHARDS} (108 modules)"
         assert all(
             re.fullmatch(rf"shard \d+/{MAX_SHARDS} \(\d+ modules\)", label) for label in labels
         )

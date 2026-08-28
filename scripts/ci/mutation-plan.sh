@@ -50,7 +50,10 @@ import os
 # stays clear of GitHub's hard 256-job matrix limit, which a one-shard-per-
 # module plan blew through on the mypy-strict diff — no matrix, a skipped lane,
 # and a skipped lane counts as a pass.)
-MAX_SHARDS = 2
+# 4 tracks code-quality.yml's max-parallel and the 12-runner gaia-home-lint
+# pool (2026-08-29): with two shards the pair was the Code Quality long pole
+# at 156-179 s each (run 33202311460); four halve it and start together.
+MAX_SHARDS = 4
 
 modules = json.loads(os.environ["MATRIX_JSON"])
 shards: list[list[dict[str, str]]] = [[] for _ in range(min(len(modules), MAX_SHARDS))]
