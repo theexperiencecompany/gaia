@@ -40,6 +40,7 @@ REPO_ROOT = _HERE.parents[1]
 
 PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
 CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
+UV_LOCK = REPO_ROOT / "uv.lock"
 
 #: tool -> exact version every surface must agree on.
 EXPECTED = {
@@ -57,7 +58,8 @@ EXPECTED = {
 # tests can monkeypatch them onto fixture files.
 SURFACES = {
     "ruff": ("PRE_COMMIT", "CODE_QUALITY"),
-    "mypy": ("PRE_COMMIT",),
+    # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
+    "mypy": ("UV_LOCK",),
     "bandit": ("PRE_COMMIT",),
     "pip-audit": ("PRE_COMMIT",),
     "interrogate": ("CODE_QUALITY",),
@@ -93,6 +95,11 @@ def _missing(tool: str, version: str) -> list[Path]:
         if tool == "ruff":
             # pre-commit expresses this as a rev under the ruff-pre-commit repo
             pat = re.compile(rf"ruff-pre-commit\n\s*rev:\s*v{re.escape(version)}")
+            if pat.search(text):
+                continue
+        if surface == UV_LOCK:
+            # uv.lock pins as a [[package]] block: name = "mypy" / version = "x"
+            pat = re.compile(rf'name = "{re.escape(tool)}"\nversion = "{re.escape(version)}"')
             if pat.search(text):
                 continue
         if f"{tool}@{version}" in text or f"{tool}=={version}" in text:

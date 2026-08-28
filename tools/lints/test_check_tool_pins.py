@@ -55,15 +55,24 @@ jobs:
 """
 
 
+UV_LOCK_TOML = """\
+[[package]]
+name = "mypy"
+version = "1.19.1"
+"""
+
+
 @pytest.fixture
 def pinned_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     """Fixture surfaces carrying every EXPECTED pin, as module constants."""
     files = {
         "PRE_COMMIT": tmp_path / "pre-commit-config.yaml",
         "CODE_QUALITY": tmp_path / "code-quality.yml",
+        "UV_LOCK": tmp_path / "uv.lock",
     }
     files["PRE_COMMIT"].write_text(PRE_COMMIT_YAML, encoding="utf-8")
     files["CODE_QUALITY"].write_text(CODE_QUALITY_YML, encoding="utf-8")
+    files["UV_LOCK"].write_text(UV_LOCK_TOML, encoding="utf-8")
     for name, path in files.items():
         monkeypatch.setattr(check_tool_pins, name, path)
     return files
