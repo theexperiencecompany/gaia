@@ -411,3 +411,28 @@ async def captured_wide_event(operation: str = "test") -> AsyncIterator[dict[str
     """
     async with log_context(operation):
         yield log.get()
+
+
+# Postgres runs CREATE TABLE IF NOT EXISTS as create-then-check, so two xdist
+# workers calling langgraph's checkpointer/store setup() at the same instant
+# race on pg_type ("duplicate key value violates unique constraint
+# pg_type_typname_nsp_index ... checkpoint_migrations", run 33182536377).
+# A session-level advisory lock on its own autocommit connection serializes
+# the DDL across workers; the id is arbitrary and distinct from the memory
+# suite's schema lock (743_001_993).
+LANGGRAPH_SETUP_LOCK_ID = 743_001_994
+
+
+@asynccontextmanager
+async def pg_advisory_lock(
+    conninfo: str, lock_id: int = LANGGRAPH_SETUP_LOCK_ID
+) -> AsyncIterator[None]:
+    """Hold Postgres advisory lock ``lock_id`` for the block, across processes."""
+    import psycopg
+
+    async with await psycopg.AsyncConnection.connect(conninfo, autocommit=True) as conn:
+        await conn.execute("SELECT pg_advisory_lock(%s)", (lock_id,))
+        try:
+            yield
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock(%s)", (lock_id,))
