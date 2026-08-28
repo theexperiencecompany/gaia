@@ -31,21 +31,19 @@ fs.mkdirSync(DIR, { recursive: true });
 const stats = { hits: 0, misses: 0, puts: 0, conflicts: 0, evicted: 0, bytes: 0 };
 const entryPath = (h) => path.join(DIR, `${h}.tar`);
 
+async function tarEntries() {
+  const names = (await fsp.readdir(DIR)).filter((f) => f.endsWith(".tar"));
+  const stats = await Promise.all(names.map((f) => fsp.stat(path.join(DIR, f))));
+  return names.map((f, i) => ({ f, size: stats[i].size, atime: stats[i].atimeMs }));
+}
 async function totalBytes() {
-  let n = 0;
-  for (const f of await fsp.readdir(DIR)) if (f.endsWith(".tar")) n += (await fsp.stat(path.join(DIR, f))).size;
-  return n;
+  return (await tarEntries()).reduce((n, e) => n + e.size, 0);
 }
 // LRU by atime (touched on every GET); evict oldest until under budget.
 async function evictIfNeeded() {
-  let used = await totalBytes();
+  const files = await tarEntries();
+  let used = files.reduce((n, e) => n + e.size, 0);
   if (used <= MAX_BYTES) return;
-  const files = [];
-  for (const f of await fsp.readdir(DIR)) {
-    if (!f.endsWith(".tar")) continue;
-    const st = await fsp.stat(path.join(DIR, f));
-    files.push({ f, size: st.size, atime: st.atimeMs });
-  }
   files.sort((a, b) => a.atime - b.atime);
   for (const e of files) {
     if (used <= MAX_BYTES * 0.9) break;
