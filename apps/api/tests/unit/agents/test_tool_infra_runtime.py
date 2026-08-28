@@ -13,7 +13,7 @@ import pytest
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
-from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import (
@@ -212,10 +212,12 @@ async def _run_provider_subagent_factory(
         return _DummyBuilder(kwargs)
 
     mw = SubagentMiddleware(
-        llm=None,
-        tool_registry=full_tools,
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(initial_tool_names=["vfs_read"]),
+        SubagentMiddlewareConfig(
+            llm=None,
+            tool_registry=full_tools,
+            store=MagicMock(),
+            tool_runtime_config=ToolRuntimeConfig(initial_tool_names=["vfs_read"]),
+        )
     )
 
     with (

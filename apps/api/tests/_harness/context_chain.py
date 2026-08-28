@@ -8,7 +8,9 @@ is exactly the class of defect this harness exists to catch.
 ``execute_hooks`` is a plain async function over a plain dict, so the whole chain
 runs with no compiled graph, no checkpointer, no LLM and no network:
 
-    messages = await effective_context(AgentTier.PROVIDER_SUBAGENT, query="...")
+    messages = await effective_context(
+        AgentTier.PROVIDER_SUBAGENT, ContextSeed(query="...")
+    )
 
 Every external read the sections perform is pinned by ``fake_context_sources``
 and the clients beneath them are fenced, so a section that grows a new read
@@ -319,34 +321,44 @@ def _with_onboarding(sources: ContextSources, prompt: str | None) -> ContextSour
     return sources if prompt is None else replace(sources, onboarding_prompt=prompt)
 
 
-async def effective_context(
-    tier: AgentTier,
-    *,
-    user: HarnessUser | None = None,
-    query: str = "what is on my plate today?",
-    sources: ContextSources | None = None,
-    configurable_overrides: AgentConfigurable | None = None,
-    now: datetime = FIXED_NOW,
-    prior_messages: list[AnyMessage] | None = None,
-    onboarding_prompt: str | None = None,
-) -> list[AnyMessage]:
+@dataclass(frozen=True)
+class ContextSeed:
+    """What a tier's context is seeded from, beyond the tier itself."""
+
+    user: HarnessUser | None = None
+    query: str = "what is on my plate today?"
+    sources: ContextSources | None = None
+    configurable_overrides: AgentConfigurable | None = None
+    now: datetime = FIXED_NOW
+    prior_messages: list[AnyMessage] | None = None
+    onboarding_prompt: str | None = None
+
+
+async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
     """Seed ``tier`` and run it through that tier's real pre-model hooks.
 
-    ``prior_messages`` are prepended to the seed to model a checkpointed thread —
-    the multi-turn shape, where stale copies of each slot accumulate and the hook
-    chain has to collapse them.
+    ``ContextSeed.prior_messages`` are prepended to the seed to model a
+    checkpointed thread — the multi-turn shape, where stale copies of each slot
+    accumulate and the hook chain has to collapse them.
     """
-    resolved_user = user or HarnessUser()
-    resolved_sources = _with_onboarding(sources or ContextSources(), onboarding_prompt)
+    spec = seed or ContextSeed()
+    resolved_user = spec.user or HarnessUser()
+    resolved_sources = _with_onboarding(spec.sources or ContextSources(), spec.onboarding_prompt)
 
     with (
-        time_machine.travel(now, tick=False),
+        time_machine.travel(spec.now, tick=False),
         patch.object(settings, "HOST", FIXED_HOST),
         fake_context_sources(resolved_sources),
     ):
-        config, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
-        seed = await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
-        state = cast(State, {"messages": [*(prior_messages or []), *seed], "todos": []})
+        config, configurable = await build_configurable(
+            tier, resolved_user, spec.configurable_overrides
+        )
+        seed_messages = await seed_context(
+            tier, user=resolved_user, query=spec.query, configurable=configurable
+        )
+        state = cast(
+            State, {"messages": [*(spec.prior_messages or []), *seed_messages], "todos": []}
+        )
         result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
     return list(result["messages"])
 

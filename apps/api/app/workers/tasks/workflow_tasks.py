@@ -1157,28 +1157,6 @@ async def _reschedule_refill_safe(
         )
 
 
-def _log_run_failure(e: Exception, workflow_id: str) -> None:
-    # The caught error must land on the wide event from the fire's own
-    # handling; the bookkeeping helpers cannot vouch for it on their own.
-    if isinstance(e, RateLimitExceededException):
-        # User hit their plan's workflow-execution quota: an expected,
-        # by-design outcome, not a worker failure. WARNING keeps it off the
-        # ARQ failed-task alert.
-        log.warning(
-            f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
-            workflow_id=workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-    else:
-        log.exception(
-            f"{LogTag.WORKER} Error executing workflow",
-            workflow_id=workflow_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
-
 async def _record_queued_fire(
     queued: WorkflowFireQueued,
     workflow: Workflow | None,
@@ -1385,6 +1363,13 @@ async def execute_workflow_by_id(
         )
 
     except (WorkflowFireQueued, WorkflowFireOverlapped) as never_ran:
+        # Recorded on the wide event from the block that caught it; the helper
+        # below is bookkeeping only. Neither is a failure to alert on.
+        log.warning(
+            f"{LogTag.WORKER} Workflow fire did not run — {never_ran}",
+            workflow_id=workflow_id,
+            error_type=type(never_ran).__name__,
+        )
         return await _record_fire_that_never_ran(
             never_ran, workflow, workflow_id, execution_id, context
         )
@@ -1394,7 +1379,24 @@ async def execute_workflow_by_id(
     except Exception as e:
         # Logged here, in the block that caught it, so the wide event carries
         # the error from the fire's own frame; the helper only does bookkeeping.
-        _log_run_failure(_unwrapped(e), workflow_id)
+        cause = _unwrapped(e)
+        if isinstance(cause, RateLimitExceededException):
+            # User hit their plan's workflow-execution quota: an expected,
+            # by-design outcome, not a worker failure. WARNING keeps it off the
+            # ARQ failed-task alert.
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                workflow_id=workflow_id,
+                error=str(cause),
+                error_type=type(cause).__name__,
+            )
+        else:
+            log.exception(
+                f"{LogTag.WORKER} Error executing workflow",
+                workflow_id=workflow_id,
+                error=str(cause),
+                error_type=type(cause).__name__,
+            )
         return await _record_run_failure(e, workflow, workflow_id, execution_id, context)
     finally:
         await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)

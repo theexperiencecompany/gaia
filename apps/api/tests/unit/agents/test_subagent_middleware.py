@@ -17,7 +17,7 @@ MODULE = "app.agents.middleware.subagent"
 
 def _make_middleware(**kwargs):
     """Create SubagentMiddleware with default test wiring."""
-    from app.agents.middleware.subagent import SubagentMiddleware
+    from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 
     defaults = {
         "llm": None,
@@ -26,7 +26,7 @@ def _make_middleware(**kwargs):
         "max_turns": 5,
     }
     defaults.update(kwargs)
-    return SubagentMiddleware(**defaults)
+    return SubagentMiddleware(SubagentMiddlewareConfig(**defaults))
 
 
 def _ready_middleware(**kwargs):

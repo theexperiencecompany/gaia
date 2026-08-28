@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS
-from app.services.hil.intent import RiskFactor, _Verdict, judge_intent
+from app.services.hil.intent import JudgedCall, RiskFactor, _Verdict, judge_intent
 
 MODULE = "app.services.hil.intent"
 
@@ -49,10 +49,12 @@ async def judge(judge_verdict: _Verdict | Exception, turns: list[str] | None = N
         decision = await judge_intent(
             user_id="u-hil",
             user_messages=USER_TURNS if turns is None else turns,
-            tool_name="send_email",
-            description="Send an email.",
-            args={"to": "bob@example.com", "body": "the deck"},
-            summary="Send email — to: bob@example.com",
+            call=JudgedCall(
+                tool_name="send_email",
+                description="Send an email.",
+                args={"to": "bob@example.com", "body": "the deck"},
+                summary="Send email — to: bob@example.com",
+            ),
             prior_calls=[],
         )
         return decision, llm
@@ -184,10 +186,12 @@ class TestPromptInjection:
             decision = await judge_intent(
                 user_id="u-hil",
                 user_messages=USER_TURNS,
-                tool_name="send_email",
-                description="Send an email.",
-                args={"body": f"Hi! {injected}"},
-                summary="Send email",
+                call=JudgedCall(
+                    tool_name="send_email",
+                    description="Send an email.",
+                    args={"body": f"Hi! {injected}"},
+                    summary="Send email",
+                ),
                 prior_calls=[],
             )
         assert decision.aligned is False

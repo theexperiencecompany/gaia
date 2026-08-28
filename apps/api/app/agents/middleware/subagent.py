@@ -8,6 +8,7 @@ bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 import time
 from typing import Annotated, Any, Protocol
 
@@ -80,6 +81,27 @@ class SpawnGraphProvider(Protocol):
     ) -> CompiledStateGraph: ...
 
 
+@dataclass(frozen=True)
+class SubagentMiddlewareConfig:
+    """Construction settings for :class:`SubagentMiddleware`.
+
+    One object rather than ten constructor arguments: these are all build-time
+    wiring for the same middleware, and every field keeps the default the
+    constructor used to carry.
+    """
+
+    llm: LanguageModelLike | None = None
+    available_tools: list[BaseTool] | None = None
+    tool_registry: Mapping[str, BaseTool] | None = None
+    max_turns: int = SUBAGENT_RECURSION_LIMIT
+    system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT
+    excluded_tool_names: set[str] | None = None
+    tool_space: str = "general"
+    store: BaseStore | None = None
+    tool_runtime_config: ToolRuntimeConfig | None = None
+    spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None
+
+
 class SubagentState(AgentState[Any]):
     """State schema for subagent middleware."""
 
@@ -91,35 +113,24 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
     state_schema = SubagentState
 
-    def __init__(
-        self,
-        llm: LanguageModelLike | None = None,
-        available_tools: list[BaseTool] | None = None,
-        tool_registry: Mapping[str, BaseTool] | None = None,
-        max_turns: int = SUBAGENT_RECURSION_LIMIT,
-        system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT,
-        excluded_tool_names: set[str] | None = None,
-        tool_space: str = "general",
-        store: BaseStore | None = None,
-        tool_runtime_config: ToolRuntimeConfig | None = None,
-        spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None,
-    ) -> None:
+    def __init__(self, config: SubagentMiddlewareConfig | None = None) -> None:
         super().__init__()
-        self._llm = llm
-        self._spawn_middleware_factory = spawn_middleware_factory
+        settings = config or SubagentMiddlewareConfig()
+        self._llm = settings.llm
+        self._spawn_middleware_factory = settings.spawn_middleware_factory
         # Injected by whoever builds the parent graph (see set_spawn_graph_provider):
         # the builder imports create_agent, which imports this package, so this
         # module cannot reach the graph builder itself.
         self._spawn_graph_provider: SpawnGraphProvider | None = None
-        self._available_tools = available_tools or []
-        self._tool_registry = tool_registry
-        self._max_turns = max_turns
-        self._system_prompt = system_prompt
-        self._excluded_tools = excluded_tool_names or set()
+        self._available_tools = settings.available_tools or []
+        self._tool_registry = settings.tool_registry
+        self._max_turns = settings.max_turns
+        self._system_prompt = settings.system_prompt
+        self._excluded_tools = settings.excluded_tool_names or set()
         self._excluded_tools.add("spawn_subagent")
-        self._tool_space = tool_space
-        self._store: BaseStore | None = store
-        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+        self._tool_space = settings.tool_space
+        self._store: BaseStore | None = settings.store
+        self._tool_runtime_config = settings.tool_runtime_config or ToolRuntimeConfig(
             initial_tool_names=["read", "bash"],
             enable_retrieve_tools=True,
             include_subagents_in_retrieve=False,

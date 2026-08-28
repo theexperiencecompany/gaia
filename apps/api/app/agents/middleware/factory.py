@@ -19,7 +19,7 @@ from app.agents.middleware.hil_approval import HILApprovalMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
 from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.style_guard import StyleGuardMiddleware
-from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -154,15 +154,17 @@ def create_middleware_stack(
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
         subagent = SubagentMiddleware(
-            llm=subagent_llm,
-            available_tools=subagent_tools,
-            tool_registry=subagent_registry,
-            excluded_tool_names=subagent_excluded_tools,
-            tool_space=subagent_tool_space,
-            tool_runtime_config=subagent_tool_runtime_config,
-            spawn_middleware_factory=lambda space: create_subagent_middleware(
-                enable_subagent=False, subagent_tool_space=space
-            ),
+            SubagentMiddlewareConfig(
+                llm=subagent_llm,
+                available_tools=subagent_tools,
+                tool_registry=subagent_registry,
+                excluded_tool_names=subagent_excluded_tools,
+                tool_space=subagent_tool_space,
+                tool_runtime_config=subagent_tool_runtime_config,
+                spawn_middleware_factory=lambda space: create_subagent_middleware(
+                    enable_subagent=False, subagent_tool_space=space
+                ),
+            )
         )
         middleware.append(subagent)
         log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")
