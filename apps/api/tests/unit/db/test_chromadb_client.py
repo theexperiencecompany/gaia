@@ -225,9 +225,13 @@ class TestChromaClientGetLangchainClientLoaderBody:
         result = await loader_func()
 
         assert result is mock_chroma_instance
-        mock_constructor_client.create_collection.assert_called_once_with(
+        # get_or_create: a list-then-create pair raced between processes that
+        # share one Chroma (xdist workers on a CI lane) and the second create
+        # failed with "Collection [...] already exists".
+        mock_constructor_client.get_or_create_collection.assert_called_once_with(
             name="some_new_collection", metadata={"hnsw:space": "cosine"}
         )
+        mock_constructor_client.create_collection.assert_not_called()
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.Chroma")
