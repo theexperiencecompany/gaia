@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypedDict, Unpack, cast
 
 from langchain_core.tools import BaseTool
 
@@ -217,6 +217,23 @@ class ToolCategory:
         return [tool for tool in self.tools if tool.is_core]
 
 
+class CategoryOptions(TypedDict, total=False):
+    """Keyword options accepted by ``ToolRegistry._add_category``.
+
+    ``space``, ``require_integration``, ``integration_name``, ``is_delegated``
+    and ``internal`` forward to ``ToolCategory``; ``destructive_tools`` and
+    ``always_gate_tools`` forward to ``ToolCategory.add_tools``.
+    """
+
+    space: str
+    require_integration: bool
+    integration_name: str | None
+    is_delegated: bool
+    internal: bool
+    destructive_tools: set[str] | None
+    always_gate_tools: set[str] | None
+
+
 class ToolInfo:
     """Metadata for a tool."""
 
@@ -247,15 +264,12 @@ class ToolRegistry:
         name: str,
         tools: Sequence[BaseTool] | None = None,
         core_tools: Sequence[BaseTool] | None = None,
-        space: str = "general",
-        require_integration: bool = False,
-        integration_name: str | None = None,
-        is_delegated: bool = False,
-        internal: bool = False,
-        destructive_tools: set[str] | None = None,
-        always_gate_tools: set[str] | None = None,
+        **options: Unpack[CategoryOptions],
     ) -> None:
         """Helper to create and register a category.
+
+        ``options`` are the ``CategoryOptions`` keys; ``space`` defaults to
+        ``"general"`` and every other key to ``False`` / ``None``.
 
         ``destructive_tools`` is the curated HIL risk set for this category
         (see ``ToolCategory.add_tools``). Every internal category MUST pass an
@@ -264,15 +278,18 @@ class ToolRegistry:
         provider) tools that the HIL LLM classifier resolves at gate time.
         ``always_gate_tools`` names members that ask in every HIL mode.
         """
+        space = options.get("space", "general")
+        destructive_tools = options.get("destructive_tools")
+        always_gate_tools = options.get("always_gate_tools")
         replacing = name in self._categories
         prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
             name=name,
             space=space,
-            require_integration=require_integration,
-            integration_name=integration_name,
-            is_delegated=is_delegated,
-            internal=internal,
+            require_integration=options.get("require_integration", False),
+            integration_name=options.get("integration_name"),
+            is_delegated=options.get("is_delegated", False),
+            internal=options.get("internal", False),
         )
         if core_tools:
             category.add_tools(
