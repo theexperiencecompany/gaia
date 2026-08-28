@@ -599,6 +599,39 @@ else
   echo "::warning::prune-cache.sh not found beside setup.sh — no cache prune timer installed"
 fi
 
+# Listener health: a runner can keep its process, unit and socket while GitHub
+# lists it offline (broker session lost, 2026-08-29: all 20 at once, 30+ min).
+# Every 5 min restart such listeners when no job is running on them.
+if [[ -f "$SCRIPT_DIR/runner-health.sh" ]]; then
+  install -m 0755 "$SCRIPT_DIR/runner-health.sh" "$LOCAL_CACHE/runner-health.sh"
+  cat > "$UNIT_DIR/gaia-runner-health.service" <<UNIT
+[Unit]
+Description=Restart home runner listeners that GitHub reports offline
+
+[Service]
+Type=oneshot
+Environment=PATH=${RUNNER_PATH}
+ExecStart=${LOCAL_CACHE}/runner-health.sh
+UNIT
+  cat > "$UNIT_DIR/gaia-runner-health.timer" <<'UNIT'
+[Unit]
+Description=Home runner listener health check
+
+[Timer]
+OnBootSec=3m
+OnUnitActiveSec=5m
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --now gaia-runner-health.timer > /dev/null 2>&1 \
+    && echo "[setup] Listener health timer enabled (gaia-runner-health.timer, every 5 min)" \
+    || echo "::warning::could not enable gaia-runner-health.timer"
+else
+  echo "::warning::runner-health.sh not found beside setup.sh — no listener health timer installed"
+fi
+
 NON_PERSISTENT=false
 for i in $(seq "$RUNNER_START" "$RUNNER_COUNT"); do
   install_runner "$i"
