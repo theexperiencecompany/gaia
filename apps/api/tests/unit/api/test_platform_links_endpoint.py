@@ -11,6 +11,7 @@ from app.models.platform_models import DisconnectPlatformResponse, PlatformLinkR
 from app.services.analytics_service import AnalyticsEvents
 from app.services.photon.photon_client import PhotonUser
 from app.services.platform_link_service import IMESSAGE_REGISTRATION_FEATURE_KEY
+from app.utils.errors import AppError
 from tests.conftest import FAKE_USER
 
 BASE = "/api/v1/platform-links"
@@ -187,6 +188,41 @@ class TestLinkPlatform:
         )
 
     @pytest.mark.asyncio
+    async def test_successful_link_schedules_account_sync_for_user(
+        self, client: AsyncClient
+    ) -> None:
+        mock_redis = AsyncMock()
+        mock_redis.hgetall = AsyncMock(
+            return_value={"platform": "discord", "platform_user_id": "DISC123"}
+        )
+        mock_redis.delete = AsyncMock()
+        link_result = PlatformLinkResult(
+            status="linked",
+            platform="discord",
+            platform_user_id="DISC123",
+            connected_at="2024-01-01T00:00:00Z",
+            is_new_link=False,
+        )
+
+        with (
+            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch(
+                "app.api.v1.endpoints.platform_links.PlatformLinkService.link_account",
+                new_callable=AsyncMock,
+                return_value=link_result,
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.schedule_account_sync"
+            ) as mock_schedule_sync,
+        ):
+            mock_cache.client = mock_redis
+            resp = await client.post(f"{BASE}/discord", json={"token": "valid_tok"})
+
+        assert resp.status_code == 200
+        # The workspace projection must sync THIS user's files, not a null id.
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    @pytest.mark.asyncio
     async def test_link_conflict(self, client: AsyncClient) -> None:
         """ValueError from link_account returns 409."""
         mock_redis = AsyncMock()
@@ -245,8 +281,8 @@ class TestDisconnectPlatform:
                 new_callable=AsyncMock,
                 return_value={"status": "disconnected", "platform": "discord"},
             ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
-            patch("app.api.v1.endpoints.platform_links.capture_context_event") as mock_capture,
+            patch("app.services.platform_link_service.redis_cache") as mock_cache,
+            patch("app.services.platform_link_service.capture_context_event") as mock_capture,
         ):
             mock_cache.client = mock_redis
             resp = await client.delete(f"{BASE}/discord")
@@ -259,26 +295,100 @@ class TestDisconnectPlatform:
         )
 
     @pytest.mark.asyncio
-    async def test_disconnect_no_existing_entry(self, client: AsyncClient) -> None:
-        """When platform_entry is None, skip cache deletion."""
+    async def test_disconnect_resolves_the_link_for_the_authenticated_user(
+        self, client: AsyncClient
+    ) -> None:
         with (
             patch(
-                "app.api.v1.endpoints.platform_links.PlatformLinkService.get_linked_platforms",
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
                 new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch(
-                "app.api.v1.endpoints.platform_links.PlatformLinkService.unlink_account",
-                new_callable=AsyncMock,
-                return_value={"status": "disconnected", "platform": "discord"},
-            ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ) as mock_disconnect,
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
         ):
-            mock_cache.client = AsyncMock()
             resp = await client.delete(f"{BASE}/discord")
 
         assert resp.status_code == 200
-        mock_cache.client.delete.assert_not_called()
+        # The unlink must run against THIS user's account, for THIS platform.
+        assert mock_disconnect.await_args.args == (FAKE_USER_ID, "discord")
+
+    @pytest.mark.asyncio
+    async def test_disconnect_schedules_account_sync_for_the_user(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ),
+            patch(
+                "app.api.v1.endpoints.platform_links.schedule_account_sync"
+            ) as mock_schedule_sync,
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 200
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    @pytest.mark.asyncio
+    async def test_disconnect_propagates_service_apperror_with_why_and_fix(
+        self, client: AsyncClient
+    ) -> None:
+        """The service's AppError reaches the client with status, message, why AND fix.
+
+        The endpoint re-raises AppError rather than rebuilding an HTTPException,
+        so the structured guidance the service attached survives to the client.
+        """
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                side_effect=AppError(
+                    message="Platform not linked",
+                    why="No link record exists for this user and platform",
+                    fix="Check account/linked-accounts for what is actually connected",
+                    status_code=404,
+                ),
+            ),
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 404
+        assert resp.json() == {
+            "message": "Platform not linked",
+            "why": "No link record exists for this user and platform",
+            "fix": "Check account/linked-accounts for what is actually connected",
+        }
+
+    @pytest.mark.asyncio
+    async def test_disconnect_records_success_outcome(self, client: AsyncClient) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.platform_links.disconnect_platform_account",
+                new_callable=AsyncMock,
+                return_value=DisconnectPlatformResponse(status="disconnected", platform="discord"),
+            ),
+            patch("app.api.v1.endpoints.platform_links.schedule_account_sync"),
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(outcome="success")
+
+    @pytest.mark.asyncio
+    async def test_disconnect_no_existing_entry_returns_404(self, client: AsyncClient) -> None:
+        """Disconnecting a never-linked platform is an error, not a silent no-op."""
+        with patch(
+            "app.services.platform_link_service.PlatformLinkService.get_linked_platforms",
+            new_callable=AsyncMock,
+            return_value={},
+        ):
+            resp = await client.delete(f"{BASE}/discord")
+
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_unlink_not_found(self, client: AsyncClient) -> None:
@@ -319,9 +429,9 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_discord_oauth(self, client: AsyncClient) -> None:
         with (
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
             patch(
-                "app.api.v1.endpoints.platform_links.create_oauth_state",
+                "app.services.platform_link_service.create_oauth_state",
                 new_callable=AsyncMock,
                 return_value="state123",
             ),
@@ -339,9 +449,9 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_slack_oauth(self, client: AsyncClient) -> None:
         with (
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
             patch(
-                "app.api.v1.endpoints.platform_links.create_oauth_state",
+                "app.services.platform_link_service.create_oauth_state",
                 new_callable=AsyncMock,
                 return_value="slack_state",
             ),
@@ -358,7 +468,7 @@ class TestInitiatePlatformConnect:
 
     @pytest.mark.asyncio
     async def test_telegram_manual(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.TELEGRAM_BOT_USERNAME = "my_gaia_bot"
@@ -372,7 +482,7 @@ class TestInitiatePlatformConnect:
 
     @pytest.mark.asyncio
     async def test_telegram_default_bot_username(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.TELEGRAM_BOT_USERNAME = None
@@ -384,7 +494,7 @@ class TestInitiatePlatformConnect:
     @pytest.mark.asyncio
     async def test_whatsapp_manual(self, client: AsyncClient) -> None:
         """WhatsApp uses manual flow (no OAuth) -> 200 with instructions."""
-        with patch("app.api.v1.endpoints.platform_links.settings") as mock_settings:
+        with patch("app.services.platform_link_service.settings") as mock_settings:
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
             mock_settings.WHATSAPP_PHONE_NUMBER = "15551234567"
@@ -395,6 +505,22 @@ class TestInitiatePlatformConnect:
         assert body["auth_type"] == "manual"
         assert "WhatsApp" in body["instructions"]
         assert body["action_link"] == "https://wa.me/15551234567"
+
+    @pytest.mark.asyncio
+    async def test_connect_records_outcome_and_auth_type_in_event(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch("app.services.platform_link_service.settings") as mock_settings,
+            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+        ):
+            mock_settings.DISCORD_OAUTH_CLIENT_ID = None
+            mock_settings.SLACK_OAUTH_CLIENT_ID = None
+            mock_settings.TELEGRAM_BOT_USERNAME = "gaia_bot"
+            resp = await client.post(f"{BASE}/telegram/connect", json={})
+
+        assert resp.status_code == 200
+        mock_log.set.assert_any_call(outcome="success", auth_type="manual")
 
     @pytest.mark.asyncio
     async def test_unauthenticated(self, unauthed_client: AsyncClient) -> None:
@@ -467,7 +593,7 @@ class TestImessagePremiumGate:
                 new_callable=AsyncMock,
                 return_value=DisconnectPlatformResponse(status="disconnected", platform="imessage"),
             ),
-            patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,
+            patch("app.services.platform_link_service.redis_cache") as mock_cache,
         ):
             mock_cache.client = AsyncMock()
             resp = await client.delete(f"{BASE}/imessage")
@@ -481,16 +607,19 @@ class TestImessagePremiumGate:
             resp = await client.post(f"{BASE}/imessage/connect", json={})
 
         assert resp.status_code == 422
-        assert resp.json()["detail"] == (
+        body = resp.json()
+        assert body["message"] == (
             "A phone number in E.164 format (e.g. +15551234567) is required for iMessage."
         )
+        # The endpoint re-raises AppError, so the actionable fix survives.
+        assert body["fix"] == "Pass a phone number in E.164 format (e.g. +15551234567)"
 
     @pytest.mark.asyncio
     async def test_pro_user_connect_malformed_phone_422(self, client: AsyncClient) -> None:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
             ) as mock_register,
         ):
@@ -514,15 +643,15 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ) as mock_register,
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
-            patch("app.api.v1.endpoints.platform_links.log") as mock_log,
+            patch("app.services.platform_link_service.log") as mock_log,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
 
@@ -550,12 +679,12 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
         ):
@@ -572,15 +701,15 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock
+                "app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock
             ) as mock_limit,
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ),
         ):
@@ -594,14 +723,14 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit",
+                "app.services.platform_link_service.enforce_rate_limit",
                 new_callable=AsyncMock,
                 side_effect=RateLimitExceededException(
                     feature=IMESSAGE_REGISTRATION_FEATURE_KEY, current_plan="pro"
                 ),
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user", new_callable=AsyncMock
+                "app.services.platform_link_service.register_shared_user", new_callable=AsyncMock
             ) as mock_register,
         ):
             resp = await client.post(f"{BASE}/imessage/connect", json={"phone": "+15551234567"})
@@ -620,14 +749,14 @@ class TestImessagePremiumGate:
         )
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
-            patch("app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock),
+            patch("app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock),
             patch(
-                "app.api.v1.endpoints.platform_links.register_shared_user",
+                "app.services.platform_link_service.register_shared_user",
                 new_callable=AsyncMock,
                 return_value=photon_user,
             ),
             patch(
-                "app.api.v1.endpoints.platform_links.register_pending_imessage_number",
+                "app.services.platform_link_service.register_pending_imessage_number",
                 new_callable=AsyncMock,
             ) as mock_pending,
         ):
@@ -643,9 +772,9 @@ class TestImessagePremiumGate:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO),
             patch(
-                "app.api.v1.endpoints.platform_links.enforce_rate_limit", new_callable=AsyncMock
+                "app.services.platform_link_service.enforce_rate_limit", new_callable=AsyncMock
             ) as mock_limit,
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None
@@ -659,7 +788,7 @@ class TestImessagePremiumGate:
     async def test_free_user_other_platforms_unaffected(self, client: AsyncClient) -> None:
         with (
             patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
-            patch("app.api.v1.endpoints.platform_links.settings") as mock_settings,
+            patch("app.services.platform_link_service.settings") as mock_settings,
         ):
             mock_settings.DISCORD_OAUTH_CLIENT_ID = None
             mock_settings.SLACK_OAUTH_CLIENT_ID = None

@@ -22,6 +22,7 @@ from app.services.analytics_service import AnalyticsEvents
 
 BASE_URL = "/api/v1/onboarding"
 ANALYTICS_PATCH = "app.api.v1.endpoints.onboarding.capture_context_event"
+FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 
 @pytest.fixture(autouse=True)
@@ -325,10 +326,13 @@ class TestUpdatePreferences:
     """Tests for the update preferences endpoint."""
 
     async def test_update_preferences_success(self, client: AsyncClient):
-        with patch(
-            _UPDATE_PREFERENCES,
-            new_callable=AsyncMock,
-            return_value={"user_id": "507f1f77bcf86cd799439011"},
+        with (
+            patch(
+                _UPDATE_PREFERENCES,
+                new_callable=AsyncMock,
+                return_value={"user_id": "507f1f77bcf86cd799439011"},
+            ) as mock_update,
+            patch("app.api.v1.endpoints.onboarding.schedule_account_sync") as mock_schedule_sync,
         ):
             response = await client.patch(
                 PREFERENCES_URL,
@@ -343,6 +347,8 @@ class TestUpdatePreferences:
         data = response.json()
         assert data["success"] is True
         assert data["message"] == "Preferences updated successfully"
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+        assert mock_update.await_count == 1
 
     async def test_update_preferences_captures_settings_changed(self, client: AsyncClient):
         with (

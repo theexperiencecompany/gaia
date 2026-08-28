@@ -39,18 +39,34 @@ for entry in entries:
   exit 1
 fi
 
+# CI reads the artifact from the fixed name; the local runner overrides it so
+# shards running side by side do not interleave into one unreadable file.
+SHARD_LOG="${SHARD_LOG:-shard.log}"
+: > "$SHARD_LOG"
+
+# timeout(1) bounds a genuine mutmut hang from OUTSIDE the script: bash defers
+# traps while waiting on a foreground child, so an in-script watchdog can never
+# fire. It is coreutils, so it is absent on a stock macOS — resolve it here
+# rather than let every module die with "timeout: command not found" (rc 127),
+# which reads as 12 failing modules instead of one missing tool.
+TIMEOUT_CMD=()
+if command -v timeout > /dev/null 2>&1; then
+  TIMEOUT_CMD=(timeout --signal=KILL 1500)
+elif command -v gtimeout > /dev/null 2>&1; then
+  TIMEOUT_CMD=(gtimeout --signal=KILL 1500)
+else
+  echo "NOTE: no timeout(1) — running unbounded (brew install coreutils for the CI-identical watchdog)" >&2
+fi
+
 rc=0
 failed_modules=()
 while IFS=$'\t' read -r module testfiles ranges; do
   [ -n "$module" ] || continue
-  echo "=== $module ===" >> shard.log
-  # timeout(1) bounds a genuine mutmut hang from OUTSIDE the script: bash defers
-  # traps while waiting on a foreground child, so an in-script watchdog can
-  # never fire. 1500s is ~25x the slowest module measured.
+  echo "=== $module ===" >> "$SHARD_LOG"
   module_rc=0
-  timeout --signal=KILL 1500 \
+  ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} \
     bash scripts/test/mutation.sh "$module" "$testfiles" "${ranges:-[]}" \
-    >> shard.log 2>&1 || module_rc=$?
+    >> "$SHARD_LOG" 2>&1 || module_rc=$?
   if [ "$module_rc" = "137" ] || [ "$module_rc" = "124" ]; then
     echo "::error::mutation for $module exceeded its timeout and was killed — see the log for the last phase reached"
   fi
@@ -66,8 +82,8 @@ done < "$SHARD_TSV"
 # process frozen mid-syscall on the step's own log pipe cannot be killed by the
 # step abort, so the job died at its cap and GitHub destroyed the logs that
 # proved it. The full file ships as the artifact.
-echo "--- shard.log (last 200KB; full file in the artifact) ---"
-tail -c 200000 shard.log
+echo "--- $SHARD_LOG (last 200KB; full file in the artifact) ---"
+tail -c 200000 "$SHARD_LOG"
 
 # The verdict, last and on its own. A shard carries several modules when the
 # diff is large, so "this check is red" has to say WHICH — otherwise the only

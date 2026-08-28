@@ -19,6 +19,7 @@ from app.models.webhook_models import (
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
 )
+from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import (
     AnalyticsEvents,
     track_payment_event,
@@ -196,6 +197,14 @@ class PaymentWebhookService:
             # Bust the cached plan tier so a plan change applies immediately.
             if result.subscription_id:
                 await payment_service.invalidate_plan_cache_by_dodo_id(result.subscription_id)
+
+            # Keep the workspace's account/subscription projection honest after
+            # any billing state change.
+            if result.status == "processed":
+                metadata = payload_data.get("metadata")
+                webhook_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+                if isinstance(webhook_user_id, str) and webhook_user_id:
+                    schedule_account_sync(webhook_user_id)
 
             # Store webhook as processed after successful handler execution
             await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
