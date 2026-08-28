@@ -1,26 +1,43 @@
 # syntax=docker/dockerfile:1
 
-# ---- Browsers: Chromium for crawl4ai, cached independently of the app deps ----
-# crawl4ai-setup downloads Chromium (~170 MB) into PLAYWRIGHT_BROWSERS_PATH. In
-# the builder stage that RUN sits after `uv sync`, so every uv.lock change
-# invalidated it and re-downloaded Chromium — measured as the difference
-# between a 41s and a 458s image build on the home runner. This stage depends
-# only on the Playwright version: the browser directory is pre-populated here
-# and copied into the builder, where crawl4ai-setup finds the matching
-# revision already present and skips the download. The final image is
-# byte-identical to before (same /opt/browsers, produced by the same tool).
+# ---- Browsers: every browser crawl4ai needs, keyed ONLY on tool versions ----
+# `crawl4ai-setup` is a thin wrapper (crawl4ai/install.py:post_install). Its
+# browser half is exactly two commands:
 #
-# PLAYWRIGHT_VERSION must match the `playwright` entry in uv.lock — a
-# mismatch means a different browser revision and crawl4ai-setup downloads
-# again. scripts/ci/check-playwright-pin.sh enforces it in CI.
+#     python -m playwright  install --with-deps --force chromium
+#     python -m patchright  install --with-deps --force chromium
+#
+# `--force` is why the old browsers stage never saved a byte: playwright
+# re-downloads unconditionally, present revision or not (run1.log #19 —
+# chromium-1223 + ffmpeg-1011 + chromium_headless_shell-1223 + patchright's
+# chromium-1200 + chromium_headless_shell-1200, ~285 MiB, 226s, on top of an
+# already-populated /opt/browsers). `--with-deps` is the other 67s: an apt
+# install of the X11/mesa/font stack into the *builder* rootfs, which the
+# runtime never copies — it installs its own set via `playwright
+# install-deps chromium` further down.
+#
+# So we run the two installs here ourselves, without --force and without
+# --with-deps. Two download sets are genuinely required: playwright 1.60.0
+# validates chromium build v1223 and patchright 1.57.2 validates build v1200;
+# each refuses the other's revision. But they are downloaded once and this
+# stage is invalidated ONLY by the two ARGs below — never by uv.lock, libs/
+# or app code.
+#
+# PLAYWRIGHT_VERSION / PATCHRIGHT_VERSION must equal the uv.lock entries: a
+# drift means the runtime's crawl4ai looks for a revision that is not in
+# /opt/browsers and Chromium fails to launch. scripts/ci/check-playwright-pin.sh
+# enforces both in CI, and unlike before the pin is load-bearing — nothing
+# downloads browsers at runtime to paper over a mismatch.
 FROM python:3.12-slim AS browsers
 ARG PLAYWRIGHT_VERSION=1.60.0
+ARG PATCHRIGHT_VERSION=1.57.2
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install "playwright==${PLAYWRIGHT_VERSION}" \
-    && playwright install chromium
+    pip install "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
+    && python -m playwright install chromium \
+    && python -m patchright install chromium
 
-# ---- Builder: compile dependencies and download browser ----
+# ---- Builder: install the Python dependency closure (no browsers here) ----
 FROM python:3.12-slim AS builder
 WORKDIR /app
 
@@ -37,8 +54,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
-    UV_PROJECT_ENVIRONMENT=/usr/local \
-    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+    UV_PROJECT_ENVIRONMENT=/usr/local
 
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
@@ -55,14 +71,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=libs,target=/app/libs,rw \
     uv sync --frozen --package gaia --group backend
 
-# crawl4ai post-install. The Chromium revision is already in place from the
-# browsers stage, so this no longer downloads anything — it only runs
-# crawl4ai's own setup against the present browser.
-COPY --from=browsers /opt/browsers /opt/browsers
-# crawl4ai-setup writes its post-install state under ~/.cache/crawl4ai; without
-# a cache mount it redid that work on every deps change (measured 227s even
-# with Chromium already present above).
-RUN --mount=type=cache,target=/root/.cache/crawl4ai crawl4ai-setup
+# NOTE: crawl4ai-setup deliberately does NOT run here. Its browser downloads
+# live in the `browsers` stage (keyed on tool versions, not uv.lock) and its
+# home-directory/db half runs in the runtime stage as the user that actually
+# reads it. Running it here cost 244s per uv.lock change and shipped nothing:
+# the state went to /root/.crawl4ai inside a discarded builder rootfs, and the
+# `--mount=type=cache,target=/root/.cache/crawl4ai` guarding it pointed at a
+# path crawl4ai never writes.
 
 # ---- Runtime: minimal production image ----
 FROM python:3.12-slim AS runtime
@@ -99,8 +114,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy crawl4ai browser data from builder
-COPY --from=builder /opt/browsers /opt/browsers
+# Copy crawl4ai browser data (playwright chromium + patchright chromium)
+COPY --from=browsers /opt/browsers /opt/browsers
 
 # Install the Chromium system-dependency set for the bundled Playwright browser.
 # Using Playwright's own installer (not a hand-maintained apt list) keeps the
@@ -131,9 +146,15 @@ ENV ENV=production \
 COPY pyproject.toml uv.lock ./
 COPY apps/api/pyproject.toml ./apps/api/
 # The runtime needs the real sources: gaia-shared is an editable install here
-# (see the chown note below), so this COPY stays — it is cheap (no sync
-# depends on it in this stage).
-COPY libs ./libs
+# (see the chown note below), so the sources must ship. Narrowed to what the
+# editable install actually exposes — libs/pyproject.toml declares
+# `packages.find include = ["shared*"]`, and apps/api only ever imports
+# `shared` / `shared.py.*`. This drops libs/shared/ts (1.2 MB of TypeScript)
+# and libs/wake-word (880 KB), neither of which is a Python package.
+COPY libs/pyproject.toml ./libs/
+COPY libs/shared/__init__.py libs/shared/py.typed ./libs/shared/
+COPY libs/shared/py ./libs/shared/py
+COPY libs/shared/assets ./libs/shared/assets
 
 # Setup non-root user and permissions
 # - libs needs to be writable so setuptools can create gaia_shared.egg-info during editable install
@@ -153,6 +174,14 @@ RUN adduser --disabled-password --gecos '' appuser \
     # owned by appuser so a mounted named volume inherits writable ownership.
     && mkdir -p /models \
     && chown appuser:appuser /models
+
+# The non-browser half of crawl4ai-setup: the ~/.crawl4ai skeleton and its
+# sqlite db. It must be created for `appuser`, not root — the old builder wrote
+# it to /root/.crawl4ai and then threw the rootfs away, so the running
+# container built it lazily on the first crawl. HOME is set explicitly because
+# crawl4ai resolves the location through Path.home().
+RUN HOME=/home/appuser python -c "from crawl4ai.install import setup_home_directory, run_migration; setup_home_directory(); run_migration()" \
+    && chown -R appuser:appuser /home/appuser/.crawl4ai /home/appuser/global.yml
 
 # Copy API application code (root-owned, readable by appuser)
 COPY apps/api/app ./apps/api/app
