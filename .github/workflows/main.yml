@@ -610,13 +610,25 @@ jobs:
           else
             echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
           fi
+      # Self-hosted: scan the committed tree, not the persistent workspace. The
+      # workspace carries 8 GB of node_modules, apps/api/.venv and 16 nested
+      # install dirs that --skip-dirs (top-level patterns) does not fully avoid;
+      # trivy walked them for 67 s per run (18 s on an idle box) while the same
+      # scan of a `git archive HEAD` extraction — exactly what a GitHub-hosted
+      # checkout contains — takes 3.6 s with identical findings (measured
+      # 2026-08-28, run 33189680858).
+      - name: Extract the committed tree for scanning (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
-          scan-ref: "."
+          scan-ref: ${{ runner.environment == 'self-hosted' && format('{0}/trivy-src', runner.temp) || '.' }}
           cache: ${{ runner.environment != 'self-hosted' }}
           cache-dir: ${{ env.TRIVY_DB_DIR }}
           # The self-hosted workspace persists node_modules/.venv/.nx between
