@@ -741,6 +741,8 @@ docs come to you (injected) or via the `read_manual` tool.
     skills/               reusable how-to docs.
     gaia-tasks/           your tracked-todo working memory.
     todos/                the user's own todo list.
+    account/              the user's account: settings + subscription/usage
+                          views. Read-only; change things via the account tools.
     pinned/               cross-session files the user pinned.
 
 Managed directories' contents are read-only projections of the database, so
@@ -757,6 +759,11 @@ these.
 | "Connect / add / set up <service>" | `connect_integration([...])` | `integrations` |
 | "What can you connect to / what's connected?" | `list_integrations` | `integrations` |
 | "For <service>, always do X" (standing preference) | `update_integration_instructions(id, full_body)` | `integrations` |
+| "Turn email/Telegram notifications on or off" | `update_notification_settings(...)` | `account` |
+| "Make replies brief / change my timezone" | `update_preferences(response_style=..., timezone=...)` | `account` |
+| "Always do X in every chat / clear my standing instructions" | `update_custom_instructions(...)` | `account` |
+| "Change your voice" | `set_selected_voice(voice=...)` | `account` |
+| "Connect / disconnect WhatsApp, Telegram, Discord, Slack, iMessage" | `manage_linked_account(platform, action=...)` | `account` |
 | "Remember / correct / forget <fact>" | memory tools (`add_memory`, ...) | `memory` |
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
@@ -782,6 +789,9 @@ sessions/artifacts, notifications, workflows, memory, billing), read that topic'
 `read_manual("<name>")` (no sandbox needed) unless its content is already in your
 context. It is cheap and keeps you from guessing how your own machinery works.
 
+- `account`: view and manage the user's account: notification channels,
+  response style and timezone, custom instructions, voice, linked platforms;
+  the read-only `account/` projections and the account tools.
 - `integrations`: discover, connect, and configure integrations; per-
   integration custom instructions; the subagent model.
 - `tracked-todos`: create / search / update / schedule / complete tracked
@@ -828,9 +838,55 @@ class ManualDoc(NamedTuple):
     body: str
 
 
+ACCOUNT_DOC: Final[str] = """# Account - managing the user's account
+
+You can manage this user's GAIA account on their behalf. Everything you need
+is under `/workspace/account/` - read-only JSON projections of their real
+settings - plus a set of mutation tools that change the real thing.
+
+## What you can manage (and with which tool)
+
+| Area | Read | Change with |
+|---|---|---|
+| Notification channels (email/telegram/discord/whatsapp/slack) | `account/notifications.json` | `update_notification_settings` |
+| Response style + home timezone | `account/preferences.json` | `update_preferences` |
+| Standing custom instructions | `account/custom-instructions.json` | `update_custom_instructions` |
+| Voice for spoken replies | `account/voices/*.json` | `set_selected_voice` |
+| Linked messaging platforms | `account/linked-accounts/<platform>.json` | `manage_linked_account(platform, action=...)` |
+
+Every tool asks the user to confirm before it runs - ALWAYS, regardless of
+their approval settings. Tell them what you're about to change first.
+
+`generate_link` returns a URL or instructions the user follows to connect a
+platform; `disconnect` removes an existing link (and confirms first).
+
+## Hard limits
+
+- **You cannot modify or cancel subscriptions, or touch billing.** Plan,
+  usage, and charge data in `subscription.json` / `usage.json` is read-only
+  truth from the billing provider; point the user at the billing page.
+- **You cannot edit the files themselves** - they are projections; editing one
+  changes nothing. The write path is always a tool above.
+
+Per-topic details live beside the data: `account/GUIDE.md` and
+`account/guides/<topic>.md`. Files can lag the database by up to a minute;
+say so rather than presenting a read as live truth.
+"""
+
 MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
     doc.name: doc
     for doc in (
+        ManualDoc(
+            name="account",
+            title="Account - managing the user's account",
+            description=(
+                "View and manage the user's account: notification channels, response "
+                "style and timezone, custom instructions, voice, linked platforms; "
+                "read the account/ projections and change settings with the account "
+                "tools (billing is read-only)."
+            ),
+            body=ACCOUNT_DOC,
+        ),
         ManualDoc(
             name="integrations",
             title="Integrations: connecting and configuring services",
@@ -943,6 +999,7 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
 # schema so the model can only request a real topic. Kept in lockstep with
 # MANUAL_DOCS by the guard below (raises at import if they drift).
 ManualTopic = Literal[
+    "account",
     "integrations",
     "tracked-todos",
     "user-todos",
@@ -984,6 +1041,7 @@ def manual_index_text() -> str:
 
 
 __all__ = [
+    "ACCOUNT_DOC",
     "BILLING_DOC",
     "DOCUMENTS_DOC",
     "GAIA_CORE",
