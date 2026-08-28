@@ -21,6 +21,9 @@ async def read_manual(topic: ManualTopic) -> str:
     Use this to refresh on how GAIA works or how to do a self-management task,
     instead of ``cat``-ing a file (which would spin up the sandbox). Topics:
 
+    - ``account``: manage the user's account: notification channels, response
+      style and timezone, custom instructions, voice, linked platforms; the
+      read-only account/ projections and the account tools.
     - ``integrations``: connect/configure integrations; per-integration custom
       instructions ("remember this for Gmail").
     - ``tracked-todos``: create/search/update/schedule/complete tracked todos;

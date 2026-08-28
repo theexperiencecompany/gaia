@@ -129,6 +129,10 @@ class AnalyticsEvents(StrEnum):
     # Settings / profile
     SETTINGS_PREFERENCES_CHANGED = "settings:preferences_changed"
 
+    # Account-center mutations made through the agent's account tools
+    ACCOUNT_SETTING_CHANGED = "account:setting_changed"
+    ACCOUNT_PLATFORM_DISCONNECTED = "account:platform_disconnected"
+
     # Worker / agent lifecycle
     AGENT_RUN_STARTED = "agent:run_started"
     AGENT_RUN_COMPLETED = "agent:run_completed"

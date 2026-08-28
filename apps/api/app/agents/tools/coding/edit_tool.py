@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from typing import Annotated
 
 from e2b import AsyncSandbox, NotFoundException
@@ -16,7 +17,8 @@ from app.agents.tools.coding._context import (
     get_user_id,
     safe_emit,
 )
-from app.agents.workspace.paths import MountRole
+from app.agents.workspace.paths import WORKSPACE_ROOT, MountRole
+from app.constants.account import account_mutation_refusal
 from app.decorators import with_doc, with_rate_limiting
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.services.storage import FsOps, fs_timer
@@ -60,6 +62,13 @@ async def edit(
             "Error: user-uploaded/ is read-only. Copy the file to scratch "
             "first: cp user-uploaded/<name> scratch/"
         )
+
+    # account/** holds projections of real settings — refuse with the tool
+    # that performs the mutation instead of touching the filesystem.
+    rel = posixpath.relpath(abs_path, WORKSPACE_ROOT)
+    refusal = account_mutation_refusal(rel)
+    if refusal is not None:
+        return refusal
 
     try:
         async with fs_timer(FsOps.TOOL_EDIT), acquire_sandbox(user_id) as sbx:

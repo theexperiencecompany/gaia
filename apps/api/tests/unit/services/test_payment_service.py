@@ -2593,6 +2593,80 @@ class TestPaymentWebhookServiceInit:
 
 
 # ============================================================================
+# process_webhook account-sync scheduling
+# ============================================================================
+
+
+class TestWebhookAccountSync:
+    """process_webhook schedules a workspace account sync for the metadata user
+    after an event is processed — and only then."""
+
+    @pytest.fixture
+    def mock_schedule_sync(self):
+        with patch(
+            "app.services.payments.payment_webhook_service.schedule_account_sync"
+        ) as mock_fn:
+            yield mock_fn
+
+    async def test_processed_event_schedules_sync_for_the_metadata_user(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_track_payment,
+        mock_schedule_sync,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        result = await webhook_service.process_webhook(event_data, "wh_sync_001")
+
+        assert result.status == "processed"
+        # The sync must target the user named in the payload's metadata.
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    async def test_failed_result_does_not_schedule_sync(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_track_payment,
+        mock_schedule_sync,
+    ):
+        """Only processed billing changes refresh the projection — a failed
+        handler must not, even when the payload carries a user id."""
+        failed = DodoWebhookProcessingResult(
+            event_type=DodoWebhookEventType.PAYMENT_SUCCEEDED.value,
+            status="failed",
+            message="handler declined",
+        )
+        original_handlers = webhook_service.handlers.copy()
+        webhook_service.handlers[DodoWebhookEventType.PAYMENT_SUCCEEDED] = AsyncMock(
+            return_value=failed
+        )
+        try:
+            event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+            result = await webhook_service.process_webhook(event_data, "wh_sync_002")
+        finally:
+            webhook_service.handlers = original_handlers
+
+        assert result.status == "failed"
+        mock_schedule_sync.assert_not_called()
+
+    async def test_non_string_metadata_user_id_is_never_scheduled(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_track_payment,
+        mock_schedule_sync,
+    ):
+        payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": 12345}}
+        event_data = _make_webhook_event("payment.succeeded", payload)
+
+        result = await webhook_service.process_webhook(event_data, "wh_sync_003")
+
+        assert result.status == "processed"
+        mock_schedule_sync.assert_not_called()
+
+
+# ============================================================================
 # process_webhook customer_id extraction
 # ============================================================================
 

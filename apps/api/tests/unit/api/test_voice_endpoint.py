@@ -158,13 +158,17 @@ class TestSelectVoice:
     @patch("app.api.v1.endpoints.voice.set_user_voice", new_callable=AsyncMock)
     async def test_select_voice_success(self, mock_set: AsyncMock, client: AsyncClient):
         mock_set.return_value = "voice-1"
-        with patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture:
+        with (
+            patch("app.api.v1.endpoints.voice.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.voice.schedule_account_sync") as mock_schedule_sync,
+        ):
             resp = await client.put(
                 f"{VOICE_BASE}/voice/voices/selected", json={"voice_id": "voice-1"}
             )
         assert resp.status_code == 200
         assert resp.json() == {"selected_voice_id": "voice-1"}
         mock_set.assert_awaited_once_with(USER_ID, "voice-1")
+        mock_schedule_sync.assert_called_once_with(USER_ID)
         mock_capture.assert_called_once_with(
             AnalyticsEvents.SETTINGS_PREFERENCES_CHANGED,
             {"setting": "voice", "voice_id": "voice-1"},
