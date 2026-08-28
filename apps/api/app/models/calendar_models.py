@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime
 import re
 from typing import Any, Literal
 
@@ -293,8 +293,8 @@ class CalendarEventsQueryRequest(BaseModel):
                 raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD format.")
             try:
                 datetime.fromisoformat(v)
-            except ValueError:
-                raise ValueError(f"Invalid date: {v}")
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {v}") from e
         return v
 
 
@@ -377,10 +377,10 @@ class RecurrenceRule(BaseModel):
                 # Both a bare date and a full datetime (with or without a Z
                 # suffix) are ISO 8601, and fromisoformat parses all of them.
                 datetime.fromisoformat(self.until)
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
-                )
+                ) from e
 
         if self.frequency == "MONTHLY" and self.by_day and self.by_month_day:
             raise ValueError(
@@ -388,6 +388,30 @@ class RecurrenceRule(BaseModel):
             )
 
         return self
+
+    def _until_rrule_value(self) -> str:
+        """The UNTIL value in RFC 5545 basic format: a bare date becomes
+        YYYYMMDD, a datetime becomes UTC YYYYMMDDTHHMMSSZ when parseable."""
+        if "T" not in self.until:
+            try:
+                return datetime.fromisoformat(self.until).strftime("%Y%m%d")
+            except ValueError:
+                return self.until.replace("-", "")
+
+        try:
+            parsed = datetime.fromisoformat(self.until)
+        except ValueError:
+            return self.until
+        # An offset-aware value has to be shifted to UTC before it can wear a
+        # Z: stamping "+05:30" as Z moves the series' end by 5.5 hours. A naive
+        # value is already the caller's UTC wall-clock, so it needs no shift.
+        # Subtracting the offset rather than astimezone(UTC): only the wall
+        # clock is formatted, and this keeps the result independent of the
+        # host's local timezone.
+        offset = parsed.utcoffset()
+        if offset is not None:
+            parsed -= offset
+        return parsed.strftime("%Y%m%dT%H%M%SZ")
 
     def to_rrule_string(self) -> str:
         """Convert to an RFC 5545 RRULE string."""
@@ -400,24 +424,7 @@ class RecurrenceRule(BaseModel):
             components.append(f"COUNT={self.count}")
 
         if self.until is not None:
-            # Format UNTIL value according to RFC 5545
-            if "T" in self.until:  # Contains time component
-                # Ensure it ends with Z for UTC
-                until_value = self.until.replace("+00:00", "Z")
-                if not until_value.endswith("Z"):
-                    try:
-                        dt = datetime.fromisoformat(self.until)
-                        until_value = dt.strftime("%Y%m%dT%H%M%SZ")
-                    except ValueError:
-                        until_value = self.until
-            else:  # Just a date
-                try:
-                    dt = datetime.fromisoformat(self.until)
-                    until_value = dt.strftime("%Y%m%d")
-                except ValueError:
-                    until_value = self.until.replace("-", "")
-
-            components.append(f"UNTIL={until_value}")
+            components.append(f"UNTIL={self._until_rrule_value()}")
 
         if self.by_day:
             components.append(f"BYDAY={','.join(self.by_day)}")
@@ -440,8 +447,8 @@ class RecurrenceRule(BaseModel):
                     raise ValueError(f"Invalid date format: {date}. Use YYYY-MM-DD format.")
                 try:
                     datetime.fromisoformat(date)
-                except ValueError:
-                    raise ValueError(f"Invalid date: {date}")
+                except ValueError as e:
+                    raise ValueError(f"Invalid date: {date}") from e
         return v
 
     model_config = {"extra": "forbid"}
@@ -729,13 +736,11 @@ class EventCreateRequest(BaseCalendarEvent):
             # after this check. Keep it UTC-anchored: a naive parse must not
             # count as a valid all-day date.
             try:
-                parsed_date = datetime.strptime(v, "%Y-%m-%d").replace(tzinfo=UTC)
-                if parsed_date.tzinfo is None:
-                    raise ValueError
-            except ValueError:
+                datetime.strptime(v, "%Y-%m-%d")
+            except ValueError as e:
                 raise ValueError(
                     f"{field_name} must be in ISO format (YYYY-MM-DDTHH:MM:SS) or date format (YYYY-MM-DD)"
-                )
+                ) from e
 
         return v
 

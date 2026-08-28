@@ -82,7 +82,7 @@ Usage
         return await _go()
 
     # or, when the caller already has a duration:
-    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, bytes=size)
+    record_fs_op(FsOps.WRITE_SESSION_FILE, duration_ms=4.2, byte_count=size)
 
 At the end of a `wide_task`, call::
 
@@ -367,7 +367,7 @@ def record_fs_op(
     *,
     duration_ms: float,
     error: BaseException | None = None,
-    bytes: int = 0,
+    byte_count: int = 0,
     **labels: str,
 ) -> None:
     """Record one completed FS op.
@@ -386,8 +386,10 @@ def record_fs_op(
     stats.count += 1
     stats.total_ms += duration_ms
     stats.max_ms = max(stats.max_ms, duration_ms)
-    if bytes:
-        stats.bytes += bytes
+    # Clamped rather than branched: a negative count (a caller passing a signed
+    # delta by mistake) must not push the running total below zero, and adding
+    # a clamped zero is the same no-op the branch was there to produce.
+    stats.bytes += max(byte_count, 0)
     if error is not None:
         stats.errors += 1
         stats.last_error_type = type(error).__name__
@@ -402,8 +404,8 @@ def record_fs_op(
         )
         _FS_OP_TOTAL.labels(operation=op, mode=mode, status=status).inc()
         _FS_OP_LAST_SEEN.labels(operation=op).set(time.time())
-        if bytes > 0:
-            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(bytes)
+        if byte_count > 0:
+            _FS_OP_BYTES_TOTAL.labels(operation=op).inc(byte_count)
     except Exception as e:  # dashboard surface must not break callers
         log.warning(
             "[metrics] prometheus observe failed",
@@ -474,7 +476,7 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
                 error_type=type(e).__name__,
             )
         # cast: **labels is homogeneously str, but record_fs_op also has a
-        # same-spelled `bytes: int` keyword — mypy can't rule out a collision
+        # same-spelled `byte_count: int` keyword — mypy can't rule out a collision
         # from the splat alone, even though no caller ever passes that label.
         record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))
 

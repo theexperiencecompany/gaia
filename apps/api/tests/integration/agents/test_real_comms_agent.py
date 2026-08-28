@@ -837,7 +837,7 @@ class TestRealCommsAgent:
         class TimeoutFakeLLM(BindableToolsFakeModel):
             async def ainvoke(
                 self,
-                input: LanguageModelInput,
+                input: LanguageModelInput,  # noqa: A002 - overrides langchain Runnable.ainvoke's contract
                 config: RunnableConfig | None = None,
                 *,
                 stop: list[str] | None = None,

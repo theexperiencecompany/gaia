@@ -145,6 +145,9 @@ class TestApiGenerateImage:
                 await api_generate_image("test", improve_prompt=False)
 
             assert exc_info.value.status_code == 500
+            # The body reaches the client; pin it, not just the status.
+            assert exc_info.value.detail == "Internal Server Error"
+            assert isinstance(exc_info.value.__cause__, Exception)
 
     async def test_raises_when_improved_prompt_is_empty(self):
         """When both message and improved prompt resolve to empty, should raise."""
@@ -273,3 +276,124 @@ class TestGenerateImageStream:
         assert "generation failed" in error_data["error"]
         # Third chunk: DONE
         assert "[DONE]" in chunks[2]
+
+
+class TestApiGenerateImagePins:
+    async def test_log_context_and_upload_kwargs_are_exact(self):
+        with (
+            patch("app.services.image_service.log") as log,
+            patch(
+                "app.services.image_service.generate_image",
+                new_callable=AsyncMock,
+                return_value=b"img",
+            ),
+            patch(
+                "app.services.image_service.cloudinary.uploader.upload",
+                return_value={"secure_url": "https://cdn.example.com/img.png"},
+            ) as upload,
+        ):
+            await api_generate_image("a cat", improve_prompt=False)
+
+        log.set.assert_called_once_with(
+            component="image_service", operation="generate_image", improve_prompt=False
+        )
+        kwargs = upload.call_args.kwargs  # uploader.upload is synchronous
+        assert kwargs["resource_type"] == "image"
+        assert kwargs["overwrite"] is True
+        # generate_public_id embeds a random suffix; pin only its stable part.
+        assert kwargs["public_id"].startswith("generated_image_a-cat_")
+        log.info.assert_called_once_with(
+            "Image uploaded successfully. URL", image_url="https://cdn.example.com/img.png"
+        )
+
+    async def test_dict_error_result_names_the_missing_image_in_the_cause(self):
+        with (
+            patch(
+                "app.services.image_service.generate_image",
+                new_callable=AsyncMock,
+                return_value={"no_image_key": "data"},
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await api_generate_image("test", improve_prompt=False)
+
+        assert exc_info.value.status_code == 500
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "Failed to generate image" in str(exc_info.value.__cause__)
+
+    async def test_improved_prompt_carries_the_refined_text(self):
+        with (
+            patch(
+                "app.services.image_service.do_prompt_no_stream",
+                new_callable=AsyncMock,
+                return_value={"response": "a watercolor cat"},
+            ),
+            patch(
+                "app.services.image_service.generate_image",
+                new_callable=AsyncMock,
+                return_value=b"img",
+            ),
+            patch(
+                "app.services.image_service.cloudinary.uploader.upload",
+                return_value={"secure_url": "https://cdn.example.com/img.png"},
+            ),
+        ):
+            result = await api_generate_image("a cat", improve_prompt=True)
+
+        # refined text is "<original>, <improvement>" — both parts stripped+joined
+        assert result.improved_prompt == "a cat, a watercolor cat"
+        assert result.prompt == "a cat"
+
+
+class TestImageToTextEndpointPins:
+    async def test_success_response_and_log_are_exact(self):
+        upload = MagicMock(spec=UploadFile)
+        with (
+            patch("app.services.image_service.log") as log,
+            patch(
+                "app.services.image_service.convert_image_to_text",
+                new_callable=AsyncMock,
+                return_value="a red bicycle",
+            ) as convert,
+        ):
+            response = await image_to_text_endpoint("what is this?", upload)
+
+        assert response.response == "a red bicycle"
+        convert.assert_awaited_once_with(upload, "what is this?")
+        log.set.assert_any_call(component="image_service", operation="image_to_text")
+        log.set.assert_any_call(outcome="success")
+
+    async def test_http_exception_passes_through_unwrapped(self):
+        upload = MagicMock(spec=UploadFile)
+        original = HTTPException(status_code=415, detail="unsupported media")
+        with patch(
+            "app.services.image_service.convert_image_to_text",
+            new_callable=AsyncMock,
+            side_effect=original,
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await image_to_text_endpoint("q", upload)
+
+        assert exc_info.value is original
+
+    async def test_unexpected_error_raises_500_with_exact_log(self):
+        upload = MagicMock(spec=UploadFile)
+        with (
+            patch("app.services.image_service.log") as log,
+            patch(
+                "app.services.image_service.convert_image_to_text",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("vision down"),
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await image_to_text_endpoint("q", upload)
+
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "Internal Server Error"
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
+        log.error.assert_called_once_with(
+            "Error occurred while processing image-to-text",
+            error="vision down",
+            error_type="RuntimeError",
+        )

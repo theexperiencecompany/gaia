@@ -409,7 +409,7 @@ def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
             f"::error::mutation gate: could not diff {path} against {merge_base}: {exc}",
             file=sys.stderr,
         )
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
     ranges: list[list[int]] = []
     for line in out.splitlines():
         if not line.startswith("@@"):

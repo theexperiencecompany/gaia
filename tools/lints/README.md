@@ -245,6 +245,46 @@ per-file debt.
 
 ---
 
+## plr-complexity-ratchet
+
+Not an AST rule — runs its own `ruff` invocation, so it's a standalone
+script/hook rather than something through `run.py`:
+
+```bash
+python3 tools/lints/check_plr_complexity.py           # check
+python3 tools/lints/check_plr_complexity.py --update  # record the current baseline
+```
+
+**Rule:** ruff's `PLR0911`/`PLR0912`/`PLR0913`/`PLR0915` (too many returns /
+branches / arguments / statements) are enforced everywhere, but the debt that
+existed when they were switched on is grandfathered per file in
+`tools/lints/plr_complexity_baseline.txt` — **until a PR touches that file**.
+A genuinely new violation (a new file, or a rule an existing file didn't
+already have) is never grandfathered, touched or not.
+
+This is deliberately *not* a plain `[tool.ruff.lint.per-file-ignores]` entry:
+that silences a rule for the whole file forever, with no way to notice a PR
+making an already-flagged function worse. `PLR0911/0912/0913/0915` sit in
+`[tool.ruff.lint] ignore` only so the main ruff lane doesn't double-report a
+debt this script already owns — they are not actually off.
+
+**Why:** the debt was too large (240 violations across 180 files) to fix in
+one pass, but a static exemption never shrinks on its own. Tying the
+exemption to "has this PR touched the file" turns each PR that happens to
+edit a grandfathered file into the moment its debt gets paid down, without
+blocking unrelated work everywhere else.
+
+**Fix:** if the violation is new, simplify the function (or, if it's a
+genuine one-off, justify it in review and add it to the baseline with
+`--update`). If it's grandfathered but your PR touches that file, fix the
+violation now and delete its line from the baseline.
+
+**Scope:** on a PR, "touched" is the same `scripts/ci/changed-files.sh py`
+diff every other lane uses. On a push/full scan (no PR base ref), there is no
+notion of "touched" — grandfathered violations stay quiet, same as before.
+
+---
+
 ## no-silent-fallback
 
 **Rule:** a broad `except` (`Exception` / `BaseException` / bare) may not both stay

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.mail import _build_gmail_query
 from app.models.mail_models import (
     BulkEmailImportanceSummariesResponse,
     EmailImportanceSummariesResponse,
@@ -22,6 +23,7 @@ from app.models.mail_models import (
     GmailLabelsResult,
     GmailMessageResource,
     GmailMessagesResponse,
+    GmailSearchFilters,
     GmailToolResult,
 )
 from app.services.analytics_service import AnalyticsEvents
@@ -348,12 +350,13 @@ class TestMailAnalytics:
             {"has_attachments": False, "attachment_count": 0},
         )
 
+    @patch("app.api.v1.endpoints.mail.log")
     @patch(
         "app.api.v1.endpoints.mail.send_email",
         new_callable=AsyncMock,
     )
     async def test_send_with_attachments_captures_attachment_count(
-        self, mock_send: AsyncMock, client: AsyncClient
+        self, mock_send: AsyncMock, mock_log: AsyncMock, client: AsyncClient
     ):
         """Attachments are reported truthfully in the capture payload."""
         mock_send.return_value = GmailToolResult.model_validate(
@@ -381,6 +384,14 @@ class TestMailAnalytics:
             AnalyticsEvents.EMAIL_SENT,
             {"has_attachments": True, "attachment_count": 1},
         )
+        final_set = mock_log.set.call_args_list[-1]
+        assert final_set.kwargs == {
+            "operation": "send_email",
+            "thread_id": None,
+            "has_attachment": True,
+            "attachments_count": 1,
+            "outcome": "success",
+        }
 
     @patch(
         "app.api.v1.endpoints.mail.ainvoke_structured",
@@ -726,7 +737,7 @@ class TestCreateLabel:
 
 class TestUpdateLabel:
     @patch(
-        "app.api.v1.endpoints.mail.update_label",
+        "app.api.v1.endpoints.mail.update_label_service",
         new_callable=AsyncMock,
     )
     async def test_update_label_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
@@ -1106,3 +1117,363 @@ class TestBulkImportanceSummaries:
             json={},
         )
         assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# _build_gmail_query (pure helper behind GET /gmail/search)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildGmailQuery:
+    def test_query_only(self) -> None:
+        assert _build_gmail_query(GmailSearchFilters(query="invoice")) == "invoice"
+
+    def test_all_prefixed_filters_joined_in_order(self) -> None:
+        filters = GmailSearchFilters(
+            query="report",
+            sender="boss@company.com",
+            recipient="me@company.com",
+            subject="Q3",
+            attachment_type="pdf",
+            date_from="2026/01/01",
+            date_to="2026/02/01",
+            label="Work",
+        )
+        assert (
+            _build_gmail_query(filters) == "report"
+            " from:boss@company.com"
+            " to:me@company.com"
+            " subject:Q3"
+            " filename:pdf"
+            " after:2026/01/01"
+            " before:2026/02/01"
+            " label:Work"
+        )
+
+    @pytest.mark.parametrize(
+        ("has_attachment", "expected"),
+        [(True, "has:attachment"), (False, "-has:attachment")],
+    )
+    def test_has_attachment_flag(self, has_attachment: bool, expected: str) -> None:
+        assert _build_gmail_query(GmailSearchFilters(has_attachment=has_attachment)) == expected
+
+    def test_has_attachment_none_omits_flag(self) -> None:
+        assert _build_gmail_query(GmailSearchFilters(has_attachment=None)) == ""
+
+    @pytest.mark.parametrize(
+        ("is_read", "expected"),
+        [(True, "is:read"), (False, "is:unread")],
+    )
+    def test_read_flag(self, is_read: bool, expected: str) -> None:
+        assert _build_gmail_query(GmailSearchFilters(is_read=is_read)) == expected
+
+    def test_no_filters_yields_empty_string(self) -> None:
+        assert _build_gmail_query(GmailSearchFilters()) == ""
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/gmail/search — service-call contract
+# ---------------------------------------------------------------------------
+
+
+class TestSearchEmailsQueryContract:
+    @patch("app.api.v1.endpoints.mail.log")
+    @patch(
+        "app.api.v1.endpoints.mail.search_messages",
+        new_callable=AsyncMock,
+    )
+    async def test_search_passes_built_query_and_capped_results(
+        self, mock_search: AsyncMock, mock_log: AsyncMock, client: AsyncClient
+    ):
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "m-1"}, {"id": "m-2"}])
+        response = await client.get(
+            f"{MAIL_BASE}/gmail/search",
+            params={
+                "query": "invoice",
+                "sender": "boss@company.com",
+                "label": "Work",
+                "max_results": 100,
+                "page_token": "tok-1",
+            },
+        )
+        assert response.status_code == 200
+        kwargs = mock_search.call_args.kwargs
+        assert kwargs["query"] == "invoice from:boss@company.com label:Work"
+        assert kwargs["max_results"] == 20
+        assert kwargs["page_token"] == "tok-1"
+
+        first_set = mock_log.set.call_args_list[0]
+        assert first_set.kwargs["operation"] == "search_emails"
+        assert first_set.kwargs["user"]["id"]
+
+        final_set = mock_log.set.call_args_list[-1]
+        assert final_set.kwargs == {
+            "operation": "search_emails",
+            "result_count": 2,
+            "has_attachment": None,
+            "label": "Work",
+            "outcome": "success",
+        }
+
+    @patch("app.api.v1.endpoints.mail.log")
+    @patch(
+        "app.api.v1.endpoints.mail.search_messages",
+        new_callable=AsyncMock,
+    )
+    async def test_search_passes_max_results_through_under_cap(
+        self, mock_search: AsyncMock, mock_log: AsyncMock, client: AsyncClient
+    ):
+        mock_search.return_value = GmailMessagesResponse(messages=[])
+        response = await client.get(
+            f"{MAIL_BASE}/gmail/search",
+            params={"query": "test", "max_results": 5},
+        )
+        assert response.status_code == 200
+        kwargs = mock_search.call_args.kwargs
+        assert kwargs["max_results"] == 5
+        assert kwargs["page_token"] is None
+
+        final_set = mock_log.set.call_args_list[-1]
+        assert final_set.kwargs["result_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/gmail/send — form-parsing and service-call contract
+# ---------------------------------------------------------------------------
+
+
+class TestSendEmailRouteContract:
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_splits_recipients_and_forwards_form_fields(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-100"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "a@x.com, b@x.com ,c@x.com",
+                "subject": "Hello",
+                "body": "Body",
+                "cc": "cc1@x.com, cc2@x.com",
+                "bcc": "bcc1@x.com, bcc2@x.com",
+                "thread_id": "thread-42",
+            },
+            files={"attachments": ("note.txt", b"hello", "text/plain")},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "message_id": "sent-100",
+            "status": "Email sent successfully",
+            "attachments_count": 1,
+        }
+        kwargs = mock_send.call_args.kwargs
+        assert kwargs["to"] == "a@x.com"
+        content = kwargs["content"]
+        assert content.subject == "Hello"
+        assert content.body == "Body"
+        assert content.extra_recipients == ["b@x.com", "c@x.com"]
+        assert content.cc_list == ["cc1@x.com", "cc2@x.com"]
+        assert content.bcc_list == ["bcc1@x.com", "bcc2@x.com"]
+        assert len(kwargs["attachments"]) == 1
+        assert kwargs["thread_id"] == "thread-42"
+
+    @patch("app.api.v1.endpoints.mail.log")
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_without_cc_bcc_thread_attachments_passes_none(
+        self, mock_send: AsyncMock, mock_log: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-101"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "solo@x.com", "subject": "Hi", "body": "Body"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "message_id": "sent-101",
+            "status": "Email sent successfully",
+            "attachments_count": 0,
+        }
+        kwargs = mock_send.call_args.kwargs
+        content = kwargs["content"]
+        assert content.extra_recipients == []
+        assert content.cc_list is None
+        assert content.bcc_list is None
+        assert kwargs["attachments"] is None
+        assert kwargs["thread_id"] is None
+
+        final_set = mock_log.set.call_args_list[-1]
+        assert final_set.kwargs == {
+            "operation": "send_email",
+            "thread_id": None,
+            "has_attachment": False,
+            "attachments_count": 0,
+            "outcome": "success",
+        }
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_send_unsuccessful_result_returns_error_detail(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": None, "error": "quota exceeded", "successful": False}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={"to": "a@x.com", "subject": "Hi", "body": "Body"},
+        )
+        assert response.status_code == 500
+        assert response.json()["detail"] == "quota exceeded"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/gmail/send-json — request-mapping and failure contract
+# ---------------------------------------------------------------------------
+
+
+class TestSendEmailJsonContract:
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_json_send_maps_request_fields_exactly(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": {"id": "sent-200"}, "error": None, "successful": True}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send-json",
+            json={
+                "to": ["first@t.com", "second@t.com"],
+                "subject": "S",
+                "body": "B",
+                "cc": ["cc@t.com"],
+                "bcc": ["bcc@t.com"],
+            },
+        )
+        assert response.status_code == 200
+        kwargs = mock_send.call_args.kwargs
+        assert kwargs["to"] == "first@t.com"
+        content = kwargs["content"]
+        assert content.subject == "S"
+        assert content.body == "B"
+        assert content.extra_recipients == ["second@t.com"]
+        assert content.cc_list == ["cc@t.com"]
+        assert content.bcc_list == ["bcc@t.com"]
+
+    @patch(
+        "app.api.v1.endpoints.mail.send_email",
+        new_callable=AsyncMock,
+    )
+    async def test_json_send_unsuccessful_returns_error_detail(
+        self, mock_send: AsyncMock, client: AsyncClient
+    ):
+        mock_send.return_value = GmailToolResult.model_validate(
+            {"data": None, "error": "invalid recipient", "successful": False}
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send-json",
+            json={"to": ["a@t.com"], "subject": "S", "body": "B"},
+        )
+        assert response.status_code == 500
+        assert response.json()["detail"] == "invalid recipient"
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/v1/gmail/labels/{label_id} — service-call contract
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateLabelRouteContract:
+    @patch(
+        "app.api.v1.endpoints.mail.update_label_service",
+        new_callable=AsyncMock,
+    )
+    async def test_update_label_forwards_label_id_and_changes(
+        self, mock_update: AsyncMock, client: AsyncClient
+    ):
+        payload = {
+            "id": "Label_9",
+            "name": "Renamed",
+            "labelListVisibility": "labelHide",
+            "messageListVisibility": "hide",
+            "color": {"backgroundColor": "#fb4c2f", "textColor": "#000000"},
+        }
+        mock_update.return_value = GmailToolResult.model_validate(payload)
+        response = await client.put(
+            f"{MAIL_BASE}/gmail/labels/Label_9",
+            json={
+                "name": "Renamed",
+                "label_list_visibility": "labelHide",
+                "message_list_visibility": "hide",
+                "background_color": "#fb4c2f",
+                "text_color": "#000000",
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == payload
+        mock_update.assert_called_once()
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["label_id"] == "Label_9"
+        changes = kwargs["changes"]
+        assert changes.name == "Renamed"
+        assert changes.label_list_visibility == "labelHide"
+        assert changes.message_list_visibility == "hide"
+        assert changes.background_color == "#fb4c2f"
+        assert changes.text_color == "#000000"
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/v1/gmail/drafts/{draft_id} — service-call contract
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateDraftRouteContract:
+    @patch(
+        "app.api.v1.endpoints.mail.update_draft",
+        new_callable=AsyncMock,
+    )
+    async def test_update_draft_forwards_request_fields(
+        self, mock_update: AsyncMock, client: AsyncClient
+    ):
+        mock_update.return_value = GmailToolResult.model_validate(
+            {"id": "draft-77", "message": {"id": "msg-77"}}
+        )
+        response = await client.put(
+            f"{MAIL_BASE}/gmail/drafts/draft-77",
+            json={
+                "to": ["new1@t.com", "new2@t.com"],
+                "subject": "Updated S",
+                "body": "Updated B",
+                "cc": ["dcc@t.com"],
+                "bcc": ["dbcc@t.com"],
+            },
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "draft_id": "draft-77",
+            "message_id": "msg-77",
+            "status": "Draft updated successfully",
+        }
+        mock_update.assert_called_once()
+        kwargs = mock_update.call_args.kwargs
+        assert kwargs["draft_id"] == "draft-77"
+        assert kwargs["to_list"] == ["new1@t.com", "new2@t.com"]
+        content = kwargs["content"]
+        assert content.subject == "Updated S"
+        assert content.body == "Updated B"
+        assert content.cc_list == ["dcc@t.com"]
+        assert content.bcc_list == ["dbcc@t.com"]

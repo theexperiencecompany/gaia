@@ -290,6 +290,155 @@ class TestBlockedCallLabelsANonEnumPlan:
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
 
 
+class TestTokenCounting:
+    """With ``count_tokens`` on, a dict result's ``tokens_used`` is logged."""
+
+    @staticmethod
+    async def _run(tokens_used: Any) -> MagicMock:
+        async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
+            return {"ran": True, "tokens_used": tokens_used}
+
+        decorated = rl.with_rate_limiting(feature_key="generate_image", count_tokens=True)(tool)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value={}),
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            await decorated(config={"metadata": {"user_id": "user-1"}})
+        return log
+
+    async def test_a_positive_usage_is_logged_with_its_feature(self) -> None:
+        log = await self._run(42)
+
+        log.debug.assert_any_call(
+            f"{rl.LogTag.API} Token usage recorded",
+            tokens_used=42,
+            feature_key="generate_image",
+        )
+
+    async def test_zero_usage_logs_no_token_line(self) -> None:
+        log = await self._run(0)
+
+        assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
+
+    async def test_a_single_token_still_counts(self) -> None:
+        log = await self._run(1)
+
+        log.debug.assert_any_call(
+            f"{rl.LogTag.API} Token usage recorded",
+            tokens_used=1,
+            feature_key="generate_image",
+        )
+
+    async def test_a_missing_tokens_key_logs_nothing(self) -> None:
+        """A dict result without ``tokens_used`` is not an error and logs no
+        usage line — the default must read as zero, not truthy."""
+
+        async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
+            return {"ran": True}
+
+        decorated = rl.with_rate_limiting(feature_key="generate_image", count_tokens=True)(tool)
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value={}),
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            await decorated(config={"metadata": {"user_id": "user-1"}})
+
+        assert all("Token usage recorded" not in str(c.args[0]) for c in log.debug.call_args_list)
+
+
+class TestAttachUsageMetadata:
+    """The exact response-metadata contract a passing call exposes."""
+
+    def test_usage_metadata_is_pinned_exactly(self) -> None:
+        rl.rate_limit_context.set(
+            {
+                "feature_key": "generate_image",
+                "usage_info": {
+                    "day": SimpleNamespace(used=3, limit=50, reset_time=RESET_AT),
+                    "month": SimpleNamespace(used=0, limit=100, reset_time=None),
+                },
+                "user_plan": "pro",
+            }
+        )
+        result: dict[str, Any] = {}
+        try:
+            rl._attach_usage_metadata(result)
+        finally:
+            rl.rate_limit_context.set(None)
+
+        assert result == {
+            "_rate_limit_info": {
+                "feature": "generate_image",
+                "plan": "pro",
+                "usage": {
+                    "day": {"used": 3, "limit": 50, "reset_time": RESET_AT.isoformat()},
+                    "month": {"used": 0, "limit": 100, "reset_time": None},
+                },
+            }
+        }
+
+    def test_no_stashed_context_leaves_the_result_alone(self) -> None:
+        rl.rate_limit_context.set(None)
+        result: dict[str, Any] = {"ran": True}
+
+        rl._attach_usage_metadata(result)
+
+        assert result == {"ran": True}
+
+
+class TestSystemBypass:
+    """``bypass_for_system`` skips metering ONLY for backend-initiated runs."""
+
+    @staticmethod
+    async def _run(initiator: str | None) -> AsyncMock:
+        async def tool(config: dict[str, Any] | None = None) -> dict[str, Any]:
+            return {"ran": True}
+
+        decorated = rl.with_rate_limiting(feature_key="generate_image", bypass_for_system=True)(
+            tool
+        )
+        token = rl.user_context.set({"user_id": "user-1", "initiator": initiator})
+        try:
+            with (
+                patch(
+                    "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                    new=AsyncMock(return_value=PlanType.FREE),
+                ),
+                patch(
+                    "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                    new=AsyncMock(return_value={}),
+                ) as check,
+            ):
+                await decorated(config={"metadata": {"user_id": "user-1"}})
+        finally:
+            rl.user_context.reset(token)
+        return check
+
+    async def test_a_backend_initiator_skips_the_limiter(self) -> None:
+        check = await self._run("backend")
+
+        check.assert_not_awaited()
+
+    async def test_a_frontend_initiator_is_still_metered(self) -> None:
+        check = await self._run("frontend")
+
+        check.assert_awaited_once()
+
+
 async def _endpoint() -> dict[str, bool]:
     """A rate-limited endpoint body."""
     return {"ok": True}
@@ -459,3 +608,211 @@ class TestToolPlanLabelling:
             await self._run("legacy_plan", writer=writer)
 
         assert writer.call_args.args[0]["tool_data"]["data"]["current_plan"] == "legacy_plan"
+
+
+# ---------------------------------------------------------------------------
+# Exact pins for the extracted helpers: context resolution, the limit-hit
+# conversion, and the enforcement happy path.
+# ---------------------------------------------------------------------------
+
+
+class TestResolveContext:
+    def test_user_context_var_wins_over_the_run_config(self) -> None:
+        rl.user_context.set({"user_id": "ctx-user", "initiator": "backend"})
+        try:
+            ctx = rl._resolve_context({"config": {"metadata": {"user_id": "cfg-user"}}})
+        finally:
+            rl.user_context.set(None)
+        assert ctx == {"user_id": "ctx-user", "initiator": "backend"}
+
+    def test_falls_back_to_the_config_metadata_user(self) -> None:
+        rl.user_context.set(None)
+        ctx = rl._resolve_context({"config": {"metadata": {"user_id": "cfg-user"}}})
+        assert ctx == {"user_id": "cfg-user", "initiator": "frontend"}
+
+    def test_no_context_and_no_config_yields_none(self) -> None:
+        rl.user_context.set(None)
+        assert rl._resolve_context({}) is None
+
+    def test_config_without_metadata_user_yields_none_user_id(self) -> None:
+        rl.user_context.set(None)
+        ctx = rl._resolve_context({"config": {"metadata": {}}})
+        assert ctx == {"user_id": None, "initiator": "frontend"}
+
+
+class TestEnforceFeatureLimit:
+    async def test_happy_path_records_exact_rate_limit_context(self) -> None:
+        usage = {"second": SimpleNamespace(used=1, limit=5, reset_time=RESET_AT)}
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.PRO),
+            ) as get_plan,
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value=usage),
+            ) as check,
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            await rl._enforce_feature_limit("user-1", "generate_image")
+
+        get_plan.assert_awaited_once_with("user-1")
+        check.assert_awaited_once_with(
+            user_id="user-1", feature_key="generate_image", user_plan=PlanType.PRO
+        )
+        stored = rl.rate_limit_context.get()
+        assert stored == {
+            "feature_key": "generate_image",
+            "usage_info": usage,
+            "user_plan": "pro",
+        }
+        log.debug.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limit check passed",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+        )
+
+    async def test_a_limiter_failure_is_logged_and_reraised(self) -> None:
+        with (
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+            patch("app.decorators.rate_limiting.log") as log,
+            pytest.raises(RuntimeError, match="redis down"),
+        ):
+            await rl._enforce_feature_limit("user-1", "generate_image")
+
+        log.error.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limiting failed",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+            error="redis down",
+            error_type="RuntimeError",
+        )
+
+
+class TestLimitHitException:
+    async def _hit(
+        self, plan: PlanType = PlanType.PRO, detail: Any = None
+    ) -> tuple[Any, MagicMock, MagicMock, MagicMock, RateLimitExceededException]:
+        exc = RateLimitExceededException(
+            feature="generate_image", reset_time=RESET_AT, plan_required="pro"
+        )
+        if detail is not None:
+            exc.detail = detail
+        writer = MagicMock()
+        with (
+            patch("app.decorators.rate_limiting.capture_event") as capture,
+            patch.object(rl, "get_stream_writer", return_value=writer),
+            patch("app.decorators.rate_limiting.log") as log,
+        ):
+            result = rl._limit_hit_exception("user-1", "generate_image", plan, exc)
+        return result, capture, writer, log, exc
+
+    async def test_paid_plan_hit_captures_an_event_with_exact_props(self) -> None:
+        result, capture, _, _, _ = await self._hit(plan=PlanType.PRO)
+        capture.assert_called_once_with(
+            "user-1",
+            rl.AnalyticsEvents.RATE_LIMIT_HIT,
+            {"feature": "generate_image", "plan": "pro"},
+        )
+        assert isinstance(result, rl.LangChainRateLimitError)
+
+    async def test_free_plan_hit_captures_no_duplicate_event(self) -> None:
+        _, capture, _, _, _ = await self._hit(plan=PlanType.FREE)
+        capture.assert_not_called()
+
+    async def test_dict_detail_drives_reset_time_and_card(self) -> None:
+        result, _, writer, _, _ = await self._hit(detail={"reset_time": RESET_AT})
+        assert result.reset_time == RESET_AT
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
+
+    async def test_string_detail_becomes_the_message(self) -> None:
+        result, _, writer, _, _ = await self._hit(detail="too many requests")
+        assert result.detail == {"message": "too many requests"}
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["plan_required"] == "pro"
+
+    async def test_warning_log_is_exact(self) -> None:
+        _, _, _, log, exc = await self._hit()
+        log.warning.assert_called_once_with(
+            f"{rl.LogTag.API} Rate limit exceeded",
+            user_id="user-1",
+            actual_feature_key="generate_image",
+            error=str(exc),
+            error_type="RateLimitExceededException",
+        )
+
+
+class TestLimitHitExceptionDetailFallbacks:
+    """The detail dict wins; the exception's own attributes are the fallback —
+    and an unrecognised detail shape degrades to an empty dict, not a crash."""
+
+    @staticmethod
+    async def _convert(exc: RateLimitExceededException) -> tuple[Any, MagicMock]:
+        writer = MagicMock()
+        with (
+            patch("app.decorators.rate_limiting.capture_event"),
+            patch.object(rl, "get_stream_writer", return_value=writer),
+            patch("app.decorators.rate_limiting.log"),
+        ):
+            result = rl._limit_hit_exception("user-1", "generate_image", PlanType.PRO, exc)
+        return result, writer
+
+    async def test_a_reset_time_missing_from_detail_falls_back_to_the_attribute(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
+        exc.detail = {"error": "rate_limit_exceeded"}
+
+        result, writer = await self._convert(exc)
+
+        assert result.reset_time == RESET_AT
+        assert writer.call_args.args[0]["tool_data"]["data"]["reset_time"] == RESET_AT.isoformat()
+
+    async def test_a_plan_required_missing_from_detail_falls_back_to_the_attribute(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image", plan_required="team")
+        exc.detail = {"error": "rate_limit_exceeded"}
+
+        result, writer = await self._convert(exc)
+
+        assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
+
+    async def test_plan_required_comes_from_detail_over_the_attribute(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image", plan_required="pro")
+        exc.detail = {"plan_required": "team"}
+
+        _, writer = await self._convert(exc)
+
+        assert writer.call_args.args[0]["tool_data"]["data"]["plan_required"] == "team"
+
+    async def test_an_unrecognised_detail_shape_yields_an_empty_detail_dict(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
+        exc.detail = 42
+
+        result, _ = await self._convert(exc)
+
+        assert result.detail == {}
+        assert result.reset_time == RESET_AT
+
+    async def test_a_missing_reset_time_attribute_reads_as_none(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image")
+        object.__delattr__(exc, "reset_time")
+
+        result, _ = await self._convert(exc)
+
+        assert result.reset_time is None
+
+    async def test_a_missing_plan_required_attribute_reads_as_none(self) -> None:
+        exc = RateLimitExceededException(feature="generate_image", reset_time=RESET_AT)
+        object.__delattr__(exc, "plan_required")
+
+        result, writer = await self._convert(exc)
+
+        assert result.reset_time == RESET_AT.isoformat()
+        card = writer.call_args.args[0]
+        assert card["tool_data"]["data"]["plan_required"] is None

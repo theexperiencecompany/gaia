@@ -37,7 +37,12 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
@@ -113,12 +118,13 @@ def build_gaia_test_graph(
 
     builder = create_agent(
         llm=fake_llm,
-        agent_name="test_agent",
         tool_registry=tool_registry,
-        disable_retrieve_tools=True,
-        initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
-        middleware=None,
-        pre_model_hooks=pre_model_hooks,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
+        ),
+        hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
+        agent_config=AgentConfig(agent_name="test_agent"),
     )
 
     resolved_store = store or InMemoryStore()

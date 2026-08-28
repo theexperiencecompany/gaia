@@ -119,4 +119,4 @@ async def get_usage_activity(
             error=str(e),
             error_type=type(e).__name__,
         )
-        raise HTTPException(status_code=500, detail="Failed to get usage activity")
+        raise HTTPException(status_code=500, detail="Failed to get usage activity") from e
