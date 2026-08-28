@@ -32,7 +32,16 @@ tailscale ssh gaia-home-server "bash -s" < infra/self-hosted-runner/setup.sh "$R
 #   tailscale ssh gaia-home-server "RUNNER_TOKEN=$RUNNER_TOKEN bash /tmp/setup.sh"
 ```
 
-Idempotent — re-running cleans stale registration and restarts the service.
+Idempotent — re-running cleans stale registration and restarts the services.
+`setup.sh` installs `RUNNER_COUNT` (default 4) runner instances, the job
+hooks, the shared Nx cache service, and the nightly prune/janitor timer.
+
+Host performance profile (one-time, needs sudo on the box):
+
+```bash
+bash infra/self-hosted-runner/tune-host.sh            # apply
+bash infra/self-hosted-runner/tune-host.sh --revert   # undo
+```
 
 Verify:
 
@@ -57,8 +66,6 @@ job: select-runner  (runs on ubuntu-latest, 2 min timeout)
   → downstream jobs:  runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
 ```
 
-Docker-heavy lanes (`build.yml`) fall back to `blacksmith-2vcpu-ubuntu-2404` instead of plain `ubuntu-latest` — pass `flavour: docker` to the composite action.
-
 The probe writes a human summary to `$GITHUB_STEP_SUMMARY`:
 
 > ### Runner selection — home (fast path) …or… Runner selection — fallback (offline)
@@ -69,22 +76,17 @@ A job never waits on a dead self-hosted label because nothing ever does `runs-on
 
 | Workflow | How it opts in |
 |---|---|
-| `.github/workflows/main.yml` ("Quality Checks") | Every compute lane goes through `select-runner` on every PR and master push — home box first, GitHub-hosted fallback. `workflow_dispatch` adds `force_home` (fail instead of falling back) and the `run_benchmark` matrix. |
+| `.github/workflows/main.yml` ("Quality Checks") | Every compute lane goes through `select-runner` on every PR and master push — home box first, GitHub-hosted fallback. `workflow_dispatch` adds `force_home` (fail instead of falling back) and the `probe` job. |
+| `.github/workflows/code-quality.yml` ("Code Quality") | Same `select-runner` job; every hygiene lane and the mutation shards land on the selected runner. |
 | `.github/workflows/build.yml` | Does **not** use the home runner — every job is `ubuntu-latest`. Release image builds stay off the box on purpose. |
 
 ## Benchmarks
 
-See `scripts/ci/benchmark-hybrid.sh` and `docs/ci/HYBRID_BENCHMARK.md`.
+Measured during the migration (the profiling harness that produced this table
+was removed with the experiment; re-measure with `gh run list` timings on real
+runs, per the "Verify with real workflow runs" rule in the root `CLAUDE.md`).
 
-Quick local profile (on the home server):
-
-```bash
-tailscale ssh gaia-home-server "bash ~/gaia/scripts/ci/benchmark-hybrid.sh --iterations 3 --cpus 2,4,8,16"
-# CSV → scripts/ci/benchmark-results/YYYY-MM-DD.csv
-# Markdown → docs/ci/HYBRID_BENCHMARK.md
-```
-
-Expected headroom (Amdahl, I/O-bound steps capped):
+Headroom (Amdahl, I/O-bound steps capped):
 
 | Workload | GH 2 vCPU | Home 16c | Speedup |
 |---|---|---|---|
@@ -96,7 +98,7 @@ Expected headroom (Amdahl, I/O-bound steps capped):
 | `pytest` live-services | ~240 s | ~55 s | 4.4× |
 | Docker build (api) | ~420 s† | ~150 s | 2.8× |
 
-† Blacksmith 2 vCPU with BuildKit cache vs home NVMe + rootless BuildKit.
+† GitHub-hosted 2 vCPU with BuildKit cache vs home NVMe + rootless BuildKit.
 
 ## Teardown / rotate
 
@@ -125,10 +127,10 @@ gh api repos/theexperiencecompany/gaia/actions/runners --jq '.total_count'
 
 ## Shared test services (one container set for every lane)
 
-`scripts/ci/start-test-services.sh` boots five containers **per job**. With six
-lanes able to run at once on this box that is 30 containers: a measured 20-45 s
-of boot time on every job's critical path, and ~15-22 GB of RAM against 24 GB of
-machine. The same five containers started **once** and kept warm cost ~0.6 GB and
+`scripts/ci/start-test-services.sh` boots five containers **per job**. With the
+box's four runner instances (`RUNNER_COUNT` in `setup.sh`) that is 20 containers:
+a measured 20-45 s of boot time on every job's critical path, and ~12-18 GB of
+RAM against 46 GiB of machine, alongside the lanes' own workers. The same five containers started **once** and kept warm cost ~0.6 GB and
 zero boot time per job.
 
 `scripts/ci/shared-test-services.sh` is that harness. The containers are shared;
@@ -205,12 +207,12 @@ shared request queue. Isolation is by naming convention only, which means:
 
 * **Noisy neighbour.** A lane running the memory suite's embedding-heavy tests
   slows every other lane's Chroma calls. There is no per-collection quota.
-* **Blast radius.** If the single Chroma process OOMs or wedges, all six lanes
-  fail together rather than one.
+* **Blast radius.** If the single Chroma process OOMs or wedges, every lane
+  fails together rather than one.
 * **Leak visibility.** A lane that dies without `reset` leaves its collections
   resident in the shared process until `janitor` runs.
 
 Accepted deliberately: a per-lane Chroma is the single most expensive container
-of the five, and the alternative (six Chromas) is most of the RAM problem this
+of the five, and the alternative (one Chroma per lane) is most of the RAM problem this
 scheme exists to solve. If Chroma contention shows up in lane timings, the next
 move is a per-lane Chroma while the other four services stay shared.

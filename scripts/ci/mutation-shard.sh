@@ -11,7 +11,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 if [ -z "${GROUP:-}" ]; then
   echo "::error::mutation shard started with no GROUP — the plan job did not emit one"

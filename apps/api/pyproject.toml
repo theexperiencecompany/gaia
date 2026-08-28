@@ -117,7 +117,6 @@ dev = [
   "pika>=1.4.1",
   "pytest-randomly>=4.1.0",
   "pytest-timeout>=2.4.0",
-  "pytest-split>=0.8.0",
   "time-machine>=3.3.1",
   "schemathesis>=4.25.0",
   "hypothesis>=6.165.2",

@@ -51,10 +51,10 @@ CLI_DIR = next(
     for parent in Path(__file__).resolve().parents
     if (parent / "packages" / "cli").is_dir()
 )
-# tsx's bin location depends on pnpm's node-linker: the isolated linker (used
-# inside the Dagger harness, which never sees the repo .npmrc) puts it in the
-# CLI package's own node_modules/.bin; the hoisted linker (dev machines and
-# CI runners, per .npmrc) only creates the repo-root node_modules/.bin.
+# tsx's bin location depends on pnpm's node-linker. The repo now runs the
+# default isolated linker everywhere (no .npmrc), which puts tsx in the CLI
+# package's own node_modules/.bin; the repo-root fallback keeps this working on
+# a hoisted install (an older checkout, or a consumer that sets node-linker).
 _CLI_TSX = CLI_DIR / "node_modules" / ".bin" / "tsx"
 _ROOT_TSX = CLI_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
 TSX_BIN = _CLI_TSX if _CLI_TSX.exists() else _ROOT_TSX

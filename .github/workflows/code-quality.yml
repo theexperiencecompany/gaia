@@ -67,7 +67,6 @@ jobs:
           # 2026-08-28: 7 lint jobs + 2 mutation shards held every slot and the
           # pipeline's detect job queued 280 s.
           runner-label: gaia-home-lint
-          flavour: standard
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
   # --- Change detection (no toolchain install) -----------------------------

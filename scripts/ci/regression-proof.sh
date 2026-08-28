@@ -2,7 +2,7 @@
 # Regression-proof job (FastAPI's lesson): the changed test files must FAIL on
 # the base revision — red-first enforced mechanically, per PR.
 #
-# Usage: regression-proof.sh <base-ref>   (e.g. origin/develop)
+# Usage: regression-proof.sh <base-ref>   (e.g. origin/master)
 # Exit 0: no changed tests, or all changed tests fail on base (as they should).
 # Exit 1: a changed test PASSES on base — its fix may no longer be needed.
 set -euo pipefail

@@ -15,7 +15,7 @@
  * only local/CI signal correlated with the gate. SonarCloud stays authoritative.
  *
  * Base branch is taken from GITHUB_BASE_REF (set automatically on GitHub Actions
- * pull requests); locally it defaults to develop.
+ * pull requests); locally it defaults to master — the repo's only base branch.
  */
 import { execSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
@@ -24,7 +24,7 @@ import { join } from "node:path";
 
 const BASE = process.env.GITHUB_BASE_REF
   ? `origin/${process.env.GITHUB_BASE_REF}`
-  : "origin/develop";
+  : "origin/master";
 const THRESHOLD = 3;
 
 const sh = (cmd) =>

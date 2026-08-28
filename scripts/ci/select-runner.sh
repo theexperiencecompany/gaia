@@ -14,12 +14,11 @@
 #   GITHUB_REPOSITORY       — owner/repo
 #   RUNNER_LABEL            — label to probe (default: gaia-home)
 #   FALLBACK_RUNNER         — JSON array used when home is unavailable (default: ["ubuntu-latest"])
-#   FALLBACK_RUNNER_DOCKER  — same but for docker-heavy lanes (default: ["blacksmith-2vcpu-ubuntu-2404"])
 #   FORCE_HOME              — if "true", fail loudly instead of falling back (for smoke tests)
 #
 # Outputs (via $GITHUB_OUTPUT when present, else stdout):
 #   runner              — JSON array string, e.g. '["self-hosted","gaia-home"]'
-#   runner_label        — human label: gaia-home | ubuntu-latest | blacksmith-2vcpu-ubuntu-2404
+#   runner_label        — human label: gaia-home | ubuntu-latest
 #   is_self_hosted      — true | false
 #
 # Step summary appended to $GITHUB_STEP_SUMMARY when available.
@@ -27,17 +26,9 @@ set -euo pipefail
 
 LABEL="${RUNNER_LABEL:-gaia-home}"
 FALLBACK="${FALLBACK_RUNNER:-["ubuntu-latest"]}"
-FALLBACK_DOCKER="${FALLBACK_RUNNER_DOCKER:-["blacksmith-2vcpu-ubuntu-2404"]}"
 REPO="${GITHUB_REPOSITORY:-theexperiencecompany/gaia}"
 TOKEN="${GITHUB_TOKEN:-}"
 FORCE="${FORCE_HOME:-false}"
-
-# Allow callers to request docker flavour explicitly:
-#   RUNNER_FLAVOUR=docker ./select-runner.sh
-FLAVOUR="${RUNNER_FLAVOUR:-standard}"
-if [[ "$FLAVOUR" == "docker" ]]; then
-  FALLBACK="$FALLBACK_DOCKER"
-fi
 
 # Sensible defaults when running locally (outside Actions)
 if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
@@ -236,5 +227,5 @@ summary "### Runner selection — fallback (home not schedulable)
 - **Selected:** \`$FALLBACK\`
 - **Home pool:** ${R_IDLE} idle / ${R_ONLINE} online / ${R_TOTAL} registered — **$REASON**
 - **Home labels:** \`$R_LABELS\`
-- **Fallback type:** \`$FLAVOUR\` (standard=\`[\"ubuntu-latest\"]\`, docker=\`[\"blacksmith-2vcpu-ubuntu-2404\"]\`)
+- **Fallback:** \`$FALLBACK\`
 "
