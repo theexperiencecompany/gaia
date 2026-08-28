@@ -115,6 +115,14 @@
       "command": "python3 tools/lints/run.py apps/api/app"
     },
     {
+      "name": "plr-complexity",
+      "scope": "\\.py$|^tools/lints/(check_plr_complexity\\.py|plr_complexity_baseline\\.txt)",
+      "heavy": false,
+      "timeout_s": 120,
+      "require_cmd": [],
+      "command": "python3 tools/lints/check_plr_complexity.py"
+    },
+    {
       "name": "ignore-whys",
       "scope": "^pyproject\\.toml$|^tools/lints/(check_ignore_ratchet\\.py|ignore_ratchet_baseline\\.txt)",
       "heavy": false,

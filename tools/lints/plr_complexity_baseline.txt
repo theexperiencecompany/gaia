@@ -33,6 +33,7 @@ apps/api/app/agents/tools/coding/edit_tool.py	PLR0913
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913
 apps/api/app/agents/tools/coding/read_tool.py	PLR0911
+apps/api/app/agents/tools/core/mutations.py	PLR0913
 apps/api/app/agents/tools/core/registry.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
