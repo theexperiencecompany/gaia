@@ -183,6 +183,7 @@ class TestFeatureLimits:
         "integration_publish",
         "integration_clone",
         "imessage_registration",
+        "account_platform_connect",
     ]
 
     def test_all_expected_features_present(self) -> None:

@@ -30,6 +30,10 @@ class TestToolCategory:
         assert len(category.tools) == 1
         assert category.tools[0].name == "my_tool"
         assert category.tools[0].tool is mock_tool
+        # Defaults: not core, unclassified HIL risk, no forced gate.
+        assert category.tools[0].is_core is False
+        assert category.tools[0].destructive is None
+        assert category.tools[0].always_gate is False
 
     def test_add_tool_with_custom_name(self):
         category = ToolCategory(name="test_cat")
@@ -44,6 +48,30 @@ class TestToolCategory:
         category.add_tools(tools)
 
         assert len(category.tools) == 3
+
+    def test_add_tools_classifies_destructive_by_membership(self):
+        """A curated set classifies every tool by name membership; no set at
+        all leaves the HIL risk unclassified (None) for the LLM classifier."""
+        category = ToolCategory(name="test_cat")
+        dangerous = _make_mock_tool("dangerous")
+        safe = _make_mock_tool("safe")
+        unclassified = _make_mock_tool("mystery")
+        category.add_tools([dangerous, safe], destructive_tools={"dangerous"})
+        category.add_tools([unclassified])
+
+        by_name = {tool.name: tool.destructive for tool in category.tools}
+        assert by_name == {"dangerous": True, "safe": False, "mystery": None}
+
+    def test_add_tools_stamps_always_gate_membership(self):
+        """Forced-ask is stamped per tool: members gate in EVERY mode, and
+        non-members are explicitly False — never an unclassified None."""
+        category = ToolCategory(name="test_cat")
+        gated = _make_mock_tool("gated")
+        ungated = _make_mock_tool("ungated")
+        category.add_tools([gated, ungated], always_gate_tools={"gated"})
+
+        assert category.tools[0].always_gate is True
+        assert category.tools[1].always_gate is False
 
     def test_get_tool_objects_returns_base_tools(self):
         category = ToolCategory(name="test_cat")
@@ -199,6 +227,42 @@ class TestToolRegistry:
         assert len(core_tools) == 1
         assert core_tools[0].name == "core_1"
 
+    def test_core_tools_receive_the_hil_stamps_too(self):
+        """A category registers its HIL sets for BOTH tool lists.
+
+        `_add_category` calls `add_tools` twice — once for `core_tools`, once
+        for `tools` — and every existing test passes its risk sets through the
+        `tools=` call only. A forced-gate tool registered as a core tool would
+        silently lose its stamp and stop asking for approval, which is the
+        whole point of the flag.
+        """
+        registry = ToolRegistry()
+        registry._add_category(
+            "mixed",
+            core_tools=[_make_mock_tool("core_gated"), _make_mock_tool("core_plain")],
+            tools=[_make_mock_tool("reg_dangerous")],
+            destructive_tools={"reg_dangerous", "core_gated"},
+            always_gate_tools={"core_gated"},
+        )
+
+        stamps = {t.name: t for t in registry.get_category("mixed").tools}
+        assert stamps["core_gated"].always_gate is True
+        assert stamps["core_gated"].destructive is True
+        assert stamps["core_plain"].always_gate is False
+        assert stamps["core_plain"].destructive is False
+        assert stamps["reg_dangerous"].destructive is True
+
+    def test_replacing_category_drops_stale_name_index(self):
+        """Re-registering a category must evict its previous tools from the
+        name index, or removed tools keep resolving to a dead category."""
+        registry = ToolRegistry()
+        registry._add_category("cat", tools=[_make_mock_tool("old_tool")])
+        registry._add_category("cat", tools=[_make_mock_tool("new_tool")])
+
+        assert registry.get_category_of_tool("old_tool") == "unknown"
+        assert registry.get_tool_meta("old_tool") is None
+        assert registry.get_category_of_tool("new_tool") == "cat"
+
     def test_get_category_returns_none_for_missing(self):
         registry = ToolRegistry()
         assert registry.get_category("nonexistent") is None
@@ -289,6 +353,7 @@ class TestToolWrapper:
         tool = Tool(tool=base)
         assert tool.name == "auto_name"
         assert tool.is_core is False
+        assert tool.always_gate is False
 
     def test_tool_custom_name_override(self):
         base = _make_mock_tool("original")
@@ -336,6 +401,86 @@ class TestBillingCategory:
         ]
         assert all(tool.destructive is False for tool in category.tools)
         assert category.internal is False
+
+
+class TestCoreInitializationContract:
+    """The real initializer's HIL contract, pinned by name.
+
+    These assertions are deliberately exact: a renamed/mangled category, a
+    dropped tool list, or an uncurated destructive set would silently change
+    which tools the executor can reach and how the HIL gate judges them.
+    """
+
+    def test_search_documents_and_notifications_register_expected_tools(self):
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        search = registry.get_category("search")
+        documents = registry.get_category("documents")
+        notifications = registry.get_category("notifications")
+        assert search is not None
+        assert documents is not None
+        assert notifications is not None
+
+        assert [tool.name for tool in search.tools] == [
+            "web_search_tool",
+            "fetch_webpages",
+            "deep_research",
+            "download",
+        ]
+        assert [tool.name for tool in documents.tools] == ["search_uploaded_files"]
+        assert [tool.name for tool in notifications.tools] == [
+            "get_notifications",
+            "search_notifications",
+            "get_notification_count",
+            "mark_notifications_read",
+            "send_notification",
+            "get_notification_preferences",
+        ]
+
+    def test_every_initialized_tool_has_an_explicit_hil_classification(self):
+        """No built-in tool may ship unclassified (destructive=None): the HIL
+        gate would fall to the LLM classifier for code-reviewed tools."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        unclassified = [
+            (category.name, tool.name)
+            for category in registry.get_all_category_objects().values()
+            for tool in category.tools
+            if tool.destructive is None
+        ]
+        assert unclassified == []
+
+        assert registry.is_tool_destructive("send_notification") is True
+        assert registry.is_tool_destructive("web_search_tool") is False
+        assert registry.is_tool_destructive("search_uploaded_files") is False
+
+    def test_account_category_pins_the_forced_ask_settings_tools(self):
+        """The account settings tools are stamped forced-ask (settings on the
+        user's own account ask in EVERY mode); manage_linked_account rides the
+        argument gate instead and nothing here is destructive. A renamed
+        category, a mangled member, or a lost stamp silently changes what the
+        HIL gate may wave through."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        category = registry.get_category("account")
+        assert category is not None
+        assert [tool.name for tool in category.tools] == [
+            "update_notification_settings",
+            "update_preferences",
+            "update_custom_instructions",
+            "set_selected_voice",
+            "manage_linked_account",
+        ]
+        assert {tool.name for tool in category.tools if tool.always_gate} == {
+            "update_notification_settings",
+            "update_preferences",
+            "update_custom_instructions",
+            "set_selected_voice",
+        }
+        assert all(tool.destructive is False for tool in category.tools)
 
 
 def _patch_initialize_categories():

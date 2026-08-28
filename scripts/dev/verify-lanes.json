@@ -232,7 +232,7 @@
       "heavy": true,
       "timeout_s": 3600,
       "require_cmd": ["uv"],
-      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/ci/mutation-plan.sh && bash scripts/ci/mutation-shard.sh"
+      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/test/mutation-local.sh"
     },
     {
       "name": "ts-tests",

@@ -11,7 +11,8 @@ Plus one guard that belongs with the policy because it *suppresses* auto-approva
 ``has_pausing_sibling`` — see its docstring for the double-execution it prevents.
 """
 
-from typing import Literal
+from collections.abc import Mapping
+from typing import Any, Literal
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
@@ -22,7 +23,7 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
-from app.services.hil.utils import current_tool_calls, tool_of
+from app.services.hil.utils import current_tool_calls, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 
 # What the gate does with one call:
@@ -31,23 +32,64 @@ from shared.py.wide_events import log
 #   auto  — let the intent judge choose between the two
 GatingPolicy = Literal["allow", "ask", "auto"]
 
+# Tools whose gate depends on an argument value, not just the name: a hit on
+# every listed (arg → value) pair forces the ask. ``manage_linked_account``
+# mints link URLs freely but disconnecting an account always confirms.
+ARGUMENT_GATED_TOOLS: dict[str, dict[str, object]] = {
+    "manage_linked_account": {"action": "disconnect"},
+}
+
+
+async def _is_always_gated(tool_name: str) -> bool:
+    """The registry's forced-ask stamp — checked before any preference lookup."""
+    registry = await get_tool_registry()
+    meta = registry.get_tool_meta(tool_name)
+    return meta is not None and meta.always_gate
+
+
+def _argument_gate_hit(tool_name: str, args: Mapping[str, Any] | None) -> bool:
+    required = ARGUMENT_GATED_TOOLS.get(tool_name)
+    if not required or not args:
+        return False
+    return all(args.get(key) == value for key, value in required.items())
+
 
 async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str) -> GatingPolicy:
-    """The user's mode plus the gated set, resolved into one decision."""
+    """The user's mode plus the gated set, resolved into one decision.
+
+    Forced-ask tools short-circuit BEFORE the preferences read, so they pause
+    even when the preference store itself is unreachable (fail closed for the
+    calls that must never slip through).
+    """
+    call = unpack_tool_call(request)
+    if await _is_always_gated(tool_name) or _argument_gate_hit(tool_name, call.args):
+        return "ask"
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
         return "allow"
-    if not await is_gated(prefs, tool_name, tool_of(request)):
+    if not await is_gated(prefs, tool_name, tool_of(request)):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
 
 
-async def is_gated(prefs: HILPreferences, tool_name: str, tool: BaseTool | None) -> bool:
+async def is_gated(
+    prefs: HILPreferences,
+    tool_name: str,
+    tool: BaseTool | None,
+    args: Mapping[str, Any] | None = None,
+) -> bool:
     """Whether this tool needs approval — the set both gating modes act on.
 
-    A user's explicit per-tool choice wins over the classifier in both directions — even
-    over an MCP destructiveHint — since it is a deliberate setting on their own account.
+    The forced-ask stamp and the argument gate outrank everything, including a
+    user's explicit per-tool override: those mark product invariants ("changes
+    to the user's own account confirm first"), not classifier opinions.
+    Otherwise a user's per-tool choice wins in both directions — even over an
+    MCP destructiveHint — since it is a deliberate setting on their own account.
     """
+    if await _is_always_gated(tool_name):
+        return True
+    if _argument_gate_hit(tool_name, args):
+        return True
     override = prefs.tool_overrides.get(tool_name)
     if override is not None:
         return override
@@ -97,19 +139,31 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
     if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
         return True
 
+    # Forced-ask siblings pause even when HIL is otherwise off — checked before
+    # the always_allow fast path below, because that fast path exists to skip
+    # preference-driven gating, and the stamp is not preference-driven.
+    registry = await get_tool_registry()
+    for call in siblings:
+        name = str(call["name"])
+        meta = registry.get_tool_meta(name)
+        if (meta is not None and meta.always_gate) or _argument_gate_hit(
+            name, call.get("args") or None
+        ):
+            return True
+
     prefs = await get_hil_preferences(user_id)
     if prefs.mode == "always_allow":
-        # HIL is off for this user, so no sibling gate can pause. Answered before the
-        # per-sibling classification below because every ungated call now asks this
-        # (see gate._run_once_across_replays) and that is ~100% of traffic.
+        # HIL is off for this user, so no preference-driven gate can pause. Answered
+        # after the forced-gate scan because account mutations ask regardless of this
+        # mode (and before the per-sibling classification below because every ungated
+        # call now asks this — see gate._run_once_across_replays).
         return False
-    registry = await get_tool_registry()
     for call in siblings:
         name = str(call["name"])
         if name in HIL_EXEMPT_TOOLS:
             continue
         meta = registry.get_tool_meta(name)
-        if await is_gated(prefs, name, meta.tool if meta else None):
+        if await is_gated(prefs, name, meta.tool if meta else None, args=call.get("args") or None):
             return True
     return False
 
