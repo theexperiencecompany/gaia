@@ -29,6 +29,12 @@ fi
 cd "$REPO_ROOT/apps/api"
 # --no-sync: the environment is already synced by the caller; this must not
 # touch the network. The model cache dir is inherited from the environment.
+# Slots = cores / MEMORY_ONNX_THREADS. The default (4 threads → 4 slots on 16
+# cores) left a 6-worker lane contending on every embed: each miss is a 503 +
+# retry sleep, and the lane measured 227% CPU across 6 workers. 2 threads per
+# inference gives 8 slots — more than the lane's workers — at a small
+# per-request latency cost that the parallelism repays.
+export MEMORY_ONNX_THREADS="${MEMORY_ONNX_THREADS:-2}"
 nohup uv run --frozen --no-sync uvicorn app.services.embedding_sidecar.server:app \
   --host 127.0.0.1 --port "$PORT" --log-level warning > "$LOG" 2>&1 < /dev/null &
 echo $! > "$PIDFILE"
