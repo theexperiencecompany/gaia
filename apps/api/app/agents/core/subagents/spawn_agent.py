@@ -16,6 +16,7 @@ module that composes middleware stacks is also the one that constructs
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
@@ -34,6 +35,7 @@ from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AnyAgentMiddleware
+from app.override.langgraph_bigtool.agent_config import AgentConfig, HookConfig
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
@@ -109,15 +111,14 @@ async def _build_spawn_graph(
     }
     scoped_tools[FINISH_TASK_NAME] = finish_task
 
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "llm": llm,
         "tool_registry": scoped_tools,
-        "agent_name": SPAWN_AGENT_NAME,
-        "middleware": middleware_factory(),
+        "agent_config": AgentConfig(agent_name=SPAWN_AGENT_NAME, middleware=middleware_factory()),
         # No todo hook and no memory end-hook: a spawn is a one-shot scratch
         # task, not an agent that owns a task list or learns per-integration
         # facts about the user.
-        "pre_model_hooks": worker_pre_model_hooks(),
+        "hooks_config": HookConfig(pre_model_hooks=worker_pre_model_hooks()),
     }
     kwargs.update(
         build_create_agent_tool_kwargs(
@@ -127,7 +128,7 @@ async def _build_spawn_graph(
         )
     )
 
-    builder = create_agent(**kwargs)  # type: ignore[arg-type]  # kwargs assembled as a runtime dict; **-unpacking defeats mypy's kwarg checking
+    builder = create_agent(**kwargs)
 
     try:
         checkpointer_manager = await get_checkpointer_manager()

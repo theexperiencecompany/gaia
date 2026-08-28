@@ -38,8 +38,10 @@ pytestmark = pytest.mark.e2e
 RETRIEVABLE = "web_search_tool"
 
 
-def retrieve(*names: str, id: str = "r1") -> dict[str, Any]:
-    return call("retrieve_tools", {"query": " ".join(names), "exact_tool_names": list(names)}, id)
+def retrieve(*names: str, retrieve_id: str = "r1") -> dict[str, Any]:
+    return call(
+        "retrieve_tools", {"query": " ".join(names), "exact_tool_names": list(names)}, retrieve_id
+    )
 
 
 class TestExactBinding:
@@ -49,7 +51,7 @@ class TestExactBinding:
         async with executor_graph(
             [
                 retrieve(RETRIEVABLE),
-                call(RETRIEVABLE, {"query": "cats"}, id="c1"),
+                call(RETRIEVABLE, {"query": "cats"}, call_id="c1"),
                 "Here is what I found.",
             ]
         ) as graph:
@@ -101,8 +103,8 @@ class TestExactBinding:
         async with executor_graph(
             [
                 retrieve(RETRIEVABLE),
-                call(RETRIEVABLE, {"query": "first"}, id="c1"),
-                call(RETRIEVABLE, {"query": "second"}, id="c2"),
+                call(RETRIEVABLE, {"query": "first"}, call_id="c1"),
+                call(RETRIEVABLE, {"query": "second"}, call_id="c2"),
                 "Both searches done.",
             ]
         ) as graph:
@@ -206,9 +208,9 @@ class TestUnboundToolHandling:
         must route back to the agent rather than terminate."""
         async with executor_graph(
             [
-                call(RETRIEVABLE, {"query": "cats"}, id="c0"),
+                call(RETRIEVABLE, {"query": "cats"}, call_id="c0"),
                 retrieve(RETRIEVABLE),
-                call(RETRIEVABLE, {"query": "cats"}, id="c1"),
+                call(RETRIEVABLE, {"query": "cats"}, call_id="c1"),
                 "Found it.",
             ]
         ) as graph:
@@ -227,7 +229,9 @@ class TestUnboundToolHandling:
         the retrieval side) will turn this test red and have to be considered
         deliberately. See the plan, §9 A.
         """
-        async with executor_graph([call(RETRIEVABLE, {"query": "cats"}, id="loop")] * 30) as graph:
+        async with executor_graph(
+            [call(RETRIEVABLE, {"query": "cats"}, call_id="loop")] * 30
+        ) as graph:
             run = await run_graph(graph, "search the web", recursion_limit=12)
 
         assert run.error is not None, "the unbound-tool loop terminated on its own"
@@ -264,7 +268,7 @@ class TestScopingAndNaming:
         """The same rewrite on the routing side. Binding it and then rejecting
         the call is the worst of both — the model is told the tool exists and
         cannot use it."""
-        async with executor_graph([call("plan-tasks", {"tasks": []}, id="c1"), "ok"]) as graph:
+        async with executor_graph([call("plan-tasks", {"tasks": []}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "plan something")
 
         assert REJECT_NODE not in run.nodes()
@@ -318,7 +322,7 @@ class TestRetrievalContract:
         non-empty is not enough — "Available tools: []" is non-empty and tells
         the model nothing, so the corrective text that retrieval actually
         produces must survive the trip back."""
-        async with executor_graph([call("retrieve_tools", {}, id="r1"), "ok"]) as graph:
+        async with executor_graph([call("retrieve_tools", {}, call_id="r1"), "ok"]) as graph:
             run = await run_graph(graph, "find me a tool")
 
         assert run.bound_tools() == []

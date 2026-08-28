@@ -65,6 +65,7 @@ from app.config.settings import settings
 from app.constants.cache import SKILLS_TEXT_CACHE_KEY, USER_SKILLS_CACHE_KEY
 from app.db.repositories.skills import SYSTEM_USER_ID
 from app.services.storage import JuiceFSUnavailable
+from app.utils.errors import AppError
 
 pytestmark = pytest.mark.e2e
 
@@ -352,7 +353,7 @@ class TestInstall:
         _, mongo, _ = stack
         await _install()
 
-        with pytest.raises(ValueError, match="already installed"):
+        with pytest.raises(AppError, match="already installed"):
             await _install()
 
         assert len(await list_skills(USER)) == 1

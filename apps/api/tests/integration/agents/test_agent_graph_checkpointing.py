@@ -43,7 +43,12 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.constants.general import FINISH_TASK_NAME
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import (
     create_fake_llm,
@@ -386,13 +391,11 @@ class TestMultiTurnConversation:
         ]
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=pre_model_hooks,
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -432,13 +435,13 @@ class TestMultiTurnConversation:
         fake_llm = create_fake_llm(["Reply A", "Reply B"])
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -479,13 +482,13 @@ class TestStatePersistence:
         fake_llm = create_fake_llm(["Persisted response"])
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -518,13 +521,13 @@ class TestStatePersistence:
         fake_llm = create_fake_llm(["State values response"])
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
 
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
@@ -572,13 +575,11 @@ class TestCheckpointRecovery:
 
         # Graph instance 1
         builder1 = create_agent(
-            llm=fake_llm_1,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_1,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph1 = builder1.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -589,13 +590,11 @@ class TestCheckpointRecovery:
 
         # Graph instance 2 (new compilation, same checkpointer)
         builder2 = create_agent(
-            llm=fake_llm_2,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_2,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph2 = builder2.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -626,13 +625,11 @@ class TestCheckpointRecovery:
         config = _thread_config()
 
         builder1 = create_agent(
-            llm=fake_llm_1,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_1,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph1 = builder1.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -643,13 +640,11 @@ class TestCheckpointRecovery:
 
         # Build new graph, same checkpointer, same thread
         builder2 = create_agent(
-            llm=fake_llm_2,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_2,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph2 = builder2.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -683,13 +678,13 @@ class TestPreModelHooksExecution:
         fake_llm = create_fake_llm(["Response after filtering"])
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
 
@@ -739,13 +734,13 @@ class TestPreModelHooksExecution:
         fake_llm = create_fake_llm(["System prompt managed"])
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
 
@@ -789,13 +784,13 @@ class TestPreModelHooksExecution:
         sentinel = RuntimeError("hooks-execution-sentinel-error")
 
         builder = create_agent(
-            llm=fake_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=[filter_messages_node, manage_system_prompts_node],
+            llm=fake_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(
+                pre_model_hooks=[filter_messages_node, manage_system_prompts_node]
+            ),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=pg_checkpointer, store=InMemoryStore())
 
@@ -830,13 +825,11 @@ class TestErrorDuringInvocation:
         fake_llm_ok = create_fake_llm(["Successful first response"])
 
         builder1 = create_agent(
-            llm=fake_llm_ok,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_ok,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph1 = builder1.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -860,13 +853,11 @@ class TestErrorDuringInvocation:
         error_llm = ErrorLLM(responses=[])
 
         builder2 = create_agent(
-            llm=error_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=error_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph2 = builder2.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -879,13 +870,11 @@ class TestErrorDuringInvocation:
         # Verify state is not corrupted: retrieve state from a third graph instance
         fake_llm_3 = create_fake_llm(["Recovery response"])
         builder3 = create_agent(
-            llm=fake_llm_3,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_3,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph3 = builder3.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -919,13 +908,11 @@ class TestErrorDuringInvocation:
         # Turn 1: success
         fake_llm_1 = create_fake_llm(["Turn 1 OK"])
         builder1 = create_agent(
-            llm=fake_llm_1,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_1,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph1 = builder1.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -944,13 +931,11 @@ class TestErrorDuringInvocation:
 
         broken_llm = BrokenLLM(responses=[])
         builder2 = create_agent(
-            llm=broken_llm,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=broken_llm,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph2 = builder2.compile(checkpointer=pg_checkpointer, store=store)
 
@@ -963,13 +948,11 @@ class TestErrorDuringInvocation:
         # Turn 3: recovery
         fake_llm_3 = create_fake_llm(["Turn 3 recovery"])
         builder3 = create_agent(
-            llm=fake_llm_3,
-            agent_name="test_agent",
             tool_registry={},
-            disable_retrieve_tools=True,
-            initial_tool_ids=[],
-            middleware=None,
-            pre_model_hooks=hooks,
+            llm=fake_llm_3,
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            hooks_config=HookConfig(pre_model_hooks=hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph3 = builder3.compile(checkpointer=pg_checkpointer, store=store)
 

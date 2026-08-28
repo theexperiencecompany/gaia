@@ -245,7 +245,7 @@ class CreateReminderToolRequest(BaseModel):
         except ValueError as e:
             raise ValueError(
                 f"Invalid {field_name} format: {raw}. Use YYYY-MM-DD HH:MM:SS format. Error: {e}"
-            )
+            ) from e
         tzinfo = Timezone.parse(offset).tzinfo if offset else home_tz.tzinfo
         return dt.astimezone(tzinfo) if dt.tzinfo is not None else dt.replace(tzinfo=tzinfo)
 

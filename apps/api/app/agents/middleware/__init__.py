@@ -19,8 +19,7 @@ Usage in build_graph.py:
     middleware = create_middleware_stack()
 
     builder = create_agent(
-        llm=chat_llm,
-        middleware=middleware,
+        agent_config=AgentConfig(middleware=middleware),
         ...
     )
 """

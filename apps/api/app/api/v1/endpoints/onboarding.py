@@ -545,7 +545,7 @@ async def get_onboarding_personalization(
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
+        raise HTTPException(status_code=500, detail="Failed to fetch personalization data") from e
 
 
 class WritingStyleEditRequest(BaseModel):

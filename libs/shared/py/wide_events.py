@@ -341,7 +341,6 @@ class FileContext(TypedDict, total=False):
 
     operation: str  # "upload"|"delete"|"update"|"seed"|"descriptions"
     file_id: str
-    filename: str
     content_type: str
     size_bytes: int
     conversation_id: str

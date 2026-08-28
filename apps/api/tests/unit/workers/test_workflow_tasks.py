@@ -316,6 +316,89 @@ class TestExecuteWorkflowById:
 
         mock_scheduler.close.assert_not_awaited()
 
+    async def test_success_path_threads_the_exact_arguments_through(self, ctx):
+        """The chat turn, the completion record and the re-arm each act on THIS
+        run's workflow, execution id and context — a dropped, renamed or None'd
+        value lands on the wrong conversation, the wrong execution row, or arms
+        the wrong occurrence."""
+        workflow = _make_workflow()
+        execution_id = str(uuid4())
+        mock_execution = MagicMock()
+        mock_execution.execution_id = execution_id
+        context = {"trigger_type": "manual"}
+
+        scheduler, p_scheduler = _patch_scheduler(workflow)
+        rearm = AsyncMock()
+        execute_chat = AsyncMock(return_value="conv_123")
+        complete_exec = AsyncMock()
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                execute_chat,
+            ),
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.complete_execution",
+                complete_exec,
+            ),
+            patch("app.workers.tasks.workflow_tasks._rearm_quietly", rearm),
+        ):
+            mock_wf_svc.increment_execution_count = AsyncMock()
+            result = await execute_workflow_by_id(ctx, workflow.id, context=context)
+
+        assert "executed successfully" in result
+        execute_chat.assert_awaited_once_with(workflow, {"user_id": workflow.user_id}, context)
+        complete_exec.assert_awaited_once_with(
+            execution_id=execution_id,
+            status="success",
+            summary="Workflow executed",
+            conversation_id="conv_123",
+        )
+        rearm.assert_awaited_once_with(scheduler, workflow, context, workflow.id)
+
+    async def test_failure_path_records_and_rearms_with_the_exact_arguments(self, ctx):
+        """A failed run must still close THIS execution row and arm the SAME
+        occurrence the success path would have — a None'd id strands an open
+        execution record or silently kills the recurrence."""
+        workflow = _make_workflow()
+        execution_id = str(uuid4())
+        mock_execution = MagicMock()
+        mock_execution.execution_id = execution_id
+        context = {"trigger_type": "manual"}
+        error = ValueError("boom")
+
+        scheduler, p_scheduler = _patch_scheduler(workflow)
+        rearm = AsyncMock()
+        record_failure = AsyncMock()
+
+        with (
+            p_scheduler,
+            patch(
+                "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
+                AsyncMock(side_effect=error),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.create_execution",
+                AsyncMock(return_value=mock_execution),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks._record_execution_failure",
+                record_failure,
+            ),
+            patch("app.workers.tasks.workflow_tasks._rearm_quietly", rearm),
+        ):
+            result = await execute_workflow_by_id(ctx, workflow.id, context=context)
+
+        assert "Error executing workflow" in result
+        record_failure.assert_awaited_once_with(error, workflow, workflow.id, execution_id)
+        rearm.assert_awaited_once_with(scheduler, workflow, context, workflow.id)
+
     async def test_scheduled_execution_captures_workflow_executed(self, ctx, _no_real_analytics):
         workflow = _make_workflow()
         mock_execution = MagicMock()

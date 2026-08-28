@@ -36,6 +36,11 @@ from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.override.langgraph_bigtool.agent_config import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+)
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
@@ -90,30 +95,33 @@ async def build_executor_graph(
     pre_model_hooks = worker_pre_model_hooks(todo_hook)
 
     builder = create_agent(
-        llm=chat_llm,
-        agent_name="executor_agent",
-        tool_registry=tool_dict,
-        retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=[
-            "handoff",
-            "plan_tasks",
-            "update_tasks",
-            "read",
-            "bash",
-            "deep_research",
-            "wait_for_subagents",
-            "read_manual",
-            "create_tracked_todo",
-            "update_tracked_todo",
-            "update_tracked_todo_canvas",
-            "complete_tracked_todo",
-            "search_todo_context",
-            "list_tracked_todos",
-            "save_learned_skill",
-        ],
-        middleware=middleware,
-        pre_model_hooks=pre_model_hooks,
-        require_finish_to_end=True,
+        chat_llm,
+        tool_dict,
+        tools_config=ToolRetrievalConfig(
+            retrieve_tools_coroutine=get_retrieve_tools_function(),
+            initial_tool_ids=[
+                "handoff",
+                "plan_tasks",
+                "update_tasks",
+                "read",
+                "bash",
+                "deep_research",
+                "wait_for_subagents",
+                "read_manual",
+                "create_tracked_todo",
+                "update_tracked_todo",
+                "update_tracked_todo_canvas",
+                "complete_tracked_todo",
+                "search_todo_context",
+                "list_tracked_todos",
+                "save_learned_skill",
+            ],
+        ),
+        hooks_config=HookConfig(
+            pre_model_hooks=pre_model_hooks,
+            require_finish_to_end=True,
+        ),
+        agent_config=AgentConfig(agent_name="executor_agent", middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -180,24 +188,27 @@ async def build_comms_graph(
     pre_model_hooks = comms_pre_model_hooks()
 
     builder = create_agent(
-        llm=chat_llm,
-        agent_name="comms_agent",
-        tool_registry=tool_registry,
-        disable_retrieve_tools=True,
-        initial_tool_ids=[
-            "call_executor",
-            "cancel_executor",
-            *[memory_tool.name for memory_tool in memory_tools.tools],
-        ],
-        middleware=middleware,
-        pre_model_hooks=pre_model_hooks,
-        end_graph_hooks=[
-            follow_up_actions_node,
-            # Learn durable user memories from every comms turn (passive
-            # ingestion). Without this, only facts the agent explicitly saves
-            # via add_memory persist — conversational disclosures are lost.
-            memory_node,
-        ],
+        chat_llm,
+        tool_registry,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=[
+                "call_executor",
+                "cancel_executor",
+                *[memory_tool.name for memory_tool in memory_tools.tools],
+            ],
+        ),
+        hooks_config=HookConfig(
+            pre_model_hooks=pre_model_hooks,
+            end_graph_hooks=[
+                follow_up_actions_node,
+                # Learn durable user memories from every comms turn (passive
+                # ingestion). Without this, only facts the agent explicitly saves
+                # via add_memory persist — conversational disclosures are lost.
+                memory_node,
+            ],
+        ),
+        agent_config=AgentConfig(agent_name="comms_agent", middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()

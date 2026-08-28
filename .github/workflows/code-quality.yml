@@ -464,6 +464,18 @@ jobs:
           echo "::endgroup::"
           echo "### Escape-hatch whys — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "ignore-whys: OK (every ruff/mypy escape hatch is documented)"
+      - name: PLR complexity ratchet (touch a grandfathered file, fix it now)
+        id: plr-complexity
+        continue-on-error: true
+        # PLR0911/0912/0913/0915 are in ruff's ignore list so the lane above
+        # doesn't double-report them -- this script is what actually enforces
+        # them, via tools/lints/plr_complexity_baseline.txt. See
+        # tools/lints/README.md#plr-complexity-ratchet.
+        run: |
+          echo "::group::plr complexity ratchet"
+          python3 tools/lints/check_plr_complexity.py
+          echo "::endgroup::"
+          echo "plr-complexity-ratchet: OK"
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         id: xenon
         continue-on-error: true
@@ -548,6 +560,7 @@ jobs:
           RUFF: ${{ steps.ruff.outcome }}
           CUSTOM_LINTS: ${{ steps.custom-lints.outcome }}
           IGNORE_WHYS: ${{ steps.ignore-whys.outcome }}
+          PLR_COMPLEXITY: ${{ steps.plr-complexity.outcome }}
           XENON: ${{ steps.xenon.outcome }}
           INTERROGATE: ${{ steps.interrogate.outcome }}
           BANDIT: ${{ steps.bandit.outcome }}
@@ -557,6 +570,7 @@ jobs:
             "ruff=$RUFF" \
             "custom-lints=$CUSTOM_LINTS" \
             "ignore-whys=$IGNORE_WHYS" \
+            "plr-complexity=$PLR_COMPLEXITY" \
             "xenon=$XENON" \
             "interrogate=$INTERROGATE" \
             "bandit=$BANDIT" \

@@ -441,7 +441,7 @@ def _timed_bounds(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}") from e
 
 
 def _create_recurrence_rules(
@@ -465,7 +465,7 @@ def _create_recurrence_rules(
 
         return rules
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}") from e
 
 
 async def create_calendar_event(
@@ -542,16 +542,12 @@ async def update_user_calendar_preferences(
     return CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")
 
 
-async def search_calendar_events_native(
-    query: str,
+async def _selected_search_calendars(
     user_id: str,
-    time_min: str | None = None,
-    time_max: str | None = None,
-) -> CalendarSearchResult:
-    """Search calendar events using Google Calendar API's native search."""
-    calendars = (await list_calendars(user_id)).items
-
-    user_selected_calendars: list[str] = []
+    calendars: list[GoogleCalendarListEntry],
+) -> list[GoogleCalendarListEntry]:
+    """The calendars a native search covers: stored preferences when present,
+    otherwise every calendar the user has."""
     preferences = await calendar_repository.get_for_user(user_id)
     if preferences is not None and preferences.selected_calendars:
         user_selected_calendars = preferences.selected_calendars
@@ -569,14 +565,27 @@ async def search_calendar_events_native(
 
     if not selected_cal_objs:
         log.info("No selected calendars found, searching all available calendars")
-        selected_cal_objs = calendars
+        return calendars
+    return selected_cal_objs
 
+
+async def _search_calendars(
+    calendars: list[GoogleCalendarListEntry],
+    query: str,
+    user_id: str,
+    time_min: str | None,
+    time_max: str | None,
+) -> tuple[list[GoogleCalendarEventResource], int]:
+    """Run the native search across each calendar, tagging hits with their
+    source; a failing calendar is logged and skipped, not fatal to the search."""
     all_matching_events: list[GoogleCalendarEventResource] = []
     total_events_searched = 0
 
-    for cal in selected_cal_objs:
+    for cal in calendars:
         try:
-            result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
+            result = await search_events_in_calendar(
+                cal.id, query, user_id, time_min=time_min, time_max=time_max
+            )
             events = result.items
             log.info("Found events in calendar", event_count=len(events), calendar_id=cal.id)
 
@@ -602,39 +611,37 @@ async def search_calendar_events_native(
                 user_id=user_id,
             )
 
+    return all_matching_events, total_events_searched
+
+
+async def search_calendar_events_native(
+    query: str,
+    user_id: str,
+    time_min: str | None = None,
+    time_max: str | None = None,
+) -> CalendarSearchResult:
+    """Search calendar events using Google Calendar API's native search."""
+    calendars = (await list_calendars(user_id)).items
+    selected_cal_objs = await _selected_search_calendars(user_id, calendars)
+
+    all_matching_events, total_events_searched = await _search_calendars(
+        selected_cal_objs, query, user_id, time_min, time_max
+    )
+
     log.info(
         "Total matching events across all calendars",
         all_matching_events_count=len(all_matching_events),
     )
 
     if not all_matching_events and selected_cal_objs != calendars:
-        log.info("No events found in selected calendars, searching all calendars...")
-
-        for cal in calendars:
-            try:
-                result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
-                events = result.items
-
-                if events:
-                    log.info(
-                        "Found events in calendar", event_count=len(events), calendar_id=cal.id
-                    )
-
-                    for event in events:
-                        event.calendarId = cal.id
-                        event.calendarTitle = cal.summary or ""
-
-                    filtered_events = filter_events(events)
-                    all_matching_events.extend(filtered_events)
-                    total_events_searched += len(filtered_events)
-            except Exception as e:
-                log.error(
-                    "Error searching events in calendar",
-                    cal_id=cal.id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    user_id=user_id,
-                )
+        # Fallback covers only the calendars the selected pass did NOT already
+        # search — re-hitting them would double the API cost per empty result.
+        searched_ids = {cal.id for cal in selected_cal_objs}
+        remaining = [cal for cal in calendars if cal.id not in searched_ids]
+        log.info("No events found in selected calendars, searching remaining calendars...")
+        all_matching_events, total_events_searched = await _search_calendars(
+            remaining, query, user_id, time_min, time_max
+        )
 
     return CalendarSearchResult(
         query=query,
@@ -695,7 +702,9 @@ async def delete_calendar_event(
         return EventDeleteResponse(success=True, message="Event deleted successfully")
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Event not found or already deleted")
+            raise HTTPException(
+                status_code=404, detail="Event not found or already deleted"
+            ) from exc
         raise
 
 
@@ -709,7 +718,7 @@ def _update_recurrence_rules(
         return event.recurrence.to_google_calendar_format()
     except Exception as e:
         log.error("Error processing recurrence rules", error=str(e), error_type=type(e).__name__)
-        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}") from e
 
 
 def _merged_all_day_bounds(
@@ -740,7 +749,7 @@ def _merged_timed_bounds(
             GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(end_time), timeZone=timezone),
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}") from e
 
 
 def _merge_event_bounds(
@@ -775,7 +784,7 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL) from exc
         raise
 
     recurrence_rules = _update_recurrence_rules(event, existing_event)
@@ -803,7 +812,7 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL) from exc
         raise
 
     updated_event.calendarId = calendar_id

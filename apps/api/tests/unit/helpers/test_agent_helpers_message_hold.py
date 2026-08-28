@@ -165,9 +165,11 @@ class _ScriptedGraph:
         return stream()
 
 
-def _chunk(*, id: str | None, content: str = "", **kwargs: Any) -> tuple[tuple[str, ...], str, Any]:
+def _chunk(
+    *, message_id: str | None, content: str = "", **kwargs: Any
+) -> tuple[tuple[str, ...], str, Any]:
     """A ``messages`` triple carrying one assistant chunk."""
-    return ((), "messages", (AIMessageChunk(id=id, content=content, **kwargs), {}))
+    return ((), "messages", (AIMessageChunk(id=message_id, content=content, **kwargs), {}))
 
 
 def _boundary(message: AIMessage) -> tuple[tuple[str, ...], str, Any]:
@@ -247,7 +249,10 @@ class TestBoundaryBookkeeping:
     async def test_text_from_a_message_the_provider_gave_no_id_is_still_kept(self) -> None:
         """``chunk.id or ""`` holds an id-less message under the empty key, so
         the boundary has to resolve to that same key or the reply is stranded."""
-        events = [_chunk(id=None, content="hey"), _boundary(AIMessage(id=None, content="hey"))]
+        events = [
+            _chunk(message_id=None, content="hey"),
+            _boundary(AIMessage(id=None, content="hey")),
+        ]
 
         assert await _run_silent(events) == "hey"
         frames = await _run_streaming(events)
@@ -261,7 +266,7 @@ class TestBoundaryBookkeeping:
         different key than the hold did, the preamble is never popped and the
         end-of-run flush ships it to the user anyway."""
         events = [
-            _chunk(id=None, content="let me get that set up"),
+            _chunk(message_id=None, content="let me get that set up"),
             _boundary(
                 AIMessage(
                     id=None,
@@ -283,7 +288,7 @@ class TestBoundaryBookkeeping:
         update. Requiring both signals lets that preamble through.
         """
         events = [
-            _chunk(id="m1", content="let me get that set up"),
+            _chunk(message_id="m1", content="let me get that set up"),
             _boundary(
                 AIMessage(
                     id="m1",
@@ -300,8 +305,8 @@ class TestBoundaryBookkeeping:
         """Text arrives one delta at a time; holding only the newest loses all
         but the last few characters of every reply."""
         events = [
-            _chunk(id="m1", content="all "),
-            _chunk(id="m1", content="set up now."),
+            _chunk(message_id="m1", content="all "),
+            _chunk(message_id="m1", content="set up now."),
             _boundary(AIMessage(id="m1", content="all set up now.")),
         ]
 
@@ -312,9 +317,9 @@ class TestBoundaryBookkeeping:
         """Silent mode persists the whole turn, so two replies in one run are two
         bubbles — concatenating them glues two sentences into one."""
         events = [
-            _chunk(id="m1", content="on it."),
+            _chunk(message_id="m1", content="on it."),
             _boundary(AIMessage(id="m1", content="on it.")),
-            _chunk(id="m2", content="all done."),
+            _chunk(message_id="m2", content="all done."),
             _boundary(AIMessage(id="m2", content="all done.")),
         ]
 
@@ -332,8 +337,8 @@ class TestChunkLevelSilence:
         the chunk that carried ``tool_call_chunks`` knows.
         """
         events = [
-            _chunk(id="m1", **_UNPARSEABLE_CALL),
-            _chunk(id="m1", content="let me get that set up"),
+            _chunk(message_id="m1", **_UNPARSEABLE_CALL),
+            _chunk(message_id="m1", content="let me get that set up"),
             _boundary(AIMessage(id="m1", content="let me get that set up")),
         ]
 
@@ -353,7 +358,7 @@ class TestRetractionMidNode:
         null id: both sides have to normalise to the same key, and the retraction
         has to be handed the hold it is meant to edit."""
         events = [
-            _chunk(id=None, content="Great question! Let me unpack that."),
+            _chunk(message_id=None, content="Great question! Let me unpack that."),
             _custom({"message_boundary": {"message_id": None, "discarded": True}}),
         ]
 
@@ -362,7 +367,7 @@ class TestRetractionMidNode:
 
     async def test_a_kept_draft_survives_the_custom_stream(self) -> None:
         events = [
-            _chunk(id=None, content="all set up now."),
+            _chunk(message_id=None, content="all set up now."),
             _custom({"message_boundary": {"message_id": None, "discarded": False}}),
         ]
 

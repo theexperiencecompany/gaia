@@ -351,4 +351,4 @@ async def geocode_location(location_name: str) -> dict[str, Any]:
             error=str(e),
             error_type=type(e).__name__,
         )
-        raise Exception(f"Failed to geocode location: {e!s}")
+        raise Exception(f"Failed to geocode location: {e!s}") from e

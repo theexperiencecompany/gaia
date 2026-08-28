@@ -112,7 +112,7 @@ def wrap_tool_with_null_filter(
                     if inspect.iscoroutinefunction(on_connection_error):
                         raise TypeError(
                             "on_connection_error must be a synchronous callable, not a coroutine function"
-                        )
+                        ) from None
                     log.warning(
                         f"{LogTag.MCP} MCP tool session error, evicting session",
                         name=tool.name,

@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.schemas.usage import UsageActivityResponse, UsageBudget, UsageSummary
+from app.schemas.usage import (
+    ActivityDay,
+    UsageActivityResponse,
+    UsageBudget,
+    UsageSummary,
+)
 from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
@@ -242,16 +247,39 @@ class TestGetUsageActivity:
     """Tests for the get usage activity endpoint."""
 
     async def test_get_activity_returns_200(self, client: AsyncClient):
-        activity = UsageActivityResponse(days=[], total=0, total_tokens=0, streak=0)
+        mock_result = UsageActivityResponse(
+            days=[
+                ActivityDay(
+                    date="2025-01-01",
+                    count=3,
+                    tokens=1200,
+                    input_tokens=800,
+                    output_tokens=400,
+                    cached_tokens=0,
+                    reasoning_tokens=0,
+                )
+            ],
+            total=3,
+            total_tokens=1200,
+            streak=1,
+            tier="free",
+        )
+
         with patch(
             "app.api.v1.endpoints.usage.get_activity",
             new_callable=AsyncMock,
-            return_value=activity,
-        ):
+            return_value=mock_result,
+        ) as mock_get_activity:
             response = await client.get(ACTIVITY_URL)
 
         assert response.status_code == 200
-        assert response.json()["total"] == 0
+        data = response.json()
+        assert data["total"] == 3
+        assert data["total_tokens"] == 1200
+        assert data["streak"] == 1
+        assert data["days"][0]["date"] == "2025-01-01"
+        # Default trailing window is 365 days.
+        mock_get_activity.assert_awaited_once_with("507f1f77bcf86cd799439011", 365)
 
     async def test_get_activity_service_error_returns_500(self, client: AsyncClient):
         with patch(
