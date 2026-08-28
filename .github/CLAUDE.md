@@ -22,6 +22,34 @@ same PR (its header says so too).
 only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
 every PR — pure duplicate spend with zero added enforcement.
 
+## Where jobs run: home box first, GitHub-hosted fallback
+
+Both gate workflows open with a `select-runner` job (`ubuntu-latest`, no
+Tailscale needed) that probes the Actions runners API via
+`scripts/ci/select-runner.sh` through the `./.github/actions/select-runner`
+composite. Online + a free instance on the `gaia-home` box → every compute lane
+gets `runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}`; anything
+else → `["ubuntu-latest"]`. The fallback is total — no job ever carries a bare
+`runs-on: [self-hosted]`, so an offline box degrades to slower CI, never to a
+queue that never drains. `build.yml` and the deploy workflows are deliberately
+NOT routed through it: release images and deploys stay GitHub-hosted.
+
+Consequences to keep in mind when editing a lane:
+
+- **The workspace persists.** Every self-hosted checkout uses `fetch-depth: 0`
+  (`clean:` only off self-hosted): a depth-1 checkout marks the persistent
+  clone shallow and the next depth-0 fetch re-unshallows over a residential
+  uplink (measured 21-104 s).
+- **Service containers are shared, not per job** — `scripts/ci/shared-test-services.sh`
+  namespaces one container set per runner instance; every lane that starts them
+  must release its namespace in an `if: always()` teardown step.
+- **Concurrency is per SHA** (`ci-<ref>-<sha>`): cancelling a self-hosted job
+  wedges its worker for the listener's 5-minute cancellation timeout, so
+  superseded runs are cancelled through the API instead
+  (`scripts/ci/cancel-superseded-runs.sh`).
+- `infra/self-hosted-runner/README.md` documents the box, the four runner
+  instances, and the install/teardown path.
+
 ## Workflow files are thin orchestration — nothing else
 
 A workflow step is one command line. Any logic beyond that — computing file
@@ -87,11 +115,11 @@ was flaky enough to need a retry loop. **The Dagger module (`.dagger/`) is the
 local harness** — `dagger call test-python` gives you the identical topology
 on a dev machine; keep the two in sync (images, credentials, env vars).
 
-Gotcha that will bite conversions: the repo `.npmrc` sets
-`node-linker=hoisted`, but the Dagger env never mounts `.npmrc`, so containers
-get pnpm's isolated layout. Consequence: per-package `node_modules/.bin` exists
-under Dagger but NOT on runners/dev machines (only the repo-root bin does).
-The device-bridge e2e test resolves `tsx` from both locations for this reason.
+Gotcha that will bite conversions: the repo has no `.npmrc` any more — pnpm's
+default isolated linker is what runners, dev machines and the Dagger env all
+get, so a package's bins live in ITS `node_modules/.bin`, not only the repo
+root. The device-bridge e2e test resolves `tsx` from both locations, and
+`deploy-web.yml` must run wrangler as `pnpm --filter ./apps/web exec`.
 
 ## Dead code: tests are NOT live references
 
@@ -188,8 +216,11 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   (docker-library/rabbitmq#318). This bit us as an intermittent-looking
   failure that was actually a race our own probe caused — restart-retry
   couldn't save it because the recreated container got re-poisoned instantly.
-- Wall-clock per PR ≈ the `test-python` job; everything else finishes earlier
-  in parallel. pytest ~2.5 min for ~7.5k tests via xdist.
+- Wall-clock per PR ≈ the slowest `test-python` slice; the four slices
+  (`unit-a`, `unit-b`, `integration`, `bridge`) run concurrently on separate
+  runner instances, so the lane costs `max(slice)`, not their sum. Worker
+  shares are static per slice and sum to the box — a runtime probe sees zero
+  neighbours because the lanes start together.
 - `pnpm install --filter <pkg>` does NOT meaningfully shrink installs here:
   with our lockfile it still materializes the full virtual store (verified:
   filtered install still unpacked `next`, ~1.4 GB). Don't reach for it as a
@@ -197,5 +228,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - Wall-clock perf assertions in tests must budget for shared-runner jitter
   (a 500ms bound flaked at 506ms; use order-of-magnitude tripwires, ~2x the
   observed worst case).
-- GitHub-hosted runners: 4 vCPU — `pytest -n auto` / `--parallel=3` are sized
-  for that.
+- Parallelism is detected, not hardcoded: `scripts/ci/detect-parallel.sh`
+  sizes `--parallel` / `-n` from the runner it lands on (16 threads on the home
+  box, 4 vCPU on GitHub-hosted). Do not write a bare `-n auto` or
+  `--parallel=3` into a lane.

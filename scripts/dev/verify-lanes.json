@@ -75,7 +75,7 @@
       "command": "pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
     },
     {
-      "name": "suppression-ratchet",
+      "name": "suppression-hygiene",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 120,
