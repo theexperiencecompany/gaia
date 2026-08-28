@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from functools import cache
 import hashlib
 import json
 import os
@@ -35,6 +36,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import time
 
 import httpx
 import pytest
@@ -57,28 +59,53 @@ _CLI_TSX = CLI_DIR / "node_modules" / ".bin" / "tsx"
 _ROOT_TSX = CLI_DIR.parent.parent / "node_modules" / ".bin" / "tsx"
 TSX_BIN = _CLI_TSX if _CLI_TSX.exists() else _ROOT_TSX
 EVERYTHING_PACKAGE = "@modelcontextprotocol/server-everything"
-# `--offline` (not `-y`) is load-bearing, not a micro-optimization. The daemon
-# only spawns a stdio server when the cloud opens a tunnel session, i.e. *inside*
-# the /api/v1/mcp/test request the round-trip test times. With `-y`, npm resolves
-# the package against the registry on every spawn, and a registry request that
-# stalls is retried with npm's default backoff (fetch-retries=2,
-# fetch-retry-mintimeout=10s, doubling) — 10s + 20s = 30s added to the spawn
-# before it falls back to the cache. That is exactly the 30s dead gap seen
-# between "[MCP] Opening device-tunnel MCP session" and the tools coming back on
-# a loaded CI box, and it blew the client read timeout below.
-# `--offline` resolves from the npx cache only, so the spawn is bounded by local
-# work: measured 0.87-0.90s vs 1.5-2.1s idle / 3.3-4.4s at load average 12 for
-# `-y` on the CI runner. `everything_server_cached` fills that cache first.
-EVERYTHING_SERVER = {
-    "type": "stdio",
-    "key": "everything",
-    "name": "Everything Test Server",
-    "command": "npx",
-    "args": ["--offline", EVERYTHING_PACKAGE, "stdio"],
-    "env": {},
-}
+
+
+@cache
+def _npm_cache_dir() -> str:
+    """Where ``everything_server_cached`` installs the server and finds it again.
+
+    npm derives both its content cache and the ``_npx`` package directory from
+    ``HOME``, so leaving it implicit means the install and the lookup can land
+    in different places depending on whose ``HOME`` is set. Naming one real
+    directory pins both ends of the fixture to the same install.
+    """
+    resolved = subprocess.run(
+        ["npm", "config", "get", "cache"],
+        capture_output=True,
+        text=True,
+        timeout=60.0,
+        check=True,
+    ).stdout.strip()
+    assert resolved and resolved != "undefined", f"could not resolve npm cache dir: {resolved!r}"
+    return resolved
+
 
 USER_CODE_RE = re.compile(r"enter this code:\s*([A-Z0-9-]+)")
+
+
+def everything_server(entry: Path) -> dict:
+    """The third-party stdio MCP server config the daemon is told to expose.
+
+    ``entry`` is the server's own entry script, resolved out of the npx cache by
+    ``everything_server_cached``, and it is spawned with ``node`` directly
+    rather than through ``npx``. This is inside the timed /api/v1/mcp/test
+    request, and ``npx`` is not free there: it is a whole extra Node process
+    that re-resolves the package before exec'ing the real one. Measured on the
+    CI box, the gap between the tunnel opening the session and the server
+    printing its banner was 5.3s idle and 9.4-15.2s under load — enough to put
+    a 28s round trip inside a 35s client budget. Resolving once in a fixture
+    and exec'ing the script leaves only the server's own Node startup in the
+    request. It is still the real, official reference server over real stdio.
+    """
+    return {
+        "type": "stdio",
+        "key": "everything",
+        "name": "Everything Test Server",
+        "command": "node",
+        "args": [str(entry), "stdio"],
+        "env": {},
+    }
 
 
 class BridgeDaemon:
@@ -92,10 +119,16 @@ class BridgeDaemon:
         self.up_process: asyncio.subprocess.Process | None = None
         self.login_output: list[str] = []
         self.up_output: list[str] = []
+        # One merged, timestamped view of daemon stdout/stderr plus the test's
+        # own phase marks. Without it a timeout tells you only that 35s passed,
+        # not which of pair/exchange/connect/open/list spent them.
+        self.transcript: list[str] = []
+        self._t0 = time.monotonic()
         self._tasks: list[asyncio.Task] = []
 
     async def _spawn(self, *args: str) -> asyncio.subprocess.Process:
         env = {**os.environ, "HOME": str(self.home)}
+        self._log(f"spawn: {TSX_BIN} src/index.ts bridge {' '.join(args)}")
         return await asyncio.create_subprocess_exec(
             str(TSX_BIN),
             "src/index.ts",
@@ -108,20 +141,35 @@ class BridgeDaemon:
             stderr=asyncio.subprocess.PIPE,
         )
 
-    def _pump(self, stream: asyncio.StreamReader, sink: list[str]) -> None:
+    def _log(self, text: str) -> None:
+        """Append one timestamped line to the transcript printed at teardown."""
+        self.transcript.append(f"[+{time.monotonic() - self._t0:7.3f}s] {text.rstrip()}")
+
+    def _pump(self, stream: asyncio.StreamReader, sink: list[str], label: str) -> None:
         async def _run() -> None:
             while True:
                 line = await stream.readline()
                 if not line:
                     return
-                sink.append(line.decode(errors="replace"))
+                decoded = line.decode(errors="replace")
+                sink.append(decoded)
+                # Timestamps are the whole point: a daemon that is *slow* and a
+                # daemon that is *stuck* produce the same untimed text.
+                self._log(f"{label} | {decoded}")
 
         self._tasks.append(asyncio.create_task(_run()))
 
+    def mark(self, phase: str) -> None:
+        """Record a wall-clock phase boundary on the same timeline as daemon output."""
+        self._log(f"PHASE {phase}")
+
+    def dump(self) -> str:
+        return "\n".join(self.transcript)
+
     async def start_login(self, api_url: str, name: str) -> None:
         self.login_process = await self._spawn("login", "--api", api_url, "--name", name)
-        self._pump(self.login_process.stdout, self.login_output)
-        self._pump(self.login_process.stderr, self.login_output)
+        self._pump(self.login_process.stdout, self.login_output, "login/out")
+        self._pump(self.login_process.stderr, self.login_output, "login/err")
 
     async def wait_for_user_code(self, timeout: float = 10.0) -> str:
         loop = asyncio.get_running_loop()
@@ -151,8 +199,8 @@ class BridgeDaemon:
 
     async def start_up(self) -> None:
         self.up_process = await self._spawn("up")
-        self._pump(self.up_process.stdout, self.up_output)
-        self._pump(self.up_process.stderr, self.up_output)
+        self._pump(self.up_process.stdout, self.up_output, "up/out")
+        self._pump(self.up_process.stderr, self.up_output, "up/err")
 
     async def wait_connected(self, timeout: float = 30.0) -> None:
         loop = asyncio.get_running_loop()
@@ -189,40 +237,53 @@ class BridgeDaemon:
 
 
 @pytest.fixture(scope="session")
-def everything_server_cached() -> None:
-    """Fetch the third-party MCP server into the npx cache once, before any test.
+def everything_server_cached() -> Path:
+    """Fetch the third-party MCP server once, before any test, and resolve it.
 
-    The daemon spawns it with ``npx --offline`` from inside the request under
-    test, and offline mode reads the cache instead of the registry — so the
-    fetch has to happen somewhere, and here is the only place where it is not
-    being timed. Feeding the real spawn a closed stdin is what makes this a
+    The fetch has to happen somewhere, and here is the only place where it is
+    not being timed. Feeding the real spawn a closed stdin is what makes this a
     fetch rather than an approximation of one: the server sees EOF on its stdio
-    transport and exits 0 on its own, so the cache is populated by exactly the
-    command the daemon will run.
+    transport and exits 0 on its own, so the package is installed by exactly the
+    command a user would run. What the tests then spawn is the entry script this
+    resolves out of that install — see ``everything_server``.
     """
+    cache_dir = _npm_cache_dir()
     # Generous: this is setup, and on a cold runner it is a real npm download.
     warm = subprocess.run(
         ["npx", "-y", EVERYTHING_PACKAGE, "stdio"],
         stdin=subprocess.DEVNULL,
+        env={**os.environ, "npm_config_cache": cache_dir},
         capture_output=True,
         text=True,
         timeout=180.0,
         check=False,
     )
     assert warm.returncode == 0, (
-        f"could not fetch {EVERYTHING_PACKAGE} into the npx cache "
-        f"(rc={warm.returncode}): {warm.stderr}"
+        f"could not install {EVERYTHING_PACKAGE} (rc={warm.returncode}): {warm.stderr}"
     )
+
+    installs = sorted(Path(cache_dir).glob(f"_npx/*/node_modules/{EVERYTHING_PACKAGE}"))
+    assert installs, (
+        f"{EVERYTHING_PACKAGE} not found under {cache_dir}/_npx after a successful fetch"
+    )
+    package = installs[-1]
+    manifest = json.loads((package / "package.json").read_text())
+    # `bin` is either a string or a {name: path} map; this package ships one bin.
+    bin_field = manifest["bin"]
+    relative = bin_field if isinstance(bin_field, str) else next(iter(bin_field.values()))
+    entry = package / relative
+    assert entry.is_file(), f"resolved entry script does not exist: {entry}"
+    return entry
 
 
 def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     headers = {"x-test-user-id": user_id} if user_id else {}
     # Sized from the measured cost of the slowest call these clients make — the
     # /api/v1/mcp/test round trip: open the tunnel session (the daemon spawns the
-    # local MCP server from the npx cache, measured 0.87-0.90s), then initialize
-    # + list_tools over Redis pub/sub. Well under a second of real work; 35s is
-    # the headroom for a loaded runner, not a budget for network fetches. Keep
-    # the npx spawn cache-only (see EVERYTHING_SERVER) rather than raising this.
+    # local MCP server), then initialize + list_tools over Redis pub/sub. 35s is
+    # headroom for a loaded runner, not a budget for process startup: keep the
+    # spawn a direct `node` exec of a pre-resolved script (see
+    # everything_server) rather than raising this.
     return httpx.AsyncClient(base_url=base_url, headers=headers, timeout=35.0)
 
 
@@ -237,23 +298,27 @@ class TestFullDeviceLifecycle:
             # 1. Real `gaia bridge login` subprocess starts RFC 8628 pairing.
             await daemon.start_login(live_api_server.url, "e2e-test-machine")
             user_code = await daemon.wait_for_user_code()
+            daemon.mark("user_code shown")
 
             # 2. The "signed-in user" approves — a real HTTP call, exactly what
             #    the Settings > Devices approve page sends.
             approve = await owner.post("/api/v1/device/pair/approve", json={"user_code": user_code})
             assert approve.status_code == 200, approve.text
             device_id = approve.json()["device_id"]
+            daemon.mark("pairing approved")
 
             # 3. The daemon's poll loop picks up the approval and finishes on
             #    its own — nothing pushed to it directly.
             await daemon.wait_login_complete()
+            daemon.mark("login complete (credential issued)")
 
             # 4. Configure a real third-party stdio MCP server (the general
             #    `gaia bridge add` path, not the built-in `filesystem` case)
             #    and bring the tunnel up for real.
-            daemon.write_config([EVERYTHING_SERVER])
+            daemon.write_config([everything_server(everything_server_cached)])
             await daemon.start_up()
             await daemon.wait_connected()
+            daemon.mark("tunnel connected (token exchanged, ws up)")
             # Regression guard: tunnel.ts's connectOnce() once resolved its
             # connection promise on the socket's `open` event instead of
             # `close`, so run() immediately looped and opened a new socket on
@@ -272,6 +337,7 @@ class TestFullDeviceLifecycle:
             assert len(devices[0]["servers"]) == 1
             server = devices[0]["servers"][0]
             assert server["server_key"] == "everything"
+            daemon.mark("device listed online")
 
             # 6. Trigger a real MCP round trip through the whole tunnel — the
             #    same endpoint Settings uses to test/retry a connection. No
@@ -281,6 +347,7 @@ class TestFullDeviceLifecycle:
             body = probe.json()
             assert body["status"] == "connected", body
             assert body["tools_count"] > 0, "expected real tools from the spawned MCP server"
+            daemon.mark(f"mcp round trip done ({body['tools_count']} tools)")
 
             # 7. Revoke — real HTTP DELETE.
             revoke = await owner.delete(f"/api/v1/device/{device_id}")
@@ -292,10 +359,16 @@ class TestFullDeviceLifecycle:
             # 8. The real daemon must receive the revoke frame over its real
             #    socket and exit on its own.
             await daemon.wait_exits_on_its_own()
+            daemon.mark("daemon exited on revoke")
             assert "revoked" in "".join(daemon.up_output).lower()
         finally:
             await owner.aclose()
             await daemon.stop_all()
+            # Always, not only on failure: pytest shows this under "Captured
+            # stdout teardown" for a failing test, and the daemon's own output
+            # is otherwise discarded — which is why the last CI timeout could
+            # not be attributed to a phase at all.
+            print(f"\n--- bridge daemon timeline ---\n{daemon.dump()}")
 
 
 class TestCrossUserIsolation:
