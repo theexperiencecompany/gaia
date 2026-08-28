@@ -178,4 +178,14 @@ if (( USED_PCT >= DISK_HIGH_PCT )); then
   echo "[prune] Largest directories under /home/aryan:"
   du -sh /home/aryan/* 2>/dev/null | sort -h | tail -8 | sed 's/^/        /'
 fi
+
+# Keep the read-only action archive in step with the pins in the workflows
+# (the runner never writes to it; see scripts/ci/prime-action-archive.sh).
+if [ -x "${CACHE_ROOT}/prime-action-archive.sh" ] && [ -d "${CACHE_ROOT}/gaia.git" ]; then
+  tmp_repo="$(mktemp -d)"
+  git clone -q --depth 1 "${CACHE_ROOT}/gaia.git" "$tmp_repo" 2>/dev/null \
+    && GAIA_REPO="$tmp_repo" bash "${CACHE_ROOT}/prime-action-archive.sh" "${CACHE_ROOT}/actions-archive" \
+    || echo "[prune] action archive not primed (mirror clone or gh auth failed)"
+  rm -rf "$tmp_repo"
+fi
 echo "[prune] Done."

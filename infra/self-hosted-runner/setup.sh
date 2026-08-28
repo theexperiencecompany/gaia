@@ -108,7 +108,13 @@ fi
 # actions-archive: the runner re-downloads every `uses:` action tarball per
 # job unless ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE points somewhere persistent
 # — measured at 69s for actions/cache@v6 alone on the residential uplink.
+# The runner only reads that directory, so scripts/ci/prime-action-archive.sh
+# fills it (here, and nightly from prune-cache.sh after pins move).
 mkdir -p "$LOCAL_CACHE" "${LOCAL_CACHE}/actions-archive"
+PRIME_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/ci/prime-action-archive.sh"
+cp -f "$PRIME_SRC" "${LOCAL_CACHE}/prime-action-archive.sh" 2>/dev/null \
+  && GAIA_REPO="$(dirname "$PRIME_SRC")/../.." bash "${LOCAL_CACHE}/prime-action-archive.sh" "${LOCAL_CACHE}/actions-archive" \
+  || echo "::warning::action archive not primed (script or gh auth missing)"
 
 TARBALL="actions-runner-linux-${RUNNER_ARCH}-${RUNNER_VERSION}.tar.gz"
 URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${TARBALL}"
