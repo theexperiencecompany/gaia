@@ -9,6 +9,8 @@ import pytest
 
 from app.agents.core import agent as agent_module
 from app.agents.core.agent import (
+    AgentRunOptions,
+    StreamMessageIds,
     _core_agent_logic,
     call_agent,
     call_agent_silent,
@@ -16,7 +18,13 @@ from app.agents.core.agent import (
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS
-from app.helpers.agent_helpers import recent_user_messages
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentTracing,
+    AgentTurn,
+    recent_user_messages,
+)
 from app.models.agent_models import SilentRunResult
 from app.models.message_models import (
     MessageRequestWithHistory,
@@ -191,8 +199,8 @@ class TestCoreAgentLogic:
             await _core_agent_logic(request=_make_request(), conversation_id="conv-1", user=user)
 
         kwargs = mock_build_config.call_args.kwargs
-        assert kwargs["user_preferences"] == {"profession": "engineer"}
-        assert kwargs["writing_style"] == {"summary": "terse"}
+        assert kwargs["turn"].user_preferences == {"profession": "engineer"}
+        assert kwargs["turn"].writing_style == {"summary": "terse"}
 
     @pytest.mark.asyncio
     async def test_passes_trigger_context(self):
@@ -209,7 +217,7 @@ class TestCoreAgentLogic:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context=trigger,
+                options=AgentRunOptions(trigger_context=trigger),
             )
 
         # build_initial_state gets the trigger_context
@@ -237,7 +245,7 @@ class TestCoreAgentLogic:
                 ),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context={"workflow_id": "wf-1"},
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-1"}),
             )
 
         mock_log.set.assert_called_once()
@@ -330,7 +338,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                stream_id="stream-abc",
+                ids=StreamMessageIds(stream_id="stream-abc"),
             )
 
             # The config passed to execute_graph_streaming should have stream_id
@@ -408,7 +416,7 @@ class TestCallAgent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                bot_message_id="bot-msg-7",
+                ids=StreamMessageIds(bot_message_id="bot-msg-7"),
             )
 
             passed_config = mock_exec.call_args[0][2]
@@ -747,7 +755,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context=trigger,
+                options=AgentRunOptions(trigger_context=trigger),
             )
 
         # construct_langchain_messages should get trigger_context
@@ -779,7 +787,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         # log.set should be called with token counts
@@ -816,7 +824,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         # usage_metadata is None -> or {} -> sums are 0
@@ -879,7 +887,7 @@ class TestCallAgentSilent:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                usage_metadata_callback=callback,
+                options=AgentRunOptions(usage_metadata_callback=callback),
             )
 
         log_calls = mock_log.set.call_args_list
@@ -1069,31 +1077,41 @@ class TestTheLaneTheRunResolves:
                 request=request,
                 conversation_id="conv-1",
                 user=user,
-                usage_metadata_callback=callback,
-                source="web",
-                langfuse_trace_id="trace-1",
-                langfuse_tags=["tag-a"],
+                options=AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    source="web",
+                    langfuse_trace_id="trace-1",
+                    langfuse_tags=["tag-a"],
+                ),
             )
 
         assert build_config.call_args.args == ()
+        # Dataclass equality, so this is exactly as strict as the flat-kwargs dict
+        # it replaced: every field of every group has to match, and an argument
+        # dropped on the floor shows up as a default that is not the value here.
         assert build_config.call_args.kwargs == {
-            "conversation_id": "conv-1",
-            "user": user,
-            "role": AgentRole.COMMS,
-            "dev_option": None,
-            "usage_metadata_callback": callback,
-            "agent_name": "comms_agent",
-            "selected_tool": "web_search",
-            "tool_category": "research",
-            "active_todo_id": None,
-            "execution_mode": "interactive",
-            "source": "web",
-            "user_messages": recent_user_messages(request.messages, request.message),
-            "user_request": request.message,
-            "user_preferences": None,
-            "writing_style": None,
-            "langfuse_trace_id": "trace-1",
-            "langfuse_tags": ["tag-a"],
+            "identity": AgentIdentity(
+                conversation_id="conv-1",
+                user=user,
+                agent_name="comms_agent",
+            ),
+            "lane": AgentLane(role=AgentRole.COMMS, dev_option=None),
+            "turn": AgentTurn(
+                selected_tool="web_search",
+                tool_category="research",
+                active_todo_id=None,
+                execution_mode="interactive",
+                source="web",
+                user_messages=recent_user_messages(request.messages, request.message),
+                user_request=request.message,
+                user_preferences=None,
+                writing_style=None,
+            ),
+            "tracing": AgentTracing(
+                usage_metadata_callback=callback,
+                langfuse_trace_id="trace-1",
+                langfuse_tags=["tag-a"],
+            ),
         }
 
     @pytest.mark.asyncio
@@ -1116,11 +1134,13 @@ class TestTheLaneTheRunResolves:
                 request=_make_request(),
                 conversation_id="conv-1",
                 user=_make_user(),
-                trigger_context={"execution_mode": "background", "todo_id": "todo-9"},
+                options=AgentRunOptions(
+                    trigger_context={"execution_mode": "background", "todo_id": "todo-9"}
+                ),
             )
 
-        assert build_config.call_args.kwargs["execution_mode"] == "background"
-        assert build_config.call_args.kwargs["active_todo_id"] == "todo-9"
+        assert build_config.call_args.kwargs["turn"].execution_mode == "background"
+        assert build_config.call_args.kwargs["turn"].active_todo_id == "todo-9"
 
 
 class TestTheDevModelSelector:
@@ -1143,7 +1163,7 @@ class TestTheDevModelSelector:
             patch.object(lane_module.settings, "DEV_DEFAULT_MODEL", dev_default),
         ):
             await _core_agent_logic(request=request, conversation_id="conv-1", user=_make_user())
-        return build_config.call_args.kwargs["dev_option"]
+        return build_config.call_args.kwargs["lane"].dev_option
 
     @pytest.mark.asyncio
     async def test_an_explicit_comms_pick_becomes_the_runs_dev_option(self):

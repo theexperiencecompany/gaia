@@ -8,6 +8,8 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.tools.core.registry import (
+    CategoryOptions,
+    CategoryRisk,
     DynamicToolDict,
     Tool,
     ToolCategory,
@@ -97,10 +99,12 @@ class TestToolCategory:
     def test_category_metadata(self):
         category = ToolCategory(
             name="gmail",
-            space="email",
-            require_integration=True,
-            integration_name="gmail",
-            is_delegated=True,
+            options=CategoryOptions(
+                space="email",
+                require_integration=True,
+                integration_name="gmail",
+                is_delegated=True,
+            ),
         )
         assert category.name == "gmail"
         assert category.space == "email"
@@ -209,7 +213,7 @@ class TestToolRegistry:
     def test_add_category(self):
         registry = ToolRegistry()
         tools = [_make_mock_tool("tool_a"), _make_mock_tool("tool_b")]
-        registry._add_category("my_cat", tools=tools, space="custom_space")
+        registry._add_category("my_cat", tools=tools, options=CategoryOptions(space="custom_space"))
 
         cat = registry.get_category("my_cat")
         assert cat is not None
@@ -242,8 +246,10 @@ class TestToolRegistry:
             "mixed",
             core_tools=[_make_mock_tool("core_gated"), _make_mock_tool("core_plain")],
             tools=[_make_mock_tool("reg_dangerous")],
-            destructive_tools={"reg_dangerous", "core_gated"},
-            always_gate_tools={"core_gated"},
+            risk=CategoryRisk(
+                destructive_tools={"reg_dangerous", "core_gated"},
+                always_gate_tools={"core_gated"},
+            ),
         )
 
         stamps = {t.name: t for t in registry.get_category("mixed").tools}
@@ -270,8 +276,12 @@ class TestToolRegistry:
 
     def test_get_category_by_space(self):
         registry = ToolRegistry()
-        registry._add_category("cat1", tools=[_make_mock_tool("t1")], space="email")
-        registry._add_category("cat2", tools=[_make_mock_tool("t2")], space="todos")
+        registry._add_category(
+            "cat1", tools=[_make_mock_tool("t1")], options=CategoryOptions(space="email")
+        )
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("t2")], options=CategoryOptions(space="todos")
+        )
 
         result = registry.get_category_by_space("email")
         assert result is not None
@@ -309,7 +319,9 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_includes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("b")], options=CategoryOptions(is_delegated=True)
+        )
 
         all_tools = registry.get_all_tools_for_search(include_delegated=True)
         names = [t.name for t in all_tools]
@@ -319,7 +331,9 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_excludes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("b")], options=CategoryOptions(is_delegated=True)
+        )
 
         non_delegated = registry.get_all_tools_for_search(include_delegated=False)
         names = [t.name for t in non_delegated]
@@ -330,7 +344,9 @@ class TestToolRegistry:
         registry = ToolRegistry()
         registry._add_category("builtin", tools=[_make_mock_tool("a")])
         registry._add_category(
-            "integration", tools=[_make_mock_tool("b")], require_integration=True
+            "integration",
+            tools=[_make_mock_tool("b")],
+            options=CategoryOptions(require_integration=True),
         )
 
         core_cats = registry.get_core_categories()

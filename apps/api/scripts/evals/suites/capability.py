@@ -1189,7 +1189,7 @@ class CapabilityTransport:
         from app.agents.core.subagents.subagent_runner import prepare_executor_execution
         from app.agents.llm.client import init_llm
         from app.core.lazy_loader import providers
-        from app.helpers.agent_helpers import build_agent_config
+        from app.helpers.agent_helpers import AgentIdentity, build_agent_config
         from app.models.agent_models import AgentUserContext
         from app.services.dev_service import mint_dev_user
 
@@ -1203,7 +1203,9 @@ class CapabilityTransport:
             "email": email,
             "name": user_doc.name,
         }
-        config = build_agent_config(conversation_id=cid, user=user, agent_name="executor_agent")
+        config = build_agent_config(
+            identity=AgentIdentity(conversation_id=cid, user=user, agent_name="executor_agent")
+        )
         config["callbacks"] = [tracker, *config.get("callbacks", [])]
 
         turns = [str(turn) for turn in (case.setup.get("turns") or [case.prompt])]

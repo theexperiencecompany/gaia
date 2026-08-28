@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.background.subagent_runner import BackgroundHandoff, run_subagent_background
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.tools.wait_for_subagents_tool import _resolve_parked_batch
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
@@ -232,7 +232,9 @@ class TestBackgroundParking:
             patch(f"{RUNNER}.release_bg_integration", MagicMock()) as release,
             patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()) as decrement,
         ):
-            await run_subagent_background(self._ctx(), STREAM, integration_id="gmail")
+            await run_subagent_background(
+                self._ctx(), STREAM, handoff=BackgroundHandoff(integration_id="gmail")
+            )
 
         stamp.assert_awaited_once_with(
             "a1",

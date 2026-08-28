@@ -48,7 +48,7 @@ from app.agents.core.background.session import (
     create_session,
     increment_pending_subagents,
 )
-from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.background.subagent_runner import BackgroundHandoff, run_subagent_background
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     interrupt_payload,
@@ -200,8 +200,12 @@ class TestCoalescedApprovalBarrier:
                 increment_pending_subagents(stream)
                 increment_pending_subagents(stream)
                 await asyncio.gather(
-                    run_subagent_background(subagent_ctx(GMAIL), stream, integration_id=GMAIL),
-                    run_subagent_background(subagent_ctx(SLACK), stream, integration_id=SLACK),
+                    run_subagent_background(
+                        subagent_ctx(GMAIL), stream, handoff=BackgroundHandoff(integration_id=GMAIL)
+                    ),
+                    run_subagent_background(
+                        subagent_ctx(SLACK), stream, handoff=BackgroundHandoff(integration_id=SLACK)
+                    ),
                 )
 
                 records = await hil_approvals_collection.find({"conversation_id": conv}).to_list(10)

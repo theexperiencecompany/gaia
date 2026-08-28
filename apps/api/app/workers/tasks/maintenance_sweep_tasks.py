@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import call_agent_silent
+from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -564,10 +564,12 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context={
-                "trigger_type": "maintenance_health_check",
-                "todo_id": todo_id,
-            },
+            options=AgentRunOptions(
+                trigger_context={
+                    "trigger_type": "maintenance_health_check",
+                    "todo_id": todo_id,
+                }
+            ),
         )
     except Exception as exc:
         log.warning(

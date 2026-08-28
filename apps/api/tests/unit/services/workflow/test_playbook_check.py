@@ -28,6 +28,7 @@ from app.agents.tools.playbook_tools import write_playbook
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.models.playbook_models import (
     PlaybookDocument,
+    PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookStep,
     PlaybookStepInput,
@@ -538,10 +539,9 @@ class TestDistrustFreshPlaybook:
         record.assert_awaited_once_with(
             WORKFLOW_ID,
             USER_ID,
-            PlaybookRunStatus.SUSPECT,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason=reason),
             playbook_id="pb_1",
             revision=3,
-            reason=reason,
         )
 
     async def test_a_playbook_frozen_on_real_items_stays_trusted(self) -> None:

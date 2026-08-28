@@ -13,6 +13,7 @@ than a gap to fill with branches.
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, Self
@@ -42,6 +43,18 @@ class PlaybookRunStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     SUSPECT = "suspect"
+
+
+@dataclass(frozen=True)
+class PlaybookRunOutcome:
+    """How a replay went, as the worker records it: the status, why (for a
+    failed or suspect run) and whether a suspect counts toward deletion. The
+    narration's verdict is the model's opinion and does not count; only the
+    deterministic record check does."""
+
+    status: PlaybookRunStatus
+    reason: str | None = None
+    counts_toward_streak: bool = True
 
 
 class PlaybookStep(BaseModel):

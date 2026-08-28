@@ -10,6 +10,7 @@ subagents complete or park, collect their results, and — when any parked on a
 HIL approval — pause the executor once for the whole batch.
 """
 
+from dataclasses import dataclass
 import time
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
@@ -29,22 +30,33 @@ from app.models.agent_models import AgentConfigurable
 from app.services.hil.approvals_store import stamp_subagent_resume
 from app.utils.agent_utils import (
     IntegrationMetadata,
+    SubagentStartDetails,
     format_subagent_end_event,
     format_subagent_start_event,
 )
 from shared.py.wide_events import get_trace_id, log, wide_task
 
 
+@dataclass(frozen=True)
+class BackgroundHandoff:
+    """How a background subagent run presents itself and what it releases on exit:
+    the integration's icon/name metadata for tool events, the subagent and
+    integration ids, the display triple for the start/end cards, and whether
+    the run's successful calls are recorded (workflow runs only)."""
+
+    integration_metadata: IntegrationMetadata | None = None
+    subagent_id: str | None = None
+    display_name: str | None = None
+    tool_category: str | None = None
+    icon_url: str | None = None
+    integration_id: str | None = None
+    record_calls: bool = False
+
+
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
-    integration_metadata: IntegrationMetadata | None = None,
-    subagent_id: str | None = None,
-    display_name: str | None = None,
-    tool_category: str | None = None,
-    icon_url: str | None = None,
-    integration_id: str | None = None,
-    record_calls: bool = False,
+    handoff: BackgroundHandoff | None = None,
 ) -> None:
     """Run a provider subagent in the background and store its result.
 
@@ -65,6 +77,19 @@ async def run_subagent_background(
             calls to the stored result so the executor can transcribe them into
             a playbook (see ``call_record``).
     """
+    handoff = handoff or BackgroundHandoff()
+    integration_metadata, subagent_id, integration_id = (
+        handoff.integration_metadata,
+        handoff.subagent_id,
+        handoff.integration_id,
+    )
+    display_name, tool_category, icon_url = (
+        handoff.display_name,
+        handoff.tool_category,
+        handoff.icon_url,
+    )
+    record_calls = handoff.record_calls
+
     conversation_id = str(ctx.configurable.get("conversation_id", ""))
     # This task outlives the spawning executor turn, so it needs its own
     # wide-event boundary or every log.set() in the run (LLM accounting
@@ -90,8 +115,9 @@ async def run_subagent_background(
                             subagent_name=display_name or ctx.agent_name,
                             agent_type="handoff",
                             subagent_id=subagent_id,
-                            icon_url=icon_url,
-                            tool_category=tool_category,
+                            details=SubagentStartDetails(
+                                icon_url=icon_url, tool_category=tool_category
+                            ),
                         )
                     }
                 )

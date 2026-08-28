@@ -35,6 +35,8 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    LLMCallOptions,
+    StructuredCallOptions,
     _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
@@ -694,7 +696,9 @@ class TestAinvokeLlm:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
         fallback = self._runnable(result=AIMessage(content="fallback-ok"))
 
-        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+        result = await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMCallOptions(fallback=fallback)
+        )
 
         assert result.content == "fallback-ok"
         # The fallback path is retry-wrapped too.
@@ -707,19 +711,25 @@ class TestAinvokeLlm:
 
         ok_primary = self._runnable(result=AIMessage(content="ok"))
         assert (
-            await ainvoke_llm(ok_primary, [HumanMessage(content="hi")], fallback=factory)
+            await ainvoke_llm(
+                ok_primary, [HumanMessage(content="hi")], options=LLMCallOptions(fallback=factory)
+            )
         ).content == "ok"
         factory.assert_not_called()
 
         failing_primary = self._runnable(side_effect=ConnectionError("provider down"))
-        result = await ainvoke_llm(failing_primary, [HumanMessage(content="hi")], fallback=factory)
+        result = await ainvoke_llm(
+            failing_primary, [HumanMessage(content="hi")], options=LLMCallOptions(fallback=factory)
+        )
         assert result.content == "fallback-ok"
         factory.assert_called_once()
 
     async def test_fallback_factory_returning_none_reraises(self) -> None:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
         with pytest.raises(ConnectionError):
-            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=lambda: None)
+            await ainvoke_llm(
+                primary, [HumanMessage(content="hi")], options=LLMCallOptions(fallback=lambda: None)
+            )
 
     async def test_reraises_provider_error_when_no_fallback(self) -> None:
         primary = self._runnable(side_effect=ConnectionError("provider down"))
@@ -731,7 +741,9 @@ class TestAinvokeLlm:
         fallback = self._runnable(result=AIMessage(content="must-not-be-used"))
 
         with pytest.raises(ValueError):
-            await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+            await ainvoke_llm(
+                primary, [HumanMessage(content="hi")], options=LLMCallOptions(fallback=fallback)
+            )
         fallback.ainvoke.assert_not_called()
 
     async def test_attaches_usage_handler_by_default(self) -> None:
@@ -747,7 +759,7 @@ class TestAinvokeLlm:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(),
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
         assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
 
@@ -790,7 +802,9 @@ class TestFallbackHandover:
         config = RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"})
         messages = [HumanMessage(content="hi")]
 
-        result = await ainvoke_llm(primary, messages, fallback=fallback, config=config)
+        result = await ainvoke_llm(
+            primary, messages, config=config, options=LLMCallOptions(fallback=fallback)
+        )
 
         assert result.content == "fallback-ok"
         # Suffixed: this call is auxiliary (meter_auxiliary defaults True), and an
@@ -816,7 +830,10 @@ class TestFallbackHandover:
         fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
 
         await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], fallback=fallback, label="the_judge"
+            primary,
+            [HumanMessage(content="hi")],
+            label="the_judge",
+            options=LLMCallOptions(fallback=fallback),
         )
 
         assert mock_log.warning.call_args.kwargs["llm"] == {
@@ -881,7 +898,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         # "cold" — the answer the user already watched stream. The replay is a
@@ -902,7 +919,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert result.content == "cold"
@@ -920,7 +937,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert result.content == "warm"
@@ -951,7 +968,9 @@ class TestStickyFlipReplayThresholds:
         primary.with_retry = MagicMock(return_value=primary)
         primary.ainvoke = AsyncMock(return_value=AIMessage(content="hi"))
 
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMCallOptions(meter_auxiliary=False)
+        )
 
         callbacks = primary.ainvoke.await_args.kwargs["config"].get("callbacks") or []
         assert not any(isinstance(handler, UsageMetadataCallbackHandler) for handler in callbacks)
@@ -964,7 +983,9 @@ class TestStickyFlipReplayThresholds:
         primary.with_retry = MagicMock(return_value=primary)
         primary.ainvoke = AsyncMock(return_value=parsed)
 
-        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        result = await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMCallOptions(meter_auxiliary=False)
+        )
 
         assert result is parsed
         assert primary.ainvoke.await_count == 1
@@ -984,7 +1005,9 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
         primary = _replaying_primary(self._FIRST, self._SECOND)
         messages = [HumanMessage(content="hi")]
 
-        await ainvoke_llm(primary, messages, config=_STICKY_LANE, meter_auxiliary=False)
+        await ainvoke_llm(
+            primary, messages, config=_STICKY_LANE, options=LLMCallOptions(meter_auxiliary=False)
+        )
 
         assert [call.args[0] for call in primary.ainvoke.await_args_list] == [messages, messages]
 
@@ -997,7 +1020,10 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
         primary = _replaying_primary(self._FIRST, self._SECOND)
 
         await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], config=_STICKY_LANE, meter_auxiliary=False
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         first, replay = (call.kwargs["config"] for call in primary.ainvoke.await_args_list)
@@ -1017,8 +1043,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
-            max_attempts=2,
+            options=LLMCallOptions(meter_auxiliary=False, max_attempts=2),
         )
 
         assert [
@@ -1038,7 +1063,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
             label="the_judge",
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert result is self._FIRST
@@ -1062,7 +1087,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
             label="the_judge",
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         booked_replay.assert_awaited_once()
@@ -1225,9 +1250,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "from-aux"
@@ -1236,8 +1260,10 @@ class TestMemoryLaneProviderSelection:
         assert mock_ainvoke.await_args.args == (mock_aux_runnable.return_value, "transcript")
         assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
         kwargs = dict(mock_ainvoke.await_args.kwargs)
-        fallback = kwargs.pop("fallback")
-        assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
+        options = kwargs.pop("options")
+        fallback = options.fallback
+        assert kwargs == {"config": config, "label": "memory:extract"}
+        assert options == LLMCallOptions(fallback=fallback, timeout=9.0)
         # An aux outage has somewhere to go: the fallback factory builds the
         # Gemini structured runnable with this call's schema and temperature.
         mock_memory_llm.assert_not_called()
@@ -1261,7 +1287,7 @@ class TestMemoryLaneProviderSelection:
         result = await ainvoke_structured_gemini(_Extracted, "transcript", label="memory:extract")
 
         assert result.fact == "from-aux"
-        assert mock_ainvoke.await_args.kwargs["fallback"] is None
+        assert mock_ainvoke.await_args.kwargs["options"].fallback is None
 
     @patch("app.agents.llm.client.ainvoke_llm", new_callable=AsyncMock)
     @patch("app.agents.llm.client.get_memory_llm")
@@ -1282,9 +1308,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "from-gemini"
@@ -1296,7 +1321,7 @@ class TestMemoryLaneProviderSelection:
         assert mock_ainvoke.await_args.kwargs == {
             "config": config,
             "label": "memory:extract",
-            "timeout": 9.0,
+            "options": LLMCallOptions(timeout=9.0),
         }
 
     @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
@@ -1319,9 +1344,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "delegated"
@@ -1331,9 +1355,8 @@ class TestMemoryLaneProviderSelection:
         assert mock_structured.await_args.args == (_Extracted, "transcript")
         assert mock_structured.await_args.kwargs == {
             "label": "memory:extract",
-            "temperature": 0.4,
             "config": config,
-            "timeout": 9.0,
+            "options": StructuredCallOptions(temperature=0.4, timeout=9.0),
         }
 
     @patch("app.agents.llm.client.get_memory_llm")
@@ -1621,7 +1644,10 @@ class TestRecordAuxiliaryUsage:
             ) as attach,
         ):
             await ainvoke_llm(
-                failing, "hi", fallback=create_fake_llm(["ok"]), label="follow_up_actions"
+                failing,
+                "hi",
+                label="follow_up_actions",
+                options=LLMCallOptions(fallback=create_fake_llm(["ok"])),
             )
 
         attached = [call.args[1] for call in attach.call_args_list]
@@ -1810,7 +1836,7 @@ class TestAuxiliaryMeteringWiring:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(configurable={"user_id": "user-9"}),
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         forwarded = primary.ainvoke.call_args.kwargs["config"]
@@ -1848,7 +1874,10 @@ class TestAinvokeStructured:
             ) as mock_invoke,
         ):
             result = await ainvoke_structured(
-                self._Schema, "what is the answer?", label="the_judge", temperature=0.3
+                self._Schema,
+                "what is the answer?",
+                label="the_judge",
+                options=StructuredCallOptions(temperature=0.3),
             )
 
         assert mock_helper.call_args.kwargs["temperature"] == 0.3
@@ -1895,10 +1924,15 @@ class TestAinvokeStructured:
                 new=AsyncMock(return_value=self._Schema(answer="ok")),
             ) as mock_invoke,
         ):
-            await ainvoke_structured(self._Schema, prompt, label="classifier", timeout=12.0)
+            await ainvoke_structured(
+                self._Schema,
+                prompt,
+                label="classifier",
+                options=StructuredCallOptions(timeout=12.0),
+            )
 
         assert mock_invoke.call_args.args[1] is prompt
-        assert mock_invoke.call_args.kwargs["timeout"] == 12.0
+        assert mock_invoke.call_args.kwargs["options"].timeout == 12.0
 
     async def test_the_aux_lane_runs_on_its_own_sticky_session(self) -> None:
         """A suffixed session id, bound after ``with_structured_output``.
@@ -2046,9 +2080,10 @@ class TestFallbackRunsOnTheOtherProvider:
         result = await ainvoke_llm(
             primary,
             "hi",
-            fallback=RunnableLambda(_record),
             config=failed_lane_config,
-            fallback_config=fallback_config,
+            options=LLMCallOptions(
+                fallback=RunnableLambda(_record), fallback_config=fallback_config
+            ),
         )
 
         assert result.content == "from-fallback"
@@ -2074,7 +2109,7 @@ class TestStickyFlipReplayNeverChangesTheAnswer:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert result.content == "what the user watched"
@@ -2092,7 +2127,7 @@ class TestStickyFlipReplayNeverChangesTheAnswer:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert booked_replay.await_count == 1
@@ -2117,9 +2152,8 @@ class TestFallbackKeepsItsLanesStickySession:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
-            meter_auxiliary=False,
+            options=LLMCallOptions(fallback=fallback, meter_auxiliary=False),
         )
 
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
@@ -2132,9 +2166,8 @@ class TestFallbackKeepsItsLanesStickySession:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1"}),
-            meter_auxiliary=False,
+            options=LLMCallOptions(fallback=fallback, meter_auxiliary=False),
         )
 
         fallback.bind.assert_not_called()
@@ -2165,8 +2198,7 @@ class TestTheInvokeTimeoutIsEnforced:
                 self._hanging_primary(),
                 [HumanMessage(content="hi")],
                 label="comms_agent",
-                timeout=0.05,
-                meter_auxiliary=False,
+                options=LLMCallOptions(timeout=0.05, meter_auxiliary=False),
             )
 
 
@@ -2258,8 +2290,8 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+            options=LLMCallOptions(fallback=fallback),
         )
 
         fallback.ainvoke.assert_awaited()
@@ -2274,9 +2306,8 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
-            meter_auxiliary=False,
+            options=LLMCallOptions(fallback=fallback, meter_auxiliary=False),
         )
 
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}

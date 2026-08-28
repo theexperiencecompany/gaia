@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import call_agent_silent
+from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.constants.todos import FAILED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
@@ -347,7 +347,7 @@ async def _execute_via_agent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context=trigger_context,
+            options=AgentRunOptions(trigger_context=trigger_context),
         )
     except Exception as exc:
         # End marker: failure

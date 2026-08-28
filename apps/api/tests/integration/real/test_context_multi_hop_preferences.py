@@ -22,7 +22,12 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentThread,
+    AgentTurn,
+    build_agent_config,
+)
 from app.models.agent_models import AgentUserContext
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
@@ -59,21 +64,29 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             "name": real_user.name,
         }
         comms_config = await build_agent_config(
-            conversation_id="conv-multi-hop",
-            user=agent_user,
-            agent_name="comms_agent",
-            user_preferences=preferences,
-            writing_style=writing_style,
+            identity=AgentIdentity(
+                conversation_id="conv-multi-hop",
+                user=agent_user,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                user_preferences=preferences,
+                writing_style=writing_style,
+            ),
         )
 
         # Hop 2 — executor. Mirrors prepare_executor_execution: a fresh
         # build_agent_config call whose base_configurable is the parent's own
         # live configurable, not a value re-threaded by hand.
         executor_config = await build_agent_config(
-            conversation_id="conv-multi-hop",
-            user=agent_user,
-            agent_name="executor_agent",
-            base_configurable=comms_config["configurable"],
+            identity=AgentIdentity(
+                conversation_id="conv-multi-hop",
+                user=agent_user,
+                agent_name="executor_agent",
+            ),
+            thread=AgentThread(
+                base_configurable=comms_config["configurable"],
+            ),
         )
 
         # Hop 3 — subagent handoff. Mirrors prepare_subagent_execution. Also
@@ -82,12 +95,18 @@ class TestPreferencesSurviveTheRealMultiHopChain:
             TodoDocument(user_id=real_user.id, title="Draft the quarterly update")
         )
         subagent_config = await build_agent_config(
-            conversation_id="conv-multi-hop",
-            user=agent_user,
-            agent_name="gmail_agent",
-            subagent_id="gmail_agent",
-            base_configurable=executor_config["configurable"],
-            active_todo_id=todo.id,
+            identity=AgentIdentity(
+                conversation_id="conv-multi-hop",
+                user=agent_user,
+                agent_name="gmail_agent",
+            ),
+            thread=AgentThread(
+                base_configurable=executor_config["configurable"],
+                subagent_id="gmail_agent",
+            ),
+            turn=AgentTurn(
+                active_todo_id=todo.id,
+            ),
         )
 
         configurable = subagent_config["configurable"]

@@ -18,7 +18,12 @@ from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
+from app.models.playbook_models import (
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+    PlaybookStep,
+)
 from app.models.workflow_execution_models import RecordedCall, largest_list_len
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.playbook.evaluator import parse_result
@@ -162,10 +167,9 @@ async def distrust_fresh_playbook(
     await playbook_repository.record_run_outcome(
         workflow_id,
         user_id,
-        PlaybookRunStatus.SUSPECT,
+        PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason=reason),
         playbook_id=playbook.playbook_id,
         revision=playbook.revision,
-        reason=reason,
     )
     log.warning(
         f"{LogTag.WORKFLOW} Playbook written on an empty result; the next fire heals it",

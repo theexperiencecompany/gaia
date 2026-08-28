@@ -17,6 +17,7 @@ from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.playbook_models import (
     PlaybookDocument,
+    PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookUpdate,
 )
@@ -83,19 +84,18 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         self,
         workflow_id: str,
         user_id: str,
-        status: PlaybookRunStatus,
+        outcome: PlaybookRunOutcome,
         *,
         playbook_id: str | None = None,
         revision: int | None = None,
-        reason: str | None = None,
-        counts_toward_streak: bool = True,
     ) -> PlaybookDocument | None:
         """Record how the replay that just finished went.
 
-        ``counts_toward_streak=False`` records a suspect that must not move the
-        playbook toward deletion: the narration's verdict is the model's opinion
-        and sends the fire to the agent, but only the deterministic record
-        check (empty where the previous replay had items) is trusted to delete.
+        An outcome that does not count toward the streak records a suspect that
+        must not move the playbook toward deletion: the narration's verdict is
+        the model's opinion and sends the fire to the agent, but only the
+        deterministic record check (empty where the previous replay had items)
+        is trusted to delete.
 
         ``reason`` is why a run failed or was not trusted; a success clears it.
         ``suspect_streak`` counts consecutive suspect replays: it grows on
@@ -111,12 +111,13 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         (an agentic run has nothing to record) or when the replayed body has
         since been rewritten or deleted.
         """
+        status, reason = outcome.status, outcome.reason
         key: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         if playbook_id is not None:
             key["playbook_id"] = playbook_id
         if revision is not None:
             key["revision"] = revision
-        if status is not PlaybookRunStatus.SUSPECT or not counts_toward_streak:
+        if status is not PlaybookRunStatus.SUSPECT or not outcome.counts_toward_streak:
             return await self._apply_raw_update(
                 key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
             )

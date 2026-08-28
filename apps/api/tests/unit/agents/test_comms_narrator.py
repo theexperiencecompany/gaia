@@ -287,9 +287,9 @@ class TestNarrationResolvesItsOwnCommsLane:
             )
 
         kwargs = built.await_args.kwargs
-        assert kwargs["role"] is AgentRole.COMMS
-        assert kwargs["agent_name"] == "comms_agent"
-        assert kwargs["conversation_id"] == CONVERSATION_ID
-        # No base_configurable: inheriting one would carry a stale lane from
-        # whatever run happened to be in flight.
-        assert "base_configurable" not in kwargs
+        assert kwargs["lane"].role is AgentRole.COMMS
+        assert kwargs["identity"].agent_name == "comms_agent"
+        assert kwargs["identity"].conversation_id == CONVERSATION_ID
+        # No thread group at all, so no base_configurable: inheriting one would
+        # carry a stale lane from whatever run happened to be in flight.
+        assert "thread" not in kwargs

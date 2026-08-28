@@ -19,7 +19,12 @@ import json
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
-from app.agents.core.background.session import ExecutorRun, RunKind, create_session
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunIdentity,
+    RunKind,
+    create_session,
+)
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -450,11 +455,13 @@ async def prepare_run_from_item(
     configurable = {**configurable, "stream_id": queued_stream_id}
     run = ExecutorRun.from_configurable(
         configurable,
-        stream_id=queued_stream_id,
-        conversation_id=conversation_id,
-        kind=RunKind.QUEUED,
-        task_id=task_id,
-        user_message_id=queued_user_message_id,
-        bot_message_id=queued_bot_message_id,
+        identity=RunIdentity(
+            stream_id=queued_stream_id,
+            conversation_id=conversation_id,
+            kind=RunKind.QUEUED,
+            task_id=task_id,
+            user_message_id=queued_user_message_id,
+            bot_message_id=queued_bot_message_id,
+        ),
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)

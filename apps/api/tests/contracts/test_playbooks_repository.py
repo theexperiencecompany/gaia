@@ -13,7 +13,12 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.playbooks import PlaybooksRepository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookUpdate
+from app.models.playbook_models import (
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+    PlaybookUpdate,
+)
 from app.utils.errors import EmptyUpdateError
 
 WORKFLOW_ID = "wf_contract"
@@ -77,7 +82,9 @@ class TestPlaybooksRepository:
     async def test_upsert_resets_the_outcome_but_keeps_the_suspect_streak(self, repo) -> None:
         await repo.upsert_for_workflow(make_doc())
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty where it had items"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty where it had items"),
         )
         replaced = await repo.upsert_for_workflow(make_doc(description="second"))
         assert replaced.last_run_status is PlaybookRunStatus.NOT_RUN
@@ -93,16 +100,22 @@ class TestPlaybooksRepository:
         await repo.create(make_doc())
 
         first = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty once"
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty once")
         )
         repeated = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty again, same body"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty again, same body"),
         )
         await repo.upsert_for_workflow(make_doc(description="healed"))
         second = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty twice"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty twice"),
         )
-        cleared = await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
+        cleared = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+        )
 
         assert (first.suspect_streak, first.last_run_reason) == (1, "empty once")
         assert (repeated.suspect_streak, repeated.last_run_reason) == (1, "empty again, same body")
@@ -157,10 +170,9 @@ class TestPlaybooksRepository:
         stale = await repo.record_run_outcome(
             WORKFLOW_ID,
             USER_ID,
-            PlaybookRunStatus.SUSPECT,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty"),
             playbook_id=replayed.playbook_id,
             revision=replayed.revision,
-            reason="empty",
         )
 
         assert stale is None
@@ -172,7 +184,7 @@ class TestPlaybooksRepository:
         current = await repo.record_run_outcome(
             WORKFLOW_ID,
             USER_ID,
-            PlaybookRunStatus.SUCCESS,
+            PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
             playbook_id=rewritten.playbook_id,
             revision=rewritten.revision,
         )
@@ -181,10 +193,14 @@ class TestPlaybooksRepository:
 
     async def test_a_failure_keeps_the_streak_and_records_its_reason(self, repo) -> None:
         await repo.create(make_doc())
-        await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="e")
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="e")
+        )
 
         failed = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, reason="stopped at step 2"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped at step 2"),
         )
 
         assert failed.last_run_status is PlaybookRunStatus.FAILED
@@ -193,7 +209,9 @@ class TestPlaybooksRepository:
 
     async def test_record_run_outcome_persists(self, repo) -> None:
         await repo.create(make_doc())
-        updated = await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
+        updated = await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+        )
         assert updated is not None
         reread = await repo.get_for_workflow(WORKFLOW_ID, USER_ID)
         assert reread is not None
@@ -201,7 +219,10 @@ class TestPlaybooksRepository:
 
     async def test_record_run_outcome_without_a_playbook_is_none(self, repo) -> None:
         assert (
-            await repo.record_run_outcome("wf_nothing", USER_ID, PlaybookRunStatus.SUCCESS) is None
+            await repo.record_run_outcome(
+                "wf_nothing", USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+            )
+            is None
         )
 
     async def test_record_run_outcome_scoped_to_the_replayed_playbook(self, repo) -> None:
@@ -210,7 +231,10 @@ class TestPlaybooksRepository:
         replayed = await repo.create(make_doc())
         assert (
             await repo.record_run_outcome(
-                WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id=replayed.playbook_id
+                WORKFLOW_ID,
+                USER_ID,
+                PlaybookRunOutcome(PlaybookRunStatus.FAILED),
+                playbook_id=replayed.playbook_id,
             )
             is not None
         )
@@ -218,7 +242,10 @@ class TestPlaybooksRepository:
         rewritten = await repo.create(make_doc(description="second"))
 
         stale = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id=replayed.playbook_id
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED),
+            playbook_id=replayed.playbook_id,
         )
 
         assert stale is None
@@ -231,7 +258,10 @@ class TestPlaybooksRepository:
         created = await repo.create(make_doc())
         assert (
             await repo.record_run_outcome(
-                WORKFLOW_ID, "attacker", PlaybookRunStatus.SUCCESS, playbook_id=created.playbook_id
+                WORKFLOW_ID,
+                "attacker",
+                PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
+                playbook_id=created.playbook_id,
             )
             is None
         )

@@ -8,6 +8,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 
 import asyncio
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 import json
 from typing import Any, cast
 from uuid import uuid4
@@ -29,6 +30,10 @@ from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentTracing,
+    AgentTurn,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -49,15 +54,38 @@ from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.wide_events import log
 
 
+@dataclass(frozen=True)
+class AgentRunOptions:
+    """The optional settings of one agent run, shared by every entry point.
+
+    ``trigger_context`` is the workflow/todo/trigger data of a background run;
+    ``usage_metadata_callback`` collects token usage; ``source`` names the
+    surface the turn came from; the two ``langfuse_*`` fields seed the trace.
+    """
+
+    usage_metadata_callback: UsageMetadataCallbackHandler | None = None
+    trigger_context: dict[str, Any] | None = None
+    source: str | None = None
+    langfuse_trace_id: str | None = None
+    langfuse_tags: list[str] | None = None
+
+
+@dataclass(frozen=True)
+class StreamMessageIds:
+    """The ids a streaming turn carries: the stream (for cancellation), the
+    user's message (for reply linking) and the assistant's message (for the
+    Langfuse trace and HIL resume)."""
+
+    stream_id: str | None = None
+    user_message_id: str | None = None
+    bot_message_id: str | None = None
+
+
 async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
-    trigger_context: dict[str, Any] | None = None,
-    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    source: str | None = None,
-    langfuse_trace_id: str | None = None,
-    langfuse_tags: list[str] | None = None,
+    options: AgentRunOptions | None = None,
 ) -> tuple[CompiledAgentGraph, dict[str, Any], AgentRunnableConfig]:
     """Shared setup for streaming and silent execution.
 
@@ -79,6 +107,13 @@ async def _core_agent_logic(
         - initial_state: Prepared state dictionary with all context
         - config: Configuration dictionary with user settings and tokens
     """
+    options = options or AgentRunOptions()
+    trigger_context = options.trigger_context
+    usage_metadata_callback = options.usage_metadata_callback
+    source = options.source
+    langfuse_trace_id = options.langfuse_trace_id
+    langfuse_tags = options.langfuse_tags
+
     user_id = user.get("user_id")
 
     # Extract active todo binding + execution mode from trigger_context (scheduled
@@ -136,23 +171,28 @@ async def _core_agent_logic(
     # This is the top-level run, so build_agent_config resolves the comms lane
     # here; the executor and every subagent inherit it whole.
     config = await build_agent_config(
-        conversation_id=conversation_id,
-        user=user,
-        role=AgentRole.COMMS,
-        dev_option=dev_option,
-        usage_metadata_callback=usage_metadata_callback,
-        agent_name="comms_agent",
-        selected_tool=request.selectedTool,
-        tool_category=request.toolCategory,
-        active_todo_id=active_todo_id,
-        execution_mode=execution_mode,
-        source=source,
-        user_messages=recent_user_messages(request.messages, request.message),
-        user_request=request.message,
-        user_preferences=user_preferences,
-        writing_style=writing_style,
-        langfuse_trace_id=langfuse_trace_id,
-        langfuse_tags=langfuse_tags,
+        identity=AgentIdentity(
+            conversation_id=conversation_id,
+            user=user,
+            agent_name="comms_agent",
+        ),
+        lane=AgentLane(role=AgentRole.COMMS, dev_option=dev_option),
+        turn=AgentTurn(
+            selected_tool=request.selectedTool,
+            tool_category=request.toolCategory,
+            active_todo_id=active_todo_id,
+            execution_mode=execution_mode,
+            source=source,
+            user_messages=recent_user_messages(request.messages, request.message),
+            user_request=request.message,
+            user_preferences=user_preferences,
+            writing_style=writing_style,
+        ),
+        tracing=AgentTracing(
+            usage_metadata_callback=usage_metadata_callback,
+            langfuse_trace_id=langfuse_trace_id,
+            langfuse_tags=langfuse_tags,
+        ),
     )
 
     # The live bag build_agent_config just produced — mutated below, so it is
@@ -197,11 +237,8 @@ async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
-    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    stream_id: str | None = None,
-    user_message_id: str | None = None,
-    bot_message_id: str | None = None,
-    source: str | None = None,
+    options: AgentRunOptions | None = None,
+    ids: StreamMessageIds | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Execute agent in streaming mode for interactive chat.
@@ -217,6 +254,15 @@ async def call_agent(
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
+    options = options or AgentRunOptions()
+    ids = ids or StreamMessageIds()
+    usage_metadata_callback, source = options.usage_metadata_callback, options.source
+    stream_id, user_message_id, bot_message_id = (
+        ids.stream_id,
+        ids.user_message_id,
+        ids.bot_message_id,
+    )
+
     user_id = user.get("user_id")
     try:
         langfuse_trace_id = trace_id_for_message(bot_message_id) if bot_message_id else None
@@ -225,10 +271,12 @@ async def call_agent(
             request,
             conversation_id,
             user,
-            usage_metadata_callback=usage_metadata_callback,
-            source=source,
-            langfuse_trace_id=langfuse_trace_id,
-            langfuse_tags=["comms_agent", settings.ENV],
+            AgentRunOptions(
+                usage_metadata_callback=usage_metadata_callback,
+                source=source,
+                langfuse_trace_id=langfuse_trace_id,
+                langfuse_tags=["comms_agent", settings.ENV],
+            ),
         )
 
         # The live bag (see the same cast in _core_agent_logic) — mutated, so
@@ -305,9 +353,7 @@ async def call_agent_silent(
     request: MessageRequestWithHistory,
     conversation_id: str,
     user: AuthenticatedUser,
-    usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
-    trigger_context: dict[str, Any] | None = None,
-    source: str | None = None,
+    options: AgentRunOptions | None = None,
 ) -> SilentRunResult:
     """
     Execute agent in silent mode for background processing.
@@ -323,6 +369,11 @@ async def call_agent_silent(
     ``task_id`` — read off the stream's session before it is torn down, since
     the session is this function's own and no caller can reach it.
     """
+    options = options or AgentRunOptions()
+    usage_metadata_callback = options.usage_metadata_callback
+    trigger_context = options.trigger_context
+    source = options.source
+
     stream_id = str(uuid4())
     user_id = user.get("user_id")
     try:
@@ -330,9 +381,11 @@ async def call_agent_silent(
             request,
             conversation_id,
             user,
-            trigger_context,
-            usage_metadata_callback=usage_metadata_callback,
-            source=source,
+            AgentRunOptions(
+                usage_metadata_callback=usage_metadata_callback,
+                trigger_context=trigger_context,
+                source=source,
+            ),
         )
 
         # Mirror the live-chat path: comms delegates to the executor (which runs

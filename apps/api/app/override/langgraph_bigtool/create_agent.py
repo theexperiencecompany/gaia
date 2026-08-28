@@ -55,7 +55,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
-from app.agents.llm.client import ainvoke_llm, invoke_llm
+from app.agents.llm.client import LLMCallOptions, ainvoke_llm, invoke_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.completion import (
     completion_nudges_spent,
@@ -373,11 +373,13 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         response = invoke_llm(
             llm_with_tools,
             state["messages"],
-            fallback=prepared[0] if prepared else None,
             config=config,
             label=deps.agent_name,
-            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-            sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+            options=LLMCallOptions(
+                fallback=prepared[0] if prepared else None,
+                fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+            ),
         )
 
         return {"messages": [*tombstones, _finalize_model_response(response, deps.agent_name)]}  # type: ignore[return-value]  # helper's declared return is wider than the dict actually built
@@ -406,12 +408,14 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
         invoke_fn = functools.partial(
             ainvoke_llm,
             llm_with_tools,
-            fallback=prepared[0] if prepared else None,
             config=config,
             label=deps.agent_name,
-            meter_auxiliary=False,
-            fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
-            sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+            options=LLMCallOptions(
+                fallback=prepared[0] if prepared else None,
+                meter_auxiliary=False,
+                fallback_config=_fallback_config(config, prepared[1]) if prepared else None,
+                sticky_session_id=_agent_sticky_key(model_configurations, deps.agent_name),
+            ),
         )
 
         _log_message_preview(state)

@@ -20,7 +20,7 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langgraph.errors import GraphRecursionError
 
-from app.agents.core.agent import call_agent
+from app.agents.core.agent import AgentRunOptions, StreamMessageIds, call_agent
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
@@ -524,11 +524,12 @@ async def _consume_agent_stream(
         request=body,
         user=user,
         conversation_id=conversation_id,
-        usage_metadata_callback=usage_callback,
-        stream_id=stream_id,
-        user_message_id=state.user_message_id,
-        bot_message_id=state.bot_message_id,
-        source=source,
+        options=AgentRunOptions(usage_metadata_callback=usage_callback, source=source),
+        ids=StreamMessageIds(
+            stream_id=stream_id,
+            user_message_id=state.user_message_id,
+            bot_message_id=state.bot_message_id,
+        ),
     ):
         # Cancellation is detected and terminated by the inner graph driver
         # (execute_graph_streaming), which owns the checkpoint write that

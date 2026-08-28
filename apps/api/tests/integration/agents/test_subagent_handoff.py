@@ -52,6 +52,7 @@ from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
+    ThreadSeed,
     build_initial_messages,
     execute_subagent_stream,
     interrupt_payload,
@@ -780,16 +781,18 @@ class TestBuildInitialMessages:
         with _assembled_context():
             messages = await build_initial_messages(
                 system_message=system_msg,
-                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="gmail_agent",
-                configurable={
-                    "thread_id": str(uuid4()),
-                    "user_id": str(uuid4()),
-                    "user_timezone": "Asia/Kolkata",
-                },
                 task="Send an email to John",
-                user_id="user-1",
-                subagent_id="gmail_agent",
+                seed=ThreadSeed(
+                    tier=AgentTier.PROVIDER_SUBAGENT,
+                    configurable={
+                        "thread_id": str(uuid4()),
+                        "user_id": str(uuid4()),
+                        "user_timezone": "Asia/Kolkata",
+                    },
+                    user_id="user-1",
+                    subagent_id="gmail_agent",
+                ),
             )
 
         assert messages[0] is system_msg
@@ -803,10 +806,9 @@ class TestBuildInitialMessages:
         with _assembled_context():
             messages = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="calendar_agent",
-                configurable={},
                 task=task,
+                seed=ThreadSeed(tier=AgentTier.PROVIDER_SUBAGENT, configurable={}),
             )
 
         task_msgs = [
@@ -823,11 +825,11 @@ class TestBuildInitialMessages:
         with _assembled_context() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="executor_agent",
-                configurable={},
                 task=enhanced_task,
-                retrieval_query=retrieval_query,
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={}, retrieval_query=retrieval_query
+                ),
             )
 
         assert mock_assemble.call_args.args[0].query == retrieval_query
@@ -1237,8 +1239,9 @@ class TestHandoffThreadIsolation:
         captured_thread_ids: list[str] = []
 
         def capture_build_agent_config(**kwargs):
-            captured_thread_ids.append(kwargs.get("thread_id", ""))
-            return {"configurable": {"thread_id": kwargs.get("thread_id", "")}}
+            thread_id = getattr(kwargs.get("thread"), "thread_id", "") or ""
+            captured_thread_ids.append(thread_id)
+            return {"configurable": {"thread_id": thread_id}}
 
         config = {
             "configurable": {
@@ -1319,9 +1322,10 @@ class TestHandoffThreadIsolation:
         parent_thread_id = "fixed-parent-thread-999"
         captured_thread_ids: list[str] = []
 
-        def capture_build(thread_id=None, **kwargs):
-            captured_thread_ids.append(thread_id or "")
-            return {"configurable": {"thread_id": thread_id or ""}}
+        def capture_build(thread=None, **kwargs):
+            thread_id = getattr(thread, "thread_id", "") or ""
+            captured_thread_ids.append(thread_id)
+            return {"configurable": {"thread_id": thread_id}}
 
         with (
             patch(

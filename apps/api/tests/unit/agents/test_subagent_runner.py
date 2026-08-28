@@ -24,12 +24,14 @@ from app.agents.core.background.session import RunKind, StreamSession, create_se
 from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
+    ThreadSeed,
     build_initial_messages,
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
+from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
 from tests._harness.context_chain import slots_of
@@ -149,10 +151,11 @@ class TestBuildInitialMessages:
         with self._assembled():
             result = await build_initial_messages(
                 system_message=sys_msg,
-                tier=AgentTier.EXECUTOR,
                 agent_name="test_agent",
-                configurable={"user_timezone": "Asia/Kolkata"},
                 task="Do the thing",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={"user_timezone": "Asia/Kolkata"}
+                ),
             )
 
         assert slots_of(result) == [
@@ -173,10 +176,9 @@ class TestBuildInitialMessages:
         with self._assembled(volatile=volatile):
             result = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
-                configurable={},
                 task="task",
+                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
             )
 
         assert slots_of(result) == [
@@ -192,10 +194,11 @@ class TestBuildInitialMessages:
         with self._assembled():
             result = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
-                configurable={"user_timezone": "Asia/Kolkata"},
                 task="task",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={"user_timezone": "Asia/Kolkata"}
+                ),
             )
 
         assert isinstance(result[-1], HumanMessage)
@@ -206,10 +209,9 @@ class TestBuildInitialMessages:
         with self._assembled():
             result = await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="my_agent",
-                configurable={},
                 task="task",
+                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
             )
 
         human_msg = next(m for m in result if m.type == "human" and m.content == "task")
@@ -220,10 +222,9 @@ class TestBuildInitialMessages:
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
-                configurable={},
                 task="my search query",
+                seed=ThreadSeed(tier=AgentTier.EXECUTOR, configurable={}),
             )
 
         assert mock_assemble.call_args.args[0].query == "my search query"
@@ -235,11 +236,11 @@ class TestBuildInitialMessages:
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.EXECUTOR,
                 agent_name="agent",
-                configurable={},
                 task="enhanced task with hints",
-                retrieval_query="original query",
+                seed=ThreadSeed(
+                    tier=AgentTier.EXECUTOR, configurable={}, retrieval_query="original query"
+                ),
             )
 
         assert mock_assemble.call_args.args[0].query == "original query"
@@ -251,13 +252,15 @@ class TestBuildInitialMessages:
         with self._assembled() as mock_assemble:
             await build_initial_messages(
                 system_message=SystemMessage(content="sys"),
-                tier=AgentTier.PROVIDER_SUBAGENT,
                 agent_name="agent",
-                configurable={},
                 task="task",
-                user_id="uid-1",
-                subagent_id="github_agent",
-                integration_id="github",
+                seed=ThreadSeed(
+                    tier=AgentTier.PROVIDER_SUBAGENT,
+                    configurable={},
+                    user_id="uid-1",
+                    subagent_id="github_agent",
+                    integration_id="github",
+                ),
             )
 
         ctx = mock_assemble.call_args.args[0]
@@ -675,17 +678,22 @@ class TestPrepareExecutorExecution:
             await prepare_executor_execution(task="run tests", configurable=configurable)
 
         assert build_config.call_args.args == ()
+        # Dataclass equality, so this stays exactly as strict as the flat-kwargs
+        # dict it replaced: every field of every group has to match.
         assert build_config.call_args.kwargs == {
-            "conversation_id": "t1",
-            "user": {"user_id": "u1", "email": "t@t.com", "name": "Test"},
-            "thread_id": "executor_t1",
-            "base_configurable": configurable,
-            "agent_name": "executor_agent",
-            "role": AgentRole.EXECUTOR,
-            "dev_option": None,
-            "subagent_id": "executor_agent",
-            "vfs_session_id": "t1",
-            "recursion_limit": EXECUTOR_RECURSION_LIMIT,
+            "identity": AgentIdentity(
+                conversation_id="t1",
+                user={"user_id": "u1", "email": "t@t.com", "name": "Test"},
+                agent_name="executor_agent",
+            ),
+            "lane": AgentLane(role=AgentRole.EXECUTOR, dev_option=None),
+            "thread": AgentThread(
+                thread_id="executor_t1",
+                base_configurable=configurable,
+                subagent_id="executor_agent",
+                vfs_session_id="t1",
+                recursion_limit=EXECUTOR_RECURSION_LIMIT,
+            ),
         }
 
     @pytest.mark.asyncio
@@ -706,7 +714,7 @@ class TestPrepareExecutorExecution:
                 },
             )
 
-        assert build_config.call_args.kwargs["dev_option"] == DEV_MODEL_OPTIONS["minimax-m3"]
+        assert build_config.call_args.kwargs["lane"].dev_option == DEV_MODEL_OPTIONS["minimax-m3"]
 
     @pytest.mark.asyncio
     async def test_an_unknown_stashed_id_selects_no_dev_option(self):
@@ -724,7 +732,7 @@ class TestPrepareExecutorExecution:
                 },
             )
 
-        assert build_config.call_args.kwargs["dev_option"] is None
+        assert build_config.call_args.kwargs["lane"].dev_option is None
 
     @pytest.mark.asyncio
     async def test_happy_path(self):
@@ -954,7 +962,7 @@ class TestPrepareExecutorExecution:
             )
 
         call_kwargs = mock_build_config.call_args.kwargs
-        assert call_kwargs["vfs_session_id"] == "t1"
+        assert call_kwargs["thread"].vfs_session_id == "t1"
 
 
 # ---------------------------------------------------------------------------

@@ -1205,7 +1205,7 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
                 store=MagicMock(),
             )
 
-        assert invoked.await_args.kwargs["sticky_session_id"] == "conv-1-comms_agent"
+        assert invoked.await_args.kwargs["options"].sticky_session_id == "conv-1-comms_agent"
 
     def test_the_sync_model_node_hands_that_key_over_too(self) -> None:
         """Both model call sites, same as the bind: they drift independently,
@@ -1229,7 +1229,7 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
                 store=MagicMock(),
             )
 
-        assert invoked.call_args.kwargs["sticky_session_id"] == "conv-1-comms_agent"
+        assert invoked.call_args.kwargs["options"].sticky_session_id == "conv-1-comms_agent"
 
 
 # ---------------------------------------------------------------------------

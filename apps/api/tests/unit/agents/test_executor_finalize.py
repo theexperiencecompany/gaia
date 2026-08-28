@@ -34,6 +34,7 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
     create_session,
     get_session,
@@ -617,11 +618,13 @@ class TestExecutorRunSource:
     def test_the_source_category_comes_from_the_configurable(self) -> None:
         run = ExecutorRun.from_configurable(
             {"user_id": "u1", "source_category": "bot"},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="task-1",
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
         )
 
         assert run.source_category is SourceCategory.BOT
@@ -630,11 +633,13 @@ class TestExecutorRunSource:
     def test_a_configurable_with_no_source_is_background_work(self) -> None:
         run = ExecutorRun.from_configurable(
             {"user_id": "u1"},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="task-1",
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
         )
 
         assert run.source_category is SourceCategory.BG

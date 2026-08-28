@@ -1442,13 +1442,20 @@ class TestDeferredFollowUpPush:
             patch.object(rd, "_persist_follow_up_actions", new=AsyncMock(return_value=persisted)),
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
         ):
+            run = _run(RunKind.QUEUED, task_id="task-7")
             await rd._generate_and_push_follow_ups(
-                run=_run(RunKind.QUEUED, task_id="task-7"),
                 bot_message=bot_message,
                 result_type="final",
                 tool_data=None,
-                show_reply_quote=False,
-                user_msg_content="asked",
+                target=rd._DeliveryTarget(
+                    user_id=run.user["user_id"],
+                    conversation_id=run.conversation_id,
+                    task_id=run.task_id,
+                    emit_task_id=run.is_queued,
+                    show_reply_quote=False,
+                    user_message_id=run.user_message_id,
+                    user_msg_content="asked",
+                ),
             )
         return ws
 

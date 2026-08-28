@@ -23,6 +23,7 @@ import pytest
 from app.agents.llm.client import (
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    LLMCallOptions,
     _create_configurable_llm,
     _get_available_providers,
     _get_ordered_providers,
@@ -398,7 +399,10 @@ class TestAinvokeFallbackRouting:
         fallback.ainvoke = AsyncMock(return_value=AIMessage(content="from default model"))
 
         result = await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], fallback=fallback, label="test"
+            primary,
+            [HumanMessage(content="hi")],
+            label="test",
+            options=LLMCallOptions(fallback=fallback),
         )
 
         assert result.content == "from default model"

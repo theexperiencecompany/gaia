@@ -323,6 +323,17 @@ async def _run_handoff(
     return await _run_steps(playbook, step.steps, run, space)
 
 
+@dataclass(frozen=True)
+class _StepCall:
+    """One resolved tool step, as it is about to run: the step, its position
+    in the playbook, the tool it names and the arguments after resolution."""
+
+    step: PlaybookStep
+    position: int
+    tool_name: str
+    args: dict[str, Any]
+
+
 async def _run_tool_step(
     playbook: PlaybookDocument, step: PlaybookStep, run: _Run, space: ToolSpace
 ) -> _StepFailure | None:
@@ -346,22 +357,35 @@ async def _run_tool_step(
     except PlaceholderError as exc:
         return _StepFailure(position, tool_name, exc.message)
 
+    call = _StepCall(step=step, position=position, tool_name=tool_name, args=args)
+    answered = await _call_step(playbook, run, space, call)
+    if isinstance(answered, _StepFailure):
+        return answered
+    return _record_step(playbook, run, space, call, answered)
+
+
+async def _call_step(
+    playbook: PlaybookDocument, run: _Run, space: ToolSpace, call: _StepCall
+) -> ToolMessage | _StepFailure:
+    """Replay the call; the message it produced, or why it produced none."""
     # A raise out of the graph is a stopped step, not a dead run: the steps
     # before it already had their side effects, and only a result that carries
     # the trace lets the worker hand the rest to the agent without repeating them.
     try:
-        message = await _replay_call(ScriptedCall(name=tool_name, args=args), run, space)
+        message = await _replay_call(ScriptedCall(name=call.tool_name, args=call.args), run, space)
     except Exception as exc:
         log.exception(
             f"{LogTag.WORKFLOW} Playbook step raised instead of returning a result",
             playbook_id=playbook.playbook_id,
             workflow_id=playbook.workflow_id,
-            tool_name=tool_name,
+            tool_name=call.tool_name,
             error_type=type(exc).__name__,
         )
-        return _StepFailure(position, tool_name, f"raised {type(exc).__name__}: {exc}")
+        return _StepFailure(call.position, call.tool_name, f"raised {type(exc).__name__}: {exc}")
     if message is None:
-        return _StepFailure(position, tool_name, "the graph produced no result for this call")
+        return _StepFailure(
+            call.position, call.tool_name, "the graph produced no result for this call"
+        )
 
     text = message.content if isinstance(message.content, str) else str(message.content)
 
@@ -370,12 +394,26 @@ async def _run_tool_step(
     # Deliberately not recorded — nothing was attempted, and a trace entry here
     # would tell the next run's `$last_run` that this tool answered.
     if message.additional_kwargs.get(HIL_STATUS_KWARG):
-        return _StepFailure(position, tool_name, f"refused by the approval gate: {text}")
+        return _StepFailure(call.position, call.tool_name, f"refused by the approval gate: {text}")
+    return message
+
+
+def _record_step(
+    playbook: PlaybookDocument,
+    run: _Run,
+    space: ToolSpace,
+    call: _StepCall,
+    message: ToolMessage,
+) -> _StepFailure | None:
+    """Put the call on the record and read its result; a failure when the
+    result is one the run cannot trust or cannot keep."""
+    tool_name, position, step = call.tool_name, call.position, call.step
+    text = message.content if isinstance(message.content, str) else str(message.content)
 
     # The record is the run's contract: a call that ran but cannot be recorded
     # stops the run as a report, never as a raise that loses the steps before it.
     try:
-        _record(run, tool_name, space.subagent_id, args, text)
+        _record(run, tool_name, space.subagent_id, call.args, text)
     except ValidationError as exc:
         log.exception(
             f"{LogTag.WORKFLOW} Playbook step ran but its result could not be recorded",
@@ -404,7 +442,9 @@ async def _run_tool_step(
     # This line is the model's only view of what the tool returned, and it has
     # to write the user's result from it: bounded for the model, not the record.
     shown = build_result_digest(text, max_chars=_NARRATION_RESULT_MAX_CHARS)
-    run.completed.append(f"{step.id or tool_name} ({tool_name} {_shown_args(args)}) -> {shown}")
+    run.completed.append(
+        f"{step.id or tool_name} ({tool_name} {_shown_args(call.args)}) -> {shown}"
+    )
     return None
 
 

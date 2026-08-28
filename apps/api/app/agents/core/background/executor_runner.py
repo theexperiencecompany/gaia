@@ -16,6 +16,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 from langgraph.errors import GraphRecursionError
@@ -304,7 +305,15 @@ async def _finalize_executor_run(
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         await _deliver_terminal_outcome(
-            run, task, result_text, result_type, was_cancelled, returned_note, tool_data
+            run,
+            task,
+            TerminalOutcome(
+                result_text=result_text,
+                result_type=result_type,
+                was_cancelled=was_cancelled,
+                returned_note=returned_note,
+                tool_data=tool_data,
+            ),
         )
     except Exception as e:  # never let delivery failure strand the queue
         log.error(
@@ -416,14 +425,24 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
     )
 
 
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """The terminal facts of one executor run, as ``_finalize_run`` snapshotted them.
+
+    ``tool_data`` is ``None`` for a live run, whose cards the comms stream owns.
+    """
+
+    result_text: str
+    result_type: str
+    was_cancelled: bool
+    returned_note: str
+    tool_data: list[ToolDataEntry] | None
+
+
 async def _deliver_terminal_outcome(
     run: ExecutorRun,
     task: str,
-    result_text: str,
-    result_type: str,
-    was_cancelled: bool,
-    returned_note: str,
-    tool_data: list[ToolDataEntry] | None,
+    outcome: TerminalOutcome,
 ) -> None:
     """Route the run's terminal outcome to exactly one delivery entry point.
 
@@ -433,22 +452,26 @@ async def _deliver_terminal_outcome(
     which is what a ``None`` snapshot means. A completed run with text narrates
     and delivers.
     """
-    if was_cancelled:
+    if outcome.was_cancelled:
         # Regardless of who owns the tool_data, comms' context must record the
         # cancellation — otherwise its last knowledge stays 'Task accepted...
         # I'm on it' and later turns claim the task is still running or done.
         await record_executor_cancellation(run.conversation_id, run.task_id, task)
-        if tool_data is None:
+        if outcome.tool_data is None:
             log.info(
                 f"{LogTag.AGENT} Live executor cancelled; comms stream owns tool_data persistence",
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )
         else:
-            await persist_cancelled_run(run, tool_data)
-    elif result_text:
+            await persist_cancelled_run(run, outcome.tool_data)
+    elif outcome.result_text:
         notification_text, message_id = await deliver_result(
-            run, result_text, result_type, returned_note, tool_data=tool_data
+            run,
+            outcome.result_text,
+            outcome.result_type,
+            outcome.returned_note,
+            tool_data=outcome.tool_data,
         )
         await _publish_voice_tts(run.stream_id, notification_text, message_id)
 

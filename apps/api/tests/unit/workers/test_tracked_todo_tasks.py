@@ -605,7 +605,7 @@ class TestExecuteViaAgent:
             )
 
         kwargs = agent.await_args.kwargs
-        assert kwargs["trigger_context"] == {
+        assert kwargs["options"].trigger_context == {
             "trigger_type": "scheduled_todo",
             "todo_id": "todo-1",
             "todo_title": "Check the deploy",

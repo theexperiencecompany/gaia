@@ -998,7 +998,7 @@ class TestExecuteWorkflowAsChat:
         ):
             await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
 
-        trigger_context = mock_call_agent.call_args.kwargs["trigger_context"]
+        trigger_context = mock_call_agent.call_args.kwargs["options"].trigger_context
         assert trigger_context["workflow_id"] == workflow.id
 
     async def test_exception_in_agent_returns_error_message_not_reraise(self):

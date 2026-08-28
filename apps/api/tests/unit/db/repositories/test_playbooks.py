@@ -21,7 +21,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.db.repositories.playbooks import PlaybooksRepository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 
 WORKFLOW_ID = "wf_1"
 USER_ID = "user_1"
@@ -128,7 +128,10 @@ class TestRecordRunOutcome:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id="pb_first"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED),
+            playbook_id="pb_first",
         )
 
         collection.find_one.assert_not_awaited()
@@ -146,7 +149,10 @@ class TestRecordRunOutcome:
         collection.find_one_and_update = AsyncMock(return_value=None)
 
         outcome = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS, playbook_id="pb_stale"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
+            playbook_id="pb_stale",
         )
 
         assert outcome is None
@@ -154,7 +160,9 @@ class TestRecordRunOutcome:
     async def test_without_an_id_it_updates_whatever_the_workflow_has_in_one_write(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
-        await repo.record_run_outcome(WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS)
+        await repo.record_run_outcome(
+            WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+        )
 
         collection.find_one.assert_not_awaited()
         filter_, _update = collection.find_one_and_update.await_args.args
@@ -164,7 +172,9 @@ class TestRecordRunOutcome:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="list_events returned no items"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="list_events returned no items"),
         )
 
         collection.find_one_and_update.assert_awaited_once()
@@ -188,9 +198,9 @@ class TestRecordRunOutcome:
         await repo.record_run_outcome(
             WORKFLOW_ID,
             USER_ID,
-            PlaybookRunStatus.SUSPECT,
-            reason="the model's own take",
-            counts_toward_streak=False,
+            PlaybookRunOutcome(
+                PlaybookRunStatus.SUSPECT, reason="the model's own take", counts_toward_streak=False
+            ),
         )
 
         collection.find_one_and_update.assert_awaited_once()
@@ -208,7 +218,9 @@ class TestRecordRunOutcome:
         )
 
         outcome = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUSPECT, reason="empty again"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty again"),
         )
 
         assert collection.find_one_and_update.await_count == 2
@@ -225,7 +237,11 @@ class TestRecordRunOutcome:
     ) -> None:
         """``playbook_id`` survives a rewrite, so on its own it guarded nothing."""
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS, playbook_id="pb_first", revision=3
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
+            playbook_id="pb_first",
+            revision=3,
         )
 
         filter_, _update = collection.find_one_and_update.await_args.args
@@ -242,7 +258,11 @@ class TestRecordRunOutcome:
         collection.find_one_and_update = AsyncMock(return_value=None)
 
         outcome = await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, playbook_id="pb_first", revision=2
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED),
+            playbook_id="pb_first",
+            revision=2,
         )
 
         assert outcome is None
@@ -292,7 +312,9 @@ class TestIncrementHealAttempts:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.SUCCESS, reason="ignored on success"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.SUCCESS, reason="ignored on success"),
         )
 
         _filter, update = collection.find_one_and_update.await_args.args
@@ -305,7 +327,9 @@ class TestIncrementHealAttempts:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         await repo.record_run_outcome(
-            WORKFLOW_ID, USER_ID, PlaybookRunStatus.FAILED, reason="stopped at step 2"
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped at step 2"),
         )
 
         _filter, update = collection.find_one_and_update.await_args.args

@@ -11,6 +11,7 @@ import pytest
 from app.agents.core.background import session as sess
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
     claim_bg_integration,
     claim_tool_output,
@@ -149,11 +150,13 @@ class TestOwnershipRule:
                 "workflow_title": "Daily digest",
                 "workflow_notify_on_completion": False,
             },
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="t1",
-            user_message_id="m1",
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="t1",
+                user_message_id="m1",
+            ),
         )
         assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
         assert run.workflow_id == "wf-9"
@@ -163,11 +166,13 @@ class TestOwnershipRule:
     def test_from_configurable_defaults(self) -> None:
         run = ExecutorRun.from_configurable(
             {},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.LIVE,
-            task_id=None,
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.LIVE,
+                task_id=None,
+                user_message_id=None,
+            ),
         )
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True

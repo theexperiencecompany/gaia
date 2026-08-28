@@ -86,6 +86,23 @@ class StreamSession:
 
 
 @dataclass(frozen=True)
+class RunIdentity:
+    """The caller-supplied identity of one executor run.
+
+    Grouped so ``ExecutorRun.from_configurable`` takes the run's identity as one
+    object beside the LangGraph ``configurable`` it reads the rest from.
+    """
+
+    stream_id: str
+    conversation_id: str
+    kind: RunKind
+    task_id: str | None
+    user_message_id: str | None
+    #: The ORIGINAL live turn's bot message id — see ``ExecutorRun.bot_message_id``.
+    bot_message_id: str | None = None
+
+
+@dataclass(frozen=True)
 class ExecutorRun:
     """Immutable context for one background executor run."""
 
@@ -114,17 +131,12 @@ class ExecutorRun:
         cls,
         configurable: AgentConfigurable,
         *,
-        stream_id: str,
-        conversation_id: str,
-        kind: RunKind,
-        task_id: str | None,
-        user_message_id: str | None,
-        bot_message_id: str | None = None,
+        identity: RunIdentity,
     ) -> "ExecutorRun":
         """Build the run context from a LangGraph ``configurable`` dict."""
         return cls(
-            stream_id=stream_id,
-            conversation_id=conversation_id,
+            stream_id=identity.stream_id,
+            conversation_id=identity.conversation_id,
             user={
                 "user_id": configurable.get("user_id", ""),
                 "email": configurable.get("email", ""),
@@ -134,10 +146,10 @@ class ExecutorRun:
                 # silently falling back to UTC.
                 "timezone": configurable.get("user_timezone"),
             },
-            kind=kind,
-            task_id=task_id,
-            user_message_id=user_message_id,
-            bot_message_id=bot_message_id,
+            kind=identity.kind,
+            task_id=identity.task_id,
+            user_message_id=identity.user_message_id,
+            bot_message_id=identity.bot_message_id,
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),

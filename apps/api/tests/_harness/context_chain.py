@@ -35,12 +35,17 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
-from app.agents.core.subagents.subagent_runner import build_initial_messages
+from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentThread,
+    AgentTurn,
+    build_agent_config,
+)
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.models.message_models import MessageDict
@@ -179,14 +184,20 @@ async def build_configurable(
         "timezone": user.timezone,
     }
     config = await build_agent_config(
-        conversation_id="conv-1",
-        user=agent_user,
-        thread_id=f"{tier.value}-thread",
-        agent_name=_AGENT_NAMES[tier],
-        subagent_id=_AGENT_NAMES[tier],
-        vfs_session_id="conv-1",
-        user_preferences=user.preferences or None,
-        writing_style=user.writing_style or None,
+        identity=AgentIdentity(
+            conversation_id="conv-1",
+            user=agent_user,
+            agent_name=_AGENT_NAMES[tier],
+        ),
+        thread=AgentThread(
+            thread_id=f"{tier.value}-thread",
+            subagent_id=_AGENT_NAMES[tier],
+            vfs_session_id="conv-1",
+        ),
+        turn=AgentTurn(
+            user_preferences=user.preferences or None,
+            writing_style=user.writing_style or None,
+        ),
     )
     configurable: AgentConfigurable = {**agent_configurable(config), **(overrides or {})}
     runnable = cast(RunnableConfig, {**config, "configurable": configurable})
@@ -211,11 +222,11 @@ async def seed_context(
     if tier is AgentTier.EXECUTOR:
         return await build_initial_messages(
             system_message=SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE),
-            tier=AgentTier.EXECUTOR,
             agent_name="executor_agent",
-            configurable=configurable,
             task=query,
-            user_id=user.user_id,
+            seed=ThreadSeed(
+                tier=AgentTier.EXECUTOR, configurable=configurable, user_id=user.user_id
+            ),
         )
 
     if tier is AgentTier.PROVIDER_SUBAGENT:
@@ -223,24 +234,28 @@ async def seed_context(
             system_message=await create_subagent_system_message(
                 integration_id=PROVIDER_INTEGRATION_ID
             ),
-            tier=AgentTier.PROVIDER_SUBAGENT,
             agent_name=PROVIDER_AGENT_NAME,
-            configurable=configurable,
             task=query,
-            user_id=user.user_id,
-            subagent_id=PROVIDER_AGENT_NAME,
-            integration_id=PROVIDER_INTEGRATION_ID,
+            seed=ThreadSeed(
+                tier=AgentTier.PROVIDER_SUBAGENT,
+                configurable=configurable,
+                user_id=user.user_id,
+                subagent_id=PROVIDER_AGENT_NAME,
+                integration_id=PROVIDER_INTEGRATION_ID,
+            ),
         )
 
     if tier is AgentTier.SPAWN:
         return await build_initial_messages(
             system_message=SystemMessage(content=SPAWN_SYSTEM_PROMPT),
-            tier=AgentTier.SPAWN,
             agent_name="spawn_agent",
-            configurable=configurable,
             task=f"Task:\n{query}",
-            user_id=user.user_id,
-            retrieval_query=query,
+            seed=ThreadSeed(
+                tier=AgentTier.SPAWN,
+                configurable=configurable,
+                user_id=user.user_id,
+                retrieval_query=query,
+            ),
         )
 
     return await _seed_workflow(user=user, query=query, configurable=configurable)

@@ -8,6 +8,10 @@ import pytest
 
 from app.agents.llm.lane import ModelLane
 from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentThread,
+    AgentTracing,
+    AgentTurn,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -174,9 +178,11 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None  # no posthog
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
 
         from app.constants.llm import AGENT_RECURSION_LIMIT
@@ -194,9 +200,11 @@ class TestBuildAgentConfig:
 
         home_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=home_user,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=home_user,
+                agent_name="comms_agent",
+            ),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -207,10 +215,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,  # no timezone on the user dict
-            agent_name="executor",
-            base_configurable={"user_timezone": "Asia/Kolkata"},
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={"user_timezone": "Asia/Kolkata"},
+            ),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -219,10 +231,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            thread_id="custom-thread",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            thread=AgentThread(
+                thread_id="custom-thread",
+            ),
         )
         assert config["configurable"]["thread_id"] == "custom-thread"
 
@@ -244,10 +260,14 @@ class TestBuildAgentConfig:
         }
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable=base,
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable=base,
+            ),
         )
         configurable = config["configurable"]
         # The lane is inherited WHOLE — one rule, no per-key table. The pin and the
@@ -287,10 +307,14 @@ class TestBuildAgentConfig:
 
         inherited = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable=base,
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable=base,
+                ),
             )
         )["configurable"]
         assert {key: inherited[key] for key in base} == base
@@ -302,25 +326,31 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "selected_tool": "parent-tool",
-                    "tool_category": "parent-category",
-                    "subagent_id": "parent-subagent",
-                    "vfs_session_id": "parent-vfs",
-                    "active_todo_id": "parent-todo",
-                    "execution_mode": "background",
-                    "conversation_source": "telegram",
-                },
-                selected_tool="child-tool",
-                tool_category="child-category",
-                subagent_id="child-subagent",
-                vfs_session_id="child-vfs",
-                active_todo_id="child-todo",
-                execution_mode="interactive",
-                source="web",
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "selected_tool": "parent-tool",
+                        "tool_category": "parent-category",
+                        "subagent_id": "parent-subagent",
+                        "vfs_session_id": "parent-vfs",
+                        "active_todo_id": "parent-todo",
+                        "execution_mode": "background",
+                        "conversation_source": "telegram",
+                    },
+                    subagent_id="child-subagent",
+                    vfs_session_id="child-vfs",
+                ),
+                turn=AgentTurn(
+                    selected_tool="child-tool",
+                    tool_category="child-category",
+                    active_todo_id="child-todo",
+                    execution_mode="interactive",
+                    source="web",
+                ),
             )
         )["configurable"]
 
@@ -344,14 +374,20 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_messages": ["delete the repo"],
-                },
-                user_messages=["the agent's paraphrase"],
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_messages": ["delete the repo"],
+                    },
+                ),
+                turn=AgentTurn(
+                    user_messages=["the agent's paraphrase"],
+                ),
             )
         )["configurable"]
 
@@ -371,14 +407,20 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_request": "delete the repo",
-                },
-                user_request="the agent's paraphrase",
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_request": "delete the repo",
+                    },
+                ),
+                turn=AgentTurn(
+                    user_request="the agent's paraphrase",
+                ),
             )
         )["configurable"]
 
@@ -392,10 +434,14 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1",
-                user=FAKE_USER,
-                agent_name="comms_agent",
-                user_request="pls archive the junk mail",
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
+                turn=AgentTurn(
+                    user_request="pls archive the junk mail",
+                ),
             )
         )["configurable"]
 
@@ -413,14 +459,18 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1",
-                user=FAKE_USER,
-                agent_name="gmail_agent",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_preferences": {"profession": "engineer"},
-                    "writing_style": {"summary": "terse"},
-                },
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="gmail_agent",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_preferences": {"profession": "engineer"},
+                        "writing_style": {"summary": "terse"},
+                    },
+                ),
             )
         )["configurable"]
 
@@ -438,7 +488,11 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1", user=FAKE_USER, agent_name="executor_agent"
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor_agent",
+                ),
             )
         )["configurable"]
 
@@ -452,7 +506,11 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
             )
         )["configurable"]
 
@@ -469,10 +527,14 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"session_id": "conv-1"},
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"session_id": "conv-1"},
+                ),
             )
         )["configurable"]
 
@@ -489,18 +551,26 @@ class TestBuildAgentConfig:
 
         with_none = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"session_id": None},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"session_id": None},
+                ),
             )
         )["configurable"]
         without_key = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"selected_tool": "web_search"},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"selected_tool": "web_search"},
+                ),
             )
         )["configurable"]
 
@@ -514,15 +584,23 @@ class TestBuildAgentConfig:
 
         with_parent = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"stream_id": "stream-9"},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"stream_id": "stream-9"},
+                ),
             )
         )["configurable"]
         without_parent = (
             await build_agent_config(
-                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
             )
         )["configurable"]
 
@@ -539,19 +617,27 @@ class TestBuildAgentConfig:
 
         child = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "workflow_id": "wf_123",
-                    "workflow_title": "Inbox Triage",
-                    "workflow_notify_on_completion": False,
-                },
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "workflow_id": "wf_123",
+                        "workflow_title": "Inbox Triage",
+                        "workflow_notify_on_completion": False,
+                    },
+                ),
             )
         )["configurable"]
         top_level = (
             await build_agent_config(
-                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
             )
         )["configurable"]
 
@@ -565,9 +651,11 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = MagicMock()  # posthog client present
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
         assert len(config["callbacks"]) >= 1
 
@@ -577,10 +665,14 @@ class TestBuildAgentConfig:
 
         usage_cb = MagicMock()
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            usage_metadata_callback=usage_cb,
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            tracing=AgentTracing(
+                usage_metadata_callback=usage_cb,
+            ),
         )
         assert usage_cb in config["callbacks"]
 
@@ -589,11 +681,15 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            selected_tool="search",
-            tool_category="web",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                selected_tool="search",
+                tool_category="web",
+            ),
         )
         assert config["configurable"]["selected_tool"] == "search"
         assert config["configurable"]["tool_category"] == "web"
@@ -603,10 +699,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            source="whatsapp",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                source="whatsapp",
+            ),
         )
         # raw channel preserved in configurable; generalized category derived
         assert config["configurable"]["conversation_source"] == "whatsapp"
@@ -620,10 +720,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            source="web",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                source="web",
+            ),
         )
         assert config["configurable"]["source_category"] == "ui"
         assert config["metadata"]["source_category"] == "ui"
@@ -634,9 +738,11 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
         # no source -> BG category, channel labelled "background" in metadata
         assert config["configurable"]["conversation_source"] is None
@@ -651,10 +757,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable={"conversation_source": "telegram"},
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={"conversation_source": "telegram"},
+            ),
         )
         assert config["configurable"]["conversation_source"] == "telegram"
         assert config["configurable"]["source_category"] == "bot"

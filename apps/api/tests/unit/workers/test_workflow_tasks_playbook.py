@@ -21,7 +21,12 @@ from app.constants.agents import (
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
 )
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
+from app.models.playbook_models import (
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+    PlaybookStep,
+)
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     TriggerConfig,
@@ -267,11 +272,9 @@ async def test_a_successful_replay_records_success() -> None:
     harness.record_run_outcome.assert_awaited_once_with(
         workflow.id,
         workflow.user_id,
-        PlaybookRunStatus.SUCCESS,
+        PlaybookRunOutcome(PlaybookRunStatus.SUCCESS, reason=None, counts_toward_streak=True),
         playbook_id="pb_1",
         revision=0,
-        reason=None,
-        counts_toward_streak=True,
     )
     assert harness.delivered_text() == "done", "a trusted result is delivered as it is"
     harness.delete_for_workflow.assert_not_awaited()
@@ -299,11 +302,13 @@ async def test_a_stopped_replay_records_failure_and_falls_back_to_the_agent() ->
     harness.record_run_outcome.assert_awaited_once_with(
         workflow.id,
         workflow.user_id,
-        PlaybookRunStatus.FAILED,
+        PlaybookRunOutcome(
+            PlaybookRunStatus.FAILED,
+            reason="Playbook stopped at step 2 (send_email): rejected argument 'body'.",
+            counts_toward_streak=True,
+        ),
         playbook_id="pb_1",
         revision=0,
-        reason="Playbook stopped at step 2 (send_email): rejected argument 'body'.",
-        counts_toward_streak=True,
     )
     harness.chat.assert_awaited_once()
     # A stopped replay leaves the turn to the agent run that takes over.
@@ -465,11 +470,13 @@ class TestSuspectReplay:
         harness.record_run_outcome.assert_awaited_once_with(
             workflow.id,
             workflow.user_id,
-            PlaybookRunStatus.SUSPECT,
+            PlaybookRunOutcome(
+                PlaybookRunStatus.SUSPECT,
+                reason=self.REASON,
+                counts_toward_streak=source == "record",
+            ),
             playbook_id="pb_1",
             revision=0,
-            reason=self.REASON,
-            counts_toward_streak=source == "record",
         )
 
     async def test_the_agent_finishes_the_fire_told_why_and_what_already_ran(self) -> None:
@@ -1406,7 +1413,7 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
         await _fire(harness)
 
         harness.record_run_outcome.assert_awaited_once()
-        assert harness.record_run_outcome.await_args.args[2] is PlaybookRunStatus.SUSPECT
+        assert harness.record_run_outcome.await_args.args[2].status is PlaybookRunStatus.SUSPECT
         assert harness.record_run_outcome.await_args.kwargs["playbook_id"] == written.playbook_id
 
     async def test_an_agent_run_that_wrote_nothing_records_no_outcome(self) -> None:
@@ -1524,9 +1531,9 @@ class TestReviewFixes:
             await _fire(harness)
 
         harness.record_run_outcome.assert_awaited_once()
-        args = harness.record_run_outcome.await_args
-        assert args.args[2] is PlaybookRunStatus.FAILED
-        assert "stopped after" in args.kwargs["reason"]
+        outcome = harness.record_run_outcome.await_args.args[2]
+        assert outcome.status is PlaybookRunStatus.FAILED
+        assert "stopped after" in outcome.reason
 
     def test_the_fallback_note_bounds_each_completed_line(self) -> None:
         result = PlaybookRunResult(
@@ -1553,7 +1560,7 @@ class TestOnlyTheRecordsSuspectCountsTowardDeletion:
 
         await _fire(harness)
 
-        assert harness.record_run_outcome.await_args.kwargs["counts_toward_streak"] is True
+        assert harness.record_run_outcome.await_args.args[2].counts_toward_streak is True
 
     async def test_the_narrations_suspect_sends_the_fire_to_the_agent_but_does_not_count(
         self,
@@ -1567,6 +1574,6 @@ class TestOnlyTheRecordsSuspectCountsTowardDeletion:
 
         await _fire(harness)
 
-        assert harness.record_run_outcome.await_args.kwargs["counts_toward_streak"] is False
+        assert harness.record_run_outcome.await_args.args[2].counts_toward_streak is False
         harness.chat.assert_awaited_once()
         harness.delete_for_workflow.assert_not_awaited()

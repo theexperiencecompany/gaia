@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
 
-from app.agents.llm.client import ainvoke_llm
+from app.agents.llm.client import LLMCallOptions, ainvoke_llm
 
 
 def _usage_message(content: str, *, prompt: int, cached: int) -> AIMessage:
@@ -72,7 +72,7 @@ class TestStickyFlipReplayAccounting:
                 }
             },
             label="comms_agent",
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         # The first answer is what streamed to the user, so it is what the turn
@@ -99,7 +99,9 @@ class TestStickyFlipReplayAccounting:
             return_value=_usage_message("warm", prompt=10_000, cached=9_900)
         )
 
-        await ainvoke_llm(runnable, [HumanMessage(content="hi")], meter_auxiliary=False)
+        await ainvoke_llm(
+            runnable, [HumanMessage(content="hi")], options=LLMCallOptions(meter_auxiliary=False)
+        )
 
         assert runnable.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
@@ -110,7 +112,9 @@ class TestStickyFlipReplayAccounting:
         state, so a replay is pure double billing."""
         primary = self._flipping_primary()
 
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=True)
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMCallOptions(meter_auxiliary=True)
+        )
 
         assert primary.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
@@ -125,7 +129,7 @@ class TestStickyFlipReplayAccounting:
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "gemini"}},
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert primary.ainvoke.await_count == 1
@@ -144,7 +148,7 @@ class TestStickyFlipReplayAccounting:
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         first_cfg = primary.ainvoke.await_args_list[0].kwargs["config"]
@@ -169,7 +173,7 @@ class TestStickyFlipReplayAccounting:
             runnable,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            meter_auxiliary=False,
+            options=LLMCallOptions(meter_auxiliary=False),
         )
 
         assert result.content == "cold"

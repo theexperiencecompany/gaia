@@ -4,6 +4,7 @@ Contains all workflow-related background tasks and execution logic.
 """
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
@@ -59,7 +60,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.payment_models import PlanType
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus
+from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 from app.models.todo_models import TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
@@ -480,8 +481,7 @@ async def _record_execution_failure(
     workflow_id: str,
     execution_id: str | None,
     *,
-    conversation_id: str | None = None,
-    trace: list[RecordedCall] | None = None,
+    after_replay: PlaybookFallbackFailed | None = None,
 ) -> None:
     """Close out a failed run: mark the execution record, bump the failure count
     and notify the user. Every step is best-effort — none of this bookkeeping
@@ -495,8 +495,8 @@ async def _record_execution_failure(
                 execution_id=execution_id,
                 status="failed",
                 error_message=str(error),
-                conversation_id=conversation_id,
-                trace=trace,
+                conversation_id=after_replay.conversation_id if after_replay else None,
+                trace=after_replay.trace if after_replay else None,
             )
         except Exception as e2:
             log.debug(f"{LogTag.WORKER} Failed to complete execution record: %s" % e2)
@@ -603,6 +603,16 @@ async def _discard_playbook(
         reason=reason,
         **details,
     )
+
+
+@dataclass(frozen=True)
+class _Fire:
+    """One fire of one workflow, as the run paths see it."""
+
+    workflow: Workflow
+    workflow_id: str
+    context: dict[str, Any]
+    user: AuthenticatedUser
 
 
 async def _run_workflow(
@@ -717,7 +727,10 @@ async def _run_workflow(
     # the next fire reads an empty record and repeats every side effect.
     try:
         return await _finish_after_replay(
-            workflow, workflow_id, context, user, playbook, conversation_id, result
+            _Fire(workflow=workflow, workflow_id=workflow_id, context=context, user=user),
+            playbook,
+            conversation_id,
+            result,
         )
     except WorkflowFireQueued as queued:
         queued.trace = [*result.trace, *queued.trace]
@@ -763,10 +776,7 @@ async def _notify_replay_finished(
 
 
 async def _finish_after_replay(
-    workflow: Workflow,
-    workflow_id: str,
-    context: dict[str, Any],
-    user: AuthenticatedUser,
+    fire: _Fire,
     playbook: PlaybookDocument,
     conversation_id: str,
     result: PlaybookRunResult,
@@ -781,6 +791,7 @@ async def _finish_after_replay(
     ``PLAYBOOK_SUSPECT_STREAK_LIMIT`` it is dropped before the agent runs, so
     that run is asked to author afresh rather than to heal.
     """
+    workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
     if not result.ok:
         status = PlaybookRunStatus.FAILED
         reason = result.failure
@@ -793,14 +804,16 @@ async def _finish_after_replay(
     updated = await playbook_repository.record_run_outcome(
         workflow_id,
         workflow.user_id,
-        status,
+        PlaybookRunOutcome(
+            status,
+            reason=reason,
+            # The narration's verdict is an opinion: it hands the fire to the
+            # agent but does not move the playbook toward deletion. Only the
+            # record's check does.
+            counts_toward_streak=result.suspect_source != "narration",
+        ),
         playbook_id=playbook.playbook_id,
         revision=playbook.revision,
-        reason=reason,
-        # The narration's verdict is an opinion: it hands the fire to the agent
-        # but does not move the playbook toward deletion. Only the record's
-        # check does.
-        counts_toward_streak=result.suspect_source != "narration",
     )
     if updated is None:
         # Rewritten or removed while this replay ran: the verdict describes a
@@ -967,6 +980,43 @@ async def _claim_scheduled_fire(
     return claimed
 
 
+async def _admit_fire(
+    workflow: Workflow,
+    workflow_id: str,
+    trigger_type: str,
+    context: dict[str, Any] | None,
+    actual_fire_utc: datetime,
+) -> str | None:
+    """The gates a fire passes before any work: why it was skipped, or None."""
+    # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
+    # executing) so a concurrent recovery scan can't double-execute a workflow
+    # whose previous fire is still running. Manual/integration "run now" fires
+    # don't go through the scan and must not be status-gated.
+    if trigger_type == TriggerType.SCHEDULE.value and not await _claim_scheduled_fire(
+        workflow_scheduler, workflow_id, context
+    ):
+        return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+
+    _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
+
+    # System-initiated runs (schedule and trigger fires) don't run for a
+    # user who never finished the onboarding wizard: their auto-created
+    # workflows would drain the daily budget for someone who hasn't
+    # started using GAIA, then aim "you hit your limit" messaging at them.
+    # Re-arm quietly so a recurring workflow resumes if they finish later.
+    if trigger_type != TriggerType.MANUAL.value and not await _completed_onboarding(
+        workflow.user_id
+    ):
+        log.info(
+            f"{LogTag.WORKER} Workflow skipped — user has not completed onboarding",
+            workflow_id=workflow_id,
+            user_id=workflow.user_id,
+        )
+        await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+        return f"Workflow {workflow_id} skipped — user has not completed onboarding"
+    return None
+
+
 async def _drain_trigger_events(
     batch_key: str | None, context: dict[str, Any] | None, workflow_id: str
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -1069,12 +1119,7 @@ async def _record_run_failure(
         await _record_execution_failure(e, workflow, workflow_id, execution_id)
     else:
         await _record_execution_failure(
-            e,
-            workflow,
-            workflow_id,
-            execution_id,
-            conversation_id=after_replay.conversation_id,
-            trace=after_replay.trace,
+            e, workflow, workflow_id, execution_id, after_replay=after_replay
         )
 
     # Still arm the next occurrence — a transient failure (rate limit, LLM
@@ -1215,6 +1260,18 @@ async def _record_overlapped_fire(
     return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
 
 
+async def _record_fire_that_never_ran(
+    never_ran: WorkflowFireQueued | WorkflowFireOverlapped,
+    workflow: Workflow | None,
+    workflow_id: str,
+    execution_id: str | None,
+    context: dict[str, Any] | None,
+) -> str:
+    if isinstance(never_ran, WorkflowFireQueued):
+        return await _record_queued_fire(never_ran, workflow, workflow_id, execution_id, context)
+    return await _record_overlapped_fire(never_ran, workflow, workflow_id, execution_id, context)
+
+
 async def _record_timed_out_fire(
     workflow: Workflow | None,
     workflow_id: str,
@@ -1240,7 +1297,9 @@ async def _record_timed_out_fire(
         # before the cut. Recorded as a failed run so the next fire heals
         # with that on record instead of replaying them again.
         await playbook_repository.record_run_outcome(
-            workflow_id, workflow.user_id, PlaybookRunStatus.FAILED, reason=str(timed_out)
+            workflow_id,
+            workflow.user_id,
+            PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason=str(timed_out)),
         )
     await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
 
@@ -1293,32 +1352,9 @@ async def execute_workflow_by_id(
             )
         )
 
-        # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
-        # executing) so a concurrent recovery scan can't double-execute a workflow
-        # whose previous fire is still running. Manual/integration "run now" fires
-        # don't go through the scan and must not be status-gated.
-        if trigger_type == TriggerType.SCHEDULE.value and not await _claim_scheduled_fire(
-            scheduler, workflow_id, context
-        ):
-            return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
-
-        _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
-
-        # System-initiated runs (schedule and trigger fires) don't run for a
-        # user who never finished the onboarding wizard: their auto-created
-        # workflows would drain the daily budget for someone who hasn't
-        # started using GAIA, then aim "you hit your limit" messaging at them.
-        # Re-arm quietly so a recurring workflow resumes if they finish later.
-        if trigger_type != TriggerType.MANUAL.value and not await _completed_onboarding(
-            workflow.user_id
-        ):
-            log.info(
-                f"{LogTag.WORKER} Workflow skipped — user has not completed onboarding",
-                workflow_id=workflow_id,
-                user_id=workflow.user_id,
-            )
-            await _rearm_quietly(scheduler, workflow, context, workflow_id)
-            return f"Workflow {workflow_id} skipped — user has not completed onboarding"
+        skipped = await _admit_fire(workflow, workflow_id, trigger_type, context, actual_fire_utc)
+        if skipped:
+            return skipped
 
         # Cost wall BEFORE any execution record or LLM work: when the user's
         # daily budget is spent the run is skipped cleanly (no confusing
@@ -1348,11 +1384,9 @@ async def execute_workflow_by_id(
             workflow, workflow_id, trigger_type, context, execution_id
         )
 
-    except WorkflowFireQueued as queued:
-        return await _record_queued_fire(queued, workflow, workflow_id, execution_id, context)
-    except WorkflowFireOverlapped as overlapped:
-        return await _record_overlapped_fire(
-            overlapped, workflow, workflow_id, execution_id, context
+    except (WorkflowFireQueued, WorkflowFireOverlapped) as never_ran:
+        return await _record_fire_that_never_ran(
+            never_ran, workflow, workflow_id, execution_id, context
         )
     except asyncio.CancelledError:
         await _record_timed_out_fire(workflow, workflow_id, execution_id, context)
@@ -1505,7 +1539,10 @@ async def execute_workflow_as_chat(
     """
 
     # Avoid circular import
-    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415 -- agent cycle
+    from app.agents.core.agent import (  # noqa: PLC0415 -- agent cycle
+        AgentRunOptions,
+        call_agent_silent,
+    )
 
     user_id = user["user_id"]
 
@@ -1565,13 +1602,15 @@ async def execute_workflow_as_chat(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context={
-                **(context or {}),
-                "workflow_id": workflow.id,
-                "workflow_title": workflow.title,
-                "workflow_notify_on_completion": workflow.notify_on_completion,
-                "execution_mode": "background",
-            },
+            options=AgentRunOptions(
+                trigger_context={
+                    **(context or {}),
+                    "workflow_id": workflow.id,
+                    "workflow_title": workflow.title,
+                    "workflow_notify_on_completion": workflow.notify_on_completion,
+                    "execution_mode": "background",
+                }
+            ),
         )
 
         # `call_agent_silent` returns the accumulated bag; its "tool_data" list is

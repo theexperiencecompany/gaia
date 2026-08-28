@@ -7,21 +7,10 @@
 #
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
-apps/api/app/agents/core/agent.py	PLR0913
-apps/api/app/agents/core/background/result_delivery.py	PLR0912
-apps/api/app/agents/core/background/result_delivery.py	PLR0913
-apps/api/app/agents/core/background/result_delivery.py	PLR0915
-apps/api/app/agents/core/background/session.py	PLR0913
-apps/api/app/agents/core/background/subagent_runner.py	PLR0913
 apps/api/app/agents/core/background/workflow_platform_delivery.py	PLR0913
 apps/api/app/agents/core/messages.py	PLR0913
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913
-apps/api/app/agents/core/subagents/handoff_tools.py	PLR0911
-apps/api/app/agents/core/subagents/handoff_tools.py	PLR0912
-apps/api/app/agents/core/subagents/subagent_runner.py	PLR0912
-apps/api/app/agents/core/subagents/subagent_runner.py	PLR0913
-apps/api/app/agents/llm/client.py	PLR0913
 apps/api/app/agents/middleware/compaction.py	PLR0913
 apps/api/app/agents/middleware/factory.py	PLR0913
 apps/api/app/agents/middleware/runtime_adapter.py	PLR0913
@@ -34,7 +23,6 @@ apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913
 apps/api/app/agents/tools/coding/read_tool.py	PLR0911
 apps/api/app/agents/tools/core/mutations.py	PLR0913
-apps/api/app/agents/tools/core/registry.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0915
@@ -84,10 +72,6 @@ apps/api/app/db/repositories/todos.py	PLR0912
 apps/api/app/db/repositories/usage_daily.py	PLR0913
 apps/api/app/db/repositories/users.py	PLR0913
 apps/api/app/db/repositories/workflows.py	PLR0913
-apps/api/app/helpers/agent_helpers.py	PLR0912
-apps/api/app/helpers/agent_helpers.py	PLR0913
-apps/api/app/helpers/agent_helpers.py	PLR0915
-apps/api/app/helpers/message_helpers.py	PLR0912
 apps/api/app/memory/extraction.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0915
@@ -136,7 +120,6 @@ apps/api/app/services/workflow/generation_service.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0915
 apps/api/app/services/workflow/service.py	PLR0912
 apps/api/app/services/workflow/service.py	PLR0915
-apps/api/app/utils/agent_utils.py	PLR0912
 apps/api/app/utils/auth_utils.py	PLR0911
 apps/api/app/utils/auth_utils.py	PLR0912
 apps/api/app/utils/chat_utils.py	PLR0913
@@ -155,7 +138,6 @@ apps/api/app/utils/notion_md.py	PLR0915
 apps/api/app/utils/timezone.py	PLR0911
 apps/api/app/utils/todo_vector_utils.py	PLR0913
 apps/api/app/utils/voice_utils.py	PLR0913
-apps/api/app/utils/workflow_utils.py	PLR0912
 apps/api/scripts/dump_config_schema.py	PLR0912
 apps/api/scripts/evals/__main__.py	PLR0912
 apps/api/scripts/evals/__main__.py	PLR0915

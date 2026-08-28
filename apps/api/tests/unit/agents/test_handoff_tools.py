@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
 from app.agents.core.subagents.handoff_tools import (
+    CustomMcpIndexRequest,
     _get_subagent_by_id,
     _resolve_subagent,
     check_integration_connection,
@@ -356,10 +357,12 @@ class TestIndexCustomMcpAsSubagent:
         ):
             await index_custom_mcp_as_subagent(
                 store=mock_store,
-                integration_id="abc123",
-                name="My Tool",
-                description="Does stuff",
-                server_url="https://example.com/mcp",
+                request=CustomMcpIndexRequest(
+                    integration_id="abc123",
+                    name="My Tool",
+                    description="Does stuff",
+                    server_url="https://example.com/mcp",
+                ),
             )
         mock_store.abatch.assert_awaited_once()
         put_op = mock_store.abatch.call_args[0][0][0]

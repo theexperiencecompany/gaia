@@ -25,6 +25,7 @@ from app.agents.core.background.executor_queue import (
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
     mark_executor_queued,
     mark_executor_spawned,
@@ -286,12 +287,14 @@ async def _dispatch_executor(
 
     run = ExecutorRun.from_configurable(
         configurable,
-        stream_id=stream_id or "",
-        conversation_id=conversation_id,
-        kind=RunKind.LIVE,
-        task_id=task_id,
-        user_message_id=user_message_id,
-        bot_message_id=bot_message_id,
+        identity=RunIdentity(
+            stream_id=stream_id or "",
+            conversation_id=conversation_id,
+            kind=RunKind.LIVE,
+            task_id=task_id,
+            user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
+        ),
     )
     spawn_background_task(
         run_executor_background(

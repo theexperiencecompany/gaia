@@ -336,6 +336,44 @@ async def get_onboarding_system_prompt_if_applicable(
         return None
 
 
+def _uploaded_file_lines(
+    file: FileData, conversation_id: str | None, include_processing_guide: bool
+) -> tuple[list[str], bool] | None:
+    """One file's lines and whether it is on disk; ``None`` for an unsafe filename."""
+    try:
+        on_disk = safe_upload_filename(file.filename)
+    except ValueError:
+        return None
+    if conversation_id:
+        path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
+    else:
+        path = f"./user-uploaded/{on_disk}"
+    # Only advertise the path when the file really reached the workspace.
+    # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+    # any deployment where it failed — this path does not exist, and naming
+    # it anyway sends the executor into read/bash attempts that can only
+    # fail. `search_uploaded_files` needs no mount and is the honest route.
+    on_disk_available = file.sandbox_path is not None
+    lines: list[str] = []
+    # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+    # without it an agent scoping to a single file can only guess the
+    # filename, which matches nothing.
+    if on_disk_available:
+        lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+    else:
+        lines.append(
+            f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+        )
+    if file.description:
+        summary = file.description.strip()
+        if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+            summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+        lines.append(f"    summary: {summary}")
+        if conversation_id and include_processing_guide and on_disk_available:
+            lines.append(f"    full summary: `{path}.summary.md`")
+    return lines, on_disk_available
+
+
 def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
@@ -367,37 +405,12 @@ def format_files_list(
     lines: list[str] = []
     any_on_disk = False
     for file in files:
-        try:
-            on_disk = safe_upload_filename(file.filename)
-        except ValueError:
+        entry = _uploaded_file_lines(file, conversation_id, include_processing_guide)
+        if entry is None:
             continue
-        if conversation_id:
-            path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
-        else:
-            path = f"./user-uploaded/{on_disk}"
-        # Only advertise the path when the file really reached the workspace.
-        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
-        # any deployment where it failed — this path does not exist, and naming
-        # it anyway sends the executor into read/bash attempts that can only
-        # fail. `search_uploaded_files` needs no mount and is the honest route.
-        on_disk_available = file.sandbox_path is not None
+        file_lines, on_disk_available = entry
         any_on_disk = any_on_disk or on_disk_available
-        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
-        # without it an agent scoping to a single file can only guess the
-        # filename, which matches nothing.
-        if on_disk_available:
-            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
-        else:
-            lines.append(
-                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
-            )
-        if file.description:
-            summary = file.description.strip()
-            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
-                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
-            lines.append(f"    summary: {summary}")
-            if conversation_id and include_processing_guide and on_disk_available:
-                lines.append(f"    full summary: `{path}.summary.md`")
+        lines.extend(file_lines)
 
     if not lines:
         return ""

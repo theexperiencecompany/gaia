@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 from langchain_core.tools import BaseTool
 import pytest
 
-from app.agents.tools.core.registry import ToolRegistry
+from app.agents.tools.core.registry import CategoryOptions, ToolRegistry
 from app.constants.general import FINISH_TASK_NAME
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
@@ -44,7 +44,9 @@ def _tool(name: str) -> BaseTool:
 
 def _registry() -> ToolRegistry:
     registry = ToolRegistry()
-    registry._add_category(SUBAGENT_ID, tools=[_tool(REGISTRY_TOOL)], space=TOOL_SPACE)
+    registry._add_category(
+        SUBAGENT_ID, tools=[_tool(REGISTRY_TOOL)], options=CategoryOptions(space=TOOL_SPACE)
+    )
     return registry
 
 
@@ -126,7 +128,11 @@ class TestSubagentResolution:
             exclude_tools: list[str] | None = None,
         ) -> None:
             assert (toolkit_name, space_name) == (SUBAGENT_ID, TOOL_SPACE)
-            registry._add_category(SUBAGENT_ID, tools=[_tool(REGISTRY_TOOL)], space=TOOL_SPACE)
+            registry._add_category(
+                SUBAGENT_ID,
+                tools=[_tool(REGISTRY_TOOL)],
+                options=CategoryOptions(space=TOOL_SPACE),
+            )
 
         with (
             patch(f"{MODULE}.get_subagent_by_id", _lookup(subagent)),

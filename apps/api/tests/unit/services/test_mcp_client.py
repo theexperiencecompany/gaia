@@ -3166,7 +3166,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
-            assert call_kwargs["name"] == "Resolved Name"
+            assert call_kwargs["request"].name == "Resolved Name"
 
 
 # ===========================================================================

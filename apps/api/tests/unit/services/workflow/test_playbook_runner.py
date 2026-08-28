@@ -14,6 +14,7 @@ there are. The scripted model's turns are not model calls and never reach a prov
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from typing import Annotated, Any, ClassVar
@@ -213,16 +214,23 @@ def _gate_policy(policy: str) -> Iterator[AsyncMock]:
         yield resolve
 
 
+@dataclass(frozen=True)
+class _Seams:
+    """The mocked seams a test may hold on to; see ``_run``."""
+
+    subagent: _FakeSubagent | None = None
+    runnable: MagicMock | None = None
+    find_previous: AsyncMock | None = None
+    llm: AsyncMock | None = None
+
+
 async def _run(
     playbook: PlaybookDocument,
     registry: _FakeRegistry,
     narration: PlaybookNarration | None = None,
     ask_fill: PlaybookAskFill | None = None,
     policy: str = "allow",
-    subagent: _FakeSubagent | None = None,
-    runnable: MagicMock | None = None,
-    find_previous: AsyncMock | None = None,
-    llm: AsyncMock | None = None,
+    seams: _Seams | None = None,
 ) -> tuple[PlaybookRunResult, AsyncMock]:
     """Run the playbook with mocked seams; hands back the result and the LLM mock.
 
@@ -233,6 +241,13 @@ async def _run(
     about: how a model call is built, what the previous execution's trace was
     looked up with, and what the model calls do.
     """
+    seams = seams or _Seams()
+    subagent, runnable, find_previous, llm = (
+        seams.subagent,
+        seams.runnable,
+        seams.find_previous,
+        seams.llm,
+    )
     if llm is None:
         llm = (
             AsyncMock(side_effect=[ask_fill, narration or _narration()])
@@ -523,7 +538,9 @@ async def test_a_handoff_child_runs_in_the_subagents_scoped_tool_space() -> None
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
 
-    result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, subagent=_FakeSubagent())
+    result, _ = await _run(
+        _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
+    )
 
     assert result.ok is True, result.failure
     assert [name for name, _ in recorder.calls] == ["list_events"]
@@ -544,7 +561,7 @@ async def test_a_handoff_child_calling_a_tool_outside_that_scope_fails_the_step(
         ]
     )
 
-    result, _ = await _run(playbook, registry, subagent=_FakeSubagent())
+    result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
 
     assert result.ok is False
     assert recorder.calls == []
@@ -556,7 +573,7 @@ async def test_an_unknown_handoff_target_stops_the_run() -> None:
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
-    result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, subagent=None)
+    result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=None))
 
     assert result.ok is False
     assert "calendar_agent" in (result.failure or "")
@@ -594,7 +611,7 @@ async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() ->
         return client
 
     with patch(f"{TOOL_SPACE_MODULE}.get_mcp_client", mcp_client):
-        result, _ = await _run(playbook, registry, subagent=_FakeMcpSubagent())
+        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeMcpSubagent()))
 
     assert result.ok is True, result.failure
     assert [name for name, _ in recorder.calls] == ["send_email"]
@@ -652,7 +669,9 @@ async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record()
     registry = _FakeRegistry(_tools(recorder))
 
     result, _ = await _run(
-        _playbook(AGENDA_STEPS), registry, llm=AsyncMock(side_effect=TimeoutError("model"))
+        _playbook(AGENDA_STEPS),
+        registry,
+        seams=_Seams(llm=AsyncMock(side_effect=TimeoutError("model"))),
     )
 
     assert result.ok is False
@@ -679,7 +698,9 @@ async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_
         ask={"body": PlaybookAsk(prompt="Write the body", uses=["events"])},
     )
 
-    result, _ = await _run(playbook, registry, llm=AsyncMock(side_effect=TimeoutError("model")))
+    result, _ = await _run(
+        playbook, registry, seams=_Seams(llm=AsyncMock(side_effect=TimeoutError("model")))
+    )
 
     assert result.ok is False
     assert [name for name, _ in recorder.calls] == ["list_events"]
@@ -778,7 +799,10 @@ class TestNarrationCall:
         )
 
         result, llm = await _run(
-            playbook, registry, ask_fill=_ask_fill(body="Twelve today."), runnable=runnable
+            playbook,
+            registry,
+            ask_fill=_ask_fill(body="Twelve today."),
+            seams=_Seams(runnable=runnable),
         )
 
         assert result.ok is True, result.failure
@@ -797,7 +821,7 @@ class TestNarrationCall:
         registry = _FakeRegistry(_tools(recorder))
         runnable = MagicMock()
 
-        result, llm = await _run(_playbook(AGENDA_STEPS), registry, runnable=runnable)
+        result, llm = await _run(_playbook(AGENDA_STEPS), registry, seams=_Seams(runnable=runnable))
 
         assert result.ok is True, result.failure
         assert runnable.call_args.args == (PlaybookNarration,)
@@ -945,7 +969,9 @@ class TestRunContext:
             ]
         )
 
-        result, _ = await _run(playbook, registry, find_previous=AsyncMock(side_effect=find_latest))
+        result, _ = await _run(
+            playbook, registry, seams=_Seams(find_previous=AsyncMock(side_effect=find_latest))
+        )
 
         assert result.ok is True, result.failure
         assert recorder.calls[0][1]["body"] == "Last time 7"
@@ -1154,7 +1180,7 @@ class TestNarrationSections:
             playbook,
             registry,
             ask_fill=_ask_fill(body="Twelve today."),
-            subagent=_FakeSubagent(),
+            seams=_Seams(subagent=_FakeSubagent()),
         )
 
         assert result.ok is True, result.failure
@@ -1261,7 +1287,9 @@ class TestCallOrder:
             return answers[len(tools_run_before_each_call) - 1]
 
         result, llm = await _run(
-            _playbook(self.ASK_STEPS, ask=self.ASK), registry, llm=AsyncMock(side_effect=model)
+            _playbook(self.ASK_STEPS, ask=self.ASK),
+            registry,
+            seams=_Seams(llm=AsyncMock(side_effect=model)),
         )
 
         assert result.ok is True, result.failure
@@ -1350,7 +1378,7 @@ class TestFailureReport:
             ]
         )
 
-        result, _ = await _run(playbook, registry, subagent=_FakeSubagent())
+        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
 
         assert result.ok is False
         assert result.failure == (
@@ -1376,7 +1404,7 @@ class TestFailureReport:
             ]
         )
 
-        result, _ = await _run(playbook, registry, subagent=_FakeSubagent())
+        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
 
         assert result.ok is False
         assert result.failure == (
@@ -1415,7 +1443,7 @@ class TestFailureReport:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
-        result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, subagent=None)
+        result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=None))
 
         assert result.ok is False
         assert result.failure == (
@@ -1474,7 +1502,9 @@ class TestTrace:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
 
-        result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, subagent=_FakeSubagent())
+        result, _ = await _run(
+            _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
+        )
 
         assert result.ok is True, result.failure
         assert result.trace[0].tool_name == "handoff"
@@ -1492,7 +1522,9 @@ class TestTrace:
             _tools(recorder, failing="list_events"), spaces={"calendar": ["list_events"]}
         )
 
-        result, _ = await _run(_playbook(HANDOFF_PLAYBOOK), registry, subagent=_FakeSubagent())
+        result, _ = await _run(
+            _playbook(HANDOFF_PLAYBOOK), registry, seams=_Seams(subagent=_FakeSubagent())
+        )
 
         assert result.ok is False
         assert result.trace[1].tool_name == "list_events"
@@ -1550,7 +1582,7 @@ class TestCallIdentity:
             ]
         )
 
-        result, _ = await _run(playbook, registry, subagent=_FakeSubagent())
+        result, _ = await _run(playbook, registry, seams=_Seams(subagent=_FakeSubagent()))
 
         assert result.ok is True, result.failure
         assert recorder.calls[0][1]["subagent"] is None
@@ -1694,7 +1726,10 @@ async def test_a_handoff_child_can_address_an_ask() -> None:
     )
 
     result, llm = await _run(
-        playbook, registry, ask_fill=_ask_fill(which="primary"), subagent=_FakeSubagent()
+        playbook,
+        registry,
+        ask_fill=_ask_fill(which="primary"),
+        seams=_Seams(subagent=_FakeSubagent()),
     )
 
     assert result.ok is True, result.failure
@@ -1826,7 +1861,9 @@ class TestSuspectVerdict:
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
         result, llm = await _run(
-            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
         assert result.ok is True, result.failure
@@ -1845,7 +1882,9 @@ class TestSuspectVerdict:
             RecordedCall(tool_name="list_events", result_digest='{"items": [1, 2, 3]}')
         )
 
-        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+        )
 
         assert result.suspect is None
         assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
@@ -1866,7 +1905,9 @@ class TestSuspectVerdict:
             )
         )
 
-        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+        )
 
         assert result.ok is True, result.failure
         assert result.suspect == "list_events returned no items where the previous run returned 2"
@@ -1887,7 +1928,9 @@ class TestSuspectVerdict:
             RecordedCall(replayed=True, tool_name="list_events", result_digest='{"items": []}')
         )
 
-        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+        )
 
         assert result.suspect is None
 
@@ -1899,7 +1942,9 @@ class TestSuspectVerdict:
             self.PREVIOUS_HAD_THREE,
         )
 
-        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+        )
 
         assert result.suspect == "list_events returned no items where the previous run returned 3"
 
@@ -1914,7 +1959,9 @@ class TestSuspectVerdict:
             self.PREVIOUS_HAD_THREE,
         )
 
-        result, _ = await _run(_playbook(AGENDA_STEPS), registry, find_previous=previous)
+        result, _ = await _run(
+            _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
+        )
 
         assert result.suspect == "list_events returned no items where the previous run returned 3"
 
@@ -1955,7 +2002,7 @@ class TestSuspectVerdict:
             _playbook(AGENDA_STEPS),
             registry,
             narration=narration,
-            find_previous=_previous_run(self.PREVIOUS_HAD_THREE),
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
         assert result.suspect == "list_events returned no items where the previous run returned 3"
@@ -1967,7 +2014,9 @@ class TestSuspectVerdict:
         registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
         assert result.suspect is not None
@@ -1996,7 +2045,7 @@ class TestSuspectVerdict:
             _playbook(AGENDA_STEPS),
             registry,
             narration=narration,
-            find_previous=_previous_run(self.PREVIOUS_HAD_THREE),
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
         assert result.suspect_source == "record"
@@ -2019,7 +2068,9 @@ class TestSuspectVerdict:
         registry = _FakeRegistry(_tools(recorder, failing="list_events"))
 
         result, _ = await _run(
-            _playbook(AGENDA_STEPS), registry, find_previous=_previous_run(self.PREVIOUS_HAD_THREE)
+            _playbook(AGENDA_STEPS),
+            registry,
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
         assert result.ok is False
