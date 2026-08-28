@@ -6,10 +6,15 @@ set -uo pipefail
 IDX="${RUNNER_INDEX:-0}"
 LEFT="$(docker ps -aq --filter "name=gaia-test-.*-${IDX}$" 2>/dev/null || true)"
 # shellcheck disable=SC2086
-[ -n "$LEFT" ] && docker rm -f $LEFT >/dev/null 2>&1
+[ -n "$LEFT" ] && timeout 60 docker rm -f $LEFT >/dev/null 2>&1
 if [ -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" ]; then
   kill "$(cat "/tmp/gaia-embedding-sidecar-${IDX}.pid")" 2>/dev/null; rm -f "/tmp/gaia-embedding-sidecar-${IDX}.pid"
 fi
 S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
-[ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && bash "$S" reset "$IDX" >/dev/null 2>&1
+# Hard bound: a hook that blocks (docker daemon busy with a build, a wedged
+# service) keeps the job in "Complete runner" — measured 25+ min holding the
+# runner slot AND the workflow's concurrency group, which left the next run
+# pending with zero jobs. Better to leave a namespace dirty (the next
+# job-started hook resets it) than to wedge the pool.
+[ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1
 exit 0
