@@ -4,9 +4,8 @@ name: Quality Checks
 # regression-proof, gated by `quality-gate` (the required check on master).
 # Compute lanes run on gaia-home-server (16c/46G) when it is online and has a
 # free slot, and fall back to GitHub-hosted runners otherwise — see
-# scripts/ci/select-runner.sh. Release images stay on Blacksmith (build.yml).
-# `workflow_dispatch` additionally exposes the runner probe and the
-# GitHub-vs-home benchmark matrix.
+# scripts/ci/select-runner.sh. Release images stay on GitHub-hosted runners
+# (build.yml). `workflow_dispatch` additionally exposes the runner probe.
 
 on:
   pull_request:
@@ -19,14 +18,6 @@ on:
         description: Fail if home runner unavailable (smoke test)
         type: boolean
         default: false
-      run_benchmark:
-        description: Run full profiling matrix (vs just the CI lanes)
-        type: boolean
-        default: false
-      cpus:
-        description: CSV of CPU counts to profile on home (e.g. 2,4,8,16)
-        required: false
-        default: "2,4,8,16"
 
 # Per-SHA group: a new push must not wait for the old run's cancellation to
 # finish (a cancelled pytest step wedges the self-hosted worker for the
@@ -53,7 +44,6 @@ jobs:
       actions: write # cancel superseded runs
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
-      runner_docker: ${{ steps.pick-docker.outputs.runner }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
@@ -67,28 +57,17 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/ci/cancel-superseded-runs.sh
 
-      - name: Select standard runner (tests, lint, build)
+      - name: Select runner (tests, lint, build)
         id: pick
         uses: ./.github/actions/select-runner
         with:
           runner-label: gaia-home
-          flavour: standard
-          force-home: ${{ inputs.force_home && 'true' || 'false' }}
-          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
-
-      - name: Select docker runner (image builds)
-        id: pick-docker
-        uses: ./.github/actions/select-runner
-        with:
-          runner-label: gaia-home
-          flavour: docker
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
       - name: Summary
         run: |
-          echo "Standard: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
-          echo "Docker:   ${{ steps.pick-docker.outputs.runner }}"
+          echo "Selected: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
 
   # ── Detect — on the critical path of every lane. Measured 119s on a GitHub
   # runner (cold pnpm install + nx graph); on the box with persistent
@@ -384,20 +363,20 @@ jobs:
           pattern: coverage-*
           path: apps/api
           merge-multiple: true
-      # On a PR the lanes may have run a test-impact selection, so the combined
-      # data covers only the impacted slice of app/ — 80% is unreachable by
-      # construction and would fail every PR. The gate stays enforced on master,
-      # which always runs the full suite.
-      - name: Combine and gate (80% on master, report-only on PRs)
+      # PRs never reach this job (see the `if` above): they do not trace
+      # coverage, and a test-impact selection would leave the combined data
+      # covering only the impacted slice of app/, where 80% is unreachable by
+      # construction. The gate is enforced on master, which runs the full suite.
+      - name: Combine and gate (80%)
         working-directory: apps/api
         env:
-          FAIL_UNDER: ${{ github.event_name == 'pull_request' && '0' || '80' }}
+          FAIL_UNDER: "80"
         run: |
           set -euo pipefail
           ls -la .coverage.*
           uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
-          echo "coverage gate: fail-under=$FAIL_UNDER (report-only on PRs — test impact selection runs a subset)" >> "$GITHUB_STEP_SUMMARY"
+          echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
       - uses: actions/upload-artifact@v4
         with:
@@ -450,8 +429,8 @@ jobs:
   # by infra/self-hosted-runner/setup.sh: the apt/uv cache mounts live inside
   # that builder, so a warm build is ~40s against ~14-29 minutes cold over the
   # residential uplink. On GitHub-hosted fallback a throwaway builder is used
-  # and the build is simply slower. The image is not pushed — build.yml on
-  # Blacksmith owns releases; this lane is validation plus a timing signal.
+  # and the build is simply slower. The image is not pushed — build.yml owns
+  # releases; this lane is validation plus a timing signal.
   docker-image:
     needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
@@ -515,79 +494,6 @@ jobs:
       - name: Stop the persistent builder (self-hosted)
         if: always() && runner.environment == 'self-hosted'
         run: docker buildx stop gaia-ci 2>/dev/null || true
-
-  # ── Benchmark matrix — pins each workload to exact cpus for fair speedup curve
-  benchmark:
-    name: Benchmark (${{ matrix.workload }} @ ${{ matrix.cpus }}c)
-    if: inputs.run_benchmark == true
-    needs: [select-runner]
-    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        workload: [ruff, mypy, build, pytest-hermetic]
-        cpus: [2, 4, 8, 16]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
-          persist-credentials: false
-      - uses: ./.github/actions/setup-node-pnpm
-      # Matches the cache-aware path the real lanes use. cache-local-path is
-      # the load-bearing input: setup-uv sets UV_CACHE_DIR itself, to a
-      # per-job temp directory that is empty every time, and that overrides
-      # anything exported beforehand. With the env-var approach every
-      # benchmark cell re-downloaded the full dependency set from PyPI over
-      # the home box's residential uplink — 6+ minutes at 3% CPU per cell —
-      # and the curve would have measured the network, not the CPU scaling
-      # it exists to measure.
-      - name: Resolve the persistent uv cache path (self-hosted)
-        if: runner.environment == 'self-hosted'
-        id: uvcache
-        run: |
-          set -euo pipefail
-          UV_DIR="$HOME/.cache/uv"   # uv's own default — one cache for dev tooling and every runner
-          mkdir -p "$UV_DIR"
-          echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        if: runner.environment == 'self-hosted'
-        with:
-          version: "0.8.17"
-          enable-cache: false
-          cache-local-path: ${{ steps.uvcache.outputs.path }}
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        if: runner.environment != 'self-hosted'
-        with:
-          version: "0.8.17"
-          enable-cache: true
-          prune-cache: true
-      - name: Sync Python deps
-        run: uv sync --frozen --package gaia --group backend --group dev
-      - name: Run benchmark slice (pinned to ${{ matrix.cpus }}c)
-        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
-        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
-        # a lane with 'FLAKY TESTS DETECTED' reported success.
-        shell: bash
-        env:
-          WORKLOAD: ${{ matrix.workload }}
-          CPUS: ${{ matrix.cpus }}
-        run: |
-          set -euo pipefail
-          echo "Workload=$WORKLOAD  CPUS=$CPUS  runner=${{ needs.select-runner.outputs.runner_label }} nproc=$(nproc)"
-          # On 16c we also show the adaptive (full-tilt) time alongside pinned for comparison
-          ADAPTIVE=$(bash scripts/ci/detect-parallel.sh --nx)
-          echo "Adaptive parallel on this runner would be $ADAPTIVE"
-          case "$WORKLOAD" in
-            ruff)  /usr/bin/time -v bash -c "taskset -c 0-$((CPUS-1)) uvx --no-build ruff@0.14.13 check . 2>&1 | tail -n 20" 2>&1 | tee /tmp/bench.time ;;
-            # mypy 1.18+ respects --follow-imports + parallelism via dmypy; pin with taskset and pass jobs flag when available
-            mypy)  /usr/bin/time -v bash -c "taskset -c 0-$((CPUS-1)) uv run --project apps/api --frozen --group backend --group dev mypy --no-error-summary apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports 2>&1 | tail -n 30" 2>&1 | tee /tmp/bench.time ;;
-            build) /usr/bin/time -v bash -c "pnpm exec nx run-many -t build --parallel=$CPUS --skip-nx-cache 2>&1 | tail -n 40" 2>&1 | tee /tmp/bench.time ;;
-            pytest-hermetic) /usr/bin/time -v bash -c "uv run --frozen pytest -n $CPUS -m 'not composio and not model_onboarding and not schemathesis' --tb=line -q --override-ini=addopts=--strict-markers --timeout=300 --durations=5 2>&1 | tail -n 40" 2>&1 | tee /tmp/bench.time ;;
-          esac
-          echo "workload=$WORKLOAD cpus=$CPUS runner=${{ needs.select-runner.outputs.runner_label }} adaptive=$ADAPTIVE" | tee -a "$GITHUB_STEP_SUMMARY"
-          cat /tmp/bench.time | tail -n 50
 
   # --- Test: harness tooling (runner-native, always) ----------------------
   # Deliberately ungated. `tools/` belongs to no Nx project, so a PR touching
@@ -801,8 +707,8 @@ jobs:
   # outputs as inputs (see build.yml phase input). The deploy decision lives
   # in compute-deploy-plan.sh with GATE_RESULT as an explicit input, so a
   # failed gate still fires the publish-without-deploy orphan alert instead of
-  # silently skipping everything. Runners are owned by build.yml (Blacksmith)
-  # and deliberately not routed through select-runner.
+  # silently skipping everything. build.yml owns its own runners
+  # (GitHub-hosted) and is deliberately not routed through select-runner.
   build-images:
     needs: [detect]
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}

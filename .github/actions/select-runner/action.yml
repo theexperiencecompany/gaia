@@ -15,14 +15,6 @@ inputs:
     description: JSON array fallback for standard jobs (e.g. '["ubuntu-latest"]')
     required: false
     default: '["ubuntu-latest"]'
-  fallback-runner-docker:
-    description: JSON array fallback for docker-heavy jobs (e.g. '["blacksmith-2vcpu-ubuntu-2404"]')
-    required: false
-    default: '["blacksmith-2vcpu-ubuntu-2404"]'
-  flavour:
-    description: 'standard | docker — picks which fallback to use when home is unavailable'
-    required: false
-    default: standard
   force-home:
     description: 'If true, fail instead of falling back (for smoke tests)'
     required: false
@@ -37,7 +29,7 @@ outputs:
     description: 'JSON array string for runs-on: e.g. ["self-hosted","gaia-home"] or ["ubuntu-latest"]'
     value: ${{ steps.probe.outputs.runner }}
   runner_label:
-    description: 'Human label: gaia-home | ubuntu-latest | blacksmith-2vcpu-ubuntu-2404'
+    description: 'Human label: gaia-home | ubuntu-latest'
     value: ${{ steps.probe.outputs.runner_label }}
   is_self_hosted:
     description: 'true when home runner was selected'
@@ -57,8 +49,6 @@ runs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         RUNNER_LABEL: ${{ inputs.runner-label }}
         FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
-        FALLBACK_RUNNER_DOCKER: ${{ inputs.fallback-runner-docker }}
-        RUNNER_FLAVOUR: ${{ inputs.flavour }}
         FORCE_HOME: ${{ inputs.force-home }}
       run: |
         set -euo pipefail
