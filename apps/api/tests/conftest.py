@@ -25,8 +25,10 @@ import pytest
 # of test time in tests/unit/utils — 100 examples each. PR lanes select the
 # "ci" profile (HYPOTHESIS_PROFILE=ci) to keep the feedback loop short; the
 # default (full) profile runs on master and locally, so nothing is lost.
-_hypothesis_settings.register_profile("ci", max_examples=20, deadline=None)
-_hypothesis_settings.register_profile("default", max_examples=100)
+# The property tests do not set ``max_examples`` themselves (a per-test value
+# would silently override the profile); ``deadline=None`` stays per-test.
+_hypothesis_settings.register_profile("ci", max_examples=25, deadline=None)
+_hypothesis_settings.register_profile("default", max_examples=200)
 _hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # ---------------------------------------------------------------------------
@@ -128,7 +130,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -662,4 +663,10 @@ def _reset_limit_origin() -> Iterator[None]:
     later cases mail the wrong email.
     """
     yield
+    # Imported here, not at module level: limit_upsell -> email senders ->
+    # constants.llm -> langchain_core.language_models, whose ``base`` module
+    # eagerly imports ``transformers`` (~0.85s). Collection and workers that
+    # never run a test should not pay for it.
+    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
+
     mark_run_origin(LimitHitOrigin.INTERACTIVE)
