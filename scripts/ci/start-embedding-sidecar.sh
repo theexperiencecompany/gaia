@@ -46,12 +46,28 @@ until curl -sf "${URL}/health" > /dev/null 2>&1; do
 done
 echo "embedding sidecar ready at ${URL} (pid $(cat "$PIDFILE"), $((SECONDS))s)"
 
+# Retry backoff for the test lane. The client sleeps a FIXED
+# MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS between attempts, and the sidecar 503s a
+# request that cannot get one of its (cores / MEMORY_ONNX_THREADS) inference
+# slots. In prod that pairing is right: a 5s pause rides out a restart. Under
+# xdist it is the opposite of what we want — every worker funnels through the
+# one sidecar, so slot contention is the NORMAL state, and each contended call
+# pays a 5s sleep in which the worker does nothing. That idle is what shows up
+# as 227% total CPU across 6 workers. A short backoff keeps the retry (an
+# overloaded sidecar is still ridden out, exhaustion still fails loud) without
+# parking the worker for whole seconds at a time.
+SIDECAR_TEST_ENV=(
+  "MEMORY_EMBEDDING_SIDECAR_URL=${URL}"
+  "MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS=${MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS:-0.25}"
+)
+
 if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "MEMORY_EMBEDDING_SIDECAR_URL=${URL}" >> "$GITHUB_ENV"
+  printf '%s\n' "${SIDECAR_TEST_ENV[@]}" >> "$GITHUB_ENV"
 fi
 SERVICES_ENV_FILE="${GAIA_TEST_SERVICES_ENV:-/tmp/gaia-test-services-${RUNNER_INDEX}.env}"
 if [ -f "$SERVICES_ENV_FILE" ]; then
-  grep -v '^MEMORY_EMBEDDING_SIDECAR_URL=' "$SERVICES_ENV_FILE" > "$SERVICES_ENV_FILE.tmp" || true
-  echo "MEMORY_EMBEDDING_SIDECAR_URL=${URL}" >> "$SERVICES_ENV_FILE.tmp"
+  grep -vE '^(MEMORY_EMBEDDING_SIDECAR_URL|MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS)=' \
+    "$SERVICES_ENV_FILE" > "$SERVICES_ENV_FILE.tmp" || true
+  printf '%s\n' "${SIDECAR_TEST_ENV[@]}" >> "$SERVICES_ENV_FILE.tmp"
   mv "$SERVICES_ENV_FILE.tmp" "$SERVICES_ENV_FILE"
 fi

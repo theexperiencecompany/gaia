@@ -44,9 +44,27 @@ class MemorySpec(TypedDict, total=False):
     entities: list[tuple[str, str]]  # (name, entity_type)
 
 
+# Passage embedding is a pure function of the text, and the seeded corpora are
+# fixed module constants re-planted under a fresh uuid user for every test. Each
+# distinct string is still embedded once per worker by the real model — the
+# vectors below ARE the model's output, nothing is synthesized — but the same
+# 60-memory corpus is not re-embedded on every test in the file. The seed path
+# is not what these tests assert on; recall still runs real embed_query, real
+# Chroma ANN, real Postgres FTS and the real cross-encoder rerank.
+_seed_embedding_cache: dict[str, list[float]] = {}
+
+
+async def _embed_seed_contents(contents: list[str]) -> list[list[float]]:
+    """Embed seed contents through the real model, once per distinct string."""
+    missing = list(dict.fromkeys(text for text in contents if text not in _seed_embedding_cache))
+    if missing:
+        _seed_embedding_cache.update(zip(missing, await embed_batch(missing)))
+    return [_seed_embedding_cache[text] for text in contents]
+
+
 async def seed_memories(user_id: str, specs: list[MemorySpec]) -> list[MemoryRecord]:
     """Insert memories into Postgres + Chroma exactly as ingestion would."""
-    embeddings = await embed_batch([spec["content"] for spec in specs])
+    embeddings = await _embed_seed_contents([spec["content"] for spec in specs])
     records = [
         MemoryRecord(
             user_id=user_id,
