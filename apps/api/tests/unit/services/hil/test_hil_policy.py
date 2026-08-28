@@ -540,6 +540,46 @@ class TestAlwaysGate:
         ):
             assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "ask"
 
+    async def test_an_unreachable_registry_reads_no_stamp_so_the_user_still_decides(self) -> None:
+        # The other half of the escalation contract: unreadable means "no stamp",
+        # never "ask". Failing closed here would gate a call the user has HIL
+        # switched off for — a registry blip must not start prompting everyone.
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_allow")),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
+
+    async def test_the_unreachable_registry_is_reported_with_the_failure_it_hit(self) -> None:
+        # A stamp that silently stops being read is a gate that silently stops
+        # asking, so the warning has to carry WHICH failure it was — a bare
+        # "registry unavailable" line cannot tell a missing provider apart from
+        # a dead Chroma, and that is the whole diagnosis.
+        with (
+            patch(f"{MODULE}.log") as logger,
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_allow")),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "allow"
+
+        logger.warning.assert_called_once()
+        message, fields = logger.warning.call_args.args, logger.warning.call_args.kwargs
+        assert len(message) == 1 and "tool registry unavailable" in message[0]
+        assert "Provider 'tool_registry' not found" in fields["error"]
+        assert fields["error_type"] == "KeyError"
+
     async def test_an_unreachable_registry_does_not_break_the_sibling_scan(self) -> None:
         request = make_request(
             call_id="call-1",
