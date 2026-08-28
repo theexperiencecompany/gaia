@@ -662,6 +662,17 @@ jobs:
       - name: Changed test files must fail on base
         working-directory: apps/api
         run: bash ../../scripts/ci/regression-proof.sh origin/master
+      # setup-python-test-env brings up services + the embedding sidecar; on the
+      # shared box that namespace must be released like every other lane does.
+      - name: Tear down service containers and sidecar
+        if: always()
+        run: |
+          bash scripts/ci/stop-embedding-sidecar.sh
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            bash scripts/ci/shared-test-services.sh reset "${RUNNER_INDEX:-0}"
+          else
+            bash scripts/ci/stop-test-services.sh
+          fi
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
