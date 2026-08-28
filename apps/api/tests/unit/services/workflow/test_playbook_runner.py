@@ -612,10 +612,10 @@ async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_reco
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
-    def exploding_agent(**kwargs: Any) -> Any:
-        if kwargs["llm"].script[0].name == "send_email":
+    def exploding_agent(llm: Any, *args: Any, **kwargs: Any) -> Any:
+        if llm.script[0].name == "send_email":
             raise RuntimeError("graph exploded")
-        return real_create_agent(**kwargs)
+        return real_create_agent(llm, *args, **kwargs)
 
     with patch(f"{MODULE}.create_agent", exploding_agent):
         result, _ = await _run(_playbook(AGENDA_STEPS), registry)
@@ -634,7 +634,7 @@ async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
-    def exploding_agent(**kwargs: Any) -> Any:
+    def exploding_agent(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph exploded")
 
     with patch(f"{MODULE}.create_agent", exploding_agent), patch(f"{MODULE}.log") as log:
@@ -1034,9 +1034,9 @@ def _spy_graph_build() -> Iterator[tuple[list[dict[str, Any]], list[dict[str, An
     agent_calls: list[dict[str, Any]] = []
     stack_calls: list[dict[str, Any]] = []
 
-    def spy_agent(**kwargs: Any) -> Any:
-        agent_calls.append(kwargs)
-        return real_create_agent(**kwargs)
+    def spy_agent(llm: Any, tool_registry: Any, **kwargs: Any) -> Any:
+        agent_calls.append({"llm": llm, "tool_registry": tool_registry, **kwargs})
+        return real_create_agent(llm, tool_registry, **kwargs)
 
     def spy_stack(**kwargs: Any) -> Any:
         stack_calls.append(kwargs)
@@ -1075,22 +1075,19 @@ class TestReplayGraphContract:
         assert result.ok is True, result.failure
         assert len(agent_calls) == 1
         kwargs = agent_calls[0]
-        assert set(kwargs) == {
-            "llm",
-            "tool_registry",
-            "agent_name",
-            "disable_retrieve_tools",
-            "initial_tool_ids",
-            "middleware",
-        }
-        assert kwargs["agent_name"] == "playbook_replay"
+        assert set(kwargs) == {"llm", "tool_registry", "tools_config", "agent_config"}
+        assert kwargs["agent_config"].agent_name == "playbook_replay"
         # A replay never discovers tools: it runs calls a real run already made.
-        assert kwargs["disable_retrieve_tools"] is True
+        assert kwargs["tools_config"].disable_retrieve_tools is True
         assert isinstance(kwargs["llm"], ScriptedModel)
         assert [(c.name, c.args) for c in kwargs["llm"].script] == [
             ("list_events", {"calendar_id": "primary"})
         ]
-        assert sorted(kwargs["initial_tool_ids"]) == ["file_notes", "list_events", "send_email"]
+        assert sorted(kwargs["tools_config"].initial_tool_ids) == [
+            "file_notes",
+            "list_events",
+            "send_email",
+        ]
 
     async def test_the_step_graph_has_the_thinking_middleware_switched_off(self) -> None:
         recorder = _Recorder()
@@ -1114,7 +1111,7 @@ class TestReplayGraphContract:
         ]
         # The stack the graph was actually given is the one built above, not a
         # default stack quietly assembled somewhere else.
-        assert agent_calls[0]["middleware"] is not None
+        assert agent_calls[0]["agent_config"].middleware is not None
 
 
 # --- the narration prompt's sections ---------------------------------------

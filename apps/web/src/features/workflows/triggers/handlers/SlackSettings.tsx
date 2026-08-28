@@ -1,0 +1,169 @@
+/**
+ * Slack Trigger Settings
+ *
+ * UI configuration for Slack triggers with message filtering.
+ */
+
+"use client";
+
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { TriggerConnectionPrompt } from "../components/TriggerConnectionPrompt";
+import { TriggerSelectToggle } from "../components/TriggerSelectToggle";
+import {
+  TriggerSettingRow,
+  TriggerSettingsCard,
+} from "../components/TriggerSettingsCard";
+import { TriggerToggleRow } from "../components/TriggerToggleRow";
+import { useTriggerOptions } from "../hooks/useTriggerOptions";
+import type { TriggerSettingsProps } from "../registry";
+import type { TriggerConfig } from "../types";
+
+export interface SlackTriggerData {
+  trigger_name: string;
+  channel_ids?: string[];
+  exclude_bot_messages?: boolean;
+  exclude_direct_messages?: boolean;
+  exclude_group_messages?: boolean;
+  exclude_mpim_messages?: boolean;
+  exclude_thread_replies?: boolean;
+}
+
+export interface SlackConfig extends TriggerConfig {
+  trigger_name?: string;
+  trigger_data?: SlackTriggerData;
+}
+
+export function SlackSettings({
+  triggerConfig,
+  onConfigChange,
+}: TriggerSettingsProps) {
+  const { integrations, connectIntegration } = useIntegrations();
+  const config = triggerConfig as SlackConfig;
+  const triggerData = config.trigger_data;
+
+  const integrationId = "slack";
+  const isConnected =
+    integrations.find((i) => i.id === integrationId)?.status === "connected";
+
+  const triggerName = config.trigger_name || config.type;
+  const isMessageTrigger = triggerName === "slack_new_message";
+
+  // Fetch channel options for message trigger
+  const { data: channelOptions, isLoading: isLoadingChannels } =
+    useTriggerOptions(
+      "slack",
+      triggerName || "",
+      "channel_ids",
+      isMessageTrigger && isConnected,
+    );
+
+  const updateTriggerData = (updates: Partial<SlackTriggerData>) => {
+    const currentTriggerData = triggerData || {
+      trigger_name: config.trigger_name || "",
+    };
+    onConfigChange({
+      ...config,
+      trigger_data: {
+        ...currentTriggerData,
+        ...updates,
+      },
+    });
+  };
+
+  // Get current selected values
+  const selectedValues = triggerData?.channel_ids || [];
+
+  if (!isConnected) {
+    return (
+      <TriggerConnectionPrompt
+        integrationName="Slack"
+        integrationId={integrationId}
+        iconUrl={integrations.find((i) => i.id === integrationId)?.iconUrl}
+        onConnect={() => connectIntegration(integrationId)}
+      />
+    );
+  }
+
+  // For channel_created, no config needed - just show a simple confirmation
+  if (triggerName === "slack_channel_created") {
+    return (
+      <p className="text-sm text-zinc-500">
+        This trigger will fire when a new channel is created. No additional
+        configuration needed.
+      </p>
+    );
+  }
+
+  return (
+    <TriggerSettingsCard>
+      <TriggerSettingRow label="Channels" wide>
+        <TriggerSelectToggle
+          label="Channels"
+          selectProps={{
+            options: channelOptions || [],
+            selectedValues: selectedValues,
+            onSelectionChange: (selectedIds: string[]) => {
+              updateTriggerData({ channel_ids: selectedIds });
+            },
+            isLoading: isLoadingChannels,
+            placeholder: "Select channels",
+            renderValue: (items: { key: string; textValue: string }[]) => {
+              const count = items.length;
+              if (count === 0) return "Select channels";
+              if (count === 1) return items[0]?.textValue || "1 channel";
+              return `${count} channels selected`;
+            },
+            description: "Leave empty to trigger on all channels",
+          }}
+          tagInputProps={{
+            values: selectedValues,
+            onChange: (selectedIds: string[]) => {
+              updateTriggerData({ channel_ids: selectedIds });
+            },
+            placeholder: "Add another...",
+            emptyPlaceholder: "Enter channel IDs",
+          }}
+          allowManualInput={true}
+        />
+      </TriggerSettingRow>
+
+      <TriggerToggleRow
+        label="Exclude bot messages"
+        hint="Ignore messages posted by bots"
+        isSelected={triggerData?.exclude_bot_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_bot_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude direct messages"
+        hint="Ignore 1:1 conversations"
+        isSelected={triggerData?.exclude_direct_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_direct_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude private groups"
+        isSelected={triggerData?.exclude_group_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_group_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude group DMs"
+        isSelected={triggerData?.exclude_mpim_messages || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_mpim_messages: val })
+        }
+      />
+      <TriggerToggleRow
+        label="Exclude thread replies"
+        isSelected={triggerData?.exclude_thread_replies || false}
+        onValueChange={(val) =>
+          updateTriggerData({ exclude_thread_replies: val })
+        }
+      />
+    </TriggerSettingsCard>
+  );
+}

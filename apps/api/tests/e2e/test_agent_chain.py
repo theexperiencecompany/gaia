@@ -395,8 +395,8 @@ FLOWCHART_ARGS = {"description": "how a delegated turn flows", "direction": "LR"
 
 def executor_flowchart_script() -> list[Any]:
     return [
-        call("retrieve_tools", {"exact_tool_names": ["create_flowchart"]}, id="tc_retrieve"),
-        call("create_flowchart", FLOWCHART_ARGS, id="tc_flow"),
+        call("retrieve_tools", {"exact_tool_names": ["create_flowchart"]}, call_id="tc_retrieve"),
+        call("create_flowchart", FLOWCHART_ARGS, call_id="tc_flow"),
         "Drew the flowchart.",
     ]
 
@@ -408,7 +408,10 @@ class TestCommsToExecutor:
         to reach the user's stream."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -429,7 +432,10 @@ class TestCommsToExecutor:
         """
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -473,7 +479,10 @@ class TestCommsToExecutor:
         card, from the same detached task."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -488,7 +497,10 @@ class TestCommsToExecutor:
         cards, each before the result that fills it in."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -505,7 +517,10 @@ class TestCommsToExecutor:
         running. If it ever became blocking the user would stare at nothing."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -518,7 +533,10 @@ class TestCommsToExecutor:
         interleaved into the assistant bubble the user is reading."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -533,7 +551,10 @@ class TestCommsToExecutor:
         the comms cards again would duplicate every card."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -554,7 +575,10 @@ class TestCommsToExecutor:
         card that never finished."""
         run = await run_chain(
             "draw me a flowchart",
-            comms=[call("call_executor", {"task": "draw a flowchart"}, id="tc_exec"), "On it."],
+            comms=[
+                call("call_executor", {"task": "draw a flowchart"}, call_id="tc_exec"),
+                "On it.",
+            ],
             executor=executor_flowchart_script(),
         )
 
@@ -576,7 +600,7 @@ PAGE_URL = "https://docs.gaia.test/executor"
 
 
 def comms_delegating_script(task: str = "explain the executor") -> list[Any]:
-    return [call("call_executor", {"task": task}, id="tc_exec"), "Looking that up."]
+    return [call("call_executor", {"task": task}, call_id="tc_exec"), "Looking that up."]
 
 
 def executor_handoff_script() -> list[Any]:
@@ -586,7 +610,7 @@ def executor_handoff_script() -> list[Any]:
     # so without the repeat the post-nudge turn replays the handoff and the
     # subagent runs twice.
     return [
-        call("handoff", HANDOFF_ARGS, id="tc_handoff"),
+        call("handoff", HANDOFF_ARGS, call_id="tc_handoff"),
         "The executor runs delegated work.",
         "The executor runs delegated work.",
     ]
@@ -594,7 +618,7 @@ def executor_handoff_script() -> list[Any]:
 
 def subagent_fetch_script() -> list[Any]:
     return [
-        call("fetch_webpages", {"urls": [PAGE_URL]}, id="tc_fetch"),
+        call("fetch_webpages", {"urls": [PAGE_URL]}, call_id="tc_fetch"),
         "GAIA's executor runs delegated work in the background.",
     ]
 

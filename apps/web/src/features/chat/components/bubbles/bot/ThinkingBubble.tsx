@@ -23,7 +23,7 @@ export default function ThinkingBubble({
         }
       >
         <Brain02Icon
-          className="transition-all duration-200 group-hover:scale-110"
+          className="transition-transform duration-200 group-hover:scale-110"
           size={16}
         />
         <span className="font-medium">

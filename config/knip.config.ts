@@ -89,6 +89,14 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
+    // Python virtualenvs: the repo root is a uv workspace, so any root-level
+    // `uv run` materializes .venv/ here. Vendored site-packages ships thousands
+    // of JS bundles (litellm's Next.js static chunks, cloudinary widgets) that
+    // knip reads as project files; uv self-ignores them via an inner
+    // .gitignore, which knip does not honor.
+    ".venv/**",
+    ".venv311/**",
+
     // Wide-event conformance emitters: run as subprocesses from
     // scripts/ci/wide-event-conformance/run.py (python3/pnpm exec tsx), never
     // imported as modules — so knip reads them as unused files.
@@ -283,8 +291,6 @@ const config: KnipConfig = {
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.
         "@heroui/.*",
-        // Workspace package resolved via pnpm workspace, not always traced.
-        "@gaia/shared",
         // Next.js image optimization (implicitly required, no direct import)
         "sharp",
         // Used by SWC compilation (no direct import in source)

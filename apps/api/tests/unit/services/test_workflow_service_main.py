@@ -110,10 +110,6 @@ def _make_workflow(
     activated: bool = True,
     steps: list | None = None,
     trigger_config: TriggerConfig | None = None,
-    description: str = "Test description",
-    prompt: str = "Execute test workflow",
-    user_id: str = USER_ID,
-    is_todo_workflow: bool = False,
     error_message: str | None = None,
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
@@ -123,14 +119,14 @@ def _make_workflow(
         trigger_config = _make_trigger_config()
     return Workflow(
         id=workflow_id,
-        user_id=user_id,
+        user_id=USER_ID,
         title="Test Workflow",
-        description=description,
-        prompt=prompt,
+        description="Test description",
+        prompt="Execute test workflow",
         activated=activated,
         steps=steps,
         trigger_config=trigger_config,
-        is_todo_workflow=is_todo_workflow,
+        is_todo_workflow=False,
         error_message=error_message,
     )
 
@@ -2407,10 +2403,16 @@ class TestTriggerService:
         mock_get_handler.return_value = mock_handler
 
         trigger = _make_trigger_config(trigger_type=TriggerType.INTEGRATION)
-        with pytest.raises(TriggerRegistrationError):
+        with pytest.raises(TriggerRegistrationError) as exc_info:
             await TriggerService.register_triggers(
                 USER_ID, WORKFLOW_ID, "trigger", trigger, raise_on_failure=True
             )
+
+        # The wrapper is what the caller sees, so it has to carry the original
+        # failure forward: which trigger, what went wrong, and the cause chain.
+        assert str(exc_info.value) == "Error registering triggers: RuntimeError: API down"
+        assert exc_info.value.trigger_name == "trigger"
+        assert isinstance(exc_info.value.__cause__, RuntimeError)
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_generic_exception_no_raise(self, mock_get_handler):

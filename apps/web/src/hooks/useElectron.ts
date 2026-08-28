@@ -1,24 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { getElectronAPI } from "@/lib/electron/api";
 
 const noopCleanup = () => {
   // No-op cleanup: no listener was registered outside the desktop app.
 };
 
+// Electron API presence is fixed once the window loads, so a no-op subscribe
+// suffices — React only needs the snapshot to be stable between renders.
+const subscribeToElectronAPI = (): (() => void) => noopCleanup;
+
+function getElectronAPISnapshot(): boolean {
+  return getElectronAPI() !== null;
+}
+
+// Render-safe server/hydration default, matching the previous useState(false).
+const getServerElectronAPISnapshot = (): boolean => false;
+
 /**
  * Hook to check if the app is running inside Electron
  * @returns boolean indicating if running in Electron
  */
 function useIsElectron(): boolean {
-  const [isElectron, setIsElectron] = useState(false);
-
-  useEffect(() => {
-    setIsElectron(getElectronAPI() !== null);
-  }, []);
-
-  return isElectron;
+  return useSyncExternalStore(
+    subscribeToElectronAPI,
+    getElectronAPISnapshot,
+    getServerElectronAPISnapshot,
+  );
 }
 
 /**

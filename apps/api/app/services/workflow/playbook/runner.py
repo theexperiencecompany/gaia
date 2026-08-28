@@ -51,6 +51,7 @@ from app.models.workflow_execution_models import (
     build_result_digest,
     largest_list_len,
 )
+from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow.playbook.evaluator import (
@@ -430,17 +431,21 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
     no history to summarize.
     """
     builder = create_agent(
-        llm=ScriptedModel(script=[call]),
-        tool_registry=space.tools,
-        agent_name=_REPLAY_AGENT_NAME,
-        disable_retrieve_tools=True,
-        initial_tool_ids=list(space.tools),
-        middleware=create_middleware_stack(
+        ScriptedModel(script=[call]),
+        space.tools,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=list(space.tools),
+        ),
+        agent_config=AgentConfig(
             agent_name=_REPLAY_AGENT_NAME,
-            chat_llm=None,
-            enable_accounting=False,
-            enable_summarization=False,
-            enable_subagent=False,
+            middleware=create_middleware_stack(
+                agent_name=_REPLAY_AGENT_NAME,
+                chat_llm=None,
+                enable_accounting=False,
+                enable_summarization=False,
+                enable_subagent=False,
+            ),
         ),
     )
     configurable = _configurable_for(run, space)

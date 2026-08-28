@@ -46,9 +46,9 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = async () => {
-    const unreadIds = notifications
-      .filter((n) => n.status === NotificationStatus.DELIVERED)
-      .map((n) => n.id);
+    const unreadIds = notifications.flatMap((n) =>
+      n.status === NotificationStatus.DELIVERED ? [n.id] : [],
+    );
     if (unreadIds.length === 0) return;
     setIsMarkingAllRead(true);
     try {
@@ -82,7 +82,7 @@ export function NotificationCenter({
                 aria-label="Notifications"
                 tooltip="Notifications"
               >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
               </SidebarHeaderButton>
             </Badge>
           </div>

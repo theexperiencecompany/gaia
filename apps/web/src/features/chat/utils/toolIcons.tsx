@@ -26,6 +26,7 @@ import {
   ComputerTerminal01Icon,
   ConnectIcon,
   Copy01Icon,
+  CreditCardIcon,
   FileEmpty02Icon,
   FolderFileStorageIcon,
   Globe02Icon,
@@ -95,6 +96,7 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   Camera01Icon,
   ComputerIcon,
   Copy01Icon,
+  CreditCardIcon,
   Globe02Icon,
   PuzzleIcon,
   WindowsNewIcon,
@@ -164,17 +166,19 @@ const AutoInvertIcon: React.FC<{
   // aren't disproportionately rounded. object-contain keeps the logo intact.
   const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
 
-  // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
+  // Use next/image in unoptimized mode for SVG URLs — SVGs can't pass through
+  // the Next.js optimizer (they'd require dangerouslyAllowSVG), so they ship
+  // straight from the source host.
   const isSvg = src.toLowerCase().endsWith(".svg");
   if (isSvg) {
     return (
-      // biome-ignore lint/performance/noImgElement: Using img for SVG to avoid Next.js Image optimization issues with SVG
-      <img
+      <Image
         alt={alt}
         width={displayWidth}
         height={displayHeight}
         className={imgClassName}
         src={src}
+        unoptimized
       />
     );
   }

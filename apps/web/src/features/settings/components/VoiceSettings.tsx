@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-
-import {
-  ALL_FILTER,
-  VoiceFilters,
-} from "@/features/settings/components/VoiceFilters";
+import { VoiceFilters } from "@/features/settings/components/VoiceFilters";
 import { VoiceTable } from "@/features/settings/components/VoiceTable";
 import { useVoices } from "@/features/settings/hooks/useVoiceSettings";
+import { ALL_FILTER } from "@/features/settings/utils/voiceFiltersData";
 
 export default function VoiceSettings() {
   const { data } = useVoices();

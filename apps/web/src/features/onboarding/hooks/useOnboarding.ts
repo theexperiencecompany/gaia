@@ -7,8 +7,8 @@
 
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { RedirectType, redirect } from "next/navigation";
+import { useCallback, useEffect, useReducer } from "react";
 
 import type { UserInfo } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
@@ -48,7 +48,6 @@ interface UseOnboardingArgs {
 export function useOnboarding({
   skipAutoRedirect = false,
 }: UseOnboardingArgs = {}): UseOnboardingReturn {
-  const router = useRouter();
   const user = useUser();
   const { setUser, updateUser } = useUserActions();
   const [state, dispatch] = useReducer(reducer, initialState);
@@ -92,22 +91,6 @@ export function useOnboarding({
 
   useOnboardingAnalytics(state);
 
-  const redirectedRef = useRef(false);
-  useEffect(() => {
-    if (skipAutoRedirect) return;
-    if (redirectedRef.current) return;
-    if (stage !== "chat") return;
-    const conversationId = state.server?.first_message_conversation_id;
-    if (!conversationId) return;
-    redirectedRef.current = true;
-    router.push(`/c/${conversationId}`);
-  }, [
-    stage,
-    state.server?.first_message_conversation_id,
-    skipAutoRedirect,
-    router,
-  ]);
-
   const restart = useCallback(async () => {
     if (state.isRestarting) return;
 
@@ -129,8 +112,6 @@ export function useOnboarding({
         });
     }
 
-    redirectedRef.current = false;
-
     try {
       await resetOnboarding();
     } catch (error) {
@@ -146,6 +127,17 @@ export function useOnboarding({
     state.server?.first_message_conversation_id,
     updateUser,
   ]);
+
+  // Auto-redirect once the onboarding chat produced a conversation — resolved
+  // during render (not in an effect) so this page never paints before
+  // redirecting; `redirect` performs the same client-side navigation
+  // router.push did.
+  if (!skipAutoRedirect && stage === "chat") {
+    const conversationId = state.server?.first_message_conversation_id;
+    if (conversationId) {
+      redirect(`/c/${conversationId}`, RedirectType.push);
+    }
+  }
 
   return { state, stage, dispatch, restart };
 }

@@ -3,7 +3,7 @@
 import type { ChipProps } from "@heroui/chip";
 import type { Extensions } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { buildMentionExtensions } from "@/features/integrations/components/mentionExtensions";
 import {
   docToValue,
@@ -62,29 +62,32 @@ export const MentionEditor = ({
   // Live props reach the once-built extensions through refs (Tiptap can't
   // rebuild extensions reactively), so updating them never recreates the editor.
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const toolNamesRef = useRef(toolNames);
-  toolNamesRef.current = toolNames;
   const iconRef = useRef(renderMentionIcon);
-  iconRef.current = renderMentionIcon;
   const removableRef = useRef(mentionRemovable);
-  removableRef.current = mentionRemovable;
   const radiusRef = useRef(mentionRadius);
-  radiusRef.current = mentionRadius;
+  useEffect(() => {
+    onChangeRef.current = onChange;
+    toolNamesRef.current = toolNames;
+    iconRef.current = renderMentionIcon;
+    removableRef.current = mentionRemovable;
+    radiusRef.current = mentionRadius;
+  });
 
-  const extensionsRef = useRef<Extensions>(undefined);
-  extensionsRef.current ??= buildMentionExtensions(
-    {
-      icon: iconRef,
-      removable: removableRef,
-      radius: radiusRef,
-      toolNames: toolNamesRef,
-    },
-    maxLength,
+  const [extensions] = useState<Extensions>(() =>
+    buildMentionExtensions(
+      {
+        icon: iconRef,
+        removable: removableRef,
+        radius: radiusRef,
+        toolNames: toolNamesRef,
+      },
+      maxLength,
+    ),
   );
 
   const editor = useEditor({
-    extensions: extensionsRef.current,
+    extensions,
     content: valueToContent(value, toolNames),
     editable: !readOnly,
     immediatelyRender: false,
@@ -99,7 +102,13 @@ export const MentionEditor = ({
   });
 
   useEffect(() => {
-    editor?.setEditable(!readOnly);
+    // setEditable emits an 'update' by default even though toggling editability
+    // never changes the document. With immediatelyRender:false the instance
+    // appears after mount holding content captured from the first render; that
+    // emission would forward the stale doc through onChange and clobber a value
+    // the caller set in the meantime (e.g. the workflow modal restoring the
+    // saved prompt). A programmatic toggle is not a user edit: never emit.
+    editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
 
   // External value changes (modal open / reset) replace the document — but only

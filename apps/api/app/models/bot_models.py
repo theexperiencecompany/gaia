@@ -24,6 +24,14 @@ class BotChatRequest(BaseModel):
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    is_dm: bool = Field(
+        False,
+        description=(
+            "Whether this conversation is a direct message. Discord and Slack DM "
+            "channel ids differ from the user id, so the server cannot tell a DM "
+            "from a channel without this."
+        ),
+    )
     file_ids: list[str] | None = Field(
         None,
         description="IDs of files attached to this message (uploaded via /api/v1/upload).",
@@ -99,6 +107,14 @@ class ResetSessionRequest(BaseModel):
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    is_dm: bool = Field(
+        False,
+        description=(
+            "Whether this conversation is a direct message. Discord and Slack DM "
+            "channel ids differ from the user id, so the server cannot tell a DM "
+            "from a channel without this."
+        ),
+    )
 
     @field_validator("platform")
     @classmethod

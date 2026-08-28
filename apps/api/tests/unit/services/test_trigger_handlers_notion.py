@@ -1,16 +1,9 @@
 """Tests for app.services.triggers.handlers.notion."""
 
-import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# Pre-populate the circular-import path with a stub so importing the Notion
-# handler does not trigger the full workflow → trigger_service → triggers loop.
-_queue_stub = MagicMock()
-sys.modules.setdefault("app.services.workflow.queue_service", _queue_stub)
-sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
 from app.services.triggers.handlers.notion import NotionTriggerHandler
 

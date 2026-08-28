@@ -38,6 +38,7 @@ async def _messages_for(
     folder_tree: str,
     recent_facts: list[str] | None = None,
     journaled_today: list[str] | None = None,
+    user_name: str = "Aryan",
 ) -> list[BaseMessage]:
     """The messages one extraction call would send, for a given memory state."""
     with patch(
@@ -47,7 +48,7 @@ async def _messages_for(
         await extract_memories(
             _TRANSCRIPT,
             user_id="u1",
-            user_name="Aryan",
+            user_name=user_name,
             folder_tree=folder_tree,
             recent_facts=recent_facts or [],
             journaled_today=journaled_today,
@@ -183,11 +184,43 @@ class TestTheCacheablePrefixSurvivesMemoryGrowth:
 
         assert "category_path" in str(messages[0].content)
 
-    async def test_the_stable_prompt_is_still_personalised_to_the_user(self) -> None:
-        """The prompt names the user throughout, and the extracted facts are
-        written in the third person about them. Losing the name leaves the
-        model extracting facts about "None"."""
-        messages = await _messages_for("relationships")
+    async def test_the_stable_prompt_is_byte_identical_across_users(self) -> None:
+        """The system prompt used to open with the user's NAME, so every user
+        needed their own warm copy of the ~4.8k-token system+schema prefix and
+        no user's traffic could warm another's — measured in production: 87%
+        of extraction calls read zero cached tokens. One universal prompt is
+        the only version any upstream ever has to hold."""
+        for_aryan = await _messages_for("relationships", user_name="Aryan")
+        for_dhruv = await _messages_for("relationships", user_name="Dhruv")
 
-        assert "Aryan" in str(messages[0].content)
+        assert str(for_aryan[0].content) == str(for_dhruv[0].content), (
+            "the system prompt differs between users, so the shared prefix "
+            "dies at the first occurrence of the name and no user's calls can "
+            "warm the cache for anyone else's"
+        )
+
+    async def test_the_user_s_name_rides_the_tail_ahead_of_the_date(self) -> None:
+        """The model still needs the real name (facts are written in the third
+        person about a named person, and "the user's girlfriend" as fact
+        content would be useless). It moves to the volatile tail, FIRST —
+        within the tail order is by churn rate and the name never changes,
+        while the date already churns daily."""
+        tail = str((await _messages_for("relationships"))[-1].content)
+
+        # Verbatim: this sentence is the instruction that makes facts use the
+        # real name instead of "the user" — its wording is load-bearing, not
+        # decoration (the CI mutation gate proved looser asserts let it rot).
+        assert (
+            "The user in this transcript (`user:`) is Aryan. "
+            "Write every fact using this real name." in tail
+        )
+        assert tail.index("Aryan") < tail.index("Today is"), (
+            "the name churns less than the date, so placing it behind the "
+            "date re-sends it uncached every day for no reason"
+        )
+
+    async def test_a_missing_name_never_renders_as_the_literal_none(self) -> None:
+        messages = await _messages_for("relationships", user_name="the user")
+
         assert "None's" not in str(messages[0].content)
+        assert "None's" not in str(messages[-1].content)

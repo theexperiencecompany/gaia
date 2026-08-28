@@ -49,6 +49,7 @@ exclude = [
   "*/site-packages/*",
   "*/node_modules/*",
   "*/.nx/*",
+  ".claude/skills/seo-geo/scripts/*",
 ]
 ignore_decorators = [
   "@field_validator",
@@ -108,12 +109,24 @@ extend-exclude = [
   ".dagger",
   "alembic",
   "migrations",
-  # Vendored agent skills: third-party scripts we install and run, not code we
-  # author. Linting them only yields findings we would be fixing in someone
-  # else's file, and reformatting them turns every upstream update into a
-  # conflict. Excluded from the Python scanners (also bandit and xenon below).
+  # Agent-skill bundles. .agents and .claude/skills are two copies of the same
+  # installed set — mostly upstream skills, plus a few authored here. Their
+  # scripts/ and templates/ are reference payloads an agent reads, never code
+  # this repo imports, builds or ships. Linting the upstream ones only yields
+  # findings we would be fixing in someone else's file, and reformatting them
+  # turns every skill update into a conflict — which already happened: the
+  # .claude/ copies of the seo-geo scripts differ from the .agents/ originals
+  # only by an applied ruff autofix. Also excluded from bandit and xenon below.
   ".agents",
+  ".claude/skills",
 ]
+
+# Honour the exclusions above even when a file is named explicitly on the
+# command line. Without this, pre-commit (which passes staged paths) and CI's
+# changed-files mode (`ruff check $FILES`) both bypass extend-exclude, so an
+# excluded file is linted by every surface except the whole-repo walk — which
+# is how vendored skill scripts came to be reformatted in place.
+force-exclude = true
 
 [tool.ruff.lint]
 # Strict, monorepo-wide rule set (matches the rules the user explicitly opted into).
@@ -172,10 +185,16 @@ ignore = [
   "TRY300",  # consider moving statement to else (too pedantic)
   "TRY301",  # raise inside try (too pedantic)
   "TRY002",  # custom-exception-only (we use generic Exception in many places)
-  "PLR0911", # too many return statements
-  "PLR0912", # too many branches
-  "PLR0913", # too many arguments
-  "PLR0915", # too many statements
+  # PLR0911/0912/0913/0915 (too-many-returns/branches/arguments/statements) are
+  # NOT off — they are enforced by tools/lints/check_plr_complexity.py, a
+  # touch-to-fix ratchet: new complexity anywhere fails immediately, and a
+  # grandfathered file re-fails the moment a PR touches it. They are listed
+  # here only so the main `ruff check` lane doesn't double-report a debt the
+  # dedicated script already owns; do not treat this as "these rules are off".
+  "PLR0911",
+  "PLR0912",  # owned by the PLR complexity ratchet script (see above)
+  "PLR0913",  # owned by the PLR complexity ratchet script (see above)
+  "PLR0915",  # owned by the PLR complexity ratchet script (see above)
   "PLR2004", # magic-value-comparison (too noisy)
   "PLW2901", # redefined loop name
   "PLW0603", # global statement (used intentionally for caches)
@@ -200,8 +219,6 @@ ignore = [
   "ARG003",  # unused class-method argument
   "ARG004",  # unused static-method argument
   "ARG005",  # unused lambda argument
-  # raise X from None / from err — too noisy, often intentional.
-  "B904",
   # Implicit namespace packages — used legitimately in some test layouts.
   "INP001",
   # Logging f-strings — we use loguru which evaluates lazily.
@@ -216,9 +233,6 @@ ignore = [
   "SIM102",  # nested with inside with mirrors the handler's setup/teardown shape
   # RET504 — unnecessary assign before return; reads more clearly with named values.
   "RET504",
-  # Shadowing builtins (id, type, filter) — common in REST handlers.
-  "A001",
-  "A002",  # shadowing builtin `filter`/`type` params — REST handlers use them as nouns
   # StrEnum migration — codebase is on Enum, migration is out of scope.
   # ASYNC230 (blocking open() in an async def) is enforced — it is the rule form
   # of "all I/O must be async" in apps/api/CLAUDE.md. ASYNC109 is not: it objects
@@ -244,7 +258,6 @@ ignore = [
   "S112",   # try-except-continue
   "S603",   # subprocess input
   "S607",   # partial-path subprocess
-  "S608",   # SQL injection (false positives on f-strings with constants)
   # Datetime tzinfo — we standardize on UTC via wrappers; existing call sites are safe.
   "DTZ001",
   "DTZ005",  # datetime.now() without tz — UTC wrappers standardize call sites
@@ -322,6 +335,12 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# A002: chromadb's EmbeddingFunction protocol calls
+# `self._embedding_function(input=input)` by keyword (see
+# chromadb/api/models/CollectionCommon.py), so the one implementation must
+# keep the exact parameter name `input`. The two integration tests that used
+# to carry their own copies now import this one, so they need no exemption.
+"apps/api/app/db/chroma/noop_embedding.py" = ["A002"]  # chromadb's EmbeddingFunction protocol passes `input=` by keyword
 "apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
@@ -391,6 +410,10 @@ unfixable = [
 # ANN401: overrides/mirrors third-party base-class methods typed Any upstream
 # (LangChain Runnable, LangGraph Runtime/ToolNode/hooks, MCP adapters) --
 # verified against each library's real signature, not assumed.
+# A002: DynamicToolNode._func / ._afunc override langgraph's
+# ToolNode._func / ._afunc exactly (langgraph/prebuilt/tool_node.py) and
+# delegate to super()._func(input, ...) / super()._afunc(input, ...) --
+# renaming `input` would break the override's positional call contract.
 # ARG002: overrides abstract ActionHandler.execute / ChannelAdapter.can_handle,
 # dispatched polymorphically from one call site -- every implementation keeps
 # the full interface signature even where it only needs a subset.
@@ -463,9 +486,10 @@ known-first-party = ["app", "shared", "apps", "libs"]
 ban-relative-imports = "parents"
 
 [tool.ruff.lint.pylint]
-max-args = 8
-max-branches = 16
+max-args = 6
+max-branches = 10
 max-returns = 8
+max-statements = 50
 
 [tool.ruff.format]
 quote-style = "double"

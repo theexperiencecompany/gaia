@@ -34,7 +34,7 @@ export function ApproveDeviceForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const prefilledCode = searchParams.get("code") ?? "";
-  const [code, setCode] = useState(toInputCode(prefilledCode));
+  const [code, setCode] = useState(() => toInputCode(prefilledCode));
   const [isApproving, setIsApproving] = useState(false);
   const [approved, setApproved] = useState<string | null>(null);
 

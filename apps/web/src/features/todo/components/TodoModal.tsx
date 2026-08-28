@@ -22,8 +22,10 @@ import { useModalKeyboardSubmit } from "@/hooks/ui/useModalKeyboardSubmit";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import {
   Priority,
+  type Project,
   type Todo,
   type TodoCreate,
+  type TodoUpdate,
 } from "@/types/features/todoTypes";
 
 import RecurrenceFieldChip from "./fields/RecurrenceFieldChip";
@@ -63,23 +65,31 @@ function getChangedFields<T extends object>(
   return changes;
 }
 
-export default function TodoModal({
-  onSuccess,
+interface UseTodoModalFormOptions {
+  isOpen: boolean;
+  mode: "add" | "edit";
+  todo?: Todo;
+  initialProjectId?: string;
+  projects: Project[];
+  userTimezone?: string;
+  createTodo: (data: TodoCreate) => Promise<Todo>;
+  updateTodo: (todoId: string, updates: TodoUpdate) => Promise<Todo>;
+  /** Runs after a successful submit: closes the modal and fires success. */
+  onComplete: () => void;
+}
+
+/** Form state, parsing of natural-language patterns, and submit side effects. */
+function useTodoModalForm({
+  isOpen,
   mode,
   todo,
   initialProjectId,
-  buttonText = "Add Task",
-  buttonClassName = "w-full justify-start text-sm text-primary",
-}: TodoModalProps) {
-  const user = useUser();
-  const { isMac, modifierKeyName } = usePlatform();
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
-  const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });
-
-  // Get user's preferred timezone or fallback to browser timezone
-  const userTimezone = user?.timezone;
-
-  // Initialize text processor
+  projects,
+  userTimezone,
+  createTodo,
+  updateTodo,
+  onComplete,
+}: UseTodoModalFormOptions) {
   const { processText } = useTextProcessor({
     projects,
     userTimezone,
@@ -135,10 +145,7 @@ export default function TodoModal({
           message: "Please enter a task title",
         },
       ],
-      onSuccess: () => {
-        onOpenChange();
-        onSuccess?.();
-      },
+      onSuccess: onComplete,
       resetOnSuccess: mode === "add",
     });
 
@@ -189,8 +196,6 @@ export default function TodoModal({
     }
   }, [isOpen, mode, todo, setFormData]);
 
-  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
-
   const handleDateChange = (date?: string, timezone?: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -234,29 +239,159 @@ export default function TodoModal({
     }
   };
 
+  return {
+    formData,
+    setFormData,
+    loading,
+    handleSubmit,
+    updateField,
+    handleDateChange,
+    handleTextProcessing,
+  };
+}
+
+interface TodoModalTriggerProps {
+  buttonText: string;
+  buttonClassName: string;
+  onOpen: () => void;
+}
+
+function TodoModalTrigger({
+  buttonText,
+  buttonClassName,
+  onOpen,
+}: TodoModalTriggerProps) {
+  return (
+    <Tooltip
+      content={
+        <span className="flex items-center gap-2">
+          {buttonText}
+          <Kbd className="text-[10px]">C</Kbd>
+        </span>
+      }
+      placement="right"
+    >
+      <Button
+        className={buttonClassName}
+        color="primary"
+        size="sm"
+        variant="flat"
+        startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
+        onPress={onOpen}
+        data-keyboard-shortcut="create-todo"
+      >
+        {buttonText}
+      </Button>
+    </Tooltip>
+  );
+}
+
+interface TodoTextInputFieldsProps {
+  title: string;
+  description: string;
+  onTitleChange: (value: string) => void;
+  onDescriptionChange: (value: string) => void;
+}
+
+function TodoTextInputFields({
+  title,
+  description,
+  onTitleChange,
+  onDescriptionChange,
+}: TodoTextInputFieldsProps) {
+  return (
+    <div className="flex flex-col">
+      <Input
+        placeholder="Title"
+        classNames={{
+          input:
+            "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
+          inputWrapper:
+            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+        }}
+        value={title}
+        variant="underlined"
+        onChange={(e) => onTitleChange(e.target.value)}
+        required
+        autoFocus
+      />
+
+      {/* Description */}
+      <Textarea
+        placeholder="Add a description..."
+        value={description}
+        onChange={(e) => onDescriptionChange(e.target.value)}
+        minRows={1}
+        maxRows={5}
+        variant="underlined"
+        classNames={{
+          input:
+            "bg-transparent border-0 text-zinc-200 placeholder:text-zinc-500",
+          inputWrapper:
+            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
+        }}
+      />
+    </div>
+  );
+}
+
+export default function TodoModal({
+  onSuccess,
+  mode,
+  todo,
+  initialProjectId,
+  buttonText = "Add Task",
+  buttonClassName = "w-full justify-start text-sm text-primary",
+}: TodoModalProps) {
+  const user = useUser();
+  const { isMac, modifierKeyName } = usePlatform();
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });
+
+  // Get user's preferred timezone or fallback to browser timezone
+  const userTimezone = user?.timezone;
+
+  const {
+    formData,
+    loading,
+    handleSubmit,
+    updateField,
+    handleDateChange,
+    handleTextProcessing,
+  } = useTodoModalForm({
+    isOpen,
+    mode,
+    todo,
+    initialProjectId,
+    projects,
+    userTimezone,
+    createTodo,
+    updateTodo,
+    onComplete: () => {
+      onOpenChange();
+      onSuccess?.();
+    },
+  });
+
+  useModalKeyboardSubmit({ isOpen, loading, isMac, handleSubmit });
+
+  const handleTitleChange = (value: string) => {
+    updateField("title", value);
+    handleTextProcessing(value, "title");
+  };
+
+  const handleDescriptionChange = (value: string) => {
+    updateField("description", value);
+    handleTextProcessing(value, "description");
+  };
+
   return (
     <>
-      <Tooltip
-        content={
-          <span className="flex items-center gap-2">
-            {buttonText}
-            <Kbd className="text-[10px]">C</Kbd>
-          </span>
-        }
-        placement="right"
-      >
-        <Button
-          className={buttonClassName}
-          color="primary"
-          size="sm"
-          variant="flat"
-          startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
-          onPress={onOpen}
-          data-keyboard-shortcut="create-todo"
-        >
-          {buttonText}
-        </Button>
-      </Tooltip>
+      <TodoModalTrigger
+        buttonText={buttonText}
+        buttonClassName={buttonClassName}
+        onOpen={onOpen}
+      />
 
       <Modal
         isOpen={isOpen}
@@ -270,46 +405,12 @@ export default function TodoModal({
           {(onClose) => (
             <>
               <ModalBody className="gap-6 pt-6">
-                <div className="flex flex-col">
-                  <Input
-                    placeholder="Title"
-                    classNames={{
-                      input:
-                        "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
-                      inputWrapper:
-                        "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
-                    }}
-                    value={formData.title}
-                    variant="underlined"
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      updateField("title", value);
-                      handleTextProcessing(value, "title");
-                    }}
-                    required
-                    autoFocus
-                  />
-
-                  {/* Description */}
-                  <Textarea
-                    placeholder="Add a description..."
-                    value={formData.description || ""}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      updateField("description", value);
-                      handleTextProcessing(value, "description");
-                    }}
-                    minRows={1}
-                    maxRows={5}
-                    variant="underlined"
-                    classNames={{
-                      input:
-                        "bg-transparent border-0 text-zinc-200 placeholder:text-zinc-500",
-                      inputWrapper:
-                        "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
-                    }}
-                  />
-                </div>
+                <TodoTextInputFields
+                  title={formData.title}
+                  description={formData.description || ""}
+                  onTitleChange={handleTitleChange}
+                  onDescriptionChange={handleDescriptionChange}
+                />
 
                 {/* Fields Row with Chips */}
                 <TodoFieldsRow

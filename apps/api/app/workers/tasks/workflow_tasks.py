@@ -900,6 +900,347 @@ async def _finish_after_replay(
     return conversation_id, [*result.trace, *agent_trace], summary
 
 
+def _parse_scheduled_for(context: dict[str, Any] | None, workflow_id: str) -> "datetime | None":
+    """The occurrence stamp the fire was armed for, or None when unstamped.
+
+    Only a numeric stamp is scheduler provenance: manual "run now" callers
+    control their own context dict, so a hand-typed trigger_type/scheduled_for
+    must be ignored (ungated), not crash fromtimestamp mid-run.
+    """
+    scheduled_for = context.get("scheduled_for") if context else None
+    if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
+        if scheduled_for is not None:
+            # Present but not a number: a manual caller hand-typing its own
+            # context. Discard loudly — silence here would hide real bugs.
+            log.warning(
+                f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
+                workflow_id=workflow_id,
+                scheduled_for=str(scheduled_for)[:32],
+            )
+        return None
+    try:
+        return datetime.fromtimestamp(scheduled_for, tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        log.warning(
+            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
+            workflow_id=workflow_id,
+            scheduled_for=str(scheduled_for)[:32],
+        )
+        return None
+
+
+def _derive_trigger_type(context: dict[str, Any] | None) -> str:
+    # An explicit trigger_type always wins; only an ABSENT one falls back — to
+    # "integration" when the context carries a webhook payload (trigger fires
+    # queued before the trigger service stamped trigger_type), else to "manual".
+    trigger_type = context.get("trigger_type") if context else None
+    if trigger_type is not None:
+        return str(trigger_type)
+    has_payload = bool(context and "trigger_data" in context)
+    return TriggerType.INTEGRATION.value if has_payload else TriggerType.MANUAL.value
+
+
+async def _claim_scheduled_fire(
+    scheduler: WorkflowScheduler, workflow_id: str, context: dict[str, Any] | None
+) -> bool:
+    # The claim pins the occurrence the fire was armed for (``scheduled_for``,
+    # stamped by the scheduler at enqueue). ARQ has no job cancellation, so
+    # after a reschedule the old deferred job still fires;
+    # trigger_config.next_run has moved on and the mismatch rejects it instead
+    # of running the workflow at its original time. Jobs enqueued before the
+    # stamp existed carry no key and are ungated, so a deploy never strands a
+    # schedule.
+    expected_next_run = _parse_scheduled_for(context, workflow_id)
+    claimed = await scheduler.claim_scheduled_for_execution(
+        workflow_id, expected_next_run=expected_next_run
+    )
+    if not claimed:
+        log.warning(
+            f"{LogTag.WORKER} Workflow not in scheduled state "
+            "(already claimed, running, deactivated, or rescheduled away); "
+            "skipping stale scheduled fire",
+            workflow_id=workflow_id,
+            # The raw stamp (epoch seconds) reads better in Loki than a datetime
+            # repr, and is exactly what the enqueue carried.
+            scheduled_for=(context or {}).get("scheduled_for"),
+        )
+    return claimed
+
+
+async def _drain_trigger_events(
+    batch_key: str | None, context: dict[str, Any] | None, workflow_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Take the coalesced batch; returns ``(context, skip_reason)``.
+
+    An empty take means another run already drained these events and there is
+    nothing left to do. A Redis outage leaves the buffer intact — the returned
+    reason makes the caller exit WITHOUT claiming the events were drained; the
+    finally's refill check (or the next inbound event) schedules a fresh run
+    once Redis returns.
+    """
+    if not batch_key:
+        return context, None
+    events = await drain_trigger_batch(str(batch_key))
+    if events is None:
+        log.set_ns("workflow", outcome="trigger_batch_unavailable")
+        return context, f"Workflow {workflow_id} skipped — trigger batch unavailable"
+    log.set_ns("workflow", trigger_batch_size=len(events))
+    if not events:
+        log.set_ns("workflow", outcome="trigger_batch_empty")
+        return context, f"Workflow {workflow_id} skipped — trigger batch empty"
+    merged = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
+    return merged, None
+
+
+async def _run_and_record_success(
+    workflow: Workflow,
+    workflow_id: str,
+    trigger_type: str,
+    context: dict[str, Any] | None,
+    execution_id: str,
+) -> str:
+    # Replay the workflow's playbook when it still describes this workflow,
+    # otherwise run the agent. A replay that stops partway hands the rest of
+    # the run to the agent, carrying what it already did so the agent does
+    # not repeat a side effect. The agent path delivers its own result from
+    # the background delivery path (gated by workflow_id); a trusted replay
+    # delivers inside _finish_after_replay.
+    conversation_id, trace, summary = await _run_workflow(workflow, workflow_id, context or {})
+
+    # Track successful execution
+    await WorkflowService.increment_execution_count(
+        workflow_id, workflow.user_id, is_successful=True
+    )
+
+    # Complete execution record with success. The run did complete either
+    # way; the summary says how, so a flagged replay never reads as a clean
+    # one in the history.
+    await complete_execution(
+        execution_id=execution_id,
+        status="success",
+        summary=summary,
+        conversation_id=conversation_id,
+        trace=trace,
+    )
+
+    # A playbook this run wrote is checked against this run's own results:
+    # frozen on an empty result, it is distrusted before it is ever replayed.
+    await distrust_fresh_playbook(
+        workflow_id, workflow.user_id, trace, healing=summary != AGENT_RUN_SUMMARY
+    )
+
+    # Analytics: the run-now endpoint already captures manual executions at
+    # queue time (workflows.py); background-origin runs — scheduler,
+    # tracked-todo, and integration triggers — only flow through this task,
+    # so their completion is captured here. `trigger_type` already folds
+    # unstamped integration fires in (see the derivation above).
+    if trigger_type != TriggerType.MANUAL.value:
+        capture_event(
+            workflow.user_id,
+            AnalyticsEvents.WORKFLOW_EXECUTED,
+            {"workflow_id": workflow_id, "trigger_type": trigger_type},
+        )
+
+    # Arm the next occurrence (scheduled recurring workflows only). A re-arm
+    # failure must not turn a successful execution into a reported failure.
+    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+
+    return f"Workflow {workflow_id} executed successfully"
+
+
+async def _record_run_failure(
+    raised: Exception,
+    workflow: Workflow | None,
+    workflow_id: str,
+    execution_id: str | None,
+    context: dict[str, Any] | None,
+) -> str:
+    # A failure after a partial replay arrives wrapped with the replay's
+    # trace; the bookkeeping below classifies the real error, and the
+    # record keeps the calls that already happened.
+    after_replay = raised if isinstance(raised, PlaybookFallbackFailed) else None
+    e = after_replay.cause if after_replay is not None else raised
+    _log_run_failure(e, workflow_id)
+    if after_replay is None:
+        await _record_execution_failure(e, workflow, workflow_id, execution_id)
+    else:
+        await _record_execution_failure(
+            e,
+            workflow,
+            workflow_id,
+            execution_id,
+            conversation_id=after_replay.conversation_id,
+            trace=after_replay.trace,
+        )
+
+    # Still arm the next occurrence — a transient failure (rate limit, LLM
+    # error) must not permanently kill a recurring workflow.
+    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+
+    return f"Error executing workflow {workflow_id}: {e}"
+
+
+async def _reschedule_refill_safe(
+    workflow: Workflow | None,
+    workflow_id: str,
+    batch_key: str | None,
+    context: dict[str, Any] | None,
+) -> None:
+    # Events that landed while this run held the batch could not schedule
+    # their own run (the job id was occupied). Every exit owes them a
+    # follow-up — a failed or gate-skipped run must strand them no more
+    # than a successful one. Best-effort: a scheduling error only warns.
+    if batch_key is None or workflow is None:
+        return
+    try:
+        await reschedule_if_refilled(
+            workflow_id,
+            str(batch_key),
+            coalesce_window_seconds(workflow.trigger_config),
+            context or {},
+        )
+    except Exception as refill_error:
+        log.warning(
+            f"{LogTag.WORKER} Trigger batch refill check failed",
+            workflow_id=workflow_id,
+            error=str(refill_error),
+            error_type=type(refill_error).__name__,
+        )
+
+
+def _log_run_failure(e: Exception, workflow_id: str) -> None:
+    # The caught error must land on the wide event from the fire's own
+    # handling; the bookkeeping helpers cannot vouch for it on their own.
+    if isinstance(e, RateLimitExceededException):
+        # User hit their plan's workflow-execution quota: an expected,
+        # by-design outcome, not a worker failure. WARNING keeps it off the
+        # ARQ failed-task alert.
+        log.warning(
+            f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+    else:
+        log.exception(
+            f"{LogTag.WORKER} Error executing workflow",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
+async def _record_queued_fire(
+    queued: WorkflowFireQueued,
+    workflow: Workflow | None,
+    workflow_id: str,
+    execution_id: str | None,
+    context: dict[str, Any] | None,
+) -> str:
+    # This fire never ran: one executor runs per conversation, and the
+    # workflow's previous fire still held the lock, so this one went on the
+    # queue. Completing it as "success" is what made every fire after the
+    # first look like work on a workflow whose run outlasts its own cron
+    # period, and the fake record then became the "last run" the NEXT fire
+    # reads as its history. It is not a failure to notify about either: the
+    # queued task runs on its own and delivers its own result, so this path
+    # sends neither the completion nor the failure notification.
+    log.set_ns(
+        "workflow",
+        queued=True,
+        queued_task_id=queued.task_id,
+        outcome="queued_behind_in_flight_run",
+    )
+    log.warning(
+        f"{LogTag.WORKER} Workflow fire queued behind its previous run — nothing executed",
+        workflow_id=workflow_id,
+        queued_task_id=queued.task_id,
+    )
+    if execution_id:
+        await complete_execution(
+            execution_id=execution_id,
+            status="failed",
+            error_message=QUEUED_MESSAGE,
+            conversation_id=queued.conversation_id,
+            trace=queued.trace,
+        )
+    # Counted like any other fire that produced no result, so the workflow's
+    # success ratio reflects what actually happened.
+    await WorkflowService.increment_execution_count(
+        workflow_id, queued.user_id, is_successful=False
+    )
+    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+    return f"Workflow {workflow_id} did not run — queued behind its previous run"
+
+
+async def _record_overlapped_fire(
+    overlapped: WorkflowFireOverlapped,
+    workflow: Workflow | None,
+    workflow_id: str,
+    execution_id: str | None,
+    context: dict[str, Any] | None,
+) -> str:
+    # This fire never ran either: its playbook replay found the workflow's
+    # conversation already held by another run of the same workflow, and
+    # dropped out rather than replay every side effect a second time. That
+    # run delivers the result, so, as with the queued case, this is recorded
+    # honestly and the user is told nothing.
+    log.set_ns(
+        "workflow",
+        overlapped=True,
+        lock_holder=overlapped.holder,
+        outcome="overlapped_in_flight_run",
+    )
+    log.warning(
+        f"{LogTag.WORKER} Workflow fire overlapped an in-flight run — nothing executed",
+        workflow_id=workflow_id,
+        conversation_id=overlapped.conversation_id,
+        lock_holder=overlapped.holder,
+    )
+    if execution_id:
+        await complete_execution(
+            execution_id=execution_id,
+            status="skipped",
+            summary=OVERLAPPED_SUMMARY,
+            conversation_id=overlapped.conversation_id,
+        )
+    await WorkflowService.increment_execution_count(
+        workflow_id, overlapped.user_id, is_successful=False
+    )
+    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+    return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
+
+
+async def _record_timed_out_fire(
+    workflow: Workflow | None,
+    workflow_id: str,
+    execution_id: str | None,
+    context: dict[str, Any] | None,
+) -> None:
+    # The worker's job timeout cancels the job rather than raising into it,
+    # so this is the only place a fire that ran out of time can be closed.
+    # Seen live: a heal run whose model calls stalled for minutes each was
+    # cut off at the limit and its record read "running" for good. Recorded
+    # as failed and re-armed like any other failure; the caller re-raises the
+    # cancel so ARQ sees the timeout it raised.
+    timed_out = WorkflowFireTimedOut(WORKER_JOB_TIMEOUT_SECONDS)
+    log.error(
+        f"{LogTag.WORKER} Workflow fire cut off by the job timeout",
+        workflow_id=workflow_id,
+        error=str(timed_out),
+        error_type=type(timed_out).__name__,
+    )
+    await _record_execution_failure(timed_out, workflow, workflow_id, execution_id)
+    if workflow is not None:
+        # Whatever the fire was replaying may have run its side effects
+        # before the cut. Recorded as a failed run so the next fire heals
+        # with that on record instead of replaying them again.
+        await playbook_repository.record_run_outcome(
+            workflow_id, workflow.user_id, PlaybookRunStatus.FAILED, reason=str(timed_out)
+        )
+    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
+
+
 async def execute_workflow_by_id(
     ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
     workflow_id: str,
@@ -936,19 +1277,9 @@ async def execute_workflow_by_id(
         # — a run the onboarding or budget gate rejects must leave the buffer
         # intact for a later run, not consume the events and discard them.
 
-        # Determine trigger type from context. An explicit trigger_type always
-        # wins; only an ABSENT one falls back — to "integration" when the
-        # context carries a webhook payload (trigger fires queued before the
-        # trigger service stamped trigger_type), else to "manual".
-        trigger_type = context.get("trigger_type") if context else None
-        if trigger_type is None:
-            trigger_type = (
-                TriggerType.INTEGRATION.value
-                if context and "trigger_data" in context
-                else TriggerType.MANUAL.value
-            )
         # Everything below runs as this kind of work: the budget wall, the run's
         # own tiered limit, and every rate-limited tool the agent reaches.
+        trigger_type = _derive_trigger_type(context)
         mark_run_origin(_origin_for(trigger_type))
         log.set(
             workflow=WorkflowContext(
@@ -962,52 +1293,10 @@ async def execute_workflow_by_id(
         # executing) so a concurrent recovery scan can't double-execute a workflow
         # whose previous fire is still running. Manual/integration "run now" fires
         # don't go through the scan and must not be status-gated.
-        #
-        # The claim also pins the occurrence the fire was armed for
-        # (``scheduled_for``, stamped by the scheduler at enqueue). ARQ has no job
-        # cancellation, so after a reschedule the old deferred job still fires;
-        # trigger_config.next_run has moved on and the mismatch rejects it instead
-        # of running the workflow at its original time. Jobs enqueued before the
-        # stamp existed carry no key and are ungated, so a deploy never strands a
-        # schedule.
-        if trigger_type == TriggerType.SCHEDULE.value:
-            # Only a numeric stamp is scheduler provenance. Manual "run now"
-            # callers control their own context dict, so a hand-typed
-            # trigger_type/scheduled_for must be ignored (ungated), not crash
-            # fromtimestamp with a TypeError/OverflowError mid-run.
-            scheduled_for = context.get("scheduled_for") if context else None
-            if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
-                log.warning(
-                    f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-                    "treating as unstamped",
-                    workflow_id=workflow_id,
-                    scheduled_for=str(scheduled_for)[:32],
-                )
-                expected_next_run = None
-            else:
-                try:
-                    expected_next_run = datetime.fromtimestamp(scheduled_for, tz=UTC)
-                except (ValueError, OverflowError, OSError):
-                    log.warning(
-                        f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; "
-                        "treating as unstamped",
-                        workflow_id=workflow_id,
-                        scheduled_for=str(scheduled_for)[:32],
-                    )
-                    expected_next_run = None
-            if not (
-                await scheduler.claim_scheduled_for_execution(
-                    workflow_id, expected_next_run=expected_next_run
-                )
-            ):
-                log.warning(
-                    f"{LogTag.WORKER} Workflow not in scheduled state "
-                    "(already claimed, running, deactivated, or rescheduled away); "
-                    "skipping stale scheduled fire",
-                    workflow_id=workflow_id,
-                    scheduled_for=scheduled_for,
-                )
-                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
+        if trigger_type == TriggerType.SCHEDULE.value and not await _claim_scheduled_fire(
+            scheduler, workflow_id, context
+        ):
+            return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
         _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
 
@@ -1037,23 +1326,13 @@ async def execute_workflow_by_id(
             feature_key="trigger_workflow_executions",
         )
 
-        # Both gates passed — take the batch. An empty one means another run
-        # already drained these events and there is nothing left to do.
-        if batch_key:
-            events = await drain_trigger_batch(str(batch_key))
-            if events is None:
-                # Redis unreachable: the buffer may hold events — exit WITHOUT
-                # claiming they were drained; the finally's refill check (or the
-                # next inbound event) schedules a fresh run once Redis returns.
-                log.set_ns("workflow", outcome="trigger_batch_unavailable")
-                return f"Workflow {workflow_id} skipped — trigger batch unavailable"
-            log.set_ns("workflow", trigger_batch_size=len(events))
-            if not events:
-                log.set_ns("workflow", outcome="trigger_batch_empty")
-                return f"Workflow {workflow_id} skipped — trigger batch empty"
-            context = {**(context or {}), "trigger_data": {"events": events, "count": len(events)}}
+        # Both gates passed — take the batch.
+        context, skip_reason = await _drain_trigger_events(batch_key, context, workflow_id)
+        if skip_reason:
+            return skip_reason
 
-        # Create execution record at start
+        # Create execution record at start (before running, so the failure
+        # handler below can reference it).
         execution = await create_execution(
             workflow_id=workflow_id,
             user_id=workflow.user_id,
@@ -1061,203 +1340,23 @@ async def execute_workflow_by_id(
         )
         execution_id = execution.execution_id
 
-        # Replay the workflow's playbook when it still describes this workflow,
-        # otherwise run the agent. A replay that stops partway hands the rest of
-        # the run to the agent, carrying what it already did so the agent does
-        # not repeat a side effect.
-        conversation_id, trace, summary = await _run_workflow(workflow, workflow_id, context or {})
-
-        # Track successful execution
-        await WorkflowService.increment_execution_count(
-            workflow_id, workflow.user_id, is_successful=True
+        return await _run_and_record_success(
+            workflow, workflow_id, trigger_type, context, execution_id
         )
-
-        # Complete execution record with success. The run did complete either
-        # way; the summary says how, so a flagged replay never reads as a clean
-        # one in the history.
-        await complete_execution(
-            execution_id=execution_id,
-            status="success",
-            summary=summary,
-            conversation_id=conversation_id,
-            trace=trace,
-        )
-
-        # A playbook this run wrote is checked against this run's own results:
-        # frozen on an empty result, it is distrusted before it is ever replayed.
-        await distrust_fresh_playbook(
-            workflow_id, workflow.user_id, trace, healing=summary != AGENT_RUN_SUMMARY
-        )
-
-        # Analytics: the run-now endpoint already captures manual executions at
-        # queue time (workflows.py); background-origin runs — scheduler,
-        # tracked-todo, and integration triggers — only flow through this task,
-        # so their completion is captured here. `trigger_type` already folds
-        # unstamped integration fires in (see the derivation above).
-        if trigger_type != TriggerType.MANUAL.value:
-            capture_event(
-                workflow.user_id,
-                AnalyticsEvents.WORKFLOW_EXECUTED,
-                {"workflow_id": workflow_id, "trigger_type": trigger_type},
-            )
-
-        # Arm the next occurrence (scheduled recurring workflows only). A re-arm
-        # failure must not turn a successful execution into a reported failure.
-        await _rearm_quietly(scheduler, workflow, context, workflow_id)
-
-        return f"Workflow {workflow_id} executed successfully"
 
     except WorkflowFireQueued as queued:
-        # This fire never ran: one executor runs per conversation, and the
-        # workflow's previous fire still held the lock, so this one went on the
-        # queue. Completing it as "success" is what made every fire after the
-        # first look like work on a workflow whose run outlasts its own cron
-        # period — and the fake record then became the "last run" the NEXT fire
-        # reads as its history. It is not a failure to notify about either: the
-        # queued task runs on its own and delivers its own result, so this path
-        # sends neither the completion nor the failure notification.
-        log.set_ns(
-            "workflow",
-            queued=True,
-            queued_task_id=queued.task_id,
-            outcome="queued_behind_in_flight_run",
-        )
-        log.warning(
-            f"{LogTag.WORKER} Workflow fire queued behind its previous run — nothing executed",
-            workflow_id=workflow_id,
-            queued_task_id=queued.task_id,
-        )
-        if execution_id:
-            await complete_execution(
-                execution_id=execution_id,
-                status="failed",
-                error_message=QUEUED_MESSAGE,
-                conversation_id=queued.conversation_id,
-                trace=queued.trace,
-            )
-        # Counted like any other fire that produced no result, so the workflow's
-        # success ratio reflects what actually happened.
-        await WorkflowService.increment_execution_count(
-            workflow_id, queued.user_id, is_successful=False
-        )
-        await _rearm_quietly(scheduler, workflow, context, workflow_id)
-        return f"Workflow {workflow_id} did not run — queued behind its previous run"
-
+        return await _record_queued_fire(queued, workflow, workflow_id, execution_id, context)
     except WorkflowFireOverlapped as overlapped:
-        # This fire never ran either: its playbook replay found the workflow's
-        # conversation already held by another run of the same workflow, and
-        # dropped out rather than replay every side effect a second time. That
-        # run delivers the result, so — as with the queued case — this is
-        # recorded honestly and the user is told nothing.
-        log.set_ns(
-            "workflow",
-            overlapped=True,
-            lock_holder=overlapped.holder,
-            outcome="overlapped_in_flight_run",
+        return await _record_overlapped_fire(
+            overlapped, workflow, workflow_id, execution_id, context
         )
-        log.warning(
-            f"{LogTag.WORKER} Workflow fire overlapped an in-flight run — nothing executed",
-            workflow_id=workflow_id,
-            conversation_id=overlapped.conversation_id,
-            lock_holder=overlapped.holder,
-        )
-        if execution_id:
-            await complete_execution(
-                execution_id=execution_id,
-                status="skipped",
-                summary=OVERLAPPED_SUMMARY,
-                conversation_id=overlapped.conversation_id,
-            )
-        await WorkflowService.increment_execution_count(
-            workflow_id, overlapped.user_id, is_successful=False
-        )
-        await _rearm_quietly(scheduler, workflow, context, workflow_id)
-        return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
-
     except asyncio.CancelledError:
-        # The worker's job timeout cancels the job rather than raising into it,
-        # so this is the only place a fire that ran out of time can be closed.
-        # Seen live: a heal run whose model calls stalled for minutes each was
-        # cut off at the limit and its record read "running" for good. Recorded
-        # as failed, re-armed like any other failure, and the cancel still
-        # propagates so ARQ sees the timeout it raised.
-        timed_out = WorkflowFireTimedOut(WORKER_JOB_TIMEOUT_SECONDS)
-        log.error(
-            f"{LogTag.WORKER} Workflow fire cut off by the job timeout",
-            workflow_id=workflow_id,
-            error=str(timed_out),
-            error_type=type(timed_out).__name__,
-        )
-        await _record_execution_failure(timed_out, workflow, workflow_id, execution_id)
-        if workflow is not None:
-            # Whatever the fire was replaying may have run its side effects
-            # before the cut. Recorded as a failed run so the next fire heals
-            # with that on record instead of replaying them again.
-            await playbook_repository.record_run_outcome(
-                workflow_id, workflow.user_id, PlaybookRunStatus.FAILED, reason=str(timed_out)
-            )
-        await _rearm_quietly(scheduler, workflow, context, workflow_id)
+        await _record_timed_out_fire(workflow, workflow_id, execution_id, context)
         raise
-    except Exception as raised:
-        # A failure after a partial replay arrives wrapped with the replay's
-        # trace; the bookkeeping below classifies the real error, and the
-        # record keeps the calls that already happened.
-        after_replay = raised if isinstance(raised, PlaybookFallbackFailed) else None
-        e = after_replay.cause if after_replay is not None else raised
-        # The caught error must land on the wide event from this block — the
-        # bookkeeping helper below cannot vouch for it on its own.
-        if isinstance(e, RateLimitExceededException):
-            # User hit their plan's workflow-execution quota — an expected,
-            # by-design outcome, not a worker failure. WARNING keeps it off the
-            # ARQ failed-task alert.
-            log.warning(
-                f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
-                workflow_id=workflow_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-        else:
-            log.exception(
-                f"{LogTag.WORKER} Error executing workflow",
-                workflow_id=workflow_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-
-        await _record_execution_failure(
-            e,
-            workflow,
-            workflow_id,
-            execution_id,
-            conversation_id=after_replay.conversation_id if after_replay is not None else None,
-            trace=after_replay.trace if after_replay is not None else None,
-        )
-
-        # Still arm the next occurrence — a transient failure (rate limit, LLM
-        # error) must not permanently kill a recurring workflow.
-        await _rearm_quietly(scheduler, workflow, context, workflow_id)
-
-        return f"Error executing workflow {workflow_id}: {e}"
+    except Exception as e:
+        return await _record_run_failure(e, workflow, workflow_id, execution_id, context)
     finally:
-        # Events that landed while this run held the batch could not schedule
-        # their own run (the job id was occupied). Every exit owes them a
-        # follow-up — a failed or gate-skipped run must strand them no more
-        # than a successful one. Best-effort: a scheduling error only warns.
-        if batch_key is not None and workflow is not None:
-            try:
-                await reschedule_if_refilled(
-                    workflow_id,
-                    str(batch_key),
-                    coalesce_window_seconds(workflow.trigger_config),
-                    context or {},
-                )
-            except Exception as refill_error:
-                log.warning(
-                    f"{LogTag.WORKER} Trigger batch refill check failed",
-                    workflow_id=workflow_id,
-                    error=str(refill_error),
-                    error_type=type(refill_error).__name__,
-                )
+        await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)
 
 
 async def _resolve_workflow_user(workflow: Workflow, user_id: str) -> AuthenticatedUser:

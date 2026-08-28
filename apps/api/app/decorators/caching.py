@@ -46,6 +46,19 @@ R = TypeVar("R")
 # splits the two cases so R is the awaited value in both.
 _SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
 
+# A key generator receives the wrapped function's name plus its call args/kwargs
+# (arbitrary per call site, see `_pattern_to_key`) and returns the cache key --
+# sync or async, matching the two real key generators in this codebase
+# (`_recall_cache_key` and the CacheInvalidator custom-key examples above).
+_KeyGenerator = Callable[..., str] | Callable[..., Coroutine[Any, Any, str]]
+
+# CacheInvalidator's generator may bust one key or several (e.g. a function
+# whose invalidation needs multiple key_patterns but whose signature doesn't
+# expose a flat argument per placeholder -- see install_skill).
+_InvalidationKeyGenerator = (
+    Callable[..., str | list[str]] | Callable[..., Coroutine[Any, Any, str | list[str]]]
+)
+
 
 class Cacheable:
     """
@@ -54,24 +67,19 @@ class Cacheable:
     Provides comprehensive caching functionality including:
     - Multiple key generation strategies (pattern, generator, static, smart hash)
     - Type-safe caching with Pydantic model support
-    - Custom serialization/deserialization hooks
     - Flexible TTL management
 
     Key Generation Strategies:
         1. Smart hash: Automatic hash-based keys using function name and arguments
-        2. Pattern-based: Use function arguments in template strings
+        2. Pattern-based: Use function arguments in template strings (a literal
+           without placeholders acts as a static key)
         3. Generator function: Custom logic for complex key generation
-        4. Static key: Simple fixed key for singleton data
 
     Type Safety Options:
-        1. model: Pydantic model class for automatic validation and typed instances
+        model: Pydantic model class for automatic validation and typed instances
            - Replaces TypeAdapter(Any) with TypeAdapter(model) for Redis operations
            - Validates data integrity on cache retrieval
-           - More efficient than custom serializer/deserializer lambdas
            - Works with complex types: List[Model], Optional[Model], Dict[str, Model]
-
-        2. deserializer: Custom function for data transformation (applied after model validation)
-        3. serializer: Custom function for pre-cache processing (applied before model validation)
 
     Examples:
         # Smart hash-based caching (replaces cache_short/medium/long)
@@ -97,41 +105,25 @@ class Cacheable:
         @Cacheable(key_generator=cache_key, ttl=3600)
         async def time_sensitive_data(item_id: str):
             return fetch_hourly_data(item_id)
-
-        # With custom serialization
-        @Cacheable(
-            key_pattern="processed:{data_id}",
-            serializer=lambda x: x.to_dict(),
-            deserializer=lambda x: CustomObject.from_dict(x),
-            ttl=7200
-        )
-        async def get_processed_data(data_id: str):
-            return CustomObject(process_data(data_id))
     """
 
     def __init__(
         self,
         key_pattern: str | None = None,
-        key_generator: Callable | None = None,
-        key: str | None = None,
+        key_generator: _KeyGenerator | None = None,
         ttl: int = ONE_YEAR_TTL,
-        serializer: Callable[[Any], Any] | None = None,
-        deserializer: Callable[[Any], Any] | None = None,
         model: type[Any] | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
-        ignore_none: bool = False,
     ):
         """
         Initialize the cache decorator.
 
         Args:
-            key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}")
+            key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}");
+                a literal without placeholders acts as a static key
             key_generator: Optional custom function to generate cache keys
-            ttl: Time-to-live for cache entries in seconds. None means no expiration
-            key: Optional static key for caching
-            serializer: Optional function to serialize the value before caching
-            deserializer: Optional function to deserialize the value after retrieving from cache
+            ttl: Time-to-live for cache entries in seconds
             model: Optional Pydantic model class for type-specific serialization/deserialization.
                    Uses Pydantic TypeAdapter(model) instead of TypeAdapter(Any) for:
                    - Type-safe serialization: Validates data matches model schema before caching
@@ -152,21 +144,36 @@ class Cacheable:
             smart_hash: Use automatic hash-based key generation with function name and arguments
             namespace: Namespace prefix for smart hash keys (default: "api")
         """
+        if not key_pattern and not key_generator and not smart_hash:
+            raise ValueError("Either key_pattern, key_generator, or smart_hash must be provided.")
         self.key_pattern = key_pattern
         self.key_generator = key_generator
-        self.key = key
         self.smart_hash = smart_hash
         self.namespace = namespace
-        self.ignore_none = ignore_none
-
-        if not key and not key_pattern and not key_generator and not smart_hash:
-            raise ValueError(
-                "Either key, key_pattern, key_generator, or smart_hash must be provided."
-            )
         self.ttl = ttl
-        self.serializer = serializer
-        self.deserializer = deserializer
         self.model = model
+
+    async def _cache_key(
+        self,
+        func_name: str,
+        func: Callable[P, R],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> str:
+        """Resolve the cache key from the configured strategy."""
+        if self.smart_hash:
+            base_key = create_cache_key_hash(func_name, *args, **kwargs)
+            return f"{self.namespace}:{base_key}"
+        if self.key_generator:
+            # Handle both sync and async key generators
+            if asyncio.iscoroutinefunction(self.key_generator):
+                return cast(str, await self.key_generator(func_name, *args, **kwargs))
+            return cast(str, self.key_generator(func_name, *args, **kwargs))
+        if not self.key_pattern:
+            raise ValueError("key_pattern must be provided if key_generator is not used.")
+        bound_args = inspect.signature(func).bind(*args, **kwargs)
+        bound_args.apply_defaults()
+        return _pattern_to_key(self.key_pattern, arguments=bound_args.arguments)
 
     @overload
     def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
@@ -188,34 +195,12 @@ class Cacheable:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Generate the cache key
-            if self.key:
-                cache_key = self.key
-            elif self.smart_hash:
-                # Use smart hash-based key generation
-                base_key = create_cache_key_hash(func.__name__, *args, **kwargs)
-                cache_key = f"{self.namespace}:{base_key}"
-            elif self.key_generator:
-                # Handle both sync and async key generators
-                if asyncio.iscoroutinefunction(self.key_generator):
-                    cache_key = await self.key_generator(func.__name__, *args, **kwargs)
-                else:
-                    cache_key = self.key_generator(func.__name__, *args, **kwargs)
-            else:
-                if not self.key_pattern:
-                    raise ValueError("key_pattern must be provided if key_generator is not used.")
-
-                func_signature = inspect.signature(func)
-                bound_args = func_signature.bind(*args, **kwargs)
-                bound_args.apply_defaults()
-
-                cache_key = _pattern_to_key(self.key_pattern, arguments=bound_args.arguments)
+            cache_key = await self._cache_key(func.__name__, func, args, kwargs)
 
             # Check if the value is already cached
             cached_value = await get_cache(cache_key, self.model)
             if cached_value is not None:
                 log.debug(f"{LogTag.API} Cache hit for key", cache_key=cache_key)
-                if self.deserializer:
-                    cached_value = self.deserializer(cached_value)
                 # What went into the cache came out of this same `func`.
                 return cast(R, cached_value)
 
@@ -226,18 +211,11 @@ class Cacheable:
             else:
                 result = cast(R, func(*args, **kwargs))
 
-            if result is None and self.ignore_none:
-                return result
-
-            serialized_result = result
-            if self.serializer:
-                serialized_result = self.serializer(result)
-
             log.debug(f"{LogTag.API} Cache miss for key", cache_key=cache_key)
             log.debug(f"{LogTag.API} Setting cache for key", cache_key=cache_key)
 
             # Let set_cache handle Pydantic serialization
-            await set_cache(key=cache_key, value=serialized_result, ttl=self.ttl, model=self.model)
+            await set_cache(key=cache_key, value=result, ttl=self.ttl, model=self.model)
 
             return result
 
@@ -290,7 +268,7 @@ class CacheInvalidator:
     def __init__(
         self,
         key_patterns: list[str] | None = None,
-        key_generator: Callable | None = None,
+        key_generator: _InvalidationKeyGenerator | None = None,
         key: str | None = None,
     ):
         """
@@ -298,7 +276,8 @@ class CacheInvalidator:
 
         Args:
             key_pattern: Optional string template for the cache key (e.g. "{arg1}:{arg2}")
-            key_generator: Optional custom function to generate cache keys
+            key_generator: Optional custom function returning one key, or several,
+                to invalidate
             ttl: Time-to-live for cache entries in seconds. None means no expiration
             key: Optional static key for caching
         """
@@ -334,10 +313,10 @@ class CacheInvalidator:
             elif self.key_generator:
                 # Handle both sync and async key generators
                 if asyncio.iscoroutinefunction(self.key_generator):
-                    key = await self.key_generator(func.__name__, *args, **kwargs)
+                    generated = await self.key_generator(func.__name__, *args, **kwargs)
                 else:
-                    key = self.key_generator(func.__name__, *args, **kwargs)
-                cache_keys = [key]
+                    generated = self.key_generator(func.__name__, *args, **kwargs)
+                cache_keys = generated if isinstance(generated, list) else [generated]
             else:
                 if not self.key_patterns:
                     raise ValueError("key_pattern must be provided if key_generator is not used.")
@@ -394,6 +373,6 @@ def _pattern_to_key(pattern: str, arguments: dict[str, Any]) -> str:
     try:
         return pattern.format(**arguments)
     except KeyError as e:
-        raise ValueError(f"Missing key in pattern: {e}")
+        raise ValueError(f"Missing key in pattern: {e}") from e
     except Exception as e:
-        raise ValueError(f"Error generating key from pattern: {e}")
+        raise ValueError(f"Error generating key from pattern: {e}") from e

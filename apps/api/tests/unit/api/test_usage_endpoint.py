@@ -11,11 +11,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.payment_models import PlanType
+from app.schemas.usage import (
+    ActivityDay,
+    UsageActivityResponse,
+    UsageBudget,
+    UsageSummary,
+)
 from app.services.analytics_service import AnalyticsEvents
 
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
+ACTIVITY_URL = "/api/v1/usage/activity"
 ANALYTICS_PATCH = "app.api.v1.endpoints.usage.capture_context_event"
 
 
@@ -33,11 +39,7 @@ def _noop_analytics():
 
 
 # Patch targets
-_PAYMENT_SERVICE = (
-    "app.services.payments.payment_service.payment_service.get_user_subscription_status"
-)
-_GET_REALTIME_USAGE = "app.api.v1.endpoints.usage._get_realtime_usage"
-_GET_BUDGET_STATUS = "app.api.v1.endpoints.usage.get_budget_status"
+_BUILD_USAGE_SUMMARY = "app.api.v1.endpoints.usage.build_usage_summary"
 _USAGE_SERVICE = "app.api.v1.endpoints.usage.usage_service"
 
 _MOCK_BUDGET = {
@@ -47,10 +49,15 @@ _MOCK_BUDGET = {
 }
 
 
-def _mock_subscription(plan_type: str = "free") -> MagicMock:
-    sub = MagicMock()
-    sub.plan_type = PlanType(plan_type)
-    return sub
+def _mock_summary(plan_type: str = "free") -> UsageSummary:
+    return UsageSummary(
+        user_id="507f1f77bcf86cd799439011",
+        plan_type=plan_type,
+        primary_feature="chat_messages",
+        features={},
+        budget=UsageBudget.model_validate(_MOCK_BUDGET),
+        last_updated="2025-01-01T00:00:00+00:00",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -62,33 +69,10 @@ class TestGetUsageSummary:
     """Tests for the get usage summary endpoint."""
 
     async def test_get_summary_returns_200(self, client: AsyncClient):
-        mock_sub = _mock_subscription()
-        mock_features: dict = {
-            "chat": {
-                "title": "Chat Messages",
-                "description": "AI chat messages",
-                # Pro's limits ride every feature so a free UI can show the delta.
-                "upgrade": {"day": 0, "month": 60000},
-                "periods": {
-                    "day": {
-                        "used": 5,
-                        "limit": 50,
-                        "percentage": 10.0,
-                        "reset_time": "2025-01-02T00:00:00+00:00",
-                        "remaining": 45,
-                    }
-                },
-            }
-        }
-
-        with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
-            patch(
-                _GET_REALTIME_USAGE,
-                new_callable=AsyncMock,
-                return_value=mock_features,
-            ),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary(),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -103,32 +87,12 @@ class TestGetUsageSummary:
         assert "last_updated" in data
 
     async def test_summary_captures_usage_queried(self, client: AsyncClient):
-        mock_sub = _mock_subscription()
-        mock_features: dict = {
-            "chat": {
-                "title": "Chat Messages",
-                "description": "AI chat messages",
-                "upgrade": {"day": 0, "month": 60000},
-                "periods": {
-                    "day": {
-                        "used": 5,
-                        "limit": 50,
-                        "percentage": 10.0,
-                        "reset_time": "2025-01-02T00:00:00+00:00",
-                        "remaining": 45,
-                    }
-                },
-            }
-        }
-
         with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
             patch(
-                _GET_REALTIME_USAGE,
+                _BUILD_USAGE_SUMMARY,
                 new_callable=AsyncMock,
-                return_value=mock_features,
+                return_value=_mock_summary(),
             ),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
             patch(ANALYTICS_PATCH) as mock_capture,
         ):
             response = await client.get(SUMMARY_URL)
@@ -138,12 +102,10 @@ class TestGetUsageSummary:
         assert type(mock_capture.call_args.args[1]["plan_type"]) is str
 
     async def test_get_summary_pro_plan(self, client: AsyncClient):
-        mock_sub = _mock_subscription("pro")
-
-        with (
-            patch(_PAYMENT_SERVICE, new_callable=AsyncMock, return_value=mock_sub),
-            patch(_GET_REALTIME_USAGE, new_callable=AsyncMock, return_value={}),
-            patch(_GET_BUDGET_STATUS, new_callable=AsyncMock, return_value=_MOCK_BUDGET),
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary("pro"),
         ):
             response = await client.get(SUMMARY_URL)
 
@@ -151,9 +113,34 @@ class TestGetUsageSummary:
         data = response.json()
         assert data["plan_type"] == "pro"
 
+    async def test_summary_is_built_for_the_authenticated_user(self, client: AsyncClient):
+        with patch(
+            _BUILD_USAGE_SUMMARY,
+            new_callable=AsyncMock,
+            return_value=_mock_summary(),
+        ) as mock_build:
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_build.assert_awaited_once_with("507f1f77bcf86cd799439011")
+
+    async def test_summary_records_period_and_feature_count_in_event(self, client: AsyncClient):
+        with (
+            patch(
+                _BUILD_USAGE_SUMMARY,
+                new_callable=AsyncMock,
+                return_value=_mock_summary(),
+            ),
+            patch("app.api.v1.endpoints.usage.log") as mock_log,
+        ):
+            response = await client.get(SUMMARY_URL)
+
+        assert response.status_code == 200
+        mock_log.set.assert_any_call(period="realtime", result_count=0)
+
     async def test_get_summary_service_error_returns_500(self, client: AsyncClient):
         with patch(
-            _PAYMENT_SERVICE,
+            _BUILD_USAGE_SUMMARY,
             new_callable=AsyncMock,
             side_effect=Exception("Redis down"),
         ):
@@ -249,3 +236,58 @@ class TestGetUsageHistory:
             response = await client.get(HISTORY_URL)
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /usage/activity
+# ---------------------------------------------------------------------------
+
+
+class TestGetUsageActivity:
+    """Tests for the get usage activity endpoint."""
+
+    async def test_get_activity_returns_200(self, client: AsyncClient):
+        mock_result = UsageActivityResponse(
+            days=[
+                ActivityDay(
+                    date="2025-01-01",
+                    count=3,
+                    tokens=1200,
+                    input_tokens=800,
+                    output_tokens=400,
+                    cached_tokens=0,
+                    reasoning_tokens=0,
+                )
+            ],
+            total=3,
+            total_tokens=1200,
+            streak=1,
+            tier="free",
+        )
+
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_get_activity:
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3
+        assert data["total_tokens"] == 1200
+        assert data["streak"] == 1
+        assert data["days"][0]["date"] == "2025-01-01"
+        # Default trailing window is 365 days.
+        mock_get_activity.assert_awaited_once_with("507f1f77bcf86cd799439011", 365)
+
+    async def test_get_activity_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            "app.api.v1.endpoints.usage.get_activity",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB error"),
+        ):
+            response = await client.get(ACTIVITY_URL)
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "Failed to get usage activity"

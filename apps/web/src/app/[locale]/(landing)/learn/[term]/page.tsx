@@ -190,7 +190,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
                 <Link
                   key={related.slug}
                   href={`/learn/${related.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                     {related.term}
@@ -223,7 +223,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
                 <Link
                   key={comparison.slug}
                   href={`/compare/${comparison.slug}`}
-                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
                     {t("glossary.gaia_vs", { name: comparison.name })}
@@ -243,7 +243,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
               href="/compare"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("glossary.compare_alternatives")}
@@ -254,7 +254,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
             </Link>
             <Link
               href="/for"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
                 {t("glossary.gaia_for_role")}

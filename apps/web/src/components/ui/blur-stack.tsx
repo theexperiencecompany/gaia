@@ -43,7 +43,6 @@ export default function BlurStack({
                 pointerEvents: "none",
                 backdropFilter: `blur(${layer.blur}px)`,
                 WebkitBackdropFilter: `blur(${layer.blur}px)`,
-                willChange: "auto",
               }}
             />
           );

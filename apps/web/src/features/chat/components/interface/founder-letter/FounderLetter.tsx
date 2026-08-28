@@ -255,7 +255,7 @@ interface FounderLetterProps {
 }
 
 export function FounderLetter({ hidden = false }: FounderLetterProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isLetterOpen, setIsLetterOpen] = useState(false);
   // Both read in an effect, not in render, so server and client markup match.
   const [dismissed, setDismissed] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
@@ -287,7 +287,7 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     const firstOpen = !window.localStorage.getItem(LETTER_OPENED_KEY);
     window.localStorage.setItem(LETTER_OPENED_KEY, "1");
     setHasOpened(true);
-    setIsOpen(true);
+    setIsLetterOpen(true);
     trackEvent(ANALYTICS_EVENTS.FOUNDER_LETTER_OPENED, {
       first_open: firstOpen,
       discount_code: DISCOUNT_CODE,
@@ -304,14 +304,20 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
     });
   }, []);
 
-  const closeLetter = useCallback(() => setIsOpen(false), []);
+  const closeLetter = useCallback(() => setIsLetterOpen(false), []);
 
-  // Voice mode hides the letter, but hiding it only stops it rendering — the
-  // component stays mounted, so an open letter would leave the body scroll
-  // locked with nothing on screen to explain why. Hiding it closes it.
-  useEffect(() => {
-    if (hidden) setIsOpen(false);
-  }, [hidden]);
+  // Voice mode hides the letter. Hiding it is derived, not an effect: the
+  // early return below stops rendering while `hidden`, which takes an open
+  // modal with it — otherwise the body scroll would stay locked with nothing
+  // on screen to explain why.
+  // Voice mode hiding the letter must CLOSE it for good (master's documented
+  // intent): once `hidden`, clear the open flag via render-time adjustment so
+  // exiting voice mode doesn't resurrect the modal. Render-phase setState is
+  // React's sanctioned pattern here — no adjustment effect needed.
+  if (hidden && isLetterOpen) {
+    setIsLetterOpen(false);
+  }
+  const isOpen = isLetterOpen && !hidden;
 
   const copyCode = useCallback(async () => {
     try {

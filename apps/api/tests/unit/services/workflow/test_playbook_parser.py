@@ -57,14 +57,14 @@ class _FakeRegistry:
         return self._tools
 
 
-@tool
-async def exec(code: Annotated[str, "Code to run"]) -> dict[str, Any]:
+@tool("exec")
+async def exec_query(code: Annotated[str, "Code to run"]) -> dict[str, Any]:
     """Run a query against the integration. Stands in for an MCP tool."""
     return {}
 
 
 def _mcp_exec_tool() -> BaseTool:
-    return exec
+    return exec_query
 
 
 def _registry() -> _FakeRegistry:

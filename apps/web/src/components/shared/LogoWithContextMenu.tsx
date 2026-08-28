@@ -90,8 +90,6 @@ export function LogoWithContextMenu({
 
   const downloadImageAsPng = useCallback(
     async (imagePath: string, fileName: string): Promise<void> => {
-      let objectUrl: string | null = null;
-      let pngObjectUrl: string | null = null;
       try {
         const response = await fetch(imagePath);
         if (!response.ok) {
@@ -102,51 +100,54 @@ export function LogoWithContextMenu({
 
         const blob = await response.blob();
         const img = document.createElement("img");
-        const newObjectUrl = URL.createObjectURL(blob);
-        objectUrl = newObjectUrl;
+        const objectUrl = URL.createObjectURL(blob);
+        try {
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = objectUrl;
+          });
 
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = newObjectUrl;
-        });
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext("2d");
 
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Failed to get canvas context");
 
-        if (!ctx) throw new Error("Failed to get canvas context");
+          ctx.drawImage(img, 0, 0);
+          const pngBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (blobResult) => {
+                if (!blobResult) {
+                  reject(new Error("Failed to convert image"));
+                  return;
+                }
+                resolve(blobResult);
+              },
+              "image/png",
+              1.0,
+            );
+          });
 
-        ctx.drawImage(img, 0, 0);
-        const pngBlob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob(
-            (blobResult) => {
-              if (!blobResult) {
-                reject(new Error("Failed to convert image"));
-                return;
-              }
-              resolve(blobResult);
-            },
-            "image/png",
-            1.0,
-          );
-        });
-
-        pngObjectUrl = URL.createObjectURL(pngBlob);
-        const a = document.createElement("a");
-        a.href = pngObjectUrl;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        toast.success(`Downloaded ${fileName}`);
+          const pngObjectUrl = URL.createObjectURL(pngBlob);
+          try {
+            const a = document.createElement("a");
+            a.href = pngObjectUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          } finally {
+            URL.revokeObjectURL(pngObjectUrl);
+          }
+          toast.success(`Downloaded ${fileName}`);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
       } catch (error) {
         toast.error("Failed to download image");
         console.error("Failed to download image:", error);
-      } finally {
-        if (pngObjectUrl) URL.revokeObjectURL(pngObjectUrl);
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
       }
     },
     [],

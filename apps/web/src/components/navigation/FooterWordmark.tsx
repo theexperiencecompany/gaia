@@ -60,6 +60,50 @@ interface ClickWave {
   start: number;
 }
 
+/** Per-frame inputs for {@link updateDot} — everything the physics needs. */
+interface DotUpdateContext {
+  now: number;
+  cssW: number;
+  ease: number;
+  cursorX: number;
+  cursorY: number;
+  pointerInside: boolean;
+  waves: ClickWave[];
+}
+
+/**
+ * Ease one dot toward its target radius for this frame and update its glow.
+ * Returns true when the dot has settled (no further animation needed).
+ */
+function updateDot(dot: Dot, ctxIn: DotUpdateContext): boolean {
+  const { now, cssW, ease, cursorX, cursorY, pointerInside, waves } = ctxIn;
+  const dist = Math.hypot(dot.x - cursorX, dot.y - cursorY);
+  // Only dots inside the cursor's falloff circle are affected — the
+  // rest of the wordmark stays at rest.
+  const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
+  let target = pointerInside ? ripple : 0;
+
+  // Sum every active click wave: each dot swells on a sin bump as the
+  // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
+  // ripple physically travels across the whole lockup.
+  let click = 0;
+  for (const wave of waves) {
+    const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
+    const phase = ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
+    if (phase < 0 || phase > 1) continue;
+    const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
+    click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
+  }
+  target += click;
+
+  const targetRadius = dot.base * (1 + target);
+  dot.radius += (targetRadius - dot.radius) * ease;
+  // The white layer tracks the click wave only — hovering swells the
+  // dots but must not repaint them, so the two reads stay distinct.
+  dot.glow = Math.min(1, click / CLICK_AMP);
+  return Math.abs(targetRadius - dot.radius) <= SETTLE_EPSILON;
+}
+
 function smoothstep(a: number, b: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -307,36 +351,20 @@ function attachPointerInteraction(
 
     const ease = 1 - Math.exp(-dt / SWELL_TAU);
     let settled = true;
-
     for (const dot of dots) {
-      const dist = Math.hypot(dot.x - cursorX, dot.y - cursorY);
-      // Only dots inside the cursor's falloff circle are affected — the
-      // rest of the wordmark stays at rest.
-      const ripple = RIPPLE_LIFT * smoothstep(RIPPLE_RADIUS, 0, dist);
-      let target = pointerInside ? ripple : 0;
-
-      // Sum every active click wave: each dot swells on a sin bump as the
-      // wavefront reaches it (arrival time = distance / CLICK_SPEED), so the
-      // ripple physically travels across the whole lockup.
-      let click = 0;
-      for (const wave of waves) {
-        const d = Math.hypot(dot.x - wave.x, dot.y - wave.y);
-        const phase =
-          ((now - wave.start) / 1000 - d / CLICK_SPEED) / CLICK_RISE;
-        if (phase < 0 || phase > 1) continue;
-        const edgeFalloff = 1 - CLICK_EDGE_FALLOFF * smoothstep(0, cssW, d);
-        click += CLICK_AMP * edgeFalloff * Math.sin(Math.PI * phase);
-      }
-      target += click;
-
-      const targetRadius = dot.base * (1 + target);
-      dot.radius += (targetRadius - dot.radius) * ease;
-      if (Math.abs(targetRadius - dot.radius) > SETTLE_EPSILON) {
+      if (
+        !updateDot(dot, {
+          now,
+          cssW,
+          ease,
+          cursorX,
+          cursorY,
+          pointerInside,
+          waves,
+        })
+      ) {
         settled = false;
       }
-      // The white layer tracks the click wave only — hovering swells the
-      // dots but must not repaint them, so the two reads stay distinct.
-      dot.glow = Math.min(1, click / CLICK_AMP);
     }
 
     ctx.clearRect(0, 0, cssW, cssH);

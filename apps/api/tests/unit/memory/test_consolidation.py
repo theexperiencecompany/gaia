@@ -237,6 +237,60 @@ class TestVerificationPass:
 
         assert boundaries.update_document.await_args.args[2] == "# About\n- Sam is vegetarian"
 
+    @pytest.mark.regression
+    async def test_a_struck_line_is_removed_even_when_the_model_left_it_in(
+        self, boundaries: MagicMock
+    ) -> None:
+        """The verifier returns two correlated outputs — the cleaned document
+        and the struck list — and the real model desyncs them: probed live, it
+        listed the corrupted partner line as struck while returning the
+        document with the line still in it, which is exactly how "Khyal
+        Shetal" survived every verification pass in production. The strike
+        list is the verdict; the code must enforce it on the document instead
+        of trusting the model's copy."""
+        corrupted = "- Partner: Khyal Shetal (anniversary Oct 19, 2026)"
+        boundaries.rewrite.return_value = f"# About\n- Sam is vegetarian\n{corrupted}"
+        boundaries.verify.return_value = VerifiedDocument(
+            content=f"# About\n- Sam is vegetarian\n{corrupted}",
+            struck=[corrupted],
+        )
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        landed = boundaries.update_document.await_args.args[2]
+        assert corrupted not in landed
+        assert "- Sam is vegetarian" in landed
+
+    async def test_a_heading_is_never_removed_even_if_marked_struck(
+        self, boundaries: MagicMock
+    ) -> None:
+        """Headings are structure, not claims — the prompt tells the model to
+        keep them all, so a heading in the struck list is a model error the
+        enforcement must not amplify."""
+        boundaries.rewrite.return_value = "# About\n## Identity\n- a supported line"
+        boundaries.verify.return_value = VerifiedDocument(
+            content="# About\n## Identity\n- a supported line",
+            struck=["## Identity"],
+        )
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        assert "## Identity" in boundaries.update_document.await_args.args[2]
+
+    async def test_an_indented_heading_survives_a_struck_verdict(
+        self, boundaries: MagicMock
+    ) -> None:
+        """The heading guard reads the line PAST its indentation — a nested
+        heading the model both indented and struck is still structure and must
+        stay, indentation intact."""
+        doc = "# About\n  ## Identity\n- a supported line"
+        boundaries.rewrite.return_value = doc
+        boundaries.verify.return_value = VerifiedDocument(content=doc, struck=["## Identity"])
+
+        await consolidate(USER, [MemoryDocType.USER_MD])
+
+        assert "  ## Identity" in boundaries.update_document.await_args.args[2]
+
     async def test_the_source_facts_are_what_the_check_is_given(
         self, boundaries: MagicMock
     ) -> None:
@@ -453,19 +507,24 @@ class TestVerificationPass:
     async def test_a_struck_line_buys_exactly_its_own_length_and_newline(
         self, boundaries: MagicMock
     ) -> None:
+        """The well-behaved case at the exact budget boundary: the model's copy
+        genuinely removed the struck line and additionally trimmed the full
+        tolerance — lost == explained + tolerance is accepted, and the copy
+        comes back intact (the mechanical strike pass finds nothing left to
+        remove). The desynced case — struck listed but line still present —
+        is pinned separately by the strike-enforcement regression test."""
         line = "- " + "y" * 60
         document = f"# About\n{line}\n" + "x" * 900
+        without = ("# About\n" + "x" * 900).strip()
         tolerance = int(len(document.strip()) * consolidation._SHRINK_TOLERANCE)
-        budget = len(line) + 1 + tolerance
-        boundaries.verify.return_value = VerifiedDocument(
-            content=document.strip()[: len(document.strip()) - budget], struck=[line]
-        )
+        model_copy = without[: len(without) - tolerance]
+        boundaries.verify.return_value = VerifiedDocument(content=model_copy, struck=[line])
 
         kept = await consolidation._strike_unsupported(
             USER, MemoryDocType.USER_MD, document, [make_row()]
         )
 
-        assert len(kept) == len(document.strip()) - budget
+        assert kept == model_copy
 
     async def test_one_character_past_a_struck_lines_budget_is_refused(
         self, boundaries: MagicMock

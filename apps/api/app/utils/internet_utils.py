@@ -74,11 +74,11 @@ async def _resolve_and_validate(hostname: str) -> None:
         ip_str = sockaddr[0]
         try:
             ip = ipaddress.ip_address(ip_str)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="URL host resolves to an unsupported address.",
-            )
+            ) from e
         if _is_blocked_ip(ip):
             log.warning(
                 f"{LogTag.TOOL} ssrf_blocked",

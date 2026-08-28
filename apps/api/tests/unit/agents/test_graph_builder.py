@@ -315,11 +315,15 @@ class TestBuildCommsGraph:
             mock_ca = deps["mocks"][f"{_MOD}.create_agent"]
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
-            assert kwargs["agent_name"] == "comms_agent"
-            assert kwargs["disable_retrieve_tools"] is True
-            assert "call_executor" in kwargs["initial_tool_ids"]
-            assert "add_memory" in kwargs["initial_tool_ids"]
-            assert "search_memory" in kwargs["initial_tool_ids"]
+            assert kwargs["agent_config"].agent_name == "comms_agent"
+            assert kwargs["tools_config"].disable_retrieve_tools is True
+            from app.agents.tools import memory_tools
+
+            assert kwargs["tools_config"].initial_tool_ids == [
+                "call_executor",
+                "cancel_executor",
+                *[memory_tool.name for memory_tool in memory_tools.tools],
+            ]
 
     async def test_comms_graph_has_end_graph_hooks(self):
         with ExitStack() as stack:
@@ -330,9 +334,8 @@ class TestBuildCommsGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert "end_graph_hooks" in kwargs
             # comms runs follow-up-action suggestion + passive memory ingestion.
-            hook_names = {hook.__name__ for hook in kwargs["end_graph_hooks"]}
+            hook_names = {hook.__name__ for hook in kwargs["hooks_config"].end_graph_hooks}
             assert hook_names == {"follow_up_actions_node", "memory_node"}
 
     async def test_comms_tool_registry_contains_expected_tools(self):
@@ -343,8 +346,8 @@ class TestBuildCommsGraph:
             async with build_comms_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            tool_registry = kwargs["tool_registry"]
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            tool_registry = call.args[1]
             assert "call_executor" in tool_registry
             assert "add_memory" in tool_registry
             assert "search_memory" in tool_registry
@@ -358,7 +361,7 @@ class TestBuildCommsGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            pre_model_hooks = kwargs["pre_model_hooks"]
+            pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # comms agent: filter_messages_node, executor_status_hook,
             # manage_system_prompts_node
             assert len(pre_model_hooks) == 3
@@ -376,7 +379,7 @@ class TestBuildCommsGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["middleware"] is mock_mw
+            assert kwargs["agent_config"].middleware is mock_mw
 
 
 # ===================================================================
@@ -412,8 +415,8 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
 
-        assert kwargs["require_finish_to_end"] is True
-        assert "save_learned_skill" in kwargs["initial_tool_ids"]
+        assert kwargs["hooks_config"].require_finish_to_end is True
+        assert "save_learned_skill" in kwargs["tools_config"].initial_tool_ids
 
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
@@ -466,9 +469,31 @@ class TestBuildExecutorGraph:
             mock_ca = deps["mocks"][f"{_MOD}.create_agent"]
             mock_ca.assert_called_once()
             kwargs = mock_ca.call_args.kwargs
-            assert kwargs["agent_name"] == "executor_agent"
-            assert "handoff" in kwargs["initial_tool_ids"]
-            assert "plan_tasks" in kwargs["initial_tool_ids"]
+            assert kwargs["agent_config"].agent_name == "executor_agent"
+            # Exact equality, not membership: a renamed id silently drops that
+            # tool from the executor's initial bind set, and membership lets the
+            # typo through as long as one asserted name survives.
+            assert kwargs["tools_config"].initial_tool_ids == [
+                "handoff",
+                "plan_tasks",
+                "update_tasks",
+                "read",
+                "bash",
+                "deep_research",
+                "wait_for_subagents",
+                "read_manual",
+                "create_tracked_todo",
+                "update_tracked_todo",
+                "update_tracked_todo_canvas",
+                "complete_tracked_todo",
+                "search_todo_context",
+                "list_tracked_todos",
+                "save_learned_skill",
+                "write_playbook",
+                "decline_playbook",
+                "read_playbook",
+                "disable_playbook",
+            ]
 
     async def test_executor_tool_registry_includes_handoff(self):
         with ExitStack() as stack:
@@ -478,8 +503,8 @@ class TestBuildExecutorGraph:
             async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True) as _:
                 pass
 
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert "handoff" in kwargs["tool_registry"]
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            assert "handoff" in call.args[1]
 
     async def test_executor_pre_model_hooks_includes_todo_hook(self):
         with ExitStack() as stack:
@@ -490,51 +515,10 @@ class TestBuildExecutorGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            pre_model_hooks = kwargs["pre_model_hooks"]
+            pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
             # executor: filter_messages_node, adapt_media_node,
             # manage_system_prompts_node, todo_hook
             assert len(pre_model_hooks) == 4
-
-    async def test_the_executor_binds_exactly_its_declared_starting_tools(self):
-        """The executor's starting tool set, pinned as a whole rather than sampled.
-
-        Every id here is bound by hand instead of left to semantic retrieval,
-        because something names it by hand: a prompt block, a brief, or another
-        tool's instructions. An id that silently changes spelling drops the tool
-        from the initial set and the run reads an instruction it cannot act on,
-        with no error anywhere. A tool added here on purpose fails this test
-        once, which is the point.
-        """
-        with ExitStack() as stack:
-            deps = _apply_patches(stack)
-            from app.agents.core.graph_builder.build_graph import build_executor_graph
-
-            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
-                pass
-
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-
-        assert kwargs["initial_tool_ids"] == [
-            "handoff",
-            "plan_tasks",
-            "update_tasks",
-            "read",
-            "bash",
-            "deep_research",
-            "wait_for_subagents",
-            "read_manual",
-            "create_tracked_todo",
-            "update_tracked_todo",
-            "update_tracked_todo_canvas",
-            "complete_tracked_todo",
-            "search_todo_context",
-            "list_tracked_todos",
-            "save_learned_skill",
-            "write_playbook",
-            "decline_playbook",
-            "read_playbook",
-            "disable_playbook",
-        ]
 
     async def test_a_supplied_model_is_the_one_the_graph_is_built_with(self):
         """A caller that hands in a model gets that model, not a freshly built one.
@@ -551,10 +535,10 @@ class TestBuildExecutorGraph:
             async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
                 pass
 
-            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
             deps["mocks"][f"{_MOD}.init_llm"].assert_not_called()
 
-        assert kwargs["llm"] is deps["llm"]
+        assert call.args[0] is deps["llm"]
 
     async def test_it_checkpoints_to_postgres_unless_asked_not_to(self):
         """In-memory checkpointing is opt-in, and the default must stay durable.
@@ -662,7 +646,7 @@ class TestBuildExecutorGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["middleware"] is mock_mw
+            assert kwargs["agent_config"].middleware is mock_mw
 
     async def test_executor_retrieve_tools_function_set(self):
         mock_retrieve = AsyncMock()
@@ -677,7 +661,7 @@ class TestBuildExecutorGraph:
                 pass
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
-            assert kwargs["retrieve_tools_coroutine"] is mock_retrieve
+            assert kwargs["tools_config"].retrieve_tools_coroutine is mock_retrieve
 
 
 # ===================================================================

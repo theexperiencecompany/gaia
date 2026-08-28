@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { Gmail } from "@/components/shared/icons";
@@ -61,6 +61,20 @@ function formatTime(time: string | null): string {
       day: "numeric",
     });
   }
+}
+
+/**
+ * Relative time label for one email row. Locale-dependent formatting runs
+ * after mount so the server-rendered markup matches (no hydration mismatch).
+ */
+function EmailTime({ time }: { time: string | null }) {
+  const [label, setLabel] = useState("");
+
+  useEffect(() => {
+    setLabel(formatTime(time));
+  }, [time]);
+
+  return <span className="text-xs text-gray-400">{label}</span>;
 }
 
 export default function EmailListCard({
@@ -125,8 +139,9 @@ export default function EmailListCard({
                 closeDelay={0}
                 disableAnimation
               >
-                <div
-                  className="group flex cursor-pointer items-center gap-4 p-3 transition-colors hover:bg-zinc-700"
+                <button
+                  type="button"
+                  className="group flex w-full cursor-pointer items-center gap-4 p-3 text-left transition-colors hover:bg-zinc-700"
                   onClick={() => handleEmailClick(email)}
                 >
                   <div className="w-40 flex-shrink-0">
@@ -143,11 +158,9 @@ export default function EmailListCard({
 
                   {/* Time */}
                   <div className="w-20 flex-shrink-0 text-right">
-                    <span className="text-xs text-gray-400">
-                      {formatTime(email.time || null)}
-                    </span>
+                    <EmailTime time={email.time || null} />
                   </div>
-                </div>
+                </button>
               </Tooltip>
             ))}
 

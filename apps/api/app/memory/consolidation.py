@@ -360,7 +360,27 @@ async def _strike_unsupported(
             error_type="unsupported_document_lines",
             struck_count=len(verified.struck),
         )
-    return kept
+    # Master's shrink guard above validates that the model's own copy only
+    # lost what the struck list explains; this then enforces the strikes
+    # mechanically, because the model also desyncs the other way — probed
+    # live, it listed the corrupted partner line as struck while returning
+    # the document with the line still present. The strike list is the
+    # verdict either way. Headings are structure, not claims, so a struck
+    # heading is a model error this must not amplify.
+    return _apply_strikes(kept, verified.struck)
+
+
+def _apply_strikes(content: str, struck: list[str]) -> str:
+    """Remove every struck line from the document, mechanically."""
+    struck_lines = {line.strip() for line in struck}
+    if not struck_lines:
+        return content.strip()
+    kept = [
+        line
+        for line in content.splitlines()
+        if line.lstrip().startswith("#") or line.strip() not in struck_lines
+    ]
+    return "\n".join(kept).strip()
 
 
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:

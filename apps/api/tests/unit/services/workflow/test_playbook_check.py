@@ -13,7 +13,6 @@ narration time it would ask the narrator for a tool it cannot reach.
 """
 
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from pydantic import ValidationError
@@ -375,29 +374,6 @@ def test_the_check_points_at_the_handoff_result_for_a_handoffs_nested_steps():
     # the executor can copy them from is the handoff's own result record.
     assert "record of the calls" in PLAYBOOK_CHECK_BRIEF
     assert "nested steps" in PLAYBOOK_CHECK_BRIEF
-
-
-def test_write_playbook_is_statically_bound_to_the_executor():
-    """The check names write_playbook, so the executor must always be able to call it.
-
-    Regression: the tool was registered in a ToolCategory and left to
-    ``retrieve_tools`` semantic retrieval. On a machine whose tool index was
-    incomplete it was never surfaced, so every run read the instruction and
-    silently authored nothing. A prompt that names a tool by hand needs that
-    tool bound by hand.
-    """
-    source = (
-        Path(__file__).resolve().parents[4]
-        / "app"
-        / "agents"
-        / "core"
-        / "graph_builder"
-        / "build_graph.py"
-    ).read_text(encoding="utf-8")
-    executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
-
-    assert '"write_playbook"' in executor_block
-    assert '"decline_playbook"' in executor_block
 
 
 def test_the_tools_own_schema_carries_the_step_shape():

@@ -10,7 +10,7 @@ import {
   FlowIcon,
   PencilEdit01Icon,
 } from "@icons";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
 
 import type { Workflow } from "../api/workflowApi";
@@ -97,10 +97,10 @@ export default function WorkflowCreatedCard({
     }
   };
 
-  // Refresh workflow after modal closes (in case of edits)
-  useEffect(() => {
-    if (!isModalOpen && fullWorkflow) {
-      // Refresh the workflow data
+  // Refresh workflow when the modal closes (in case of edits)
+  const handleModalOpenChange = (open: boolean) => {
+    setIsModalOpen(open);
+    if (!open && fullWorkflow) {
       workflowApi
         .getWorkflow(workflow.id, { silent: true })
         .then((response) => {
@@ -112,11 +112,11 @@ export default function WorkflowCreatedCard({
           console.error("Failed to refresh workflow:", error);
         });
     }
-  }, [isModalOpen, workflow.id]);
+  };
 
   return (
     <>
-      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg transition-all">
+      <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg">
         {/* Header with workflow icon and success indicator */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -181,7 +181,7 @@ export default function WorkflowCreatedCard({
       {isModalOpen && (
         <WorkflowModal
           isOpen={isModalOpen}
-          onOpenChange={setIsModalOpen}
+          onOpenChange={handleModalOpenChange}
           mode="edit"
           existingWorkflow={fullWorkflow}
         />
