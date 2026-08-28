@@ -173,6 +173,44 @@ class Selection:
             self.all_reason = reason
 
 
+def _classify_change(
+    raw: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
+) -> None:
+    """Fold one changed path into ``sel`` (widen, add ids, or ignore)."""
+    rel = strip_prefix(raw)
+    if rel is None:
+        # Outside apps/api. Any Python outside (libs/shared/py, tools) can
+        # be imported by the API; coverage only mapped app/**, so widen.
+        if raw.strip().endswith(".py"):
+            sel.widen(f"changed python outside apps/api: {raw.strip()}")
+        return
+
+    if any(rel.endswith(dep) or rel == dep for dep in GLOBAL_TEST_DEPS):
+        sel.widen(f"shared test fixture changed: {rel}")
+        return
+
+    if rel.startswith("tests/"):
+        # Run the whole file: a path is a valid pytest positional arg, and
+        # it covers tests added in this diff that no map can know about.
+        if (repo_root / rel).exists() and rel.endswith(".py"):
+            sel.ids.add(rel)
+            sel.reasons.append(f"changed test file {rel}")
+        return
+
+    if rel.startswith("app/"):
+        if rel in files:
+            sel.ids.update(files[rel])
+            sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
+        elif (repo_root / rel).exists():
+            sel.widen(f"changed app file not in map (new or uncovered): {rel}")
+        # A deleted app file that was never covered impacts nothing.
+        return
+
+    # apps/api/pyproject.toml, uv.lock, Dockerfile, a script — anything
+    # here can move the whole suite.
+    sel.widen(f"non-source change under apps/api: {rel}")
+
+
 def select_tests(
     changed: list[str],
     files: dict[str, list[str]],
@@ -193,38 +231,7 @@ def select_tests(
     total = len({t for f, tests in test_files.items() if in_scope(f) for t in tests})
 
     for raw in changed:
-        rel = strip_prefix(raw)
-        if rel is None:
-            # Outside apps/api. Any Python outside (libs/shared/py, tools) can
-            # be imported by the API; coverage only mapped app/**, so widen.
-            if raw.strip().endswith(".py"):
-                sel.widen(f"changed python outside apps/api: {raw.strip()}")
-            continue
-
-        if any(rel.endswith(dep) or rel == dep for dep in GLOBAL_TEST_DEPS):
-            sel.widen(f"shared test fixture changed: {rel}")
-            continue
-
-        if rel.startswith("tests/"):
-            # Run the whole file: a path is a valid pytest positional arg, and
-            # it covers tests added in this diff that no map can know about.
-            if (repo_root / rel).exists() and rel.endswith(".py"):
-                sel.ids.add(rel)
-                sel.reasons.append(f"changed test file {rel}")
-            continue
-
-        if rel.startswith("app/"):
-            if rel in files:
-                sel.ids.update(files[rel])
-                sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
-            elif (repo_root / rel).exists():
-                sel.widen(f"changed app file not in map (new or uncovered): {rel}")
-            # A deleted app file that was never covered impacts nothing.
-            continue
-
-        # apps/api/pyproject.toml, uv.lock, Dockerfile, a script — anything
-        # here can move the whole suite.
-        sel.widen(f"non-source change under apps/api: {rel}")
+        _classify_change(raw, sel, files, repo_root)
 
     if sel.select_all:
         return [ALL_MARKER], sel.all_reason, total, total
