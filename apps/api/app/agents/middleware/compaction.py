@@ -33,7 +33,7 @@ Two independent triggers (unchanged from the prior VFS-backed version):
 The decide-and-compact logic lives in the module-level `compact_tool_output`
 helper and the middleware is a thin wrapper around it, so the tiering is
 testable without a middleware stack. Subagents reach it through that same
-middleware (`create_subagent_middleware` builds its stack with `ContextOptions(compact=True)`);
+middleware (`create_subagent_middleware` passes `enable_compaction=True`);
 comms deliberately does not compact, having no tools to mine a spilled file.
 """
 
