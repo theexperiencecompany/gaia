@@ -201,7 +201,10 @@ jobs:
           free -h | head -n 2; df -h . | head -n 2
           echo "::endgroup::"
           # On 16c we push to --parallel=16 and let Nx schedule; on 2c we cap at 3 to avoid OOM.
-          /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" 2>&1 | tail -n 60' 2>&1 | tee /tmp/build.time
+          # --output-style=stream: nx's static output is one async pipe write
+          # followed by process.exit(), so the tail — the part `tail -n 60`
+          # keeps — is exactly what gets dropped (see test-typescript).
+          /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee /tmp/build.time
           echo "Build: OK (parallel=$NX_PARALLEL)"
 
   # ── Test Python — three slices on three runner instances ─────────────────
