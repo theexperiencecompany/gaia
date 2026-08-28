@@ -164,7 +164,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: ./.github/actions/restore-nextjs-cache
@@ -253,7 +253,7 @@ jobs:
           persist-credentials: false
           # Selection diffs against the merge-base, which a depth-1 clone has not
           # got. Master keeps depth 1 — it never selects.
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || (github.event_name == 'pull_request' && 200 || 1) }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || (github.event_name == 'pull_request' && '200' || '1') }}
       - uses: ./.github/actions/setup-python-test-env
         with:
           node: ${{ matrix.slice.node }}
@@ -357,7 +357,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -400,7 +400,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Detect parallelism
@@ -446,7 +446,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - name: Use the persistent shared builder (self-hosted)
         if: runner.environment == 'self-hosted'
@@ -515,7 +515,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - name: Run harness tooling tests
@@ -540,7 +540,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
       - uses: ./.github/actions/setup-node-pnpm
       - name: Regenerate changelog sub-pages
         run: node docs/scripts/generate-changelog-pages.js
@@ -588,7 +588,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       # The action's own cache is actions/cache: on the box that meant a 95 s
       # post-step uploading the 42 MB vuln DB over the residential uplink every

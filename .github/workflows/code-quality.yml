@@ -205,7 +205,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: All workspace packages agree on dep versions (syncpack)
@@ -244,7 +244,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
@@ -383,7 +383,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: publint — validate packages/cli npm metadata
@@ -830,7 +830,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -862,7 +862,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -912,7 +912,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -1112,7 +1112,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
@@ -1264,7 +1264,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && 0 || 1 }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - name: Verdict
         env:
