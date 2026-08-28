@@ -509,7 +509,8 @@ jobs:
   # custom lint rules and the sim stack's directive parser have no test gate at
   # all. The suite is ~0.1s, so always-on costs nothing.
   test-harness-tools:
-    needs: [select-runner, detect]
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
@@ -531,7 +532,8 @@ jobs:
   # --- Changelog sync check (always) --------------------------------------
   # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
   changelog-sync:
-    needs: [detect]
+    needs: [detect, build, test-typescript]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -581,8 +583,15 @@ jobs:
           exit 1
 
   # --- Trivy scan -----------------------------------------------------
+  # Scheduling on the home box: the four Python lanes, build and docker-image
+  # start with the cores to themselves; these light jobs (each ~30-80 s,
+  # mostly I/O) wait for build + test-typescript (~30-45 s) and fill in behind
+  # them, finishing well before the integration lane — same wall, less
+  # contention in the lanes' first minute. `!cancelled()` keeps them from
+  # being hidden by a failing build. See code-quality.yml for the same idea.
   trivy-scan:
-    needs: [select-runner, detect]
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
     steps:
@@ -644,8 +653,8 @@ jobs:
   # test claiming to pin a bug carries: a diff with no such tests passes
   # trivially, and one that has them must prove them.
   regression-proof:
-    needs: [select-runner, detect]
-    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() && (needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request') }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
     steps:
