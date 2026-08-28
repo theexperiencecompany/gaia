@@ -74,5 +74,10 @@ fi
   "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
   -m 'not composio and not model_onboarding and not schemathesis' \
   --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee "${SCRATCH}/pytest-${SLICE}.time"
+  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 \
+  | cut -c-20000 | tee "${SCRATCH}/pytest-${SLICE}.time"
+# cut: the Actions runner handles step output line by line (regex matchers,
+# console upload); a single multi-MB line — a parametrize id carrying a 2 MB
+# string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
+# CPU until the job timeout. 20k chars keeps every real traceback intact.
 echo "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"
