@@ -19,7 +19,6 @@ set -euo pipefail
 SLICE="${SLICE_NAME:?SLICE_NAME required}"
 MAP_DIR="${MAP_DIR:-.test-impact-map}"
 ARTIFACT="test-impact-map-${SLICE}"
-WORKFLOW="main.yml"
 mkdir -p "$MAP_DIR"
 
 # One call: the repo-wide artifact list filtered by name carries each
