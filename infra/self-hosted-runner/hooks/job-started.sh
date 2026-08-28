@@ -39,6 +39,13 @@ WS="$HOME/actions-runner-gaia-home-${IDX}/_work/gaia/gaia"
 if [ -d "$WS/.git" ]; then
   n=$(git -C "$WS" clean -ffdx -e node_modules -e .venv -e .nx/cache -e apps/web/.next/cache -e .mypy_cache -e .pytest_cache 2>/dev/null | wc -l)
   echo "scoped clean of persistent workspace: removed $n untracked path(s)"
+  # A shallow workspace makes every `fetch-depth: 0` checkout run
+  # `git fetch --unshallow` against GitHub (measured 21 s per detect job).
+  # Pay it once here, then the per-job fetch is a ~1 s delta.
+  if [ -f "$WS/.git/shallow" ]; then
+    timeout 300 git -C "$WS" fetch --unshallow --quiet --no-tags origin 2>/dev/null \
+      && echo "unshallowed persistent workspace (one-time)"
+  fi
 fi
 # Report what the job is starting with — the numbers that decide parallelism.
 echo "load=$(cut -d' ' -f1-3 /proc/loadavg) mem_avail=$(free -g | awk '/^Mem:/{print $7}')G disk_free=$(df -h / | awk 'NR==2{print $4}')"

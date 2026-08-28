@@ -112,6 +112,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
+          # Full history for nx-set-shas. Cheap on the box only while the
+          # persistent workspace is NOT shallow — a shallow workspace makes
+          # this re-unshallow from GitHub every job (21 s); the job-started
+          # hook unshallows from the local mirror once.
           fetch-depth: 0
           persist-credentials: false
       - uses: nrwl/nx-set-shas@v4
@@ -299,11 +303,12 @@ jobs:
         # a lane with 'FLAKY TESTS DETECTED' reported success.
         shell: bash
         env:
-          # sysmon (sys.monitoring) cannot record dynamic contexts, so the map
-          # run drops it and pays the C tracer's cost. PRs keep sysmon.
-          COVERAGE_CORE: ${{ github.event_name == 'pull_request' && 'sysmon' || '' }}
+          # Coverage is traced only on master/dispatch runs, where the gate and
+          # the test-impact map read it (C tracer: sysmon cannot record the
+          # per-test contexts the map needs). PR runs skip tracing entirely.
+          COVERAGE: ${{ github.event_name != 'pull_request' && '1' || '' }}
           COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
-          COV_CONTEXT: ${{ github.event_name == 'pull_request' && '' || 'test' }}
+          COV_CONTEXT: ${{ github.event_name != 'pull_request' && 'test' || '' }}
           HYPOTHESIS_PROFILE: ${{ github.event_name == 'pull_request' && 'ci' || 'default' }}
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
@@ -333,6 +338,7 @@ jobs:
           path: .test-impact-map
           key: test-impact-map-${{ matrix.slice.name }}-${{ github.sha }}
       - name: Upload coverage data
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.slice.name }}
@@ -352,7 +358,9 @@ jobs:
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   coverage:
     needs: [select-runner, detect, test-python]
-    if: needs.detect.outputs.has_python == 'true'
+    # PR lanes do not trace coverage (see the COVERAGE env on test-python);
+    # the combined gate only exists on master and dispatch runs.
+    if: needs.detect.outputs.has_python == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

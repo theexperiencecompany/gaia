@@ -38,10 +38,16 @@ fi
 # If a fixture goes missing after a dependency change, the plugin belongs in
 # this list — that is a visible error, unlike the silent per-worker cost.
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
-EXTRA+=(-p asyncio -p xdist -p pytest_cov -p timeout -p pytest_mock -p randomly
+EXTRA+=(-p asyncio -p xdist -p timeout -p pytest_mock -p randomly
         -p hypothesis.extra.pytestplugin -p respx.plugin -p time_machine -p anyio.pytest_plugin -p pytest_check)
-if [ -n "${COV_CONTEXT:-}" ]; then
-  EXTRA+=(--cov-context="${COV_CONTEXT}")
+# Coverage only where something reads it: the master gate and the test-impact
+# map. A PR run is report-only by design (selection makes the total
+# meaningless), and tracing costs ~35 CPU-points per lane — pure waste there.
+if [ -n "${COVERAGE:-}" ]; then
+  EXTRA+=(-p pytest_cov --cov=app --cov-report= --cov-fail-under=0)
+  if [ -n "${COV_CONTEXT:-}" ]; then
+    EXTRA+=(--cov-context="${COV_CONTEXT}")
+  fi
 fi
 
 /usr/bin/time -v bash ../../scripts/ci/run-tests-flake-gate.sh \
@@ -49,6 +55,5 @@ fi
   "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
   -m 'not composio and not model_onboarding and not schemathesis' \
   --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-  --cov=app --cov-report= --cov-fail-under=0 \
   --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee "/tmp/pytest-${SLICE}.time"
-echo "Python tests ($SLICE): OK (xdist=$XDIST_N)"
+echo "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"
