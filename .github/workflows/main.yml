@@ -493,8 +493,13 @@ jobs:
           echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap 2>/dev/null | head -1 | awk '{print $2}')"
           /usr/bin/time -v docker buildx build --progress=plain \
             -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
-            --output type=cacheonly . 2>&1 | tail -n 40 | tee /tmp/docker.time
+            --output type=cacheonly . 2>&1 | tee /tmp/docker-build.log | tail -n 40 | tee /tmp/docker.time
           grep -E "Elapsed \(wall clock\)" /tmp/docker.time | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          # Stage profile: every step that took >= 5 s, so a slow build says
+          # which layer missed the cache (tail -n 40 alone hid a 356 s build).
+          echo "::group::stages >= 5 s"
+          awk '/^#[0-9]+ \[/{name[$1]=$0} /^#[0-9]+ DONE/{split($3,t,"s"); if (t[1]+0>=5) printf "%6.1fs  %s\n", t[1], substr(name[$1],1,110)}' /tmp/docker-build.log
+          echo "::endgroup::"
       # The persistent builder idles at ~1.8 GB RSS; stopping it costs ~2s to
       # boot on the next build and gives the RAM back to test lanes meanwhile.
       - name: Stop the persistent builder (self-hosted)
