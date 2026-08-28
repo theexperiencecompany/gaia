@@ -240,7 +240,7 @@
       "heavy": true,
       "timeout_s": 1800,
       "require_cmd": [],
-      "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
+      "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --output-style=stream"
     },
     {
       "name": "py-tests",
