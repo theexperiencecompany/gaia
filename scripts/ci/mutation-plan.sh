@@ -50,7 +50,7 @@ import os
 # stays clear of GitHub's hard 256-job matrix limit, which a one-shard-per-
 # module plan blew through on the mypy-strict diff — no matrix, a skipped lane,
 # and a skipped lane counts as a pass.)
-MAX_SHARDS = 12
+MAX_SHARDS = 2
 
 modules = json.loads(os.environ["MATRIX_JSON"])
 shards: list[list[dict[str, str]]] = [[] for _ in range(min(len(modules), MAX_SHARDS))]

@@ -1159,9 +1159,12 @@ jobs:
       # Every module reports. Stopping at the first failure would hide the
       # rest, and this gate's whole value is the complete list.
       fail-fast: false
-      # Wide instrumentation PRs touch 50+ modules; cap the fan-out so one
-      # PR cannot monopolise the runner pool. Excess shards queue.
-      max-parallel: 12
+      # Each shard's mutation-check.sh takes nproc-2 CPUs for itself; on the
+      # 16-thread home box two shards already saturate it, and nine concurrent
+      # shards (measured 2026-08-28) filled every runner slot so the main
+      # pipeline's detect job queued behind lint. Excess modules pack into
+      # the two shards (scripts/ci/mutation-plan.sh MAX_SHARDS must match).
+      max-parallel: 2
       matrix:
         include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
     steps:

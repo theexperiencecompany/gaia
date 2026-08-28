@@ -30,7 +30,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/theexperiencecompany/gaia"
 REPO_SLUG="theexperiencecompany/gaia"
-RUNNER_COUNT="${RUNNER_COUNT:-6}"
+RUNNER_COUNT="${RUNNER_COUNT:-12}"
 # RUNNER_START lets a re-run add instances without re-registering the ones
 # already serving jobs: RUNNER_START=5 RUNNER_COUNT=6 registers only 5 and 6.
 RUNNER_START="${RUNNER_START:-1}"

@@ -60,9 +60,9 @@ PULL_ATTEMPTS=5
 PULL_BACKOFF_SECS=5
 
 # Lanes are numbered 0..MAX_LANE; the Redis stripe arithmetic below assumes the
-# server has (MAX_LANE+1)*32 + 32 databases (256 covers six lanes with room).
-MAX_LANE=6   # lanes 0-6: Redis --databases 256 holds 7 stripes of 32 above DB 8; RUNNER_INDEX 1-6 map directly
-REDIS_DATABASES=256
+# server has (MAX_LANE+1)*32 + 32 databases (448 covers twelve lanes with room).
+MAX_LANE=12  # lanes 0-12: Redis --databases 448 holds 13 stripes of 32 above DB 8; RUNNER_INDEX 1-12 map directly
+REDIS_DATABASES=448
 REDIS_STRIPE=32
 REDIS_BLOCK_START=8
 
