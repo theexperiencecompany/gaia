@@ -33,7 +33,7 @@ runs:
     # No store-dir override on self-hosted: pnpm's default per-user store
     # (~/.local/share/pnpm/store/v10) is the single store for the box's dev
     # tooling and every runner instance alike — content-addressed and
-    # concurrency-safe, so the six instances dedupe against each other and
+    # concurrency-safe, so the twenty instances dedupe against each other and
     # against the owner's own installs. (It was ci-cache/pnpm-store before;
     # two stores for one user is just double the downloads.)
     - name: Setup Node.js (self-hosted — persistent local store)
@@ -62,15 +62,15 @@ runs:
       # On self-hosted the persisted tree is usually complete, so this is a
       # verification pass; --prefer-offline keeps it off the network when the
       # store already has everything.
-      # Self-hosted: node_modules persists in the workspace. When the lockfile
-      # hash matches the marker the previous install left, the tree is by
+      # Self-hosted: node_modules persists in the workspace. When the marker
+      # the previous install left still matches (scripts/ci/dep-marker.sh keys
+      # it on the lockfile AND the linker/workspace settings), the tree is by
       # construction what pnpm would produce — skip the ~15s verify pass.
       run: |
         set -euo pipefail
-        KEY="$(sha256sum pnpm-lock.yaml | cut -c1-16)"
-        MARK="node_modules/.gaia-installed-$KEY"
+        MARK="$(bash scripts/ci/dep-marker.sh node)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -d node_modules/.pnpm ]; then
-          echo "node_modules already installed for lockfile $KEY — skipping pnpm install"
+          echo "node_modules already installed ($MARK) — skipping pnpm install"
           exit 0
         fi
         echo "::group::pnpm install"

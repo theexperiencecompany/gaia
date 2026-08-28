@@ -8,6 +8,9 @@
 # it; every failure mode here falls back to ALL rather than skipping tests.
 #
 # Outputs (GITHUB_OUTPUT): mode=all|selected, summary=<one line>
+#
+# TEST_IMPACT_ENABLED (default 1): an explicit 0/false is the off switch — the
+# whole slice runs and no selection is attempted.
 set -euo pipefail
 
 SLICE="${SLICE_NAME:?SLICE_NAME required}"
@@ -26,6 +29,14 @@ emit() {
   [ -n "${GITHUB_STEP_SUMMARY:-}" ] && echo "test impact ($SLICE): $2" >>"$GITHUB_STEP_SUMMARY"
   return 0
 }
+
+case "${TEST_IMPACT_ENABLED:-1}" in
+  0 | false)
+    echo "ALL" >"$SELECTED"
+    emit all "disabled by TEST_IMPACT_ENABLED=${TEST_IMPACT_ENABLED}, running ALL"
+    exit 0
+    ;;
+esac
 
 MAP="$MAP_DIR/test-impact-map-$SLICE.json"
 if [ ! -f "$MAP" ]; then

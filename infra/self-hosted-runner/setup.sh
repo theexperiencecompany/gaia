@@ -22,9 +22,14 @@
 #
 # Or pass token as $1:  bash infra/self-hosted-runner/setup.sh <token>
 #
-# Knobs: RUNNER_COUNT (default 4), RUNNER_VERSION, RUNNER_LABELS, RUNNER_LOCAL_CACHE
+# Knobs: RUNNER_COUNT (default 20), RUNNER_START, RUNNER_VERSION, RUNNER_LABELS,
+#        RUNNER_LOCAL_CACHE, RUNNER_REREGISTER=1 (force re-registration)
 #
-# Idempotent: safe to re-run. Cleans stale config, (re)installs, starts services.
+# Idempotent: safe to re-run while jobs are running. An instance that is
+# already registered at the pinned version is left alone (its .env and unit
+# are refreshed, nothing is restarted); an instance with a job in flight is
+# never killed — it is skipped with a message, re-run later. RUNNER_REREGISTER=1
+# forces the old remove + configure path for idle instances.
 # Requires: curl, tar, jq, docker. No inbound ports — runners poll GH over 443.
 set -euo pipefail
 
@@ -174,6 +179,30 @@ if [[ -d "$LEGACY_DIR" && ! -f "$LEGACY_DIR/.runner_index" ]]; then
   echo "[setup] Legacy runner retired (directory left on disk for inspection)."
 fi
 
+# A job is running on an instance exactly when its Runner.Worker is alive
+# (the listener forks one per job). Killing the listener then fails the job.
+worker_alive() {
+  pgrep -f "$1/bin/Runner.Worker" >/dev/null 2>&1
+}
+
+# The per-instance .env carries the Nx remote cache token, so it is written
+# 0600. Rewriting it is safe at any time: the runner reads it at listener
+# start, a running job keeps the copy it already has.
+write_runner_env() {
+  local dir="$1" idx="$2"
+  ( umask 077; cat > "$dir/.env" <<ENVFILE
+PATH=${RUNNER_PATH}
+MISE_NODE_COREPACK=1
+RUNNER_INDEX=${idx}
+RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
+ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
+${NX_REMOTE_ENV}
+ENVFILE
+  )
+  chmod 0600 "$dir/.env"
+}
+
 install_runner() {
   local idx="$1"
   local name="${RUNNER_NAME_PREFIX}-${idx}"
@@ -185,11 +214,39 @@ install_runner() {
   mkdir -p "$dir"
   cd "$dir"
 
+  local installed=""
+  [[ -f "./bin/Runner.Listener" ]] && installed="$(./bin/Runner.Listener --version 2>/dev/null | tr -d '[:space:]')"
+
+  # Already registered at the pinned version: nothing to install, nothing to
+  # restart. Refresh what is cheap and side-effect free (.env, unit enabled,
+  # workdir seed/warm) and leave the listener — and any job on it — alone.
+  if [[ -f ".runner" && "$installed" == "$RUNNER_VERSION" && "${RUNNER_REREGISTER:-0}" != "1" ]]; then
+    echo "[setup]   registered at ${RUNNER_VERSION} — keeping (RUNNER_REREGISTER=1 to force)."
+    write_runner_env "$dir" "$idx"
+    echo "$idx" > "$dir/.runner_index"
+    if worker_alive "$dir"; then
+      echo "[setup]   job in flight — workdir warm-up skipped."
+    else
+      mkdir -p "_work"
+      seed_workdir "$dir"
+      warm_workdir "$dir"
+    fi
+    # enable --now is a no-op on an active unit; it only starts a stopped one.
+    systemctl --user enable --now "gaia-runner@${idx}" > /dev/null 2>&1 \
+      || echo "::warning::could not ensure gaia-runner@${idx} is enabled"
+    return 0
+  fi
+
+  # Everything past here stops the listener. Never while a job is running:
+  # the job would fail and GitHub would mark it as a runner crash.
+  if worker_alive "$dir"; then
+    echo "::warning::${name}: a job is running (Runner.Worker alive) — skipping this instance; re-run setup.sh when it is idle."
+    return 0
+  fi
+
   # Re-extract when the installed version differs (a pin change, or a
   # self-update that happened before --disableupdate was set). The listener
   # must be stopped first: the unit is restarted at the end of this function.
-  local installed=""
-  [[ -f "./bin/Runner.Listener" ]] && installed="$(./bin/Runner.Listener --version 2>/dev/null | tr -d '[:space:]')"
   if [[ "$installed" != "$RUNNER_VERSION" ]]; then
     echo "[setup]   installing runner ${RUNNER_VERSION} (had: ${installed:-none})..."
     systemctl --user stop "gaia-runner@${idx}" 2>/dev/null || true
@@ -208,15 +265,7 @@ install_runner() {
   # Per-instance environment. RUNNER_INDEX is the contract CI relies on to
   # offset service ports; RUNNER_LOCAL_CACHE points the cache-aware composite
   # actions at persistent local storage.
-  cat > "$dir/.env" <<ENVFILE
-PATH=${RUNNER_PATH}
-MISE_NODE_COREPACK=1
-RUNNER_INDEX=${idx}
-RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
-ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
-ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
-${NX_REMOTE_ENV}
-ENVFILE
+  write_runner_env "$dir" "$idx"
 
   # Stale registration → remove with the fresh token before reconfiguring.
   if [[ -f ".runner" ]]; then
@@ -247,6 +296,9 @@ ENVFILE
   # svc.sh writes a system unit, so it needs root on every install and every
   # restart. A user unit needs root exactly once, for lingering (below), which
   # is the difference between "CI needs an admin" and "CI just comes back".
+  # (worker_alive was checked before the listener was touched; a job that
+  # started during config.sh is impossible because the registration was
+  # removed first.)
   pkill -f "$dir/bin/Runner.Listener" 2>/dev/null || true
   systemctl --user disable --now "gaia-runner@${idx}" > /dev/null 2>&1 || true
 
@@ -328,35 +380,54 @@ seed_workdir() {
 warm_workdir() {
   local dest="$1/_work/gaia/gaia"
   [[ "${RUNNER_WARM:-1}" == "1" && -d "$dest/.git" ]] || return 0
-  # Use the same node and pnpm the jobs use: the runner tool cache (node
-  # 22.x from actions/setup-node) and pnpm/action-setup's install under
-  # ~/setup-pnpm. The system node is 18, which today's pnpm refuses.
+  # Use the same node the jobs use: the runner tool cache (node 22.x from
+  # actions/setup-node). The system node is 18, which today's pnpm refuses.
   local tool_node
   tool_node="$(ls -d "$HOME"/actions-runner-gaia-home-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1)"
   [[ -n "$tool_node" ]] && export PATH="$tool_node:$PATH"
-  [[ -x "$HOME/setup-pnpm/node_modules/.bin/pnpm" ]] && export PATH="$HOME/setup-pnpm/node_modules/.bin:$PATH"
   if [[ ! -f "$dest/pnpm-lock.yaml" ]]; then
     git -C "$dest" checkout --quiet master 2>/dev/null \
       || git -C "$dest" checkout --quiet -b master origin/master 2>/dev/null \
       || { echo "::warning::could not check out master in $dest — skipping warm-up"; return 0; }
   fi
-  if command -v pnpm >/dev/null 2>&1; then
+  # pnpm, in order of preference: the copy pnpm/action-setup installed for
+  # this instance (dest: ${{ runner.temp }}/setup-pnpm, i.e. _work/_temp —
+  # per instance, because the shared ~/setup-pnpm raced between jobs), the
+  # legacy shared location, then corepack / npx pinned to the version in
+  # package.json's packageManager so a fresh box (no job has run yet) still
+  # warms with exactly the pnpm the jobs will use.
+  local pnpm_ver
+  pnpm_ver="$(sed -n 's/.*"packageManager": *"pnpm@\([^"]*\)".*/\1/p' "$dest/package.json" 2>/dev/null | head -n1)"
+  local pnpm=() cand
+  for cand in "$1/_work/_temp/setup-pnpm/node_modules/.bin/pnpm" "$HOME/setup-pnpm/node_modules/.bin/pnpm"; do
+    [[ -x "$cand" ]] && { pnpm=("$cand"); break; }
+  done
+  if [[ ${#pnpm[@]} -eq 0 ]]; then
+    if command -v corepack >/dev/null 2>&1; then
+      pnpm=(corepack "pnpm@${pnpm_ver:-latest}")
+    elif command -v pnpm >/dev/null 2>&1; then
+      pnpm=(pnpm)
+    elif command -v npx >/dev/null 2>&1; then
+      pnpm=(npx -y "pnpm@${pnpm_ver:-latest}")
+    fi
+  fi
+  if [[ ${#pnpm[@]} -gt 0 ]]; then
     if [[ ! -d "$dest/node_modules/.pnpm" ]]; then
-      echo "[setup]   warming node_modules (pnpm install --frozen-lockfile --prefer-offline)..."
-      ( cd "$dest" && pnpm install --frozen-lockfile --prefer-offline >/dev/null 2>&1 \
+      echo "[setup]   warming node_modules (${pnpm[*]} install --frozen-lockfile --prefer-offline)..."
+      ( cd "$dest" && "${pnpm[@]}" install --frozen-lockfile --prefer-offline >/dev/null 2>&1 \
         && rm -f node_modules/.gaia-installed-* \
-        && touch "node_modules/.gaia-installed-$(sha256sum pnpm-lock.yaml | cut -c1-16)" ) \
+        && touch "$(bash scripts/ci/dep-marker.sh node)" ) \
         && echo "[setup]   node_modules warmed" || echo "::warning::pnpm install failed in $dest (first job will install)"
     fi
   else
-    echo "::warning::pnpm not on PATH — node_modules not warmed (first job pays ~5 min)"
+    echo "::warning::no pnpm, corepack or npx available — node_modules not warmed (first job pays ~5 min)"
   fi
   if command -v uv >/dev/null 2>&1; then
     if [[ ! -x "$dest/.venv/bin/python" ]]; then
       echo "[setup]   warming .venv (uv sync --frozen --package gaia --group backend --group dev)..."
       ( cd "$dest" && uv sync --frozen --package gaia --group backend --group dev >/dev/null 2>&1 \
         && rm -f .venv/.gaia-synced-* \
-        && touch ".venv/.gaia-synced-$(sha256sum uv.lock | cut -c1-16)" ) \
+        && touch "$(bash scripts/ci/dep-marker.sh python)" ) \
         && echo "[setup]   .venv warmed" || echo "::warning::uv sync failed in $dest (first job will sync)"
     fi
   else
@@ -474,7 +545,7 @@ BKCONF
   else
     docker buildx create --name gaia-ci --driver docker-container \
       --driver-opt network=host --config "$BUILDKIT_CONF" --bootstrap >/dev/null 2>&1 \
-      && echo "[setup] buildx builder 'gaia-ci' created (persistent, 30 GB cache cap)" \
+      && echo "[setup] buildx builder 'gaia-ci' created (persistent; GC keeps 45 GB for 7 days, hard cap 60 GB — see ${BUILDKIT_CONF})" \
       || echo "::warning::could not create the gaia-ci buildx builder"
   fi
 fi
@@ -551,12 +622,17 @@ fi
 echo ""
 echo "[setup] Verifying instances appear in the GitHub API (up to 60s)..."
 GH_TOKEN_FALLBACK="$(gh auth token 2>/dev/null | tr -d '\n' || echo "$TOKEN")"
+# Both pools count: the first label of each label set is the pool selector
+# (gaia-home for instances < LINT_RUNNER_START, gaia-home-lint from there on).
+POOL_LABEL="${RUNNER_LABELS%%,*}"
+LINT_POOL_LABEL="${LINT_RUNNER_LABELS%%,*}"
+JQ_OURS="select(any(.labels[]; .name==\"${POOL_LABEL}\" or .name==\"${LINT_POOL_LABEL}\"))"
 for attempt in $(seq 1 12); do
   COUNT="$(curl -sSf --max-time 10 \
     -H "Authorization: Bearer $GH_TOKEN_FALLBACK" \
     -H "Accept: application/vnd.github+json" \
-    "https://api.github.com/repos/${REPO_SLUG}/actions/runners" 2>/dev/null | \
-    jq '[.runners[] | select(.labels[].name=="gaia-home") | select(.status=="online")] | length' 2>/dev/null || echo 0)"
+    "https://api.github.com/repos/${REPO_SLUG}/actions/runners?per_page=100" 2>/dev/null | \
+    jq "[.runners[] | ${JQ_OURS} | select(.status==\"online\")] | length" 2>/dev/null || echo 0)"
   echo "  attempt $attempt/12: ${COUNT}/${RUNNER_COUNT} online"
   if [[ "$COUNT" -ge "$RUNNER_COUNT" ]]; then
     echo "[setup] ✅ All ${RUNNER_COUNT} instances online."
@@ -567,12 +643,12 @@ done
 
 curl -sSf --max-time 10 -H "Authorization: Bearer $GH_TOKEN_FALLBACK" \
   -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/${REPO_SLUG}/actions/runners" 2>/dev/null | \
-  jq -r '.runners[] | select(.labels[].name=="gaia-home") | "  \(.name)\tstatus=\(.status)\tbusy=\(.busy)"' || true
+  "https://api.github.com/repos/${REPO_SLUG}/actions/runners?per_page=100" 2>/dev/null | \
+  jq -r ".runners[] | ${JQ_OURS} | \"  \(.name)\tstatus=\(.status)\tbusy=\(.busy)\"" || true
 
 cat <<EOF
 
-[setup] Done. ${RUNNER_COUNT} instances labelled '${RUNNER_LABELS}'.
+[setup] Done. ${RUNNER_COUNT} instances: 1-$((LINT_RUNNER_START - 1)) labelled '${RUNNER_LABELS}', ${LINT_RUNNER_START}-${RUNNER_COUNT} labelled '${LINT_RUNNER_LABELS}'.
 $(if [[ "$NON_PERSISTENT" == "true" ]]; then
 cat <<'WARN'
 

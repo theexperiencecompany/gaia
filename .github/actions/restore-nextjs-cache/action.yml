@@ -5,12 +5,11 @@ description: >
   deploy-web.yml (build) and desktop-pr-build.yml (prepare).
 
   Two strategies, picked by runner kind. GitHub-hosted runners are ephemeral,
-  so the cache has to travel through actions/cache. The self-hosted home
-  runner keeps its disk, so the cache just lives there: we symlink
-  apps/web/.next/cache at a persistent directory and the WAN round-trip
-  (measured 3m45s restore) disappears. The directory is keyed by RUNNER_NAME
-  so the parallel runner instances on one box never write the same cache
-  concurrently — Next.js's cache is not built for that.
+  so the cache has to travel through actions/cache (measured 3m45s restore).
+  On the self-hosted box apps/web/.next/cache simply persists inside each
+  runner instance's checkout (clean: false, and the job-started hook's scoped
+  git clean spares it), so there is nothing to restore and no two instances
+  ever share one cache — Next.js's cache is not built for concurrent writers.
 
 runs:
   using: composite

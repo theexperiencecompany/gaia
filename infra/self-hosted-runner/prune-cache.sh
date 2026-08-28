@@ -6,20 +6,31 @@
 # cross the network), but "persistent" means "grows forever" unless something
 # bounds it. This is that something.
 #
-# Bounded by SIZE, not by age. An age-based rule ("delete older than 14d")
-# does not bound anything: it is the ingest rate that decides the steady-state
-# size, so a busy week silently blows past whatever the disk can hold. Each
-# store below gets a byte budget and is trimmed least-recently-used until it
-# fits.
+# The rule that decides everything below: pruning must never make the NEXT
+# run slower. Anything a warm workspace still references stays.
+#
+#   * pnpm store and uv cache are pruned only by their own tools
+#     (`pnpm store prune`, `uv cache prune`), which drop exactly the entries
+#     no lockfile / no environment references. They are NOT LRU-trimmed: both
+#     stores are content-addressed with a handful of top-level children
+#     (pnpm: files/ index/ tmp/; uv: archive-v0/ wheels-v*/ ...), so evicting
+#     a "least recently used" top-level entry rips out half the store and
+#     every warm node_modules / .venv on the box goes cold at once. Their
+#     budgets are reported and warned about, never enforced here.
+#   * Nx and Next.js caches ARE LRU-trimmed to a budget: every entry is a
+#     content-addressed cache hit, and a miss costs one rebuild of that task,
+#     nothing else.
 #
 # What it will delete, and nothing else:
-#   * pnpm store (the user's default store, shared with dev tooling) entries
-#     nothing references  (pnpm store prune)
+#   * pnpm store entries nothing references  (pnpm store prune)
 #   * uv cache entries for versions no environment uses (uv cache prune)
-#   * Nx and Next.js cache entries, LRU, down to their budgets
+#   * Nx and Next.js cache entries in each instance's workspace, LRU, down to
+#     their budgets
+#   * /dev/shm/.mutation-* work trees older than 60 min (scripts/test/
+#     mutation.sh stages them there; a SIGKILLed run orphans its tree in RAM)
 #   * STOPPED containers named gaia-test-*  (the test services, by exact name)
 #   * runner _diag logs beyond the newest DIAG_KEEP
-#   * runner tarballs in the cache other than the version in use
+#   * runner tarballs in the cache other than the versions installed
 #
 # What it will NEVER touch, by design:
 #   * Docker volumes and images — unrelated to CI caches, and pruning them
@@ -27,6 +38,8 @@
 #   * The git mirror (it is the seed for every new runner instance).
 #   * The embedding models (fixed ~1.4 GB, and re-fetching them costs a
 #     multi-minute download).
+#   * node_modules / .venv inside the instance workspaces (that is the warm
+#     state the whole box exists to keep).
 #
 # Usage:
 #   bash prune-cache.sh              # dry run: report what WOULD go
@@ -35,13 +48,18 @@
 set -euo pipefail
 
 CACHE_ROOT="${RUNNER_LOCAL_CACHE:-/home/aryan/ci-cache}"
-PNPM_BUDGET_GB="${PNPM_BUDGET_GB:-12}"
-UV_BUDGET_GB="${UV_BUDGET_GB:-6}"
+PNPM_BUDGET_GB="${PNPM_BUDGET_GB:-12}"   # report-only, see header
+UV_BUDGET_GB="${UV_BUDGET_GB:-6}"        # report-only, see header
 NX_BUDGET_GB="${NX_BUDGET_GB:-4}"
 NEXT_BUDGET_GB="${NEXT_BUDGET_GB:-3}"
 DIAG_KEEP="${DIAG_KEEP:-20}"
 DISK_HIGH_PCT="${DISK_HIGH_PCT:-85}"
 RUNNER_GLOB="${RUNNER_GLOB:-/home/aryan/actions-runner-gaia-home-*}"
+# Per-instance caches live INSIDE the persistent workspace (actions/checkout
+# runs with clean: false; hooks/job-started.sh's scoped clean spares exactly
+# these paths — see .github/actions/setup-node-pnpm and restore-nextjs-cache).
+WORKSPACE_REL="_work/gaia/gaia"
+MUTATION_STALE_MIN="${MUTATION_STALE_MIN:-60}"
 
 APPLY=false
 [[ "${1:-}" == "--apply" ]] && APPLY=true
@@ -66,8 +84,16 @@ echo "[prune] Cache root:  $CACHE_ROOT ($(human "$(dir_bytes "$CACHE_ROOT")"))"
 # the directory fits its budget. Whole entries (not individual files) so a
 # cache entry is never left half-present, which reads as corruption to the
 # tool that owns it.
+#
+# Only safe on caches whose top-level entries are independent, content-
+# addressed hits (Nx task outputs, Next.js pack files). NEVER point it at a
+# store whose top-level children are structural (pnpm store, uv cache).
+#
+# An optional 4th argument restricts eviction to entries whose NAME matches
+# the regex (find -regex, whole path): Nx keeps its SQLite metadata and
+# terminalOutputs/ beside the numeric hash directories, and those must stay.
 trim_lru() {
-  local dir="$1" budget_gb="$2" label="$3"
+  local dir="$1" budget_gb="$2" label="$3" name_re="${4:-.*}"
   [[ -d "$dir" ]] || return 0
   local budget=$((budget_gb * 1024 * 1024 * 1024))
   local size; size="$(dir_bytes "$dir")"
@@ -84,9 +110,25 @@ trim_lru() {
     echo "        evict $(human "$esz")  $(basename "$entry")"
     run rm -rf "$entry"
     freed=$((freed + esz))
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 -printf '%T@ %p\0' 2>/dev/null \
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -regextype posix-extended -regex "${dir%/}/$name_re" -printf '%T@ %p\0' 2>/dev/null \
            | sort -zn | cut -z -d' ' -f2-)
   echo "[prune] $label: reclaimed $(human "$freed")"
+}
+
+# --- size report (no eviction) ---------------------------------------------
+# For the stores that must never be trimmed here. Over budget is a warning
+# for a human, not an action: the fix is a bigger disk or a lockfile diet,
+# never a cache that makes the next run cold.
+report_size() {
+  local dir="$1" budget_gb="$2" label="$3"
+  [[ -d "$dir" ]] || return 0
+  local budget=$((budget_gb * 1024 * 1024 * 1024))
+  local size; size="$(dir_bytes "$dir")"
+  if (( size <= budget )); then
+    echo "[prune] $label: $(human "$size") / ${budget_gb}G — within budget (report only)"
+  else
+    echo "::warning::$label is $(human "$size"), over its ${budget_gb}G budget by $(human $((size - budget))). Not trimmed on purpose (see prune-cache.sh header); grow the budget or the disk."
+  fi
 }
 
 # --- tool-native pruning (safest: each tool knows what it still needs) ------
@@ -110,25 +152,36 @@ if command -v uv >/dev/null 2>&1; then
   fi
 fi
 
-# --- size-bounded stores ----------------------------------------------------
-trim_lru "$(pnpm store path 2>/dev/null || echo "$HOME/.local/share/pnpm/store/v10")" "$PNPM_BUDGET_GB" "pnpm store"
-trim_lru "${UV_CACHE_DIR:-$HOME/.cache/uv}" "$UV_BUDGET_GB"   "uv cache"
+# --- shared stores: report only ---------------------------------------------
+report_size "$(pnpm store path 2>/dev/null || echo "$HOME/.local/share/pnpm/store/v10")" "$PNPM_BUDGET_GB" "pnpm store"
+report_size "${UV_CACHE_DIR:-$HOME/.cache/uv}" "$UV_BUDGET_GB" "uv cache"
+
+# --- size-bounded caches (content-addressed hits; a miss = one rebuild) ------
 # The Nx remote cache server evicts LRU itself (NX_CACHE_MAX_BYTES); this is a
 # backstop at a slightly larger budget in case the server is down.
 trim_lru "${CACHE_ROOT}/nx-remote"  "${NX_REMOTE_BUDGET_GB:-9}" "nx remote cache"
-for d in "${CACHE_ROOT}"/*/nx-cache;   do trim_lru "$d" "$NX_BUDGET_GB"   "nx cache ($(basename "$(dirname "$d")"))"; done
-for d in "${CACHE_ROOT}"/*/nextjs;     do trim_lru "$d" "$NEXT_BUDGET_GB" "next cache ($(basename "$(dirname "$d")"))"; done
-# node_modules trees: keep the newest NM_KEEP lockfile hashes per runner.
-NM_KEEP="${NM_KEEP:-2}"
-for d in "${CACHE_ROOT}"/*/node_modules-store; do
-  [[ -d "$d" ]] || continue
-  old="$(find "$d" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -rn | tail -n +$((NM_KEEP + 1)) | cut -d' ' -f2-)"
-  if [[ -n "$old" ]]; then
-    echo "[prune] $(basename "$(dirname "$d")")/node_modules-store: $(echo "$old" | wc -l) tree(s) beyond newest ${NM_KEEP}"
-    # shellcheck disable=SC2086
-    run rm -rf $old
-  fi
+# Per-instance Nx and Next.js caches live in each runner's persistent
+# workspace. Nx: only the numeric hash directories are candidates; its
+# SQLite files and terminalOutputs/ sit beside them and stay. Next.js: every
+# top-level entry (webpack/, swc/, images/, fetch-cache/) is a self-contained
+# pack cache, so whole entries are safe to drop.
+for rd in $RUNNER_GLOB; do
+  ws="$rd/$WORKSPACE_REL"
+  [[ -d "$ws" ]] || continue
+  trim_lru "$ws/.nx/cache"            "$NX_BUDGET_GB"   "nx cache ($(basename "$rd"))" '[0-9]+'
+  trim_lru "$ws/apps/web/.next/cache" "$NEXT_BUDGET_GB" "next cache ($(basename "$rd"))"
 done
+
+# --- orphaned mutation work trees in RAM ------------------------------------
+# scripts/test/mutation.sh copies the module under test to /dev/shm/.mutation-
+# <pid> and removes it on exit; a SIGKILL (job cancel, lane timeout) leaves it
+# holding RAM. Anything older than MUTATION_STALE_MIN outlived any real run.
+if [[ -d /dev/shm ]]; then
+  while IFS= read -r -d '' m; do
+    echo "[prune] orphaned mutation tree: $m ($(human "$(dir_bytes "$m")"))"
+    run rm -rf "$m"
+  done < <(find /dev/shm -mindepth 1 -maxdepth 1 -name '.mutation-*' -mmin "+${MUTATION_STALE_MIN}" -print0 2>/dev/null)
+fi
 
 # --- stopped test-service containers, by exact name pattern -----------------
 # Only containers this repo's CI creates, and only ones that already exited.
@@ -160,12 +213,28 @@ for rd in $RUNNER_GLOB; do
   fi
 done
 
-CURRENT_TARBALL="actions-runner-linux-x64-${RUNNER_VERSION:-2.336.0}.tar.gz"
-while IFS= read -r t; do
-  [[ "$(basename "$t")" == "$CURRENT_TARBALL" ]] && continue
-  echo "[prune] stale runner tarball: $(basename "$t") ($(human "$(dir_bytes "$t")"))"
-  run rm -f "$t"
-done < <(find "$CACHE_ROOT" -maxdepth 1 -name 'actions-runner-linux-*.tar.gz' 2>/dev/null)
+# The version in use is read from the installed runners themselves, never
+# from a constant here: a pin bump in setup.sh must not turn this into the
+# script that deletes the tarball setup.sh is about to extract. A tarball is
+# kept if ANY instance runs that version (or RUNNER_VERSION names it — the
+# knob setup.sh honours, so an operator mid-upgrade can protect the new one).
+IN_USE_VERSIONS="${RUNNER_VERSION:-}"
+for rd in $RUNNER_GLOB; do
+  [[ -x "$rd/bin/Runner.Listener" ]] || continue
+  v="$("$rd/bin/Runner.Listener" --version 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$v" ]] && IN_USE_VERSIONS="$IN_USE_VERSIONS $v"
+done
+if [[ -z "${IN_USE_VERSIONS// /}" ]]; then
+  echo "[prune] no installed runner version detected — leaving runner tarballs alone"
+else
+  echo "[prune] runner versions in use: ${IN_USE_VERSIONS# }"
+  while IFS= read -r t; do
+    tv="$(basename "$t")"; tv="${tv#actions-runner-linux-*-}"; tv="${tv%.tar.gz}"
+    case " $IN_USE_VERSIONS " in *" $tv "*) continue ;; esac
+    echo "[prune] stale runner tarball: $(basename "$t") ($(human "$(dir_bytes "$t")"))"
+    run rm -f "$t"
+  done < <(find "$CACHE_ROOT" -maxdepth 1 -name 'actions-runner-linux-*.tar.gz' 2>/dev/null)
+fi
 
 # --- report -----------------------------------------------------------------
 echo "[prune] Cache root after: $(human "$(dir_bytes "$CACHE_ROOT")")"

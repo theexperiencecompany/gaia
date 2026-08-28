@@ -55,13 +55,33 @@ slice when:
   covered);
 - any `.py` outside `apps/api` changed (`libs/shared/py`, tooling) — the map
   only covers `app/**`;
-- a non-source file under `apps/api` changed (`pyproject.toml`, `uv.lock`, …);
+- anything under `tests/**` that is not a `test_*.py` / `*_test.py` module
+  changed — snapshots, fixtures, cassettes, helper modules. pytest collects
+  nothing from such a path, and the map cannot name the tests that read it;
+- anything that configures the run itself changed, wherever it lives: any
+  `uv.lock` (the workspace lockfile is the **root** one — there is no
+  `apps/api/uv.lock`), any `pyproject.toml`, `.python-version`, `pytest.ini`,
+  `setup.cfg`, `tox.ini`, `scripts/ci/run-python-slice.sh`,
+  `scripts/ci/test-impact*`, `.github/workflows/main.yml`,
+  `.github/actions/setup-python-test-env/**`;
+- any other non-source file under `apps/api` changed (Dockerfile, scripts, …).
+  Tooling config and prose (`.pre-commit-config.yaml`, `*.md`, `docs/`) are the
+  one narrow exception: they cannot change a test's outcome and select nothing;
 - no map artifact exists yet, or the checkout has no merge-base;
 - the selection would exceed 30% of the slice. A 10k-id argv is ~1 MB, close to
   `ARG_MAX`, and the saving at that size is not worth the risk.
 
 The `bridge` slice is never selected against: it is one serial e2e file, so
 selecting inside it saves nothing and skipping it is the least safe thing to do.
+
+## Off switch
+
+Selection is on by default. Setting `TEST_IMPACT_ENABLED=0` (or `false`) for a
+run turns it off: `test-impact-fetch.sh` downloads no map, and
+`test-impact-select.sh` writes `ALL` and prints
+`test impact (<slice>): disabled by TEST_IMPACT_ENABLED=0, running ALL`. The
+workflow exposes it as a `workflow_dispatch` input, so a full run on a branch is
+one click away when a selection looks wrong.
 
 ## Staleness
 

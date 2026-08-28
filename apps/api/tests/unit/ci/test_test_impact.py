@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 from types import ModuleType
 
@@ -208,10 +210,69 @@ def test_changed_test_file_runs_that_whole_file(suite) -> None:
     assert ids == ["tests/unit/test_beta.py"]
 
 
+def test_changed_underscore_test_module_runs_that_whole_file(suite) -> None:
+    root = suite[0]
+    (root / "tests" / "unit" / "beta_test.py").write_text("def test_y(): pass\n")
+    ids, _r, _n, _t = run_select(suite, ["apps/api/tests/unit/beta_test.py"])
+    assert ids == ["tests/unit/beta_test.py"]
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "tests/unit/__snapshots__/test_render.txt",
+        "tests/integration/fixtures/payload.json",
+        "tests/e2e/cassettes/login.yaml",
+    ],
+)
+def test_a_non_python_file_under_tests_widens_to_all(suite, rel: str) -> None:
+    # Snapshots, fixtures and cassettes are read by tests the map cannot name,
+    # and pytest collects nothing from the path itself: selecting nothing
+    # here was a false green. Note .txt is inert elsewhere under apps/api.
+    ids, reason, _n, _t = run_select(suite, [f"apps/api/{rel}"])
+    assert ids == [ti.ALL_MARKER]
+    assert "non-test file under tests/" in reason
+
+
+def test_a_helper_module_under_tests_widens_to_all(suite) -> None:
+    # tests/integration/real/memory/store.py-style helpers: pytest collects 0
+    # tests from the positional path, and the tests importing it are unmapped.
+    ids, reason, _n, _t = run_select(suite, ["apps/api/tests/integration/real/memory/store.py"])
+    assert ids == [ti.ALL_MARKER]
+    assert "store.py" in reason
+
+
+def test_prose_under_tests_stays_inert(suite) -> None:
+    ids, _reason, n, _t = run_select(suite, ["apps/api/tests/CLAUDE.md"])
+    assert ids == [] and n == 0
+
+
 def test_a_conftest_change_widens_to_all(suite) -> None:
     ids, reason, _n, _t = run_select(suite, ["apps/api/tests/conftest.py"])
     assert ids == [ti.ALL_MARKER]
     assert "conftest" in reason
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "uv.lock",
+        "pyproject.toml",
+        ".python-version",
+        "libs/pyproject.toml",
+        "scripts/ci/run-python-slice.sh",
+        "scripts/ci/test-impact.py",
+        "scripts/ci/test-impact-select.sh",
+        ".github/workflows/main.yml",
+        ".github/actions/setup-python-test-env/action.yml",
+    ],
+)
+def test_suite_config_outside_apps_api_widens_to_all(suite, path: str) -> None:
+    # The workspace lockfile is the ROOT uv.lock (there is no apps/api/uv.lock);
+    # a dependency bump used to select nothing.
+    ids, reason, _n, _t = run_select(suite, [path])
+    assert ids == [ti.ALL_MARKER]
+    assert "test-suite config" in reason
 
 
 def test_an_unmapped_app_file_widens_to_all(suite) -> None:
@@ -234,7 +295,9 @@ def test_python_outside_apps_api_widens_to_all(suite) -> None:
 
 
 def test_unrelated_paths_select_nothing(suite) -> None:
-    ids, _reason, n, _t = run_select(suite, ["apps/web/src/App.tsx", "README.md"])
+    ids, _reason, n, _t = run_select(
+        suite, ["apps/web/src/App.tsx", "README.md", "pnpm-lock.yaml", "libs/shared/ts/x.ts"]
+    )
     assert ids == [] and n == 0
 
 
@@ -348,3 +411,47 @@ def test_missing_map_is_treated_as_run_everything(
     )
     assert out.read_text().strip() == ti.ALL_MARKER
     assert "no map available" in capsys.readouterr().out
+
+
+# ── off switch (shell wrappers) ──────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("value", ["0", "false"])
+def test_select_script_disabled_writes_all_without_selecting(tmp_path: Path, value: str) -> None:
+    # No map dir, no git remote: if the script got past the switch it would
+    # fail on the missing merge-base, so a clean ALL proves the early exit.
+    env = {
+        "PATH": os.environ["PATH"],
+        "SLICE_NAME": "unit-a",
+        "SLICE_PATHS": "tests/unit",
+        "TEST_IMPACT_ENABLED": value,
+        "GITHUB_OUTPUT": str(tmp_path / "out.txt"),
+    }
+    proc = subprocess.run(
+        ["bash", str(SCRIPT.with_name("test-impact-select.sh"))],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert (
+        f"test impact (unit-a): disabled by TEST_IMPACT_ENABLED={value}, running ALL" in proc.stdout
+    )
+    assert (tmp_path / "apps/api/.test-impact/selected-unit-a.txt").read_text() == "ALL\n"
+    assert "mode=all" in (tmp_path / "out.txt").read_text()
+
+
+def test_fetch_script_disabled_downloads_nothing(tmp_path: Path) -> None:
+    env = {"PATH": os.environ["PATH"], "SLICE_NAME": "unit-a", "TEST_IMPACT_ENABLED": "0"}
+    proc = subprocess.run(
+        ["bash", str(SCRIPT.with_name("test-impact-fetch.sh"))],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "disabled by TEST_IMPACT_ENABLED=0" in proc.stdout
+    # GITHUB_REPOSITORY is unset: any attempt at `gh api` would have failed.
+    assert not (tmp_path / ".test-impact-map").exists()

@@ -70,11 +70,35 @@ REDIS_BLOCK_START=8
 # job was cancelled, the runner rebooted) and is collected by `janitor`.
 STALE_HOURS="${GAIA_SHARED_STALE_HOURS:-3}"
 
+# One Postgres serves every lane. Per-lane containers run with
+# max_connections=300 (start-test-services.sh); here (MAX_LANE+1) lanes each
+# hold up to ~24 xdist workers × a few pooled connections at once, so the
+# per-lane figure scaled by lane count is the floor. 1200 is that with
+# headroom; the default 100 was the first thing to go under two lanes.
+# shared_buffers is raised to match (the default 128MB is a single-database
+# figure); the datadir is tmpfs so there is no I/O to hide behind anyway.
+PG_MAX_CONNECTIONS="${GAIA_SHARED_PG_MAX_CONNECTIONS:-1200}"
+PG_SHARED_BUFFERS="${GAIA_SHARED_PG_SHARED_BUFFERS:-512MB}"
+
 env_file_for() { echo "/tmp/gaia-test-services-$1.env"; }
+
+# `up` runs under a lock. Every lane calls it at job start, so on a cold box
+# several arrive together, all see "unhealthy", and all try to `docker rm -f`
+# + `docker run` the same container name — every loser fails its job on a
+# name conflict. flock makes the first one do the work and the rest find it
+# healthy. The lock file sits in the runner-local cache when there is one
+# (per box, persistent), else /tmp.
+LOCK_FILE="${RUNNER_LOCAL_CACHE:-/tmp}/gaia-shared-test-services.lock"
+[ -d "$(dirname "$LOCK_FILE")" ] || LOCK_FILE="/tmp/gaia-shared-test-services.lock"
+LOCK_WAIT_SECS=600
 
 die() {
   echo "::error::$*" >&2
   exit 1
+}
+
+warn() {
+  echo "::warning::$*" >&2
 }
 
 validate_lane() {
@@ -95,7 +119,8 @@ start_postgres() {
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=6g \
     -p "${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
-    -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+    -c "max_connections=${PG_MAX_CONNECTIONS}" -c "shared_buffers=${PG_SHARED_BUFFERS}"
 }
 
 # 256 logical databases: 32 per lane so lane r owns [8+r*32, 40+r*32) and
@@ -165,9 +190,15 @@ probe_until_deadline() {
   done
 }
 
-# wait_ready <label> <container> <start_fn> <probe...> — one timeout recreates
-# the container and re-waits, so a boot flake costs ~90s instead of a red
-# build; a second fails loud with the container's logs.
+# wait_ready <label> <container> <start_fn> <probe...> — one timeout on a
+# container that DIED recreates it and re-waits, so a boot flake costs ~90s
+# instead of a red build; a second fails loud with the container's logs.
+#
+# A container that is still RUNNING is never recreated here. These
+# containers are shared: a probe that times out under load (a dozen lanes
+# hammering Postgres) is not a boot flake, and `docker rm -f` on it would
+# take every other lane's database down mid-test. It gets one more probe
+# window and then a clear failure for a human to look at.
 wait_ready() {
   local label="$1" container="$2" start_fn="$3"
   shift 3
@@ -175,9 +206,17 @@ wait_ready() {
     echo "${label}: ready"
     return 0
   fi
-  echo "::warning::${label} not ready after ${READY_TIMEOUT_SECS}s — recreating container once (boot flake)"
   docker logs "$container" 2>&1 | tail -50
-  docker rm -f "$container" >/dev/null
+  if container_running "$container"; then
+    warn "${label} is running but failed its probe for ${READY_TIMEOUT_SECS}s — NOT recreating a live shared container (other lanes may be using it); waiting once more"
+    if probe_until_deadline "$@"; then
+      echo "${label}: ready (slow probe, container kept)"
+      return 0
+    fi
+    die "${label} (${container}) is running but unresponsive after $((READY_TIMEOUT_SECS * 2))s. Refusing to recreate a live shared container; inspect it (docker logs ${container}) and restart it by hand if it is wedged."
+  fi
+  warn "${label} container is not running after ${READY_TIMEOUT_SECS}s — recreating once (boot flake)"
+  docker rm -f "$container" >/dev/null 2>&1 || true
   "$start_fn"
   if probe_until_deadline "$@"; then
     echo "${label}: ready (after one restart)"
@@ -212,10 +251,22 @@ all_healthy() {
 
 cmd_up() {
   # The whole point is to pay nothing on the common path: every lane calls `up`
-  # and only the first one on a cold box does any work.
+  # and only the first one on a cold box does any work. The pre-lock check
+  # keeps the warm path lock-free; the post-lock check is what makes the
+  # cold-start race safe (see LOCK_FILE above).
   if all_healthy; then
     echo "Shared test services already healthy — nothing to do"
     return 0
+  fi
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$LOCK_FILE"
+    flock -w "$LOCK_WAIT_SECS" 9 || die "could not take ${LOCK_FILE} within ${LOCK_WAIT_SECS}s — another 'up' is stuck?"
+    if all_healthy; then
+      echo "Shared test services already healthy (brought up by another lane while we waited)"
+      return 0
+    fi
+  else
+    warn "flock not available — concurrent 'up' calls on a cold box may race"
   fi
 
   echo "::group::Pull service images (parallel)"
@@ -342,40 +393,55 @@ cmd_reset() {
   local redis_base=$((REDIS_BLOCK_START + lane * REDIS_STRIPE))
   local suffix="_r${lane}"
 
+  # Every step below is best-effort (`|| warn`): under set -e one Mongo or
+  # Rabbit hiccup would abort the reset half-way and leave the lane's env
+  # file in place, so the next job on this index would inherit half-cleaned
+  # namespaces. A warning per failed step, and the env file always goes.
+
   # WITH (FORCE) terminates leftover backends from a cancelled job; without it
   # a single stuck connection makes the drop hang until the next janitor pass.
-  psql_exec "DROP DATABASE IF EXISTS ${pg_db} WITH (FORCE)" >/dev/null \
-    || echo "::warning::Postgres: dropping ${pg_db} failed"
-  echo "Postgres: dropped ${pg_db}"
+  if psql_exec "DROP DATABASE IF EXISTS ${pg_db} WITH (FORCE)" >/dev/null; then
+    echo "Postgres: dropped ${pg_db}"
+  else
+    warn "Postgres: dropping ${pg_db} failed"
+  fi
 
   # Flush the lane's whole 32-DB stripe, not just the 24 the workers use: a
   # stray key outside the block is still this lane's litter.
   # One docker exec, not one per DB: 32 execs cost 3.2 s of every services
   # lane's teardown (run 33171716529); a single exec with the loop inside the
   # container is ~0.3 s.
-  docker exec "$REDIS_NAME" sh -c \
-    "for db in \$(seq $redis_base $((redis_base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"
-  echo "Redis: flushed DBs ${redis_base}-$((redis_base + REDIS_STRIPE - 1))"
+  if docker exec "$REDIS_NAME" sh -c \
+      "for db in \$(seq $redis_base $((redis_base + REDIS_STRIPE - 1))); do redis-cli -n \$db flushdb >/dev/null; done"; then
+    echo "Redis: flushed DBs ${redis_base}-$((redis_base + REDIS_STRIPE - 1))"
+  else
+    warn "Redis: flushing DBs ${redis_base}-$((redis_base + REDIS_STRIPE - 1)) failed"
+  fi
 
   # Every worker database of this lane: gaia_test_r<lane>_gw0, _gw1, ...
-  docker exec "$MONGO_NAME" mongosh --quiet \
-    -u gaia -p gaia --authenticationDatabase admin \
-    --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases
-      .map(d => d.name)
-      .filter(n => /^gaia_test_r${lane}_/.test(n))
-      .forEach(n => { db.getSiblingDB(n).dropDatabase(); print('dropped ' + n); })"
-  echo "MongoDB: dropped gaia_test_r${lane}_* databases"
+  if docker exec "$MONGO_NAME" mongosh --quiet \
+      -u gaia -p gaia --authenticationDatabase admin \
+      --eval "db.adminCommand({listDatabases:1,nameOnly:true}).databases
+        .map(d => d.name)
+        .filter(n => /^gaia_test_r${lane}_/.test(n))
+        .forEach(n => { db.getSiblingDB(n).dropDatabase(); print('dropped ' + n); })"; then
+    echo "MongoDB: dropped gaia_test_r${lane}_* databases"
+  else
+    warn "MongoDB: dropping gaia_test_r${lane}_* databases failed"
+  fi
 
   # Chroma has no namespace concept, so the lane's collections are identified
   # by the name suffix the app appended (GAIA_CHROMA_COLLECTION_SUFFIX) and
   # deleted one by one through the v2 REST API.
-  reset_chroma "$suffix"
+  reset_chroma "$suffix" || warn "ChromaDB: resetting collections ending in ${suffix} failed"
 
-  docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q delete_vhost "$vhost" \
-    || echo "RabbitMQ: vhost ${vhost} was already absent"
-  echo "RabbitMQ: deleted vhost ${vhost}"
+  if docker exec -u rabbitmq "$RABBITMQ_NAME" rabbitmqctl -q delete_vhost "$vhost"; then
+    echo "RabbitMQ: deleted vhost ${vhost}"
+  else
+    echo "RabbitMQ: vhost ${vhost} was already absent (or delete failed — see above)"
+  fi
 
-  rm -f "$(env_file_for "$lane")"
+  rm -f "$(env_file_for "$lane")" || warn "could not remove $(env_file_for "$lane")"
 }
 
 # reset_chroma <suffix> — delete every collection whose name ends in <suffix>.

@@ -13,10 +13,17 @@
 # and test-impact-select.sh then runs the whole slice.
 #
 # Env: SLICE_NAME, GITHUB_REPOSITORY, GITHUB_TOKEN (actions:read),
-#      GITHUB_HEAD_REF (PR head branch, optional), MAP_DIR (default .test-impact-map)
+#      GITHUB_HEAD_REF (PR head branch, optional), MAP_DIR (default .test-impact-map),
+#      TEST_IMPACT_ENABLED (default 1; 0/false skips the download entirely)
 set -euo pipefail
 
 SLICE="${SLICE_NAME:?SLICE_NAME required}"
+case "${TEST_IMPACT_ENABLED:-1}" in
+  0 | false)
+    echo "test impact ($SLICE): disabled by TEST_IMPACT_ENABLED=${TEST_IMPACT_ENABLED}, skipping map fetch"
+    exit 0
+    ;;
+esac
 MAP_DIR="${MAP_DIR:-.test-impact-map}"
 ARTIFACT="test-impact-map-${SLICE}"
 mkdir -p "$MAP_DIR"

@@ -11,9 +11,28 @@ cd "$(dirname "$0")/../../apps/api"
 
 SLICE="${SLICE_NAME:?SLICE_NAME required}"
 SELECTED=".test-impact/selected-$SLICE.txt"
+# Per-runner scratch: /tmp is shared by every runner instance on the home
+# box, and twenty lanes writing /tmp/pytest-<slice>.time clobber each other.
+SCRATCH="${RUNNER_TEMP:-/tmp}"
+
+# The selection is trusted only when this job's test-impact-select.sh wrote
+# it. No file means the selector did not run (or was skipped) — that is ALL,
+# stated explicitly. A file that predates this job by hours is a leftover in
+# a persistent workspace and is ignored for the same reason: a stale
+# selection silently skips tests, running everything never does.
+SELECTION="ALL"
+if [ ! -f "$SELECTED" ]; then
+  echo "Python tests ($SLICE): no $SELECTED — running ALL (no test-impact selection for this job)"
+elif [ -n "$(find "$SELECTED" -mmin +360 -print -quit 2>/dev/null)" ]; then
+  echo "::warning::$SELECTED is older than 6h (stale from a previous job?) — ignoring it and running ALL"
+elif [ "$(head -n1 "$SELECTED")" = "ALL" ]; then
+  echo "Python tests ($SLICE): selection says ALL"
+else
+  SELECTION="FILE"
+fi
 
 TARGETS=()
-if [ -f "$SELECTED" ] && [ "$(head -n1 "$SELECTED")" != "ALL" ]; then
+if [ "$SELECTION" = "FILE" ]; then
   while IFS= read -r line; do [ -n "$line" ] && TARGETS+=("$line"); done <"$SELECTED"
   if [ ${#TARGETS[@]} -eq 0 ]; then
     echo "Python tests ($SLICE): SKIPPED (test impact selected 0 tests)"
@@ -55,5 +74,5 @@ fi
   "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
   -m 'not composio and not model_onboarding and not schemathesis' \
   --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee "/tmp/pytest-${SLICE}.time"
+  --junitxml="test-results/pytest-$SLICE.xml" --durations=30 2>&1 | tee "${SCRATCH}/pytest-${SLICE}.time"
 echo "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"

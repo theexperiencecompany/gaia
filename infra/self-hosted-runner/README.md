@@ -128,7 +128,8 @@ gh api repos/theexperiencecompany/gaia/actions/runners --jq '.total_count'
 ## Shared test services (one container set for every lane)
 
 `scripts/ci/start-test-services.sh` boots five containers **per job**. With the
-box's four runner instances (`RUNNER_COUNT` in `setup.sh`) that is 20 containers:
+box's eleven `gaia-home` runner instances (`RUNNER_COUNT` / `LINT_RUNNER_START`
+in `setup.sh`) that would be 55 containers:
 a measured 20-45 s of boot time on every job's critical path, and ~12-18 GB of
 RAM against 46 GiB of machine, alongside the lanes' own workers. The same five containers started **once** and kept warm cost ~0.6 GB and
 zero boot time per job.

@@ -15,6 +15,8 @@
 #   RUNNER_LABEL            — label to probe (default: gaia-home)
 #   FALLBACK_RUNNER         — JSON array used when home is unavailable (default: ["ubuntu-latest"])
 #   FORCE_HOME              — if "true", fail loudly instead of falling back (for smoke tests)
+#   FORCE_GITHUB            — if "true", skip the probe and select the fallback (exercises the GitHub path)
+#   PR_HEAD_REPO            — owner/repo of the PR head; a fork never gets the home box
 #
 # Outputs (via $GITHUB_OUTPUT when present, else stdout):
 #   runner              — JSON array string, e.g. '["self-hosted","gaia-home"]'
@@ -29,6 +31,8 @@ FALLBACK="${FALLBACK_RUNNER:-["ubuntu-latest"]}"
 REPO="${GITHUB_REPOSITORY:-theexperiencecompany/gaia}"
 TOKEN="${GITHUB_TOKEN:-}"
 FORCE="${FORCE_HOME:-false}"
+FORCE_GH="${FORCE_GITHUB:-false}"
+HEAD_REPO="${PR_HEAD_REPO:-}"
 
 # Sensible defaults when running locally (outside Actions)
 if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
@@ -36,6 +40,7 @@ if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
 fi
 
 API="https://api.github.com/repos/${REPO}/actions/runners"
+FALLBACK_LABEL="$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)"
 
 log() { echo "[select-runner] $*" >&2; }
 
@@ -61,10 +66,36 @@ summary() {
   log "$msg"
 }
 
-# Fast-path: if FORCE_HOME=false and local override says skip probe
+# Fork PRs never touch the box. The runner user's workspace, caches and network
+# are shared state, and this is a public repo: code from outside it runs only on
+# GitHub's throwaway VMs. Decided before the probe on purpose — a fork's token
+# happens to be unable to list runners today, but that is an accident of token
+# scopes, not a policy.
+if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
+  log "PR head is $HEAD_REPO (fork of $REPO) — fork code never runs on the home box."
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "fork"
+  summary "### Runner selection — fallback (fork)
+
+- **Selected:** \`$FALLBACK\` — PR head \`$HEAD_REPO\` is not \`$REPO\`; fork code never runs on the home box
+"
+  exit 0
+fi
+
+# Exercise the GitHub-hosted path on demand (workflow_dispatch force_github):
+# the fallback only proves itself when it actually runs.
+if [[ "$FORCE_GH" == "true" ]]; then
+  log "FORCE_GITHUB=true — selecting $FALLBACK without probing."
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "forced-github"
+  summary "### Runner selection — fallback (forced)
+
+- **Selected:** \`$FALLBACK\` — \`force_github\` set on this dispatch
+"
+  exit 0
+fi
+
 if [[ -z "$TOKEN" ]]; then
   log "No GITHUB_TOKEN — cannot probe API. Falling back to $FALLBACK (local run)."
-  emit "$FALLBACK" "ubuntu-latest" "false" "no-token"
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "no-token"
   summary "### Runner selection — fallback (no token)
 
 - **Selected:** \`$FALLBACK\` (no API token available)
@@ -106,7 +137,7 @@ if [[ "$api_ok" != "true" ]]; then
     echo "::error::HOME runner forced but API probe failed"
     exit 1
   fi
-  emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "api-unavailable"
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "api-unavailable"
   summary "### Runner selection — fallback (API unavailable)
 
 - **Selected:** \`$FALLBACK\`
@@ -167,7 +198,7 @@ if [[ -z "$RUNNER_LINE" ]]; then
     echo "::error::No runner with label $LABEL"
     exit 1
   fi
-  emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "not-registered"
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "not-registered"
   summary "### Runner selection — fallback (not registered)
 
 - **Selected:** \`$FALLBACK\`
@@ -221,7 +252,7 @@ if [[ "$FORCE" == "true" ]]; then
   echo "::error::Home runner $REASON but FORCE_HOME=true"
   exit 1
 fi
-emit "$FALLBACK" "$(echo "$FALLBACK" | tr -d '[]" ' | cut -d',' -f1)" "false" "$REASON"
+emit "$FALLBACK" "$FALLBACK_LABEL" "false" "$REASON"
 summary "### Runner selection — fallback (home not schedulable)
 
 - **Selected:** \`$FALLBACK\`

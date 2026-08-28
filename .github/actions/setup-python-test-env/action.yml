@@ -38,44 +38,9 @@ runs:
       if: inputs.node == 'true'
       uses: ./.github/actions/setup-node-pnpm
 
-    # The self-hosted box keeps its NVMe between runs, so uv's cache lives
-    # there directly. Pushing it through the GH cache would cost a WAN
-    # round-trip over a residential uplink for data that never left the disk.
-    #
-    # Passed as cache-local-path, not exported as UV_CACHE_DIR: setup-uv sets
-    # UV_CACHE_DIR itself to a per-job temp directory, and that silently wins
-    # over an env var exported before it runs. The temp dir is empty on every
-    # job, which turns "persistent cache" into a full PyPI download per run.
-    - name: Resolve the persistent uv cache path (self-hosted)
-      if: runner.environment == 'self-hosted'
-      id: uvcache
-      shell: bash
-      run: |
-        set -euo pipefail
-        UV_DIR="$HOME/.cache/uv"   # uv's own default — one cache for dev tooling and every runner
-        mkdir -p "$UV_DIR"
-        echo "path=$UV_DIR" >> "$GITHUB_OUTPUT"
-        echo "uv cache (persistent, no GH cache): $UV_DIR ($(du -sh "$UV_DIR" 2>/dev/null | cut -f1))"
-
-    - name: Setup uv (self-hosted — persistent local cache)
-      if: runner.environment == 'self-hosted'
-      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      with:
-        version: "0.8.17"
-        enable-cache: false
-        cache-local-path: ${{ steps.uvcache.outputs.path }}
-
-    - name: Setup uv (GitHub-hosted — cache via actions/cache)
-      if: runner.environment != 'self-hosted'
-      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      with:
-        version: "0.8.17"
-        enable-cache: true
-        # v9 flipped prune-cache's default from true to false; pin it
-        # explicitly so a future setup-uv bump can't silently let the cache
-        # grow unbounded and evict other repo caches (e.g. the Next.js
-        # compiler cache).
-        prune-cache: true
+    # One rule for uv on every runner kind (persistent ~/.cache/uv on the box,
+    # actions/cache on GitHub-hosted) — see setup-uv/action.yml for why.
+    - uses: ./.github/actions/setup-uv
 
     # Container boot (image pull on a cold daemon, then 10-30s of Postgres /
     # Mongo / RabbitMQ / Chroma readiness) is pure waiting, and uv sync is
@@ -111,13 +76,13 @@ runs:
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
-      # uv.lock hash matches the marker the previous sync left (~10-20s).
+      # marker the previous sync left still matches (scripts/ci/dep-marker.sh
+      # keys it on uv.lock AND the pyproject files, ~10-20s saved).
       run: |
         set -euo pipefail
-        KEY="$(sha256sum uv.lock | cut -c1-16)"
-        MARK=".venv/.gaia-synced-$KEY"
+        MARK="$(bash scripts/ci/dep-marker.sh python)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ]; then
-          echo ".venv already synced for uv.lock $KEY — skipping uv sync"
+          echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0
         fi
         uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541

@@ -34,6 +34,14 @@ S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
 [ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
 # Stale per-index env file so a new job cannot read old ports.
 rm -f "/tmp/gaia-test-services-${IDX}.env"
+# Mutation work trees scripts/test/mutation.sh stages in RAM (/dev/shm/
+# .mutation-<pid>) and cannot clean up after a SIGKILL. They are not scoped
+# to an index, so only ones older than any live run (60 min) are swept; a
+# failure here is never the job's problem.
+if [ -d /dev/shm ]; then
+  swept="$(find /dev/shm -mindepth 1 -maxdepth 1 -name '.mutation-*' -mmin +60 -print -exec rm -rf {} + 2>/dev/null | wc -l)" || swept=0
+  [ "${swept:-0}" -gt 0 ] && echo "swept orphaned mutation trees from /dev/shm: $swept"
+fi
 # Persistent workspace: actions/checkout runs with clean: false on this box,
 # so untracked build output would otherwise survive between jobs. Clean it
 # here, sparing only the caches that make the instance fast. Patterns are

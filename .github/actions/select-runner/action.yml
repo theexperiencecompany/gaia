@@ -1,10 +1,12 @@
 name: Select runner (home with fallback)
 description: >
-  Probe the GitHub self-hosted runner API for label `gaia-home`. If the
-  home server (16c/46Gi, 100.126.190.120 via Tailscale) is online and idle,
-  select ["self-hosted","gaia-home"]; otherwise fall back to the
-  GitHub-hosted runner so the job never queues forever. Never opens inbound
-  ports — the home runner polls GitHub over HTTPS:443 outbound.
+  Probe the GitHub self-hosted runner API for the given label. If the home
+  server (16c/46Gi, 100.126.190.120 via Tailscale) is online, select
+  ["self-hosted","<label>"] — queueing behind a busy pool, since the box's
+  environment setup is ~30x cheaper than a GitHub-hosted runner's; otherwise
+  fall back to the GitHub-hosted runner so the job never queues on an offline
+  label. Fork PRs always get the fallback. Never opens inbound ports — the
+  home runner polls GitHub over HTTPS:443 outbound.
 
 inputs:
   runner-label:
@@ -17,6 +19,10 @@ inputs:
     default: '["ubuntu-latest"]'
   force-home:
     description: 'If true, fail instead of falling back (for smoke tests)'
+    required: false
+    default: 'false'
+  force-github:
+    description: 'If true, skip the probe and select the fallback (exercises the GitHub-hosted path)'
     required: false
     default: 'false'
   github-token:
@@ -35,7 +41,7 @@ outputs:
     description: 'true when home runner was selected'
     value: ${{ steps.probe.outputs.is_self_hosted }}
   reason:
-    description: 'Why this runner was chosen (online-idle | offline | busy | not-registered | api-unavailable)'
+    description: 'Why this runner was chosen (online-idle | online-busy-queued | offline | not-registered | api-unavailable | fork | forced-github)'
     value: ${{ steps.probe.outputs.reason }}
 
 runs:
@@ -50,9 +56,12 @@ runs:
         RUNNER_LABEL: ${{ inputs.runner-label }}
         FALLBACK_RUNNER: ${{ inputs.fallback-runner }}
         FORCE_HOME: ${{ inputs.force-home }}
+        FORCE_GITHUB: ${{ inputs.force-github }}
+        # Empty on push/dispatch; on a PR it names the head repo, and a head
+        # repo that is not this one is a fork.
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       run: |
         set -euo pipefail
-        # Primary: colocated script (self-contained, no path fragility)
         # Single source of truth: scripts/ci/select-runner.sh from the checkout.
         # A colocated copy used to shadow it and went stale — it checked only
         # the first runner instance, so a busy #1 sent every lane to GitHub

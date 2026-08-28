@@ -65,11 +65,43 @@ INERT_NAMES = frozenset(
 )
 INERT_DIRS = ("docs/",)
 
+# Files anywhere in the repo that decide how pytest runs or what it runs in.
+# The workspace lockfile is the ROOT uv.lock (there is no apps/api/uv.lock), the
+# interpreter comes from .python-version, and the slice runner / this selector /
+# the workflow decide what is collected at all — none of that is visible to
+# coverage, so any of it changing invalidates the map wholesale.
+SUITE_CONFIG_NAMES = frozenset(
+    {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
+)
+SUITE_CONFIG_PATHS = frozenset({"scripts/ci/run-python-slice.sh", ".github/workflows/main.yml"})
+SUITE_CONFIG_PREFIXES = ("scripts/ci/test-impact", ".github/actions/setup-python-test-env/")
+
+TEST_MODULE_PREFIX = "test_"
+TEST_MODULE_SUFFIX = "_test.py"
+
 
 def is_inert(rel: str) -> bool:
     """True for a path under apps/api that cannot change any test's outcome."""
     name = rel.rsplit("/", 1)[-1]
     return name in INERT_NAMES or rel.endswith(INERT_SUFFIXES) or rel.startswith(INERT_DIRS)
+
+
+def is_suite_config(path: str) -> bool:
+    """True for a repo-relative path that configures the test run itself."""
+    name = path.rsplit("/", 1)[-1]
+    return (
+        name in SUITE_CONFIG_NAMES
+        or path in SUITE_CONFIG_PATHS
+        or path.startswith(SUITE_CONFIG_PREFIXES)
+    )
+
+
+def is_test_module(rel: str) -> bool:
+    """True for a file pytest collects tests from (``test_*.py`` / ``*_test.py``)."""
+    name = rel.rsplit("/", 1)[-1]
+    return (name.startswith(TEST_MODULE_PREFIX) and name.endswith(".py")) or name.endswith(
+        TEST_MODULE_SUFFIX
+    )
 
 
 # ── map recording ────────────────────────────────────────────────────────────
@@ -201,12 +233,15 @@ def _classify_change(
     raw: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
 ) -> None:
     """Fold one changed path into ``sel`` (widen, add ids, or ignore)."""
-    rel = strip_prefix(raw)
+    path = raw.replace("\\", "/").strip()
+    rel = strip_prefix(path)
     if rel is None:
         # Outside apps/api. Any Python outside (libs/shared/py, tools) can
         # be imported by the API; coverage only mapped app/**, so widen.
-        if raw.strip().endswith(".py"):
-            sel.widen(f"changed python outside apps/api: {raw.strip()}")
+        if is_suite_config(path):
+            sel.widen(f"test-suite config changed: {path}")
+        elif path.endswith(".py"):
+            sel.widen(f"changed python outside apps/api: {path}")
         return
 
     if any(rel.endswith(dep) or rel == dep for dep in GLOBAL_TEST_DEPS):
@@ -214,9 +249,17 @@ def _classify_change(
         return
 
     if rel.startswith("tests/"):
+        if rel.rsplit("/", 1)[-1] in INERT_NAMES:
+            return
+        if not is_test_module(rel):
+            # Snapshots, fixtures, cassettes, helper modules: pytest collects
+            # nothing from the path itself, and the map only knows app/**, so
+            # the tests that read them cannot be found — widen.
+            sel.widen(f"non-test file under tests/ changed: {rel}")
+            return
         # Run the whole file: a path is a valid pytest positional arg, and
         # it covers tests added in this diff that no map can know about.
-        if (repo_root / rel).exists() and rel.endswith(".py"):
+        if (repo_root / rel).exists():
             sel.ids.add(rel)
             sel.reasons.append(f"changed test file {rel}")
         return

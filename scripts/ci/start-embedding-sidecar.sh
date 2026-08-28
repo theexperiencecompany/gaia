@@ -25,11 +25,24 @@ PIDFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
 # Keep-warm (self-hosted): loading the two ONNX models costs 8 s per lane
 # (measured run 33171716529) and the sidecar is stateless, so a healthy one
 # left by the previous job on this runner is reused when nothing it depends
-# on changed. STAMP covers the sidecar package and the locked dependency set;
-# a PR that touches either gets a fresh process. Everything else — a dead
-# pid, a failed health probe, a GitHub-hosted runner — cold-starts as before.
+# on changed. STAMP covers everything the sidecar process imports — the
+# sidecar package itself plus app.memory (embeddings), app.constants
+# (memory constants) and libs/shared/py (wide_events) — and the locked
+# dependency set; a PR that touches any of them gets a fresh process.
+# Tree-object ids from one `git rev-parse` call: no hashing of file contents,
+# so the check is a few ms. If any path is missing the whole call fails and
+# the stamp is "none", which never matches — a safe cold start. Everything
+# else — a dead pid, a failed health probe, a GitHub-hosted runner —
+# cold-starts as before.
 STAMPFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.stamp"
-STAMP="$(git -C "$REPO_ROOT" rev-parse "HEAD:apps/api/app/services/embedding_sidecar" 2>/dev/null || echo none)-$(git -C "$REPO_ROOT" hash-object uv.lock 2>/dev/null || echo none)"
+if ! STAMP_TREES="$(git -C "$REPO_ROOT" rev-parse \
+    "HEAD:apps/api/app/services/embedding_sidecar" \
+    "HEAD:apps/api/app/memory" \
+    "HEAD:apps/api/app/constants" \
+    "HEAD:libs/shared/py" 2>/dev/null | tr '\n' '-')"; then
+  STAMP_TREES="none-"
+fi
+STAMP="${STAMP_TREES}$(git -C "$REPO_ROOT" hash-object uv.lock 2>/dev/null || echo none)"
 REUSED=""
 if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null \
    && [ "$(cat "$STAMPFILE" 2>/dev/null)" = "$STAMP" ] && curl -sf --max-time 5 "${URL}/health" > /dev/null 2>&1; then

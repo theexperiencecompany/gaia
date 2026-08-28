@@ -47,8 +47,13 @@ Consequences to keep in mind when editing a lane:
   wedges its worker for the listener's 5-minute cancellation timeout, so
   superseded runs are cancelled through the API instead
   (`scripts/ci/cancel-superseded-runs.sh`).
-- `infra/self-hosted-runner/README.md` documents the box, the four runner
-  instances, and the install/teardown path.
+- `infra/self-hosted-runner/README.md` documents the box, the twenty runner
+  instances (eleven `gaia-home` for main.yml, nine `gaia-home-lint` for
+  code-quality.yml), and the install/teardown path.
+- **Fork PRs never run on the box.** `select-runner.sh` sends any PR whose
+  head repo is not this one to `ubuntu-latest` before it even probes the
+  runners API. The repo is public and the runner user's workspace, caches and
+  network are shared state.
 
 ## Workflow files are thin orchestration — nothing else
 

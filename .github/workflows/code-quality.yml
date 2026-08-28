@@ -21,6 +21,11 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      force_github:
+        description: Run every lane on GitHub-hosted runners (exercises the fallback path)
+        type: boolean
+        default: false
 
 # Per-SHA group; superseded runs are cancelled by select-runner via the API
 # (scripts/ci/cancel-superseded-runs.sh) so a new push never waits on the old
@@ -33,11 +38,13 @@ permissions:
   contents: read
 
 jobs:
-  # ── Runner selection: home box when online and idle, GitHub otherwise ─────
+  # ── Runner selection: home box when online, GitHub otherwise ──────────────
   # Every compute lane below runs on the 16-core home server through this
-  # probe (scripts/ci/select-runner.sh) and falls back to ubuntu-latest in
-  # under 15s when it is offline or busy. The gate and the pure-network
-  # scanners stay on GitHub — they gain nothing from cores.
+  # probe (scripts/ci/select-runner.sh): queued behind a busy pool (setup
+  # there is ~30x cheaper than on GitHub), falling back to ubuntu-latest in
+  # under 40s when the box is offline or unreachable, and always for fork
+  # PRs. The gate and the pure-network scanners stay on GitHub — they gain
+  # nothing from cores.
   select-runner:
     name: Select runner
     runs-on: ubuntu-latest
@@ -50,9 +57,8 @@ jobs:
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
       - name: Cancel superseded runs of this branch
@@ -62,11 +68,13 @@ jobs:
       - id: pick
         uses: ./.github/actions/select-runner
         with:
-          # Lint lanes use their own runner pool (instances 9-12) so they can
-          # neither take main.yml's slots nor oversubscribe its CPUs — measured
-          # 2026-08-28: 7 lint jobs + 2 mutation shards held every slot and the
-          # pipeline's detect job queued 280 s.
+          # Lint lanes use their own runner pool (instances 12-20, LINT_RUNNER_START
+          # in infra/self-hosted-runner/setup.sh) so they can neither take
+          # main.yml's slots nor oversubscribe its CPUs — measured 2026-08-28:
+          # 7 lint jobs + 2 mutation shards held every slot and the pipeline's
+          # detect job queued 280 s.
           runner-label: gaia-home-lint
+          force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
   # --- Change detection (no toolchain install) -----------------------------
@@ -594,11 +602,11 @@ jobs:
           echo "::group::bandit (low severity, low confidence — no exclusions)"
           FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/emit-github-annotations.py < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee /tmp/bandit.out; _rc=${PIPESTATUS[0]}; cat /tmp/bandit.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/emit-github-annotations.py < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
           fi
           echo "::endgroup::"
           echo "### Bandit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -609,8 +617,11 @@ jobs:
         run: |
           trap 'echo "::error::repro: uv export + pip-audit"' ERR
           echo "::group::pip-audit dependency scan"
-          uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
-          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r /tmp/gaia-requirements.txt
+          # $RUNNER_TEMP, not /tmp: twenty runner instances share the box's /tmp,
+          # and two python-static jobs from different PRs would audit each
+          # other's export.
+          uv export --frozen --no-emit-workspace -o "$RUNNER_TEMP/gaia-requirements.txt"
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip --ignore-vuln GHSA-wj6h-64fc-37mp --ignore-vuln PYSEC-2026-1325 -r "$RUNNER_TEMP/gaia-requirements.txt"
           echo "::endgroup::"
           echo "### pip-audit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
           echo "pip-audit: OK (no CVEs)"
@@ -664,7 +675,7 @@ jobs:
       # side. restore-keys lets a lockfile bump start from the previous cache
       # instead of cold.
       - name: Restore mypy incremental cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .mypy_cache
           key: mypy-${{ runner.os }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
@@ -908,23 +919,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
       - name: Install pint + promtool (pinned release binaries, same versions prod runs)
-        run: |
-          echo "::group::install"
-          # Pinned GitHub release tarballs, not `go install`: Prometheus v3's
-          # go.mod declares `module github.com/prometheus/prometheus` (no `/v3`
-          # suffix), which the Go tool rejects at major version 3, and a
-          # lock-file-free `go install` is unpinned for transitive deps anyway.
-          # --proto '=https' keeps redirects from ever downgrading to http.
-          curl -sSL --proto '=https' -o /tmp/pint.tar.gz \
-            https://github.com/cloudflare/pint/releases/download/v0.87.0/pint-0.87.0-linux-amd64.tar.gz
-          tar -xzf /tmp/pint.tar.gz -C /tmp
-          cp /tmp/pint-linux-amd64 /usr/local/bin/pint
-          curl -sSL --proto '=https' -o /tmp/prometheus.tar.gz \
-            https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz
-          tar -xzf /tmp/prometheus.tar.gz -C /tmp
-          cp /tmp/prometheus-3.1.0.linux-amd64/promtool /usr/local/bin/promtool
-          echo "::endgroup::"
-          echo "pint v0.87.0 + promtool v3.1.0 installed"
+        run: bash scripts/ci/install-alert-rule-tools.sh
       - name: Extract rules and enforce test coverage (no silent skips)
         run: |
           trap 'echo "::error::repro: uv run --no-build tools/alert-rules/extract_promql.py"' ERR
@@ -1055,7 +1050,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
       - name: Scan the PR diff for committed secrets
@@ -1096,8 +1090,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          fetch-depth: 1
           persist-credentials: false
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
@@ -1146,7 +1139,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 0
           persist-credentials: false
       - name: Compute the mutation matrix
@@ -1175,11 +1167,11 @@ jobs:
       # Every module reports. Stopping at the first failure would hide the
       # rest, and this gate's whole value is the complete list.
       fail-fast: false
-      # Each shard's mutation-check.sh takes nproc-2 CPUs for itself; on the
-      # 16-thread home box two shards already saturate it, and nine concurrent
-      # shards (measured 2026-08-28) filled every runner slot so the main
-      # pipeline's detect job queued behind lint. Excess modules pack into
-      # the two shards (scripts/ci/mutation-plan.sh MAX_SHARDS must match).
+      # Each shard runs its modules in parallel with children of its own; nine
+      # concurrent shards (measured 2026-08-28) filled every runner slot so the
+      # main pipeline's detect job queued behind lint. Four shards keep the
+      # lint pool's other lanes moving. Excess modules pack into the four
+      # shards round-robin (scripts/ci/mutation-plan.sh MAX_SHARDS must match).
       max-parallel: 4
       matrix:
         include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
@@ -1242,11 +1234,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          clean: ${{ runner.environment != 'self-hosted' }}
-          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
-          persist-credentials: false
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.
