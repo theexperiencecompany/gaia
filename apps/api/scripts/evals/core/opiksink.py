@@ -11,14 +11,13 @@ Every write is keyed by ``CaseTrace.key`` (case + run), which is what lets
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 from http import HTTPStatus
 import json
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NotRequired, TypedDict, Unpack
 import uuid
 
 from dotenv import load_dotenv
@@ -168,14 +167,13 @@ def close_clients() -> None:
     _CLIENTS.clear()
 
 
-@dataclass(frozen=True)
-class Experiment:
-    """What to call the Opik experiment and how to score it."""
+class ExperimentOptions(TypedDict):
+    """What to call the Opik experiment and how to score it (see ``finalize``)."""
 
-    name: str
-    tags: list[str]
     scoring_metrics: list[object]
-    nb_samples: int | None = None
+    experiment_name: str
+    tags: list[str]
+    nb_samples: NotRequired[int | None]
 
 
 def finalize(
@@ -183,7 +181,7 @@ def finalize(
     cases: list[Case],
     journal: RunJournal,
     replay: Callable[[dict[str, object]], dict[str, object]],
-    experiment: Experiment,
+    **experiment: Unpack[ExperimentOptions],
 ) -> object:
     """Evaluate the journal's stored outputs as an Opik experiment.
 
@@ -209,14 +207,14 @@ def finalize(
     result = evaluate(
         dataset=dataset,
         task=replay,
-        scoring_metrics=experiment.scoring_metrics,
-        experiment_name=experiment.name,
-        experiment_tags=experiment.tags,
-        nb_samples=experiment.nb_samples,
+        scoring_metrics=experiment["scoring_metrics"],
+        experiment_name=experiment["experiment_name"],
+        experiment_tags=experiment["tags"],
+        nb_samples=experiment.get("nb_samples"),
         task_threads=4,
         verbose=1,
     )
-    journal.update_meta(experiment_name=experiment.name)
+    journal.update_meta(experiment_name=experiment["experiment_name"])
     return result
 
 
