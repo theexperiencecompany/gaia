@@ -630,12 +630,25 @@ jobs:
         with:
           clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
+      # The action's own cache is actions/cache: on the box that meant a 95 s
+      # post-step uploading the 42 MB vuln DB over the residential uplink every
+      # run. Self-hosted keeps the DB on local disk instead.
+      - name: Pick the trivy DB location
+        shell: bash
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy" >> "$GITHUB_ENV"
+          else
+            echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
+          fi
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
           scan-ref: "."
+          cache: ${{ runner.environment != 'self-hosted' }}
+          cache-dir: ${{ env.TRIVY_DB_DIR }}
           # The self-hosted workspace persists node_modules/.venv/.nx between
           # jobs; walking them made the scan 6+ min. Lockfiles carry the
           # dependency truth, and the installed trees only repeat it.
