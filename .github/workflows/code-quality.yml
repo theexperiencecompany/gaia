@@ -22,8 +22,11 @@ on:
       - master
   workflow_dispatch:
 
+# Per-SHA group; superseded runs are cancelled by select-runner via the API
+# (scripts/ci/cancel-superseded-runs.sh) so a new push never waits on the old
+# run's cancellation — see main.yml for the measured reason.
 concurrency:
-  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -41,7 +44,7 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
-      actions: read
+      actions: write # cancel superseded runs
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
       runner_label: ${{ steps.pick.outputs.runner_label }}
@@ -52,6 +55,10 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Cancel superseded runs of this branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/cancel-superseded-runs.sh
       - id: pick
         uses: ./.github/actions/select-runner
         with:

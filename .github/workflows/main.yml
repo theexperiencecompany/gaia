@@ -28,8 +28,12 @@ on:
         required: false
         default: "2,4,8,16"
 
+# Per-SHA group: a new push must not wait for the old run's cancellation to
+# finish (a cancelled pytest step wedges the self-hosted worker for the
+# listener's 5-minute cancellation timeout). select-runner cancels the
+# superseded runs via the API instead — scripts/ci/cancel-superseded-runs.sh.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
@@ -46,7 +50,7 @@ jobs:
     timeout-minutes: 2
     permissions:
       contents: read
-      actions: read
+      actions: write # cancel superseded runs
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
       runner_docker: ${{ steps.pick-docker.outputs.runner }}
@@ -58,6 +62,10 @@ jobs:
           clean: ${{ runner.environment != 'self-hosted' }}
           fetch-depth: 1
           persist-credentials: false
+      - name: Cancel superseded runs of this branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/cancel-superseded-runs.sh
 
       - name: Select standard runner (tests, lint, build)
         id: pick
