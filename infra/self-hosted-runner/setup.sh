@@ -30,17 +30,20 @@ set -euo pipefail
 
 REPO_URL="https://github.com/theexperiencecompany/gaia"
 REPO_SLUG="theexperiencecompany/gaia"
-# 26 = 11 test runners (gaia-home, instances 1-11) + 15 lint runners
-# (gaia-home-lint, 12-26). Sized to the first wave of each workflow so no
-# job waits for a slot: Quality Checks starts 11 jobs at once (on 8 runners
-# unit-a and integration — the long pole — queued 39-41 s, run 33202853483);
-# Code Quality starts 13 box jobs and then 4 mutation shards (on 12 runners
-# the shards queued 11-18 s, run 33202852917). Test lanes' xdist shares sum
-# to the box's 16 threads; the extra test runners only absorb the light jobs
-# (trivy, harness tools, changelog-sync, regression-proof). An idle runner
-# costs ~100 MB. Relabel an existing instance with the runners/labels API
-# rather than re-registering it.
-RUNNER_COUNT="${RUNNER_COUNT:-26}"
+# 20 = 11 test runners (gaia-home, instances 1-11) + 9 lint runners
+# (gaia-home-lint, 12-20). Measured on 2026-08-29 (a push runs both
+# workflows at once on 16 threads):
+#   8 test + 12 lint : Quality Checks 237 s, Code Quality 250 s — unit-a and
+#                      integration queued 39-41 s for a test runner.
+#   11 test + 15 lint: Quality Checks 377 s and two timing tests failed —
+#                      ~40 runnable threads on 8 cores; every job ran at
+#                      ~40 % of a core (unit-b pytest 63 s -> 164 s).
+# Runners add concurrency, not CPU: size each pool to its workflow's first
+# wave and no further. Test lanes' xdist shares sum to the 16 threads; the
+# three extra test runners only absorb the light jobs (trivy, harness tools,
+# changelog-sync, regression-proof). An idle runner costs ~100 MB. Relabel an
+# existing instance with the runners/labels API rather than re-registering.
+RUNNER_COUNT="${RUNNER_COUNT:-20}"
 # RUNNER_START lets a re-run add instances without re-registering the ones
 # already serving jobs: RUNNER_START=5 RUNNER_COUNT=6 registers only 5 and 6.
 RUNNER_START="${RUNNER_START:-1}"
