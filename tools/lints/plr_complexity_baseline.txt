@@ -12,7 +12,6 @@ apps/api/app/agents/core/messages.py	PLR0913
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913
 apps/api/app/agents/middleware/compaction.py	PLR0913
-apps/api/app/agents/middleware/factory.py	PLR0913
 apps/api/app/agents/middleware/runtime_adapter.py	PLR0913
 apps/api/app/agents/skills/parser.py	PLR0912
 apps/api/app/agents/tools/coding/_artifacts.py	PLR0913

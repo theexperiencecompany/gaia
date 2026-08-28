@@ -607,7 +607,6 @@ class TestBuildAgentConfig:
         assert with_parent["stream_id"] == "stream-9"
         assert without_parent["stream_id"] is None
 
-    @pytest.mark.regression
     @patch("app.helpers.agent_helpers.providers")
     async def test_workflow_context_survives_into_a_child_agents_config(self, mock_providers):
         """A workflow fire stamps its workflow on the comms configurable; the

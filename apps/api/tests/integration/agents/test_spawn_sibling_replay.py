@@ -34,7 +34,7 @@ import pytest
 from app.agents.context.assemble import AssembledContext
 from app.agents.core.subagents import spawn_agent
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
-from app.agents.middleware.factory import create_subagent_middleware
+from app.agents.middleware.factory import SubagentStackOptions, create_subagent_middleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
@@ -132,7 +132,7 @@ async def test_finished_spawn_is_recovered_not_rerun_when_a_sibling_pauses(
             # re-raises GraphInterrupt as control flow; a bare tool node converts it into
             # an error ToolMessage and the pause never happens (verified by running both).
             spawn_middleware_factory=lambda space: create_subagent_middleware(
-                enable_subagent=False, subagent_tool_space=space
+                subagent=SubagentStackOptions(enabled=False, tool_space=space)
             ),
         )
     )

@@ -1366,8 +1366,9 @@ async def execute_workflow_by_id(
         # Recorded on the wide event from the block that caught it; the helper
         # below is bookkeeping only. Neither is a failure to alert on.
         log.warning(
-            f"{LogTag.WORKER} Workflow fire did not run — {never_ran}",
+            f"{LogTag.WORKER} Workflow fire did not run",
             workflow_id=workflow_id,
+            reason=str(never_ran),
             error_type=type(never_ran).__name__,
         )
         return await _record_fire_that_never_ran(

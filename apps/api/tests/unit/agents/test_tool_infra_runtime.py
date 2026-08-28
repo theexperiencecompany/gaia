@@ -778,7 +778,7 @@ async def test_provider_subagent_defaults_tool_space_to_general():
             # tool_space intentionally omitted — must default to "general".
         )
 
-    assert captured_middleware_kwargs["subagent_tool_space"] == "general"
+    assert captured_middleware_kwargs["subagent"].tool_space == "general"
 
 
 @pytest.mark.asyncio
@@ -908,7 +908,7 @@ async def test_a_non_authoring_subagent_keeps_spawn_enabled():
     silently strips that ability from every integration agent."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
-    assert captured["middleware_kwargs"]["enable_subagent"] is True
+    assert captured["middleware_kwargs"]["subagent"].enabled is True
 
 
 @pytest.mark.asyncio

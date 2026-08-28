@@ -28,7 +28,12 @@ from langgraph.types import Command
 from pydantic import ValidationError
 import pytest
 
-from app.agents.middleware.factory import create_middleware_stack as real_create_middleware_stack
+from app.agents.middleware.factory import (
+    AccountingOptions,
+    ContextOptions,
+    SubagentStackOptions,
+    create_middleware_stack as real_create_middleware_stack,
+)
 from app.agents.workspace.offload import mark_offload
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
 from app.models.workflow_execution_models import (
@@ -1130,9 +1135,9 @@ class TestReplayGraphContract:
             {
                 "agent_name": "playbook_replay",
                 "chat_llm": None,
-                "enable_accounting": False,
-                "enable_summarization": False,
-                "enable_subagent": False,
+                "accounting": AccountingOptions(enabled=False),
+                "context": ContextOptions(summarize=False),
+                "subagent": SubagentStackOptions(enabled=False),
             }
         ]
         # The stack the graph was actually given is the one built above, not a

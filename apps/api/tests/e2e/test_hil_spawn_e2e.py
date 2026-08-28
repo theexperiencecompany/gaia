@@ -33,7 +33,7 @@ import pytest
 
 from app.agents.core.subagents import spawn_agent
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
-from app.agents.middleware.factory import create_subagent_middleware
+from app.agents.middleware.factory import SubagentStackOptions, create_subagent_middleware
 from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
@@ -202,7 +202,7 @@ class SpawnDriver:
                 # re-raises GraphInterrupt as control flow. A bare tool node turns the
                 # pause into an error ToolMessage and no approval ever happens.
                 spawn_middleware_factory=lambda space: create_subagent_middleware(
-                    enable_subagent=False, subagent_tool_space=space
+                    subagent=SubagentStackOptions(enabled=False, tool_space=space)
                 ),
             )
         )

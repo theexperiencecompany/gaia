@@ -634,7 +634,7 @@ class TestWorkflowExecutionFailurePropagation:
 
         completed: list[str] = []
 
-        async def _run_steps(request, conversation_id, user, trigger_context):
+        async def _run_steps(request, conversation_id, user, options=None):
             tool_data: list[dict[str, object]] = []
             for step in request.selectedWorkflow.steps:
                 if step["title"] == failing_step_title:

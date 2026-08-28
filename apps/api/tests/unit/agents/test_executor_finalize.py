@@ -275,7 +275,6 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         )
         return stack.enter_context(patch.object(rd, "update_messages", new_callable=AsyncMock))
 
-    @pytest.mark.regression
     async def test_a_workflow_run_saves_the_cards_it_produced(self) -> None:
         session = create_session("s1", RunKind.LIVE)
         mark_executor_spawned("s1")

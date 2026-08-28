@@ -37,7 +37,12 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
-from app.agents.middleware.factory import create_middleware_stack
+from app.agents.middleware.factory import (
+    AccountingOptions,
+    ContextOptions,
+    SubagentStackOptions,
+    create_middleware_stack,
+)
 from app.agents.prompts.playbook_prompts import PLAYBOOK_ASK_PROMPT, PLAYBOOK_NARRATION_PROMPT
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.workspace.offload import read_offload
@@ -482,9 +487,9 @@ async def _replay_call(call: ScriptedCall, run: _Run, space: ToolSpace) -> ToolM
             middleware=create_middleware_stack(
                 agent_name=_REPLAY_AGENT_NAME,
                 chat_llm=None,
-                enable_accounting=False,
-                enable_summarization=False,
-                enable_subagent=False,
+                accounting=AccountingOptions(enabled=False),
+                context=ContextOptions(summarize=False),
+                subagent=SubagentStackOptions(enabled=False),
             ),
         ),
     )

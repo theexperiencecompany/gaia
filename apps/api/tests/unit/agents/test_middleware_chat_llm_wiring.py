@@ -18,6 +18,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.factory import (
+    ContextOptions,
+    SubagentStackOptions,
     create_comms_middleware,
     create_executor_middleware,
     create_middleware_stack,
@@ -100,7 +102,7 @@ class TestChatLlmWiring:
 
     def test_subagent_stack_rides_its_own_llm(self) -> None:
         llm = _fake_llm()
-        stack = create_subagent_middleware(subagent_llm=llm, enable_subagent=False)
+        stack = create_subagent_middleware(subagent=SubagentStackOptions(enabled=False, llm=llm))
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.summary_llm is llm
 
@@ -212,9 +214,11 @@ class TestStackConfigurationPropagation:
     def test_thresholds_and_exclusions_reach_compaction(self) -> None:
         _, _, compactor, _ = self._stack(
             chat_llm=_fake_llm(),
-            compaction_threshold=0.77,
-            max_output_chars=4321,
-            compaction_excluded_tools={"tool_a"},
+            context=ContextOptions(
+                compaction_threshold=0.77,
+                max_output_chars=4321,
+                compaction_excluded_tools={"tool_a"},
+            ),
         )
         assert compactor.compaction_threshold == 0.77
         assert compactor.max_output_chars == 4321
@@ -223,10 +227,12 @@ class TestStackConfigurationPropagation:
     def test_summarization_knobs_reach_summarization(self) -> None:
         _, summarizer, _, _ = self._stack(
             chat_llm=_fake_llm(),
-            summarization_trigger=("fraction", 0.42),
-            summarization_keep=("tokens", 123),
-            enable_archive=False,
-            summarization_excluded_tools={"tool_b"},
+            context=ContextOptions(
+                summarization_trigger=("fraction", 0.42),
+                summarization_keep=("tokens", 123),
+                archive=False,
+                summarization_excluded_tools={"tool_b"},
+            ),
         )
         assert summarizer.trigger == ("fraction", 0.42)
         assert summarizer.keep == ("tokens", 123)
@@ -250,7 +256,8 @@ class TestStackConfigurationPropagation:
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
         stack = create_subagent_middleware(
-            agent_name="gmail_agent", subagent_llm=_fake_llm(), enable_subagent=False
+            agent_name="gmail_agent",
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm()),
         )
         accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
         assert accounting.agent_name == "gmail_agent"
@@ -260,7 +267,9 @@ class TestStackConfigurationPropagation:
         they keep the generic bucket rather than crashing or going unattributed."""
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
-        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        stack = create_subagent_middleware(
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
+        )
         accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
         assert accounting.agent_name == "provider_subagent"
 
@@ -271,7 +280,9 @@ class TestStackConfigurationPropagation:
             SPAWN_SUBAGENT_TOOL,
         )
 
-        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        stack = create_subagent_middleware(
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
+        )
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.excluded_tools == (
             CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
@@ -286,7 +297,7 @@ class TestStackConfigurationPropagation:
 
     def test_disabled_flags_leave_no_middleware(self) -> None:
         _, summarizer, compactor, _ = self._stack(
-            chat_llm=_fake_llm(), enable_summarization=False, enable_compaction=False
+            chat_llm=_fake_llm(), context=ContextOptions(summarize=False, compact=False)
         )
         assert summarizer is None and compactor is None
 
