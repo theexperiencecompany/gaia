@@ -229,6 +229,47 @@ class Selection:
             self.all_reason = reason
 
 
+def _classify_outside_api(path: str, sel: Selection) -> None:
+    """A change outside apps/api: suite config or importable Python widens.
+
+    Any Python outside (libs/shared/py, tools) can be imported by the API;
+    coverage only mapped app/**, so the map cannot name its tests.
+    """
+    if is_suite_config(path):
+        sel.widen(f"test-suite config changed: {path}")
+    elif path.endswith(".py"):
+        sel.widen(f"changed python outside apps/api: {path}")
+
+
+def _classify_test_path(rel: str, sel: Selection, repo_root: Path) -> None:
+    """A change under tests/: run the test module, widen on anything else."""
+    if rel.rsplit("/", 1)[-1] in INERT_NAMES:
+        return
+    if not is_test_module(rel):
+        # Snapshots, fixtures, cassettes, helper modules: pytest collects
+        # nothing from the path itself, and the map only knows app/**, so
+        # the tests that read them cannot be found — widen.
+        sel.widen(f"non-test file under tests/ changed: {rel}")
+        return
+    # Run the whole file: a path is a valid pytest positional arg, and it
+    # covers tests added in this diff that no map can know about.
+    if (repo_root / rel).exists():
+        sel.ids.add(rel)
+        sel.reasons.append(f"changed test file {rel}")
+
+
+def _classify_app_path(
+    rel: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
+) -> None:
+    """A change under app/: the mapped tests, or widen when the map has none."""
+    if rel in files:
+        sel.ids.update(files[rel])
+        sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
+    elif (repo_root / rel).exists():
+        sel.widen(f"changed app file not in map (new or uncovered): {rel}")
+    # A deleted app file that was never covered impacts nothing.
+
+
 def _classify_change(
     raw: str, sel: Selection, files: dict[str, list[str]], repo_root: Path
 ) -> None:
@@ -236,49 +277,17 @@ def _classify_change(
     path = raw.replace("\\", "/").strip()
     rel = strip_prefix(path)
     if rel is None:
-        # Outside apps/api. Any Python outside (libs/shared/py, tools) can
-        # be imported by the API; coverage only mapped app/**, so widen.
-        if is_suite_config(path):
-            sel.widen(f"test-suite config changed: {path}")
-        elif path.endswith(".py"):
-            sel.widen(f"changed python outside apps/api: {path}")
-        return
-
-    if any(rel.endswith(dep) or rel == dep for dep in GLOBAL_TEST_DEPS):
+        _classify_outside_api(path, sel)
+    elif any(rel.endswith(dep) or rel == dep for dep in GLOBAL_TEST_DEPS):
         sel.widen(f"shared test fixture changed: {rel}")
-        return
-
-    if rel.startswith("tests/"):
-        if rel.rsplit("/", 1)[-1] in INERT_NAMES:
-            return
-        if not is_test_module(rel):
-            # Snapshots, fixtures, cassettes, helper modules: pytest collects
-            # nothing from the path itself, and the map only knows app/**, so
-            # the tests that read them cannot be found — widen.
-            sel.widen(f"non-test file under tests/ changed: {rel}")
-            return
-        # Run the whole file: a path is a valid pytest positional arg, and
-        # it covers tests added in this diff that no map can know about.
-        if (repo_root / rel).exists():
-            sel.ids.add(rel)
-            sel.reasons.append(f"changed test file {rel}")
-        return
-
-    if rel.startswith("app/"):
-        if rel in files:
-            sel.ids.update(files[rel])
-            sel.reasons.append(f"{rel} covered by {len(files[rel])} tests")
-        elif (repo_root / rel).exists():
-            sel.widen(f"changed app file not in map (new or uncovered): {rel}")
-        # A deleted app file that was never covered impacts nothing.
-        return
-
-    if is_inert(rel):
-        return
-
-    # apps/api/pyproject.toml, uv.lock, Dockerfile, a script — anything
-    # here can move the whole suite.
-    sel.widen(f"non-source change under apps/api: {rel}")
+    elif rel.startswith("tests/"):
+        _classify_test_path(rel, sel, repo_root)
+    elif rel.startswith("app/"):
+        _classify_app_path(rel, sel, files, repo_root)
+    elif not is_inert(rel):
+        # apps/api/pyproject.toml, uv.lock, Dockerfile, a script — anything
+        # here can move the whole suite.
+        sel.widen(f"non-source change under apps/api: {rel}")
 
 
 def select_tests(

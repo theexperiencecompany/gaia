@@ -48,7 +48,7 @@
 set -euo pipefail
 
 CACHE_ROOT="${RUNNER_LOCAL_CACHE:-/home/aryan/ci-cache}"
-PNPM_BUDGET_GB="${PNPM_BUDGET_GB:-12}"   # report-only, see header
+PNPM_BUDGET_GB="${PNPM_BUDGET_GB:-24}"   # report-only, see header; the store is ~16 GB warm (2026-08-29)
 UV_BUDGET_GB="${UV_BUDGET_GB:-6}"        # report-only, see header
 NX_BUDGET_GB="${NX_BUDGET_GB:-4}"
 NEXT_BUDGET_GB="${NEXT_BUDGET_GB:-3}"
