@@ -36,6 +36,12 @@ RUNNER_COUNT="${RUNNER_COUNT:-12}"
 RUNNER_START="${RUNNER_START:-1}"
 RUNNER_NAME_PREFIX="${RUNNER_NAME_PREFIX:-gaia-home}"
 RUNNER_LABELS="${RUNNER_LABELS:-gaia-home,16core,home-lab}"
+# Two pools on one box: main.yml (build + tests) probes `gaia-home`;
+# code-quality.yml probes `gaia-home-lint`. Instances >= LINT_RUNNER_START get
+# the lint label so lint lanes and mutation shards can never take the
+# pipeline's slots (they held all six on 2026-08-28 and detect queued 280 s).
+LINT_RUNNER_START="${LINT_RUNNER_START:-9}"
+LINT_RUNNER_LABELS="${LINT_RUNNER_LABELS:-gaia-home-lint,16core,home-lab}"
 RUNNER_GROUP="${RUNNER_GROUP:-default}"
 INSTALL_ROOT="${RUNNER_INSTALL_ROOT:-/home/aryan}"
 LEGACY_DIR="${LEGACY_RUNNER_DIR:-/home/aryan/actions-runner-gaia}"
@@ -178,12 +184,14 @@ ENVFILE
     rm -f .runner .credentials .credentials_rsaparams 2>/dev/null || true
   fi
 
-  echo "[setup]   configuring..."
+  local labels="$RUNNER_LABELS"
+  (( idx >= LINT_RUNNER_START )) && labels="$LINT_RUNNER_LABELS"
+  echo "[setup]   configuring (labels: ${labels})..."
   ./config.sh \
     --url "$REPO_URL" \
     --token "$TOKEN" \
     --name "$name" \
-    --labels "$RUNNER_LABELS" \
+    --labels "$labels" \
     --runnergroup "$RUNNER_GROUP" \
     --work "_work" \
     --unattended \
