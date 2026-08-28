@@ -304,6 +304,4 @@ async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
     episodes = await fetch_episode_rows(memory_user)
     assert len(episodes) == 1, "concurrent retains must converge on one journal row"
     texts = {entry["text"] for entry in episodes[0].entries}
-    assert texts == set(entry_texts), (
-        "concurrent retains lost journal entries"
-    )
+    assert texts == set(entry_texts), "concurrent retains lost journal entries"

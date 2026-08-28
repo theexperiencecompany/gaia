@@ -183,6 +183,10 @@ cp -r app "$WORKDIR/app"
 cp -r tests "$WORKDIR/tests"
 cp -r scripts "$WORKDIR/scripts"
 cp -f pyproject.toml "$WORKDIR/pyproject.toml"
+# pytest.ini carries asyncio_mode=auto. Under apps/api the workdir found it by
+# walking up; under /dev/shm there is nothing above, and without it every
+# async test fails with "async def functions are not natively supported".
+cp -f pytest.ini "$WORKDIR/pytest.ini"
 cd "$WORKDIR"
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
@@ -212,7 +216,7 @@ selection = ", ".join(json.dumps(testfile) for testfile in testfiles)
 replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
-    f'also_copy = ["app", "tests", "scripts"]\n'
+    f'also_copy = ["app", "tests", "scripts", "pytest.ini"]\n'
     f'max_stack_depth = 8\n'
     # The pragma stamping below appends `# pragma: no mutate` to every
     # unchanged line. mutmut's AST visitor only honors that comment on
