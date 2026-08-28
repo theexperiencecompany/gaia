@@ -33,7 +33,7 @@ ARG PLAYWRIGHT_VERSION=1.60.0
 ARG PATCHRIGHT_VERSION=1.57.2
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
+    pip install --only-binary :all: "playwright==${PLAYWRIGHT_VERSION}" "patchright==${PATCHRIGHT_VERSION}" \
     && python -m playwright install chromium \
     && python -m patchright install chromium
 
