@@ -29,7 +29,6 @@ from zoneinfo import ZoneInfo
 from langchain_core.runnables import RunnableConfig
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 # ``±HH:MM`` fixed-offset form (e.g. "+05:30", "-08:00").
@@ -214,6 +213,13 @@ def home_timezone_from_config(config: RunnableConfig) -> Timezone:
     Falls back to UTC with a loud warning — the silent-UTC drift that fires
     scheduled work at the wrong hour.
     """
+    # Lazy: app.models.agent_models pulls langchain's agent middleware, whose
+    # langchain_core import tries `transformers` (~1.5 s); this util is imported
+    # by user_models, i.e. by every test worker at collection time.
+    from app.models.agent_models import (  # noqa: PLC0415 -- keeps transformers out of every test worker's collection
+        agent_configurable,
+    )
+
     raw = agent_configurable(config).get("user_timezone")
     if raw:
         log.set(timezone_source=TimezoneSource.AGENT_CONFIG.value, user_timezone=raw)
