@@ -111,6 +111,16 @@ fi
 # The runner only reads that directory, so scripts/ci/prime-action-archive.sh
 # fills it (here, and nightly from prune-cache.sh after pins move).
 mkdir -p "$LOCAL_CACHE" "${LOCAL_CACHE}/actions-archive"
+# trivy: main.yml passes skip-setup-trivy on self-hosted (setup-trivy downloads
+# the binary from GitHub releases on every job otherwise). Pin must match the
+# version the workflow's trivy-action expects.
+TRIVY_VERSION="${TRIVY_VERSION:-0.70.0}"
+if [ "$("$HOME/.local/bin/trivy" --version 2>/dev/null | awk '/^Version:/{print $2}')" != "$TRIVY_VERSION" ]; then
+  echo "[setup] installing trivy ${TRIVY_VERSION} into ~/.local/bin"
+  mkdir -p "$HOME/.local/bin"
+  curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+    | tar -xzf - -C "$HOME/.local/bin" trivy
+fi
 PRIME_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/ci/prime-action-archive.sh"
 cp -f "$PRIME_SRC" "${LOCAL_CACHE}/prime-action-archive.sh" 2>/dev/null \
   && GAIA_REPO="$(dirname "$PRIME_SRC")/../.." bash "${LOCAL_CACHE}/prime-action-archive.sh" "${LOCAL_CACHE}/actions-archive" \

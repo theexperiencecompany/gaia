@@ -675,11 +675,16 @@ jobs:
         run: |
           if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
             echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy" >> "$GITHUB_ENV"
+            # setup.sh installs the pinned trivy here; setup-trivy otherwise
+            # downloads the binary from GitHub releases on every job (a silent
+            # 3 min on the residential uplink, measured run 33137994987).
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           else
             echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
           fi
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
