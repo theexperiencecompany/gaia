@@ -636,6 +636,10 @@ jobs:
           severity: "CRITICAL,HIGH"
           format: "table"
           scan-ref: "."
+          # The self-hosted workspace persists node_modules/.venv/.nx between
+          # jobs; walking them made the scan 6+ min. Lockfiles carry the
+          # dependency truth, and the installed trees only repeat it.
+          skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
           # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
           # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every PR;
           # keep advisory until that PR merges, then flip to exit-code:1.
