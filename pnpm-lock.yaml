@@ -161,6 +161,9 @@ importers:
       '@grammyjs/types':
         specifier: ^3.28.0
         version: 3.28.0
+      amqplib:
+        specifier: ^0.10.9
+        version: 0.10.9
       discord.js:
         specifier: ^14.26.5
         version: 14.26.5
