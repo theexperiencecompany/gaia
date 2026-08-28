@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterable
+from functools import cache
 import hashlib
 import json
 import os
@@ -35,6 +36,7 @@ from pathlib import Path
 import re
 import signal
 import subprocess
+import time
 
 import httpx
 import pytest
@@ -81,6 +83,30 @@ EVERYTHING_SERVER = {
 USER_CODE_RE = re.compile(r"enter this code:\s*([A-Z0-9-]+)")
 
 
+@cache
+def _npm_cache_dir() -> str:
+    """The npm/npx cache the daemon's `npx --offline` must read from.
+
+    The daemon runs under a scratch ``HOME`` (so it can never touch a
+    developer's real pairing), and npm derives both its content cache and the
+    `_npx` package directory from ``HOME``. Left alone, that means the prewarm
+    below fills the *runner's* cache while the daemon reads an empty one and
+    `npx --offline` dies with ENOTCACHED — the scratch HOME silently defeats
+    the prewarm. Pinning ``npm_config_cache`` to one real directory is what
+    makes "warm it once, spawn from cache" actually true, while leaving HOME
+    isolated for everything else.
+    """
+    resolved = subprocess.run(
+        ["npm", "config", "get", "cache"],
+        capture_output=True,
+        text=True,
+        timeout=60.0,
+        check=True,
+    ).stdout.strip()
+    assert resolved and resolved != "undefined", f"could not resolve npm cache dir: {resolved!r}"
+    return resolved
+
+
 class BridgeDaemon:
     """Drives the real ``gaia bridge`` CLI as a subprocess, isolated to a
     scratch ``HOME`` so it can never touch a developer's real pairing.
@@ -92,10 +118,22 @@ class BridgeDaemon:
         self.up_process: asyncio.subprocess.Process | None = None
         self.login_output: list[str] = []
         self.up_output: list[str] = []
+        # One merged, timestamped view of daemon stdout/stderr plus the test's
+        # own phase marks. Without it a timeout tells you only that 35s passed,
+        # not which of pair/exchange/connect/open/list spent them.
+        self.transcript: list[str] = []
+        self._t0 = time.monotonic()
         self._tasks: list[asyncio.Task] = []
 
     async def _spawn(self, *args: str) -> asyncio.subprocess.Process:
-        env = {**os.environ, "HOME": str(self.home)}
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            # See _npm_cache_dir: the scratch HOME must not take the npx cache
+            # with it, or `npx --offline` inside the timed request goes cold.
+            "npm_config_cache": _npm_cache_dir(),
+        }
+        self._log(f"spawn: {TSX_BIN} src/index.ts bridge {' '.join(args)}")
         return await asyncio.create_subprocess_exec(
             str(TSX_BIN),
             "src/index.ts",
@@ -108,20 +146,35 @@ class BridgeDaemon:
             stderr=asyncio.subprocess.PIPE,
         )
 
-    def _pump(self, stream: asyncio.StreamReader, sink: list[str]) -> None:
+    def _log(self, text: str) -> None:
+        """Append one timestamped line to the transcript printed at teardown."""
+        self.transcript.append(f"[+{time.monotonic() - self._t0:7.3f}s] {text.rstrip()}")
+
+    def _pump(self, stream: asyncio.StreamReader, sink: list[str], label: str) -> None:
         async def _run() -> None:
             while True:
                 line = await stream.readline()
                 if not line:
                     return
-                sink.append(line.decode(errors="replace"))
+                decoded = line.decode(errors="replace")
+                sink.append(decoded)
+                # Timestamps are the whole point: a daemon that is *slow* and a
+                # daemon that is *stuck* produce the same untimed text.
+                self._log(f"{label} | {decoded}")
 
         self._tasks.append(asyncio.create_task(_run()))
 
+    def mark(self, phase: str) -> None:
+        """Record a wall-clock phase boundary on the same timeline as daemon output."""
+        self._log(f"PHASE {phase}")
+
+    def dump(self) -> str:
+        return "\n".join(self.transcript)
+
     async def start_login(self, api_url: str, name: str) -> None:
         self.login_process = await self._spawn("login", "--api", api_url, "--name", name)
-        self._pump(self.login_process.stdout, self.login_output)
-        self._pump(self.login_process.stderr, self.login_output)
+        self._pump(self.login_process.stdout, self.login_output, "login/out")
+        self._pump(self.login_process.stderr, self.login_output, "login/err")
 
     async def wait_for_user_code(self, timeout: float = 10.0) -> str:
         loop = asyncio.get_running_loop()
@@ -151,8 +204,8 @@ class BridgeDaemon:
 
     async def start_up(self) -> None:
         self.up_process = await self._spawn("up")
-        self._pump(self.up_process.stdout, self.up_output)
-        self._pump(self.up_process.stderr, self.up_output)
+        self._pump(self.up_process.stdout, self.up_output, "up/out")
+        self._pump(self.up_process.stderr, self.up_output, "up/err")
 
     async def wait_connected(self, timeout: float = 30.0) -> None:
         loop = asyncio.get_running_loop()
@@ -204,6 +257,9 @@ def everything_server_cached() -> None:
     warm = subprocess.run(
         ["npx", "-y", EVERYTHING_PACKAGE, "stdio"],
         stdin=subprocess.DEVNULL,
+        # Same cache the daemon is pinned to (see _npm_cache_dir) — warming any
+        # other one warms nothing that the timed spawn will read.
+        env={**os.environ, "npm_config_cache": _npm_cache_dir()},
         capture_output=True,
         text=True,
         timeout=180.0,
@@ -237,16 +293,19 @@ class TestFullDeviceLifecycle:
             # 1. Real `gaia bridge login` subprocess starts RFC 8628 pairing.
             await daemon.start_login(live_api_server.url, "e2e-test-machine")
             user_code = await daemon.wait_for_user_code()
+            daemon.mark("user_code shown")
 
             # 2. The "signed-in user" approves — a real HTTP call, exactly what
             #    the Settings > Devices approve page sends.
             approve = await owner.post("/api/v1/device/pair/approve", json={"user_code": user_code})
             assert approve.status_code == 200, approve.text
             device_id = approve.json()["device_id"]
+            daemon.mark("pairing approved")
 
             # 3. The daemon's poll loop picks up the approval and finishes on
             #    its own — nothing pushed to it directly.
             await daemon.wait_login_complete()
+            daemon.mark("login complete (credential issued)")
 
             # 4. Configure a real third-party stdio MCP server (the general
             #    `gaia bridge add` path, not the built-in `filesystem` case)
@@ -254,6 +313,7 @@ class TestFullDeviceLifecycle:
             daemon.write_config([EVERYTHING_SERVER])
             await daemon.start_up()
             await daemon.wait_connected()
+            daemon.mark("tunnel connected (token exchanged, ws up)")
             # Regression guard: tunnel.ts's connectOnce() once resolved its
             # connection promise on the socket's `open` event instead of
             # `close`, so run() immediately looped and opened a new socket on
@@ -272,6 +332,7 @@ class TestFullDeviceLifecycle:
             assert len(devices[0]["servers"]) == 1
             server = devices[0]["servers"][0]
             assert server["server_key"] == "everything"
+            daemon.mark("device listed online")
 
             # 6. Trigger a real MCP round trip through the whole tunnel — the
             #    same endpoint Settings uses to test/retry a connection. No
@@ -281,6 +342,7 @@ class TestFullDeviceLifecycle:
             body = probe.json()
             assert body["status"] == "connected", body
             assert body["tools_count"] > 0, "expected real tools from the spawned MCP server"
+            daemon.mark(f"mcp round trip done ({body['tools_count']} tools)")
 
             # 7. Revoke — real HTTP DELETE.
             revoke = await owner.delete(f"/api/v1/device/{device_id}")
@@ -292,10 +354,16 @@ class TestFullDeviceLifecycle:
             # 8. The real daemon must receive the revoke frame over its real
             #    socket and exit on its own.
             await daemon.wait_exits_on_its_own()
+            daemon.mark("daemon exited on revoke")
             assert "revoked" in "".join(daemon.up_output).lower()
         finally:
             await owner.aclose()
             await daemon.stop_all()
+            # Always, not only on failure: pytest shows this under "Captured
+            # stdout teardown" for a failing test, and the daemon's own output
+            # is otherwise discarded — which is why the last CI timeout could
+            # not be attributed to a phase at all.
+            print(f"\n--- bridge daemon timeline ---\n{daemon.dump()}")
 
 
 class TestCrossUserIsolation:
