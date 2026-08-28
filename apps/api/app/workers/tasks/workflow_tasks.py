@@ -1048,6 +1048,11 @@ async def _run_and_record_success(
     return f"Workflow {workflow_id} executed successfully"
 
 
+def _unwrapped(raised: Exception) -> Exception:
+    """The real error behind a failure that arrived wrapped with a replay's trace."""
+    return raised.cause if isinstance(raised, PlaybookFallbackFailed) else raised
+
+
 async def _record_run_failure(
     raised: Exception,
     workflow: Workflow | None,
@@ -1059,8 +1064,7 @@ async def _record_run_failure(
     # trace; the bookkeeping below classifies the real error, and the
     # record keeps the calls that already happened.
     after_replay = raised if isinstance(raised, PlaybookFallbackFailed) else None
-    e = after_replay.cause if after_replay is not None else raised
-    _log_run_failure(e, workflow_id)
+    e = _unwrapped(raised)
     if after_replay is None:
         await _record_execution_failure(e, workflow, workflow_id, execution_id)
     else:
@@ -1354,6 +1358,9 @@ async def execute_workflow_by_id(
         await _record_timed_out_fire(workflow, workflow_id, execution_id, context)
         raise
     except Exception as e:
+        # Logged here, in the block that caught it, so the wide event carries
+        # the error from the fire's own frame; the helper only does bookkeeping.
+        _log_run_failure(_unwrapped(e), workflow_id)
         return await _record_run_failure(e, workflow, workflow_id, execution_id, context)
     finally:
         await _reschedule_refill_safe(workflow, workflow_id, batch_key, context)
