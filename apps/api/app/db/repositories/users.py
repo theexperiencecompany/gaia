@@ -71,12 +71,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find_one({"email": email})
 
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
-        """Users whose ``_id`` is in ``user_ids`` (invalid ids skipped) — the
+        """Users whose ``_id`` is in ``user_ids`` (invalid ids miss) — the
         creator-join for the integrations marketplace."""
-        oids = [ObjectId(uid) for uid in user_ids if ObjectId.is_valid(uid)]
-        if not oids:
-            return []
-        return await self._find({"_id": {"$in": oids}})
+        return await self._find({"_id": {"$in": [self._id_value(uid) for uid in user_ids]}})
 
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
         """A user linked to ``platform_user_id`` on ``platform``."""
@@ -618,15 +615,9 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         lock: a retried job matches zero documents the second time.
 
         A ``user_id`` that is not a valid ObjectId (synthetic/dev identities in
-        the rollups) is skipped with a warning rather than failing the sweep —
-        id-encoding concerns stay inside the repository layer.
+        the rollups) matches no document and returns None — the base id guard
+        makes it a no-op instead of failing the sweep.
         """
-        if not ObjectId.is_valid(user_id):
-            log.warning(
-                "[repository] tier promotion skipped non-ObjectId user_id",
-                user={"id": user_id},
-            )
-            return None
         return await self._apply_raw_update(
             {
                 "_id": self._id_value(user_id),

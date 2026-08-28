@@ -90,6 +90,24 @@ class TestFixtureRepository(UserScopedRepositoryContract):
         return await repo.list_titles(user_id=user_id)
 
 
+class TestMalformedObjectId:
+    """A malformed id on an ObjectId-keyed repository reads as not-found instead
+    of raising ``bson.InvalidId`` — the empty-``todo_id`` agent-turn crash."""
+
+    @pytest.mark.parametrize("malformed", ["", "not-an-objectid"])
+    async def test_get_returns_none(self, repo, malformed):
+        assert await repo.get(malformed, user_id="u") is None
+
+    async def test_update_returns_none(self, repo, make_update):
+        assert await repo.update("", user_id="u", update=make_update()) is None
+
+    async def test_delete_returns_false(self, repo):
+        assert await repo.delete("", user_id="u") is False
+
+    async def test_global_repo_get_returns_none(self, global_repo):
+        assert await global_repo.get("") is None
+
+
 class TestBasePrimitives:
     async def test_find_filters_sorts_and_paginates(self, repo, make_doc):
         for i, title in enumerate(["a", "b", "c"]):
