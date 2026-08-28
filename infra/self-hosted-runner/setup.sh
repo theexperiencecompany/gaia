@@ -236,6 +236,7 @@ ENVFILE
 
   mkdir -p "_work"
   seed_workdir "$dir"
+  warm_workdir "$dir"
 
   # Persistence via a systemd USER unit rather than GitHub's svc.sh.
   # svc.sh writes a system unit, so it needs root on every install and every
@@ -311,6 +312,53 @@ seed_workdir() {
 # Job hooks: the runner runs these before and after every job with the job's
 # environment. They give ephemeral-grade hygiene (see hooks/job-started.sh)
 # without per-job re-registration.
+# A seeded workdir still pays its first pnpm install (8 GB node_modules) and
+# uv sync on the first job it runs — measured 307-353 s in setup-node-pnpm
+# on instances 13-20 (run 33201066743), which timed out a job and cancelled
+# the run. Warm both here, leaving the exact markers the composite actions
+# check (node_modules/.gaia-installed-<lock hash>, .venv/.gaia-synced-<lock
+# hash>) so the first job's setup is the usual seconds. RUNNER_WARM=0 skips.
+# Needs pnpm and uv on PATH (the runner tool cache is not on it); missing
+# tools degrade to a warning, not a failure.
+warm_workdir() {
+  local dest="$1/_work/gaia/gaia"
+  [[ "${RUNNER_WARM:-1}" == "1" && -d "$dest/.git" ]] || return 0
+  # Use the same node and pnpm the jobs use: the runner tool cache (node
+  # 22.x from actions/setup-node) and pnpm/action-setup's install under
+  # ~/setup-pnpm. The system node is 18, which today's pnpm refuses.
+  local tool_node
+  tool_node="$(ls -d "$HOME"/actions-runner-gaia-home-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1)"
+  [[ -n "$tool_node" ]] && export PATH="$tool_node:$PATH"
+  [[ -x "$HOME/setup-pnpm/node_modules/.bin/pnpm" ]] && export PATH="$HOME/setup-pnpm/node_modules/.bin:$PATH"
+  if [[ ! -f "$dest/pnpm-lock.yaml" ]]; then
+    git -C "$dest" checkout --quiet master 2>/dev/null \
+      || git -C "$dest" checkout --quiet -b master origin/master 2>/dev/null \
+      || { echo "::warning::could not check out master in $dest — skipping warm-up"; return 0; }
+  fi
+  if command -v pnpm >/dev/null 2>&1; then
+    if [[ ! -d "$dest/node_modules/.pnpm" ]]; then
+      echo "[setup]   warming node_modules (pnpm install --frozen-lockfile --prefer-offline)..."
+      ( cd "$dest" && pnpm install --frozen-lockfile --prefer-offline >/dev/null 2>&1 \
+        && rm -f node_modules/.gaia-installed-* \
+        && touch "node_modules/.gaia-installed-$(sha256sum pnpm-lock.yaml | cut -c1-16)" ) \
+        && echo "[setup]   node_modules warmed" || echo "::warning::pnpm install failed in $dest (first job will install)"
+    fi
+  else
+    echo "::warning::pnpm not on PATH — node_modules not warmed (first job pays ~5 min)"
+  fi
+  if command -v uv >/dev/null 2>&1; then
+    if [[ ! -x "$dest/.venv/bin/python" ]]; then
+      echo "[setup]   warming .venv (uv sync --frozen --package gaia --group backend --group dev)..."
+      ( cd "$dest" && uv sync --frozen --package gaia --group backend --group dev >/dev/null 2>&1 \
+        && rm -f .venv/.gaia-synced-* \
+        && touch ".venv/.gaia-synced-$(sha256sum uv.lock | cut -c1-16)" ) \
+        && echo "[setup]   .venv warmed" || echo "::warning::uv sync failed in $dest (first job will sync)"
+    fi
+  else
+    echo "::warning::uv not on PATH — .venv not warmed"
+  fi
+}
+
 HOOK_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hooks"
 mkdir -p "${LOCAL_CACHE}/hooks"
 install -m 0755 "$HOOK_SRC"/job-started.sh "$HOOK_SRC"/job-completed.sh "${LOCAL_CACHE}/hooks/" 2>/dev/null \
