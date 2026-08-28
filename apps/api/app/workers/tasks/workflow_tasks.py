@@ -797,6 +797,10 @@ async def _finish_after_replay(
         playbook_id=playbook.playbook_id,
         revision=playbook.revision,
         reason=reason,
+        # The narration's verdict is an opinion: it hands the fire to the agent
+        # but does not move the playbook toward deletion. Only the record's
+        # check does.
+        counts_toward_streak=result.suspect_source != "narration",
     )
     if updated is None:
         # Rewritten or removed while this replay ran: the verdict describes a

@@ -177,6 +177,29 @@ class TestRecordRunOutcome:
         # racing to the same verdict are one suspect, not two.
         assert filter_["last_run_status"] == {"$ne": "suspect"}
 
+    async def test_a_suspect_that_does_not_count_records_the_reason_without_growing(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        """The narration's verdict is an opinion: it sends the fire to the agent
+        but must not be able to delete a playbook on its own. Two such verdicts
+        in a row on a correct playbook were seen live."""
+        collection.find_one_and_update = AsyncMock(return_value=_raw(suspect_streak=0))
+
+        await repo.record_run_outcome(
+            WORKFLOW_ID,
+            USER_ID,
+            PlaybookRunStatus.SUSPECT,
+            reason="the model's own take",
+            counts_toward_streak=False,
+        )
+
+        collection.find_one_and_update.assert_awaited_once()
+        filter_, update = collection.find_one_and_update.await_args.args
+        assert "last_run_status" not in filter_
+        assert "$inc" not in update
+        assert update["$set"]["last_run_status"] is PlaybookRunStatus.SUSPECT
+        assert update["$set"]["last_run_reason"] == "the model's own take"
+
     async def test_a_suspect_on_an_already_suspect_playbook_does_not_grow_the_streak(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:

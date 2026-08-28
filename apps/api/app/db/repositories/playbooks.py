@@ -88,8 +88,14 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         playbook_id: str | None = None,
         revision: int | None = None,
         reason: str | None = None,
+        counts_toward_streak: bool = True,
     ) -> PlaybookDocument | None:
         """Record how the replay that just finished went.
+
+        ``counts_toward_streak=False`` records a suspect that must not move the
+        playbook toward deletion: the narration's verdict is the model's opinion
+        and sends the fire to the agent, but only the deterministic record
+        check (empty where the previous replay had items) is trusted to delete.
 
         ``reason`` is why a run failed or was not trusted; a success clears it.
         ``suspect_streak`` counts consecutive suspect replays: it grows on
@@ -110,7 +116,7 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             key["playbook_id"] = playbook_id
         if revision is not None:
             key["revision"] = revision
-        if status is not PlaybookRunStatus.SUSPECT:
+        if status is not PlaybookRunStatus.SUSPECT or not counts_toward_streak:
             return await self._apply_raw_update(
                 key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
             )
