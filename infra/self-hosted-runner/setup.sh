@@ -172,11 +172,18 @@ install_runner() {
   mkdir -p "$dir"
   cd "$dir"
 
-  if [[ ! -f "./bin/Runner.Listener" ]]; then
-    echo "[setup]   extracting runner ${RUNNER_VERSION}..."
+  # Re-extract when the installed version differs (a pin change, or a
+  # self-update that happened before --disableupdate was set). The listener
+  # must be stopped first: the unit is restarted at the end of this function.
+  local installed=""
+  [[ -f "./bin/Runner.Listener" ]] && installed="$(./bin/Runner.Listener --version 2>/dev/null | tr -d '[:space:]')"
+  if [[ "$installed" != "$RUNNER_VERSION" ]]; then
+    echo "[setup]   installing runner ${RUNNER_VERSION} (had: ${installed:-none})..."
+    systemctl --user stop "gaia-runner@${idx}" 2>/dev/null || true
+    rm -rf ./bin ./externals ./bin.* ./externals.*
     tar xzf "$CACHED_TARBALL"
   else
-    echo "[setup]   runner binaries present — skipping extract."
+    echo "[setup]   runner ${RUNNER_VERSION} present — skipping extract."
   fi
 
   # Only needed once per machine, and this box already runs a runner, so a
