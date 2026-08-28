@@ -405,11 +405,24 @@ jobs:
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
         # a lane with 'FLAKY TESTS DETECTED' reported success.
+        #
+        # `--output-style=stream` is load-bearing, not cosmetic. Nx's default CI
+        # output buffers each task's whole terminal output and replays it in ONE
+        # `process.stdout.write()` after the task exits. Here stdout is a pipe (to
+        # `tee`), and pipe writes in Node are async: `nx run-many` then calls
+        # `process.exit()`, which drops whatever is still queued. On bots-e2e —
+        # ~250KB of output because the suite logs a JSON line per event — only the
+        # first ~66KB survived, cut mid-token, taking vitest's `FAIL` block and
+        # `Test Files … failed` summary (both printed last) with it. The log showed
+        # every test as ✓ and then 'target test for 7 projects failed'. Streaming
+        # writes output incrementally as tasks produce it, so nothing large is ever
+        # pending at exit. It also drops the ::group:: wrapping, which matches
+        # .github/CLAUDE.md: test steps leave failure output un-grouped.
         shell: bash
         env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
-          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} 2>&1 | tee /tmp/tstest.time
+          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} --output-style=stream 2>&1 | tee /tmp/tstest.time
           echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
 
   # ── Docker image build — proves the api image still builds, and times it ──
