@@ -38,7 +38,7 @@ fi
 # If a fixture goes missing after a dependency change, the plugin belongs in
 # this list — that is a visible error, unlike the silent per-worker cost.
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
-EXTRA+=(-p pytest_asyncio -p xdist -p pytest_cov -p pytest_timeout -p pytest_mock -p randomly
+EXTRA+=(-p asyncio -p xdist -p pytest_cov -p timeout -p pytest_mock -p randomly
         -p hypothesis.extra.pytestplugin -p respx.plugin -p time_machine -p anyio.pytest_plugin -p pytest_check)
 if [ -n "${COV_CONTEXT:-}" ]; then
   EXTRA+=(--cov-context="${COV_CONTEXT}")
