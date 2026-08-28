@@ -521,6 +521,45 @@ class TestAlwaysGate:
         ):
             assert await is_gated(prefs(), "web_search", tool) is False
 
+    async def test_an_unreachable_registry_still_asks_for_the_users_gated_tool(self) -> None:
+        # THE regression. The stamp read sits ahead of everything, so raising out
+        # of it takes the WHOLE gate down: decide_tool_call fails closed on any
+        # exception by DENYING, so a process where the tool_registry provider was
+        # never registered refused every gated call outright — no card, no record,
+        # no way for the user to say yes. The stamp is an escalation; when it
+        # cannot be read the rest of the policy must still run.
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs("always_ask", SEND_GMAIL=True)),
+            ),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "SEND_GMAIL") == "ask"
+
+    async def test_an_unreachable_registry_does_not_break_the_sibling_scan(self) -> None:
+        request = make_request(
+            call_id="call-1",
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {}},
+                    {"id": "call-2", "name": "wipe_disk", "args": {}},
+                )
+            ],
+        )
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(side_effect=KeyError("Provider 'tool_registry' not found")),
+            ),
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs("auto"))),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
 
 class TestArgumentGate:
     """manage_linked_account: disconnect confirms; generate_link does not."""
