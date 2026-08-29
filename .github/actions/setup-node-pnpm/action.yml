@@ -30,12 +30,14 @@ runs:
         version: 10.17.1
         dest: ${{ runner.temp }}/setup-pnpm
 
-    # No store-dir override on self-hosted: pnpm's default per-user store
-    # (~/.local/share/pnpm/store/v10) is the single store for the box's dev
-    # tooling and every runner instance alike — content-addressed and
-    # concurrency-safe, so the twenty instances dedupe against each other and
-    # against the owner's own installs. (It was ci-cache/pnpm-store before;
-    # two stores for one user is just double the downloads.)
+    # Self-hosted: ONE persistent per-user store, named explicitly. pnpm's
+    # default store is $PNPM_HOME/store whenever PNPM_HOME is set, and
+    # pnpm/action-setup above sets PNPM_HOME to the job's temp dir — so the
+    # default is an empty store that dies with the job, and every install
+    # re-downloads the whole tree (measured 2026-08-29 on a fresh runner user:
+    # 3,558 packages, past the 5-minute changes job). The store is
+    # content-addressed and concurrency-safe, so the twenty instances dedupe
+    # against each other.
     - name: Setup Node.js (self-hosted — persistent local store)
       if: runner.environment == 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
@@ -91,8 +93,12 @@ runs:
           echo "install settings changed since the last install — resetting node_modules/.modules.yaml"
           rm -f node_modules/.modules.yaml
         fi
+        STORE_ARGS=()
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          STORE_ARGS=(--store-dir "${PNPM_STORE_DIR:-$HOME/.local/share/pnpm/store/v10}")
+        fi
         echo "::group::pnpm install"
-        pnpm install --frozen-lockfile --prefer-offline
+        pnpm install --frozen-lockfile --prefer-offline "${STORE_ARGS[@]}"
         echo "::endgroup::"
         rm -f node_modules/.gaia-installed-* 2>/dev/null || true
         touch "$MARK"
