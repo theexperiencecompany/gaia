@@ -22,7 +22,22 @@ from app.db.chroma.chroma_tools_store import (
 )
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
+from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import log
+
+
+@pytest.fixture(autouse=True)
+def _run_seed_without_redis_lock():
+    """The cross-replica seed lock is infrastructure; these unit tests exercise
+    the diff/upsert logic it guards, not Redis. Run the guarded work directly so
+    the tests stay hermetic (the lock itself is proven in the real-Redis tier)."""
+
+    async def _run(self, work):
+        await work()
+
+    with patch.object(DistributedLock, "run_idempotent", _run):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # _compute_tool_hash
