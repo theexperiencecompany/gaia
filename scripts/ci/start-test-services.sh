@@ -16,7 +16,7 @@
 # Per-runner isolation: the home box runs several runner instances that can
 # execute test lanes concurrently, and fixed host ports would make the second
 # lane fail on "port is already allocated". Each instance carries RUNNER_INDEX
-# in its .env (see infra/self-hosted-runner/setup.sh); it offsets every host
+# in its .env (see gaia-infra:self-hosted-runner/setup.sh); it offsets every host
 # port by index*100 and suffixes every container name. GitHub-hosted runners
 # have no RUNNER_INDEX, so they default to 0 and keep the canonical ports.
 #

@@ -237,7 +237,7 @@ if [[ -z "$RUNNER_LINE" ]]; then
 
 - **Selected:** \`$FALLBACK\`
 - **Home label:** \`$LABEL\`
-- **Reason:** no runner with label \`$LABEL\` found (register via infra/self-hosted-runner/setup.sh)
+- **Reason:** no runner with label \`$LABEL\` found (register via self-hosted-runner/setup.sh in the private gaia-infra repo)
 "
   exit 0
 fi

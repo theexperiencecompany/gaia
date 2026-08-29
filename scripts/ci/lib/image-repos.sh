@@ -3,7 +3,7 @@
 # to. Sourced by resolve-image-tags.sh (build), retag-latest-alias.sh
 # (deploy/rollback) and promote-latest.sh (gate) so the ends of the pipeline
 # can never disagree about which repos share a tag. Keep in sync with the
-# image: lines in infra/docker/docker-compose.prod.yml and nx.json release groups.
+# image: lines in the prod compose (lives in gaia-infra) and nx.json release groups.
 # shellcheck disable=SC2034  # consumed by sourcing scripts
 GHCR_NAMESPACE="ghcr.io/theexperiencecompany"
 # nx release group "apps" — one commit produces the same tag for both.

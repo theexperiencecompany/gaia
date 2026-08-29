@@ -73,7 +73,7 @@ jobs:
         uses: ./.github/actions/select-runner
         with:
           # Lint lanes use their own runner pool (instances 12-20, LINT_RUNNER_START
-          # in infra/self-hosted-runner/setup.sh) so they can neither take
+          # in gaia-infra:self-hosted-runner/setup.sh) so they can neither take
           # main.yml's slots nor oversubscribe its CPUs — measured 2026-08-28:
           # 7 lint jobs + 2 mutation shards held every slot and the pipeline's
           # detect job queued 280 s.

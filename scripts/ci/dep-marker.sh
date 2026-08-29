@@ -7,7 +7,7 @@
 # not just the lockfile: a `node-linker` flip in .npmrc / pnpm-workspace.yaml or
 # a `packageManager` bump rewrites node_modules with an unchanged lockfile, and
 # a pyproject edit changes the workspace uv syncs. Used by the composites
-# (setup-node-pnpm, setup-python-test-env) and by infra/self-hosted-runner/
+# (setup-node-pnpm, setup-python-test-env) and by gaia-infra:self-hosted-runner/
 # setup.sh's warm-up, so all three agree on what "already installed" means.
 #
 # Usage: dep-marker.sh node|python   → prints the marker path

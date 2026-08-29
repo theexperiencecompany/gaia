@@ -471,7 +471,7 @@ jobs:
 
   # ── Docker image build — proves the api image still builds, and times it ──
   # On the home box this uses the persistent shared `gaia-ci` builder created
-  # by infra/self-hosted-runner/setup.sh: the apt/uv cache mounts live inside
+  # by gaia-infra:self-hosted-runner/setup.sh: the apt/uv cache mounts live inside
   # that builder, so a warm build is ~40s against ~14-29 minutes cold over the
   # residential uplink. On GitHub-hosted fallback a throwaway builder is used
   # and the build is simply slower. The image is not pushed — build.yml owns
@@ -491,7 +491,7 @@ jobs:
           persist-credentials: false
       - name: Check the persistent shared builder exists (self-hosted)
         if: runner.environment == 'self-hosted'
-        run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run infra/self-hosted-runner/setup.sh"; exit 1; }
+        run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         if: runner.environment != 'self-hosted'
       # Rebuild the image on a PR only when its inputs changed: Dockerfile,

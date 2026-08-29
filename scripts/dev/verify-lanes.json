@@ -212,7 +212,7 @@
     },
     {
       "name": "alert-rules",
-      "scope": "^tools/alert-rules/|^infra/docker/observability/|^config/pint\\.hcl$",
+      "scope": "^tools/alert-rules/|^infra/docker/observability/grafana/provisioning/alerting/|^config/pint\\.hcl$",
       "heavy": true,
       "timeout_s": 600,
       "require_cmd": ["pint", "promtool"],
