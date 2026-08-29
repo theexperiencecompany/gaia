@@ -102,11 +102,6 @@ const config: KnipConfig = {
     // imported as modules — so knip reads them as unused files.
     "scripts/ci/wide-event-conformance/emit_typescript.ts",
 
-    // Self-hosted runner's Nx remote-cache server: a standalone Node process
-    // installed by infra/self-hosted-runner/setup.sh as a systemd user unit,
-    // never imported and never referenced from a workflow.
-    "infra/self-hosted-runner/nx-cache-server/server.mjs",
-
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
