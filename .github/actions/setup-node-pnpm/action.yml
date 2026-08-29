@@ -73,6 +73,16 @@ runs:
           echo "node_modules already installed ($MARK) — skipping pnpm install"
           exit 0
         fi
+        # The marker covers the install *settings* (lockfile, linker, build
+        # allowlists), and pnpm caches the settings it last installed with in
+        # node_modules/.modules.yaml, trusting that over pnpm-workspace.yaml.
+        # A settings change on a persistent workspace therefore fails with
+        # ERR_PNPM_IGNORED_BUILDS (measured 2026-08-29, strictDepBuilds) unless
+        # that cache goes: pnpm then rebuilds the tree from the content store.
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f node_modules/.modules.yaml ]; then
+          echo "install settings changed since the last install — resetting node_modules/.modules.yaml"
+          rm -f node_modules/.modules.yaml
+        fi
         echo "::group::pnpm install"
         pnpm install --frozen-lockfile --prefer-offline
         echo "::endgroup::"
