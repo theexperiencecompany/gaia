@@ -96,13 +96,17 @@ printf 'GH_TOKEN=%s\n' "$PAT" > "$H/.config/gaia-ci/gh.env"
 chown -R "$U:$U" "$H"
 chmod 0600 "$H/.config/gaia-ci/gh.env"
 
-# Network isolation, keyed on the new uid; loaded now and at every boot.
+# Network isolation, keyed on the new uid, plus the tailnet ingress allowlist
+# (nftables-tailnet-ingress.nft beside this script: ufw cannot filter
+# tailscale0 because tailscaled's own accept rules run first); both loaded
+# now and at every boot.
 install -d -m 0755 /etc/nftables.d
 sed "s/__CI_UID__/$UID_NEW/" "$NFT_SRC" > /etc/nftables.d/gaia-ci.nft
 chmod 0644 /etc/nftables.d/gaia-ci.nft
+install -m 0644 "$(dirname "$NFT_SRC")/nftables-tailnet-ingress.nft" /etc/nftables.d/tailnet-ingress.nft
 cat > /etc/systemd/system/gaia-ci-firewall.service <<UNIT
 [Unit]
-Description=nftables isolation for the CI runner user
+Description=nftables isolation for the CI runner user and the tailnet ingress allowlist
 DefaultDependencies=no
 Before=network-pre.target
 Wants=network-pre.target
@@ -110,8 +114,8 @@ Wants=network-pre.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'nft delete table inet gaia_ci 2>/dev/null; nft -f /etc/nftables.d/gaia-ci.nft'
-ExecStop=/usr/sbin/nft delete table inet gaia_ci
+ExecStart=/bin/sh -c 'nft delete table inet gaia_ci 2>/dev/null; nft delete table inet tailnet_ingress 2>/dev/null; nft -f /etc/nftables.d/gaia-ci.nft; nft -f /etc/nftables.d/tailnet-ingress.nft'
+ExecStop=/bin/sh -c 'nft delete table inet gaia_ci; nft delete table inet tailnet_ingress'
 
 [Install]
 WantedBy=multi-user.target
