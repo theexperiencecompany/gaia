@@ -157,9 +157,7 @@ class TestWebSocketConnectionCount:
 class TestWebSocketMessageRouting:
     """Messages reach the correct user's connections."""
 
-    async def test_broadcast_to_user_delivers_message(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_broadcast_to_user_delivers_message(self, manager: WebSocketManager) -> None:
         ws = _make_ws()
         manager.add_connection(USER_A, ws)
 
@@ -168,9 +166,7 @@ class TestWebSocketMessageRouting:
 
         ws.send_json.assert_awaited_once_with(message)
 
-    async def test_broadcast_to_nonexistent_user_is_noop(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_broadcast_to_nonexistent_user_is_noop(self, manager: WebSocketManager) -> None:
         """Sending to a user with no connections must not raise."""
         await manager.deliver_local("nobody", {"type": "test"})
         # No assertion needed — just verifying no exception
@@ -194,9 +190,7 @@ class TestWebSocketMessageRouting:
 class TestWebSocketMultiUserIsolation:
     """Messages for user A must never reach user B."""
 
-    async def test_user_b_does_not_receive_user_a_message(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_user_b_does_not_receive_user_a_message(self, manager: WebSocketManager) -> None:
         ws_a = _make_ws()
         ws_b = _make_ws()
         manager.add_connection(USER_A, ws_a)
@@ -207,9 +201,7 @@ class TestWebSocketMultiUserIsolation:
         ws_a.send_json.assert_awaited_once()
         ws_b.send_json.assert_not_awaited()
 
-    async def test_each_user_receives_own_messages_only(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_each_user_receives_own_messages_only(self, manager: WebSocketManager) -> None:
         ws_a = _make_ws()
         ws_b = _make_ws()
         manager.add_connection(USER_A, ws_a)
@@ -228,9 +220,7 @@ class TestWebSocketMultiUserIsolation:
 class TestWebSocketDisconnectHandling:
     """Verify cleanup on failed sends (simulated broken connections)."""
 
-    async def test_broken_connection_removed_on_broadcast(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_broken_connection_removed_on_broadcast(self, manager: WebSocketManager) -> None:
         healthy_ws = _make_ws()
         broken_ws = _make_ws()
         broken_ws.send_json.side_effect = RuntimeError("connection closed")
@@ -248,9 +238,7 @@ class TestWebSocketDisconnectHandling:
         assert broken_ws not in manager.connections[USER_A]
         assert healthy_ws in manager.connections[USER_A]
 
-    async def test_all_connections_broken_cleans_up_set(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_all_connections_broken_cleans_up_set(self, manager: WebSocketManager) -> None:
         """When every connection for a user fails, the user entry is dropped."""
         broken_ws = _make_ws()
         broken_ws.send_json.side_effect = ConnectionError("gone")
@@ -261,9 +249,7 @@ class TestWebSocketDisconnectHandling:
         # The broken socket was removed
         assert broken_ws not in manager.connections.get(USER_A, set())
 
-    async def test_disconnect_no_memory_leak(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_disconnect_no_memory_leak(self, manager: WebSocketManager) -> None:
         """Connect and disconnect many sockets; verify nothing is retained."""
         for _ in range(100):
             ws = _make_ws()
@@ -277,9 +263,7 @@ class TestWebSocketDisconnectHandling:
 class TestWebSocketConcurrentConnections:
     """Same user with multiple simultaneous client connections."""
 
-    async def test_multiple_clients_all_receive_message(
-        self, manager: WebSocketManager
-    ) -> None:
+    async def test_multiple_clients_all_receive_message(self, manager: WebSocketManager) -> None:
         """When one user has N connections, all N must receive each broadcast."""
         sockets = [_make_ws() for _ in range(5)]
         for ws in sockets:
@@ -349,9 +333,7 @@ class TestWebSocketBroadcastFanout:
             listener.start_websocket_broadcast_listener()
             await asyncio.sleep(0.3)
             try:
-                await manager.broadcast_to_user(
-                    USER_A, {"type": "new_notification", "id": "n-123"}
-                )
+                await manager.broadcast_to_user(USER_A, {"type": "new_notification", "id": "n-123"})
                 for _ in range(40):
                     if ws.send_json.await_count:
                         break
@@ -383,9 +365,7 @@ class TestWebSocketBroadcastFanout:
         manager.add_connection(USER_A, broken_ws)
 
         with patch.object(listener, "websocket_manager", manager):
-            await listener._dispatch(
-                json.dumps({"user_id": USER_A, "message": {"type": "ping"}})
-            )
+            await listener._dispatch(json.dumps({"user_id": USER_A, "message": {"type": "ping"}}))
 
         healthy_ws.send_json.assert_awaited_once()
         assert broken_ws not in manager.connections.get(USER_A, set())

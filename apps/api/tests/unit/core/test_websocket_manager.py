@@ -13,7 +13,7 @@ Covers:
 import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
 import pytest
@@ -412,23 +412,22 @@ class TestMultiInstanceFanout:
 async def test_workers_publish_without_needing_to_be_the_main_app(fake_redis) -> None:
     """An ARQ worker holds no sockets; it must still be able to broadcast.
 
-    Broadcasting used to branch on ``is_main_app()`` and take a different
-    transport in a worker. There is one path now, so a worker publishes exactly
-    like a request handler does.
+    Broadcasting used to branch on the process type and take a different
+    transport in a worker. There is one path now — publish to the Redis channel —
+    so a worker publishes exactly like a request handler does, no process-type
+    check involved.
     """
-    with patch("app.utils.worker_detection.settings") as mock_settings:
-        mock_settings.WORKER_TYPE = "arq_worker"
-        pubsub = fake_redis.pubsub()
-        await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
+    pubsub = fake_redis.pubsub()
+    await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
 
-        await websocket_manager.broadcast_to_user("u4", {"type": "from_arq"})
+    await websocket_manager.broadcast_to_user("u4", {"type": "from_arq"})
 
-        received = None
-        for _ in range(5):
-            frame = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-            if frame and frame.get("type") == "message":
-                received = json.loads(frame["data"])
-                break
-        await pubsub.aclose()
+    received = None
+    for _ in range(5):
+        frame = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        if frame and frame.get("type") == "message":
+            received = json.loads(frame["data"])
+            break
+    await pubsub.aclose()
 
     assert received == {"user_id": "u4", "message": {"type": "from_arq"}}
