@@ -45,7 +45,7 @@ case "$MODE" in
   verify)
     rendered=$(docker --context prod stack config -c "$STACK_FILE")
     echo "::group::Rendered stack (services and images)"
-    echo "$rendered" | yq '.services | to_entries | map({(.key): .value.image}) | add'
+    echo "$rendered" | yq '.services | map_values(.image)'
     echo "::endgroup::"
     echo "swarm-stack verify: OK (infra ref $(git -C .infra rev-parse --short HEAD), obs config hash $OBS_CFG_HASH, $(echo "$rendered" | yq '.services | length') services)"
     ;;
