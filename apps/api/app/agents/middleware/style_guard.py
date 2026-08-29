@@ -53,7 +53,11 @@ from app.constants.style_guard import (
 from app.models.agent_models import AgentConfigurable, agent_configurable, current_run_config
 from app.models.stream_events import MessageBoundaryPayload
 from app.services.analytics_service import AnalyticsEvents, capture_event
-from app.services.llm_metering import extract_message_usage, record_llm_call
+from app.services.llm_metering import (
+    extract_message_cost,
+    extract_message_usage,
+    record_llm_call,
+)
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
@@ -205,12 +209,10 @@ class StyleGuardMiddleware(AgentMiddleware):
         return await record_llm_call(
             user_id=str(user_id) if user_id else None,
             model_name=(lane.model if lane else None) or UNKNOWN_MODEL_NAME,
-            input_tokens=usage["input_tokens"],
-            output_tokens=usage["output_tokens"],
-            cached_tokens=usage["cached_tokens"],
-            reasoning_tokens=usage["reasoning_tokens"],
+            usage=usage,
             root_request_id=str(root_request_id) if root_request_id else None,
             charge_to_budget=True,
+            provider_cost=extract_message_cost(draft),
         )
 
     def _retract(self, message_id: str) -> None:

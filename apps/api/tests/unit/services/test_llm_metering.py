@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.services.llm_metering import (
+    TokenUsage,
     extract_generation_id,
     extract_message_cost,
     extract_message_model,
@@ -198,11 +199,8 @@ async def test_the_priced_call_reaches_the_rollup_whole(
 ) -> None:
     cost = await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=40, reasoning_tokens=7),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=100,
-        output_tokens=20,
-        cached_tokens=40,
-        reasoning_tokens=7,
         root_request_id="req-1",
         charge_to_budget=True,
     )
@@ -233,9 +231,8 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
     # usage for every one of them.
     await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=100,
-        output_tokens=20,
         charge_to_budget=False,
     )
 
@@ -302,10 +299,10 @@ def test_an_unparseable_price_falls_back_rather_than_raising() -> None:
 async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: AsyncMock) -> None:
     cost = await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(
+            input_tokens=73_093, output_tokens=390, cached_tokens=0, reasoning_tokens=0
+        ),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=73_093,
-        output_tokens=390,
-        cached_tokens=0,
         charge_to_budget=True,
         provider_cost=0.0037,
     )
@@ -326,9 +323,8 @@ async def test_a_free_call_is_booked_as_free_not_repriced(
 ) -> None:
     cost = await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        input_tokens=100,
-        output_tokens=20,
         charge_to_budget=False,
         provider_cost=0.0,
     )
@@ -351,9 +347,8 @@ async def test_a_lane_that_reports_no_price_still_uses_the_table(
     # working exactly as before.
     cost = await record_llm_call(
         user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="gemini-3.1-flash-lite",
-        input_tokens=100,
-        output_tokens=20,
         charge_to_budget=True,
         provider_cost=None,
     )

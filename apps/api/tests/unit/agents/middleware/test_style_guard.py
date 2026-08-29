@@ -386,9 +386,9 @@ class TestStyleGuardRegeneration:
 
         charged = record.call_args.kwargs
         assert charged["user_id"] == "u1"
-        assert charged["input_tokens"] == 900
-        assert charged["output_tokens"] == 40
-        assert charged["cached_tokens"] == 800
+        assert charged["usage"]["input_tokens"] == 900
+        assert charged["usage"]["output_tokens"] == 40
+        assert charged["usage"]["cached_tokens"] == 800
         assert charged["charge_to_budget"] is True
 
     async def test_the_charge_carries_the_run_s_lane_model_and_root_request(
@@ -425,7 +425,7 @@ class TestStyleGuardRegeneration:
         charged = record.call_args.kwargs
         assert charged["model_name"] == "gemini-2.5-flash"
         assert charged["root_request_id"] == "req-42"
-        assert charged["reasoning_tokens"] == 12
+        assert charged["usage"]["reasoning_tokens"] == 12
 
     async def test_a_run_with_no_lane_is_charged_against_the_unknown_model(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig

@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import suppress
+from dataclasses import dataclass
 from functools import cache
 from typing import Any, TypedDict, TypeVar, cast
 
@@ -68,6 +69,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    TokenUsage,
     extract_message_cost,
     extract_message_model,
     extract_message_usage,
@@ -258,6 +260,13 @@ def init_openrouter_llm() -> LanguageModelLike:
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
             **_app_attribution(),
+            # The same routing preference the default/aux model carries. Without
+            # it this lane sat on OpenRouter's default rotation and drew twelve
+            # different upstreams in a month, at rates 10x apart. session_id
+            # sticky routing composes with `order` (measured: order + session
+            # lands on the ordered upstream every time), so the preference only
+            # decides which upstream a NEW conversation starts on.
+            **_provider_order_kwargs(),
             reasoning=OPENROUTER_REASONING,
         )
     )
@@ -742,10 +751,7 @@ async def _meter_discarded_replay(
     cost = await record_llm_call(
         user_id=str(user_id) if user_id else None,
         model_name=model_name,
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
+        usage=usage,
         root_request_id=str(root_request_id) if root_request_id else None,
         charge_to_budget=True,
         provider_cost=provider_cost,
@@ -766,6 +772,49 @@ async def _meter_discarded_replay(
     )
 
 
+@dataclass(frozen=True)
+class LLMInvokeOptions:
+    """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
+    :func:`invoke_llm`), grouped so the call signature stays under the repo's
+    argument-count ceiling.
+
+    Attributes:
+        max_attempts: Retry attempts before falling back to ``fallback``.
+            ``max_attempts=1`` disables retry for callers on a hard latency
+            budget. Honored by both ``ainvoke_llm`` and ``invoke_llm``.
+        timeout: A total wall-clock ceiling over the retries, their backoff
+            sleeps and the fallback attempt — the guarantee being that the
+            call cannot outlive it. Retry alone cannot cover a provider that
+            accepts the connection and then never answers, because nothing
+            is ever raised to retry on. The ceiling deliberately wraps the
+            fallback too: expiring mid-fallback raises ``TimeoutError``
+            rather than starting a second, unbounded attempt. ``None``
+            disables it. ``ainvoke_llm`` only — ``invoke_llm`` is sync and
+            does not honor this field.
+        meter_auxiliary: Routes the call through the one metering seam for
+            auxiliary spend when ``True``. The agent graph passes ``False``
+            because it is already metered by ``LLMAccountingMiddleware`` —
+            metering here too would book every graph call twice.
+            ``ainvoke_llm`` only — ``invoke_llm`` never meters.
+        fallback_config: The config the fallback runs under, when given.
+            Reusing ``config`` for the fallback is what made provider
+            failover a no-op: LangChain merges a passed config OVER a
+            ``with_config`` one, so the run's own configurable put the
+            just-failed provider straight back. Honored by both
+            ``ainvoke_llm`` and ``invoke_llm``.
+        sticky_session_id: The provider's sticky-routing key to bind the
+            fallback to, overriding what :func:`_sticky_session_id` would
+            derive from ``config``. Honored by both ``ainvoke_llm`` and
+            ``invoke_llm``.
+    """
+
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
+    meter_auxiliary: bool = True
+    fallback_config: RunnableConfig | None = None
+    sticky_session_id: str | None = None
+
+
 async def ainvoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
@@ -773,11 +822,7 @@ async def ainvoke_llm(
     fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
-    meter_auxiliary: bool = True,
-    fallback_config: RunnableConfig | None = None,
-    sticky_session_id: str | None = None,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -816,13 +861,14 @@ async def ainvoke_llm(
     # The agent graph also comes through here (create_agent wants the retry +
     # fallback policy) but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
-    usage_handler = UsageMetadataCallbackHandler() if meter_auxiliary else None
-    generation_handler = _GenerationIdCallback() if meter_auxiliary else None
+    opts = options or LLMInvokeOptions()
+    usage_handler = UsageMetadataCallbackHandler() if opts.meter_auxiliary else None
+    generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
     try:
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(opts.timeout):
             try:
-                result = await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                result = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                     messages,
                     config=_with_usage_handler(
                         _with_usage_handler(config, usage_handler), generation_handler
@@ -849,7 +895,7 @@ async def ainvoke_llm(
                     # one-shots have no prior chain (cold IS their steady
                     # state), and Gemini has no stickiness to re-hit — for
                     # both, a replay is pure double billing.
-                    not meter_auxiliary
+                    not opts.meter_auxiliary
                     and agent_configurable(config).get("provider") in STICKY_ROUTING_PROVIDERS
                     and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
                     and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
@@ -889,12 +935,12 @@ async def ainvoke_llm(
                         fallback,
                         label,
                         primary_error,
-                        session_id=sticky_session_id
-                        or _sticky_session_id(config, auxiliary=meter_auxiliary),
+                        session_id=opts.sticky_session_id
+                        or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     ).ainvoke(
                         messages,
                         config=_with_usage_handler(
-                            _with_usage_handler(fallback_config or config, usage_handler),
+                            _with_usage_handler(opts.fallback_config or config, usage_handler),
                             generation_handler,
                         ),
                     )
@@ -919,13 +965,16 @@ def invoke_llm(
     fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
-    fallback_config: RunnableConfig | None = None,
-    sticky_session_id: str | None = None,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
-    """Sync counterpart of :func:`ainvoke_llm`."""
+    """Sync counterpart of :func:`ainvoke_llm`. Only ``options.max_attempts``,
+    ``options.fallback_config`` and ``options.sticky_session_id`` apply here —
+    ``timeout``/``meter_auxiliary`` are async-only (see :class:`LLMInvokeOptions`)."""
+    opts = options or LLMInvokeOptions()
     try:
-        return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
+        return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
+            messages, config=config
+        )
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
             _resolve_fallback(
@@ -936,8 +985,8 @@ def invoke_llm(
                 # _resolve_fallback nothing, so a sync fallback silently landed
                 # on whatever provider the router picked instead of the chain
                 # the primary had been warming.
-                session_id=sticky_session_id or _sticky_session_id(config, auxiliary=False),
-            ).invoke(messages, config=fallback_config or config)
+                session_id=opts.sticky_session_id or _sticky_session_id(config, auxiliary=False),
+            ).invoke(messages, config=opts.fallback_config or config)
         )
 
 
@@ -1114,10 +1163,12 @@ async def _record_auxiliary_usage(
         cost = await record_llm_call(
             user_id=user_id,
             model_name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            ),
             charge_to_budget=False,
             # The handler aggregates per model, so a call that fanned out across
             # models cannot attribute one price to one of them; only the
@@ -1206,7 +1257,7 @@ async def ainvoke_structured(
             prompt,
             config=config,
             label=label,
-            timeout=timeout,
+            options=LLMInvokeOptions(timeout=timeout),
         ),
     )
 
@@ -1270,7 +1321,7 @@ async def ainvoke_structured_gemini(
                 prompt,
                 config=config,
                 label=label,
-                timeout=timeout,
+                options=LLMInvokeOptions(timeout=timeout),
             ),
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
@@ -1288,6 +1339,6 @@ async def ainvoke_structured_gemini(
             fallback=fallback,
             config=config,
             label=label,
-            timeout=timeout,
+            options=LLMInvokeOptions(timeout=timeout),
         ),
     )

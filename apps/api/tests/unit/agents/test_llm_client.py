@@ -35,6 +35,7 @@ from app.agents.llm.client import (
     LLM_RETRYABLE_EXCEPTIONS,
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
+    LLMInvokeOptions,
     _build_default_llm,
     _create_configurable_llm,
     _get_available_providers,
@@ -700,7 +701,7 @@ class TestAinvokeLlm:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(),
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
         assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
 
@@ -834,7 +835,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         # "cold" — the answer the user already watched stream. The replay is a
@@ -855,7 +856,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert result.content == "cold"
@@ -873,7 +874,7 @@ class TestStickyFlipReplayThresholds:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert result.content == "warm"
@@ -904,7 +905,9 @@ class TestStickyFlipReplayThresholds:
         primary.with_retry = MagicMock(return_value=primary)
         primary.ainvoke = AsyncMock(return_value=AIMessage(content="hi"))
 
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+        )
 
         callbacks = primary.ainvoke.await_args.kwargs["config"].get("callbacks") or []
         assert not any(isinstance(handler, UsageMetadataCallbackHandler) for handler in callbacks)
@@ -917,7 +920,9 @@ class TestStickyFlipReplayThresholds:
         primary.with_retry = MagicMock(return_value=primary)
         primary.ainvoke = AsyncMock(return_value=parsed)
 
-        result = await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=False)
+        result = await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+        )
 
         assert result is parsed
         assert primary.ainvoke.await_count == 1
@@ -937,7 +942,9 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
         primary = _replaying_primary(self._FIRST, self._SECOND)
         messages = [HumanMessage(content="hi")]
 
-        await ainvoke_llm(primary, messages, config=_STICKY_LANE, meter_auxiliary=False)
+        await ainvoke_llm(
+            primary, messages, config=_STICKY_LANE, options=LLMInvokeOptions(meter_auxiliary=False)
+        )
 
         assert [call.args[0] for call in primary.ainvoke.await_args_list] == [messages, messages]
 
@@ -950,7 +957,10 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
         primary = _replaying_primary(self._FIRST, self._SECOND)
 
         await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], config=_STICKY_LANE, meter_auxiliary=False
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         first, replay = (call.kwargs["config"] for call in primary.ainvoke.await_args_list)
@@ -970,8 +980,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
-            max_attempts=2,
+            options=LLMInvokeOptions(meter_auxiliary=False, max_attempts=2),
         )
 
         assert [
@@ -991,7 +1000,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
             label="the_judge",
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert result is self._FIRST
@@ -1015,7 +1024,7 @@ class TestStickyFlipReplayIsSentLikeTheFirstCall:
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
             label="the_judge",
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         booked_replay.assert_awaited_once()
@@ -1080,10 +1089,12 @@ class TestMeterDiscardedReplay:
         assert booked_replay.await_args.kwargs == {
             "user_id": "u-1",
             "model_name": "served/model",
-            "input_tokens": 10_000,
-            "output_tokens": 40,
-            "cached_tokens": 100,
-            "reasoning_tokens": 7,
+            "usage": {
+                "input_tokens": 10_000,
+                "output_tokens": 40,
+                "cached_tokens": 100,
+                "reasoning_tokens": 7,
+            },
             "root_request_id": "r-1",
             "charge_to_budget": True,
             # The fixture message carries no reported price; a real OpenRouter
@@ -1217,7 +1228,11 @@ class TestMemoryLaneProviderSelection:
         assert mock_aux_runnable.call_args.args == (_Extracted, 0.4, config)
         kwargs = dict(mock_ainvoke.await_args.kwargs)
         fallback = kwargs.pop("fallback")
-        assert kwargs == {"config": config, "label": "memory:extract", "timeout": 9.0}
+        assert kwargs == {
+            "config": config,
+            "label": "memory:extract",
+            "options": LLMInvokeOptions(timeout=9.0),
+        }
         # An aux outage has somewhere to go: the fallback factory builds the
         # Gemini structured runnable with this call's schema and temperature.
         mock_memory_llm.assert_not_called()
@@ -1276,7 +1291,7 @@ class TestMemoryLaneProviderSelection:
         assert mock_ainvoke.await_args.kwargs == {
             "config": config,
             "label": "memory:extract",
-            "timeout": 9.0,
+            "options": LLMInvokeOptions(timeout=9.0),
         }
 
     @patch("app.agents.llm.client.ainvoke_structured", new_callable=AsyncMock)
@@ -1622,7 +1637,7 @@ class TestRecordAuxiliaryUsage:
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        assert rec.call_args.kwargs["reasoning_tokens"] == 77
+        assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 77
 
     async def test_a_missing_count_books_zero_beside_a_present_one(self) -> None:
         """One absent token key must book 0, not a placeholder — a stand-in
@@ -1632,15 +1647,15 @@ class TestRecordAuxiliaryUsage:
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        assert rec.call_args.kwargs["input_tokens"] == 0
-        assert rec.call_args.kwargs["output_tokens"] == 20
+        assert rec.call_args.kwargs["usage"]["input_tokens"] == 0
+        assert rec.call_args.kwargs["usage"]["output_tokens"] == 20
 
         handler = self._handler(gemini={"input_tokens": 100})
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        assert rec.call_args.kwargs["input_tokens"] == 100
-        assert rec.call_args.kwargs["output_tokens"] == 0
+        assert rec.call_args.kwargs["usage"]["input_tokens"] == 100
+        assert rec.call_args.kwargs["usage"]["output_tokens"] == 0
 
     async def test_reasoning_defaults_to_zero_without_output_details(self) -> None:
         """A non-reasoning model sends no ``output_token_details`` at all; that
@@ -1650,7 +1665,7 @@ class TestRecordAuxiliaryUsage:
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        assert rec.call_args.kwargs["reasoning_tokens"] == 0
+        assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
     async def test_an_explicit_zero_reasoning_count_stays_zero(self) -> None:
         handler = self._handler(
@@ -1664,7 +1679,7 @@ class TestRecordAuxiliaryUsage:
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        assert rec.call_args.kwargs["reasoning_tokens"] == 0
+        assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
     async def test_books_the_whole_token_breakdown_and_never_the_budget(self) -> None:
         """``charge_to_budget=False`` is the load-bearing part: background work
@@ -1684,10 +1699,12 @@ class TestRecordAuxiliaryUsage:
         assert rec.call_args.kwargs == {
             "user_id": "user-1",
             "model_name": "gemini",
-            "input_tokens": 100,
-            "output_tokens": 20,
-            "cached_tokens": 40,
-            "reasoning_tokens": 7,
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cached_tokens": 40,
+                "reasoning_tokens": 7,
+            },
             "charge_to_budget": False,
             # This lane reported no price, so metering falls back to the table.
             "provider_cost": None,
@@ -1716,7 +1733,10 @@ class TestRecordAuxiliaryUsage:
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
             await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
 
-        booked = {c.kwargs["model_name"]: c.kwargs["reasoning_tokens"] for c in rec.call_args_list}
+        booked = {
+            c.kwargs["model_name"]: c.kwargs["usage"]["reasoning_tokens"]
+            for c in rec.call_args_list
+        }
         assert booked == {"gemini": 0, "openrouter": 5}
 
     async def test_spend_without_a_user_id_is_still_booked(self) -> None:
@@ -1792,7 +1812,7 @@ class TestAuxiliaryMeteringWiring:
             primary,
             [HumanMessage(content="hi")],
             config=RunnableConfig(configurable={"user_id": "user-9"}),
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         forwarded = primary.ainvoke.call_args.kwargs["config"]
@@ -1880,7 +1900,7 @@ class TestAinvokeStructured:
             await ainvoke_structured(self._Schema, prompt, label="classifier", timeout=12.0)
 
         assert mock_invoke.call_args.args[1] is prompt
-        assert mock_invoke.call_args.kwargs["timeout"] == 12.0
+        assert mock_invoke.call_args.kwargs["options"].timeout == 12.0
 
     async def test_the_aux_lane_runs_on_its_own_sticky_session(self) -> None:
         """A suffixed session id, bound after ``with_structured_output``.
@@ -2030,7 +2050,7 @@ class TestFallbackRunsOnTheOtherProvider:
             "hi",
             fallback=RunnableLambda(_record),
             config=failed_lane_config,
-            fallback_config=fallback_config,
+            options=LLMInvokeOptions(fallback_config=fallback_config),
         )
 
         assert result.content == "from-fallback"
@@ -2056,7 +2076,7 @@ class TestStickyFlipReplayNeverChangesTheAnswer:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert result.content == "what the user watched"
@@ -2074,11 +2094,11 @@ class TestStickyFlipReplayNeverChangesTheAnswer:
             primary,
             [HumanMessage(content="hi")],
             config=_STICKY_LANE,
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert booked_replay.await_count == 1
-        assert booked_replay.await_args.kwargs["cached_tokens"] == 7_900
+        assert booked_replay.await_args.kwargs["usage"]["cached_tokens"] == 7_900
 
 
 class TestFallbackKeepsItsLanesStickySession:
@@ -2101,7 +2121,7 @@ class TestFallbackKeepsItsLanesStickySession:
             [HumanMessage(content="hi")],
             fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
@@ -2116,7 +2136,7 @@ class TestFallbackKeepsItsLanesStickySession:
             [HumanMessage(content="hi")],
             fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1"}),
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         fallback.bind.assert_not_called()
@@ -2147,8 +2167,7 @@ class TestTheInvokeTimeoutIsEnforced:
                 self._hanging_primary(),
                 [HumanMessage(content="hi")],
                 label="comms_agent",
-                timeout=0.05,
-                meter_auxiliary=False,
+                options=LLMInvokeOptions(timeout=0.05, meter_auxiliary=False),
             )
 
 
@@ -2258,7 +2277,7 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
             [HumanMessage(content="hi")],
             fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"}),
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}

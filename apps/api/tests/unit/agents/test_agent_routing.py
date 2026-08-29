@@ -513,7 +513,7 @@ class TestCompletionNudgeWiring:
                 config={"configurable": {"thread_id": "meter-1"}},
             )
 
-        assert mock_invoke.call_args.kwargs["meter_auxiliary"] is False
+        assert mock_invoke.call_args.kwargs["options"].meter_auxiliary is False
 
     def test_the_nudge_node_is_a_declared_routing_destination(self):
         """should_continue can only return "nudge_continue" if the branch declares it;

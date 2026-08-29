@@ -312,10 +312,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         total_cost = await record_llm_call(
             user_id=str(user_id) if user_id else None,
             model_name=str(model_name),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
+            usage=usage,
             root_request_id=str(root_request_id) if root_request_id else None,
             charge_to_budget=True,
             provider_cost=provider_cost,

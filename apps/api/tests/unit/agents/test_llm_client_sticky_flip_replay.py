@@ -58,6 +58,8 @@ class TestStickyFlipReplayAccounting:
     @pytest.mark.regression
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
     async def test_discarded_first_invocation_is_metered(self, mock_record: AsyncMock) -> None:
+        from app.agents.llm.client import LLMInvokeOptions
+
         mock_record.return_value = 0.004
         primary = self._flipping_primary()
 
@@ -72,7 +74,7 @@ class TestStickyFlipReplayAccounting:
                 }
             },
             label="comms_agent",
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         # The first answer is what streamed to the user, so it is what the turn
@@ -82,8 +84,8 @@ class TestStickyFlipReplayAccounting:
         charged = mock_record.await_args.kwargs
         # The DISCARDED invocation is the one being paid for: it is the replay,
         # which is the call that came back warm.
-        assert charged["cached_tokens"] == 9_900
-        assert charged["input_tokens"] == 10_000
+        assert charged["usage"]["cached_tokens"] == 9_900
+        assert charged["usage"]["input_tokens"] == 10_000
         assert charged["root_request_id"] == "r1"
         assert charged["user_id"] == "u1"
         # Priced against what the provider reported serving, not what the run
@@ -98,8 +100,11 @@ class TestStickyFlipReplayAccounting:
         runnable.ainvoke = AsyncMock(
             return_value=_usage_message("warm", prompt=10_000, cached=9_900)
         )
+        from app.agents.llm.client import LLMInvokeOptions
 
-        await ainvoke_llm(runnable, [HumanMessage(content="hi")], meter_auxiliary=False)
+        await ainvoke_llm(
+            runnable, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+        )
 
         assert runnable.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
@@ -108,9 +113,13 @@ class TestStickyFlipReplayAccounting:
     async def test_auxiliary_lane_never_replays(self, mock_record: AsyncMock) -> None:
         """A one-shot helper call has no prior chain — cold IS its steady
         state, so a replay is pure double billing."""
+        from app.agents.llm.client import LLMInvokeOptions
+
         primary = self._flipping_primary()
 
-        await ainvoke_llm(primary, [HumanMessage(content="hi")], meter_auxiliary=True)
+        await ainvoke_llm(
+            primary, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=True)
+        )
 
         assert primary.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
@@ -119,13 +128,15 @@ class TestStickyFlipReplayAccounting:
     async def test_gemini_lane_never_replays(self, mock_record: AsyncMock) -> None:
         """No sticky routing on Gemini: a replay there is a second full-price
         call with no possible upside."""
+        from app.agents.llm.client import LLMInvokeOptions
+
         primary = self._flipping_primary()
 
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "gemini"}},
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert primary.ainvoke.await_count == 1
@@ -137,6 +148,8 @@ class TestStickyFlipReplayAccounting:
     ) -> None:
         """Graph providers stream; without the silent stamp both invocations'
         tokens land in one SSE stream and the user sees two answers."""
+        from app.agents.llm.client import LLMInvokeOptions
+
         mock_record.return_value = 0.0
         primary = self._flipping_primary()
 
@@ -144,7 +157,7 @@ class TestStickyFlipReplayAccounting:
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         first_cfg = primary.ainvoke.await_args_list[0].kwargs["config"]
@@ -164,12 +177,13 @@ class TestStickyFlipReplayAccounting:
                 RuntimeError("429 on the re-send"),
             ]
         )
+        from app.agents.llm.client import LLMInvokeOptions
 
         result = await ainvoke_llm(
             runnable,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            meter_auxiliary=False,
+            options=LLMInvokeOptions(meter_auxiliary=False),
         )
 
         assert result.content == "cold"
