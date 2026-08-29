@@ -1,3 +1,7 @@
+import {
+  COMPOSER_CONSTANTS,
+  useComposerBase,
+} from "@gaia/shared/chat/composer";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -25,7 +29,6 @@ import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { colors } from "@/lib/design-tokens";
 import { haptics } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
-import { COMPOSER_CONSTANTS, useComposerBase } from "@gaia/shared/chat/composer";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
@@ -136,7 +139,10 @@ export function Composer({
 
   // Shared composer base - single source of truth for placeholder/maxRows/maxLength and slash logic
   // Imported from @gaia/shared/chat/composer for web parity
-  const composerBase = useMemo(() => useComposerBase({ initialText: value ?? "" }), []);
+  const composerBase = useMemo(
+    () => useComposerBase({ initialText: value ?? "" }),
+    [],
+  );
   // Use shared constants for web parity: radius 24 (rounded-3xl), bg zinc-800, maxRows 13, etc.
   // Keeping Haptics for mobile feel but aligning styling to web spec.
   const message = value ?? internalMessage;
@@ -152,7 +158,9 @@ export function Composer({
   // Slash command detection via shared useComposerBase + fallback
   // Unified with web's detectSlashCommand / isCommandMode
   const isCommandMode = composerBase.isCommandMode() || trimmed.startsWith("/");
-  const commandQuery = composerBase.getCommandQuery() || (isCommandMode ? trimmed.slice(1).toLowerCase() : "");
+  const commandQuery =
+    composerBase.getCommandQuery() ||
+    (isCommandMode ? trimmed.slice(1).toLowerCase() : "");
   const matchingCommands = DEFAULT_COMMANDS.filter((command) =>
     command.startsWith(commandQuery),
   );
@@ -416,11 +424,7 @@ export function Composer({
                   marginLeft: spacing.xs,
                 }}
               >
-                <AppIcon
-                  icon={Cancel01Icon}
-                  size={14}
-                  color={colors.zinc400}
-                />
+                <AppIcon icon={Cancel01Icon} size={14} color={colors.zinc400} />
               </PressableFeedback>
             )}
           </Animated.View>
@@ -531,11 +535,7 @@ export function Composer({
                 }}
                 accessibilityLabel="Add attachment"
               >
-                <AppIcon
-                  icon={PlusSignIcon}
-                  size={16}
-                  color={colors.zinc400}
-                />
+                <AppIcon icon={PlusSignIcon} size={16} color={colors.zinc400} />
               </Pressable>
             </Animated.View>
 

@@ -176,8 +176,7 @@ export function isValidSlashPosition(
   lastSlashIndex: number,
 ): boolean {
   if (lastSlashIndex < 0) return false;
-  const charBeforeSlash =
-    lastSlashIndex > 0 ? text[lastSlashIndex - 1] : " ";
+  const charBeforeSlash = lastSlashIndex > 0 ? text[lastSlashIndex - 1] : " ";
   const isAtStartOrAfterWhitespace =
     lastSlashIndex === 0 || /\s/.test(charBeforeSlash);
   if (!isAtStartOrAfterWhitespace) return false;
@@ -246,7 +245,15 @@ export function detectSlashCommand(
  * Headless key handling — pure state transition for the slash dropdown.
  * Mirrors web handleSlashCommandKey but without view event.
  */
-export type SlashKey = "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" | "Enter" | "Tab" | "Escape" | string;
+export type SlashKey =
+  | "ArrowUp"
+  | "ArrowDown"
+  | "ArrowLeft"
+  | "ArrowRight"
+  | "Enter"
+  | "Tab"
+  | "Escape"
+  | string;
 
 export interface SlashKeyContext {
   matches: SlashCommandMatch[];

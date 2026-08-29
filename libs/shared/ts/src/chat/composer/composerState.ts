@@ -68,7 +68,10 @@ export interface UseComposerBaseOptions {
   initialCursor?: number;
   getSuggestions?: (query: string) => SlashCommandMatch[];
   tools?: SlashCommandMatch[];
-  onSelect?: (match: SlashCommandMatch, next: { text: string; cursor: number }) => void;
+  onSelect?: (
+    match: SlashCommandMatch,
+    next: { text: string; cursor: number },
+  ) => void;
 }
 
 export interface UseComposerBaseReturn {
@@ -84,8 +87,14 @@ export interface UseComposerBaseReturn {
   selectCategory: (category: string) => void;
   navigateUp: () => void;
   navigateDown: () => void;
-  selectMatch: (match: SlashCommandMatch) => { text: string; cursor: number } | null;
-  selectCurrent: () => { text: string; cursor: number; match: SlashCommandMatch } | null;
+  selectMatch: (
+    match: SlashCommandMatch,
+  ) => { text: string; cursor: number } | null;
+  selectCurrent: () => {
+    text: string;
+    cursor: number;
+    match: SlashCommandMatch;
+  } | null;
   updateDetection: (text: string, cursorPosition: number) => void;
   handleKey: (key: SlashKey) => boolean;
   subscribe: (listener: (state: ComposerState) => void) => () => void;
@@ -258,21 +267,30 @@ export function useComposerBase(
     },
 
     navigateUp: () => {
-      const unlockedCount = getUnlockedCount(state.matches, state.selectedCategory);
+      const unlockedCount = getUnlockedCount(
+        state.matches,
+        state.selectedCategory,
+      );
       setState({
         selectedIndex: clampSelection(-1, state.selectedIndex, unlockedCount),
       });
     },
 
     navigateDown: () => {
-      const unlockedCount = getUnlockedCount(state.matches, state.selectedCategory);
+      const unlockedCount = getUnlockedCount(
+        state.matches,
+        state.selectedCategory,
+      );
       setState({
         selectedIndex: clampSelection(1, state.selectedIndex, unlockedCount),
       });
     },
 
     selectMatch: (match: SlashCommandMatch) => {
-      const textBefore = state.text.substring(0, Math.max(0, state.commandStart));
+      const textBefore = state.text.substring(
+        0,
+        Math.max(0, state.commandStart),
+      );
       const textAfter = state.text.substring(
         state.commandEnd >= 0 ? state.commandEnd : state.text.length,
       );

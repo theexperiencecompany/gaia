@@ -9,36 +9,35 @@
  * logic.
  */
 
+export {
+  type ComposerState,
+  createComposerBase,
+  INITIAL_COMPOSER_STATE,
+  type UseComposerBaseOptions,
+  type UseComposerBaseReturn,
+  useComposerBase,
+} from "./composerState";
 export { COMPOSER_CONSTANTS, type ComposerConstants } from "./constants";
 
 export {
-  useComposerBase,
-  createComposerBase,
-  INITIAL_COMPOSER_STATE,
-  type ComposerState,
-  type UseComposerBaseOptions,
-  type UseComposerBaseReturn,
-} from "./composerState";
-
-export {
-  isCommandMode,
-  getCommandQuery,
-  getMatchingCommands,
-  filterMatchesByCategory,
   buildCategories,
   clampSelection,
+  detectSlashCommand,
+  type EnhancedToolInfo,
+  filterMatchesByCategory,
+  getCommandQuery,
+  getMatchingCommands,
   getNextCategoryIndex,
   getSelectedMatch,
   getUnlockedCount,
-  isValidSlashPosition,
-  detectSlashCommand,
-  handleSlashKey,
   handleSlashCommandKey,
-  type SlashTool,
-  type EnhancedToolInfo,
+  handleSlashKey,
+  isCommandMode,
+  isValidSlashPosition,
   type SlashCommandMatch,
   type SlashDetection,
   type SlashKey,
   type SlashKeyContext,
   type SlashKeyResult,
+  type SlashTool,
 } from "./slash";
