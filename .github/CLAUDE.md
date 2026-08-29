@@ -201,7 +201,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - `nx.json` `defaultBase` is `master` (the single base branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
-  nx.json `installation`, uv 0.8.17, `uvx ruff@<uv.lock version>` in the ruff
+  nx.json `installation`, uv 0.10.6 (same as the Dockerfiles), `uvx ruff@<uv.lock version>` in the ruff
   lane, pnpm/action-setup + docker/login-action by SHA).
   `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float on major
   tags — pin them from a machine with GitHub API access.

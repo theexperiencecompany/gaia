@@ -472,7 +472,7 @@ jobs:
   # One job, not four: each of these tools is seconds of work behind ~40s of
   # runner boot + checkout + uv install, so four separate lanes spent most of
   # their wall-clock on setup and burned four runners to do it. They share the
-  # exact same environment (uv 0.8.17, no dependency install), so they share
+  # exact same environment (uv 0.10.6, no dependency install), so they share
   # one job.
   #
   # Failure isolation is preserved by `continue-on-error` on every tool step

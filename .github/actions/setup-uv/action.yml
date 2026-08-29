@@ -12,7 +12,9 @@ inputs:
   version:
     description: uv version to install (pin; bump with uv.lock)
     required: false
-    default: "0.8.17"
+    # Same uv as the api/voice-agent Dockerfiles. 0.8.x cannot read a lock
+    # that records `exclude-newer-span` (uv.lock is written by >= 0.10).
+    default: "0.10.6"
 runs:
   using: composite
   steps:
