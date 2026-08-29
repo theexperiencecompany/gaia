@@ -8,12 +8,12 @@ automatic fallback so PRs never queue forever when the home box is offline.
 | | |
 |---|---|
 | Host | `gaia-home-server.taila76294.ts.net` (`100.126.190.120` via Tailscale) |
-| User | `aryan` (uid 1001, groups `docker`, `sudo`, `gaia`) |
+| User | `gaia-ci` — dedicated unprivileged runner user; its home holds only runner installs and caches. No sudo. |
 | OS | Ubuntu 24.04.4 LTS (Noble) |
 | CPU | Intel i7-10700K — 8 cores / 16 threads @ 3.8 GHz (5.1 GHz boost) |
 | RAM | 46 GiB |
 | Disk | 457 GiB NVMe (104 GiB free) |
-| Docker | 29.4.1 rootless (`unix:///run/user/1001/docker.sock`, `context=rootless`) |
+| Docker | 29.4.1 rootless per user (`unix:///run/user/<uid>/docker.sock`, `context=rootless`) |
 | Network | Tailscale `blr` relay; outbound HTTPS:443 only — no inbound ports |
 
 ## Install / re-install
@@ -117,13 +117,61 @@ tailscale ssh gaia-home-server "rm -rf ~/actions-runner-gaia"
 gh api repos/theexperiencecompany/gaia/actions/runners --jq '.total_count'
 ```
 
+## Migrating to a new runner user
+
+Everything in `setup.sh`, `prune-cache.sh`, `runner-health.sh` and the hooks
+derives its paths from `$HOME` and its ports from environment, so a second
+user's stack can run beside the old one on the same box during cutover.
+
+Root payload (once, as an admin):
+
+```bash
+sudo useradd -m -s /bin/bash gaia-ci
+grep -q '^gaia-ci:' /etc/subuid || echo 'gaia-ci:200000:65536' | sudo tee -a /etc/subuid /etc/subgid   # rootless docker
+sudo loginctl enable-linger gaia-ci
+# Seed the caches so the first jobs are warm (paths under the OLD user's home):
+sudo rsync -a /home/aryan/ci-cache/ /home/gaia-ci/ci-cache/
+sudo rsync -a /home/aryan/.local/share/pnpm/store/ /home/gaia-ci/.local/share/pnpm/store/
+sudo rsync -a /home/aryan/.cache/uv/ /home/gaia-ci/.cache/uv/
+sudo rsync -a /home/aryan/actions-runner-gaia-home-1/_work/_tool/ /home/gaia-ci/ci-cache/_tool-seed/
+sudo install -d -m 0700 -o gaia-ci -g gaia-ci /home/gaia-ci/.config/gaia-ci
+echo 'GH_TOKEN=<fine-grained PAT: Administration read/write on the repo, for the runners API>' \
+  | sudo install -m 0600 -o gaia-ci -g gaia-ci /dev/stdin /home/gaia-ci/.config/gaia-ci/gh.env
+sudo chown -R gaia-ci:gaia-ci /home/gaia-ci
+```
+
+Then, as `gaia-ci` (`sudo -iu gaia-ci`):
+
+```bash
+dockerd-rootless-setuptool.sh install && docker context use rootless
+mise use -g node@22.23.2 python@3.12 && curl -LsSf https://astral.sh/uv/install.sh | sh
+# The five test images, exported from the old user's daemon (docker save ...):
+for f in ~/ci-cache/images/*.tar; do docker load -i "$f"; done
+# Temporary prefix/labels/ports so nothing collides with the old stack:
+RUNNER_NAME_PREFIX=gaia-ci RUNNER_LABELS=gaia-ci,16core,home-lab LINT_RUNNER_LABELS=gaia-ci-lint,16core,home-lab \
+  SIDECAR_PORT_BASE=28200 NX_CACHE_PORT=4223 \
+  GAIA_SHARED_POSTGRES_PORT=26432 GAIA_SHARED_REDIS_PORT=17379 GAIA_SHARED_MONGO_PORT=38017 \
+  GAIA_SHARED_CHROMA_PORT=19000 GAIA_SHARED_RABBITMQ_PORT=26673 \
+  RUNNER_TOKEN=<token> bash infra/self-hosted-runner/setup.sh
+```
+
+Proof run: `gh workflow run main.yml --ref <branch>` with the workflow pointed
+at the temporary labels, and check the job logs show `/home/gaia-ci` paths and
+the new ports. Then relabel the new instances to the production labels via the
+runners API (`gh api -X POST repos/<owner>/<repo>/actions/runners/<id>/labels
+-f 'labels[]=gaia-home'` and remove the temporary ones), and retire the old
+user's instances: `systemctl --user disable --now 'gaia-runner@*'` as `aryan`,
+then `./config.sh remove --token <token>` in each of its runner directories.
+The ports can go back to the defaults on the next `setup.sh` run once the old
+stack is gone.
+
 ## Security
 
 * **Private repo only.** `theexperiencecompany/gaia` is private — PRs are from trusted collaborators. Never add this runner to a public repo (malicious PRs would execute on your home server).
 * **No inbound firewall rules.** The runner initiates outbound long-poll on 443; Tailscale is only for your SSH maintenance, not for GitHub to reach the runner.
 * **Ephemeral token.** Registration tokens expire in ~1 h. Never commit one; generate on demand.
 * **Work dir isolation.** Each job runs in `~/actions-runner-gaia/_work/<repo>` and is cleaned between jobs. Secrets are masked; use `actions: read` minimal permissions on the probe job.
-* **Docker rootless.** CI jobs run under `aryan` (rootless Docker) — a job cannot escape to host root via Docker socket.
+* **Docker rootless.** CI jobs run under the unprivileged `gaia-ci` user with its own rootless Docker daemon — a job cannot escape to host root via the Docker socket, and it cannot read the owner's home.
 
 ## Shared test services (one container set for every lane)
 

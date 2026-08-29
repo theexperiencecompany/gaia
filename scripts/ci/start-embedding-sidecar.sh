@@ -15,11 +15,20 @@
 set -euo pipefail
 
 RUNNER_INDEX="${RUNNER_INDEX:-0}"
-PORT=$((18200 + RUNNER_INDEX * 100))
+# SIDECAR_PORT_BASE: a second runner user's stack on the same box sets its own
+# base so its sidecars never share a port with this one (setup.sh puts it in
+# the runner unit; hooks/job-started.sh reads the same variable).
+PORT=$(( ${SIDECAR_PORT_BASE:-18200} + RUNNER_INDEX * 100 ))
 URL="http://127.0.0.1:${PORT}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LOG="${GAIA_SIDECAR_LOG:-/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.log}"
-PIDFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
+# Per-user run dir (same rule in scripts/ci/start-embedding-sidecar.sh,
+# stop-embedding-sidecar.sh, shared-test-services.sh, the runner hooks and
+# .github/actions/setup-python-test-env): GitHub-hosted has no
+# RUNNER_LOCAL_CACHE and keeps /tmp.
+RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
+[ -d "$RUNDIR" ] || RUNDIR=/tmp
+LOG="${GAIA_SIDECAR_LOG:-${RUNDIR}/gaia-embedding-sidecar-${RUNNER_INDEX}.log}"
+PIDFILE="${RUNDIR}/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
 
 # A sidecar left behind by an interrupted job would hold the port.
 # Keep-warm (self-hosted): loading the two ONNX models costs 8 s per lane
@@ -34,7 +43,7 @@ PIDFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
 # the stamp is "none", which never matches — a safe cold start. Everything
 # else — a dead pid, a failed health probe, a GitHub-hosted runner —
 # cold-starts as before.
-STAMPFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.stamp"
+STAMPFILE="${RUNDIR}/gaia-embedding-sidecar-${RUNNER_INDEX}.stamp"
 if ! STAMP_TREES="$(git -C "$REPO_ROOT" rev-parse \
     "HEAD:apps/api/app/services/embedding_sidecar" \
     "HEAD:apps/api/app/memory" \
@@ -99,7 +108,7 @@ SIDECAR_TEST_ENV=(
 if [ -n "${GITHUB_ENV:-}" ]; then
   printf '%s\n' "${SIDECAR_TEST_ENV[@]}" >> "$GITHUB_ENV"
 fi
-SERVICES_ENV_FILE="${GAIA_TEST_SERVICES_ENV:-/tmp/gaia-test-services-${RUNNER_INDEX}.env}"
+SERVICES_ENV_FILE="${GAIA_TEST_SERVICES_ENV:-${RUNDIR}/gaia-test-services-${RUNNER_INDEX}.env}"
 if [ -f "$SERVICES_ENV_FILE" ]; then
   grep -vE '^(MEMORY_EMBEDDING_SIDECAR_URL|MEMORY_SIDECAR_RETRY_MAX_WAIT_SECONDS)=' \
     "$SERVICES_ENV_FILE" > "$SERVICES_ENV_FILE.tmp" || true

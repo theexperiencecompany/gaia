@@ -65,9 +65,12 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        LOG="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
+        # Per-user run dir (same rule as scripts/ci/shared-test-services.sh and
+        # the sidecar scripts); GitHub-hosted has no RUNNER_LOCAL_CACHE -> /tmp.
+        RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
+        LOG="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
         nohup bash scripts/ci/start-test-services.sh > "$LOG" 2>&1 < /dev/null &
-        echo "$!" > "/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"
+        echo "$!" > "${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"
         echo "services starting in background (pid $!, log $LOG)"
 
     - name: Sync Python dependencies
@@ -94,14 +97,15 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        PIDF="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"; LOG="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
+        RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"  # see the start step above
+        PIDF="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"; LOG="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
         pid="$(cat "$PIDF")"
         # `wait` only works on children of this shell; poll the pid instead.
         while kill -0 "$pid" 2>/dev/null; do sleep 1; done
         cat "$LOG"
         # The script writes the resolved URLs to GITHUB_ENV itself, but that
         # file is per-step: re-publish from the services env file it wrote.
-        ENVF="/tmp/gaia-test-services-${RUNNER_INDEX:-0}.env"
+        ENVF="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.env"
         [ -f "$ENVF" ] || { echo "::error::service containers did not come up"; exit 1; }
         grep -v '^GAIA_TEST_CONTAINERS=' "$ENVF" >> "$GITHUB_ENV"
 

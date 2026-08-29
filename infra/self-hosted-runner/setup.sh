@@ -3,7 +3,9 @@
 #
 # Host: gaia-home-server.taila76294.ts.net  (100.126.190.120 via Tailscale)
 # OS:   Ubuntu 24.04  —  Intel i7-10700K  16 threads  / 46 GiB  / NVMe / Docker 29.4.1 rootless
-# User: aryan (uid 1001, groups: docker, sudo, gaia)
+# User: a dedicated unprivileged runner user (gaia-ci: rootless Docker, lingering
+#       on, nothing in $HOME but runner installs and caches). Every path below
+#       derives from $HOME, so two users' stacks can coexist during a cutover.
 #
 # Why N instances rather than one:
 #   A runner instance executes exactly ONE job at a time. With a single
@@ -33,6 +35,8 @@
 # Requires: curl, tar, jq, docker. No inbound ports — runners poll GH over 443.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 REPO_URL="https://github.com/theexperiencecompany/gaia"
 REPO_SLUG="theexperiencecompany/gaia"
 # 20 = 11 test runners (gaia-home, instances 1-11) + 9 lint runners
@@ -61,8 +65,8 @@ RUNNER_LABELS="${RUNNER_LABELS:-gaia-home,16core,home-lab}"
 LINT_RUNNER_START="${LINT_RUNNER_START:-12}"
 LINT_RUNNER_LABELS="${LINT_RUNNER_LABELS:-gaia-home-lint,16core,home-lab}"
 RUNNER_GROUP="${RUNNER_GROUP:-default}"
-INSTALL_ROOT="${RUNNER_INSTALL_ROOT:-/home/aryan}"
-LEGACY_DIR="${LEGACY_RUNNER_DIR:-/home/aryan/actions-runner-gaia}"
+INSTALL_ROOT="${RUNNER_INSTALL_ROOT:-$HOME}"
+LEGACY_DIR="${LEGACY_RUNNER_DIR:-$HOME/actions-runner-gaia}"
 # 2.335.1, not latest: 2.336.0 wedges the worker around process spawn/exit
 # (actions/runner#4570; measured here 2026-08-28 as jobs stuck "in_progress"
 # after their step process had exited, both on cancel and on normal exit,
@@ -70,12 +74,29 @@ LEGACY_DIR="${LEGACY_RUNNER_DIR:-/home/aryan/actions-runner-gaia}"
 # disabled below so the pin holds; bump deliberately after checking the issue.
 RUNNER_VERSION="${RUNNER_VERSION:-2.335.1}"
 RUNNER_ARCH="${RUNNER_ARCH:-x64}"
-LOCAL_CACHE="${RUNNER_LOCAL_CACHE:-/home/aryan/ci-cache}"
+LOCAL_CACHE="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}"
+# Per-user run dir for the per-job state that used to live in the shared /tmp
+# (services env files, sidecar pid/stamp/log). Two users' stacks on one box
+# must not read each other's. Same default as scripts/ci/*.sh and the hooks.
+GAIA_CI_RUNDIR="${GAIA_CI_RUNDIR:-$LOCAL_CACHE}"
+# Ports the jobs and hooks read. The defaults are the single-stack values;
+# a second stack on the same box overrides all of them (the runner unit
+# carries whatever was in effect here, see gaia-runner@.service below).
+SIDECAR_PORT_BASE="${SIDECAR_PORT_BASE:-18200}"
+NX_CACHE_PORT="${NX_CACHE_PORT:-4222}"
+GAIA_SHARED_POSTGRES_PORT="${GAIA_SHARED_POSTGRES_PORT:-25432}"
+GAIA_SHARED_REDIS_PORT="${GAIA_SHARED_REDIS_PORT:-16379}"
+GAIA_SHARED_MONGO_PORT="${GAIA_SHARED_MONGO_PORT:-37017}"
+GAIA_SHARED_CHROMA_PORT="${GAIA_SHARED_CHROMA_PORT:-18000}"
+GAIA_SHARED_RABBITMQ_PORT="${GAIA_SHARED_RABBITMQ_PORT:-25673}"
+export GAIA_CI_RUNDIR SIDECAR_PORT_BASE NX_CACHE_PORT \
+  GAIA_SHARED_POSTGRES_PORT GAIA_SHARED_REDIS_PORT GAIA_SHARED_MONGO_PORT \
+  GAIA_SHARED_CHROMA_PORT GAIA_SHARED_RABBITMQ_PORT
 
 # The runner's own PATH must carry the mise-managed Node the workflows expect
 # (pnpm/action-setup shells out to node before setup-node has run; an older
 # Node here surfaces as an opaque ERR_INVALID_ARG_TYPE).
-RUNNER_PATH="${RUNNER_PATH:-/home/aryan/.local/share/mise/installs/node/22.23.2/bin:/home/aryan/.local/share/mise/installs/python/3.12/bin:/home/aryan/.local/bin:/home/aryan/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin}"
+RUNNER_PATH="${RUNNER_PATH:-$HOME/.local/share/mise/installs/node/22.23.2/bin:$HOME/.local/share/mise/installs/python/3.12/bin:$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin}"
 
 # Resolve token: $1 > $RUNNER_TOKEN > $GITHUB_TOKEN (gh CLI fallback)
 TOKEN="${1:-${RUNNER_TOKEN:-${GITHUB_TOKEN:-}}}"
@@ -133,7 +154,7 @@ fi
 # — measured at 69s for actions/cache@v6 alone on the residential uplink.
 # The runner only reads that directory, so scripts/ci/prime-action-archive.sh
 # fills it (here, and nightly from prune-cache.sh after pins move).
-mkdir -p "$LOCAL_CACHE" "${LOCAL_CACHE}/actions-archive"
+mkdir -p "$LOCAL_CACHE" "${LOCAL_CACHE}/actions-archive" "$GAIA_CI_RUNDIR"
 # trivy: main.yml passes skip-setup-trivy on self-hosted (setup-trivy downloads
 # the binary from GitHub releases on every job otherwise). Pin must match the
 # version the workflow's trivy-action expects.
@@ -144,7 +165,7 @@ if [ "$("$HOME/.local/bin/trivy" --version 2>/dev/null | awk '/^Version:/{print 
   curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
     | tar -xzf - -C "$HOME/.local/bin" trivy
 fi
-PRIME_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/ci/prime-action-archive.sh"
+PRIME_SRC="$SCRIPT_DIR/../../scripts/ci/prime-action-archive.sh"
 cp -f "$PRIME_SRC" "${LOCAL_CACHE}/prime-action-archive.sh" 2>/dev/null \
   && GAIA_REPO="$(dirname "$PRIME_SRC")/../.." bash "${LOCAL_CACHE}/prime-action-archive.sh" "${LOCAL_CACHE}/actions-archive" \
   || echo "::warning::action archive not primed (script or gh auth missing)"
@@ -195,6 +216,14 @@ PATH=${RUNNER_PATH}
 MISE_NODE_COREPACK=1
 RUNNER_INDEX=${idx}
 RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+GAIA_CI_RUNDIR=${GAIA_CI_RUNDIR}
+SIDECAR_PORT_BASE=${SIDECAR_PORT_BASE}
+NX_CACHE_PORT=${NX_CACHE_PORT}
+GAIA_SHARED_POSTGRES_PORT=${GAIA_SHARED_POSTGRES_PORT}
+GAIA_SHARED_REDIS_PORT=${GAIA_SHARED_REDIS_PORT}
+GAIA_SHARED_MONGO_PORT=${GAIA_SHARED_MONGO_PORT}
+GAIA_SHARED_CHROMA_PORT=${GAIA_SHARED_CHROMA_PORT}
+GAIA_SHARED_RABBITMQ_PORT=${GAIA_SHARED_RABBITMQ_PORT}
 ACTIONS_RUNNER_HOOK_JOB_STARTED=${LOCAL_CACHE}/hooks/job-started.sh
 ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${LOCAL_CACHE}/hooks/job-completed.sh
 ${NX_REMOTE_ENV}
@@ -325,7 +354,7 @@ install_runner() {
 # Git object files are immutable, so sharing them via hardlinks is safe; the
 # instances still fetch their own refs from GitHub afterwards, incrementally.
 MIRROR="${LOCAL_CACHE}/gaia.git"
-SEED_FROM="${RUNNER_SEED_REPO:-/home/aryan/gaia}"
+SEED_FROM="${RUNNER_SEED_REPO:-$HOME/gaia}"
 
 if [[ ! -d "$MIRROR" ]]; then
   if [[ -d "$SEED_FROM/.git" ]]; then
@@ -383,7 +412,7 @@ warm_workdir() {
   # Use the same node the jobs use: the runner tool cache (node 22.x from
   # actions/setup-node). The system node is 18, which today's pnpm refuses.
   local tool_node
-  tool_node="$(ls -d "$HOME"/actions-runner-gaia-home-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1)"
+  tool_node="$(ls -d "$INSTALL_ROOT"/actions-runner-"${RUNNER_NAME_PREFIX}"-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1)"
   [[ -n "$tool_node" ]] && export PATH="$tool_node:$PATH"
   if [[ ! -f "$dest/pnpm-lock.yaml" ]]; then
     git -C "$dest" checkout --quiet master 2>/dev/null \
@@ -435,7 +464,7 @@ warm_workdir() {
   fi
 }
 
-HOOK_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hooks"
+HOOK_SRC="$SCRIPT_DIR/hooks"
 mkdir -p "${LOCAL_CACHE}/hooks"
 install -m 0755 "$HOOK_SRC"/job-started.sh "$HOOK_SRC"/job-completed.sh "${LOCAL_CACHE}/hooks/" 2>/dev/null \
   && echo "[setup] Job hooks installed to ${LOCAL_CACHE}/hooks" \
@@ -467,6 +496,16 @@ KillSignal=SIGTERM
 TimeoutStopSec=5min
 Environment=RUNNER_INDEX=%i
 Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+# Per-user run dir and ports in effect when setup.sh ran: jobs and hooks read
+# them, so a second user's stack on this box lands on its own files and ports.
+Environment=GAIA_CI_RUNDIR=${GAIA_CI_RUNDIR}
+Environment=SIDECAR_PORT_BASE=${SIDECAR_PORT_BASE}
+Environment=NX_CACHE_PORT=${NX_CACHE_PORT}
+Environment=GAIA_SHARED_POSTGRES_PORT=${GAIA_SHARED_POSTGRES_PORT}
+Environment=GAIA_SHARED_REDIS_PORT=${GAIA_SHARED_REDIS_PORT}
+Environment=GAIA_SHARED_MONGO_PORT=${GAIA_SHARED_MONGO_PORT}
+Environment=GAIA_SHARED_CHROMA_PORT=${GAIA_SHARED_CHROMA_PORT}
+Environment=GAIA_SHARED_RABBITMQ_PORT=${GAIA_SHARED_RABBITMQ_PORT}
 # Must be in the runner PROCESS environment, not .env (.env only feeds jobs):
 # caches downloaded action tarballs box-wide instead of once per instance.
 Environment=ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE=${LOCAL_CACHE}/actions-archive
@@ -482,8 +521,7 @@ echo "[setup] Wrote $UNIT_DIR/gaia-runner@.service"
 # the tier every instance shares. Loopback only; token stays on the host.
 NX_SRV_DIR="${LOCAL_CACHE}/nx-cache-server"
 NX_TOKEN_FILE="${LOCAL_CACHE}/nx-remote.token"
-NX_CACHE_PORT="${NX_CACHE_PORT:-4222}"
-NX_SRV_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/nx-cache-server/server.mjs"
+NX_SRV_SRC="$SCRIPT_DIR/nx-cache-server/server.mjs"
 if [[ -f "$NX_SRV_SRC" ]]; then
   mkdir -p "$NX_SRV_DIR" "${LOCAL_CACHE}/nx-remote"
   install -m 0644 "$NX_SRV_SRC" "$NX_SRV_DIR/server.mjs"
@@ -491,7 +529,7 @@ if [[ -f "$NX_SRV_SRC" ]]; then
     (umask 077; head -c 32 /dev/urandom | base64 | tr -d '/+=\n' > "$NX_TOKEN_FILE")
     echo "[setup] Generated Nx cache token at $NX_TOKEN_FILE"
   fi
-  NODE_BIN="$(command -v node || echo /home/aryan/.local/share/mise/installs/node/22.23.2/bin/node)"
+  NODE_BIN="$(command -v node || echo "$HOME/.local/share/mise/installs/node/22.23.2/bin/node")"
   cat > "$UNIT_DIR/gaia-nx-cache.service" <<UNIT
 [Unit]
 Description=Shared Nx remote cache for the home runner instances
@@ -554,7 +592,7 @@ fi
 # persistent set per box with --restart unless-stopped; each job takes a
 # namespace by RUNNER_INDEX. Installed beside the hooks so they can reset a
 # namespace without a checkout.
-SHARED_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../scripts/ci/shared-test-services.sh"
+SHARED_SRC="$SCRIPT_DIR/../../scripts/ci/shared-test-services.sh"
 if [[ -f "$SHARED_SRC" ]]; then
   install -m 0755 "$SHARED_SRC" "${LOCAL_CACHE}/shared-test-services.sh"
   bash "${LOCAL_CACHE}/shared-test-services.sh" up > /dev/null 2>&1 \
@@ -566,7 +604,7 @@ fi
 # box fast stay size-bounded without anyone remembering to run anything.
 # prune-cache.sh is copied beside the runners so the timer does not depend on
 # a particular checkout existing.
-PRUNE_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prune-cache.sh"
+PRUNE_SRC="$SCRIPT_DIR/prune-cache.sh"
 if [[ -f "$PRUNE_SRC" ]]; then
   install -m 0755 "$PRUNE_SRC" "${LOCAL_CACHE}/prune-cache.sh"
   cat > "$UNIT_DIR/gaia-ci-prune.service" <<UNIT
@@ -576,7 +614,18 @@ Description=Prune the home runner's persistent CI caches to their size budgets
 [Service]
 Type=oneshot
 Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+Environment=RUNNER_INSTALL_ROOT=${INSTALL_ROOT}
+Environment=RUNNER_NAME_PREFIX=${RUNNER_NAME_PREFIX}
+Environment=RUNNER_GLOB=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*
+Environment=GAIA_CI_RUNDIR=${GAIA_CI_RUNDIR}
+Environment=GAIA_SHARED_POSTGRES_PORT=${GAIA_SHARED_POSTGRES_PORT}
+Environment=GAIA_SHARED_REDIS_PORT=${GAIA_SHARED_REDIS_PORT}
+Environment=GAIA_SHARED_MONGO_PORT=${GAIA_SHARED_MONGO_PORT}
+Environment=GAIA_SHARED_CHROMA_PORT=${GAIA_SHARED_CHROMA_PORT}
+Environment=GAIA_SHARED_RABBITMQ_PORT=${GAIA_SHARED_RABBITMQ_PORT}
 Environment=PATH=${RUNNER_PATH}
+# GH_TOKEN=<fine-grained PAT> for the runners API / action archive; optional.
+EnvironmentFile=-%h/.config/gaia-ci/gh.env
 ExecStart=/usr/bin/env bash -c '${LOCAL_CACHE}/prune-cache.sh --apply; ${LOCAL_CACHE}/shared-test-services.sh janitor'
 UNIT
   cat > "$UNIT_DIR/gaia-ci-prune.timer" <<'UNIT'
@@ -610,7 +659,13 @@ Description=Restart home runner listeners that GitHub reports offline
 
 [Service]
 Type=oneshot
+Environment=RUNNER_LOCAL_CACHE=${LOCAL_CACHE}
+Environment=RUNNER_INSTALL_ROOT=${INSTALL_ROOT}
+Environment=RUNNER_NAME_PREFIX=${RUNNER_NAME_PREFIX}
+Environment=RUNNER_GLOB=${INSTALL_ROOT}/actions-runner-${RUNNER_NAME_PREFIX}-*
 Environment=PATH=${RUNNER_PATH}
+# GH_TOKEN=<fine-grained PAT> so `gh api` works with no interactive login; optional.
+EnvironmentFile=-%h/.config/gaia-ci/gh.env
 ExecStart=${LOCAL_CACHE}/runner-health.sh
 UNIT
   cat > "$UNIT_DIR/gaia-runner-health.timer" <<'UNIT'

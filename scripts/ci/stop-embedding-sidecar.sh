@@ -3,7 +3,10 @@
 # Never fails the caller: it runs in teardown positions.
 set -uo pipefail
 RUNNER_INDEX="${RUNNER_INDEX:-0}"
-PIDFILE="/tmp/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
+# Per-user run dir; must match start-embedding-sidecar.sh.
+RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
+[ -d "$RUNDIR" ] || RUNDIR=/tmp
+PIDFILE="${RUNDIR}/gaia-embedding-sidecar-${RUNNER_INDEX}.pid"
 # Self-hosted runners keep the sidecar warm for the next job on this runner
 # (start-embedding-sidecar.sh reuses it while its stamp matches). STOP_SIDECAR=1
 # forces the old behaviour.

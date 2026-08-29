@@ -80,7 +80,12 @@ STALE_HOURS="${GAIA_SHARED_STALE_HOURS:-3}"
 PG_MAX_CONNECTIONS="${GAIA_SHARED_PG_MAX_CONNECTIONS:-1200}"
 PG_SHARED_BUFFERS="${GAIA_SHARED_PG_SHARED_BUFFERS:-512MB}"
 
-env_file_for() { echo "/tmp/gaia-test-services-$1.env"; }
+# Per-user run dir for the per-lane env files (same rule in start/stop-embedding-
+# sidecar.sh, the runner hooks and setup-python-test-env): GitHub-hosted has no
+# RUNNER_LOCAL_CACHE and keeps /tmp; on the box each runner user gets its own.
+RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
+[ -d "$RUNDIR" ] || RUNDIR=/tmp
+env_file_for() { echo "${RUNDIR}/gaia-test-services-$1.env"; }
 
 # `up` runs under a lock. Every lane calls it at job start, so on a cold box
 # several arrive together, all see "unhealthy", and all try to `docker rm -f`
@@ -88,8 +93,7 @@ env_file_for() { echo "/tmp/gaia-test-services-$1.env"; }
 # name conflict. flock makes the first one do the work and the rest find it
 # healthy. The lock file sits in the runner-local cache when there is one
 # (per box, persistent), else /tmp.
-LOCK_FILE="${RUNNER_LOCAL_CACHE:-/tmp}/gaia-shared-test-services.lock"
-[ -d "$(dirname "$LOCK_FILE")" ] || LOCK_FILE="/tmp/gaia-shared-test-services.lock"
+LOCK_FILE="${RUNDIR}/gaia-shared-test-services.lock"
 LOCK_WAIT_SECS=600
 
 die() {

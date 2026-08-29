@@ -47,14 +47,17 @@
 #   CACHE_ROOT=... PNPM_BUDGET_GB=20 bash prune-cache.sh --apply
 set -euo pipefail
 
-CACHE_ROOT="${RUNNER_LOCAL_CACHE:-/home/aryan/ci-cache}"
+CACHE_ROOT="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}"
 PNPM_BUDGET_GB="${PNPM_BUDGET_GB:-24}"   # report-only, see header; the store is ~16 GB warm (2026-08-29)
 UV_BUDGET_GB="${UV_BUDGET_GB:-6}"        # report-only, see header
 NX_BUDGET_GB="${NX_BUDGET_GB:-4}"
 NEXT_BUDGET_GB="${NEXT_BUDGET_GB:-3}"
 DIAG_KEEP="${DIAG_KEEP:-20}"
 DISK_HIGH_PCT="${DISK_HIGH_PCT:-85}"
-RUNNER_GLOB="${RUNNER_GLOB:-/home/aryan/actions-runner-gaia-home-*}"
+# Instances of THIS user only (setup.sh names them <prefix>-<n> under
+# RUNNER_INSTALL_ROOT); a trailing dash on the prefix is tolerated.
+RUNNER_GLOB="${RUNNER_GLOB:-${RUNNER_INSTALL_ROOT:-$HOME}/actions-runner-${RUNNER_NAME_PREFIX:-gaia-home}-*}"
+RUNNER_GLOB="${RUNNER_GLOB//--\*/-*}"
 # Per-instance caches live INSIDE the persistent workspace (actions/checkout
 # runs with clean: false; hooks/job-started.sh's scoped clean spares exactly
 # these paths — see .github/actions/setup-node-pnpm and restore-nextjs-cache).
@@ -244,8 +247,8 @@ USED_PCT="$(df / | awk 'NR==2{print $5}' | tr -d '%')"
 if (( USED_PCT >= DISK_HIGH_PCT )); then
   echo "::warning::/ is at ${USED_PCT}% (threshold ${DISK_HIGH_PCT}%) even after pruning."
   echo "::warning::The CI caches are bounded; the remaining usage is elsewhere on this host."
-  echo "[prune] Largest directories under /home/aryan:"
-  du -sh /home/aryan/* 2>/dev/null | sort -h | tail -8 | sed 's/^/        /'
+  echo "[prune] Largest directories under $HOME:"
+  du -sh "$HOME"/* 2>/dev/null | sort -h | tail -8 | sed 's/^/        /'
 fi
 
 # Keep the read-only action archive in step with the pins in the workflows

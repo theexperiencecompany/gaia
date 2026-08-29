@@ -1,0 +1,79 @@
+#!/usr/sbin/nft -f
+# nftables-gaia-ci.nft — network isolation for the CI runner user.
+#
+# Every packet a process of the runner user (`gaia-ci`) sends is filtered by
+# the uid that sent it. Rootless Docker's network stack (rootlesskit, pasta)
+# runs as that same uid, so container traffic is covered too. Nothing here
+# touches any other user's traffic: the first rule accepts everything that is
+# not from the runner uid.
+#
+# The runner user may reach:
+#   * the public internet (GitHub, its Actions broker, ghcr, PyPI, npm,
+#     Hugging Face, Docker Hub — everything CI installs from);
+#   * its own test services on loopback (shared Postgres/Redis/Mongo/Chroma/
+#     RabbitMQ, the Nx cache server, the embedding sidecars) and the
+#     systemd-resolved stub on 127.0.0.53.
+# It may NOT reach:
+#   * anything else on loopback — the owner's Langfuse, gaia-staging and the
+#     ~100 other services this box hosts;
+#   * the LAN, link-local, or the tailnet (100.64.0.0/10, fd7a:…): gaia-backend
+#     (prod) is a tailnet peer of this box.
+# Inbound: the test services carry default credentials, so they are only
+# reachable from loopback — never from the LAN or the tailnet.
+#
+# CI_UID is substituted by create-runner-user.sh at install time. The two
+# port sets are the single-stack values plus the +10000 overlap values used
+# while a second stack is proven on the same box (see README.md).
+
+define CI_UID = __CI_UID__
+
+table inet gaia_ci {
+  # Loopback TCP ports the runner user may connect to.
+  set ci_tcp {
+    type inet_service
+    flags interval
+    elements = {
+      4222, 4223,                  # nx cache server (single-stack, overlap)
+      25432, 35432,                # shared postgres
+      16379, 26379,                # shared redis
+      37017, 47017,                # shared mongo
+      18000, 28000,                # shared chroma
+      25673, 35673,                # shared rabbitmq (amqp)
+      18200-19400, 28200-29400,    # embedding sidecars: base + RUNNER_INDEX*100
+      5432-5445, 6379-6392,        # per-job services (start-test-services.sh,
+      27017-27030, 8000-8013,      #   used only when the shared set is absent;
+      5672-5685                    #   port = canonical + RUNNER_INDEX)
+    }
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept;
+
+    # Only the runner user is filtered.
+    meta skuid != $CI_UID accept
+
+    # Replies on connections this user already opened.
+    ct state established,related accept
+
+    # Loopback: DNS stub and the user's own services, nothing else.
+    oif "lo" udp dport 53 accept
+    oif "lo" tcp dport 53 accept
+    oif "lo" tcp dport @ci_tcp accept
+    oif "lo" counter drop
+
+    # Private networks, link-local and the tailnet are off limits.
+    ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } counter drop
+    ip6 daddr { fc00::/7, fe80::/10 } counter drop
+
+    # Everything else is the public internet.
+    counter accept
+  }
+
+  chain input {
+    type filter hook input priority filter; policy accept;
+
+    # The test services listen on all interfaces (rootlesskit binds [::]):
+    # loopback only.
+    iif != "lo" tcp dport @ci_tcp counter drop
+  }
+}

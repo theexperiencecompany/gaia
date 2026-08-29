@@ -16,17 +16,20 @@
 # healthy runner is never touched. Needs a gh login on the box (repo scope).
 #
 # Env: RUNNER_REPO (owner/repo, default theexperiencecompany/gaia),
-#      RUNNER_NAME_PREFIX (default gaia-home-), RESTART_GRACE_MIN (default 15).
+#      RUNNER_NAME_PREFIX (default gaia-home; trailing dash optional),
+#      RUNNER_INSTALL_ROOT (default $HOME), RESTART_GRACE_MIN (default 15),
+#      GH_TOKEN (from ~/.config/gaia-ci/gh.env via the unit) or a gh login.
 set -euo pipefail
 
 REPO="${RUNNER_REPO:-theexperiencecompany/gaia}"
-PREFIX="${RUNNER_NAME_PREFIX:-gaia-home-}"
+PREFIX="${RUNNER_NAME_PREFIX:-gaia-home}"; PREFIX="${PREFIX%-}-"
+INSTALL_ROOT="${RUNNER_INSTALL_ROOT:-$HOME}"
 GRACE_MIN="${RESTART_GRACE_MIN:-15}"
 
 # Minutes since this runner's listener last created a broker session.
 session_age_min() {
   local log
-  log="$(ls -t "$HOME/actions-runner-$1/_diag"/Runner_*.log 2>/dev/null | head -n 1)" || return 1
+  log="$(ls -t "$INSTALL_ROOT/actions-runner-$1/_diag"/Runner_*.log 2>/dev/null | head -n 1)" || return 1
   [[ -n "$log" ]] || return 1
   local stamp
   stamp="$(grep -E 'Session created\.' "$log" | tail -n 1 | sed -E 's/^\[([0-9-]+ [0-9:]+)Z.*/\1/')"
@@ -47,7 +50,7 @@ while read -r name; do
   idx="${name#"$PREFIX"}"
   unit="gaia-runner@${idx}.service"
   systemctl --user is-active --quiet "$unit" || { echo "runner-health: $name offline and $unit inactive — leaving it"; continue; }
-  if pgrep -f "actions-runner-${name}/bin/Runner.Worker" >/dev/null; then
+  if pgrep -f "${INSTALL_ROOT}/actions-runner-${name}/bin/Runner.Worker" >/dev/null; then
     echo "runner-health: $name offline per API but a job is running — leaving it"
     continue
   fi

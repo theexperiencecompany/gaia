@@ -6,6 +6,8 @@
 # job-started.sh replaces it if it is dead or unresponsive.
 set -uo pipefail
 IDX="${RUNNER_INDEX:-0}"
+# Per-user run dir; same rule as hooks/job-started.sh and scripts/ci/*.sh.
+RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
 LEFT="$(docker ps -aq --filter "name=gaia-test-.*-${IDX}$" 2>/dev/null || true)"
 # shellcheck disable=SC2086
 [ -n "$LEFT" ] && timeout 60 docker rm -f $LEFT >/dev/null 2>&1
@@ -15,5 +17,5 @@ S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
 # runner slot AND the workflow's concurrency group, which left the next run
 # pending with zero jobs. Better to leave a namespace dirty (the next
 # job-started hook resets it) than to wedge the pool.
-[ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1
+[ -x "$S" ] && [ -f "${RUNDIR}/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1
 exit 0

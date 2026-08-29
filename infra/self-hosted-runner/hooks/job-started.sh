@@ -10,6 +10,12 @@
 # instance's index, before every job. Runs with the job's environment.
 set -uo pipefail
 IDX="${RUNNER_INDEX:-0}"
+# Per-user run dir (same rule in scripts/ci/start-embedding-sidecar.sh,
+# stop-embedding-sidecar.sh, shared-test-services.sh, the runner hooks and
+# .github/actions/setup-python-test-env): GitHub-hosted has no
+# RUNNER_LOCAL_CACHE and keeps /tmp.
+RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
+PORT_BASE="${SIDECAR_PORT_BASE:-18200}"
 echo "::group::runner hygiene (instance ${IDX})"
 # Containers this instance's previous job may have left (names are suffixed
 # with the runner index by start-test-services.sh).
@@ -20,20 +26,20 @@ if [ -n "$LEFT" ]; then
 fi
 # The sidecar is left warm between jobs on purpose (scripts/ci/
 # stop-embedding-sidecar.sh); only a dead or unresponsive one is a leak.
-if [ -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" ]; then
-  pid="$(cat "/tmp/gaia-embedding-sidecar-${IDX}.pid")"
-  if ! kill -0 "$pid" 2>/dev/null || ! curl -sf --max-time 5 "http://127.0.0.1:$((18200 + IDX * 100))/health" >/dev/null 2>&1; then
+if [ -f "${RUNDIR}/gaia-embedding-sidecar-${IDX}.pid" ]; then
+  pid="$(cat "${RUNDIR}/gaia-embedding-sidecar-${IDX}.pid")"
+  if ! kill -0 "$pid" 2>/dev/null || ! curl -sf --max-time 5 "http://127.0.0.1:$((PORT_BASE + IDX * 100))/health" >/dev/null 2>&1; then
     kill "$pid" 2>/dev/null && echo "killed unresponsive embedding sidecar (pid $pid)"
-    rm -f "/tmp/gaia-embedding-sidecar-${IDX}.pid" "/tmp/gaia-embedding-sidecar-${IDX}.stamp"
+    rm -f "${RUNDIR}/gaia-embedding-sidecar-${IDX}.pid" "${RUNDIR}/gaia-embedding-sidecar-${IDX}.stamp"
   fi
 fi
 # Shared-services namespace left by an interrupted job.
 S="${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/shared-test-services.sh"
 # Only when this index actually prepared a namespace (the env file is the marker):
 # a reset is ~10-15s of docker execs, and it was running on every job, twice.
-[ -x "$S" ] && [ -f "/tmp/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
+[ -x "$S" ] && [ -f "${RUNDIR}/gaia-test-services-${IDX}.env" ] && timeout 90 bash "$S" reset "$IDX" >/dev/null 2>&1 && echo "reset shared-services namespace r${IDX}"
 # Stale per-index env file so a new job cannot read old ports.
-rm -f "/tmp/gaia-test-services-${IDX}.env"
+rm -f "${RUNDIR}/gaia-test-services-${IDX}.env"
 # Mutation work trees scripts/test/mutation.sh stages in RAM (/dev/shm/
 # .mutation-<pid>) and cannot clean up after a SIGKILL. They are not scoped
 # to an index, so only ones older than any live run (60 min) are swept; a
@@ -46,7 +52,9 @@ fi
 # so untracked build output would otherwise survive between jobs. Clean it
 # here, sparing only the caches that make the instance fast. Patterns are
 # gitignore-style, so `node_modules` matches at any depth.
-WS="$HOME/actions-runner-gaia-home-${IDX}/_work/gaia/gaia"
+# The runner exports GITHUB_WORKSPACE to its hooks; the fallback mirrors
+# setup.sh's layout (<install root>/actions-runner-<runner name>/_work/gaia/gaia).
+WS="${GITHUB_WORKSPACE:-${RUNNER_INSTALL_ROOT:-$HOME}/actions-runner-${RUNNER_NAME:-gaia-home-${IDX}}/_work/gaia/gaia}"
 if [ -d "$WS/.git" ]; then
   # __pycache__ is kept: wiping it recompiled 812 app + 168 test modules in
   # EVERY xdist worker of every job (+3.5 CPU-s per worker, measured
