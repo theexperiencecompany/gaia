@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import suppress
 from functools import cache
 from typing import Any, TypedDict, TypeVar, cast
 
@@ -67,6 +68,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    extract_message_cost,
     extract_message_model,
     extract_message_usage,
     record_llm_call,
@@ -736,6 +738,7 @@ async def _meter_discarded_replay(
     model_name = extract_message_model(discarded)
     user_id = configurable.get("user_id")
     root_request_id = configurable.get("root_request_id")
+    provider_cost = extract_message_cost(discarded)
     cost = await record_llm_call(
         user_id=str(user_id) if user_id else None,
         model_name=model_name,
@@ -745,11 +748,13 @@ async def _meter_discarded_replay(
         reasoning_tokens=usage["reasoning_tokens"],
         root_request_id=str(root_request_id) if root_request_id else None,
         charge_to_budget=True,
+        provider_cost=provider_cost,
     )
     log.info(
         "llm_call",
         llm_event="llm_call",
         sticky_flip_discarded=True,
+        cost_source="provider" if provider_cost is not None else "table",
         agent_name=label,
         model=model_name,
         user_id=user_id,
@@ -903,6 +908,7 @@ async def ainvoke_llm(
                 label,
                 str(user_id) if user_id else None,
                 generation_id=generation_handler.generation_id if generation_handler else None,
+                provider_cost=generation_handler.cost if generation_handler else None,
             )
 
 
@@ -981,6 +987,31 @@ def _silenced(config: RunnableConfig) -> RunnableConfig:
     return cast(RunnableConfig, merged)
 
 
+def _reported_cost(response: LLMResult) -> float | None:
+    """What OpenRouter charged for this call, from whichever shape carries it.
+
+    Auxiliary one-shots return the parsed schema rather than the ``AIMessage``,
+    so the price has to be read off the raw result like the generation id is.
+    Non-streaming puts ``token_usage`` in ``llm_output``; streaming leaves the
+    figure on the message's ``response_metadata``, where ``ChatOpenRouter``
+    copies it. ``None`` means the lane reported no price and the caller should
+    fall back to the pricing table.
+    """
+    llm_output = getattr(response, "llm_output", None) or {}
+    token_usage = llm_output.get("token_usage") or {}
+    for candidate in (llm_output.get("cost"), token_usage.get("cost")):
+        if candidate is not None:
+            with suppress(TypeError, ValueError):
+                return float(candidate)
+    for generations in getattr(response, "generations", None) or []:
+        for generation in generations:
+            message = getattr(generation, "message", None)
+            cost = extract_message_cost(message) if message is not None else None
+            if cost is not None:
+                return cost
+    return None
+
+
 class _GenerationIdCallback(BaseCallbackHandler):
     """Captures the upstream generation id for auxiliary calls.
 
@@ -994,6 +1025,7 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
+        self.cost: float | None = None
 
     def on_llm_end(
         self,
@@ -1002,6 +1034,7 @@ class _GenerationIdCallback(BaseCallbackHandler):
         # the base signature types them Any and this handler reads none.
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        self.cost = _reported_cost(response)
         llm_output = getattr(response, "llm_output", None) or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
@@ -1042,6 +1075,7 @@ async def _record_auxiliary_usage(
     user_id: str | None,
     *,
     generation_id: str | None = None,
+    provider_cost: float | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1085,11 +1119,17 @@ async def _record_auxiliary_usage(
             cached_tokens=cached_tokens,
             reasoning_tokens=reasoning_tokens,
             charge_to_budget=False,
+            # The handler aggregates per model, so a call that fanned out across
+            # models cannot attribute one price to one of them; only the
+            # single-model case (every real auxiliary call) takes the reported
+            # figure, and the rest fall back to the table.
+            provider_cost=provider_cost if len(handler.usage_metadata) == 1 else None,
         )
         log.info(
             "llm_call",
             llm_event="llm_call",
             background=True,
+            cost_source="provider" if provider_cost is not None else "table",
             agent_name=label,
             model=model_name,
             generation_id=generation_id,

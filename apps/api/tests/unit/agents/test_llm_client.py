@@ -1086,7 +1086,34 @@ class TestMeterDiscardedReplay:
             "reasoning_tokens": 7,
             "root_request_id": "r-1",
             "charge_to_budget": True,
+            # The fixture message carries no reported price; a real OpenRouter
+            # reply does, and it is what gets booked (see the test below).
+            "provider_cost": None,
         }
+
+    async def test_the_price_openrouter_reported_is_what_gets_booked(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """A discarded replay still cost real money, and the pricing table gets
+        that number wrong by more than 10x depending on which upstream served
+        it. When the reply says what it cost, that figure is what is booked."""
+        config: RunnableConfig = {"configurable": {"user_id": "u-1", "root_request_id": "r-1"}}
+        discarded = AIMessage(
+            content="discarded",
+            usage_metadata={
+                "input_tokens": 10_000,
+                "output_tokens": 40,
+                "total_tokens": 10_040,
+                "input_token_details": {"cache_read": 100},
+                "output_token_details": {"reasoning": 7},
+            },
+            response_metadata={"model_name": "served/model", "cost": 0.0037},
+        )
+
+        await _meter_discarded_replay(discarded, config, "the_judge")
+
+        assert booked_replay.await_args is not None
+        assert booked_replay.await_args.kwargs["provider_cost"] == 0.0037
 
     async def test_a_discarded_non_message_is_not_booked(self, booked_replay: AsyncMock) -> None:
         """Structured runnables return a schema instance, which carries no usage
@@ -1662,6 +1689,8 @@ class TestRecordAuxiliaryUsage:
             "cached_tokens": 40,
             "reasoning_tokens": 7,
             "charge_to_budget": False,
+            # This lane reported no price, so metering falls back to the table.
+            "provider_cost": None,
         }
 
     async def test_a_call_that_burned_no_tokens_is_not_booked(self) -> None:

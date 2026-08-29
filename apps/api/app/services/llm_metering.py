@@ -51,6 +51,7 @@ async def record_llm_call(
     reasoning_tokens: int = 0,
     root_request_id: str | None = None,
     charge_to_budget: bool,
+    provider_cost: float | None = None,
 ) -> float:
     """Price one model call and record its spend + tokens. Returns the USD cost.
 
@@ -67,6 +68,27 @@ async def record_llm_call(
     write failure degrades cost to 0.0 and never fails a model call that
     already succeeded.
     """
+    # What the provider says it charged always wins over what we would have
+    # guessed. MODEL_PRICING carries ONE rate per model, but OpenRouter routes
+    # each call to whichever upstream is free and their rates differ by more
+    # than 10x (measured 2026-08-29: 0.030-0.440 USD per million input tokens
+    # across the pool for a single model id). Pricing from the table therefore
+    # mis-states every call in one direction or the other, and it under-stated
+    # total spend by 44% over a 1,486-call window. The table stays as the
+    # fallback for providers/lanes that report no cost.
+    if provider_cost is not None and provider_cost >= 0.0:
+        total_cost = float(provider_cost)
+        return await _record(
+            user_id=user_id,
+            total_cost=total_cost,
+            root_request_id=root_request_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            reasoning_tokens=reasoning_tokens,
+            charge_to_budget=charge_to_budget,
+        )
+
     try:
         cost = calculate_token_cost(
             model_name=model_name,
@@ -91,6 +113,35 @@ async def record_llm_call(
         )
         total_cost = 0.0
 
+    return await _record(
+        user_id=user_id,
+        total_cost=total_cost,
+        root_request_id=root_request_id,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        reasoning_tokens=reasoning_tokens,
+        charge_to_budget=charge_to_budget,
+    )
+
+
+async def _record(
+    *,
+    user_id: str | None,
+    total_cost: float,
+    root_request_id: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int,
+    reasoning_tokens: int,
+    charge_to_budget: bool,
+) -> float:
+    """Write one already-priced call to the budget windows and the durable rollup.
+
+    Split out so the provider-reported and table-priced paths record through
+    exactly the same seam — the only difference between them is where the
+    dollar figure came from.
+    """
     try:
         await record_model_call_usage(
             user_id,
@@ -159,6 +210,30 @@ def extract_message_usage(message: AIMessage) -> TokenUsage:
         cached_tokens=cached_tokens,
         reasoning_tokens=reasoning_tokens,
     )
+
+
+def extract_message_cost(message: AIMessage) -> float | None:
+    """What OpenRouter says this call actually cost, or ``None`` if it did not say.
+
+    OpenRouter returns a real ``usage.cost`` only when the request carries
+    ``usage: {"include": true}`` (see ``_usage_accounting_kwargs`` in
+    ``agents/llm/client``); ``ChatOpenRouter`` copies it to
+    ``response_metadata["cost"]``. Lanes that are not OpenRouter — direct
+    Gemini, the sim lane — never populate it, and those keep falling back to
+    :func:`app.config.model_pricing.calculate_token_cost`.
+
+    A zero is a real answer (free/promotional routes exist) and is returned as
+    ``0.0``; only a missing or unparseable value returns ``None``.
+    """
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    raw = resp_meta.get("cost")
+    if raw is None:
+        return None
+    try:
+        cost = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return cost if cost >= 0.0 else None
 
 
 def extract_message_model(message: AIMessage) -> str:

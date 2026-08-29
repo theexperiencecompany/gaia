@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.services.llm_metering import (
     extract_generation_id,
+    extract_message_cost,
     extract_message_model,
     extract_message_usage,
     record_llm_call,
@@ -261,3 +262,103 @@ def test_a_response_with_no_generation_id_is_none_rather_than_empty() -> None:
     assert extract_generation_id(AIMessage(content="hi")) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={})) is None
     assert extract_generation_id(AIMessage(content="hi", response_metadata={"id": ""})) is None
+
+
+# --- the price the provider reported ------------------------------------------ #
+#
+# MODEL_PRICING holds ONE rate per model, but OpenRouter routes each call to
+# whichever upstream is free and the pool for a single model id spans
+# 0.030-0.440 USD per million input tokens. Pricing from the table mis-states
+# every call; measured across 1,486 calls it under-stated real spend by 44%.
+# So when the provider says what it charged, that figure has to win.
+
+
+def test_the_reported_price_is_read_from_the_response() -> None:
+    assert (
+        extract_message_cost(AIMessage(content="hi", response_metadata={"cost": 0.0037})) == 0.0037
+    )
+
+
+def test_a_reported_price_of_zero_is_a_real_answer_not_a_missing_one() -> None:
+    # Free and promotional routes exist. Returning None here would send the
+    # caller back to the pricing table and invent a charge that never happened.
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": 0})) == 0.0
+
+
+def test_a_response_with_no_price_reports_none_so_the_table_is_used() -> None:
+    assert extract_message_cost(AIMessage(content="hi")) is None
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={})) is None
+
+
+def test_an_unparseable_price_falls_back_rather_than_raising() -> None:
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": "n/a"})) is None
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: AsyncMock) -> None:
+    cost = await record_llm_call(
+        user_id="u1",
+        model_name="deepseek/deepseek-v4-flash",
+        input_tokens=73_093,
+        output_tokens=390,
+        cached_tokens=0,
+        charge_to_budget=True,
+        provider_cost=0.0037,
+    )
+
+    assert cost == 0.0037
+    price.assert_not_called()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1] == 0.0037
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_free_call_is_booked_as_free_not_repriced(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    cost = await record_llm_call(
+        user_id="u1",
+        model_name="deepseek/deepseek-v4-flash",
+        input_tokens=100,
+        output_tokens=20,
+        charge_to_budget=False,
+        provider_cost=0.0,
+    )
+
+    assert cost == 0.0
+    price.assert_not_called()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1] == 0.0
+
+
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_lane_that_reports_no_price_still_uses_the_table(
+    price: MagicMock, usage: AsyncMock
+) -> None:
+    # Direct Gemini and the sim lane never report a price; they must keep
+    # working exactly as before.
+    cost = await record_llm_call(
+        user_id="u1",
+        model_name="gemini-3.1-flash-lite",
+        input_tokens=100,
+        output_tokens=20,
+        charge_to_budget=True,
+        provider_cost=None,
+    )
+
+    assert cost == 0.25
+    price.assert_called_once()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1] == 0.25
