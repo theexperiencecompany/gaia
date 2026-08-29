@@ -61,6 +61,16 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             }
         )
 
+    async def find_stale_executing(self, cutoff: datetime) -> list[ReminderDocument]:
+        """Reminders wedged in EXECUTING since before ``cutoff`` — the recovery
+        sweep's re-arm candidates (a worker died mid-fire)."""
+        return await self._find(
+            {
+                "status": ReminderStatus.EXECUTING.value,
+                "updated_at": {"$lt": cutoff},
+            }
+        )
+
     # ----------------------------------------------------------------- writes
 
     async def claim_for_execution(

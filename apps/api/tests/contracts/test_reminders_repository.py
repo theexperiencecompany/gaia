@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import uuid
 
+from bson import ObjectId
 import pytest
 
 from app.db.repositories.reminders import RemindersRepository
@@ -150,6 +151,34 @@ class TestRemindersScheduler:
         assert await repo.claim_for_execution(rem.id, expected_scheduled_at=first_run) is False
         # ...and the rejection leaves tomorrow's occurrence claimable.
         assert await repo.claim_for_execution(rem.id, expected_scheduled_at=next_run) is True
+
+    async def test_find_stale_executing_returns_only_wedged_rows(self, repo, raw_collection):
+        """The recovery sweep's candidates: EXECUTING since before the cutoff.
+
+        A claim flips SCHEDULED -> EXECUTING with no lease. If the worker dies
+        before re-arming (a rolling deploy SIGKILLs it, or the job is cancelled
+        and its retry finds the row already claimed), the row stays EXECUTING
+        forever — and ``find_pending_before`` filters on ``status="scheduled"``,
+        so nothing can ever see it again. The reminder simply never fires.
+        """
+        now = datetime.now(UTC)
+        wedged = await repo.create(_reminder(status=ReminderStatus.EXECUTING))
+        # ``_insert`` always stamps updated_at=now, so age the wedged row directly.
+        await raw_collection.update_one(
+            {"_id": ObjectId(wedged.id)}, {"$set": {"updated_at": now - timedelta(hours=2)}}
+        )
+        # Executing but only just claimed — a live run, must not be reaped.
+        await repo.create(_reminder(status=ReminderStatus.EXECUTING))
+        # Old but not executing — not a candidate.
+        aged_scheduled = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
+        await raw_collection.update_one(
+            {"_id": ObjectId(aged_scheduled.id)},
+            {"$set": {"updated_at": now - timedelta(hours=2)}},
+        )
+
+        stale = await repo.find_stale_executing(now - timedelta(hours=1))
+
+        assert [r.id for r in stale] == [wedged.id]
 
     async def test_claim_without_a_pin_still_claims(self, repo):
         """Jobs enqueued before the stamp existed carry none — a deploy must not

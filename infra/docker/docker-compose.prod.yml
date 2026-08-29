@@ -132,6 +132,15 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    # Must exceed uvicorn's --timeout-graceful-shutdown (30s) above, or that
+    # flag is dead config: Swarm's default is 10s, so it SIGKILLed the task
+    # while uvicorn was still waiting out its own window. Long-lived SSE and
+    # WebSocket connections never close on their own, so the drained task
+    # always sat in that wait — and the background chat turn that
+    # `chat.py` deliberately keeps running after a client disconnect was
+    # killed before `_finalize_stream` could persist it. The user's own
+    # message vanished, and the 10-minute turn-dedup key blocked resending it.
+    stop_grace_period: 40s
     deploy:
       replicas: 1
       update_config:
@@ -196,12 +205,15 @@ services:
         aliases:
           - arq_worker
     healthcheck:
-      # Reads arq's own liveness key (arq:health — refreshed from the poll loop
-      # with a ~31s TTL, so it's gone within ~31s if the loop wedges). This is
-      # what `arq --check` asserts internally, but without importing the app:
-      # a healthcheck runs outside the entrypoint, so it has no Infisical creds
-      # and a full app import dies in settings bootstrap — which silently rolled
-      # the worker back on every deploy. The probe touches only Redis.
+      # Reads THIS worker's own liveness key (arq:health:<hostname>, refreshed
+      # from its poll loop with a ~31s TTL, so it's gone within ~31s if the loop
+      # wedges). This is what `arq --check` asserts internally, but without
+      # importing the app: a healthcheck runs outside the entrypoint, so it has
+      # no Infisical creds and a full app import dies in settings bootstrap —
+      # which silently rolled the worker back on every deploy. The probe touches
+      # only Redis. Keyed per worker because the probe runs inside each
+      # container: one shared key answers "is ANY worker alive", which leaves a
+      # wedged worker green forever behind its healthy siblings.
       test: ["CMD", "python", "scripts/arq_healthcheck.py"]
       interval: 30s
       timeout: 10s
@@ -212,6 +224,13 @@ services:
       # ran a single job — and each restart re-enqueued the scheduler backlog,
       # so the queue grew unboundedly. Keep this above real boot time.
       start_period: 300s
+    # A cancelled job's cleanup (Mongo persist, RabbitMQ publish, WS broadcast)
+    # plus unified_shutdown does real I/O, and arq waits for it before exiting.
+    # Swarm's 10s default SIGKILLed that, which strands the job behind arq's
+    # `arq:in-progress:<job_id>` key — TTL job_timeout + 10 = 1810s — so no
+    # other worker can claim it for 30 minutes. Reminders fire late, workflow
+    # runs stall, and `keep_result = 0` means nothing records that it happened.
+    stop_grace_period: 60s
     deploy:
       replicas: 1
       update_config:

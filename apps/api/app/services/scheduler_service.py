@@ -36,6 +36,12 @@ class TriggerConfigLike(Protocol):
     next_run: datetime | None
 
 
+# How long a task may sit in EXECUTING before the reaper assumes its worker died.
+# Comfortably above the ARQ job timeout so a genuinely long run is never reaped
+# out from under itself.
+STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
+
+
 def parse_occurrence_stamp(raw: object, task_id: str) -> datetime | None:
     """The occurrence a scheduled job was armed for, or None when unstamped.
 
@@ -228,16 +234,8 @@ class BaseSchedulerService(ABC):
             log.error("Task ID is None, cannot handle recurring task")
             return
 
-        # Recurrence is computed in the task's own timezone. Reminders store it on
-        # the task itself; workflows store it on trigger_config (the zone the cron
-        # was authored against) which therefore wins. Neither set => UTC.
-        # Both are read off the BaseScheduledTask by name because only some
-        # subclasses declare them.
-        user_timezone: str | None = getattr(task, "timezone", None)
         trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
-        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
-        if trigger_timezone:
-            user_timezone = trigger_timezone
+        user_timezone = self._recurrence_timezone(task)
         log.set(scheduler_recurrence_timezone=user_timezone)
 
         # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
@@ -253,6 +251,67 @@ class BaseSchedulerService(ABC):
                 {"occurrence_count": occurrence_count},
             )
             log.info("Completed recurring task", id=task.id)
+
+    @staticmethod
+    def _recurrence_timezone(task: BaseScheduledTask) -> str | None:
+        """The zone a task's cron is evaluated in; None means UTC.
+
+        Reminders store it on the task itself; workflows store it on
+        trigger_config (the zone the cron was authored against), which therefore
+        wins. Both are read by name because only some subclasses declare them.
+        """
+        trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
+        return trigger_timezone or getattr(task, "timezone", None)
+
+    async def reap_stale_executing(self) -> int:
+        """Recover tasks wedged in EXECUTING past the staleness threshold.
+
+        A fire claims a task (scheduled -> executing) with no lease on the claim.
+        If the worker dies before re-arming — a rolling deploy SIGKILLs it, or
+        arq cancels the job and the retry finds the row already claimed — the row
+        stays EXECUTING forever. Nothing can see it again: the due-scan filters
+        on ``status="scheduled"``, and the claim gate can never match it. The
+        reminder or workflow simply never fires, with no error and no retry.
+
+        Returns the number of tasks reaped.
+        """
+        now = datetime.now(UTC)
+        cutoff = now - STALE_EXECUTING_THRESHOLD
+        reaped = 0
+
+        for task in await self.find_stale_executing(cutoff):
+            if not task.id:
+                continue
+            schedule_tz = Timezone.parse(self._recurrence_timezone(task))
+            # A one-shot has no repeat: return it to SCHEDULED at its original
+            # time so the due-scan picks it up on the next pass, rather than
+            # dropping it for want of a next occurrence.
+            next_run = get_next_run_time(task.repeat, now, schedule_tz) if task.repeat else None
+
+            update_fields: dict[str, Any] = {"scheduled_at": next_run or task.scheduled_at}
+            trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+            if next_run is not None and trigger_config is not None:
+                update_fields["trigger_config.next_run"] = next_run
+
+            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
+            rearm_at = next_run or task.scheduled_at
+            if rearm_at is not None:
+                await self.reschedule_task(task.id, rearm_at)
+
+            updated_at = getattr(task, "updated_at", None)
+            if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=UTC)
+            log.warning(
+                "Reaped task stuck in EXECUTING; reset to SCHEDULED",
+                task_id=task.id,
+                scheduler_class=self.__class__.__name__,
+                stuck_seconds=int((now - updated_at).total_seconds()) if updated_at else -1,
+                next_run=rearm_at,
+            )
+            reaped += 1
+
+        return reaped
 
     @staticmethod
     def _should_continue_recurring(
@@ -414,6 +473,10 @@ class BaseSchedulerService(ABC):
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""
+
+    @abstractmethod
+    async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
+        """Tasks left in EXECUTING since before ``cutoff`` — the reaper's candidates."""
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:

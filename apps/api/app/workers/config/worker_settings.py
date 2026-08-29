@@ -43,7 +43,11 @@ class WorkerSettings:
     # ~8 the queue grows without bound. Bursts above 10 are meant to queue.
     # Concurrency here is bounded by worker memory — each job holds agent
     # graphs and LLM contexts — so raise the container limit before raising it.
-    max_jobs = 10
+    #
+    # PER PROCESS. Running M workers multiplies the fleet ceiling to 10 x M
+    # without serving more load, so scaling out means lowering ARQ_MAX_JOBS —
+    # see the setting for the Postgres connection ceiling that bounds it.
+    max_jobs = settings.ARQ_MAX_JOBS
     job_timeout = 1800  # 30 minutes
     keep_result = 0  # Don't keep results in Redis
     log_results = True

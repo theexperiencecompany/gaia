@@ -158,6 +158,22 @@ class CommonSettings(BaseAppSettings):
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
     # ----------------------------------------------
+    # ARQ worker
+    # ----------------------------------------------
+    # Concurrent jobs PER WORKER. The 10 is sized for a single worker (mean task
+    # 10.9s at 0.72 tasks/s needs ~8 concurrent by Little's Law); being a
+    # per-process cap, M workers give a fleet ceiling of 10 x M — which is not
+    # more throughput, just more simultaneous load on shared limits. Scaling the
+    # worker out therefore means scaling this DOWN (~ceil(8/M)), which is why it
+    # is configurable rather than a literal.
+    #
+    # Postgres is the wall: each worker opens SQLAlchemy's pool (pool_size=5 +
+    # max_overflow=10) PLUS the LangGraph checkpointer pool (max_size=20) = 35
+    # connections, against a default max_connections of 100. Raise
+    # max_connections before adding the third worker, or connections get refused.
+    ARQ_MAX_JOBS: int = 10
+
+    # ----------------------------------------------
     # Crawl4AI (headless-browser scraping)
     # ----------------------------------------------
     # Process-wide cap on concurrent Chromium instances (see constants/search.py

@@ -33,6 +33,7 @@ class ConcreteSchedulerService(BaseSchedulerService):
         self.mock_update_task_status = AsyncMock(return_value=True)
         self.mock_get_pending_task = AsyncMock(return_value=[])
         self.mock_claim_task = AsyncMock(return_value=True)
+        self.mock_find_stale_executing = AsyncMock(return_value=[])
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         return await self.mock_get_task(task_id, user_id)
@@ -51,6 +52,9 @@ class ConcreteSchedulerService(BaseSchedulerService):
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
+
+    async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
+        return await self.mock_find_stale_executing(cutoff)
 
     async def claim_task_for_execution(
         self, task_id: str, expected_occurrence: datetime | None = None
@@ -224,6 +228,50 @@ class TestRescheduleTask:
 # ---------------------------------------------------------------------------
 # process_task_execution
 # ---------------------------------------------------------------------------
+
+
+class TestReapStaleExecuting:
+    """A claim with no lease needs a reaper, or a dead worker wedges a task forever."""
+
+    async def test_a_wedged_recurring_task_is_returned_to_scheduled_and_rearmed(
+        self, service, recurring_task
+    ):
+        """The claim flips SCHEDULED -> EXECUTING and nothing releases it.
+
+        If the worker is SIGKILLed mid-run (an ordinary rolling deploy), or arq
+        cancels the job and the retry finds the row already claimed, the row
+        stays EXECUTING. The due-scan filters on ``status="scheduled"``, so
+        nothing can ever see it again and the task simply never fires.
+        """
+        recurring_task.status = ScheduledTaskStatus.EXECUTING
+        service.mock_find_stale_executing.return_value = [recurring_task]
+        mock_job = MagicMock(job_id="rearmed")
+        service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
+
+        with patch(
+            "app.services.scheduler_service.get_next_run_time",
+            return_value=datetime.now(UTC) + timedelta(days=1),
+        ):
+            reaped = await service.reap_stale_executing()
+
+        assert reaped == 1
+        statuses = [call[0][1] for call in service.mock_update_task_status.call_args_list]
+        assert ScheduledTaskStatus.SCHEDULED in statuses
+
+    async def test_a_wedged_one_shot_is_rearmed_at_its_original_time(self, service, sample_task):
+        """A one-shot has no next occurrence — it must go back to SCHEDULED at the
+        time it was armed for, not be dropped for want of a cron expression."""
+        sample_task.status = ScheduledTaskStatus.EXECUTING
+        service.mock_find_stale_executing.return_value = [sample_task]
+        service.arq_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+
+        assert await service.reap_stale_executing() == 1
+        statuses = [call[0][1] for call in service.mock_update_task_status.call_args_list]
+        assert ScheduledTaskStatus.SCHEDULED in statuses
+
+    async def test_nothing_stale_reaps_nothing(self, service):
+        assert await service.reap_stale_executing() == 0
+        service.mock_update_task_status.assert_not_awaited()
 
 
 class TestProcessTaskExecution:

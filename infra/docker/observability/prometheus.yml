@@ -41,9 +41,19 @@ scrape_configs:
     static_configs:
       - targets: ["rabbitmq:15692"]
 
+  # Every worker TASK, not the service VIP. Each worker runs its own in-process
+  # prometheus_client registry, so scraping the load-balanced `arq_worker` name
+  # round-robins between replicas and feeds one time series from N independent
+  # counters — rate() then sees a reset on almost every scrape, and
+  # `up{job="arq_worker"} < 1` stays green while N-1 workers are down.
+  # `tasks.<service>` is Swarm's DNS name that resolves to every task's IP, so
+  # dns_sd_configs yields one target per replica with its own `instance` label.
+  # Correct at one replica too: the record resolves to that single task.
   - job_name: arq_worker
-    static_configs:
-      - targets: ["arq_worker:9100"]
+    dns_sd_configs:
+      - names: ["tasks.arq_worker"]
+        type: A
+        port: 9100
 
   # livekit-agents worker metrics (lk_agents_active_job_count, worker load,
   # job/process gauges). The service is scaled to 0 by default, so this target

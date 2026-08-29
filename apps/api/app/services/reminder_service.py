@@ -170,6 +170,10 @@ class ReminderScheduler(BaseSchedulerService):
         except Exception as e:
             return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
 
+    async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
+        """Reminders wedged in EXECUTING since before ``cutoff``."""
+        return list(await reminder_repository.find_stale_executing(cutoff))
+
     async def claim_task_for_execution(
         self, task_id: str, expected_occurrence: datetime | None = None
     ) -> bool:
