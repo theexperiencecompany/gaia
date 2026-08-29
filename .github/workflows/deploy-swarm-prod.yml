@@ -89,6 +89,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Checkout gaia-infra (private)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: theexperiencecompany/gaia-infra
+          ref: ${{ vars.GAIA_INFRA_REF || 'v1' }}
+          ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
+          path: .infra
+          persist-credentials: false
+
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
@@ -119,16 +128,16 @@ jobs:
           # carry a content hash: a changed config file produces a new config
           # object that services roll onto. Compute it over all config files.
           OBS_CFG_HASH=$(cat \
-            infra/docker/observability/prometheus.yml \
-            infra/docker/observability/loki-config.yaml \
-            infra/docker/observability/promtail-config.yaml \
-            infra/docker/observability/blackbox.yml \
-            infra/docker/observability/rabbitmq-enabled-plugins \
+            .infra/docker/observability/prometheus.yml \
+            .infra/docker/observability/loki-config.yaml \
+            .infra/docker/observability/promtail-config.yaml \
+            .infra/docker/observability/blackbox.yml \
+            .infra/docker/observability/rabbitmq-enabled-plugins \
             | sha256sum | cut -c1-12)
           export OBS_CFG_HASH
           docker --context prod stack deploy \
             --with-registry-auth \
-            -c infra/docker/docker-compose.prod.yml \
+            -c .infra/docker/docker-compose.prod.yml \
             gaia-prod
 
       - name: Wait for convergence

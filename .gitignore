@@ -199,3 +199,6 @@ piolium/
 # Test impact selection artifacts (scripts/ci/test-impact.py)
 apps/api/.test-impact/
 .test-impact-map/
+
+# Private prod infra checked out by CI (theexperiencecompany/gaia-infra)
+/.infra/
