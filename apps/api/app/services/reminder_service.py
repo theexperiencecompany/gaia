@@ -170,6 +170,10 @@ class ReminderScheduler(BaseSchedulerService):
         except Exception as e:
             return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
 
+    async def claim_task_for_execution(self, task_id: str) -> bool:
+        """Claim this reminder for one fire; False if another worker already has it."""
+        return await reminder_repository.claim_for_execution(task_id)
+
     async def update_task_status(
         self,
         task_id: str,

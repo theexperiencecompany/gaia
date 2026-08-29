@@ -173,6 +173,10 @@ class AsyncRedisCommands(Protocol):
         """Set a TTL in seconds on an existing key."""
         ...
 
+    async def ttl(self, name: str) -> int:
+        """Seconds left on a key — -1 when it has no TTL, -2 when it is gone."""
+        ...
+
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
         ...

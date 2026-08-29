@@ -580,7 +580,7 @@ async def execute_workflow_by_id(
                     )
                     expected_next_run = None
             if not (
-                await scheduler.claim_scheduled_for_execution(
+                await scheduler.claim_task_for_execution(
                     workflow_id, expected_next_run=expected_next_run
                 )
             ):

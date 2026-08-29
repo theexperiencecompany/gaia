@@ -247,7 +247,7 @@ class TestWorkerRejectsStaleFire:
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
         claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
+        scheduler.claim_task_for_execution = AsyncMock(
             side_effect=_gate_claim(workflow, claim_calls)
         )
 
@@ -291,7 +291,7 @@ class TestWorkerRejectsStaleFire:
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
         claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
+        scheduler.claim_task_for_execution = AsyncMock(
             side_effect=_gate_claim(workflow, claim_calls)
         )
         context = {"trigger_type": "schedule", "scheduled_for": int(old_fire.timestamp())}

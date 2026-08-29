@@ -50,6 +50,7 @@ from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
     STREAM_EVENTS_MAXLEN,
     STREAM_EVENTS_PREFIX,
+    STREAM_LIVENESS_REFRESH_AFTER,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
@@ -250,6 +251,39 @@ class StreamManager:
             chunk: SSE-formatted chunk to publish
         """
         await cls._publish(stream_id, chunk)
+        await cls._touch_liveness(stream_id)
+
+    @classmethod
+    async def _touch_liveness(cls, stream_id: str) -> None:
+        """Keep the resume and cancel keys alive for as long as the turn emits frames.
+
+        A frame is the turn's proof of life, so every frame has to extend all
+        three of its keys. Hanging that off ``update_progress`` instead was the
+        bug: that is a comms-loop call, and once comms hands off to the executor
+        the turn parks in ``await_executor_done`` (30 minutes) while every later
+        frame arrives through ``publish_chunk``. Past STREAM_TTL the event log
+        was still being refreshed while progress and the resume index had
+        quietly lapsed — so a reloading client was told no turn was running (and
+        marked the user's own message failed), and Stop returned "Stream not
+        found" without ever setting the cancel signal.
+
+        EXPIRE, never SET: a finished turn deletes these deliberately, and
+        re-creating them here would resurrect a stream that already sent [DONE].
+        EXPIRE on a missing key is a no-op, so that stays final.
+
+        The TTL read is the throttle — it keeps the common path to one cheap
+        command per frame and only pays for the refresh once per half-life.
+        """
+        if not redis_cache.redis:
+            return
+        progress_key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
+        ttl = await redis_cache.redis.ttl(progress_key)
+        if ttl < 0 or ttl > STREAM_LIVENESS_REFRESH_AFTER:
+            return
+        await redis_cache.redis.expire(progress_key, STREAM_TTL)
+        progress_data = await redis_cache.get(progress_key)
+        if progress_data:
+            await cls._refresh_active_index(progress_data)
 
     @classmethod
     async def subscribe_stream(

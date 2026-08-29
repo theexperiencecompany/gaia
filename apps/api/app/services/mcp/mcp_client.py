@@ -1829,17 +1829,27 @@ class MCPClient:
 
         Uses stored tokens to reconnect if not already connected in memory.
         Connection status checked against MongoDB user_integrations.
+
+        The DB status is checked FIRST, before the warm ``_tools`` map. The map
+        is a transport cache, never the authorization record: ``disconnect()``
+        only clears the dicts of the process that handled it, so with more than
+        one replica a revoked integration stayed live on every other replica for
+        the life of the process — the pool caps at 5000 sessions and has no TTL,
+        so nothing evicted it. A stale session found here is dropped rather than
+        left behind, because ``_find_integration_id_by_server_url`` routes proxy
+        tool calls off ``_clients``.
         """
-        # Already connected in memory
+        if not await self.is_connected_db(integration_id):
+            if integration_id in self._tools or integration_id in self._clients:
+                await self.disconnect(integration_id)
+            raise ValueError(
+                f"MCP {integration_id} not connected. User needs to complete OAuth flow."
+            )
+
         if integration_id in self._tools:
             return self._tools[integration_id]
 
-        # Check if connected in MongoDB (single source of truth)
-        if await self.is_connected_db(integration_id):
-            return await self.connect(integration_id)
-
-        # Not connected at all
-        raise ValueError(f"MCP {integration_id} not connected. User needs to complete OAuth flow.")
+        return await self.connect(integration_id)
 
     async def _safe_close_client(self, client: BaseMCPClient) -> None:
         """Close a BaseMCPClient session, swallowing errors."""
@@ -1890,13 +1900,19 @@ class MCPClient:
         if not target:
             return None
 
-        # Fast path: check currently active in-memory clients.
+        # Fast path: currently active in-memory clients. Still gated on the
+        # stored status, exactly like the slow path below — a live session on
+        # this replica says nothing about whether the user has since revoked the
+        # integration on another one.
         for integration_id in list(self._clients.keys()):
             resolved = await IntegrationResolver.resolve(integration_id)
             if not resolved or not resolved.mcp_config:
                 continue
-            if self._normalize_server_url(resolved.mcp_config.server_url) == target:
-                return integration_id
+            if self._normalize_server_url(resolved.mcp_config.server_url) != target:
+                continue
+            if not await self.is_connected_db(integration_id):
+                continue
+            return integration_id
 
         # Slow path: check user's persisted connected integrations.
         try:

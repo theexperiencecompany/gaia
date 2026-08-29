@@ -1,5 +1,6 @@
 """Unit tests for BaseSchedulerService."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,6 +32,7 @@ class ConcreteSchedulerService(BaseSchedulerService):
         )
         self.mock_update_task_status = AsyncMock(return_value=True)
         self.mock_get_pending_task = AsyncMock(return_value=[])
+        self.mock_claim_task = AsyncMock(return_value=True)
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         return await self.mock_get_task(task_id, user_id)
@@ -49,6 +51,9 @@ class ConcreteSchedulerService(BaseSchedulerService):
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
+
+    async def claim_task_for_execution(self, task_id: str) -> bool:
+        return await self.mock_claim_task(task_id)
 
     def get_job_name(self) -> str:
         return "test_job"
@@ -228,14 +233,54 @@ class TestProcessTaskExecution:
         assert result.success is False
         assert "not found" in result.message
 
-    async def test_task_not_scheduled_status(self, service, sample_task):
+    async def test_task_no_longer_scheduled_is_not_executed(self, service, sample_task):
+        """A task that is not SCHEDULED any more fails the claim and must not run."""
         sample_task.status = ScheduledTaskStatus.COMPLETED
         service.mock_get_task.return_value = sample_task
+        service.mock_claim_task.return_value = False
 
         result = await service.process_task_execution("task123")
 
         assert result.success is False
         assert "not in scheduled status" in result.message
+        service.mock_execute_task.assert_not_awaited()
+
+    async def test_only_one_worker_executes_a_task_two_workers_picked_up(
+        self, service, sample_task
+    ):
+        """Two workers holding a job for the same task must not both execute it.
+
+        Two ARQ jobs for one reminder is the normal case, not a contrived race:
+        the startup scan runs in every replica and every worker, and its job id
+        is derived from each process's own ``now`` (past-due reminders get
+        shifted to ``now + 120s``), so the ids differ and ARQ does not dedup
+        them. Both jobs then read status=SCHEDULED and run — the user gets the
+        reminder twice and GAIA pays for two agent turns.
+
+        The claim has to be the atomic SCHEDULED -> EXECUTING transition itself,
+        the way ``workflow_repository.claim_for_execution`` already does it.
+        """
+        service.mock_get_task.return_value = sample_task
+        claimed: list[str] = []
+
+        async def claim_once(task_id: str) -> bool:
+            if task_id in claimed:
+                return False
+            claimed.append(task_id)
+            return True
+
+        service.mock_claim_task = AsyncMock(side_effect=claim_once)
+
+        first, second = await asyncio.gather(
+            service.process_task_execution("task123"),
+            service.process_task_execution("task123"),
+        )
+
+        assert service.mock_execute_task.await_count == 1, (
+            "both workers executed the same reminder — the user gets it twice "
+            "and both agent turns are billed"
+        )
+        assert [first.success, second.success].count(True) == 1
 
     async def test_one_time_task_executed_and_completed(self, service, sample_task):
         service.mock_get_task.return_value = sample_task
@@ -244,9 +289,9 @@ class TestProcessTaskExecution:
         result = await service.process_task_execution("task123")
 
         assert result.success is True
-        # Should be marked as EXECUTING then COMPLETED
+        # EXECUTING is the claim itself (one atomic transition), then COMPLETED.
+        service.mock_claim_task.assert_awaited_once_with("task123")
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
     async def test_recurring_task_rescheduled(self, service, recurring_task):
@@ -261,9 +306,9 @@ class TestProcessTaskExecution:
             result = await service.process_task_execution("task_recurring")
 
         assert result.success is True
-        # Should update status to SCHEDULED for next run
+        # EXECUTING is the claim itself; the re-arm puts it back to SCHEDULED.
+        service.mock_claim_task.assert_awaited_once_with("task_recurring")
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.SCHEDULED in status_calls
 
     async def test_recurring_task_max_occurrences_reached(

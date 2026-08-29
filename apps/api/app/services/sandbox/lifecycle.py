@@ -23,7 +23,7 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import time
 from typing import Any, cast
@@ -632,6 +632,32 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
         return False
 
 
+async def _idle_on_every_replica(user_id: str) -> bool:
+    """Has nobody, on any replica, used this user's sandbox during the idle window?
+
+    ``entry.refcount`` only knows about this process. The pause timer also
+    outlives the acquisition lease that guarded the turn, so by the time it
+    fires another replica may have connected to the same sandbox (its id comes
+    from Mongo) and started a long run — pausing then kills that user's tool
+    call mid-command. ``last_used_at`` is stamped on every release from every
+    replica, which makes it the shared idleness signal; this is the same
+    predicate the hourly sweep uses in ``find_idle_user_ids``.
+
+    A missing record means nothing has claimed it, so the pause proceeds.
+    """
+    doc = await e2b_sandbox_repository.get_for_user(user_id)
+    if doc is None or doc.last_used_at is None:
+        return True
+    idle_since = _now() - timedelta(seconds=settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+    if doc.last_used_at > idle_since:
+        log.info(
+            f"{LogTag.SANDBOX} skipping idle pause; another replica used the sandbox",
+            user_id=user_id,
+        )
+        return False
+    return True
+
+
 def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
     """Pause the sandbox after the idle window if no further work arrives."""
 
@@ -641,6 +667,8 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         # cancels cleanly when work arrives.
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
         if entry.refcount > 0:
+            return
+        if not await _idle_on_every_replica(user_id):
             return
         await _stop_watcher(entry)
         await _pause_sandbox(user_id, entry)

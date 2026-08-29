@@ -93,8 +93,16 @@ class BaseSchedulerService(ABC):
             log.error("Task not found", task_id=task_id)
             return TaskExecutionResult(success=False, message=f"Task {task_id} not found")
 
-        if task.status != ScheduledTaskStatus.SCHEDULED:
-            log.warning("Task is not scheduled", task_id=task_id, status=task.status)
+        # Claim before executing, never "read the status then write it". Two ARQ
+        # jobs for one task is the ordinary case: the startup scan runs in every
+        # replica and every worker, and past-due tasks are re-armed to that
+        # process's own ``now + 120s``, so the job ids differ and ARQ does not
+        # dedup them. Under a read-then-write both jobs saw SCHEDULED and both
+        # ran — the user got the reminder twice and both agent turns were
+        # billed. The claim IS the SCHEDULED -> EXECUTING transition, so exactly
+        # one job can win it.
+        if not await self.claim_task_for_execution(task_id):
+            log.warning("Task already claimed by another run", task_id=task_id)
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} is not in scheduled status"
             )
@@ -104,11 +112,6 @@ class BaseSchedulerService(ABC):
         occurrence_count = task.occurrence_count + 1
 
         try:
-            await self.update_task_status(
-                task_id,
-                ScheduledTaskStatus.EXECUTING,
-                {"updated_at": datetime.now(UTC)},
-            )
             execution_result = await self.execute_task(task)
         except Exception as e:
             log.error(
@@ -354,6 +357,15 @@ class BaseSchedulerService(ABC):
     @abstractmethod
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
         """Execute the actual task logic."""
+
+    @abstractmethod
+    async def claim_task_for_execution(self, task_id: str) -> bool:
+        """Atomically move a scheduled task to EXECUTING; False if already claimed.
+
+        Must be a single conditional write predicated on the current status —
+        anything that reads the status and then writes it lets two workers both
+        pass the check and run the task twice.
+        """
 
     @abstractmethod
     async def update_task_status(

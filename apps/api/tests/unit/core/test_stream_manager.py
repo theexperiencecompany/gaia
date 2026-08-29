@@ -71,6 +71,9 @@ def _stream_client(xread_batches: list[XReadBatch] | None = None) -> MagicMock:
     client = MagicMock()
     client.xadd = AsyncMock()
     client.expire = AsyncMock()
+    # A full-TTL progress key: publish_chunk's liveness refresh reads this and
+    # returns early, so these tests see only the event-log write they assert on.
+    client.ttl = AsyncMock(return_value=STREAM_TTL)
     if xread_batches is not None:
         client.xread = AsyncMock(side_effect=xread_batches)
     return client

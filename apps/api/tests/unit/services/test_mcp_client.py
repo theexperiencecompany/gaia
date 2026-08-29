@@ -680,10 +680,17 @@ class TestMCPClientIsConnectedDb:
 
 class TestMCPClientEnsureConnected:
     async def test_returns_cached(self):
+        """The warm path still short-circuits — once the DB confirms it is live.
+
+        The status check comes first now: the in-memory map is a transport
+        cache, not the authorization record (a disconnect on another replica
+        never reaches this process's dicts).
+        """
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
         client._tools[INTEGRATION_ID] = tools
-        result = await client.ensure_connected(INTEGRATION_ID)
+        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True):
+            result = await client.ensure_connected(INTEGRATION_ID)
         assert result is tools
 
     async def test_reconnects_from_db(self):
@@ -2474,12 +2481,20 @@ class TestMCPClientReadUiResource:
 
 class TestMCPClientFindIntegrationIdByServerUrl:
     async def test_finds_from_active_clients(self):
+        """The warm fast path resolves — for an integration still connected.
+
+        Gated on the stored status like the slow path, so a session this
+        replica still holds cannot route to an integration revoked elsewhere.
+        """
         client = MCPClient(user_id=USER_ID)
         client._clients[INTEGRATION_ID] = MagicMock()
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config()
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True),
+        ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await client._find_integration_id_by_server_url(SERVER_URL)
 

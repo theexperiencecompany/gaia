@@ -10,7 +10,7 @@ occurrence-count advance, re-arm), and the hot read is the due-scan across users
 neither benefits from an id-keyed entity cache. Matches the workflows repository.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
@@ -62,6 +62,27 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         )
 
     # ----------------------------------------------------------------- writes
+
+    async def claim_for_execution(self, reminder_id: str) -> bool:
+        """Atomically claim a scheduled reminder for a fire (SCHEDULED -> EXECUTING).
+
+        Returns ``False`` — and the caller skips the fire — when the reminder is
+        no longer ``scheduled``, i.e. another worker already claimed it. Two ARQ
+        jobs for one reminder is routine (the startup scan runs in every replica
+        and every worker, and re-arms past-due reminders to that process's own
+        clock, so the job ids differ and ARQ does not dedup them). Mirrors
+        ``WorkflowsRepository.claim_for_execution``; the status predicate living
+        inside the update is what makes it exactly-once.
+        """
+        result = await self._apply_raw_update(
+            {
+                "_id": self._id_value(reminder_id),
+                "status": ReminderStatus.SCHEDULED.value,
+            },
+            {"$set": {"status": ReminderStatus.EXECUTING.value, "updated_at": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return result is not None
 
     async def update_for_user(
         self, reminder_id: str, user_id: str, update: ReminderUpdate
