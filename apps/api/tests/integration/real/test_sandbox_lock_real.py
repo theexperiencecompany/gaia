@@ -109,7 +109,7 @@ class TestSandboxDistributedLock:
         user_id = "lock-user-timeout"
 
         async with SandboxPool().distributed_lock(user_id):
-            with pytest.raises(SandboxAcquisitionError, match="timed out"):
+            with pytest.raises(SandboxAcquisitionError, match="held it past the wait window"):
                 async with SandboxPool().distributed_lock(user_id):
                     pass
 
@@ -117,6 +117,6 @@ class TestSandboxDistributedLock:
         from app.db.redis import redis_cache
 
         monkeypatch.setattr(redis_cache, "redis", None)
-        with pytest.raises(SandboxAcquisitionError, match="Redis is not configured"):
+        with pytest.raises(SandboxAcquisitionError, match="Redis is unavailable"):
             async with SandboxPool().distributed_lock("lock-user-noredis"):
                 pass

@@ -58,3 +58,8 @@ SANDBOX_LOCK_RENEW_SECONDS = 10
 # A waiter blocks this long before giving up; longer than the mount script's
 # 120s so a queue behind a genuinely slow create waits rather than failing.
 SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
+# Hard cap on how long the watchdog will keep renewing. Past this the lease is
+# allowed to expire so a hung-but-alive holder (stuck create/mount) can't block
+# the user forever; comfortably above the real critical section (cold create +
+# 120s mount) so a legitimate slow acquire is never evicted mid-flight.
+SANDBOX_LOCK_MAX_HOLD_SECONDS = 300

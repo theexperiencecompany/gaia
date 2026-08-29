@@ -19,22 +19,21 @@ import contextlib
 from dataclasses import dataclass, field
 
 from e2b import AsyncSandbox
-from redis.asyncio.lock import Lock
-from redis.exceptions import LockError
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.sandbox import (
     SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
     SANDBOX_LOCK_LEASE_SECONDS,
+    SANDBOX_LOCK_MAX_HOLD_SECONDS,
     SANDBOX_LOCK_RENEW_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
-from app.db.redis import redis_cache
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
+from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import log
 
 SANDBOX_LOCK_KEY_PREFIX = "lock:sandbox:"
@@ -181,66 +180,28 @@ def init_sandbox_pool() -> SandboxPool:
 async def _redis_user_lock(user_id: str) -> AsyncIterator[None]:
     """Hold the cross-replica lease for ``user_id`` for the duration of the block.
 
-    The lease is short and renewed by a watchdog, so a pod that dies holding it
-    frees the user within ``SANDBOX_LOCK_LEASE_SECONDS`` while a slow-but-alive
-    holder keeps it for as long as the work actually takes.
+    Correctness-critical: not holding the lease raises rather than entering the
+    critical section unprotected — the exact double-create the lock exists to
+    prevent — so a failed acquire (another replica held it past the window, or
+    Redis is unavailable) becomes a ``SandboxAcquisitionError``. The lease is
+    short and watchdog-renewed, so a pod that dies holding it frees the user
+    within ``SANDBOX_LOCK_LEASE_SECONDS`` while a slow-but-alive holder keeps it
+    for as long as the work actually takes.
     """
-    client = redis_cache.redis
-    if client is None:
-        raise SandboxAcquisitionError(
-            "Redis is not configured; sandbox acquisition cannot be serialized across replicas"
-        )
-    # thread_local=False: the token must be readable from the watchdog task, and
-    # asyncio tasks share a thread, so thread-local storage is the wrong scope.
-    lock = client.lock(
+    lock = DistributedLock(
         f"{SANDBOX_LOCK_KEY_PREFIX}{user_id}",
-        timeout=SANDBOX_LOCK_LEASE_SECONDS,
-        blocking_timeout=SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
-        thread_local=False,
+        lease_seconds=SANDBOX_LOCK_LEASE_SECONDS,
+        acquire_timeout_seconds=SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+        renew_seconds=SANDBOX_LOCK_RENEW_SECONDS,
+        max_hold_seconds=SANDBOX_LOCK_MAX_HOLD_SECONDS,
     )
-    if not await lock.acquire():
-        raise SandboxAcquisitionError(
-            f"timed out after {SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS}s waiting for another "
-            f"replica to finish acquiring this user's sandbox"
-        )
-    watchdog = asyncio.get_running_loop().create_task(_renew_lease(lock, user_id))
-    try:
+    async with lock.hold() as held:
+        if not held:
+            raise SandboxAcquisitionError(
+                "could not acquire the cross-replica sandbox lease for this user "
+                "(another replica held it past the wait window, or Redis is unavailable)"
+            )
         yield
-    finally:
-        watchdog.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await watchdog
-        # Expired mid-flight (the watchdog lost the race) means another replica
-        # may already hold it; releasing then would free someone else's lease.
-        # redis-py's token check turns that into LockNotOwnedError, which is a
-        # real event worth seeing, not a failure of the work we just did.
-        try:
-            await lock.release()
-        except LockError as e:
-            log.error(
-                f"{LogTag.SANDBOX} Sandbox lock lost before release",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-
-
-async def _renew_lease(lock: Lock, user_id: str) -> None:
-    """Extend the lease while the holder is alive, until cancelled."""
-    while True:
-        await asyncio.sleep(SANDBOX_LOCK_RENEW_SECONDS)
-        try:
-            await lock.extend(SANDBOX_LOCK_LEASE_SECONDS, replace_ttl=True)
-        except LockError as e:
-            # The lease is gone and cannot be reclaimed — another replica may be
-            # inside the critical section. Stop renewing and make it visible.
-            log.error(
-                f"{LogTag.SANDBOX} Lost sandbox lock lease while holding it",
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return
 
 
 def get_sandbox_pool() -> SandboxPool:
