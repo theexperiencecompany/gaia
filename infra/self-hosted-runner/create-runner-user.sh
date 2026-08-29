@@ -38,8 +38,12 @@ IMAGES_TGZ="${IMAGES_TGZ:-/var/tmp/gaia-ci-test-images.tgz}"
 # --- as the current user: export the test images ---------------------------
 if [[ ! -s "$IMAGES_TGZ" ]]; then
   echo "[create-user] exporting the pinned test images from this user's daemon → $IMAGES_TGZ"
-  # Same pins as scripts/ci/shared-test-services.sh.
-  mapfile -t IMAGES < <(grep -E '^[A-Z]+_IMAGE=' "$SCRIPT_DIR/../../scripts/ci/shared-test-services.sh" | sed -E 's/^[A-Z_]+="([^"]+)"$/\1/')
+  # Same pins as scripts/ci/shared-test-services.sh — from the checkout when
+  # this runs inside one, else from the copy setup.sh installed in ci-cache.
+  SHARED_SRC="$SCRIPT_DIR/../../scripts/ci/shared-test-services.sh"
+  [[ -f "$SHARED_SRC" ]] || SHARED_SRC="${RUNNER_LOCAL_CACHE:-$SRC_HOME/ci-cache}/shared-test-services.sh"
+  [[ -f "$SHARED_SRC" ]] || { echo "::error::shared-test-services.sh not found (checkout or ci-cache)"; exit 1; }
+  mapfile -t IMAGES < <(grep -E '^[A-Z]+_IMAGE=' "$SHARED_SRC" | sed -E 's/^[A-Z_]+="([^"]+)"$/\1/')
   docker save "${IMAGES[@]}" | gzip -1 > "$IMAGES_TGZ"
   chmod 0644 "$IMAGES_TGZ"
 fi

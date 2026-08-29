@@ -62,23 +62,6 @@
   },
   "packageManager": "pnpm@10.17.1",
   "pnpm": {
-    "ignoredBuiltDependencies": [
-      "@heroui/shared-utils"
-    ],
-    "onlyBuiltDependencies": [
-      "@heroui/shared-utils",
-      "@parcel/watcher",
-      "@sentry/cli",
-      "@swc/core",
-      "canvas",
-      "core-js",
-      "electron",
-      "esbuild",
-      "nx",
-      "protobufjs",
-      "sharp",
-      "workerd"
-    ],
     "overrides": {
       "react": "19.1.0",
       "react-dom": "19.1.0",

@@ -1,0 +1,22 @@
+{
+  "_comment": "Advisories scripts/ci/pnpm-audit.sh may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Entries below are the pre-existing findings on the day the audit lane was introduced (2026-08-29): all transitive, all fixable with pnpm.overrides per CLAUDE.md §9 — that bump is the follow-up these expiries enforce.",
+  "allow": [
+    { "id": "GHSA-gcfj-64vw-6mp9", "reason": "axios: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-mh99-v99m-4gvg", "reason": "brace-expansion: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-rgw5-rvv9-x895", "reason": "brace-expansion: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-7p8r-x3mc-p8w7", "reason": "fast-uri: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-v2hh-gcrm-f6hx", "reason": "fast-uri: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-5p2g-fcmc-qvqq", "reason": "image-size: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-w3rx-r6r6-pgpr", "reason": "image-size: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-mwp4-54f8-5fhr", "reason": "ip-address: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-5p4m-2wfm-xmqj", "reason": "js-yaml: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-28wg-ghj8-5hjv", "reason": "nanoid: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-2v37-7h3g-55p8", "reason": "nanoid: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-r28c-9q8g-f849", "reason": "postcss: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-f88m-g3jw-g9cj", "reason": "sharp: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-4cwx-7wf7-3272", "reason": "undici: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-hm92-r4w5-c3mj", "reason": "undici: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-vmh5-mc38-953g", "reason": "undici: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" },
+    { "id": "GHSA-vxpw-j846-p89q", "reason": "undici: pre-existing transitive; bump via pnpm.overrides", "expires": "2026-09-28" }
+  ]
+}

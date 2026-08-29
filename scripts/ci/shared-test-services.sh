@@ -122,7 +122,7 @@ start_postgres() {
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=6g \
-    -p "${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
+    -p "127.0.0.1:${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
     -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
     -c "max_connections=${PG_MAX_CONNECTIONS}" -c "shared_buffers=${PG_SHARED_BUFFERS}"
 }
@@ -132,7 +132,7 @@ start_postgres() {
 # flushable DB inside that stripe without ever crossing into another lane.
 start_redis() {
   docker run -d --name "$REDIS_NAME" --restart unless-stopped \
-    -p "${REDIS_PORT}:6379" "$REDIS_IMAGE" \
+    -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases "$REDIS_DATABASES" --save "" --appendonly no
 }
 
@@ -140,17 +140,17 @@ start_mongo() {
   docker run -d --name "$MONGO_NAME" --restart unless-stopped \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs /data/db:rw,noexec,nosuid,size=6g \
-    -p "${MONGO_PORT}:27017" "$MONGO_IMAGE"
+    -p "127.0.0.1:${MONGO_PORT}:27017" "$MONGO_IMAGE"
 }
 
 start_chroma() {
   docker run -d --name "$CHROMA_NAME" --restart unless-stopped \
-    -p "${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
+    -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 start_rabbitmq() {
   docker run -d --name "$RABBITMQ_NAME" --restart unless-stopped \
-    -p "${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
+    -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
 pull_with_retry() {

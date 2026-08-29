@@ -432,6 +432,11 @@ jobs:
           echo "### Package hygiene (attw) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
             echo "attw: OK (type exports resolve across CJS/ESM/node16/bundler)"
           fi
+      # Known advisories at or above `high` in the production dependency graph
+      # fail the lane unless allowlisted with a reason and an expiry in
+      # config/pnpm-audit-allowlist.json (an expired entry fails the lane too).
+      - name: pnpm audit (production dependencies, high and above)
+        run: bash scripts/ci/pnpm-audit.sh
 
   # --- TypeScript strict type-check ---------------------------------------
   type-check:

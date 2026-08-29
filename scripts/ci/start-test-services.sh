@@ -77,7 +77,7 @@ start_postgres() {
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
     -e PGDATA=/var/lib/postgresql/data/pgdata \
     --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=2g \
-    -p "${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
+    -p "127.0.0.1:${POSTGRES_PORT}:5432" "$POSTGRES_IMAGE" \
     -c max_connections=300 \
     -c fsync=off -c synchronous_commit=off -c full_page_writes=off
 }
@@ -87,7 +87,7 @@ start_postgres() {
 # container, and the fork-to-disk pauses only add latency.
 start_redis() {
   docker run -d --name "$REDIS_NAME" \
-    -p "${REDIS_PORT}:6379" "$REDIS_IMAGE" \
+    -p "127.0.0.1:${REDIS_PORT}:6379" "$REDIS_IMAGE" \
     redis-server --databases 32 --save "" --appendonly no
 }
 
@@ -95,17 +95,17 @@ start_mongo() {
   docker run -d --name "$MONGO_NAME" \
     -e MONGO_INITDB_ROOT_USERNAME=gaia -e MONGO_INITDB_ROOT_PASSWORD=gaia \
     --tmpfs /data/db:rw,noexec,nosuid,size=2g \
-    -p "${MONGO_PORT}:27017" "$MONGO_IMAGE"
+    -p "127.0.0.1:${MONGO_PORT}:27017" "$MONGO_IMAGE"
 }
 
 start_chroma() {
   docker run -d --name "$CHROMA_NAME" \
-    -p "${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
+    -p "127.0.0.1:${CHROMA_PORT}:8000" "$CHROMA_IMAGE"
 }
 
 start_rabbitmq() {
   docker run -d --name "$RABBITMQ_NAME" \
-    -p "${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
+    -p "127.0.0.1:${RABBITMQ_PORT}:5672" "$RABBITMQ_IMAGE"
 }
 
 # Retry a single image pull with a fixed backoff, failing loud if it never
