@@ -17,6 +17,8 @@
 #   FORCE_HOME              — if "true", fail loudly instead of falling back (for smoke tests)
 #   FORCE_GITHUB            — if "true", skip the probe and select the fallback (exercises the GitHub path)
 #   PR_HEAD_REPO            — owner/repo of the PR head; a fork never gets the home box
+#   PR_AUTHOR_ASSOCIATION   — github.event.pull_request.author_association; only OWNER/MEMBER get the box
+#   GITHUB_ACTOR            — bots (dependabot[bot], …) never get the box
 #
 # Outputs (via $GITHUB_OUTPUT when present, else stdout):
 #   runner              — JSON array string, e.g. '["self-hosted","gaia-home"]'
@@ -27,12 +29,17 @@
 set -euo pipefail
 
 LABEL="${RUNNER_LABEL:-gaia-home}"
-FALLBACK="${FALLBACK_RUNNER:-["ubuntu-latest"]}"
+# Via a variable: an inline `${X:-["ubuntu-latest"]}` loses its inner quotes
+# to bash's quote removal and yields `[ubuntu-latest]`, which fromJSON rejects.
+DEFAULT_FALLBACK='["ubuntu-latest"]'
+FALLBACK="${FALLBACK_RUNNER:-$DEFAULT_FALLBACK}"
 REPO="${GITHUB_REPOSITORY:-theexperiencecompany/gaia}"
 TOKEN="${GITHUB_TOKEN:-}"
 FORCE="${FORCE_HOME:-false}"
 FORCE_GH="${FORCE_GITHUB:-false}"
 HEAD_REPO="${PR_HEAD_REPO:-}"
+AUTHOR_ASSOC="${PR_AUTHOR_ASSOCIATION:-}"
+ACTOR="${GITHUB_ACTOR:-}"
 
 # Sensible defaults when running locally (outside Actions)
 if [[ -z "${GITHUB_OUTPUT:-}" ]]; then
@@ -77,6 +84,33 @@ if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
   summary "### Runner selection — fallback (fork)
 
 - **Selected:** \`$FALLBACK\` — PR head \`$HEAD_REPO\` is not \`$REPO\`; fork code never runs on the home box
+"
+  exit 0
+fi
+
+# Only organisation members' pull requests run on the box. author_association
+# is set by GitHub on the PR event: OWNER / MEMBER are the org, COLLABORATOR is
+# an outside collaborator with write access, CONTRIBUTOR / FIRST_TIME_* / NONE
+# is everyone else. Pushes carry no association: only write access can push,
+# and the repo has no outside collaborators, so a push author is a member.
+if [[ -n "$AUTHOR_ASSOC" && "$AUTHOR_ASSOC" != "OWNER" && "$AUTHOR_ASSOC" != "MEMBER" ]]; then
+  log "PR author association is $AUTHOR_ASSOC (not OWNER/MEMBER) — only organisation members run on the home box."
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "untrusted-author"
+  summary "### Runner selection — fallback (author not an organisation member)
+
+- **Selected:** \`$FALLBACK\` — PR author association is \`$AUTHOR_ASSOC\`; only OWNER/MEMBER run on the home box
+"
+  exit 0
+fi
+
+# Bots (Dependabot, release bots) run code nobody reviewed before CI: their
+# dependency bumps execute postinstall scripts. GitHub's throwaway VMs only.
+if [[ "$ACTOR" == *"[bot]" ]]; then
+  log "Actor $ACTOR is a bot — bots never run on the home box."
+  emit "$FALLBACK" "$FALLBACK_LABEL" "false" "bot-actor"
+  summary "### Runner selection — fallback (bot actor)
+
+- **Selected:** \`$FALLBACK\` — actor \`$ACTOR\` is a bot; bots never run on the home box
 "
   exit 0
 fi

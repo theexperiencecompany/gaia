@@ -24,6 +24,10 @@ on:
         description: Run every lane on GitHub-hosted runners (exercises the fallback path)
         type: boolean
         default: false
+      runner_label:
+        description: Home runner label to probe (default gaia-home; a new pool under a temporary label can be proven before it takes real traffic)
+        type: string
+        default: gaia-home
 
 # Per-SHA group: a new push must not wait for the old run's cancellation to
 # finish (a cancelled pytest step wedges the self-hosted worker for the
@@ -66,7 +70,7 @@ jobs:
         id: pick
         uses: ./.github/actions/select-runner
         with:
-          runner-label: gaia-home
+          runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}

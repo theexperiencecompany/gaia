@@ -26,6 +26,10 @@ on:
         description: Run every lane on GitHub-hosted runners (exercises the fallback path)
         type: boolean
         default: false
+      runner_label:
+        description: Home runner label to probe (default gaia-home-lint; a new pool under a temporary label can be proven before it takes real traffic)
+        type: string
+        default: gaia-home-lint
 
 # Per-SHA group; superseded runs are cancelled by select-runner via the API
 # (scripts/ci/cancel-superseded-runs.sh) so a new push never waits on the old
@@ -73,7 +77,7 @@ jobs:
           # main.yml's slots nor oversubscribe its CPUs — measured 2026-08-28:
           # 7 lint jobs + 2 mutation shards held every slot and the pipeline's
           # detect job queued 280 s.
-          runner-label: gaia-home-lint
+          runner-label: ${{ inputs.runner_label || 'gaia-home-lint' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
           github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
