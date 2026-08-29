@@ -1,3 +1,10 @@
+# apps/api/Dockerfile.dockerignore — BuildKit uses THIS file (not the root
+# .dockerignore) whenever the api image is built with `-f apps/api/Dockerfile`;
+# it replaces the root list, so it carries a full copy plus the api-only
+# excludes. `apps/web` and `docs` used to sit in the root file, which also
+# removed apps/web from the WEB image's context (docker-web: "docker-entrypoint.sh
+# not found", 2026-08-29). Keep the shared part in sync with /.dockerignore.
+
 # Python
 .venv
 __pycache__
@@ -52,3 +59,7 @@ coverage
 **/.mypy_cache
 **/.ruff_cache
 **/.venv
+
+# Not inputs of the api image; keeps the cold build context small.
+apps/web
+docs
