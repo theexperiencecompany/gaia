@@ -105,7 +105,6 @@ jobs:
         uses: ./.github/actions/setup-swarm-context
         with:
           tailscale_authkey: ${{ secrets.TS_AUTHKEY }}
-          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
@@ -298,7 +297,6 @@ jobs:
         uses: ./.github/actions/setup-swarm-context
         with:
           tailscale_authkey: ${{ secrets.TS_AUTHKEY }}
-          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
