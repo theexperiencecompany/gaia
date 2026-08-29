@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.models.onboarding_models import (
@@ -34,6 +35,7 @@ from app.models.onboarding_models import (
 from app.models.workflow_models import TriggerType
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
+    OnboardingContext,
     OnboardingStage,
     _emit_stage,
     _fetch_onboarding_todos,
@@ -52,6 +54,18 @@ from app.services.onboarding.intelligence_service import (
 
 MODULE = "app.services.onboarding.intelligence_service"
 USER = "user-42"
+
+
+def _ctx(**overrides: Any) -> OnboardingContext:
+    defaults: dict[str, Any] = {
+        "user_id": USER,
+        "name": "Ann",
+        "profession": "dev",
+        "focus": "ship v2",
+        "has_gmail": True,
+    }
+    defaults.update(overrides)
+    return OnboardingContext(**defaults)
 
 
 def _triage(**overrides: Any) -> InboxTriage:
@@ -665,9 +679,10 @@ class TestRunSocialProfilesBackground:
         ):
             await _run_social_profiles_background(USER, "Ann", "a@x.com")
 
-        kwargs = fetch.await_args.kwargs
-        assert kwargs["fmt"] == "full"
-        assert kwargs["include_sent"] is True
+        opts = fetch.await_args.kwargs["options"]
+        assert isinstance(opts, OnboardingFetchOptions)
+        assert opts.fmt == "full"
+        assert opts.include_sent is True
 
     async def test_a_cached_body_fetch_is_reused(self, stages: Any, scan_cache: Any) -> None:
         scan_cache.get = AsyncMock(return_value=[{"id": "cached"}])
@@ -746,9 +761,7 @@ class TestRunTodos:
             ) as from_triage,
             patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus,
         ):
-            result = await _run_todos(
-                USER, "Ann", "dev", "ship v2", True, asyncio.ensure_future(_resolved(triage)), []
-            )
+            result = await _run_todos(_ctx(), asyncio.ensure_future(_resolved(triage)))
 
         assert result == created
         assert from_triage.await_args.args == (USER, triage)
@@ -762,22 +775,20 @@ class TestRunTodos:
             patch(f"{MODULE}._create_todos_from_triage", AsyncMock()) as from_triage,
             patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)) as from_focus,
         ):
-            result = await _run_todos(
-                USER, "Ann", "dev", "ship v2", True, asyncio.ensure_future(_resolved(triage)), []
-            )
+            result = await _run_todos(_ctx(), asyncio.ensure_future(_resolved(triage)))
 
         assert result == created
         assert from_triage.await_count == 0
-        assert from_focus.await_count == 1
+        # Same call as the no-Gmail branch below and just as easy to under-fill:
+        # a dropped name/profession/focus makes the LLM draft generic todos.
+        assert from_focus.await_args.args == (USER, "Ann", "dev", "ship v2", [])
 
     async def test_gmail_with_no_triage_and_no_focus_creates_nothing(self, stages: Any) -> None:
         with (
             patch(f"{MODULE}._create_todos_from_triage", AsyncMock()) as from_triage,
             patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus,
         ):
-            result = await _run_todos(
-                USER, "Ann", "dev", "", True, asyncio.ensure_future(_resolved(None)), []
-            )
+            result = await _run_todos(_ctx(focus=""), asyncio.ensure_future(_resolved(None)))
 
         assert result == []
         assert from_triage.await_count == from_focus.await_count == 0
@@ -785,9 +796,7 @@ class TestRunTodos:
     async def test_without_gmail_focus_drives_the_todos(self, stages: Any) -> None:
         created = [{"id": "t1", "title": "Plan"}]
         with patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)) as from_focus:
-            result = await _run_todos(
-                USER, "Ann", "dev", "ship v2", False, asyncio.ensure_future(_resolved(None)), []
-            )
+            result = await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
 
         assert result == created
         assert from_focus.await_args.args == (USER, "Ann", "dev", "ship v2", [])
@@ -795,7 +804,7 @@ class TestRunTodos:
     async def test_without_gmail_and_without_focus_creates_nothing(self, stages: Any) -> None:
         with patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus:
             result = await _run_todos(
-                USER, "Ann", "dev", "", False, asyncio.ensure_future(_resolved(None)), []
+                _ctx(has_gmail=False, focus=""), asyncio.ensure_future(_resolved(None))
             )
 
         assert result == []
@@ -803,9 +812,7 @@ class TestRunTodos:
 
     async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
         with patch(f"{MODULE}._create_focus_todos", AsyncMock(side_effect=RuntimeError("llm"))):
-            result = await _run_todos(
-                USER, "Ann", "dev", "ship v2", False, asyncio.ensure_future(_resolved(None)), []
-            )
+            result = await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
 
         assert result == []
         assert stages.payload_for(OnboardingStage.TODOS_READY)["todos"] == []
@@ -817,9 +824,7 @@ class TestRunTodos:
     async def test_ready_status_is_pluralized(self, stages: Any, count: int, expected: str) -> None:
         created = [OnboardingTodoSummary(id=f"t{i}", title="x") for i in range(count)]
         with patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)):
-            await _run_todos(
-                USER, "Ann", "dev", "ship v2", False, asyncio.ensure_future(_resolved(None)), []
-            )
+            await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
 
         assert stages.payload_for(OnboardingStage.TODOS_READY)["status_text"] == expected
 
@@ -837,7 +842,7 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            result = await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            result = await _run_workflows(_ctx())
 
         assert result == created
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == [
@@ -851,7 +856,7 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(_ctx())
 
         assert repo.set_suggested_workflows.await_args.args == (USER, ["w1", "w2"])
 
@@ -864,7 +869,7 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(_ctx())
 
         assert repo.set_suggested_workflows.await_count == 0
 
@@ -876,13 +881,13 @@ class TestRunWorkflows:
             patch(f"{MODULE}.user_repository") as repo,
         ):
             repo.set_suggested_workflows = AsyncMock(side_effect=RuntimeError("mongo"))
-            assert await _run_workflows(USER, "dev", True, "", "UTC", None, None) == created
+            assert await _run_workflows(_ctx()) == created
 
     async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
         with patch(
             f"{MODULE}._create_onboarding_workflows", AsyncMock(side_effect=RuntimeError("llm"))
         ):
-            assert await _run_workflows(USER, "dev", True, "", "UTC", None, None) == []
+            assert await _run_workflows(_ctx()) == []
 
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == []
 
@@ -892,29 +897,20 @@ class TestRunWorkflows:
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=[])) as create,
             patch(f"{MODULE}.user_repository"),
         ):
-            await _run_workflows(
-                USER,
-                "dev",
-                True,
-                "ship v2",
-                "Europe/London",
-                triage,
-                style,
-                [{"kind": "scope", "value": "a"}],
-                ["slack"],
+            ctx = OnboardingContext(
+                user_id=USER,
+                name="Ann",
+                profession="dev",
+                focus="ship v2",
+                has_gmail=True,
+                user_timezone="Europe/London",
+                triage=triage,
+                writing_style=style,
+                clarify_answers=[{"kind": "scope", "value": "a"}],
             )
+            await _run_workflows(ctx, ["slack"])
 
-        assert create.await_args.args == (
-            USER,
-            "dev",
-            True,
-            "ship v2",
-            "Europe/London",
-            triage,
-            style,
-            [{"kind": "scope", "value": "a"}],
-            ["slack"],
-        )
+        assert create.await_args.args == (ctx, ["slack"])
 
     @pytest.mark.parametrize(
         ("count", "expected"),
@@ -926,7 +922,7 @@ class TestRunWorkflows:
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository"),
         ):
-            await _run_workflows(USER, "dev", True, "", "UTC", None, None)
+            await _run_workflows(_ctx())
 
         assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["status_text"] == expected
 

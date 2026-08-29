@@ -55,9 +55,9 @@ def _registry(real_tool_registry):
     """Tool categories and display labels come from the real global registry."""
 
 
-def _tool_call(name: str, args: dict[str, Any] | None = None, id: str | None = "tc_1") -> dict:
+def _tool_call(name: str, args: dict[str, Any] | None = None, call_id: str | None = "tc_1") -> dict:
     """A LangChain ToolCall exactly as the model layer produces one."""
-    return {"name": name, "args": args or {}, "id": id, "type": "tool_call"}
+    return {"name": name, "args": args or {}, "id": call_id, "type": "tool_call"}
 
 
 async def run_stream(
@@ -175,8 +175,8 @@ class TestToolCallVisibility:
                     AIMessage(
                         content="",
                         tool_calls=[
-                            _tool_call("add_memory", {"content": "likes tea"}, id="tc_a"),
-                            _tool_call("search_memory", {"query": "tea"}, id="tc_b"),
+                            _tool_call("add_memory", {"content": "likes tea"}, call_id="tc_a"),
+                            _tool_call("search_memory", {"query": "tea"}, call_id="tc_b"),
                         ],
                     )
                 )
@@ -188,10 +188,12 @@ class TestToolCallVisibility:
     async def test_calls_across_turns_keep_their_emission_order(self):
         transcript = await run_stream(
             [
-                agent_update(AIMessage(content="", tool_calls=[_tool_call("add_memory", id="a")])),
+                agent_update(
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="a")])
+                ),
                 tool_message("stored", tool_call_id="a"),
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("search_memory", id="b")])
+                    AIMessage(content="", tool_calls=[_tool_call("search_memory", call_id="b")])
                 ),
                 tool_message("found", tool_call_id="b"),
             ]
@@ -211,7 +213,7 @@ class TestToolCallEmissionGuards:
     async def test_a_repeated_tool_call_id_is_emitted_once(self):
         """LangGraph re-sends the same ``AIMessage`` across updates within a
         turn. Without the dedup set the user sees the same card twice."""
-        message = AIMessage(content="", tool_calls=[_tool_call("call_executor", id="tc_dup")])
+        message = AIMessage(content="", tool_calls=[_tool_call("call_executor", call_id="tc_dup")])
         transcript = await run_stream([agent_update(message), agent_update(message)])
 
         assert transcript.tool_names() == ["call_executor"]
@@ -220,7 +222,11 @@ class TestToolCallEmissionGuards:
         """An id-less call can never be joined to its result, so streaming it
         would strand a card with no output forever."""
         transcript = await run_stream(
-            [agent_update(AIMessage(content="", tool_calls=[_tool_call("call_executor", id=None)]))]
+            [
+                agent_update(
+                    AIMessage(content="", tool_calls=[_tool_call("call_executor", call_id=None)])
+                )
+            ]
         )
 
         assert transcript.of_kind("tool_data") == []
@@ -231,10 +237,10 @@ class TestToolCallEmissionGuards:
         transcript = await run_stream(
             [
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_1")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_1")])
                 ),
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_2")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_2")])
                 ),
             ]
         )
@@ -260,7 +266,7 @@ class TestNodeGate:
         """Pre-model hooks replay historical ``AIMessage``s that still carry
         last turn's ``tool_calls``. Emitting those would replay stale tool cards
         into the current turn."""
-        historical = AIMessage(content="", tool_calls=[_tool_call("add_memory", id="old_1")])
+        historical = AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="old_1")])
         transcript = await run_stream([node_update(node, historical)])
 
         assert transcript.of_kind("tool_data") == []
@@ -268,7 +274,7 @@ class TestNodeGate:
     async def test_a_hook_replay_does_not_suppress_the_real_call(self):
         """The gate must filter by node, not by "first seen wins" — the same
         call replayed by a hook *before* the agent node must still stream."""
-        call = AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_live")])
+        call = AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_live")])
         transcript = await run_stream([node_update("filter_messages", call), agent_update(call)])
 
         assert transcript.tool_names() == ["add_memory"]
@@ -332,8 +338,8 @@ class TestToolOutput:
                     AIMessage(
                         content="",
                         tool_calls=[
-                            _tool_call("add_memory", id="tc_a"),
-                            _tool_call("search_memory", id="tc_b"),
+                            _tool_call("add_memory", call_id="tc_a"),
+                            _tool_call("search_memory", call_id="tc_b"),
                         ],
                     )
                 ),
@@ -350,7 +356,7 @@ class TestToolOutput:
         transcript = await run_stream(
             [
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_real")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_real")])
                 ),
                 tool_message("orphan", tool_call_id="tc_other"),
             ]
@@ -658,7 +664,7 @@ class TestCancellation:
             [text("one "), text("two ")],
             state_values={
                 "messages": [
-                    AIMessage(content="", tool_calls=[_tool_call("add_memory", id="tc_open")])
+                    AIMessage(content="", tool_calls=[_tool_call("add_memory", call_id="tc_open")])
                 ]
             },
         )

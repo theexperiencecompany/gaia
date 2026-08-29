@@ -17,7 +17,11 @@ import pytest
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.integration_models import UserIntegrationDocument
 from app.models.notification.notification_models import ActionStyle, NotificationType
-from app.services.integrations.integration_expiry import _expiry_body, expire_user_integration
+from app.services.integrations.integration_expiry import (
+    ExpiryOptions,
+    _expiry_body,
+    expire_user_integration,
+)
 
 MODULE = "app.services.integrations.integration_expiry"
 
@@ -70,7 +74,9 @@ class TestNoOpGuards:
     ) -> None:
         with _Seams(record=None) as s:
             changed = await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert changed is False
@@ -82,7 +88,9 @@ class TestNoOpGuards:
         # only the connected -> expired edge is worth telling the user about.
         with _Seams(record=_record("expired")) as s:
             changed = await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert changed is False
@@ -99,10 +107,12 @@ class TestSideEffects:
             changed = await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=False,
-                connected_account_id="ca_probe",
+                ExpiryOptions(
+                    reason="refresh_token_revoked",
+                    trigger="webhook",
+                    notify=False,
+                    connected_account_id="ca_probe",
+                ),
             )
 
         assert changed is True
@@ -124,7 +134,9 @@ class TestSideEffects:
         # stops the rest of GAIA treating the connection as usable.
         with _Seams(record=_record("connected", CUSTOM_MCP_ID)) as s:
             changed = await expire_user_integration(
-                USER_ID, CUSTOM_MCP_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                CUSTOM_MCP_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert changed is True
@@ -142,7 +154,9 @@ class TestSideEffects:
     async def test_notify_false_makes_no_noise_on_the_tool_execution_path(self) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="tool_execution", notify=False
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="tool_execution", notify=False),
             )
 
         s.mocks["ws"].broadcast_to_user.assert_not_awaited()
@@ -155,7 +169,9 @@ class TestUserFacingAnnouncement:
     ) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         s.mocks["ws"].broadcast_to_user.assert_awaited_once()
@@ -168,7 +184,9 @@ class TestUserFacingAnnouncement:
     ) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         s.mocks["notify"].create_notification.assert_awaited_once()
@@ -194,7 +212,9 @@ class TestUserFacingAnnouncement:
 
             with pytest.raises(RuntimeError, match="mongo down"):
                 await expire_user_integration(
-                    USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                    USER_ID,
+                    INTEGRATION_ID,
+                    ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
                 )
 
         s.mocks["status"].assert_awaited_once()
@@ -212,10 +232,12 @@ class TestPausedWorkflowsChangeTheAnnouncement:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="revoked",
-                trigger="tool_execution",
-                notify=False,
-                paused_workflows=["Morning digest", "Invoice filing"],
+                ExpiryOptions(
+                    reason="revoked",
+                    trigger="tool_execution",
+                    notify=False,
+                    paused_workflows=["Morning digest", "Invoice filing"],
+                ),
             )
 
         s.mocks["notify"].create_notification.assert_awaited_once()
@@ -228,10 +250,12 @@ class TestPausedWorkflowsChangeTheAnnouncement:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="revoked",
-                trigger="webhook",
-                notify=True,
-                paused_workflows=["Morning digest"],
+                ExpiryOptions(
+                    reason="revoked",
+                    trigger="webhook",
+                    notify=True,
+                    paused_workflows=["Morning digest"],
+                ),
             )
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body
@@ -240,7 +264,9 @@ class TestPausedWorkflowsChangeTheAnnouncement:
     async def test_no_paused_workflows_keeps_the_plain_reconnect_copy(self) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body
@@ -312,9 +338,7 @@ class TestTheBodySaysWhyTheConnectionDied:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
+                ExpiryOptions(reason="refresh_token_revoked", trigger="webhook", notify=True),
             )
 
         body = s.mocks["notify"].create_notification.await_args.args[0].content.body
@@ -340,11 +364,13 @@ class TestTheWideEvent:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="webhook",
-                notify=True,
-                connected_account_id="ca_probe",
-                paused_workflows=("Morning digest", "Invoice filing"),
+                ExpiryOptions(
+                    reason="refresh_token_revoked",
+                    trigger="webhook",
+                    notify=True,
+                    connected_account_id="ca_probe",
+                    paused_workflows=("Morning digest", "Invoice filing"),
+                ),
             )
 
         assert _ns_fields(s.mocks["log"]) == {
@@ -365,10 +391,12 @@ class TestTheWideEvent:
             await expire_user_integration(
                 USER_ID,
                 INTEGRATION_ID,
-                reason="refresh_token_revoked",
-                trigger="tool_execution",
-                notify=False,
-                paused_workflows=("Morning digest",),
+                ExpiryOptions(
+                    reason="refresh_token_revoked",
+                    trigger="tool_execution",
+                    notify=False,
+                    paused_workflows=("Morning digest",),
+                ),
             )
 
         s.mocks["log"].warning.assert_called_once()
@@ -387,7 +415,9 @@ class TestTheWideEvent:
     async def test_a_missing_record_is_recorded_as_such_rather_than_silently_dropped(self) -> None:
         with _Seams(record=None) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert _ns_fields(s.mocks["log"])["outcome"] == "no_record"
@@ -395,7 +425,9 @@ class TestTheWideEvent:
     async def test_a_repeat_event_is_recorded_as_already_expired(self) -> None:
         with _Seams(record=_record("expired")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert _ns_fields(s.mocks["log"])["outcome"] == "already_expired"
@@ -417,7 +449,9 @@ class TestTheLookupIsScopedToTheRightConnection:
             s.mocks["repo"].get_for_user = AsyncMock(side_effect=_get_for_user)
 
             changed = await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=False
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=False),
             )
 
         assert changed is True
@@ -431,7 +465,9 @@ class TestTheReconnectNotificationIsActionable:
     async def test_it_is_a_warning_delivered_in_app(self) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         request = s.mocks["notify"].create_notification.await_args.args[0]
@@ -443,7 +479,9 @@ class TestTheReconnectNotificationIsActionable:
         break the "click Reconnect, land on the integration" flow."""
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         (action,) = s.mocks["notify"].create_notification.await_args.args[0].content.actions
@@ -454,7 +492,9 @@ class TestTheReconnectNotificationIsActionable:
     async def test_the_live_page_update_goes_to_the_user_whose_connection_died(self) -> None:
         with _Seams(record=_record("connected")) as s:
             await expire_user_integration(
-                USER_ID, INTEGRATION_ID, reason="revoked", trigger="webhook", notify=True
+                USER_ID,
+                INTEGRATION_ID,
+                ExpiryOptions(reason="revoked", trigger="webhook", notify=True),
             )
 
         assert s.mocks["ws"].broadcast_to_user.await_args.kwargs["user_id"] == USER_ID

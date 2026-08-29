@@ -42,6 +42,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 import re
 import shutil
@@ -125,7 +127,9 @@ def _pg_inventory(conn: psycopg.Connection[Any], uid: str) -> dict[str, int]:
     counts: dict[str, int] = {}
     with conn.cursor() as cur:
         for table in PG_USER_TABLES:
-            cur.execute(f"SELECT count(*) FROM {table} WHERE user_id = %s", (uid,))
+            # table is one of PG_USER_TABLES above, a hardcoded tuple -- never
+            # user input, so there is no injection vector here.
+            cur.execute(f"SELECT count(*) FROM {table} WHERE user_id = %s", (uid,))  # noqa: S608 -- table is one of the hardcoded PG_USER_TABLES, never user input
             row = cur.fetchone()
             counts[table] = int(row[0]) if row else 0
     return {k: v for k, v in counts.items() if v}
@@ -151,6 +155,241 @@ def _like_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
 
 
+@dataclass
+class _Footprint:
+    """Open clients plus everything teardown and verification need for one user."""
+
+    db: MongoDatabase
+    pg: psycopg.Connection[Any]
+    chroma: chromadb.api.ClientAPI
+    redis_client: redislib.Redis
+    composio: Composio
+    workos: AsyncWorkOSClient
+    uid: str
+    email: str
+    platform_links: dict[str, Any]
+    conversation_ids: list[str]
+    composio_accounts: list[Any]
+    sandbox_ids: list[str]
+    workos_users: Sequence[Any]
+    chroma_counts: dict[str, int]
+    redis_keys: list[str]
+    jfs_path: Path
+
+
+async def _build_footprint(
+    args: argparse.Namespace, db: MongoDatabase, user: dict[str, Any], uid: str
+) -> _Footprint:
+    """Open clients, gather the per-user inventory, and print it."""
+    pg = psycopg.connect(settings.POSTGRES_URL)
+    chroma = chromadb.HttpClient(host=settings.CHROMADB_HOST, port=settings.CHROMADB_PORT)
+    redis_client = redislib.Redis.from_url(settings.REDIS_URL)
+    composio = Composio(api_key=settings.COMPOSIO_KEY)
+    workos = AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
+
+    mongo_counts = _mongo_inventory(db, uid, args.email.strip().lower())
+    chroma_counts = _chroma_inventory(chroma, uid)
+    redis_keys = _redis_user_keys(redis_client, uid)
+    jfs_path = JFS_USERS_ROOT / uid
+    if jfs_path.parent != JFS_USERS_ROOT or not UID_RE.match(jfs_path.name):
+        sys.exit(f"ABORT: refusing to touch path {jfs_path}")
+
+    composio_accounts = list(getattr(composio.connected_accounts.list(user_ids=[uid]), "items", []))
+    sandbox_ids = [
+        doc["sandbox_id"] for doc in db.e2b_sandboxes.find({"user_id": uid}, {"sandbox_id": 1})
+    ]
+    conversation_ids = [
+        doc["conversation_id"]
+        for doc in db.conversations.find({"user_id": uid}, {"conversation_id": 1})
+    ]
+    platform_links: dict[str, Any] = user.get("platform_links") or {}
+    workos_users = (await workos.user_management.list_users(email=args.email)).data
+
+    print("mongo:", mongo_counts or "none")
+    print("postgres:", _pg_inventory(pg, uid) or "none")
+    print("chroma:", chroma_counts or "none")
+    print(f"redis: {len(redis_keys)} keys")
+    print(f"juicefs: {jfs_path} exists={jfs_path.exists()}")
+    print(f"composio: {[(a.id, a.toolkit.slug, a.status) for a in composio_accounts]}")
+    print(f"e2b sandboxes: {sandbox_ids}")
+    print(f"conversations (checkpoint threads to sweep): {len(conversation_ids)}")
+    print(f"platform_links: {list(platform_links) or 'none'}")
+    print(f"workos: {[(u.id, u.email) for u in workos_users]}")
+
+    return _Footprint(
+        db=db,
+        pg=pg,
+        chroma=chroma,
+        redis_client=redis_client,
+        composio=composio,
+        workos=workos,
+        uid=uid,
+        email=args.email.strip().lower(),
+        platform_links=platform_links,
+        conversation_ids=conversation_ids,
+        composio_accounts=composio_accounts,
+        sandbox_ids=sandbox_ids,
+        workos_users=workos_users,
+        chroma_counts=chroma_counts,
+        redis_keys=redis_keys,
+        jfs_path=jfs_path,
+    )
+
+
+async def _revoke_external_access(d: _Footprint) -> None:
+    """Composio OAuth grants first, then E2B sandboxes — cut write access."""
+    for account in d.composio_accounts:
+        try:
+            d.composio.connected_accounts.delete(nanoid=account.id)
+            _step("composio", f"deleted {account.id} ({account.toolkit.slug})")
+        except Exception as e:
+            _fail(f"composio:{account.id}", e)
+
+    for sandbox_id in d.sandbox_ids:
+        try:
+            await AsyncSandbox.kill(
+                sandbox_id, api_key=settings.E2B_API_KEY, domain=settings.E2B_DOMAIN
+            )
+            _step("e2b", f"killed {sandbox_id}")
+        except Exception as e:
+            _fail(f"e2b:{sandbox_id}", e)
+
+
+def _delete_mongo_data(d: _Footprint) -> None:
+    """Mongo collections + GridFS; users doc last so a partial failure leaves
+    the account findable."""
+    try:
+        bucket = gridfs.GridFSBucket(d.db)
+        for file_doc in d.db["fs.files"].find({"metadata.user_id": d.uid}, {"_id": 1}):
+            bucket.delete(file_doc["_id"])
+        for name in sorted(d.db.list_collection_names()):
+            if name == "users" or name.startswith("fs."):
+                continue
+            n = d.db[name].delete_many({"user_id": d.uid}).deleted_count
+            if name == "support_requests":
+                n += d.db[name].delete_many({"user_email": d.email}).deleted_count
+            if name == "bot_sessions" and d.platform_links:
+                platform_ids = [
+                    str(link.get("platform_user_id", link)) if isinstance(link, dict) else str(link)
+                    for link in d.platform_links.values()
+                ]
+                n += (
+                    d.db[name]
+                    .delete_many({"platform_user_id": {"$in": platform_ids}})
+                    .deleted_count
+                )
+            if n:
+                _step("mongo", f"{name}: deleted {n}")
+        deleted = d.db.users.delete_one(object_id_filter(d.uid)).deleted_count
+        _step("mongo", f"users: deleted {deleted}")
+    except Exception as e:
+        _fail("mongo", e)
+
+
+def _delete_postgres_data(d: _Footprint) -> None:
+    """Per-user tables + the LangGraph checkpoint threads of the user's
+    conversations (base thread == conversation_id plus derived executor/workflow
+    threads that embed it — same contract as
+    conversation_service._delete_checkpoint_threads)."""
+    try:
+        with d.pg.cursor() as cur:
+            for table in PG_USER_TABLES:
+                # table is one of PG_USER_TABLES above, a hardcoded tuple --
+                # never user input, so there is no injection vector here.
+                cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (d.uid,))  # noqa: S608 -- table is one of the hardcoded PG_USER_TABLES, never user input
+                if cur.rowcount:
+                    _step("postgres", f"{table}: deleted {cur.rowcount}")
+            for conversation_id in d.conversation_ids:
+                pattern = f"%{_like_escape(conversation_id)}%"
+                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
+                    # table is one of the three literal names above -- never
+                    # user input, so there is no injection vector here.
+                    cur.execute(
+                        f"DELETE FROM {table} WHERE thread_id LIKE %s ESCAPE '\\'",  # noqa: S608 -- table is one of three literal checkpoint names, never user input
+                        (pattern,),
+                    )
+                    if cur.rowcount:
+                        _step("postgres", f"{table}[{conversation_id}]: deleted {cur.rowcount}")
+        d.pg.commit()
+    except Exception as e:
+        d.pg.rollback()
+        _fail("postgres", e)
+
+
+def _delete_local_stores(d: _Footprint) -> None:
+    """Chroma vectors, JuiceFS workspace (propagates to R2), Redis keys."""
+    for name, count in d.chroma_counts.items():
+        try:
+            d.chroma.get_collection(name).delete(where={"user_id": d.uid})
+            _step("chroma", f"{name}: deleted {count}")
+        except Exception as e:
+            _fail(f"chroma:{name}", e)
+
+    try:
+        if d.jfs_path.exists():
+            shutil.rmtree(d.jfs_path)
+            _step("juicefs", f"removed {d.jfs_path}")
+    except Exception as e:
+        _fail("juicefs", e)
+
+    try:
+        if d.redis_keys:
+            d.redis_client.unlink(*d.redis_keys)
+        _step("redis", f"unlinked {len(d.redis_keys)} keys")
+    except Exception as e:
+        _fail("redis", e)
+
+
+def _remove_resend_contact(d: _Footprint) -> None:
+    """Marketing-audience contact (no-op without RESEND_AUDIENCE_ID)."""
+    try:
+        resend.api_key = settings.RESEND_API_KEY
+        if settings.RESEND_AUDIENCE_ID:
+            resend.Contacts.remove(audience_id=settings.RESEND_AUDIENCE_ID, email=d.email)
+            _step("resend", f"removed contact {d.email}")
+        else:
+            _step("resend", "no RESEND_AUDIENCE_ID; skipped")
+    except Exception as e:
+        _fail("resend", e)
+
+
+async def _delete_workos_identity(d: _Footprint) -> None:
+    """Last — prevents account resurrection on re-login."""
+    for workos_user in d.workos_users:
+        try:
+            await d.workos.user_management.delete_user(workos_user.id)
+            _step("workos", f"deleted {workos_user.id}")
+        except Exception as e:
+            _fail(f"workos:{workos_user.id}", e)
+
+
+async def _verify_removal(d: _Footprint) -> int:
+    print("\n=== verification ===")
+    remnants: dict[str, Any] = {
+        "mongo": _mongo_inventory(d.db, d.uid, d.email),
+        "postgres": _pg_inventory(d.pg, d.uid),
+        "chroma": _chroma_inventory(d.chroma, d.uid),
+        "redis": _redis_user_keys(d.redis_client, d.uid),
+        "juicefs": d.jfs_path.exists(),
+        "composio": [
+            a.id
+            for a in getattr(d.composio.connected_accounts.list(user_ids=[d.uid]), "items", [])
+            if a.status == "ACTIVE"
+        ],
+        "workos": [u.id for u in (await d.workos.user_management.list_users(email=d.email)).data],
+    }
+    clean = not any(remnants.values())
+    for store, leftover in remnants.items():
+        print(f"  {store}: {'CLEAN' if not leftover else f'REMNANT {leftover}'}")
+    print("\nMANUAL FOLLOW-UP: delete the PostHog person for distinct_id", d.uid)
+    print("MANUAL FOLLOW-UP: delete Langfuse traces for user_id", d.uid)
+    if _failures:
+        print("\nFAILED STEPS:")
+        for failure in _failures:
+            print("  -", failure)
+    return 0 if clean and not _failures else 1
+
+
 async def _run(args: argparse.Namespace) -> int:
     email = args.email.strip().lower()
 
@@ -169,42 +408,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     print(f"=== mode: {'EXECUTE' if args.execute else 'DRY-RUN'} ===\n")
 
-    pg = psycopg.connect(settings.POSTGRES_URL)
-    chroma = chromadb.HttpClient(host=settings.CHROMADB_HOST, port=settings.CHROMADB_PORT)
-    redis_client = redislib.Redis.from_url(settings.REDIS_URL)
-    composio = Composio(api_key=settings.COMPOSIO_KEY)
-    workos = AsyncWorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
-
-    # ---------- inventory (both modes) ----------
-    mongo_counts = _mongo_inventory(db, uid, email)
-    pg_counts = _pg_inventory(pg, uid)
-    chroma_counts = _chroma_inventory(chroma, uid)
-    redis_keys = _redis_user_keys(redis_client, uid)
-    jfs_path = JFS_USERS_ROOT / uid
-    if jfs_path.parent != JFS_USERS_ROOT or not UID_RE.match(jfs_path.name):
-        sys.exit(f"ABORT: refusing to touch path {jfs_path}")
-
-    composio_accounts = list(getattr(composio.connected_accounts.list(user_ids=[uid]), "items", []))
-    sandbox_ids = [
-        doc["sandbox_id"] for doc in db.e2b_sandboxes.find({"user_id": uid}, {"sandbox_id": 1})
-    ]
-    conversation_ids = [
-        doc["conversation_id"]
-        for doc in db.conversations.find({"user_id": uid}, {"conversation_id": 1})
-    ]
-    platform_links: dict[str, Any] = user.get("platform_links") or {}
-    workos_users = (await workos.user_management.list_users(email=email)).data
-
-    print("mongo:", mongo_counts or "none")
-    print("postgres:", pg_counts or "none")
-    print("chroma:", chroma_counts or "none")
-    print(f"redis: {len(redis_keys)} keys")
-    print(f"juicefs: {jfs_path} exists={jfs_path.exists()}")
-    print(f"composio: {[(a.id, a.toolkit.slug, a.status) for a in composio_accounts]}")
-    print(f"e2b sandboxes: {sandbox_ids}")
-    print(f"conversations (checkpoint threads to sweep): {len(conversation_ids)}")
-    print(f"platform_links: {list(platform_links) or 'none'}")
-    print(f"workos: {[(u.id, u.email) for u in workos_users]}")
+    d = await _build_footprint(args, db, user, uid)
 
     if not args.execute:
         print(
@@ -214,142 +418,16 @@ async def _run(args: argparse.Namespace) -> int:
         return 0
 
     print("\n=== deleting ===")
+    # Order matters: external access is revoked first, data stores next, and
+    # the login identity last (see module docstring).
+    await _revoke_external_access(d)
+    _delete_mongo_data(d)
+    _delete_postgres_data(d)
+    _delete_local_stores(d)
+    _remove_resend_contact(d)
+    await _delete_workos_identity(d)
 
-    # 1. Composio: revoke OAuth grants first — external access is cut before
-    #    any data is removed, so nothing can write during teardown.
-    for account in composio_accounts:
-        try:
-            composio.connected_accounts.delete(nanoid=account.id)
-            _step("composio", f"deleted {account.id} ({account.toolkit.slug})")
-        except Exception as e:
-            _fail(f"composio:{account.id}", e)
-
-    # 2. E2B sandboxes
-    for sandbox_id in sandbox_ids:
-        try:
-            await AsyncSandbox.kill(
-                sandbox_id, api_key=settings.E2B_API_KEY, domain=settings.E2B_DOMAIN
-            )
-            _step("e2b", f"killed {sandbox_id}")
-        except Exception as e:
-            _fail(f"e2b:{sandbox_id}", e)
-
-    # 3. Mongo (users doc last, so a partial failure leaves the account findable)
-    try:
-        bucket = gridfs.GridFSBucket(db)
-        for file_doc in db["fs.files"].find({"metadata.user_id": uid}, {"_id": 1}):
-            bucket.delete(file_doc["_id"])
-        for name in sorted(db.list_collection_names()):
-            if name == "users" or name.startswith("fs."):
-                continue
-            n = db[name].delete_many({"user_id": uid}).deleted_count
-            if name == "support_requests":
-                n += db[name].delete_many({"user_email": email}).deleted_count
-            if name == "bot_sessions" and platform_links:
-                platform_ids = [
-                    str(link.get("platform_user_id", link)) if isinstance(link, dict) else str(link)
-                    for link in platform_links.values()
-                ]
-                n += db[name].delete_many({"platform_user_id": {"$in": platform_ids}}).deleted_count
-            if n:
-                _step("mongo", f"{name}: deleted {n}")
-        deleted = db.users.delete_one(object_id_filter(uid)).deleted_count
-        _step("mongo", f"users: deleted {deleted}")
-    except Exception as e:
-        _fail("mongo", e)
-
-    # 4. Postgres: per-user tables + the LangGraph checkpoint threads of the
-    #    user's conversations (base thread == conversation_id plus derived
-    #    executor/workflow threads that embed it — same contract as
-    #    conversation_service._delete_checkpoint_threads).
-    try:
-        with pg.cursor() as cur:
-            for table in PG_USER_TABLES:
-                cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (uid,))
-                if cur.rowcount:
-                    _step("postgres", f"{table}: deleted {cur.rowcount}")
-            for conversation_id in conversation_ids:
-                pattern = f"%{_like_escape(conversation_id)}%"
-                for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
-                    cur.execute(
-                        f"DELETE FROM {table} WHERE thread_id LIKE %s ESCAPE '\\'",
-                        (pattern,),
-                    )
-                    if cur.rowcount:
-                        _step("postgres", f"{table}[{conversation_id}]: deleted {cur.rowcount}")
-        pg.commit()
-    except Exception as e:
-        pg.rollback()
-        _fail("postgres", e)
-
-    # 5. Chroma
-    for name, count in chroma_counts.items():
-        try:
-            chroma.get_collection(name).delete(where={"user_id": uid})
-            _step("chroma", f"{name}: deleted {count}")
-        except Exception as e:
-            _fail(f"chroma:{name}", e)
-
-    # 6. JuiceFS workspace (propagates to R2)
-    try:
-        if jfs_path.exists():
-            shutil.rmtree(jfs_path)
-            _step("juicefs", f"removed {jfs_path}")
-    except Exception as e:
-        _fail("juicefs", e)
-
-    # 7. Redis
-    try:
-        if redis_keys:
-            redis_client.unlink(*redis_keys)
-        _step("redis", f"unlinked {len(redis_keys)} keys")
-    except Exception as e:
-        _fail("redis", e)
-
-    # 8. Resend marketing contact
-    try:
-        resend.api_key = settings.RESEND_API_KEY
-        if settings.RESEND_AUDIENCE_ID:
-            resend.Contacts.remove(audience_id=settings.RESEND_AUDIENCE_ID, email=email)
-            _step("resend", f"removed contact {email}")
-        else:
-            _step("resend", "no RESEND_AUDIENCE_ID; skipped")
-    except Exception as e:
-        _fail("resend", e)
-
-    # 9. WorkOS identity, last — prevents account resurrection on re-login.
-    for workos_user in workos_users:
-        try:
-            await workos.user_management.delete_user(workos_user.id)
-            _step("workos", f"deleted {workos_user.id}")
-        except Exception as e:
-            _fail(f"workos:{workos_user.id}", e)
-
-    # ---------- verification ----------
-    print("\n=== verification ===")
-    remnants: dict[str, Any] = {
-        "mongo": _mongo_inventory(db, uid, email),
-        "postgres": _pg_inventory(pg, uid),
-        "chroma": _chroma_inventory(chroma, uid),
-        "redis": _redis_user_keys(redis_client, uid),
-        "juicefs": jfs_path.exists(),
-        "composio": [
-            a.id
-            for a in getattr(composio.connected_accounts.list(user_ids=[uid]), "items", [])
-            if a.status == "ACTIVE"
-        ],
-        "workos": [u.id for u in (await workos.user_management.list_users(email=email)).data],
-    }
-    clean = not any(remnants.values())
-    for store, leftover in remnants.items():
-        print(f"  {store}: {'CLEAN' if not leftover else f'REMNANT {leftover}'}")
-    print("\nMANUAL FOLLOW-UP: delete the PostHog person for distinct_id", uid)
-    print("MANUAL FOLLOW-UP: delete Langfuse traces for user_id", uid)
-    if _failures:
-        print("\nFAILED STEPS:")
-        for failure in _failures:
-            print("  -", failure)
-    return 0 if clean and not _failures else 1
+    return await _verify_removal(d)
 
 
 def main() -> None:

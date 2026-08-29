@@ -218,14 +218,16 @@ class TestUpdateChannelPreferences:
             "whatsapp": False,
             "slack": False,
         }
-        response = await client.put(
-            f"{NOTIF_BASE}/preferences/channels",
-            json={"telegram": False, "discord": True},
-        )
+        with patch("app.api.v1.endpoints.notification.schedule_account_sync") as mock_schedule_sync:
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/channels",
+                json={"telegram": False, "discord": True},
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["telegram"] is False
         assert data["discord"] is True
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
 
     @patch(
         "app.api.v1.endpoints.notification.fetch_channel_preferences",

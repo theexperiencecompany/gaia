@@ -55,8 +55,8 @@ def _registry(real_tool_registry):
     """Tool categories and display labels come from the real global registry."""
 
 
-def _tool_call(name: str, args: dict[str, Any] | None = None, id: str | None = "tc_1") -> dict:
-    return {"name": name, "args": args or {}, "id": id, "type": "tool_call"}
+def _tool_call(name: str, args: dict[str, Any] | None = None, call_id: str | None = "tc_1") -> dict:
+    return {"name": name, "args": args or {}, "id": call_id, "type": "tool_call"}
 
 
 def _context(graph: ScriptedGraph) -> SubagentExecutionContext:
@@ -295,7 +295,9 @@ class TestMalformedEvents:
         transcript, _, _ = await run_subagent(
             flat(
                 agent_update(
-                    AIMessage(content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", id=None)])
+                    AIMessage(
+                        content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", call_id=None)]
+                    )
                 )
             )
         )
@@ -314,7 +316,9 @@ class TestMalformedEvents:
         ]
 
     async def test_the_same_tool_call_replayed_emits_one_card(self):
-        msg = AIMessage(content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", id="tc_dup")])
+        msg = AIMessage(
+            content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", call_id="tc_dup")]
+        )
         transcript, _, _ = await run_subagent(flat(agent_update(msg), agent_update(msg)))
 
         assert transcript.tool_names() == ["GMAIL_FETCH_MESSAGES"]
@@ -324,7 +328,7 @@ class TestMalformedEvents:
         """Same stale-replay hazard as the comms stream: pre-model hooks re-emit
         historical AIMessages carrying last run's tool calls."""
         historical = AIMessage(
-            content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", id="old_1")]
+            content="", tool_calls=[_tool_call("GMAIL_FETCH_MESSAGES", call_id="old_1")]
         )
         transcript, _, _ = await run_subagent(flat(node_update(node, historical)))
 

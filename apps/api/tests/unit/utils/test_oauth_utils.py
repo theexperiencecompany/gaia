@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.utils.oauth_utils import (
     build_google_oauth_url,
     upload_user_picture,
@@ -269,3 +270,43 @@ class TestUploadUserPicture:
         with pytest.raises(HTTPException) as exc_info:
             await upload_user_picture(b"data", "pid")
         assert exc_info.value.status_code == 500
+
+
+class TestUploadUserPictureLogPins:
+    @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
+    async def test_success_logs_are_exact(self, mock_upload: MagicMock) -> None:
+        mock_upload.return_value = {"secure_url": "https://cdn.example.com/img.png"}
+        with patch("app.utils.oauth_utils.log") as log:
+            await upload_user_picture(b"data", "pid-1")
+
+        log.set.assert_called_once_with(operation="upload_user_picture")
+        log.info.assert_called_once_with(
+            f"{LogTag.OAUTH} Image uploaded successfully. URL",
+            image_url="https://cdn.example.com/img.png",
+        )
+
+    @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
+    async def test_missing_secure_url_logs_the_exact_error(self, mock_upload: MagicMock) -> None:
+        mock_upload.return_value = {}
+        with patch("app.utils.oauth_utils.log") as log:
+            with pytest.raises(HTTPException):
+                await upload_user_picture(b"data", "pid")
+
+        log.error.assert_any_call(
+            f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response"
+        )
+
+    @patch("app.utils.oauth_utils.cloudinary.uploader.upload")
+    async def test_upload_failure_logs_error_with_type(self, mock_upload: MagicMock) -> None:
+        mock_upload.side_effect = RuntimeError("cdn down")
+        with patch("app.utils.oauth_utils.log") as log:
+            with pytest.raises(HTTPException) as exc_info:
+                await upload_user_picture(b"data", "pid")
+
+        assert exc_info.value.detail == "Image upload failed"
+        log.error.assert_any_call(
+            f"{LogTag.OAUTH} Failed to upload image to Cloudinary",
+            error="cdn down",
+            error_type="RuntimeError",
+            exc_info=True,
+        )

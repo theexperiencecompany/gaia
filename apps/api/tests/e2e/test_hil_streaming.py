@@ -121,14 +121,14 @@ def executor_script() -> list[Any]:
     rather than as a silently shorter stream.
     """
     return [
-        call("retrieve_tools", {"exact_tool_names": [GATED_TOOL]}, id="tc_retrieve"),
-        call(GATED_TOOL, GATED_ARGS, id=GATED_CALL_ID),
+        call("retrieve_tools", {"exact_tool_names": [GATED_TOOL]}, call_id="tc_retrieve"),
+        call(GATED_TOOL, GATED_ARGS, call_id=GATED_CALL_ID),
         "Drew the flowchart.",
     ]
 
 
 def comms_script() -> list[Any]:
-    return [call("call_executor", {"task": "draw the flowchart"}, id="tc_exec"), "On it."]
+    return [call("call_executor", {"task": "draw the flowchart"}, call_id="tc_exec"), "On it."]
 
 
 def assert_real_tool_output(output: str) -> None:
@@ -923,11 +923,11 @@ def sibling_executor_script() -> list[Any]:
         call(
             "retrieve_tools",
             {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]},
-            id="tc_retrieve",
+            call_id="tc_retrieve",
         ),
         [
-            call(SIBLING_TOOL, SIBLING_ARGS, id=SIBLING_CALL_ID),
-            call(GATED_TOOL, GATED_ARGS, id=GATED_CALL_ID),
+            call(SIBLING_TOOL, SIBLING_ARGS, call_id=SIBLING_CALL_ID),
+            call(GATED_TOOL, GATED_ARGS, call_id=GATED_CALL_ID),
         ],
         "Checked the weather and drew the flowchart.",
     ]
@@ -1039,9 +1039,9 @@ def cancelling_comms_script() -> list[Any]:
     it is the only caller of ``cancel_conversation_approvals``.
     """
     return [
-        call("call_executor", {"task": "draw the flowchart"}, id="tc_exec"),
+        call("call_executor", {"task": "draw the flowchart"}, call_id="tc_exec"),
         "On it.",
-        call("cancel_executor", {"task_ids": []}, id="tc_cancel"),
+        call("cancel_executor", {"task_ids": []}, call_id="tc_cancel"),
         "Stopped.",
     ]
 
@@ -1239,10 +1239,14 @@ GATE_B_CALL_ID = "tc_gate_b"
 
 def two_gated_calls_script() -> list[Any]:
     return [
-        call("retrieve_tools", {"exact_tool_names": [GATE_A_TOOL, GATE_B_TOOL]}, id="tc_retrieve"),
+        call(
+            "retrieve_tools",
+            {"exact_tool_names": [GATE_A_TOOL, GATE_B_TOOL]},
+            call_id="tc_retrieve",
+        ),
         [
-            call(GATE_A_TOOL, SIBLING_ARGS, id=GATE_A_CALL_ID),
-            call(GATE_B_TOOL, GATED_ARGS, id=GATE_B_CALL_ID),
+            call(GATE_A_TOOL, SIBLING_ARGS, call_id=GATE_A_CALL_ID),
+            call(GATE_B_TOOL, GATED_ARGS, call_id=GATE_B_CALL_ID),
         ],
         "Checked the weather and drew the flowchart.",
     ]
@@ -1513,11 +1517,15 @@ SECOND_GATE_ARGS = {"description": "the second approved action", "direction": "T
 def one_ungated_two_gated_script() -> list[Any]:
     """One AI message: a harmless call and two that need approval."""
     return [
-        call("retrieve_tools", {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]}, id="tc_retrieve"),
+        call(
+            "retrieve_tools",
+            {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]},
+            call_id="tc_retrieve",
+        ),
         [
-            call(SIBLING_TOOL, SIBLING_ARGS, id=SIBLING_CALL_ID),
-            call(GATED_TOOL, FIRST_GATE_ARGS, id=FIRST_GATE_CALL_ID),
-            call(GATED_TOOL, SECOND_GATE_ARGS, id=SECOND_GATE_CALL_ID),
+            call(SIBLING_TOOL, SIBLING_ARGS, call_id=SIBLING_CALL_ID),
+            call(GATED_TOOL, FIRST_GATE_ARGS, call_id=FIRST_GATE_CALL_ID),
+            call(GATED_TOOL, SECOND_GATE_ARGS, call_id=SECOND_GATE_CALL_ID),
         ],
         "Checked the weather and drew both flowcharts.",
     ]

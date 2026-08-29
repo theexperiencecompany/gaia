@@ -79,6 +79,165 @@ def build_rate_limit_card(
     }
 
 
+def _resolve_context(kwargs: dict[str, Any]) -> dict[str, Any] | None:
+    """User context from the context var, falling back to the run's config."""
+    context = user_context.get()
+    # Decoration-time validation in with_rate_limiting guarantees a `config`
+    # parameter; it carries LangGraph's RunnableConfig mapping.
+    config = cast(Mapping[str, Any] | None, kwargs.get("config"))
+    if not context and config:
+        # Extract from RunnableConfig
+        context = {
+            "user_id": config.get("metadata", {}).get("user_id"),
+            # Always user-initiated: no producer writes an "initiator" into
+            # a run's configurable (see AgentConfigurable), so the lookup
+            # this replaces could only ever return this default. Backend
+            # callers announce themselves through user_context instead,
+            # which is the branch above.
+            "initiator": "frontend",
+        }
+    return context
+
+
+def _limit_hit_exception(
+    user_id: str,
+    actual_feature_key: str,
+    user_plan: PlanType,
+    e: RateLimitExceededException,
+) -> "LangChainRateLimitError":
+    """Convert a limiter exception into the agent-friendly one, with side effects."""
+    log.warning(
+        f"{LogTag.API} Rate limit exceeded",
+        user_id=user_id,
+        actual_feature_key=actual_feature_key,
+        error=str(e),
+        error_type=type(e).__name__,
+    )
+    if user_plan != PlanType.FREE:
+        # FREE hits are already captured by the limit-upsell seam
+        # (schedule_limit_upsell fires on every exceed for free users); paid
+        # plans have no such side effect, so their hits are captured here.
+        capture_event(
+            user_id,
+            AnalyticsEvents.RATE_LIMIT_HIT,
+            {"feature": actual_feature_key, "plan": plan_label(user_plan)},
+        )
+    detail_dict: dict[str, Any] = {}
+    # reset_time resolves below: detail dict first, then the exception attr.
+
+    # HTTPException.detail is typed `str` by Starlette, but
+    # RateLimitExceededException always sets it to a dict at runtime — cast to
+    # Any so the isinstance checks below aren't (incorrectly) treated as
+    # statically unreachable.
+    detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
+    if isinstance(detail_value, dict):
+        detail_dict = dict(detail_value)
+    elif isinstance(detail_value, str):
+        detail_dict = {"message": detail_value}
+    # The exception's own plan gate / reset time are authoritative when the
+    # detail dict doesn't carry them. The exception keeps the datetime; the
+    # streamed card gets an ISO string so it renders the same shape every
+    # caller produces.
+    reset_time = detail_dict.get("reset_time") or getattr(e, "reset_time", None)
+    plan_required = detail_dict.get("plan_required") or getattr(e, "plan_required", None)
+
+    # Emit inline rate limit card via LangGraph stream writer (only available
+    # when executing inside a LangGraph graph).
+    try:
+        writer = get_stream_writer()
+    except RuntimeError as stream_error:
+        # "not in a runnable context" (workflows, background tasks) — the card
+        # is decoration, the exception below is the outcome. Only the missing
+        # context is swallowed; card construction and delivery failures
+        # propagate.
+        log.debug(
+            f"{LogTag.API} Rate limit card not streamed",
+            actual_feature_key=actual_feature_key,
+            error=str(stream_error),
+            error_type=type(stream_error).__name__,
+        )
+    else:
+        card_reset_time = reset_time.isoformat() if isinstance(reset_time, datetime) else reset_time
+        writer(
+            build_rate_limit_card(
+                feature=actual_feature_key,
+                plan_required=plan_required,
+                reset_time=card_reset_time,
+                current_plan=plan_label(user_plan),
+            )
+        )
+
+    return LangChainRateLimitError(
+        feature=actual_feature_key,
+        detail=detail_dict,
+        reset_time=reset_time,
+    )
+
+
+async def _enforce_feature_limit(user_id: str, actual_feature_key: str) -> None:
+    """Run one rate-limit check for ``user_id`` on ``actual_feature_key``."""
+    try:
+        user_plan = await payment_service.get_cached_plan_type(user_id)
+
+        # Apply rate limiting with atomic operations
+        usage_info = await tiered_limiter.check_and_increment(
+            user_id=user_id,
+            feature_key=actual_feature_key,
+            user_plan=user_plan,
+        )
+
+        # Store rate limit context for response metadata
+        rate_limit_context.set(
+            {
+                "feature_key": actual_feature_key,
+                "usage_info": usage_info,
+                "user_plan": plan_label(user_plan),
+            }
+        )
+
+        log.debug(
+            f"{LogTag.API} Rate limit check passed",
+            user_id=user_id,
+            actual_feature_key=actual_feature_key,
+        )
+    except RateLimitExceededException as e:
+        # Convert to agent-friendly exception
+        raise _limit_hit_exception(user_id, actual_feature_key, user_plan, e) from e
+    except Exception as e:
+        log.error(
+            f"{LogTag.API} Rate limiting failed",
+            user_id=user_id,
+            actual_feature_key=actual_feature_key,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+def _attach_usage_metadata(result: dict[str, Any]) -> None:
+    """Attach this call's rate-limit usage to a dict result for the caller."""
+    rl_context = rate_limit_context.get()
+    if not rl_context:
+        return
+    # Convert UsageInfo objects to dicts for JSON serialization
+    usage_info_dict = {}
+    for period, usage_info in rl_context["usage_info"].items():
+        usage_info_dict[period] = {
+            "used": usage_info.used,
+            "limit": usage_info.limit,
+            "reset_time": usage_info.reset_time.isoformat() if usage_info.reset_time else None,
+        }
+
+    result.setdefault(
+        "_rate_limit_info",
+        {
+            "feature": rl_context["feature_key"],
+            "plan": rl_context["user_plan"],
+            "usage": usage_info_dict,
+        },
+    )
+
+
 def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
@@ -109,131 +268,14 @@ def with_rate_limiting(
             # Auto-derive feature key from function name if not provided
             actual_feature_key = feature_key or func.__name__
 
-            # Get user context from context variable (avoid parameter pollution)
-            context = user_context.get()
-            # Decoration-time validation above guarantees a `config` parameter; it
-            # carries LangGraph's RunnableConfig mapping.
-            config = cast(Mapping[str, Any] | None, kwargs.get("config"))
+            context = _resolve_context(kwargs)
+            user_id = context.get("user_id") if context else None
 
-            if not context and config:
-                # Extract from RunnableConfig
-                context = {
-                    "user_id": config.get("metadata", {}).get("user_id"),
-                    # Always user-initiated: no producer writes an "initiator" into
-                    # a run's configurable (see AgentConfigurable), so the lookup
-                    # this replaces could only ever return this default. Backend
-                    # callers announce themselves through user_context instead,
-                    # which is the branch above.
-                    "initiator": "frontend",
-                }
-
-            if context and context.get("user_id"):
-                user_id = context["user_id"]
-                initiator = context.get("initiator", "frontend")
-
+            if user_id:
+                initiator = (context or {}).get("initiator")
                 # Skip rate limiting for system operations if configured
-                if bypass_for_system and initiator == "backend":
-                    log.debug(
-                        f"{LogTag.API} Bypassing rate limiting for system operation",
-                        actual_feature_key=actual_feature_key,
-                    )
-                else:
-                    try:
-                        user_plan = await payment_service.get_cached_plan_type(user_id)
-
-                        # Apply rate limiting with atomic operations
-                        usage_info = await tiered_limiter.check_and_increment(
-                            user_id=user_id,
-                            feature_key=actual_feature_key,
-                            user_plan=user_plan,
-                        )
-
-                        # Store rate limit context for response metadata
-                        rate_limit_context.set(
-                            {
-                                "feature_key": actual_feature_key,
-                                "usage_info": usage_info,
-                                "user_plan": plan_label(user_plan),
-                            }
-                        )
-
-                        log.debug(
-                            f"{LogTag.API} Rate limit check passed",
-                            user_id=user_id,
-                            actual_feature_key=actual_feature_key,
-                        )
-
-                    except RateLimitExceededException as e:
-                        # Convert to agent-friendly exception
-                        log.warning(
-                            f"{LogTag.API} Rate limit exceeded",
-                            user_id=user_id,
-                            actual_feature_key=actual_feature_key,
-                            error=str(e),
-                            error_type=type(e).__name__,
-                        )
-                        if user_plan != PlanType.FREE:
-                            # FREE hits are already captured by the limit-upsell
-                            # seam (schedule_limit_upsell fires on every exceed for
-                            # free users); paid plans have no such side effect, so
-                            # their hits are captured here.
-                            capture_event(
-                                user_id,
-                                AnalyticsEvents.RATE_LIMIT_HIT,
-                                {"feature": actual_feature_key, "plan": plan_label(user_plan)},
-                            )
-                        detail_dict = {}
-                        reset_time = None
-
-                        # HTTPException.detail is typed `str` by Starlette, but
-                        # RateLimitExceededException always sets it to a dict at
-                        # runtime — cast to Any so the isinstance checks below
-                        # aren't (incorrectly) treated as statically unreachable.
-                        detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
-                        if detail_value is not None:
-                            if isinstance(detail_value, dict):
-                                detail_dict = detail_value
-                                reset_time = detail_value.get("reset_time")
-                            elif isinstance(detail_value, str):
-                                detail_dict = {"message": detail_value}
-
-                        # Emit inline rate limit card via LangGraph stream writer
-                        # (only available when executing inside a LangGraph graph)
-                        try:
-                            writer = get_stream_writer()
-                            writer(
-                                build_rate_limit_card(
-                                    feature=actual_feature_key,
-                                    plan_required=detail_dict.get("plan_required"),
-                                    reset_time=reset_time,
-                                    current_plan=plan_label(user_plan),
-                                )
-                            )
-                        except Exception as stream_error:
-                            # Usually just "not in a streaming context" (workflows,
-                            # background tasks); the card is decoration, the
-                            # LangChainRateLimitError below is the real outcome.
-                            log.debug(
-                                f"{LogTag.API} Rate limit card not streamed",
-                                actual_feature_key=actual_feature_key,
-                                error=str(stream_error),
-                                error_type=type(stream_error).__name__,
-                            )
-
-                        raise LangChainRateLimitError(
-                            feature=actual_feature_key,
-                            detail=detail_dict,
-                            reset_time=reset_time,
-                        )
-                    except Exception as e:
-                        log.error(
-                            f"{LogTag.API} Rate limiting failed",
-                            user_id=user_id,
-                            actual_feature_key=actual_feature_key,
-                            error=str(e),
-                            error_type=type(e).__name__,
-                        )
-                        raise
+                if not (bypass_for_system and initiator == "backend"):
+                    await _enforce_feature_limit(user_id, actual_feature_key)
             else:
                 log.warning(
                     f"{LogTag.API} No user context, skipping rate limiting",
@@ -245,37 +287,17 @@ def with_rate_limiting(
 
             # Add rate limit metadata to response if it's a dict
             if isinstance(result, dict):
-                rl_context = rate_limit_context.get()
-                if rl_context:
-                    # Convert UsageInfo objects to dicts for JSON serialization
-                    usage_info_dict = {}
-                    for period, usage_info in rl_context["usage_info"].items():
-                        usage_info_dict[period] = {
-                            "used": usage_info.used,
-                            "limit": usage_info.limit,
-                            "reset_time": usage_info.reset_time.isoformat()
-                            if usage_info.reset_time
-                            else None,
-                        }
+                _attach_usage_metadata(cast(dict[str, Any], result))
 
-                    result.setdefault(
-                        "_rate_limit_info",
-                        {
-                            "feature": rl_context["feature_key"],
-                            "plan": rl_context["user_plan"],
-                            "usage": usage_info_dict,
-                        },
-                    )
-
-            # Handle token counting post-execution
-            if count_tokens and isinstance(result, dict):
-                tokens_used = result.get("tokens_used", 0)
-                if tokens_used > 0:
-                    log.debug(
-                        f"{LogTag.API} Token usage recorded",
-                        tokens_used=tokens_used,
-                        feature_key=actual_feature_key,
-                    )
+                # Handle token counting post-execution
+                if count_tokens:
+                    tokens_used = cast(dict[str, Any], result).get("tokens_used", 0)
+                    if tokens_used > 0:
+                        log.debug(
+                            f"{LogTag.API} Token usage recorded",
+                            tokens_used=tokens_used,
+                            feature_key=actual_feature_key,
+                        )
 
             return result
 

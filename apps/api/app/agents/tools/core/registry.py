@@ -108,6 +108,7 @@ class Tool:
         name: str | None = None,
         is_core: bool = False,
         destructive: bool | None = None,
+        always_gate: bool = False,
     ):
         self.tool = tool
         self.name = name or tool.name
@@ -116,6 +117,11 @@ class Tool:
         # None = unclassified (custom/MCP tools until the LLM classifier decides);
         # True/False = reviewed (internal tools + curated integration slugs).
         self.destructive = destructive
+        # Forced-ask stamp: this tool pauses for user approval in EVERY HIL mode,
+        # ignoring ``always_allow`` and per-tool overrides. Stronger than
+        # ``destructive`` (which only shapes auto-mode judging). For settings on
+        # the user's own account and similar product invariants.
+        self.always_gate = always_gate
 
 
 class ToolCategory:
@@ -150,15 +156,25 @@ class ToolCategory:
         is_core: bool = False,
         name: str | None = None,
         destructive: bool | None = None,
+        always_gate: bool = False,
     ) -> None:
         """Add a tool to this category."""
-        self.tools.append(Tool(tool=tool, name=name, is_core=is_core, destructive=destructive))
+        self.tools.append(
+            Tool(
+                tool=tool,
+                name=name,
+                is_core=is_core,
+                destructive=destructive,
+                always_gate=always_gate,
+            )
+        )
 
     def add_tools(
         self,
         tools: Sequence[BaseTool],
         is_core: bool = False,
         destructive_tools: set[str] | None = None,
+        always_gate_tools: set[str] | None = None,
     ) -> None:
         """Add multiple tools to this category.
 
@@ -166,10 +182,14 @@ class ToolCategory:
         every tool is stamped destructive by membership (so an empty set marks
         the whole category reviewed-safe); when ``None`` the tools stay
         unclassified and fall to the HIL LLM classifier at gate time.
+        ``always_gate_tools`` stamps forced-ask members (see ``Tool.always_gate``).
         """
+        gated = always_gate_tools or set()
         for tool in tools:
             destructive = None if destructive_tools is None else (tool.name in destructive_tools)
-            self.add_tool(tool, is_core=is_core, destructive=destructive)
+            self.add_tool(
+                tool, is_core=is_core, destructive=destructive, always_gate=tool.name in gated
+            )
 
     def get_tool_objects(self) -> list[BaseTool]:
         """Get the actual tool objects for binding."""
@@ -216,6 +236,7 @@ class ToolRegistry:
         is_delegated: bool = False,
         internal: bool = False,
         destructive_tools: set[str] | None = None,
+        always_gate_tools: set[str] | None = None,
     ) -> None:
         """Helper to create and register a category.
 
@@ -224,6 +245,7 @@ class ToolRegistry:
         explicit set (empty if none are destructive) so in-repo tools are never
         left unclassified; ``None`` is reserved for uncurated (custom MCP /
         provider) tools that the HIL LLM classifier resolves at gate time.
+        ``always_gate_tools`` names members that ask in every HIL mode.
         """
         replacing = name in self._categories
         prior_tools_count = len(self._categories[name].tools) if replacing else 0
@@ -236,9 +258,16 @@ class ToolRegistry:
             internal=internal,
         )
         if core_tools:
-            category.add_tools(core_tools, is_core=True, destructive_tools=destructive_tools)
+            category.add_tools(
+                core_tools,
+                is_core=True,
+                destructive_tools=destructive_tools,
+                always_gate_tools=always_gate_tools,
+            )
         if tools:
-            category.add_tools(tools, destructive_tools=destructive_tools)
+            category.add_tools(
+                tools, destructive_tools=destructive_tools, always_gate_tools=always_gate_tools
+            )
         self._categories[name] = category
         if replacing:
             # Drop the replaced category's entries so removed tools don't linger.
@@ -281,6 +310,7 @@ class ToolRegistry:
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
+            account_tools,
             context_tool,
             desktop_tools,
             download_tool,
@@ -327,6 +357,22 @@ class ToolRegistry:
             tools=[*notification_tool.tools],
             destructive_tools={"send_notification"},
         )
+        # Account-center mutations: settings on the user's own account. The
+        # settings tools are forced-ask — they change state the user owns
+        # outright, so no approval mode or per-tool override may wave them
+        # through. manage_linked_account is argument-gated instead (disconnect
+        # asks, generate_link doesn't) — see hil/policy.ARGUMENT_GATED_TOOLS.
+        self._add_category(
+            "account",
+            tools=[*account_tools.tools],
+            destructive_tools=set(),
+            always_gate_tools={
+                "update_notification_settings",
+                "update_preferences",
+                "update_custom_instructions",
+                "set_selected_voice",
+            },
+        )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
         self._add_category(
             "tracked_todos",
             tools=[*tracked_todo_tools.tools],

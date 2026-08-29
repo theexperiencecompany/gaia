@@ -91,4 +91,4 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
         log.error(
             "Failed to create note", error=str(e), error_type=type(e).__name__, user_id=user_id
         )
-        raise HTTPException(status_code=500, detail="Failed to create note")
+        raise HTTPException(status_code=500, detail="Failed to create note") from e
