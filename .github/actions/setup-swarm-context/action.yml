@@ -8,8 +8,11 @@ description: >
   deploy user on tag:prod). ssh_host must be the VM's Tailscale address.
 
 inputs:
-  tailscale_authkey:
-    description: Ephemeral, pre-authorized Tailscale auth key tagged tag:ci
+  tailscale_oauth_client_id:
+    description: Tailscale OAuth client (scope auth_keys:write, tag:ci only)
+    required: true
+  tailscale_oauth_secret:
+    description: Secret of that OAuth client
     required: true
   ssh_host:
     description: Tailscale address of the production VM
@@ -21,11 +24,13 @@ inputs:
 runs:
   using: composite
   steps:
-    # Ephemeral node: it is removed from the tailnet when the job ends.
+    # The OAuth client mints a throwaway auth key per job (no long-lived key
+    # to rotate); the node is ephemeral and removed when the job ends.
     - name: Join the tailnet
       uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
       with:
-        authkey: ${{ inputs.tailscale_authkey }}
+        oauth-client-id: ${{ inputs.tailscale_oauth_client_id }}
+        oauth-secret: ${{ inputs.tailscale_oauth_secret }}
         tags: tag:ci
         hostname: gaia-deploy-${{ github.run_id }}
 

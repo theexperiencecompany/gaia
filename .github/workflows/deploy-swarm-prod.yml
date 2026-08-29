@@ -104,7 +104,8 @@ jobs:
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          tailscale_authkey: ${{ secrets.TS_AUTHKEY }}
+          tailscale_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
@@ -296,7 +297,8 @@ jobs:
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          tailscale_authkey: ${{ secrets.TS_AUTHKEY }}
+          tailscale_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
