@@ -171,7 +171,7 @@
     "next-llms-txt": "^1.0.2",
     "onnxruntime-web": "^1.27.0",
     "postcss": "^8.5.16",
-    "posthog-js": "^1.399.2",
+    "posthog-js": "^1.422.5",
     "react": "19.1.0",
     "react-best-gradient-color-picker": "^3.0.14",
     "react-day-picker": "^9.14.0",
