@@ -66,6 +66,14 @@ runs:
       # the previous install left still matches (scripts/ci/dep-marker.sh keys
       # it on the lockfile AND the linker/workspace settings), the tree is by
       # construction what pnpm would produce — skip the ~15s verify pass.
+      env:
+        # electron is on the build allowlist so its postinstall may run, but
+        # that postinstall downloads the ~110 MB Electron binary on every
+        # fresh install. No CI job runs Electron: desktop-pr-build packages
+        # with electron-builder, which fetches its own distribution. Skipping
+        # the download also kept the 5-minute `changes` job from timing out on
+        # a cold self-hosted workspace (2026-08-29).
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: |
         set -euo pipefail
         MARK="$(bash scripts/ci/dep-marker.sh node)"
