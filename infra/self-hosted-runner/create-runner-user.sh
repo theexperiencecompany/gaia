@@ -81,6 +81,14 @@ rsync -a --exclude nx-remote.token --exclude 'hooks/' --exclude 'nx-cache-server
       --exclude 'pnpm-store/' --exclude '*.log' "$SRC/ci-cache/" "$H/ci-cache/"
 [[ -d "$SRC/.local/share/pnpm" ]] && rsync -aH "$SRC/.local/share/pnpm/" "$H/.local/share/pnpm/"
 [[ -d "$SRC/.cache/uv" ]] && rsync -a "$SRC/.cache/uv/" "$H/.cache/uv/"
+# uv's wheel cache is symlinks into its own archive dir by ABSOLUTE path;
+# copied verbatim they still point into the old home, which the new user
+# cannot read ("Failed to read from the distribution cache: Permission
+# denied"). Re-point them at the copy.
+find "$H/.cache/uv" -type l -lname "$SRC/*" -print0 2>/dev/null | while IFS= read -r -d '' link; do
+  target="$(readlink "$link")"
+  ln -sfn "${target/#"$SRC"/$H}" "$link"
+done
 seed="$(ls -d "$SRC"/actions-runner-*/_work/_tool 2>/dev/null | head -n 1 || true)"
 [[ -n "$seed" ]] && rsync -a "$seed/" "$H/_tool-seed/"
 umask 077

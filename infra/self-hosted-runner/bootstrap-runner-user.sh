@@ -27,7 +27,11 @@ NODE_VERSION="${NODE_VERSION:-22.23.2}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 [[ -n "${XDG_RUNTIME_DIR:-}" && -d "$XDG_RUNTIME_DIR" ]] || { echo "::error::no user session (XDG_RUNTIME_DIR unset) — run via machinectl shell $(id -un)@"; exit 1; }
-export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+# Concrete tool dirs before the mise shims: a shim re-reads the checkout's
+# mise.toml on every call and refuses untrusted ones; the trust setting below
+# covers the rest (jobs get the same via the runner unit).
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/installs/node/${NODE_VERSION}/bin:$HOME/.local/share/mise/installs/python/${PYTHON_VERSION}/bin:$HOME/.local/share/mise/shims:$PATH"
+export MISE_TRUSTED_CONFIG_PATHS="$HOME"
 
 # 1. rootless docker
 if ! systemctl --user is-active --quiet docker.service; then

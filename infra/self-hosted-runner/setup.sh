@@ -412,8 +412,20 @@ warm_workdir() {
   # Use the same node the jobs use: the runner tool cache (node 22.x from
   # actions/setup-node). The system node is 18, which today's pnpm refuses.
   local tool_node
-  tool_node="$(ls -d "$INSTALL_ROOT"/actions-runner-"${RUNNER_NAME_PREFIX}"-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1)"
+  # `|| true`: on a fresh user no instance has a tool cache yet, and under
+  # pipefail a no-match `ls` (exit 2) would abort the whole setup here.
+  tool_node="$(ls -d "$INSTALL_ROOT"/actions-runner-"${RUNNER_NAME_PREFIX}"-*/_work/_tool/node/*/x64/bin 2>/dev/null | sort -V | tail -n1 || true)"
   [[ -n "$tool_node" ]] && export PATH="$tool_node:$PATH"
+  # mise's shims re-read the checkout's mise.toml and refuse an untrusted one
+  # (a fresh user has trusted nothing); prefer the concrete node install and
+  # trust everything under the install root, as the runner unit does.
+  local mise_node
+  mise_node="$(ls -d "$HOME"/.local/share/mise/installs/node/*/bin 2>/dev/null | sort -V | tail -n1 || true)"
+  [[ -n "$mise_node" ]] && export PATH="$mise_node:$PATH"
+  export MISE_TRUSTED_CONFIG_PATHS="${MISE_TRUSTED_CONFIG_PATHS:-$INSTALL_ROOT}"
+  # The marker key is computed by the same script the composites use; the
+  # seeded workdir may predate it, so run the copy setup.sh installed.
+  local marker="$LOCAL_CACHE/dep-marker.sh"
   if [[ ! -f "$dest/pnpm-lock.yaml" ]]; then
     git -C "$dest" checkout --quiet master 2>/dev/null \
       || git -C "$dest" checkout --quiet -b master origin/master 2>/dev/null \
@@ -445,7 +457,7 @@ warm_workdir() {
       echo "[setup]   warming node_modules (${pnpm[*]} install --frozen-lockfile --prefer-offline)..."
       ( cd "$dest" && "${pnpm[@]}" install --frozen-lockfile --prefer-offline >/dev/null 2>&1 \
         && rm -f node_modules/.gaia-installed-* \
-        && touch "$(bash scripts/ci/dep-marker.sh node)" ) \
+        && touch "$(bash "$marker" node)" ) \
         && echo "[setup]   node_modules warmed" || echo "::warning::pnpm install failed in $dest (first job will install)"
     fi
   else
@@ -456,7 +468,7 @@ warm_workdir() {
       echo "[setup]   warming .venv (uv sync --frozen --package gaia --group backend --group dev)..."
       ( cd "$dest" && uv sync --frozen --package gaia --group backend --group dev >/dev/null 2>&1 \
         && rm -f .venv/.gaia-synced-* \
-        && touch "$(bash scripts/ci/dep-marker.sh python)" ) \
+        && touch "$(bash "$marker" python)" ) \
         && echo "[setup]   .venv warmed" || echo "::warning::uv sync failed in $dest (first job will sync)"
     fi
   else
@@ -509,6 +521,9 @@ Environment=GAIA_SHARED_RABBITMQ_PORT=${GAIA_SHARED_RABBITMQ_PORT}
 # Must be in the runner PROCESS environment, not .env (.env only feeds jobs):
 # caches downloaded action tarballs box-wide instead of once per instance.
 Environment=ACTIONS_RUNNER_ACTION_ARCHIVE_CACHE=${LOCAL_CACHE}/actions-archive
+# mise refuses to run inside a checkout whose mise.toml it has not been told
+# to trust; every workspace under the install root is ours.
+Environment=MISE_TRUSTED_CONFIG_PATHS=${INSTALL_ROOT}
 
 [Install]
 WantedBy=default.target
@@ -593,6 +608,8 @@ fi
 # namespace by RUNNER_INDEX. Installed beside the hooks so they can reset a
 # namespace without a checkout.
 SHARED_SRC="$SCRIPT_DIR/../../scripts/ci/shared-test-services.sh"
+MARKER_SRC="$SCRIPT_DIR/../../scripts/ci/dep-marker.sh"
+[[ -f "$MARKER_SRC" ]] && install -m 0755 "$MARKER_SRC" "${LOCAL_CACHE}/dep-marker.sh"
 if [[ -f "$SHARED_SRC" ]]; then
   install -m 0755 "$SHARED_SRC" "${LOCAL_CACHE}/shared-test-services.sh"
   bash "${LOCAL_CACHE}/shared-test-services.sh" up > /dev/null 2>&1 \
@@ -759,9 +776,12 @@ EOF
 
 cat <<'SECURITY'
 
-  Security notes (private repo only):
-  • This repo is private (theexperiencecompany/gaia) — safe for self-hosted.
-  • NEVER enable these runners on a public fork — PRs could execute arbitrary code on your home server.
+  Security notes (the repo is PUBLIC):
+  • Only organisation members' non-fork PRs and pushes reach these runners
+    (scripts/ci/select-runner.sh); everything else runs on GitHub-hosted VMs.
+  • The runner user has no sudo, no docker group, nothing in \$HOME but runners
+    and caches, and nftables (nftables-gaia-ci.nft) blocks it from the box's
+    other services, the LAN and the tailnet.
   • No inbound ports opened: runners poll GitHub over HTTPS:443 outbound (long-poll).
   • The registration token used here is ephemeral (1h) — generate a fresh one to re-register.
   • Job work dirs are cleaned per job; secrets are masked in logs.
