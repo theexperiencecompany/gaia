@@ -48,6 +48,7 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
+from app.services.scheduler_service import parse_occurrence_stamp
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -484,35 +485,6 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
     )
 
 
-def _parse_scheduled_for(context: dict[str, Any] | None, workflow_id: str) -> "datetime | None":
-    """The occurrence stamp the fire was armed for, or None when unstamped.
-
-    Only a numeric stamp is scheduler provenance: manual "run now" callers
-    control their own context dict, so a hand-typed trigger_type/scheduled_for
-    must be ignored (ungated), not crash fromtimestamp mid-run.
-    """
-    scheduled_for = context.get("scheduled_for") if context else None
-    if isinstance(scheduled_for, bool) or not isinstance(scheduled_for, (int, float)):
-        if scheduled_for is not None:
-            # Present but not a number: a manual caller hand-typing its own
-            # context. Discard loudly — silence here would hide real bugs.
-            log.warning(
-                f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
-                workflow_id=workflow_id,
-                scheduled_for=str(scheduled_for)[:32],
-            )
-        return None
-    try:
-        return datetime.fromtimestamp(scheduled_for, tz=UTC)
-    except (ValueError, OverflowError, OSError):
-        log.warning(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
-            workflow_id=workflow_id,
-            scheduled_for=str(scheduled_for)[:32],
-        )
-        return None
-
-
 def _derive_trigger_type(context: dict[str, Any] | None) -> str:
     # An explicit trigger_type always wins; only an ABSENT one falls back — to
     # "integration" when the context carries a webhook payload (trigger fires
@@ -534,9 +506,9 @@ async def _claim_scheduled_fire(
     # of running the workflow at its original time. Jobs enqueued before the
     # stamp existed carry no key and are ungated, so a deploy never strands a
     # schedule.
-    expected_next_run = _parse_scheduled_for(context, workflow_id)
+    expected_next_run = parse_occurrence_stamp((context or {}).get("scheduled_for"), workflow_id)
     claimed = await scheduler.claim_task_for_execution(
-        workflow_id, expected_next_run=expected_next_run
+        workflow_id, expected_occurrence=expected_next_run
     )
     if not claimed:
         log.warning(

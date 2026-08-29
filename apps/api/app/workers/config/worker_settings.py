@@ -3,6 +3,7 @@ ARQ worker settings configuration.
 """
 
 from collections.abc import Callable, Coroutine
+import socket
 from typing import Any, ClassVar
 
 from arq.connections import RedisSettings
@@ -47,5 +48,14 @@ class WorkerSettings:
     keep_result = 0  # Don't keep results in Redis
     log_results = True
     health_check_interval = 30  # seconds
-    health_check_key = "arq:health"
+    # Per-worker, not fleet-wide. arq's ``record_health`` PSETEXes this key from
+    # the poll loop, and ``scripts/arq_healthcheck.py`` — which runs inside each
+    # worker container — is just EXISTS on it. A shared key therefore answers
+    # "is ANY worker alive", so a wedged worker's own probe stays green as long
+    # as a sibling is refreshing it: the container is never restarted, it holds a
+    # replica slot doing nothing, and the queue backs up silently. The container
+    # hostname is the natural per-worker identity because the probe runs in that
+    # same container; arq's own default (queue name + suffix) is still shared
+    # across workers on one queue, so it does not solve this either.
+    health_check_key = f"arq:health:{socket.gethostname()}"
     allow_abort_jobs = True

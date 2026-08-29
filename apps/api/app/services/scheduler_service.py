@@ -36,6 +36,34 @@ class TriggerConfigLike(Protocol):
     next_run: datetime | None
 
 
+def parse_occurrence_stamp(raw: object, task_id: str) -> datetime | None:
+    """The occurrence a scheduled job was armed for, or None when unstamped.
+
+    Lives next to ``_build_job_args``, which writes the stamp, so the two sides
+    of the format cannot drift. Only a real number is scheduler provenance:
+    manual "run now" callers build their own job args, so a hand-typed value is
+    discarded (leaving the fire ungated) rather than crashing ``fromtimestamp``
+    mid-run. ``bool`` is excluded explicitly — it is an ``int`` subclass.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int | float):
+        if raw is not None:
+            log.warning(
+                "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
+                task_id=task_id,
+                scheduled_for=str(raw)[:32],
+            )
+        return None
+    try:
+        return datetime.fromtimestamp(raw, tz=UTC)
+    except (ValueError, OverflowError, OSError):
+        log.warning(
+            "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
+            task_id=task_id,
+            scheduled_for=str(raw)[:32],
+        )
+        return None
+
+
 class BaseSchedulerService(ABC):
     """
     Base scheduler service that handles all scheduling-related functionality.
@@ -83,7 +111,9 @@ class BaseSchedulerService(ABC):
         """Reschedule an existing task to a new time."""
         return await self._enqueue_task(task_id, new_scheduled_at)
 
-    async def process_task_execution(self, task_id: str) -> TaskExecutionResult:
+    async def process_task_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> TaskExecutionResult:
         """Process a scheduled task execution: validate, execute, then handle
         recurring logic or update final status."""
         log.set(scheduler_task_id=task_id, scheduler_class=self.__class__.__name__)
@@ -101,7 +131,7 @@ class BaseSchedulerService(ABC):
         # ran — the user got the reminder twice and both agent turns were
         # billed. The claim IS the SCHEDULED -> EXECUTING transition, so exactly
         # one job can win it.
-        if not await self.claim_task_for_execution(task_id):
+        if not await self.claim_task_for_execution(task_id, expected_occurrence):
             log.warning("Task already claimed by another run", task_id=task_id)
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} is not in scheduled status"
@@ -359,12 +389,20 @@ class BaseSchedulerService(ABC):
         """Execute the actual task logic."""
 
     @abstractmethod
-    async def claim_task_for_execution(self, task_id: str) -> bool:
+    async def claim_task_for_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> bool:
         """Atomically move a scheduled task to EXECUTING; False if already claimed.
 
         Must be a single conditional write predicated on the current status —
         anything that reads the status and then writes it lets two workers both
         pass the check and run the task twice.
+
+        ``expected_occurrence`` is the fire time the job was armed for. Status
+        alone is not sufficient for a recurring task: re-arming returns it to
+        SCHEDULED for the NEXT occurrence, at which point a sibling pod's stale
+        job would find it claimable again and run it early. Jobs enqueued before
+        the stamp existed pass ``None`` and claim on status alone.
         """
 
     @abstractmethod

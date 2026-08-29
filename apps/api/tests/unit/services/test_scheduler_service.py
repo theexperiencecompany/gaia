@@ -52,8 +52,10 @@ class ConcreteSchedulerService(BaseSchedulerService):
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
 
-    async def claim_task_for_execution(self, task_id: str) -> bool:
-        return await self.mock_claim_task(task_id)
+    async def claim_task_for_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> bool:
+        return await self.mock_claim_task(task_id, expected_occurrence)
 
     def get_job_name(self) -> str:
         return "test_job"
@@ -263,7 +265,7 @@ class TestProcessTaskExecution:
         service.mock_get_task.return_value = sample_task
         claimed: list[str] = []
 
-        async def claim_once(task_id: str) -> bool:
+        async def claim_once(task_id: str, expected_occurrence=None) -> bool:
             if task_id in claimed:
                 return False
             claimed.append(task_id)
@@ -290,7 +292,7 @@ class TestProcessTaskExecution:
 
         assert result.success is True
         # EXECUTING is the claim itself (one atomic transition), then COMPLETED.
-        service.mock_claim_task.assert_awaited_once_with("task123")
+        service.mock_claim_task.assert_awaited_once_with("task123", None)
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
@@ -307,7 +309,7 @@ class TestProcessTaskExecution:
 
         assert result.success is True
         # EXECUTING is the claim itself; the re-arm puts it back to SCHEDULED.
-        service.mock_claim_task.assert_awaited_once_with("task_recurring")
+        service.mock_claim_task.assert_awaited_once_with("task_recurring", None)
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
         assert ScheduledTaskStatus.SCHEDULED in status_calls
 

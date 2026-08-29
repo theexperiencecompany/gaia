@@ -81,7 +81,7 @@ class WorkflowScheduler(BaseSchedulerService):
         )
 
     async def claim_task_for_execution(
-        self, task_id: str, expected_next_run: datetime | None = None
+        self, task_id: str, expected_occurrence: datetime | None = None
     ) -> bool:
         """Atomically claim a live, idle workflow for a fire (SCHEDULED -> EXECUTING).
 
@@ -105,7 +105,7 @@ class WorkflowScheduler(BaseSchedulerService):
         "scheduled" with its next run time.
         """
         return await workflow_repository.claim_for_execution(
-            task_id, expected_next_run=expected_next_run
+            task_id, expected_next_run=expected_occurrence
         )
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:

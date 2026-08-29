@@ -63,22 +63,34 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
 
     # ----------------------------------------------------------------- writes
 
-    async def claim_for_execution(self, reminder_id: str) -> bool:
+    async def claim_for_execution(
+        self, reminder_id: str, *, expected_scheduled_at: datetime | None = None
+    ) -> bool:
         """Atomically claim a scheduled reminder for a fire (SCHEDULED -> EXECUTING).
 
         Returns ``False`` — and the caller skips the fire — when the reminder is
         no longer ``scheduled``, i.e. another worker already claimed it. Two ARQ
         jobs for one reminder is routine (the startup scan runs in every replica
         and every worker, and re-arms past-due reminders to that process's own
-        clock, so the job ids differ and ARQ does not dedup them). Mirrors
-        ``WorkflowsRepository.claim_for_execution``; the status predicate living
-        inside the update is what makes it exactly-once.
+        clock, so the job ids differ and ARQ does not dedup them). The status
+        predicate living inside the update is what makes it exactly-once.
+
+        ``expected_scheduled_at`` pins the occurrence the job was armed for, and
+        status alone is not enough without it: a RECURRING reminder goes back to
+        ``scheduled`` for its NEXT occurrence as soon as the first run re-arms,
+        so a sibling pod's late job would find it claimable again and deliver
+        the same reminder twice. Jobs enqueued before the stamp existed pass
+        ``None`` and claim on status alone, so a deploy never strands them.
+        Mirrors ``WorkflowsRepository.claim_for_execution``.
         """
+        filter_: dict[str, Any] = {
+            "_id": self._id_value(reminder_id),
+            "status": ReminderStatus.SCHEDULED.value,
+        }
+        if expected_scheduled_at is not None:
+            filter_["scheduled_at"] = expected_scheduled_at
         result = await self._apply_raw_update(
-            {
-                "_id": self._id_value(reminder_id),
-                "status": ReminderStatus.SCHEDULED.value,
-            },
+            filter_,
             {"$set": {"status": ReminderStatus.EXECUTING.value, "updated_at": datetime.now(UTC)}},
             scope=REPO_GLOBAL_SCOPE,
         )

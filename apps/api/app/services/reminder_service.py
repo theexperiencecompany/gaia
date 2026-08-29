@@ -170,9 +170,21 @@ class ReminderScheduler(BaseSchedulerService):
         except Exception as e:
             return TaskExecutionResult(success=False, message=f"Failed to execute reminder: {e!s}")
 
-    async def claim_task_for_execution(self, task_id: str) -> bool:
+    async def claim_task_for_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> bool:
         """Claim this reminder for one fire; False if another worker already has it."""
-        return await reminder_repository.claim_for_execution(task_id)
+        return await reminder_repository.claim_for_execution(
+            task_id, expected_scheduled_at=expected_occurrence
+        )
+
+    def _build_job_args(self, task_id: str, scheduled_at: datetime) -> tuple[object, ...]:
+        """Stamp the occurrence this job is armed for, so a stale job can be rejected.
+
+        Carried as a unix int because ARQ args are serialized; the worker turns
+        it back into the datetime the claim pins on.
+        """
+        return (task_id, int(scheduled_at.timestamp()))
 
     async def update_task_status(
         self,

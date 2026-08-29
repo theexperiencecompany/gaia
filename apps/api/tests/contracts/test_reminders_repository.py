@@ -111,6 +111,52 @@ class TestRemindersScheduler:
     async def test_set_status_missing_returns_false(self, repo):
         assert await repo.set_status(_MISSING_OBJECT_ID, ReminderStatus.COMPLETED) is False
 
+    async def test_claim_for_execution_is_atomic(self, repo):
+        rem = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
+        assert await repo.claim_for_execution(rem.id) is True
+        # second claim fails — already EXECUTING
+        assert await repo.claim_for_execution(rem.id) is False
+        assert (await repo.get(rem.id)).status == ReminderStatus.EXECUTING
+
+    async def test_claim_pin_rejects_a_stale_occurrence(self, repo):
+        """A duplicate job armed for an occurrence that already ran must not fire.
+
+        Status alone is not enough for a RECURRING reminder. Two pods booting
+        minutes apart each enqueue a job for the same overdue reminder under a
+        different id (the past-due re-arm uses each process's own clock), so ARQ
+        does not dedup them. The first job claims, runs, and
+        ``handle_recurring_task`` puts the row back to SCHEDULED for the NEXT
+        occurrence — at which point the second job finds status="scheduled"
+        again, claims it, and delivers the same reminder a second time while
+        also eating an occurrence out of the series.
+
+        Pinning the armed occurrence is what closes it, exactly as
+        ``WorkflowsRepository.claim_for_execution`` pins ``next_run``.
+        """
+        first_run = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0)
+        next_run = first_run + timedelta(days=1)
+        rem = await repo.create(_reminder(scheduled_at=first_run, status=ReminderStatus.SCHEDULED))
+
+        assert await repo.claim_for_execution(rem.id, expected_scheduled_at=first_run) is True
+        # The run finishes and re-arms the series for tomorrow.
+        assert (
+            await repo.set_status(
+                rem.id, ReminderStatus.SCHEDULED, occurrence_count=1, scheduled_at=next_run
+            )
+            is True
+        )
+
+        # The sibling pod's job, still armed for the occurrence that already ran.
+        assert await repo.claim_for_execution(rem.id, expected_scheduled_at=first_run) is False
+        # ...and the rejection leaves tomorrow's occurrence claimable.
+        assert await repo.claim_for_execution(rem.id, expected_scheduled_at=next_run) is True
+
+    async def test_claim_without_a_pin_still_claims(self, repo):
+        """Jobs enqueued before the stamp existed carry none — a deploy must not
+        strand them."""
+        rem = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
+        assert await repo.claim_for_execution(rem.id) is True
+
 
 class TestRemindersUpdate:
     async def test_update_for_user_partial_and_scoped(self, repo):

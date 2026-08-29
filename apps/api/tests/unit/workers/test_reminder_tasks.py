@@ -1,6 +1,6 @@
 """Unit tests for reminder_tasks ARQ worker."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -30,7 +30,25 @@ class TestProcessReminder:
             mock_scheduler.process_task_execution = AsyncMock()
             await process_reminder(ctx, "reminder_abc")
 
-        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc")
+        # Unstamped (a job enqueued before the stamp existed) claims on status alone.
+        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
+
+    async def test_occurrence_stamp_is_passed_through_to_the_claim(self, ctx):
+        """The armed occurrence pins the claim, so a stale sibling job is rejected."""
+        armed = datetime(2099, 1, 15, 12, 0, tzinfo=UTC)
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
+            mock_scheduler.process_task_execution = AsyncMock()
+            await process_reminder(ctx, "reminder_abc", int(armed.timestamp()))
+
+        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", armed)
+
+    async def test_garbage_stamp_is_ignored_not_crashed(self, ctx):
+        """A non-numeric stamp degrades to an unstamped claim instead of raising."""
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
+            mock_scheduler.process_task_execution = AsyncMock()
+            await process_reminder(ctx, "reminder_abc", "not-a-number")  # type: ignore[arg-type]
+
+        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
 
     async def test_exception_propagates(self, ctx):
         with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
