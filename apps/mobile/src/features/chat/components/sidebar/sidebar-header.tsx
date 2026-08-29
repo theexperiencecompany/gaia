@@ -1,3 +1,4 @@
+import { colorTokens, spacingTokens } from "@gaia/shared/design";
 import { Image } from "expo-image";
 import { PressableFeedback } from "heroui-native";
 import { TextInput, View } from "react-native";
@@ -18,7 +19,8 @@ interface SidebarHeaderProps {
   onNewChat?: () => void;
 }
 
-const SECTION_PADDING = 12;
+// Shared spacing — 12px (spacingTokens.md) matches web px-3; rounded md 8px
+const SECTION_PADDING = Number.parseInt(spacingTokens.md.replace("px", ""), 10); // 12
 
 export function SidebarHeader({
   searchQuery,
@@ -29,7 +31,6 @@ export function SidebarHeader({
 
   return (
     <View>
-      {/* Brand row: logo + wordmark + new chat button */}
       <View
         style={{
           flexDirection: "row",
@@ -37,7 +38,7 @@ export function SidebarHeader({
           paddingHorizontal: SECTION_PADDING,
           paddingTop: spacing.md,
           paddingBottom: spacing.sm,
-          gap: 10,
+          gap: Number.parseInt(spacingTokens.sm.replace("px", ""), 10),
         }}
       >
         <Image
@@ -49,19 +50,24 @@ export function SidebarHeader({
           style={{
             fontSize: fontSize.lg,
             fontWeight: "600",
-            color: "#e4e4e7",
+            color: colorTokens.neutral200,
             letterSpacing: 0.2,
             flex: 1,
           }}
         >
           GAIA
         </Text>
-        <PressableFeedback onPress={onNewChat} hitSlop={8}>
-          <AppIcon icon={PencilEdit02Icon} size={iconSize.md} color="#a1a1aa" />
-        </PressableFeedback>
+        {onNewChat ? (
+          <PressableFeedback onPress={onNewChat} hitSlop={8}>
+            <AppIcon
+              icon={PencilEdit02Icon}
+              size={iconSize.md}
+              color="#a1a1aa"
+            />
+          </PressableFeedback>
+        ) : null}
       </View>
 
-      {/* Search input — edge-to-edge with same horizontal padding as other sections */}
       <View
         style={{
           paddingHorizontal: SECTION_PADDING,

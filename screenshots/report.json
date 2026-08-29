@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-08-29T17:16:34.937Z",
+  "webBase": "http://localhost:3000",
+  "platform": "ios",
+  "threshold": 0.12,
+  "width": 390,
+  "height": 844,
+  "summary": {
+    "total": 2,
+    "pass": 2,
+    "flag": 0,
+    "block": 0,
+    "error": 0
+  },
+  "routes": [
+    {
+      "route": "/c",
+      "deepLink": "gaia://chat",
+      "label": "chat-home",
+      "webPath": "./screenshots/web-c.png",
+      "nativePath": "./screenshots/native-c.png",
+      "diffPath": "./screenshots/diff-c.png",
+      "diffPixels": 19346,
+      "totalPixels": 329160,
+      "diffRatio": 0.0587,
+      "threshold": 0.12,
+      "pass": true,
+      "vision": {
+        "verdict": "PASS",
+        "notes": "web chat (/c) vs native chat — composer parity: radius 24, bg zinc-800, placeholder synced via @gaia/shared/chat/composer COMPOSER_CONSTANTS"
+      },
+      "status": "PASS"
+    },
+    {
+      "route": "/notifications",
+      "deepLink": "gaia://notifications",
+      "label": "notifications",
+      "webPath": "./screenshots/web-notifications.png",
+      "nativePath": "./screenshots/native-notifications.png",
+      "diffPath": "./screenshots/diff-notifications.png",
+      "diffPixels": 4502,
+      "totalPixels": 329160,
+      "diffRatio": 0.0136,
+      "threshold": 0.12,
+      "pass": true,
+      "vision": {
+        "verdict": "PASS",
+        "notes": "notifications parity — grouping via shared/dateGroups.ts Today/Previous 7 days, card tokens via shared/ui/toolCardTokens + design tokens"
+      },
+      "status": "PASS"
+    }
+  ]
+}

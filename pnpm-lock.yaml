@@ -106,6 +106,12 @@ importers:
       nx:
         specifier: ^22.7.7
         version: 22.7.7(@swc-node/register@1.11.1(@swc/core@1.15.43(@swc/helpers@0.5.23))(@swc/types@0.1.27)(typescript@6.0.0-beta))(@swc/core@1.15.43(@swc/helpers@0.5.23))
+      pixelmatch:
+        specifier: 7.2.0
+        version: 7.2.0
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       publint:
         specifier: ^0.3.24
         version: 0.3.24
@@ -118,6 +124,9 @@ importers:
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      sharp:
+        specifier: 0.33.5
+        version: 0.33.5
       style-dictionary:
         specifier: ^4.4.0
         version: 4.4.0(tslib@2.8.1)
@@ -496,8 +505,8 @@ importers:
         specifier: ^55.0.17
         version: 55.0.17(expo@55.0.27)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))
       heroui-native:
-        specifier: ^1.0.0-beta.9
-        version: 1.0.0-beta.9(90d4b0be117b9c9f5333897bd57d2244)
+        specifier: ^1.0.8
+        version: 1.0.8(5cebc52277adc9ef36b786c11140a817)
       onnxruntime-react-native:
         specifier: ^1.24.3
         version: 1.24.3(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
@@ -13713,19 +13722,28 @@ packages:
   hermes-parser@0.35.0:
     resolution: {integrity: sha512-9JLjeHxBx8T4CAsydZR49PNZUaix+WpQJwu9p2010lu+7Kwl6D/7wYFFJxoz+aXkaaClp9Zfg6W6/zVlSJORaA==}
 
-  heroui-native@1.0.0-beta.9:
-    resolution: {integrity: sha512-3TMjTDl7JJw+q5XYaEPZ8MvErbdmUkb98B7+TKYfHhzPE4/VbpXq4lUpvzP6hXFMMe60TvGlt6Djn+DRwIjPew==}
+  heroui-native@1.0.8:
+    resolution: {integrity: sha512-swyh0cxJ4hO/7SF0L+LWCaHyYtf0gYogAhApd6LR2oUqUzWBQrM1O0A6kN97EOkIgrwp3L19+tO+B5/DI7ACtg==}
     peerDependencies:
-      '@gorhom/bottom-sheet': ^5
+      '@gorhom/bottom-sheet': ^5.2.9
+      expo-blur: '>=14.0.0'
       react: 19.1.0
       react-native: '>=0.81.0'
-      react-native-reanimated: ~4.1.1
-      react-native-safe-area-context: ~5.6.0
+      react-native-gesture-handler: ^2.28.0
+      react-native-reanimated: ^4.1.1
+      react-native-safe-area-context: ^5.6.0
       react-native-screens: '>=4'
-      react-native-svg: 15.12.1
-      react-native-worklets: 0.5.1
+      react-native-svg: ^15.12.1
+      react-native-worklets: '>=0.5.1'
       tailwind-merge: ^3.4.0
       tailwind-variants: ^3.2.2
+    peerDependenciesMeta:
+      '@gorhom/bottom-sheet':
+        optional: true
+      expo-blur:
+        optional: true
+      react-native-screens:
+        optional: true
 
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
@@ -16331,6 +16349,10 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
+  pixelmatch@7.2.0:
+    resolution: {integrity: sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg==}
+    hasBin: true
+
   pkce-challenge@5.0.1:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
@@ -16373,6 +16395,10 @@ packages:
   pngjs@3.4.0:
     resolution: {integrity: sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w==}
     engines: {node: '>=4.0.0'}
+
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
 
   po-parser@2.1.1:
     resolution: {integrity: sha512-ECF4zHLbUItpUgE3OTtLKlPjeBN+fKEczj2zYjDfCGOzicNs0GK3Vg2IoAYwx7LH/XYw43fZQP6xnZ4TkNxSLQ==}
@@ -35523,18 +35549,21 @@ snapshots:
     dependencies:
       hermes-estree: 0.35.0
 
-  heroui-native@1.0.0-beta.9(90d4b0be117b9c9f5333897bd57d2244):
+  heroui-native@1.0.8(5cebc52277adc9ef36b786c11140a817):
     dependencies:
-      '@gorhom/bottom-sheet': 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native-reanimated@4.5.1(react-native-worklets@0.7.4(@babel/core@7.29.7)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       react: 19.1.0
       react-native: 0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0)
+      react-native-gesture-handler: 2.32.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       react-native-reanimated: 4.5.1(react-native-worklets@0.7.4(@babel/core@7.29.7)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       react-native-safe-area-context: 5.8.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
-      react-native-screens: 4.26.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       react-native-svg: 15.15.5(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       react-native-worklets: 0.7.4(@babel/core@7.29.7)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
       tailwind-merge: 3.6.0
       tailwind-variants: 3.2.2(tailwind-merge@3.6.0)(tailwindcss@4.3.2)
+    optionalDependencies:
+      '@gorhom/bottom-sheet': 5.2.14(@types/react@19.2.17)(react-native-gesture-handler@2.32.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native-reanimated@4.5.1(react-native-worklets@0.7.4(@babel/core@7.29.7)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0))(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
+      expo-blur: 55.0.15(expo@55.0.27)(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
+      react-native-screens: 4.26.0(react-native@0.83.10(@babel/core@7.29.7)(@react-native-community/cli@20.2.0(typescript@6.0.0-beta))(@types/react@19.2.17)(react@19.1.0))(react@19.1.0)
 
   highlight.js@10.7.3: {}
 
@@ -38878,6 +38907,10 @@ snapshots:
 
   pirates@4.0.7: {}
 
+  pixelmatch@7.2.0:
+    dependencies:
+      pngjs: 7.0.0
+
   pkce-challenge@5.0.1: {}
 
   pkg-dir@4.2.0:
@@ -38924,6 +38957,8 @@ snapshots:
       xmlbuilder: 15.1.1
 
   pngjs@3.4.0: {}
+
+  pngjs@7.0.0: {}
 
   po-parser@2.1.1: {}
 

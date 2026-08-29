@@ -4,15 +4,24 @@
 
 @source "./../../node_modules/heroui-native/lib";
 
+/* GAIA theme — parity with web globals.css .dark + HeroUI v2 tokens
+ * Source of truth: libs/shared/ts/src/design/tokens.generated.ts
+ * This @theme block mirrors web's darkSemanticTokens (hsl 224 71% 4% -> #030711 etc)
+ * and shared colorTokens (primary #00bbff, surface #030711, etc).
+ * Do NOT hard-code hex without updating shared token pipeline: `pnpm tokens:export && pnpm tokens:build`
+ * Heroui-native 1.0.8 variables.css is imported via "heroui-native/styles" above;
+ * the overrides below pin its --accent / --background to GAIA brand so both
+ * library and app tokens stay in sync (fixes oklch vs hex drift).
+ */
 @theme {
   --radius: 0.5rem;
   --opacity-disabled: 0.5;
 
-  /* Brand color — matches web --color-primary */
+  /* Brand color — matches web --color-primary == shared colorTokens.primary #00bbff */
   --color-brand: #00bbff;
   --color-brand-foreground: #000000;
 
-  /* Semantic dark-mode tokens — matches web globals.css .dark */
+  /* Semantic dark-mode tokens — matches web globals.css .dark == shared darkSemanticTokens */
   --color-background: #030711;
   --color-foreground: #e1e7ef;
 
@@ -38,7 +47,7 @@
   --color-destructive: #811d1d;
   --color-destructive-foreground: #f8fafc;
 
-  /* Status colors */
+  /* Status colors — Tailwind green/yellow/red/blue-500, parity with shared error/warning/info */
   --color-success: #22c55e;
   --color-success-foreground: #000000;
   --color-warning: #eab308;
@@ -48,13 +57,13 @@
   --color-info: #3b82f6;
   --color-info-foreground: #ffffff;
 
-  /* Priority colors */
+  /* Priority colors — shared colorTokens.priority* */
   --color-priority-high: #ef4444;
   --color-priority-medium: #eab308;
   --color-priority-low: #3b82f6;
   --color-priority-none: #71717a;
 
-  /* App-specific surface colors — matches web --color-primary-bg / --color-secondary-bg */
+  /* App-specific surface colors — matches web --color-primary-bg / --color-secondary-bg == shared primaryBg/secondaryBg */
   --color-primary-bg: #111111;
   --color-secondary-bg: #1a1a1a;
 }
@@ -64,10 +73,29 @@
     @variant light {
       --accent: #00bbff;
       --accent-foreground: #000000;
+      --background: #ffffff;
+      --foreground: #0f172a;
+      --surface: #ffffff;
+      --surface-foreground: #0f172a;
     }
     @variant dark {
       --accent: #00bbff;
       --accent-foreground: #000000;
+      --background: #030711;
+      --foreground: #e1e7ef;
+      --surface: #111318;
+      --surface-foreground: #e1e7ef;
+      --surface-secondary: #1a1a1a;
+      --surface-tertiary: #27272a;
+      --default: #27272a;
+      --default-foreground: #fafafa;
     }
   }
 }
+
+/* Uniwind + Tailwind 4 compatibility note:
+ * - tailwindcss ^4.3.2 + uniwind ^1.10.0 are the peer range expected by heroui-native 1.0.8
+ *   (heroui-native devDeps: tailwindcss ^4.3.2, uniwind ^1.10.0, see npm view heroui-native@1.0.8)
+ * - Metro uses withUniwindConfig with cssEntryFile ./global.css and @source for heroui-native/lib
+ * - Verified: expo@55.0.27 + RN 0.83.10 + reanimated 4.5.1 + RN worklets 0.7.4 satisfy heroui-native 1.0.8 peerDeps (>=0.81, >=19, ^4.1.1, >=0.5.1)
+ */

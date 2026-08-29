@@ -1,3 +1,4 @@
+import { colorTokens } from "@gaia/shared/design";
 import { type ReactNode, useCallback } from "react";
 import { Keyboard, View } from "react-native";
 import DrawerLayout, {
@@ -14,15 +15,14 @@ interface AppShellProps {
 }
 
 /**
- * App-wide drawer host. Wraps any authenticated route group so that the
- * shared `SidebarContent` is reachable from every screen inside.
+ * App-wide drawer host — spacing + color tokens from shared.
+ * - backgroundColor: colorTokens.primaryBg (#111111) — same as web --color-primary-bg
+ * - drawerWidth: responsive sidebarWidth (85%/80%/75% cap 340) — mirrors web sidebarTokens.dark.width (260px) for web parity,
+ *   but adapts for small screens (shared sidebar token is the web baseline).
+ * - overlayColor: rgba(0,0,0,0.5) — same as web drawer overlay
  *
- * Lives outside any feature folder because the drawer is no longer
- * chat-specific — chat, todos, and any future feature share the same
- * sidebar (with a contextual middle section keyed off the current
- * pathname). Mount this once per route group that should expose the
- * drawer; the underlying `useSidebar` context is provided by
- * `(app)/_layout.tsx`.
+ * @see libs/shared/ts/src/design/tokens.generated.ts
+ * @see apps/web/src/components/layout/sidebar/MainSidebar.tsx
  */
 export function AppShell({ children }: AppShellProps) {
   const { drawerRef, _notifyDrawerOpened, _notifyDrawerClosed } = useSidebar();
@@ -31,7 +31,7 @@ export function AppShell({ children }: AppShellProps) {
   const renderDrawerContent = useCallback(() => <SidebarContent />, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#111111" }}>
+    <View style={{ flex: 1, backgroundColor: colorTokens.primaryBg }}>
       <DrawerLayout
         ref={drawerRef}
         drawerWidth={sidebarWidth}
@@ -41,8 +41,6 @@ export function AppShell({ children }: AppShellProps) {
         renderNavigationView={renderDrawerContent}
         onDrawerStateChanged={(state, drawerWillShow) => {
           if (state !== DrawerState.IDLE) Keyboard.dismiss();
-          // Keep sidebar context in sync with the actual drawer state so
-          // swipe-to-dismiss doesn't desync the toggle button.
           if (state === DrawerState.SETTLING) {
             if (drawerWillShow) _notifyDrawerOpened();
             else _notifyDrawerClosed();

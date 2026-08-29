@@ -38,7 +38,14 @@
     "./utils/dateUtils": "./src/utils/dateUtils.ts",
     "./utils/auth": "./src/utils/auth.ts",
     "./hooks": "./src/hooks/index.ts",
-    "./validation": "./src/validation/index.ts"
+    "./validation": "./src/validation/index.ts",
+    "./design": "./src/design/index.ts",
+    "./design/tokens": "./src/design/tokens.generated.ts",
+    "./design/tokens.generated": "./src/design/tokens.generated.ts",
+    "./utils/dateGroups": "./src/utils/dateGroups.ts",
+    "./ui": "./src/ui/index.ts",
+    "./ui/toolCardTokens": "./src/ui/toolCardTokens.ts",
+    "./chat/composer": "./src/chat/composer/index.ts"
   },
   "scripts": {
     "build": "tsc",

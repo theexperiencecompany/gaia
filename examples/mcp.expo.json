@@ -1,0 +1,17 @@
+{
+  "_comment": "Drop this entry into gaia/.mcp.json mcpServers — requires Metro on http://localhost:8081",
+  "mcpServers": {
+    "expo-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "expo-mcp@0.2.4",
+        "--dev-server-url",
+        "http://localhost:8081",
+        "--root",
+        "/Users/aryan/Projects/gaia/apps/mobile"
+      ],
+      "type": "stdio"
+    }
+  }
+}

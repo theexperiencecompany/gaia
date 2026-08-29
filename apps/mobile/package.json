@@ -57,7 +57,7 @@
     "expo-system-ui": "^55.0.19",
     "expo-video": "^55.0.18",
     "expo-web-browser": "^55.0.17",
-    "heroui-native": "^1.0.0-beta.9",
+    "heroui-native": "^1.0.8",
     "onnxruntime-react-native": "^1.24.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",

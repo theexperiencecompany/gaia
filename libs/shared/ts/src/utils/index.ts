@@ -1,5 +1,22 @@
 export type { JwtPayload, TokenStorage } from "./auth";
 export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
+export type { DateGroup, GroupedListItem, LegacyDateGroup } from "./dateGroups";
+export {
+  compareDateGroup,
+  DATE_GROUP_ORDER,
+  DATE_GROUPS,
+  getDateGroup,
+  getDateGroupLabel,
+  getTimeFrame,
+  groupAndSortByDateGroup,
+  groupByDateGroup,
+  groupConversationsByDate,
+  groupEmailsByDate,
+  LEGACY_GROUP_ALIAS,
+  normalizeLegacyGroup,
+  startOfLocalDay,
+  toGroupedList,
+} from "./dateGroups";
 export type { DueChipTone } from "./dateUtils";
 export {
   formatDate,

@@ -1,3 +1,5 @@
+import { spacingTokens } from "@gaia/shared/design";
+import { type DateGroup, groupAndSortByDateGroup } from "@gaia/shared/utils";
 import { useMemo } from "react";
 import { FlatList, Pressable, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +11,24 @@ import type {
   InAppNotificationAction,
 } from "../types/inapp-notification-types";
 import { NotificationCard } from "./notification-card";
+
+/**
+ * Notifications list — headers unified to shared `dateGroups`.
+ *
+ * Shared contract (libs/shared/ts/src/utils/dateGroups.ts):
+ *   getDateGroup(value, now) → "Today" | "Yesterday" | "Previous 7 days" | "Previous 30 days" | "All time"
+ *   DATE_GROUPS canonical order, compareDateGroup, groupAndSortByDateGroup
+ *   groupAndSortByDateGroup(items, getDate, now) → sorted [DateGroup, T[]][] newest-first within each bucket
+ *
+ * Mobile previously used local getTimeGroup → Today/Yesterday/This Week/Earlier.
+ * Web uses shared 5-bucket taxonomy. This file now imports the same shared taxonomy so grouping + labels are byte-for-byte identical.
+ *
+ * Spacing: horizontal padding uses shared gutter token (16px) so it stays 1:1 with web px-6 (24px) minus the tighter mobile lane.
+ * Header typography matches web: text-xs font-semibold tracking-wider text-zinc-500 uppercase (12/600/1px/#71717a).
+ *
+ * @see libs/shared/ts/src/utils/dateGroups.ts
+ * @see apps/web/src/features/notification/components/NotificationsList.tsx
+ */
 
 interface NotificationsListProps {
   notifications: InAppNotification[];
@@ -36,49 +56,12 @@ interface NotificationsListProps {
   onSelectToggle?: (notificationId: string) => void;
 }
 
-type TimeGroupKey = "today" | "yesterday" | "thisWeek" | "earlier";
-
-const TIME_GROUP_LABELS: Record<TimeGroupKey, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  thisWeek: "This Week",
-  earlier: "Earlier",
-};
-
-const TIME_GROUP_ORDER: TimeGroupKey[] = [
-  "today",
-  "yesterday",
-  "thisWeek",
-  "earlier",
-];
-
+// Keep the sparse threshold semantics (drop "All time" header on tiny lists)
+// but map it to the shared bucket name.
 const SPARSE_LIST_THRESHOLD = 10;
 
-function getTimeGroup(dateString: string): TimeGroupKey {
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) return "earlier";
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const sevenDaysAgo = new Date(today);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const notifDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-  );
-
-  if (notifDate.getTime() >= today.getTime()) return "today";
-  if (notifDate.getTime() >= yesterday.getTime()) return "yesterday";
-  if (notifDate.getTime() >= sevenDaysAgo.getTime()) return "thisWeek";
-  return "earlier";
-}
-
 type GroupedSection =
-  | { type: "header"; title: string }
+  | { type: "header"; title: DateGroup }
   | { type: "notification"; notification: InAppNotification };
 
 interface SkeletonItemProps {
@@ -172,26 +155,18 @@ export function NotificationsList({
   const insets = useSafeAreaInsets();
 
   const sections = useMemo(() => {
-    const groups: Record<TimeGroupKey, InAppNotification[]> = {
-      today: [],
-      yesterday: [],
-      thisWeek: [],
-      earlier: [],
-    };
-    for (const n of notifications) {
-      groups[getTimeGroup(n.created_at)].push(n);
-    }
+    // Single shared grouping — replaces local getTimeGroup/TIME_GROUP_ORDER.
+    // groupAndSortByDateGroup sorts groups by DATE_GROUPS order and items newest-first.
+    const sorted = groupAndSortByDateGroup(notifications, (n) => n.created_at);
 
-    // Drop the "Earlier" header when the list is sparse (<10 total) so we
-    // don't add ceremony around a tiny pile.
     const isSparse = notifications.length < SPARSE_LIST_THRESHOLD;
     const result: GroupedSection[] = [];
-    for (const key of TIME_GROUP_ORDER) {
-      const bucket = groups[key];
+    for (const [groupLabel, bucket] of sorted) {
       if (bucket.length === 0) continue;
-      const skipHeader = key === "earlier" && isSparse;
+      // Preserve sparse-list ceremony: hide "All time" header when the pile is tiny.
+      const skipHeader = groupLabel === "All time" && isSparse;
       if (!skipHeader) {
-        result.push({ type: "header", title: TIME_GROUP_LABELS[key] });
+        result.push({ type: "header", title: groupLabel });
       }
       for (const n of bucket) {
         result.push({ type: "notification", notification: n });
@@ -238,10 +213,6 @@ export function NotificationsList({
   }
 
   if (notifications.length === 0) {
-    // Web parity (NotificationsList.tsx empty state):
-    //   16×16 zinc-900/50 ring zinc-800 circle, NotificationIcon
-    //   title: text-base font-semibold text-white
-    //   desc:  text-sm text-zinc-500
     return (
       <View
         style={{
@@ -313,16 +284,17 @@ export function NotificationsList({
     );
   }
 
+  // Shared spacing token for horizontal lane — gutter 16px (shared) matches web px-6 minus mobile tightness choice.
+  const horizontalPadding = Number(spacingTokens.gutter.replace("px", "")); // 16
+
   return (
     <FlatList
       data={sections}
       keyExtractor={(item, index) =>
         item.type === "header" ? `header-${item.title}` : `notif-${index}`
       }
-      // Web container uses `px-6 py-6` (24px) — but on mobile keep tighter
-      // horizontal padding (16) so cards don't feel cramped at 1080w.
       contentContainerStyle={{
-        paddingHorizontal: 16,
+        paddingHorizontal: horizontalPadding,
         paddingTop: 12,
         paddingBottom: insets.bottom + 24,
       }}
@@ -335,13 +307,8 @@ export function NotificationsList({
       }
       renderItem={({ item, index }) => {
         if (item.type === "header") {
-          // Web: text-xs font-semibold tracking-wider text-zinc-500 uppercase
-          // Group separation: `space-y-8` between groups, `space-y-3` inside.
           return (
             <Text
-              // Web: text-xs font-semibold tracking-wider text-zinc-500 uppercase
-              //   text-xs = 12 (web). Section spacing is space-y-8 between groups
-              //   (32px gap) and space-y-3 (12px) before first card inside a group.
               style={{
                 fontSize: 12,
                 fontWeight: "600",
@@ -359,7 +326,6 @@ export function NotificationsList({
         }
 
         return (
-          // Web: cards inside a group are spaced `space-y-2.5` (10px).
           <View style={{ marginBottom: 10 }}>
             <NotificationCard
               notification={item.notification}
@@ -383,3 +349,8 @@ export function NotificationsList({
     />
   );
 }
+
+export type { DateGroup } from "@gaia/shared/utils";
+// Re-export shared dateGroups for callers that previously imported from this file.
+// Prefer importing directly from "@gaia/shared/utils" in new code.
+export { DATE_GROUPS, getDateGroup } from "@gaia/shared/utils";

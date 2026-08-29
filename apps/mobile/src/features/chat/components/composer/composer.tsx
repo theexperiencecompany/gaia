@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
 import Animated, {
   FadeIn,
@@ -21,9 +21,11 @@ import {
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { colors } from "@/lib/design-tokens";
 import { haptics } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import { COMPOSER_CONSTANTS, useComposerBase } from "@gaia/shared/chat/composer";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
@@ -93,9 +95,20 @@ function truncateContent(content: string, maxLength = 60): string {
   return `${content.slice(0, maxLength).trim()}...`;
 }
 
+// ModeTabs placeholder for web parity - future mode chips (e.g. deep_research) will live here
+function ModeTabs() {
+  // Web parity: ComposerLeft mode selection tabs. Currently no modes on mobile,
+  // but the container is required for toolbar split parity (left ModeTabs+Plus).
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      {/* ModeTabs placeholder - web has mode tabs here, mobile keeps container for parity */}
+    </View>
+  );
+}
+
 export function Composer({
   onSend,
-  placeholder = "Ask anything",
+  placeholder = COMPOSER_CONSTANTS.placeholder,
   value,
   onChangeText,
   onCommand,
@@ -121,6 +134,11 @@ export function Composer({
 
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
+  // Shared composer base - single source of truth for placeholder/maxRows/maxLength and slash logic
+  // Imported from @gaia/shared/chat/composer for web parity
+  const composerBase = useMemo(() => useComposerBase({ initialText: value ?? "" }), []);
+  // Use shared constants for web parity: radius 24 (rounded-3xl), bg zinc-800, maxRows 13, etc.
+  // Keeping Haptics for mobile feel but aligning styling to web spec.
   const message = value ?? internalMessage;
   const setMessage = onChangeText ?? setInternalMessage;
   const trimmed = message.trim();
@@ -131,18 +149,19 @@ export function Composer({
     !!selectedCalendarEvent ||
     attachments.length > 0;
 
-  // Slash command detection for built-in commands
-  const isCommandMode = trimmed.startsWith("/");
-  const commandQuery = isCommandMode ? trimmed.slice(1).toLowerCase() : "";
+  // Slash command detection via shared useComposerBase + fallback
+  // Unified with web's detectSlashCommand / isCommandMode
+  const isCommandMode = composerBase.isCommandMode() || trimmed.startsWith("/");
+  const commandQuery = composerBase.getCommandQuery() || (isCommandMode ? trimmed.slice(1).toLowerCase() : "");
   const matchingCommands = DEFAULT_COMMANDS.filter((command) =>
     command.startsWith(commandQuery),
   );
 
-  // Auto-grow text input height (max 5 lines)
+  // Auto-grow text input height (maxRows 13 per web spec COMPOSER_CONSTANTS.maxRows)
   const [inputHeight, setInputHeight] = useState(0);
   const lineHeight = fontSize.base + 6;
   const minInputHeight = moderateScale(24, 0.5);
-  const maxInputHeight = lineHeight * 5;
+  const maxInputHeight = lineHeight * COMPOSER_CONSTANTS.maxRows;
 
   // Send button animated scale
   const sendScale = useSharedValue(1);
@@ -213,6 +232,7 @@ export function Composer({
     const pendingAttachments = attachments;
     onSend?.(message, pendingAttachments);
     setMessage("");
+    composerBase.setText("");
     setAttachments([]);
     Keyboard.dismiss();
   }, [
@@ -227,6 +247,7 @@ export function Composer({
     message,
     attachments,
     setMessage,
+    composerBase,
   ]);
 
   const handlePlusPress = useCallback(() => {
@@ -238,22 +259,28 @@ export function Composer({
   const handleTextChange = useCallback(
     (text: string) => {
       setMessage(text);
+      // Keep shared composer base in sync for slash detection parity
+      composerBase.setText(text);
 
-      // Detect "/" at the start to open tool picker
+      // Detect "/" at the start to open tool picker - align with web Type / for tools
       if (text === "/") {
         slashCommandRef.current?.open();
         // Clear the slash so the input stays clean
-        setTimeout(() => setMessage(""), 50);
+        setTimeout(() => {
+          setMessage("");
+          composerBase.setText("");
+        }, 50);
       }
     },
-    [setMessage],
+    [setMessage, composerBase],
   );
 
   const handleToolSelected = useCallback(
     (toolName: string, toolCategory: string) => {
       onToolSelected?.(toolName, toolCategory);
+      composerBase.close();
     },
-    [onToolSelected],
+    [onToolSelected, composerBase],
   );
 
   const handleContentSizeChange = useCallback(
@@ -312,10 +339,14 @@ export function Composer({
         </Animated.View>
       )}
 
+      {/* Composer pill - web parity: rounded-3xl (24), bg-zinc-800 px-1 pt-1 pb-2 */}
       <View
         style={{
-          backgroundColor: colors.zinc800,
-          borderRadius: moderateScale(20, 0.5),
+          backgroundColor: COMPOSER_CONSTANTS.bg,
+          borderRadius: COMPOSER_CONSTANTS.radius,
+          paddingHorizontal: COMPOSER_CONSTANTS.padding.horizontal,
+          paddingTop: COMPOSER_CONSTANTS.padding.top,
+          paddingBottom: COMPOSER_CONSTANTS.padding.bottom,
         }}
       >
         {/* Reply-to indicator */}
@@ -346,7 +377,7 @@ export function Composer({
             >
               <AppIcon
                 icon={LinkBackwardIcon}
-                size={iconSize.sm}
+                size={16}
                 color={colors.zinc400}
               />
               <View style={{ flex: 1, overflow: "hidden" }}>
@@ -387,7 +418,7 @@ export function Composer({
               >
                 <AppIcon
                   icon={Cancel01Icon}
-                  size={iconSize.sm - 2}
+                  size={14}
                   color={colors.zinc400}
                 />
               </PressableFeedback>
@@ -435,139 +466,159 @@ export function Composer({
           />
         )}
 
-        {/* Single-row composer: [plus] [tools] [input] [send] — toolbar merged
-            into the pill to keep the composer compact. */}
+        {/* Text input - web parity: maxRows 13, placeholder Type / for tools, maxLength 4000 */}
+        <TextInput
+          ref={inputRef}
+          style={{
+            paddingHorizontal: 12,
+            paddingTop: 10,
+            paddingBottom: 6,
+            fontSize: fontSize.base,
+            lineHeight: Math.round(fontSize.base * 1.35),
+            color: colors.white,
+            minHeight: 36,
+            maxHeight: maxInputHeight,
+            ...(inputHeight > 0 && {
+              height: Math.min(inputHeight, maxInputHeight),
+            }),
+          }}
+          placeholder={COMPOSER_CONSTANTS.placeholder}
+          placeholderTextColor={colors.zinc500}
+          value={message}
+          onChangeText={handleTextChange}
+          onContentSizeChange={handleContentSizeChange}
+          multiline
+          maxLength={COMPOSER_CONSTANTS.maxLength}
+          textAlignVertical="top"
+        />
+
+        {/* Toolbar split into left ModeTabs+Plus and right Send - web parity */}
         <View
           style={{
             flexDirection: "row",
-            alignItems: "flex-end",
-            paddingHorizontal: 6,
-            paddingBottom: 6,
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 8,
+            paddingTop: 4,
           }}
         >
-          <Animated.View style={plusAnimatedStyle}>
+          {/* Left: ModeTabs + Plus + Tools - web ComposerLeft parity */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <ModeTabs />
+            <Animated.View style={plusAnimatedStyle}>
+              <Pressable
+                onPress={handlePlusPress}
+                hitSlop={6}
+                onPressIn={() => {
+                  plusScale.value = withSpring(0.92, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                onPressOut={() => {
+                  plusScale.value = withSpring(1, {
+                    damping: 15,
+                    stiffness: 400,
+                  });
+                }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: "rgba(63,63,70,0.9)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                accessibilityLabel="Add attachment"
+              >
+                <AppIcon
+                  icon={PlusSignIcon}
+                  size={16}
+                  color={colors.zinc400}
+                />
+              </Pressable>
+            </Animated.View>
+
             <Pressable
-              onPress={handlePlusPress}
+              onPress={() => {
+                haptics.light();
+                dismissKeyboard();
+                slashCommandRef.current?.open();
+              }}
               hitSlop={6}
-              onPressIn={() => {
-                plusScale.value = withSpring(0.92, {
-                  damping: 15,
-                  stiffness: 400,
-                });
-              }}
-              onPressOut={() => {
-                plusScale.value = withSpring(1, {
-                  damping: 15,
-                  stiffness: 400,
-                });
-              }}
-              style={{
-                width: 36,
-                height: 36,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              accessibilityLabel="Add attachment"
-            >
-              <AppIcon
-                icon={PlusSignIcon}
-                size={iconSize.md}
-                color={colors.zinc400}
-              />
-            </Pressable>
-          </Animated.View>
-
-          <Pressable
-            onPress={() => {
-              haptics.light();
-              dismissKeyboard();
-              slashCommandRef.current?.open();
-            }}
-            hitSlop={6}
-            style={{
-              width: 32,
-              height: 36,
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            android_ripple={{
-              color: "rgba(255,255,255,0.08)",
-              radius: 16,
-            }}
-            accessibilityLabel="Tools"
-          >
-            <AppIcon
-              icon={Wrench01Icon}
-              size={20}
-              color={
-                selectedTool || selectedWorkflow ? colors.brand : colors.zinc400
-              }
-            />
-          </Pressable>
-
-          <TextInput
-            ref={inputRef}
-            style={{
-              flex: 1,
-              paddingHorizontal: 8,
-              paddingTop: 8,
-              paddingBottom: 7,
-              fontSize: fontSize.base,
-              lineHeight: Math.round(fontSize.base * 1.35),
-              color: colors.white,
-              minHeight: 36,
-              maxHeight: maxInputHeight,
-              ...(inputHeight > 0 && {
-                height: Math.min(inputHeight, maxInputHeight),
-              }),
-            }}
-            placeholder={placeholder}
-            placeholderTextColor={colors.zinc500}
-            value={message}
-            onChangeText={handleTextChange}
-            onContentSizeChange={handleContentSizeChange}
-            multiline
-            maxLength={4000}
-            textAlignVertical="top"
-          />
-
-          <Animated.View style={sendAnimatedStyle}>
-            <Pressable
-              onPress={handleSend}
-              hitSlop={8}
-              disabled={!isStreaming && !hasContent}
               style={{
                 width: 36,
                 height: 36,
                 borderRadius: 18,
-                backgroundColor: isStreaming
-                  ? "rgba(63,63,70,0.8)"
-                  : hasContent
-                    ? colors.brand
-                    : "rgba(63,63,70,0.6)",
+                backgroundColor: "rgba(63,63,70,0.9)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
+              android_ripple={{
+                color: "rgba(255,255,255,0.08)",
+                radius: 16,
+              }}
+              accessibilityLabel="Tools"
             >
-              {isStreaming ? (
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    backgroundColor: colors.zinc200,
-                  }}
-                />
-              ) : (
+              {/* Unified icon size 16 via getToolCategoryIcon for web parity */}
+              {getToolCategoryIcon(
+                selectedTool?.category ?? "tools",
+                { size: 16, showBackground: false },
+                null,
+              ) ?? (
                 <AppIcon
-                  icon={ArrowUp02Icon}
-                  size={iconSize.sm}
-                  strokeWidth={2.5}
-                  color={hasContent ? colors.black : colors.zinc500}
+                  icon={Wrench01Icon}
+                  size={16}
+                  color={
+                    selectedTool || selectedWorkflow
+                      ? colors.brand
+                      : colors.zinc400
+                  }
                 />
               )}
             </Pressable>
-          </Animated.View>
+          </View>
+
+          {/* Right: Send - web ComposerRight / SendStopButton parity, keep Haptics */}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Animated.View style={sendAnimatedStyle}>
+              <Pressable
+                onPress={handleSend}
+                hitSlop={8}
+                disabled={!isStreaming && !hasContent}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: isStreaming
+                    ? "rgba(63,63,70,0.8)"
+                    : hasContent
+                      ? colors.brand
+                      : "rgba(63,63,70,0.6)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {isStreaming ? (
+                  <View
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      backgroundColor: colors.zinc200,
+                    }}
+                  />
+                ) : (
+                  <AppIcon
+                    icon={ArrowUp02Icon}
+                    size={16}
+                    strokeWidth={2.5}
+                    color={hasContent ? colors.black : colors.zinc500}
+                  />
+                )}
+              </Pressable>
+            </Animated.View>
+          </View>
         </View>
       </View>
 
