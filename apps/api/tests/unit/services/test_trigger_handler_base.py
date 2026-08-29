@@ -31,7 +31,7 @@ class _StubHandler(TriggerHandler):
         return {"STUB_EVENT"}
 
     async def register(
-        self, user_id: str, workflow_id: str, trigger_name: str, trigger_config: Any
+        self, user_id: str, owner_id: str, trigger_name: str, trigger_config: Any
     ) -> list[str]:
         return []
 
@@ -256,3 +256,83 @@ class TestQueueOneWorkflowDispatch:
         buffer.assert_awaited_once()
         assert buffer.await_args.args[3] == 1
         queue.assert_not_awaited()
+
+
+class TestTodoDispatchHandoff:
+    """The tap that makes a todo-only event survive.
+
+    ``process_event`` returns early when no workflow matches, and that return is
+    what drops the reply a todo has been waiting for. The hand-off has to happen
+    before it.
+    """
+
+    @staticmethod
+    def _handler():
+        return _StubHandler()
+
+    @staticmethod
+    def _workflow() -> Workflow:
+        return Workflow(
+            id="wf_todo_tap",
+            user_id="user-1",
+            title="Tap",
+            prompt="p",
+            steps=[WorkflowStep(title="s", description="d")],
+            activated=True,
+            trigger_config=TriggerConfig(type=TriggerType.INTEGRATION, enabled=True),
+        )
+
+    async def _process(self, *, workflows, enqueue):
+        handler = self._handler()
+        handler.find_workflows = AsyncMock(return_value=workflows)
+        with (
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch(
+                "app.services.triggers.base.WorkflowQueueService.queue_workflow_execution",
+                AsyncMock(return_value=True),
+            ),
+        ):
+            return await handler.process_event("TEST_EVENT", "tid-1", "user-1", {"id": "e1"})
+
+    async def test_an_event_with_no_workflow_still_reaches_subscribed_todos(self):
+        enqueue = AsyncMock()
+
+        result = await self._process(workflows=[], enqueue=enqueue)
+
+        assert result["status"] == "success"
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.args[1] == "dispatch_todo_subscriptions"
+
+    async def test_the_handoff_carries_the_handlers_trigger_names_and_payload(self):
+        enqueue = AsyncMock()
+
+        await self._process(workflows=[], enqueue=enqueue)
+
+        args = enqueue.await_args.args
+        assert args[2] == self._handler().trigger_names
+        assert args[3] == "tid-1"
+        assert args[4] == "user-1"
+        assert args[5] == {"id": "e1"}
+
+    async def test_a_matched_workflow_does_not_suppress_the_todo_handoff(self):
+        # Both consumers are independent; a workflow match must not hide a todo.
+        enqueue = AsyncMock()
+
+        await self._process(workflows=[self._workflow()], enqueue=enqueue)
+
+        enqueue.assert_awaited_once()
+
+    async def test_a_failed_handoff_does_not_take_the_workflow_dispatch_down(self):
+        # Letting a subscription problem fail workflow queueing turns a small bug
+        # into an outage.
+        enqueue = AsyncMock(side_effect=RuntimeError("redis down"))
+
+        result = await self._process(workflows=[self._workflow()], enqueue=enqueue)
+
+        assert result["status"] == "success"
+        assert "Queued 1 workflows" in result["message"]

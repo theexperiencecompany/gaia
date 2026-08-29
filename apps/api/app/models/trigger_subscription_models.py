@@ -8,6 +8,7 @@ dispatch path needs them without importing the todo domain.
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -164,3 +165,27 @@ class TriggerSubscription(BaseModel):
     )
     status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class TriggerOrigin(BaseModel):
+    """Why a tracked-todo execution ran, when a subscription woke it.
+
+    Threaded as an explicit task parameter rather than inferred: the execution
+    path hardcodes ``scheduled_todo`` at four places, and the retry re-enqueue
+    passes only the todo id — so without carrying this, a retried trigger run
+    silently becomes an ordinary scheduled run and loses both its attribution and
+    the payload the todo was woken to act on.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    subscription_id: str
+    trigger_name: str
+    payload: dict[str, Any] = Field(
+        default_factory=dict,
+        description="The webhook payload that matched, for the agent's context",
+    )
+    defer_attempts: int = Field(
+        default=0,
+        description="How many times this fire was re-enqueued past a held execution lock",
+    )

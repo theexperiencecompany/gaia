@@ -40,6 +40,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
     safety_net_check_orphaned_todos,
 )
+from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
 # Wrap every task in the standard envelope (wide event + Prometheus histogram)
@@ -64,6 +65,7 @@ _sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
 _prune_inactive_sessions = arq_task(prune_inactive_sessions)
 _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 _execute_tracked_todo = arq_task(execute_tracked_todo)
+_dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
@@ -91,6 +93,7 @@ WorkerSettings.functions = [
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _execute_tracked_todo,
+    _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
     _promote_usage_badges,

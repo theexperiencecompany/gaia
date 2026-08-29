@@ -27,14 +27,19 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.models.trigger_subscription_models import TriggerOrigin
+from app.models.workflow_models import TriggerType
 from app.workers.tasks.tracked_todo_tasks import (
+    LOCK_DEFER_BACKOFF,
     MAX_RETRY_ATTEMPTS,
     RETRY_BACKOFF,
+    TRIGGER_TODO_FEATURE_KEY,
     _build_execution_prompt,
     _collect_reference_context,
     _compute_next_run,
     _execute_todo_with_retry,
     _execute_via_agent,
+    _execution_context,
     _extract_learnings,
     _mark_todo_failed,
     _run_execution,
@@ -119,6 +124,210 @@ class TestExecuteTrackedTodoLock:
             await execute_tracked_todo({}, "todo-1")
 
         pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+
+
+class TestTriggeredExecutionLock:
+    """A scheduled run may skip when the lock is held; a trigger fire may not.
+
+    The next safety-net scan picks a scheduled run back up, so dropping it costs
+    nothing. A trigger fire has no next scan — dropping it loses the event, in the
+    exact window self-wiring creates: GAIA sends the mail, the run is still
+    finishing, the reply lands mid-execution.
+    """
+
+    @staticmethod
+    def _origin(**overrides: object) -> TriggerOrigin:
+        return TriggerOrigin.model_validate(
+            {"subscription_id": "sub-1", "trigger_name": "gmail_new_message", **overrides}
+        )
+
+    async def test_a_held_lock_defers_the_fire_instead_of_dropping_it(self):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        enqueue = AsyncMock()
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+        ):
+            result = await execute_tracked_todo({}, "todo-1", self._origin())
+
+        assert result == "deferred:todo-1 (lock held)"
+        assert enqueue.await_args.args[1] == "execute_tracked_todo"
+        assert enqueue.await_args.args[3].defer_attempts == 1
+
+    async def test_each_deferral_advances_the_backoff(self):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        enqueue = AsyncMock()
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+        ):
+            await execute_tracked_todo({}, "todo-1", self._origin(defer_attempts=1))
+
+        assert enqueue.await_args.args[3].defer_attempts == 2
+
+    async def test_it_gives_up_loudly_rather_than_deferring_forever(self):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        enqueue = AsyncMock()
+        exhausted = len(LOCK_DEFER_BACKOFF)
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+        ):
+            result = await execute_tracked_todo({}, "todo-1", self._origin(defer_attempts=exhausted))
+
+        assert result.startswith("dropped:todo-1")
+        enqueue.assert_not_awaited()
+
+    async def test_a_scheduled_run_still_just_skips(self):
+        pool = _pool()
+        pool.set = AsyncMock(return_value=None)
+        enqueue = AsyncMock()
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}.enqueue_worker_job", enqueue),
+        ):
+            result = await execute_tracked_todo({}, "todo-1")
+
+        assert result == "skipped:todo-1 (lock held)"
+        enqueue.assert_not_awaited()
+
+    async def test_the_origin_reaches_the_execution_helper(self):
+        pool = _pool()
+        inner = AsyncMock(return_value="success:todo-1")
+        origin = self._origin()
+        with (
+            patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
+            patch(f"{MODULE}._execute_todo_with_retry", inner),
+        ):
+            await execute_tracked_todo({}, "todo-1", origin)
+
+        assert inner.await_args.args[2] is origin
+
+
+class TestExecutionContext:
+    """The trigger stamp both execution paths put on a run."""
+
+    def test_a_scheduled_run_is_stamped_scheduled_todo(self):
+        assert _execution_context("todo-1", None) == {
+            "trigger_type": TriggerType.SCHEDULED_TODO.value,
+            "todo_id": "todo-1",
+        }
+
+    def test_a_triggered_run_carries_its_origin_and_payload(self):
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
+        )
+
+        context = _execution_context("todo-1", origin)
+
+        assert context["trigger_type"] == TriggerType.TODO_TRIGGER.value
+        assert context["subscription_id"] == "sub-1"
+        assert context["trigger_data"] == {"thread_id": "t-1"}
+
+
+class TestTriggeredExecutionPrompt:
+    """The payload has to be IN the prompt.
+
+    ``trigger_context`` only reaches the model through
+    ``format_workflow_execution_message``, which needs a selected workflow. The
+    agent path has none, so a payload left there is metadata the model never sees
+    — the todo would wake knowing it was woken but not by what.
+    """
+
+    def test_a_scheduled_prompt_mentions_no_event(self):
+        prompt = _build_execution_prompt(
+            title="Chase Acme", description="", canvas_content=None, reference_context=""
+        )
+
+        assert prompt.startswith("Execute the following scheduled task: Chase Acme")
+        assert "Triggering event" not in prompt
+
+    def test_a_triggered_prompt_carries_the_payload(self):
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="gmail_new_message",
+            payload={"thread_id": "t-1", "sender": "alice@acme.com"},
+        )
+
+        prompt = _build_execution_prompt(
+            title="Chase Acme",
+            description="",
+            canvas_content=None,
+            reference_context="",
+            origin=origin,
+        )
+
+        assert "gmail_new_message" in prompt
+        assert "alice@acme.com" in prompt
+        assert "t-1" in prompt
+
+
+class TestTriggeredExecutionGating:
+    """The budget wall and the origin hand-off, on the retry helper."""
+
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
+    @staticmethod
+    def _origin() -> TriggerOrigin:
+        return TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
+
+    async def _run(self, origin):
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc())
+        repo.update = AsyncMock()
+        run_execution = AsyncMock()
+        budget = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._run_execution", run_execution),
+            patch(f"{MODULE}.enforce_daily_cost_budget", budget),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
+        ):
+            await _execute_todo_with_retry("todo-1", _pool(), origin)
+        return budget, run_execution
+
+    async def test_a_triggered_run_takes_the_cost_wall_first(self):
+        # A chatty subscription must not be able to spend a user's whole day of
+        # budget: this is not a user action, so nothing else caps it.
+        budget, _ = await self._run(self._origin())
+
+        budget.assert_awaited_once()
+        assert budget.await_args.kwargs["feature_key"] == TRIGGER_TODO_FEATURE_KEY
+
+    async def test_a_scheduled_run_is_not_charged_to_the_trigger_budget(self):
+        budget, _ = await self._run(None)
+
+        budget.assert_not_awaited()
+
+    async def test_the_origin_reaches_the_execution_dispatch(self):
+        origin = self._origin()
+        _, run_execution = await self._run(origin)
+
+        assert run_execution.await_args.kwargs["origin"] is origin
+
+    async def test_a_triggered_retry_keeps_its_origin(self):
+        """Without this the retry silently becomes an ordinary scheduled run:
+        wrong attribution, and the payload the todo was woken to act on gone."""
+        origin = self._origin()
+        pool = _pool()
+        repo = MagicMock()
+        repo.get_by_id = AsyncMock(return_value=_doc(gaia_retry_count=0))
+        repo.update = AsyncMock()
+        with (
+            patch(f"{MODULE}.todo_repository", repo),
+            patch(f"{MODULE}._run_execution", AsyncMock(side_effect=RuntimeError("boom"))),
+            patch(f"{MODULE}.enforce_daily_cost_budget", AsyncMock()),
+            patch(f"{MODULE}._mark_todo_failed", AsyncMock()),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
+        ):
+            await _execute_todo_with_retry("todo-1", pool, origin)
+
+        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", origin)
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +497,10 @@ class TestExecuteTodoWithRetryFailure:
 
         next_attempt = pool.enqueue_job.await_args.kwargs["_defer_until"]
         assert before + expected_backoff <= next_attempt <= after + expected_backoff
-        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1")
+        # The origin rides along on every retry: without it a failed trigger run
+        # silently comes back as an ordinary scheduled run. None here is a
+        # scheduled run retrying, which is the case this test drives.
+        assert pool.enqueue_job.await_args.args == ("execute_tracked_todo", "todo-1", None)
 
     async def test_retry_parks_scheduled_at_on_the_backoff_target(self):
         """Leaving scheduled_at in the past lets the 30-minute safety net fire

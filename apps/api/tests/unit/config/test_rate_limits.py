@@ -164,6 +164,7 @@ class TestFeatureLimits:
         "download",
         "workflow_operations",
         "trigger_workflow_executions",
+        "trigger_todo_executions",
         "todo_operations",
         "calendar_management",
         "reminder_operations",

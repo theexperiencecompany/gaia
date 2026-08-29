@@ -52,7 +52,7 @@ When a Composio trigger fires, the dispatch pipeline SHALL resolve candidate sub
 
 ### Requirement: Fired triggers fan out to subscribed todos
 For each matching todo whose conditions pass and whose cooldown has elapsed, the system SHALL perform the subscription's action, stamped with a distinct `todo_trigger` origin so analytics, budget gating, and rate limiting treat it as trigger-caused work. Evaluation SHALL run before any no-matching-workflow short-circuit. Actions:
-- `execute` — enqueue execution through the existing tracked-todo execution path with the triggering payload in context.
+- `execute` — enqueue execution through the existing tracked-todo execution path, with the triggering payload rendered into the run's prompt so the model can act on what actually happened.
 - `notify` — send a notification (reusing the shared todo deep-link redirect helper) without executing; no state change.
 - `complete` — mark the todo completed (idempotent completion path) and tear down its subscriptions.
 - `unblock` — remove the matching blocking label (`waiting-for-reply`, `waiting-for-approval`, or `blocked`); if none of the blocking labels is present, the action degrades to `notify`.
@@ -88,11 +88,19 @@ The `todo_trigger` origin SHALL be carried as an explicit execution parameter, n
 - **THEN** the execution is skipped cleanly by the budget gate before any execution record or LLM work
 
 ### Requirement: A busy todo defers its triggered execution rather than dropping it
-The tracked-todo execution path takes a per-todo lock and abandons the run when it is already held. For a `todo_trigger` execution the event MUST NOT be discarded on a held lock: the system SHALL re-enqueue the action once after a short delay. The subscription's cooldown SHALL be recorded only when the action actually runs, so a deferred event is not suppressed as a repeat fire.
+The tracked-todo execution path takes a per-todo lock and abandons the run when it is already held. For a `todo_trigger` execution the event MUST NOT be discarded on a held lock: the system SHALL re-enqueue the action on a bounded backoff, and SHALL give up with an error-level log once that bound is reached rather than retrying forever or failing silently. The subscription's cooldown SHALL be recorded only when the action actually runs, so a deferred event is not suppressed as a repeat fire.
 
 #### Scenario: Event arrives while the todo is mid-execution
 - **WHEN** a qualifying event matches a todo whose execution lock is currently held
 - **THEN** the action is re-enqueued after a delay and eventually runs, rather than being dropped
+
+#### Scenario: The lock is still held after every deferral
+- **WHEN** a deferred action exhausts its backoff and the lock is still held
+- **THEN** it is dropped with an error-level log naming the todo and subscription, not silently
+
+#### Scenario: A scheduled run finds the lock held
+- **WHEN** an ordinary scheduled execution finds the lock held
+- **THEN** it is skipped without deferral, because the next scan picks it up
 
 ### Requirement: Subscriptions share trigger lifecycle with workflows
 Subscription teardown SHALL use reference-counted Composio trigger deletion covering both consumers — a Composio trigger instance MUST NOT be deleted while any workflow or todo still references it. The count SHALL be summed across the workflow and todo repositories without either repository reading the other's collection.

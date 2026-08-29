@@ -24,16 +24,16 @@
 
 ## 4. Dispatch fan-out
 
-- [ ] 4.1 Tap `TriggerHandler.process_event` before the no-workflow early return (`base.py:373`); resolve subscribed todos by **both** strategies — trigger instance ID, and `(user_id, trigger_name)` for account-level triggers — mirroring `GmailTriggerHandler.find_workflows`
-- [ ] 4.2 Condition evaluation in the spawned task against typed payload models; AND-chain semantics; cooldown check via Redis key, written only when the action actually runs
-- [ ] 4.3 Add `TriggerType.TODO_TRIGGER` and `TriggerType.SCHEDULED_TODO`; replace the hardcoded `"scheduled_todo"` literals in `_run_execution` and `_execute_via_agent`
-- [ ] 4.4 Thread the origin + triggering payload as a new optional parameter through `execute_tracked_todo` → `_execute_todo_with_retry` → `_run_execution` → `_execute_via_agent`, **including the retry re-enqueue sites** (`tracked_todo_tasks.py:155`, `:192`) so a retried trigger run keeps its origin
-- [ ] 4.5 On a held execution lock, re-enqueue the `execute` action once with a short defer instead of returning `skipped` — the event must not be dropped
-- [ ] 4.6 Add `enforce_daily_cost_budget` to the triggered todo execution path with its own `feature_key` in `app/config/rate_limits.py` (the gate does not exist on this path today)
+- [x] 4.1 Tap `TriggerHandler.process_event` before the no-workflow early return (`base.py:373`), enqueueing `dispatch_todo_subscriptions` rather than calling it — dispatch needs the todo completion path, which imports the trigger stack back (a real cycle mypy passes clean). Resolve subscribed todos by **both** strategies — trigger instance ID, and `(user_id, trigger_name)` for account-level triggers
+- [x] 4.2 Condition evaluation in the spawned task against typed payload models; AND-chain semantics; cooldown check via Redis key, written only when the action actually runs
+- [x] 4.3 Add `TriggerType.TODO_TRIGGER` and `TriggerType.SCHEDULED_TODO`; replace the hardcoded `"scheduled_todo"` literals in `_run_execution` and `_execute_via_agent`
+- [x] 4.4 Thread the origin + triggering payload as a new optional parameter through `execute_tracked_todo` → `_execute_todo_with_retry` → `_run_execution` → `_execute_via_agent`, **including the retry re-enqueue sites** (`tracked_todo_tasks.py:155`, `:192`) so a retried trigger run keeps its origin
+- [x] 4.5 On a held execution lock, re-enqueue the `execute` action on a bounded backoff (1m/3m/10m) instead of returning `skipped`, then give up loudly. One short defer was the plan and is not enough — the lock TTL is 30 minutes, so it would routinely land on the same held lock
+- [x] 4.6 Add `enforce_daily_cost_budget` to the triggered todo execution path with its own `feature_key` in `app/config/rate_limits.py` (the gate does not exist on this path today)
 - [x] 4.7 Move `BLOCKING_LABELS` from `maintenance_sweep_tasks.py:54` to `app/constants/todos.py`, and `_todo_redirect_action` (`:427`) to a shared notification helper, before the dispatch path imports either
-- [ ] 4.8 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
+- [x] 4.8 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
 - [ ] 4.9 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
-- [ ] 4.10 Unit + integration tests: thread-match executes todo; account-level Gmail event with no trigger id still resolves subscribers; no-workflow event still fires todo; cooldown suppresses repeat; held lock defers rather than drops; retry preserves the `todo_trigger` origin; each of the four actions behaves per spec; budget gate blocks
+- [x] 4.10 Unit tests (integration deferred to the live drive in 7.4): thread-match executes todo; account-level Gmail event with no trigger id still resolves subscribers; no-workflow event still fires todo; cooldown suppresses repeat; held lock defers rather than drops; retry preserves the `todo_trigger` origin; each of the four actions behaves per spec; budget gate blocks
 
 ## 5. Agent tool surface
 

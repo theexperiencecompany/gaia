@@ -20,9 +20,14 @@ The 23 GAIA-facing trigger names in `oauth_config.py` (22 distinct Composio slug
 
 ## Decisions
 
-### Dispatch: tap inside `TriggerHandler.process_event`, before the no-workflow return
-Fan out to todo subscribers inside the existing choke point rather than a second webhook task. No handler overrides `process_event`, so the base method is the single tap point. The current early return at "no matching workflows" (`base.py:373-381`) would drop todo-only events, so the todo lookup runs before it.
-*Alternative*: endpoint-level second `spawn_logged_task` — rejected; duplicates signature/dedupe context and bypasses handler normalization.
+### Dispatch: hand off from inside `TriggerHandler.process_event`, before the no-workflow return
+The tap goes in the existing choke point — no handler overrides `process_event`, so the base method is the single point, and the early return at "no matching workflows" (`base.py:373-381`) would drop todo-only events, so the hand-off happens before it.
+
+The fan-out itself runs in an ARQ task rather than inline, for a reason found during implementation and not visible on the page: dispatch needs the todo completion path for its `complete` action, and that lifecycle service imports the trigger stack back to tear subscriptions down. Calling it from `base.py` closes a real import cycle — one mypy passes clean straight through, and only a runtime import probe catches. Enqueuing cuts it, because a task name is a string.
+
+It also keeps the webhook path fast (a Mongo scan across every subscriber cannot delay workflow queueing) and gives the fan-out its own wide-event boundary.
+
+*Alternative*: endpoint-level second `spawn_logged_task` — still rejected. This task is enqueued from inside `process_event`, after handler normalization, carrying the trigger names that handler owns; the rejected shape sat before any of that.
 
 ### Subscription resolution mirrors `find_workflows`' two strategies — not trigger IDs alone
 Gmail is account-level: `GmailTriggerHandler.register()` returns `[]` (`handlers/gmail.py:59`) and `find_workflows` matches by `data["user_id"]` (`handlers/gmail.py:93-98`); `resync_user_workflow_triggers` documents the same property ("Account-level triggers return no ids — nothing to repoint"). A subscription keyed solely on a Composio trigger instance ID therefore **never fires for Gmail** — which is the entire self-wiring case.
@@ -46,6 +51,9 @@ Full payload models stay loose (external webhooks omit fields); only the curated
 Field-name fuzzy match + operator-for-type table fixes most failures free; ambiguous cases get exactly one LLM rewrite restricted to catalog fields; unexpressible intent rejects with alternative triggers surfaced. Never water down intent — an approximating subscription executes todos on garbage.
 *Alternative*: open-ended agent repair loop — rejected; unbounded cost and silent-intent-drift risk.
 
+### The triggering payload goes in the prompt, not only in the context dict
+`trigger_context` reaches the model only through `format_workflow_execution_message`, which requires a selected workflow (`agents/core/messages.py:141`). The todo agent path has none, so a payload left in that dict is metadata the model never sees — the todo would wake knowing it was woken but not by what. The payload is rendered into the execution prompt instead.
+
 ### Execution: reuse `execute_tracked_todo`, carrying origin as a task parameter
 The Redis lock, backoff/retry, and canvas logging come free. What does not come free is the origin stamp.
 
@@ -65,7 +73,9 @@ Two consequences follow and are requirements, not details:
 ### A locked todo defers its event, it does not drop it
 `execute_tracked_todo` returns `skipped:{id} (lock held)` when the Redis lock is taken (`:85-87`) and nothing re-queues. For scheduled runs that is correct — the next scan picks it up. For a trigger it is data loss in the exact window self-wiring creates: GAIA sends the email, the run is still finishing, the reply lands, the event vanishes.
 
-An `execute` action that finds the lock held re-enqueues itself once with a short defer instead of returning. The cooldown key is written only when the action actually runs, so a deferred event is not suppressed as a repeat.
+An `execute` action that finds the lock held re-enqueues itself on a bounded backoff (1m, 3m, 10m) instead of returning, then gives up with an error-level log. A single retry was the original plan and is not enough: the lock TTL is 30 minutes, so one short defer would routinely land on the same held lock and drop the event anyway — the exact failure the rule exists to stop. Three attempts covers a normal agent run without ever looping.
+
+The cooldown key is written only when the action actually runs, so a deferred event is not suppressed as a repeat.
 
 ### Fan-out is not batched, so cooldown is mandatory
 Workflows coalesce burst events from poll-based triggers via `coalesce_window_seconds` / `buffer_trigger_event` (`base.py:441-445`), keyed on `workflow.trigger_config`. The todo tap sits before that loop and has no equivalent config, so one poll returning 50 items reaches 50 subscription evaluations. Per-subscription cooldown is the only bound, which is why it is required rather than optional. Extending the coalesce buffer to subscriptions is deferred until a real poll-trigger subscription exists.
