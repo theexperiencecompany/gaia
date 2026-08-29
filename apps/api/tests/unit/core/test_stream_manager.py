@@ -39,25 +39,22 @@ ACTIVE_KEY = f"{STREAM_ACTIVE_PREFIX}user-1:conv-1"
 XReadBatch = list[tuple[str, list[tuple[str, dict[str, str]]]]]
 
 
-def _progress_dict(
-    conversation_id: str = "conv-1",
-    user_id: str = "user-1",
-    complete_message: str = "",
-    tool_data: dict[str, Any] | None = None,
-    is_cancelled: bool = False,
-    is_complete: bool = False,
-    error: str | None = None,
-) -> dict[str, Any]:
-    """Return a dict that mirrors what Redis stores for StreamProgress."""
+def _progress_dict(**overrides: Any) -> dict[str, Any]:
+    """Return a dict that mirrors what Redis stores for StreamProgress.
+
+    Pass any field as a keyword to override its default, e.g.
+    ``_progress_dict(is_cancelled=True)``.
+    """
     return {
-        "conversation_id": conversation_id,
-        "user_id": user_id,
-        "complete_message": complete_message,
-        "tool_data": tool_data or {},
+        "conversation_id": "conv-1",
+        "user_id": "user-1",
+        "complete_message": "",
+        "tool_data": {},
         "started_at": "2026-01-01T00:00:00+00:00",
-        "is_cancelled": is_cancelled,
-        "is_complete": is_complete,
-        "error": error,
+        "is_cancelled": False,
+        "is_complete": False,
+        "error": None,
+        **overrides,
     }
 
 

@@ -75,7 +75,6 @@ apps/api/app/config/rate_limits.py	PLR0912
 apps/api/app/config/settings_validator.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
 apps/api/app/core/lazy_loader.py	PLR0913
-apps/api/app/core/stream_manager.py	PLR0912
 apps/api/app/db/chroma/chroma_store.py	PLR0912
 apps/api/app/db/repositories/base.py	PLR0913
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
@@ -195,7 +194,6 @@ apps/api/tests/unit/agents/context/test_sections.py	PLR0913
 apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913
 apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
-apps/api/tests/unit/core/test_stream_manager.py	PLR0913
 apps/api/tests/unit/memory/pg_store/test_memories.py	PLR0913
 apps/api/tests/unit/memory/test_ingestion.py	PLR0913
 apps/api/tests/unit/memory/test_management.py	PLR0913

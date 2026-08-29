@@ -46,7 +46,7 @@ class TestProcessReminder:
         """A non-numeric stamp degrades to an unstamped claim instead of raising."""
         with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
             mock_scheduler.process_task_execution = AsyncMock()
-            await process_reminder(ctx, "reminder_abc", "not-a-number")  # type: ignore[arg-type]
+            await process_reminder(ctx, "reminder_abc", "not-a-number")  # type: ignore[arg-type]  # deliberately bad-typed stamp: proves a non-numeric stamp degrades to an unstamped claim
 
         mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
 

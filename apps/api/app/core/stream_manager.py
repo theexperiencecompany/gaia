@@ -286,6 +286,40 @@ class StreamManager:
             await cls._refresh_active_index(progress_data)
 
     @classmethod
+    async def _control_signal_frame(
+        cls, stream_id: str, data: str, chunks_received: int
+    ) -> tuple[bool, str | None]:
+        """Map a stream entry to ``(is_terminal, frame_to_yield)``.
+
+        DONE ends the stream with no frame; CANCELLED and ERROR end it with a
+        final SSE frame; a normal chunk returns ``(False, None)`` so the caller
+        yields it and keeps reading.
+        """
+        if data == STREAM_DONE_SIGNAL:
+            log.debug(
+                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
+                stream_id=stream_id,
+                chunks_received=chunks_received,
+            )
+            return True, None
+
+        if data == STREAM_CANCELLED_SIGNAL:
+            log.info(f"{LogTag.STARTUP} Stream was cancelled by user", stream_id=stream_id)
+            return True, "data: [DONE]\n\n"
+
+        if data == STREAM_ERROR_SIGNAL:
+            log.error(f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id)
+            progress = await cls.get_progress(stream_id)
+            error_msg = (
+                progress.get("error", "An unexpected error occurred")
+                if progress
+                else "An unexpected error occurred"
+            )
+            return True, f"data: {json.dumps({'error': error_msg})}\n\n"
+
+        return False, None
+
+    @classmethod
     async def subscribe_stream(
         cls,
         stream_id: str,
@@ -338,33 +372,12 @@ class StreamManager:
                         cursor = entry_id
                         data = fields.get("data", "")
 
-                        if data == STREAM_DONE_SIGNAL:
-                            log.debug(
-                                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
-                                stream_id=stream_id,
-                                chunks_received=chunks_received,
-                            )
-                            return
-
-                        if data == STREAM_CANCELLED_SIGNAL:
-                            log.info(
-                                f"{LogTag.STARTUP} Stream was cancelled by user",
-                                stream_id=stream_id,
-                            )
-                            yield "data: [DONE]\n\n"
-                            return
-
-                        if data == STREAM_ERROR_SIGNAL:
-                            log.error(
-                                f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id
-                            )
-                            progress = await cls.get_progress(stream_id)
-                            error_msg = (
-                                progress.get("error", "An unexpected error occurred")
-                                if progress
-                                else "An unexpected error occurred"
-                            )
-                            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                        is_terminal, frame = await cls._control_signal_frame(
+                            stream_id, data, chunks_received
+                        )
+                        if is_terminal:
+                            if frame is not None:
+                                yield frame
                             return
 
                         chunks_received += 1
