@@ -43,17 +43,26 @@ REPORT = {
 }
 
 
-def run(tmp_path: Path, *, allow: list[dict] | None, stdout: str | None = None, today: str = "2026-08-29", level: str = "high") -> subprocess.CompletedProcess[str]:
+def run(
+    tmp_path: Path,
+    *,
+    allow: list[dict] | None,
+    stdout: str | None = None,
+    today: str = "2026-08-29",
+    level: str = "high",
+) -> subprocess.CompletedProcess[str]:
     stub = tmp_path / "bin"
     stub.mkdir(exist_ok=True)
     body = json.dumps(REPORT) if stdout is None else stdout
     (tmp_path / "audit.out").write_text(body)
     pnpm = stub / "pnpm"
-    pnpm.write_text(textwrap.dedent(f"""\
+    pnpm.write_text(
+        textwrap.dedent(f"""\
         #!/usr/bin/env bash
-        cat "{tmp_path / 'audit.out'}"
+        cat "{tmp_path / "audit.out"}"
         exit 1
-        """))
+        """)
+    )
     pnpm.chmod(0o755)
     allowlist = tmp_path / "allow.json"
     if allow is not None:
@@ -65,7 +74,9 @@ def run(tmp_path: Path, *, allow: list[dict] | None, stdout: str | None = None, 
         "PNPM_AUDIT_TODAY": today,
         "PNPM_AUDIT_LEVEL": level,
     }
-    return subprocess.run(["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60)
+    return subprocess.run(
+        ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60, check=False
+    )
 
 
 def summary(proc: subprocess.CompletedProcess[str]) -> dict:
@@ -91,7 +102,11 @@ def test_level_is_a_threshold_not_an_exact_match(tmp_path: Path) -> None:
 
 def test_allowlisted_by_cve_and_by_ghsa_passes(tmp_path: Path) -> None:
     allow = [
-        {"id": "CVE-2026-0001", "reason": "server-side only, not reachable", "expires": "2026-12-31"},
+        {
+            "id": "CVE-2026-0001",
+            "reason": "server-side only, not reachable",
+            "expires": "2026-12-31",
+        },
         {"id": "GHSA-0003-aaaa-bbbb", "reason": "build-time only", "expires": "2026-09-30"},
     ]
     proc = run(tmp_path, allow=allow)
@@ -99,7 +114,10 @@ def test_allowlisted_by_cve_and_by_ghsa_passes(tmp_path: Path) -> None:
     out = summary(proc)
     assert out["failing"] == 0
     assert out["suppressed"] == 2
-    assert {s["allowlisted_by"] for s in out["details"]["suppressed"]} == {"CVE-2026-0001", "GHSA-0003-aaaa-bbbb"}
+    assert {s["allowlisted_by"] for s in out["details"]["suppressed"]} == {
+        "CVE-2026-0001",
+        "GHSA-0003-aaaa-bbbb",
+    }
     assert "pnpm-audit: OK" in proc.stdout
 
 
