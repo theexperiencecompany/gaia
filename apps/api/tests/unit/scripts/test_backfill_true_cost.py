@@ -1,0 +1,163 @@
+"""Unit tests for the true-cost backfill's aggregation.
+
+The script's whole point is the arithmetic: which calls count as verified, what
+happens to the ones OpenRouter can no longer price, and how that lands as a
+per-user-day coverage number. That fold is pure, so it is pinned here without a
+Loki or an OpenRouter in sight. The Mongo write it feeds is a repository method
+proven a tier down.
+"""
+
+import pytest
+from scripts.backfill_true_cost import (
+    UNVERIFIED,
+    GenerationRecord,
+    LlmCall,
+    _parse_event,
+    aggregate_true_cost,
+)
+
+
+def _call(
+    generation_id: str | None,
+    logged_cost: float,
+    *,
+    user_id: str = "u1",
+    day: str = "2026-08-01",
+    background: bool = False,
+) -> LlmCall:
+    return LlmCall(
+        user_id=user_id,
+        day=day,
+        background=background,
+        logged_cost=logged_cost,
+        generation_id=generation_id,
+    )
+
+
+def _record(cost: float, provider: str = "Fireworks") -> GenerationRecord:
+    return GenerationRecord(total_cost=cost, provider_name=provider)
+
+
+def test_verified_call_uses_the_real_charge_not_the_table_price():
+    rows = aggregate_true_cost([_call("g1", 0.10)], {"g1": _record(0.25)})
+
+    assert len(rows) == 1
+    assert rows[0].logged_cost == 0.10
+    assert rows[0].cost_actual == 0.25
+    assert rows[0].coverage == 1.0
+    assert rows[0].provider_mix == {"Fireworks": 0.25}
+
+
+def test_background_calls_land_in_the_aux_totals():
+    rows = aggregate_true_cost(
+        [_call("g1", 0.10), _call("g2", 0.20, background=True)],
+        {"g1": _record(0.25), "g2": _record(0.50)},
+    )
+
+    assert rows[0].logged_cost == 0.10
+    assert rows[0].cost_actual == 0.25
+    assert rows[0].logged_aux_cost == 0.20
+    assert rows[0].aux_cost_actual == 0.50
+
+
+def test_call_without_a_generation_id_keeps_its_logged_cost_and_loses_coverage():
+    rows = aggregate_true_cost([_call(None, 0.40)], {})
+
+    assert rows[0].cost_actual == 0.40
+    assert rows[0].coverage == 0.0
+    assert rows[0].provider_mix == {UNVERIFIED: 0.40}
+
+
+def test_dropped_generation_is_unverifiable_not_an_error():
+    """OpenRouter 404s ids it has aged out — cached as ``None``, same treatment
+    as an id it was never asked about."""
+    cached_404 = aggregate_true_cost([_call("gone", 0.40)], {"gone": None})
+    never_asked = aggregate_true_cost([_call("gone", 0.40)], {})
+
+    assert cached_404[0].cost_actual == never_asked[0].cost_actual == 0.40
+    assert cached_404[0].coverage == never_asked[0].coverage == 0.0
+
+
+def test_coverage_is_weighted_by_dollars_not_by_call_count():
+    """Nine cheap unverifiable calls must not bury one verified call that is
+    where the money actually went."""
+    calls = [_call("big", 9.0), *[_call(None, 0.1) for _ in range(10)]]
+
+    rows = aggregate_true_cost(calls, {"big": _record(12.0)})
+
+    assert rows[0].coverage == pytest.approx(0.9)  # 9.00 verified of 10.00 logged
+    assert rows[0].cost_actual == pytest.approx(13.0)  # 12.00 real + 1.00 from the table
+
+
+def test_provider_mix_sums_to_the_true_total_including_the_unverified_bucket():
+    calls = [_call("g1", 0.1), _call("g2", 0.1), _call(None, 0.5, background=True)]
+    generations = {"g1": _record(0.3, "Together"), "g2": _record(0.2, "Fireworks")}
+
+    row = aggregate_true_cost(calls, generations)[0]
+
+    assert row.provider_mix == {"Together": 0.3, "Fireworks": 0.2, UNVERIFIED: 0.5}
+    assert sum(row.provider_mix.values()) == row.cost_actual + row.aux_cost_actual
+
+
+def test_rows_are_split_per_user_and_per_day():
+    calls = [
+        _call("g1", 0.1, user_id="u1", day="2026-08-01"),
+        _call("g2", 0.1, user_id="u1", day="2026-08-02"),
+        _call("g3", 0.1, user_id="u2", day="2026-08-01"),
+    ]
+
+    rows = aggregate_true_cost(calls, {k: _record(1.0) for k in ("g1", "g2", "g3")})
+
+    assert [(r.user_id, r.date) for r in rows] == [
+        ("u1", "2026-08-01"),
+        ("u1", "2026-08-02"),
+        ("u2", "2026-08-01"),
+    ]
+
+
+def test_zero_dollar_day_reports_full_coverage_instead_of_dividing_by_zero():
+    rows = aggregate_true_cost([_call(None, 0.0)], {})
+
+    assert rows[0].coverage == 1.0
+
+
+def test_gap_is_the_dollars_the_price_table_missed():
+    row = aggregate_true_cost(
+        [_call("g1", 0.10), _call("g2", 0.20, background=True)],
+        {"g1": _record(0.25), "g2": _record(0.50)},
+    )[0]
+
+    assert row.gap == pytest.approx(0.45)
+
+
+def test_parse_event_reads_a_wide_event_line():
+    line = (
+        '{"llm_event": "llm_call", "time": "2026-08-01T12:30:00Z", "user_id": "u1", '
+        '"background": true, "cost_usd": 0.125, "generation_id": "gen-abc"}'
+    )
+
+    call = _parse_event(line)
+
+    assert call == LlmCall(
+        user_id="u1",
+        day="2026-08-01",
+        background=True,
+        logged_cost=0.125,
+        generation_id="gen-abc",
+    )
+
+
+def test_parse_event_rejects_lines_that_are_not_llm_calls():
+    assert _parse_event("not json at all") is None
+    assert _parse_event('{"llm_event": "budget_stop", "user_id": "u1", "time": "x"}') is None
+    assert _parse_event('{"llm_event": "llm_call", "time": "2026-08-01T00:00:00Z"}') is None
+
+
+def test_parse_event_treats_a_missing_generation_id_as_unverifiable():
+    line = '{"llm_event": "llm_call", "time": "2026-08-01T00:00:00Z", "user_id": "u1"}'
+
+    call = _parse_event(line)
+
+    assert call is not None
+    assert call.generation_id is None
+    assert call.logged_cost == 0.0

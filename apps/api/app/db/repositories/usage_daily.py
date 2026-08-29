@@ -12,6 +12,7 @@ surviving.
 """
 
 from collections.abc import Mapping
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -33,6 +34,27 @@ class UsageDailyDocument(UserScopedDocument):
     aux_output_tokens: int = 0
     aux_cached_tokens: int = 0
     aux_reasoning_tokens: int = 0
+    # What the provider actually billed, reconstructed after the fact by
+    # scripts/backfill_true_cost.py. Absent on every row the backfill has not
+    # reached (and on every row written before it existed), which is why these
+    # are optional rather than 0.0 — a missing reconstruction is not "$0 spent".
+    cost_actual: float | None = None
+    aux_cost_actual: float | None = None
+    cost_actual_coverage: float | None = None
+    cost_actual_provider_mix: dict[str, float] | None = None
+    cost_actual_at: datetime | None = None
+
+
+class TrueCostActuals(BaseModel):
+    """One user-day's reconstructed provider spend, as written by the backfill."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cost_actual: float
+    aux_cost_actual: float
+    coverage: float
+    provider_mix: dict[str, float]
+    at: datetime
 
 
 class UsageDailyUpdate(BaseModel):
@@ -93,6 +115,34 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
             return_document=False,
             upsert=True,
         )
+
+    async def apply_true_cost(self, user_id: str, date: str, actuals: TrueCostActuals) -> bool:
+        """Stamp the reconstructed provider spend onto an EXISTING rollup row.
+
+        Deliberately never touches ``cost``/``aux_cost``: budget enforcement
+        already acted on those numbers, so rewriting them would retroactively
+        change what a user was charged and what the Redis windows were metered
+        against. The actuals land in their own fields beside them.
+
+        No upsert — a user-day with no rollup row was never metered, and inventing
+        one from log lines alone would fabricate usage history. Returns whether a
+        row matched.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"user_id": user_id, "date": date},
+            {
+                "$set": {
+                    "cost_actual": actuals.cost_actual,
+                    "aux_cost_actual": actuals.aux_cost_actual,
+                    "cost_actual_coverage": actuals.coverage,
+                    "cost_actual_provider_mix": actuals.provider_mix,
+                    "cost_actual_at": actuals.at,
+                }
+            },
+            scope=user_id,
+            upsert=False,
+        )
+        return matched > 0
 
     async def counts_since(self, user_id: str, since_day: str) -> dict[str, int]:
         """The user's per-day action counts from ``since_day`` (inclusive) on."""
