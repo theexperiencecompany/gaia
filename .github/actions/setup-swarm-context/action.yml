@@ -1,10 +1,16 @@
 name: Set up Docker Swarm context
 description: >
-  Configures SSH access to the production VM and creates a Docker
-  context pointing at it. The private key, host, and username are pulled
-  from GitHub secrets.
+  Joins the tailnet as an ephemeral tag:ci node, configures SSH access to
+  the production VM over it, and creates a Docker context pointing at it.
+  The VM's public firewall (Hetzner) has no SSH rule: port 22 is reachable
+  only from the tailnet, so ssh_host must be the VM's Tailscale address.
+  The auth key, private key, host, and username are pulled from GitHub
+  secrets.
 
 inputs:
+  tailscale_authkey:
+    description: Ephemeral, pre-authorized Tailscale auth key tagged tag:ci
+    required: true
   ssh_key:
     description: Private SSH key for the production VM
     required: true
@@ -18,6 +24,15 @@ inputs:
 runs:
   using: composite
   steps:
+    # Ephemeral node: it is removed from the tailnet when the job ends. The
+    # ACL grants tag:ci exactly one thing — tcp/22 to tag:prod.
+    - name: Join the tailnet
+      uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+      with:
+        authkey: ${{ inputs.tailscale_authkey }}
+        tags: tag:ci
+        hostname: gaia-deploy-${{ github.run_id }}
+
     - name: Configure SSH and Docker context
       shell: bash
       env:
