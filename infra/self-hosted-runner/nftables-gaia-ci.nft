@@ -61,6 +61,13 @@ table inet gaia_ci {
     oif "lo" tcp dport @ci_tcp accept
     oif "lo" counter drop
 
+    # DNS anywhere: rootless Docker's embedded resolver forwards container
+    # lookups to the host's UPSTREAM servers (the MagicDNS resolver on
+    # 100.100.100.100 / fd7a:…::53 here), not to the 127.0.0.53 stub. Port 53
+    # only; the tailnet drop below still covers everything else.
+    udp dport 53 accept
+    tcp dport 53 accept
+
     # Private networks, link-local and the tailnet are off limits.
     ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10 } counter drop
     ip6 daddr { fc00::/7, fe80::/10 } counter drop
