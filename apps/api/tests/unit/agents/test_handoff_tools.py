@@ -1528,7 +1528,7 @@ class TestHandoffBuildsItsDispatch:
         seen: dict[str, object] = {"ctx": ctx, "calls": []}
 
         async def _run(run_ctx: object, dispatch: object) -> str:
-            seen["calls"].append((run_ctx, dispatch))  # type: ignore[attr-defined]
+            seen["calls"].append((run_ctx, dispatch))  # type: ignore[attr-defined]  # the seen bag holds mixed value types; mypy narrows to the first
             return "subagent ran"
 
         with (
@@ -1564,7 +1564,7 @@ class TestHandoffBuildsItsDispatch:
             )
 
         assert result == "subagent ran"
-        (run_ctx, dispatch) = seen["calls"][0]  # type: ignore[index]
+        (run_ctx, dispatch) = seen["calls"][0]  # type: ignore[index]  # the seen bag holds mixed value types; mypy narrows to the first
         assert run_ctx is seen["ctx"]
         assert dispatch == _HandoffDispatch(
             metadata=metadata,
@@ -1585,7 +1585,7 @@ class TestHandoffBuildsItsDispatch:
                 tool_call_id="tc1",
             )
 
-        (run_ctx, dispatch) = seen["calls"][0]  # type: ignore[index]
+        (run_ctx, dispatch) = seen["calls"][0]  # type: ignore[index]  # the seen bag holds mixed value types; mypy narrows to the first
         assert run_ctx is seen["ctx"]
         assert dispatch == _HandoffDispatch(
             metadata=None,

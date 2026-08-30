@@ -34,7 +34,7 @@ def _draft(**overrides: object) -> FinalizedOutput:
         "trigger_type": "scheduled",
     }
     fields.update(overrides)
-    return FinalizedOutput(**fields)  # type: ignore[arg-type]
+    return FinalizedOutput(**fields)  # type: ignore[arg-type]  # overrides bag is dict[str, object] by design; pydantic validates
 
 
 def _workflow(trigger_config: TriggerConfig, **overrides: object) -> Workflow:
@@ -47,7 +47,7 @@ def _workflow(trigger_config: TriggerConfig, **overrides: object) -> Workflow:
         "trigger_config": trigger_config,
     }
     fields.update(overrides)
-    return Workflow(**fields)  # type: ignore[arg-type]
+    return Workflow(**fields)  # type: ignore[arg-type]  # overrides bag is dict[str, object] by design; pydantic validates
 
 
 @pytest.mark.unit
