@@ -190,7 +190,7 @@ backend = [
   "markdown-it-py==3.0.0",
   "mdurl==0.1.2",
   "pyinstrument>=5.1.1",
-  "posthog>=7.4.2",
+  "posthog>=7.44.2",
   "sentry-sdk[langgraph]>=2.44.0",
   "langfuse>=3.7.0",
   "opik>=1.10.0",
