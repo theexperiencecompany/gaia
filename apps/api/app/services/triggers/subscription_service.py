@@ -28,6 +28,7 @@ from app.models.trigger_subscription_models import (
     TriggerSubscription,
 )
 from app.models.workflow_models import TriggerConfig, TriggerType
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.triggers import get_handler_by_name
 from app.services.triggers.subscription_validation import (
     ValidationOutcome,
@@ -85,17 +86,29 @@ async def register_subscription(
         trigger_name=trigger_name,
     )
 
+    def _fail(reason: str, message: str) -> SubscriptionError:
+        # A webhook/worker path has no request context, so the id is explicit.
+        capture_event(
+            user_id,
+            AnalyticsEvents.TODO_SUBSCRIPTION_FAILED,
+            {"trigger_name": trigger_name, "reason": reason},
+        )
+        return SubscriptionError(message)
+
     handler = get_handler_by_name(trigger_name)
     if handler is None:
-        raise SubscriptionError(f"'{trigger_name}' has no trigger handler and cannot be watched.")
+        raise _fail(
+            "unknown_trigger",
+            f"'{trigger_name}' has no trigger handler and cannot be watched.",
+        )
 
     todo = await todo_repository.get(todo_id, user_id=user_id)
     if todo is None:
-        raise SubscriptionError(f"Tracked todo {todo_id} was not found.")
+        raise _fail("todo_not_found", f"Tracked todo {todo_id} was not found.")
 
     outcome = validate_conditions(trigger_name, conditions)
     if not outcome.ok:
-        raise SubscriptionError(" ".join(outcome.errors))
+        raise _fail("invalid_conditions", " ".join(outcome.errors))
 
     # Registration config (a calendar's reminder window, a channel id) is validated
     # by the discriminated union, and an out-of-range value must come back as
@@ -103,8 +116,9 @@ async def register_subscription(
     try:
         config = build_trigger_config(trigger_name, trigger_data)
     except ValidationError as e:
-        raise SubscriptionError(
-            f"Invalid configuration for '{trigger_name}': {e.errors()[0]['msg']}"
+        raise _fail(
+            "invalid_config",
+            f"Invalid configuration for '{trigger_name}': {e.errors()[0]['msg']}",
         ) from e
 
     try:
@@ -112,15 +126,16 @@ async def register_subscription(
             user_id, todo_id, trigger_name, config, raise_on_failure=True
         )
     except TriggerRegistrationError as e:
-        raise SubscriptionError(f"Could not register '{trigger_name}': {e}") from e
+        raise _fail("registration_failed", f"Could not register '{trigger_name}': {e}") from e
 
     # An account-level trigger returning nothing is success. A per-resource one
     # returning nothing registered nothing, so the subscription could never fire —
     # storing it would be a watch that silently does nothing forever.
     if handler.registers_instances and not trigger_ids:
-        raise SubscriptionError(
+        raise _fail(
+            "no_trigger_instance",
             f"Registering '{trigger_name}' returned no trigger instance, so the "
-            "subscription would never fire. Check the trigger configuration."
+            "subscription would never fire. Check the trigger configuration.",
         )
 
     subscription = TriggerSubscription(
@@ -140,6 +155,18 @@ async def register_subscription(
         todo_id,
         user_id=user_id,
         update=TodoUpdate(trigger_subscriptions=[*todo.trigger_subscriptions, subscription]),
+    )
+    capture_event(
+        user_id,
+        AnalyticsEvents.TODO_SUBSCRIPTION_REGISTERED,
+        {
+            "trigger_name": trigger_name,
+            "action": action.value,
+            "resolution": subscription.resolution.value,
+            "condition_count": len(outcome.conditions),
+            "repaired": bool(outcome.repairs),
+            "cooldown_seconds": cooldown_seconds,
+        },
     )
     log.info(
         "todo_subscription.registered",

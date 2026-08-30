@@ -44,6 +44,7 @@ from app.agents.middleware.runtime_adapter import (
 )
 from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.subscription_prompt import SubscriptionPromptMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "LLMAccountingMiddleware",
     "LoopGuardMiddleware",
     "MediaDescriptionMiddleware",
+    "SubscriptionPromptMiddleware",
     "MiddlewareExecutor",
     "StyleGuardMiddleware",
     "SubagentMiddleware",

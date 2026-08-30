@@ -359,6 +359,46 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["gmail"]
 
+    @pytest.mark.regression
+    async def test_a_subscription_written_by_update_is_findable(self, repo, make_doc):
+        """Registration writes through ``update``, not ``create``.
+
+        ``_apply_update`` dumps with ``exclude_unset=True``, which recurses into
+        the nested subscription: every field left at its default was dropped
+        before reaching Mongo, so the stored record had no ``status`` — and the
+        dispatch finders match on ``status``. The write succeeded, the document
+        looked plausible, and the watch simply never fired.
+        """
+        doc = await repo.create(make_doc(user_id="u"))
+        subscription = _subscription()
+
+        await repo.update(
+            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
+        )
+
+        found = await repo.find_active_by_user_and_trigger("u", "gmail_new_message")
+        assert [t.id for t in found] == [doc.id]
+
+        stored = await repo.get(doc.id, user_id="u")
+        written = stored.trigger_subscriptions[0]
+        assert written.id == subscription.id
+        assert written.status is SubscriptionStatus.ACTIVE
+        assert written.created_at is not None
+
+    @pytest.mark.regression
+    async def test_a_trigger_id_subscription_written_by_update_is_findable(self, repo, make_doc):
+        doc = await repo.create(make_doc(user_id="u"))
+        subscription = _subscription(
+            resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_upd"]
+        )
+
+        await repo.update(
+            doc.id, user_id="u", update=TodoUpdate(trigger_subscriptions=[subscription])
+        )
+
+        found = await repo.find_active_by_composio_trigger("ti_upd")
+        assert [t.id for t in found] == [doc.id]
+
     async def test_count_trigger_references_counts_across_users(self, repo, make_doc):
         sub = _subscription(
             resolution=SubscriptionResolution.TRIGGER_ID, composio_trigger_ids=["ti_1"]

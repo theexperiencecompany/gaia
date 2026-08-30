@@ -32,7 +32,7 @@
 - [x] 4.6 Add `enforce_daily_cost_budget` to the triggered todo execution path with its own `feature_key` in `app/config/rate_limits.py` (the gate does not exist on this path today)
 - [x] 4.7 Move `BLOCKING_LABELS` from `maintenance_sweep_tasks.py:54` to `app/constants/todos.py`, and `_todo_redirect_action` (`:427`) to a shared notification helper, before the dispatch path imports either
 - [x] 4.8 Implement the remaining actions per spec: `notify` (deep-link notification, no state change), `complete` (idempotent completion + teardown), `unblock` (remove blocking label; degrade to notify when none present)
-- [ ] 4.9 Optional LLM relevance tier: small silent call comparing payload vs canvas Key Details, cooldown-gated, behind a feature flag
+- [ ] 4.9 **Not built, deliberately.** The deterministic tiers cover every case the spec asks for; this adds a per-event LLM call, a feature flag and a cost path for fuzzy matching nobody has needed yet. Speculative flexibility is the debt the engineering rules call out by name. Build it when a real subscription cannot be expressed as a condition chain
 - [x] 4.10 Unit tests (integration deferred to the live drive in 7.4): thread-match executes todo; account-level Gmail event with no trigger id still resolves subscribers; no-workflow event still fires todo; cooldown suppresses repeat; held lock defers rather than drops; retry preserves the `todo_trigger` origin; each of the four actions behaves per spec; budget gate blocks
 
 ## 5. Agent tool surface
@@ -40,15 +40,15 @@
 - [x] 5.1 Add `subscribe_todo_to_trigger` (and unsubscribe/list variants) in `tracked_todo_tools.py`; the call returns the trigger's matchable-fields catalog
 - [x] 5.2 Register the new tools in `initial_tool_ids` (`build_graph.py:106`) alongside the other tracked-todo tools, and update the tool lists in `comms_prompts.py:377` and `todo_prompts.py`
 - [x] 5.3 Rejections carry the trigger's catalog so the calling agent corrects and retries — no nested LLM pass inside the tool. A second in-tool model call would repair with less context than the agent loop already has, cost extra, and hide the rewrite from the transcript, which is the silent-intent-drift this section exists to prevent
-- [ ] 5.4 E2E test through the compiled graph: agent creates a tracked todo, subscribes with a typo'd field, the repair path resolves it, subscription registers
+- [x] 5.4 E2E test through the compiled graph: agent creates a tracked todo, subscribes with a typo'd field, the repair path resolves it, subscription registers
 
 ## 6. Post-send subscription prompt
 
-- [ ] 6.1 Add an `AgentMiddleware.awrap_tool_call` middleware to `create_middleware_stack` (the seam `MediaDescriptionMiddleware` uses) that reads `active_todo_id` from `request.runtime.config["configurable"]` and, on success, appends a subscribe instruction to the `ToolMessage`. It performs no writes and calls no services. Composio's `after_execute` hooks are synchronous and context-free and cannot be used
-- [ ] 6.2 **Verify first**: whether Gmail sends run in a provider subagent whose tool set excludes the subscription tool. If so, decide between granting subagents the tool or carrying the identifier back to the executor on the subagent result — the instruction must reach an agent that can act on it
-- [ ] 6.3 Wire the watched tool set: `GMAIL_SEND_EMAIL`, draft-send and reply tools, and `GOOGLECALENDAR_CREATE_EVENT`; extract the returned `thread_id` / `event_id` for the instruction text. Keep the list as a named constant, not inline strings
-- [ ] 6.4 Same for Slack outbound: instruct a channel-level subscription (documented limitation: no `thread_ts` upstream)
-- [ ] 6.5 Tests: instruction appended only when `active_todo_id` is set and the call succeeded; absent on failure and on unbound runs; a subscription created from the instruction passes the ordinary validator; teardown when the todo completes
+- [x] 6.1 Add an `AgentMiddleware.awrap_tool_call` middleware to `create_middleware_stack` (the seam `MediaDescriptionMiddleware` uses) that reads `active_todo_id` from `request.runtime.config["configurable"]` and, on success, appends a subscribe instruction to the `ToolMessage`. It performs no writes and calls no services. Composio's `after_execute` hooks are synchronous and context-free and cannot be used
+- [x] 6.2 **Verified**: Gmail sends DO run in a provider subagent, whose `scoped_tool_dict` is its integration category plus a fixed helper set — no tracked-todo tools, and `subagent_prompts.py` states that boundary. But `active_todo_id` IS inherited (`agent_helpers.py:261`). So the middleware fires in both tiers and its instruction differs: the executor is told to subscribe, the subagent to report the identifier up through `finish_task`. Granting subagents the tool was rejected — it would break a stated architectural boundary
+- [x] 6.3 Wire the watched tool set: `GMAIL_SEND_EMAIL`, draft-send and reply tools, and `GOOGLECALENDAR_CREATE_EVENT`; extract the returned `thread_id` / `event_id` for the instruction text. Keep the list as a named constant, not inline strings
+- [x] 6.4 Same for Slack outbound: instruct a channel-level subscription (documented limitation: no `thread_ts` upstream)
+- [x] 6.5 Tests: instruction appended only when `active_todo_id` is set and the call succeeded; absent on failure and on unbound runs; a subscription created from the instruction passes the ordinary validator; teardown when the todo completes
 
 ## 6a. Calendar reminders
 
@@ -58,7 +58,7 @@
 
 ## 7. Observability + frontend
 
-- [ ] 7.1 Analytics: server-side `todos:trigger_fired` (+ registration/failure events) with explicit `capture_event(user_id)` — the `todos:` prefix matches the existing todo events in `AnalyticsEvents`, which the webhook path must pass explicitly since it has no request context
-- [ ] 7.2 Notification source for the `notify` action; deep-link redirect via the shared helper extracted in 4.7
-- [ ] 7.3 Web picker for trigger + conditions in the todo UI reusing the trigger config schema catalog; shared TS API client updates
-- [ ] 7.4 Run `nx type-check api`, `nx lint api`, web/desktop type-check + lint; drive the full loop manually against the live stack (driving-gaia): create todo → send email → verify execution + Mongo state
+- [x] 7.1 Analytics: server-side `todos:trigger_fired` (+ registration/failure events) with explicit `capture_event(user_id)` — the `todos:` prefix matches the existing todo events in `AnalyticsEvents`, which the webhook path must pass explicitly since it has no request context
+- [x] 7.2 Notification source for the `notify` action; deep-link redirect via the shared helper extracted in 4.7
+- [ ] 7.3 **Not built — needs your call.** design.md left this as an open question ("ship with phase 1 or follow once API-proven?") and it is still open. The data already reaches the client (`trigger_subscriptions` is on `TodoResponse` and the shared `Todo` type), so a read-only "Watching..." surface is small; an interactive picker needs new subscription endpoints, client methods, and a component I cannot visually verify without a browser drive. Say which and I will build it
+- [x] 7.4 Gates run. Live drive done against real Mongo/Redis + a booted API and worker: real signed Composio webhook -> handler -> dispatch handed off before the no-workflow return -> worker resolved the subscriber by (user, trigger_name) -> conditions matched -> `fired:1` -> `execute_tracked_todo` received the `TriggerOrigin` intact. It found a bug no test had: `_apply_update`'s `exclude_unset=True` recursed into the nested subscription and dropped `status`, so every subscription written by registration was unfindable. Agent execution itself then fails with a pre-existing `ValueError: No human message or selected tool`, reproduced identically on the plain scheduled path with no origin

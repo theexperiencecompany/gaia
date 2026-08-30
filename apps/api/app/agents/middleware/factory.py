@@ -21,6 +21,7 @@ from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.subagent_join import SubagentJoinMiddleware
+from app.agents.middleware.subscription_prompt import SubscriptionPromptMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
@@ -87,6 +88,7 @@ def create_middleware_stack(
     enable_loop_guard: bool = True,
     loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
     enable_subagent_join: bool = False,
+    can_subscribe_todos: bool = True,
 ) -> AgentMiddlewareStack:
     """
     Create the standard middleware stack for agents.
@@ -121,6 +123,10 @@ def create_middleware_stack(
             summarization fires
         compaction_excluded_tools: Tools that should never be compacted
         summarization_excluded_tools: Tools that should never trigger summarization
+        can_subscribe_todos: Whether this tier has ``subscribe_todo_to_trigger``
+            bound. False for provider subagents, whose tool set is scoped to one
+            integration — they are asked to report the identifier upward instead
+            of being told to call a tool they do not have.
 
     Returns:
         List of AgentMiddleware instances in execution order
@@ -211,6 +217,16 @@ def create_middleware_stack(
     # No enable flag: it no-ops on every result without media, i.e. nearly all.
     middleware.append(MediaDescriptionMiddleware())
     log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
+
+    # Prompts a todo-bound run to watch what a send just started. Inner, so it sees
+    # the raw tool result before compaction rewrites it. No-ops on every call that
+    # is not a watchable send from a run bound to a todo, i.e. nearly all of them.
+    middleware.append(SubscriptionPromptMiddleware(can_subscribe=can_subscribe_todos))
+    log.debug(
+        f"{LogTag.AGENT} Subscription prompt middleware enabled",
+        agent_name=agent_name,
+        can_subscribe=can_subscribe_todos,
+    )
 
     # Loop-guard middleware — added LAST so it sits innermost and observes the
     # raw tool result before compaction/summarization transform it, counting the
@@ -362,4 +378,7 @@ def create_subagent_middleware(
         compaction_excluded_tools=CODING_TOOL_NAMES
         | SPAWN_SUBAGENT_TOOL
         | SELF_OFFLOADING_TOOL_NAMES,
+        # A provider subagent's tools are scoped to its integration, so
+        # subscribe_todo_to_trigger is not among them.
+        can_subscribe_todos=False,
     )

@@ -65,12 +65,20 @@ def deps():
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock),
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
+        patch(f"{_MOD}.capture_event") as capture,
     ):
         repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
         repo.find_active_by_user_and_trigger = AsyncMock(return_value=[])
         repo.update = AsyncMock(return_value=None)
         redis.redis = MagicMock(set=AsyncMock(return_value=True))
-        yield SimpleNamespace(repo=repo, redis=redis, enqueue=enqueue, notify=notify, complete=done)
+        yield SimpleNamespace(
+            repo=repo,
+            redis=redis,
+            enqueue=enqueue,
+            notify=notify,
+            complete=done,
+            capture=capture,
+        )
 
 
 class TestResolution:
@@ -252,3 +260,66 @@ class TestActions:
 
         deps.notify.assert_awaited_once()
         deps.repo.update.assert_not_awaited()
+
+
+class TestAnalytics:
+    """The webhook path has no request context, so the id must be explicit.
+
+    Getting it wrong is silent: the event still lands, just on a fresh anonymous
+    profile, so it never shows up in that user's funnel and nothing goes red.
+    """
+
+    async def test_a_fire_is_attributed_to_the_todos_owner(self, deps) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        deps.capture.assert_called_once()
+        assert deps.capture.call_args.args[0] == USER_ID
+        assert deps.capture.call_args.args[1] == "todos:trigger_fired"
+
+    async def test_the_event_carries_shape_not_content(self, deps) -> None:
+        # Counts and enums only: no subject lines, no addresses, no payload.
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        await dispatch_to_subscribed_todos(
+            GMAIL, None, USER_ID, {"subject": "Invoice 4021", "sender": "a@b.c"}
+        )
+
+        props = deps.capture.call_args.args[2]
+        assert props == {
+            "trigger_name": GMAIL,
+            "action": "execute",
+            "resolution": "account",
+            "condition_count": 0,
+        }
+
+    async def test_a_suppressed_fire_is_not_counted(self, deps) -> None:
+        # Counting arrivals rather than actions would make every funnel read high.
+        deps.redis.redis.set = AsyncMock(return_value=None)
+        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        deps.capture.assert_not_called()
+
+    async def test_a_non_matching_event_is_not_counted(self, deps) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(
+                        conditions=[
+                            SubscriptionCondition(
+                                field_name="thread_id",
+                                operator=ConditionOperator.EQUALS,
+                                value="t-1",
+                            )
+                        ]
+                    )
+                ]
+            )
+        ]
+
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-2"})
+
+        deps.capture.assert_not_called()

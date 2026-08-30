@@ -33,6 +33,7 @@ from app.models.trigger_subscription_models import (
     TriggerOrigin,
     TriggerSubscription,
 )
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.notification_service import notification_service
 from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
@@ -108,6 +109,19 @@ async def _fire_if_matching(
         return False
 
     await _perform_action(todo, subscription, payload)
+    # After the action, not on arrival: an event that was filtered out or
+    # suppressed by cooldown is not a fire, and counting it as one would make
+    # every funnel off this event read high.
+    capture_event(
+        todo.user_id,
+        AnalyticsEvents.TODO_TRIGGER_FIRED,
+        {
+            "trigger_name": trigger_name,
+            "action": subscription.action.value,
+            "resolution": subscription.resolution.value,
+            "condition_count": len(subscription.conditions),
+        },
+    )
     return True
 
 
