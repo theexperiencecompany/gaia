@@ -17,11 +17,13 @@ from app.db.repositories.todos import todo_repository
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
+    ConditionMatch,
     ConditionOperator,
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionStatus,
 )
+from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
@@ -32,6 +34,7 @@ from app.services.triggers.subscription_service import (
     unregister_subscription,
 )
 from app.services.user_service import get_user_by_id
+from app.services.workflow.trigger_service import TriggerService
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
@@ -383,11 +386,14 @@ def _format_subscription_lines(doc: TodoDocument) -> list[str]:
     """
     lines = []
     for sub in doc.trigger_subscriptions:
+        joiner = " OR " if sub.match is ConditionMatch.ANY else " AND "
         conditions = (
-            ", ".join(f"{c.field_name} {c.operator} {c.value}" for c in sub.conditions)
+            joiner.join(f"{c.field_name} {c.operator} {c.value}" for c in sub.conditions)
             or "any event"
         )
-        paused = " (PAUSED: integration disconnected)" if sub.status is SubscriptionStatus.PAUSED else ""
+        paused = (
+            " (PAUSED: integration disconnected)" if sub.status is SubscriptionStatus.PAUSED else ""
+        )
         lines.append(
             f"Watching {sub.trigger_name} -> {sub.action} when {conditions}"
             f" (subscription: {sub.id}){paused}"
@@ -890,11 +896,54 @@ async def list_tracked_todos(
 
 
 @tool
+async def list_available_triggers(config: RunnableConfig) -> str:
+    """List the integration events this todo can watch, for THIS user right now.
+
+    Returns only triggers whose integration the user has actually connected, so
+    every slug it returns can be subscribed to. Call this before
+    subscribe_todo_to_trigger when you are unsure what is watchable, instead of
+    guessing a slug: a watch on an unconnected integration cannot fire.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    connected = await get_connected_integration_ids(user_id)
+    if not connected:
+        return (
+            "No integrations are connected, so there is nothing to watch yet. "
+            "The user connects an integration (Gmail, Calendar, Slack, Linear, ...) "
+            "on their integrations page first."
+        )
+
+    available = [
+        schema
+        for schema in await TriggerService.get_all_workflow_triggers()
+        if schema.slug in MATCHABLE_TRIGGERS and schema.integration_id in connected
+    ]
+    if not available:
+        return "None of the connected integrations publish a watchable trigger."
+
+    by_provider: dict[str, list[str]] = {}
+    for schema in available:
+        by_provider.setdefault(schema.provider, []).append(
+            f"  {schema.slug} ({schema.name}): {schema.description}"
+        )
+
+    lines = ["Watchable triggers for this user:"]
+    for provider in sorted(by_provider):
+        lines.append(f"{provider}:")
+        lines.extend(sorted(by_provider[provider]))
+    lines.append("Call list_trigger_fields <slug> to see the fields you can write conditions on.")
+    return "\n".join(lines)
+
+
+@tool
 async def list_trigger_fields(
     trigger_name: Annotated[
         str,
         "GAIA trigger slug, e.g. 'gmail_new_message', 'calendar_event_starting_soon', "
-        "'slack_new_message'. Call with a wrong name to get the full list back.",
+        "'slack_new_message'. Use list_available_triggers to see the valid slugs.",
     ],
 ) -> str:
     """Show exactly what an integration trigger delivers, before subscribing to it.
@@ -912,9 +961,7 @@ async def list_trigger_fields(
 async def subscribe_todo_to_trigger(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo that should watch for this event"],
-    trigger_name: Annotated[
-        str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"
-    ],
+    trigger_name: Annotated[str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
     action: Annotated[
         str,
         "What to do when it fires: 'execute' (run the todo with the event in its "
@@ -923,11 +970,17 @@ async def subscribe_todo_to_trigger(
     ],
     conditions: Annotated[
         list[dict[str, str | int | float]] | None,
-        "Narrowing tests, ALL of which must hold. Each is "
+        "Narrowing tests. Each is "
         "{'field_name': ..., 'operator': ..., 'value': ...} using fields from "
         "list_trigger_fields. Omit to fire on every event for this trigger, which is only "
         "sensible for a trigger already scoped to one channel or calendar.",
     ] = None,
+    match: Annotated[
+        str,
+        "How the conditions combine: 'all' (every condition must hold, the "
+        "default) or 'any' (fire if any one holds). For an OR of several ANDs, "
+        "make several 'all' subscriptions instead.",
+    ] = "all",
     cooldown_seconds: Annotated[
         int, "Minimum gap between two fires of this subscription."
     ] = DEFAULT_COOLDOWN_SECONDS,
@@ -960,6 +1013,11 @@ async def subscribe_todo_to_trigger(
         valid = ", ".join(a.value for a in SubscriptionAction)
         return f"Error: '{action}' is not a valid action. Valid actions: {valid}."
 
+    parsed_match = _parse_match(match)
+    if parsed_match is None:
+        valid = ", ".join(m.value for m in ConditionMatch)
+        return f"Error: '{match}' is not a valid match mode. Valid modes: {valid}."
+
     parsed_conditions, condition_error = _parse_conditions(conditions or [])
     if condition_error:
         return f"Error: {condition_error}\n\n{_render_catalog(trigger_name)}"
@@ -975,6 +1033,7 @@ async def subscribe_todo_to_trigger(
             trigger_name=trigger_name,
             conditions=parsed_conditions,
             action=parsed_action,
+            match=parsed_match,
             cooldown_seconds=cooldown_seconds,
             trigger_data=trigger_data,
         )
@@ -1022,6 +1081,13 @@ def _parse_action(action: str) -> SubscriptionAction | None:
         return None
 
 
+def _parse_match(match: str) -> ConditionMatch | None:
+    try:
+        return ConditionMatch(match.strip().lower())
+    except ValueError:
+        return None
+
+
 def _parse_conditions(
     raw: list[dict[str, str | int | float]],
 ) -> tuple[list[SubscriptionCondition], str | None]:
@@ -1036,18 +1102,14 @@ def _parse_conditions(
         operator = item.get("operator")
         value = item.get("value")
         if not isinstance(field_name, str) or not isinstance(operator, str) or value is None:
-            return [], (
-                f"each condition needs 'field_name', 'operator' and 'value'; got {item!r}"
-            )
+            return [], (f"each condition needs 'field_name', 'operator' and 'value'; got {item!r}")
         try:
             parsed_operator = ConditionOperator(operator.strip().lower())
         except ValueError:
             valid = ", ".join(o.value for o in ConditionOperator)
             return [], f"'{operator}' is not a valid operator. Valid operators: {valid}."
         parsed.append(
-            SubscriptionCondition(
-                field_name=field_name, operator=parsed_operator, value=value
-            )
+            SubscriptionCondition(field_name=field_name, operator=parsed_operator, value=value)
         )
     return parsed, None
 
@@ -1059,6 +1121,7 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
+    list_available_triggers,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,

@@ -21,6 +21,7 @@ from app.constants.todos import BLOCKING_LABEL
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoUpdate
 from app.models.trigger_subscription_models import (
+    ConditionMatch,
     SubscriptionAction,
     SubscriptionCondition,
     SubscriptionResolution,
@@ -68,6 +69,7 @@ async def register_subscription(
     trigger_name: str,
     conditions: list[SubscriptionCondition],
     action: SubscriptionAction,
+    match: ConditionMatch = ConditionMatch.ALL,
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS,
     trigger_data: dict[str, Any] | None = None,
 ) -> tuple[TriggerSubscription, ValidationOutcome]:
@@ -141,6 +143,7 @@ async def register_subscription(
     subscription = TriggerSubscription(
         trigger_name=trigger_name,
         conditions=outcome.conditions,
+        match=match,
         action=action,
         cooldown_seconds=cooldown_seconds,
         resolution=(

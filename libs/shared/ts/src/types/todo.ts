@@ -37,6 +37,12 @@ export enum SubscriptionStatus {
   PAUSED = "paused",
 }
 
+/** Whether all of a subscription's conditions must hold (AND) or any one (OR). */
+export enum ConditionMatch {
+  ALL = "all",
+  ANY = "any",
+}
+
 /** How dispatch finds a subscription: account-level triggers register no instance id. */
 export enum SubscriptionResolution {
   TRIGGER_ID = "trigger_id",
@@ -53,6 +59,7 @@ export interface TriggerSubscription {
   id: string;
   trigger_name: string;
   conditions: SubscriptionCondition[];
+  match: ConditionMatch;
   action: SubscriptionAction;
   cooldown_seconds: number;
   resolution: SubscriptionResolution;

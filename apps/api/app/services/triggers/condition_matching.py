@@ -13,6 +13,7 @@ todo on an event that never carried the thing it was watching for.
 from typing import Any
 
 from app.models.trigger_subscription_models import (
+    ConditionMatch,
     ConditionOperator,
     MatchableFieldType,
     SubscriptionCondition,
@@ -101,13 +102,17 @@ def evaluate_condition(
 
 
 def conditions_match(
-    trigger_name: str, conditions: list[SubscriptionCondition], payload: dict[str, Any]
+    trigger_name: str,
+    conditions: list[SubscriptionCondition],
+    payload: dict[str, Any],
+    match: ConditionMatch = ConditionMatch.ALL,
 ) -> bool:
-    """AND-chain: every condition must hold.
+    """Do a subscription's conditions hold against this payload?
 
-    No conditions means the subscription fires on every event for its trigger,
-    which is the right default for a per-resource trigger already scoped to one
-    channel, calendar or repository at registration time.
+    ``ALL`` is the AND-chain; ``ANY`` is a flat OR. No conditions means the
+    subscription fires on every event for its trigger, which is the right default
+    for a per-resource trigger already scoped to one channel, calendar or
+    repository at registration time — regardless of ``match``.
 
     A condition naming a field the catalog no longer has does NOT match. The
     alternative — ignoring it — would silently widen a subscription the moment a
@@ -117,8 +122,13 @@ def conditions_match(
     if entry is None:
         return False
 
-    for condition in conditions:
+    if not conditions:
+        return True
+
+    def holds(condition: SubscriptionCondition) -> bool:
         field = entry.field(condition.field_name)
-        if field is None or not evaluate_condition(condition, payload, field.type):
-            return False
-    return True
+        return field is not None and evaluate_condition(condition, payload, field.type)
+
+    if match is ConditionMatch.ANY:
+        return any(holds(c) for c in conditions)
+    return all(holds(c) for c in conditions)

@@ -12,6 +12,7 @@ module.
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,6 +21,7 @@ from app.agents.core.graph_builder import build_graph
 from app.agents.tools import tracked_todo_tools
 from app.agents.tools.tracked_todo_tools import (
     _format_tracked_todo_full,
+    list_available_triggers,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,
@@ -91,6 +93,71 @@ class TestListTriggerFields:
         assert "not a subscribable trigger" in out
         assert GMAIL in out
         assert "calendar_event_starting_soon" in out
+
+
+class TestListAvailableTriggers:
+    """The user-scoped discovery surface: only what THIS user has connected.
+
+    A watch on an unconnected integration cannot fire, so listing the whole
+    catalog would invite the model to write one. The connected-filter is the
+    behaviour under test — remove it and the linear case leaks through.
+    """
+
+    @staticmethod
+    def _schema(slug: str, integration_id: str, provider: str, name: str) -> object:
+        return SimpleNamespace(
+            slug=slug,
+            integration_id=integration_id,
+            provider=provider,
+            name=name,
+            description=f"{name} description",
+        )
+
+    def _catalog(self) -> list[object]:
+        return [
+            self._schema(GMAIL, "gmail", "Google", "New email"),
+            self._schema("slack_new_message", "slack", "Slack", "New Slack message"),
+            self._schema("linear_issue_updated", "linear", "Linear", "Issue updated"),
+        ]
+
+    async def test_it_lists_only_triggers_whose_integration_is_connected(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.TriggerService.get_all_workflow_triggers",
+                new=AsyncMock(return_value=self._catalog()),
+            ),
+            patch(
+                f"{_MOD}.get_connected_integration_ids",
+                new=AsyncMock(return_value={"gmail", "slack"}),
+            ),
+        ):
+            out = await list_available_triggers.coroutine(config=_config())
+
+        assert GMAIL in out
+        assert "slack_new_message" in out
+        # Linear is in the catalog but not connected — it must not be offered.
+        assert "linear_issue_updated" not in out
+
+    async def test_no_connected_integrations_says_to_connect_one(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.TriggerService.get_all_workflow_triggers",
+                new=AsyncMock(return_value=self._catalog()),
+            ),
+            patch(
+                f"{_MOD}.get_connected_integration_ids",
+                new=AsyncMock(return_value=set()),
+            ),
+        ):
+            out = await list_available_triggers.coroutine(config=_config())
+
+        assert "No integrations are connected" in out
+        assert GMAIL not in out
+
+    async def test_no_user_id_is_refused(self) -> None:
+        out = await list_available_triggers.coroutine(config=_config(user_id=None))
+
+        assert "user" in out.lower()
 
 
 class TestSubscribe:
@@ -306,6 +373,7 @@ class TestToolsAreReachable:
         executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
 
         for name in (
+            "list_available_triggers",
             "list_trigger_fields",
             "subscribe_todo_to_trigger",
             "unsubscribe_todo_from_trigger",
@@ -317,6 +385,7 @@ class TestToolsAreReachable:
         exported = {t.name for t in tracked_todo_tools.tools}
 
         assert {
+            "list_available_triggers",
             "list_trigger_fields",
             "subscribe_todo_to_trigger",
             "unsubscribe_todo_from_trigger",

@@ -93,6 +93,7 @@ export type {
   TriggerSubscription,
 } from "./todo";
 export {
+  ConditionMatch,
   ConditionOperator,
   Priority,
   SubscriptionAction,

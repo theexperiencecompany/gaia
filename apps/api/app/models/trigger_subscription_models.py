@@ -134,6 +134,20 @@ class SubscriptionResolution(StrEnum):
     ACCOUNT = "account"
 
 
+class ConditionMatch(StrEnum):
+    """How a subscription's conditions combine.
+
+    ``ALL`` is the AND-chain default. ``ANY`` is a flat OR — one true condition
+    fires it. There is deliberately no nesting: an OR-of-ANDs is expressed as
+    several ``ALL`` subscriptions on the same todo, which already covers every
+    boolean shape these payloads need without an expression language in the hot
+    path that evaluates every webhook for every subscriber.
+    """
+
+    ALL = "all"
+    ANY = "any"
+
+
 class SubscriptionCondition(BaseModel):
     """One ``field op value`` test against a trigger payload."""
 
@@ -152,6 +166,10 @@ class TriggerSubscription(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     trigger_name: str
     conditions: list[SubscriptionCondition] = Field(default_factory=list)
+    match: ConditionMatch = Field(
+        default=ConditionMatch.ALL,
+        description="Whether all conditions must hold (AND) or any one (OR)",
+    )
     action: SubscriptionAction
     cooldown_seconds: int = Field(
         default=900,

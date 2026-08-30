@@ -7,7 +7,11 @@ never carried the thing it was watching for — and nothing downstream could tel
 
 import pytest
 
-from app.models.trigger_subscription_models import ConditionOperator, SubscriptionCondition
+from app.models.trigger_subscription_models import (
+    ConditionMatch,
+    ConditionOperator,
+    SubscriptionCondition,
+)
 from app.services.triggers.condition_matching import conditions_match, resolve_payload_value
 
 pytestmark = pytest.mark.unit
@@ -166,3 +170,62 @@ class TestChainSemantics:
     def test_dotted_field_matches_through_a_nested_payload(self) -> None:
         payload = {"document": {"id": "d-1", "name": "Q3"}, "event_type": "document.updated"}
         assert conditions_match(DOCS, [_c("document.id", ConditionOperator.EQUALS, "d-1")], payload)
+
+
+class TestAnyMatch:
+    """`match=ANY` is a flat OR — one true condition fires it.
+
+    This is how a single subscription watches "from acme.com OR from northwind.com"
+    without splitting into two. The ALL default is exercised throughout
+    TestChainSemantics; here we pin that ANY genuinely diverges from it.
+    """
+
+    def _senders(self) -> list[SubscriptionCondition]:
+        return [
+            _c("sender", ConditionOperator.CONTAINS, "acme.com"),
+            _c("sender", ConditionOperator.CONTAINS, "northwind.com"),
+        ]
+
+    def test_any_fires_when_only_the_second_condition_holds(self) -> None:
+        payload = {"sender": "ap@northwind.com"}
+        # ALL would reject this (acme.com is absent); ANY must accept it.
+        assert conditions_match(GMAIL, self._senders(), payload, ConditionMatch.ALL) is False
+        assert conditions_match(GMAIL, self._senders(), payload, ConditionMatch.ANY) is True
+
+    def test_any_fires_when_the_first_condition_holds(self) -> None:
+        payload = {"sender": "billing@acme.com"}
+        assert conditions_match(GMAIL, self._senders(), payload, ConditionMatch.ANY) is True
+
+    def test_any_rejects_when_no_condition_holds(self) -> None:
+        payload = {"sender": "someone@else.com"}
+        assert conditions_match(GMAIL, self._senders(), payload, ConditionMatch.ANY) is False
+
+    def test_any_with_no_conditions_still_fires_on_every_event(self) -> None:
+        # Empty conditions mean "any event" regardless of the mode.
+        assert conditions_match(GMAIL, [], {"sender": "x"}, ConditionMatch.ANY) is True
+
+    def test_any_ignores_a_field_missing_from_the_catalog(self) -> None:
+        # A retired field can never contribute a True, even under ANY — the same
+        # anti-silent-widening rule the AND chain enforces.
+        conditions = [
+            _c("retired_field", ConditionOperator.EQUALS, "x"),
+            _c("sender", ConditionOperator.CONTAINS, "acme.com"),
+        ]
+        assert (
+            conditions_match(
+                GMAIL,
+                conditions,
+                {"sender": "a@acme.com", "retired_field": "x"},
+                ConditionMatch.ANY,
+            )
+            is True
+        )
+        assert (
+            conditions_match(
+                GMAIL,
+                conditions,
+                {"sender": "a@else.com", "retired_field": "x"},
+                ConditionMatch.ANY,
+            )
+            is False
+        )

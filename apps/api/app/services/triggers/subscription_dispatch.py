@@ -98,7 +98,7 @@ async def _fire_if_matching(
         return False
     if subscription.status is not SubscriptionStatus.ACTIVE:
         return False
-    if not conditions_match(trigger_name, subscription.conditions, payload):
+    if not conditions_match(trigger_name, subscription.conditions, payload, subscription.match):
         return False
     if not await _claim_cooldown(subscription):
         log.info(
