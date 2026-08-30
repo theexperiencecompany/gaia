@@ -329,6 +329,9 @@ jobs:
         env:
           SLICE_NAME: ${{ matrix.slice.name }}
           SLICE_PATHS: ${{ matrix.slice.paths }}
+          # The slice's paths and its ignores TOGETHER say what it runs; without
+          # the ignores unit-b re-ran every unit-a file the diff touched.
+          SLICE_IGNORE: ${{ matrix.slice.ignore }}
           BASE_REF: ${{ github.base_ref }}
         run: python3 scripts/ci/test_impact.py select
       # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,

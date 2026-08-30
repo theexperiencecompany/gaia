@@ -29,8 +29,11 @@ record a map, and their coverage total would be meaningless after selection.
 
 ## How a PR uses it
 
-`test_impact.py fetch` downloads the newest map artifact for the slice
-(master or the PR's head branch, whichever recorded later); then
+`test_impact.py fetch` downloads the map artifact of the newest SUCCESSFUL
+push-to-`master` run of main.yml — resolved by run, and re-checked to be a
+non-`pull_request` run whose head repository is this one, because a branch
+name is not provenance (a fork can name its branch `master`, and a
+`pull_request` run executes the fork's own workflow file); then
 `test_impact.py select` diffs against
 `git merge-base origin/$BASE HEAD`, and applies the rules below. The result
 is the union of:
@@ -39,6 +42,12 @@ is the union of:
 - every test in a changed or added `tests/**` file (emitted as the file path, so
   brand-new tests the map has never seen still run);
 - `tests/contracts`, always — it is the API contract.
+
+Minus whatever the slice's `matrix.slice.ignore` excludes: `unit-b`'s paths are
+`tests/unit tests/meta` but it ignores the three directories `unit-a` owns, so
+the selector is given the same `--ignore` list (`SLICE_IGNORE`) and drops those
+node ids — from the selection AND from the `total` the 30% threshold is a
+fraction of.
 
 `scripts/ci/pytest.sh slice` reads the selection into a bash array and passes
 it to pytest, so node ids containing spaces or brackets survive intact.
@@ -61,9 +70,11 @@ slice when:
 - anything that configures the run itself changed, wherever it lives: any
   `uv.lock` (the workspace lockfile is the **root** one — there is no
   `apps/api/uv.lock`), any `pyproject.toml`, `.python-version`, `pytest.ini`,
-  `setup.cfg`, `tox.ini`, `scripts/ci/pytest.sh`,
-  `scripts/ci/test-impact*`, `.github/workflows/main.yml`,
-  `.github/actions/setup-python-test-env/**`;
+  `setup.cfg`, `tox.ini`, **anything under `scripts/ci/`**,
+  `.github/workflows/main.yml`, `.github/actions/setup-python-test-env/**` —
+  every script in `scripts/ci/` shapes the environment the suite runs in (the
+  services, the sidecar, the parallelism, the image digests), and none of that
+  is visible to coverage;
 - any other non-source file under `apps/api` changed (Dockerfile, scripts, …).
   Tooling config and prose (`.pre-commit-config.yaml`, `*.md`, `docs/`) are the
   one narrow exception: they cannot change a test's outcome and select nothing;

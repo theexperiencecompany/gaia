@@ -22,7 +22,7 @@ Three subcommands:
 
 `fetch` and `select` read their inputs from the environment (SLICE_NAME,
 SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
-GITHUB_REPOSITORY, GITHUB_HEAD_REF) so a workflow step stays one command
+GITHUB_REPOSITORY) so a workflow step stays one command
 line; every input also has an explicit flag, which is how the tests drive it.
 
 Safety is one-directional: every case we are not sure about widens to ALL.
@@ -87,11 +87,19 @@ INERT_DIRS = ("docs/",)
 # interpreter comes from .python-version, and the slice runner / this selector /
 # the workflow decide what is collected at all — none of that is visible to
 # coverage, so any of it changing invalidates the map wholesale.
+#
+# The whole of scripts/ci/ counts, not a hand-picked few: EVERY script in there
+# shapes the environment the suite runs in — the services it talks to
+# (test-services.sh), the sidecar it embeds against (embedding-sidecar.sh), the
+# parallelism it gets (runner.sh parallel), the image digests those pull
+# (lib/service-images.sh). Naming individual files meant a change to any of the
+# others left the map trusted, and a stale map's answer is a silently narrower
+# test run. Widening is cheap; being wrong here is a green PR on a broken tree.
 SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
-SUITE_CONFIG_PATHS = frozenset({"scripts/ci/pytest.sh", ".github/workflows/main.yml"})
-SUITE_CONFIG_PREFIXES = ("scripts/ci/test_impact", ".github/actions/setup-python-test-env/")
+SUITE_CONFIG_PATHS = frozenset({".github/workflows/main.yml"})
+SUITE_CONFIG_PREFIXES = ("scripts/ci/", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"
 TEST_MODULE_SUFFIX = "_test.py"
@@ -315,14 +323,25 @@ def select_tests(
     repo_root: Path,
     restrict_to: list[str],
     always: list[str],
+    exclude: list[str] | None = None,
 ) -> tuple[list[str], str, int, int]:
     """Return (node ids or [ALL_MARKER], reason, n_selected, n_total)."""
     sel = Selection()
+    excluded = exclude or []
+
+    def _under(path: str, root: str) -> bool:
+        return path == root or path.startswith(root.rstrip("/") + "/")
 
     def in_scope(path: str) -> bool:
-        return not restrict_to or any(
-            path == root or path.startswith(root.rstrip("/") + "/") for root in restrict_to
-        )
+        # A slice's paths and its --ignore flags together define what it runs.
+        # unit-b's paths are "tests/unit tests/meta" but it ignores the three
+        # directories unit-a owns, so without the exclusions unit-b re-ran
+        # every unit-a file the diff touched — and counted unit-a's tests in
+        # its own `total`, which made the 30% ALL_THRESHOLD read against the
+        # wrong denominator too.
+        if any(_under(path, root) for root in excluded):
+            return False
+        return not restrict_to or any(_under(path, root) for root in restrict_to)
 
     total = len({t for f, tests in test_files.items() if in_scope(f) for t in tests})
 
@@ -354,6 +373,17 @@ def select_tests(
     head = sel.reasons[0] if sel.reasons else "always-on paths only"
     extra = f" +{len(sel.reasons) - 1} more" if len(sel.reasons) > 1 else ""
     return node_ids, head + extra, estimated, total
+
+
+def _parse_ignore(slice_ignore: str) -> list[str]:
+    """``--ignore=tests/unit/services --ignore=...`` -> the bare paths.
+
+    matrix.slice.ignore is a pytest flag list, because that is what the slice
+    runner needs; the selector needs the same information as plain paths.
+    Reading it from the one place the workflow already states it keeps the two
+    from drifting — a slice whose exclusions were listed twice would drift.
+    """
+    return [token.removeprefix("--ignore=") for token in slice_ignore.split() if token.strip()]
 
 
 def _enabled() -> bool:
@@ -439,6 +469,7 @@ def cmd_select(args: argparse.Namespace) -> int:
     # tests/contracts is the API contract and always runs; the bridge slice
     # never reaches this command at all (see main.yml).
     restrict_to = args.restrict_to or os.environ.get("SLICE_PATHS", "").split()
+    exclude = args.exclude or _parse_ignore(os.environ.get("SLICE_IGNORE", ""))
 
     files, test_files = load_maps(map_paths)
     if not files:
@@ -451,6 +482,7 @@ def cmd_select(args: argparse.Namespace) -> int:
             repo_root=Path(args.repo_root),
             restrict_to=restrict_to,
             always=args.always or ["tests/contracts"],
+            exclude=exclude,
         )
 
     out.write_text("".join(f"{i}\n" for i in node_ids))
@@ -473,9 +505,9 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     Maps are uploaded as workflow artifacts by master / dispatch runs (main.yml
     "Upload test impact map"), not actions/cache: a pull_request run may only
     restore caches written on its own merge ref or on the default branch, so a
-    map recorded by a dispatch run on the PR's head branch was invisible to the
-    PR — measured: four maps in the cache, every lane "ran ALL". Artifacts are
-    fetched by run, which any job with actions:read may do.
+    map recorded by a master run was invisible to the PR — measured: four maps
+    in the cache, every lane "ran ALL". Artifacts are fetched by run, which any
+    job with actions:read may do.
 
     Every failure mode leaves no map, and `select` then runs the whole slice.
     """
@@ -495,30 +527,41 @@ def cmd_fetch(args: argparse.Namespace) -> int:
     map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
     map_dir.mkdir(parents=True, exist_ok=True)
 
-    # One call: the repo-wide artifact list filtered by name carries each
-    # artifact's run id and head branch (walking runs and asking each for its
-    # artifacts cost 27 s per lane). Newest unexpired one on master or the head
-    # branch wins.
-    branches = {"master"}
-    head_ref = os.environ.get("GITHUB_HEAD_REF")
-    if head_ref:
-        branches.add(head_ref)
-    listing = _gh_json(
-        f"repos/{repo}/actions/artifacts?name={artifact}&per_page=50",
-    )
-    candidates = [
-        (a["created_at"], a["workflow_run"]["id"])
-        for a in (listing or {}).get("artifacts", [])
-        if not a.get("expired") and a.get("workflow_run", {}).get("head_branch") in branches
-    ]
-    if not candidates:
-        print(
-            f"test impact ({slice_name}): no map artifact on master or "
-            f"{head_ref or '<no head ref>'} yet"
-        )
+    run = _newest_trusted_run(repo)
+    if run is None:
+        print(f"test impact ({slice_name}): no trusted master run with a map yet")
         return 0
-    created, run_id = max(candidates)
+    run_id, created = run
     return _download_map(repo, artifact, run_id, created, map_dir, slice_name)
+
+
+def _newest_trusted_run(repo: str) -> tuple[int, str] | None:
+    """The newest successful push-to-master run of main.yml, or None.
+
+    Resolved by RUN, never by the artifact's ``head_branch`` string. A branch
+    name is not provenance: a fork can open a PR from a branch it named
+    "master", and `pull_request` runs of this workflow execute the fork's own
+    workflow file. Such a run can upload an artifact called
+    ``test-impact-map-<slice>``, and a selector that trusted the name would let
+    a PR author choose which of our tests run against their diff — a map that
+    claims one test covers everything skips the suite.
+
+    So: ask the API for runs of main.yml that are ``event=push`` on ``master``
+    and ``status=success``, and then re-check each candidate's own event and
+    head repository, because query parameters are a filter, not a guarantee.
+    """
+    listing = _gh_json(
+        f"repos/{repo}/actions/workflows/main.yml/runs"
+        "?branch=master&event=push&status=success&per_page=20"
+    )
+    for run in (listing or {}).get("workflow_runs", []):
+        if run.get("event") == "pull_request":
+            continue
+        head_repo = (run.get("head_repository") or {}).get("full_name")
+        if head_repo != repo:
+            continue
+        return int(run["id"]), str(run.get("created_at", ""))
+    return None
 
 
 def _gh_json(endpoint: str) -> dict[str, Any] | None:
@@ -597,6 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="only emit ids under these paths (one slice's share of the suite)",
+    )
+    sel.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="paths this slice does NOT run; defaults to $SLICE_IGNORE",
     )
     sel.add_argument(
         "--always",
