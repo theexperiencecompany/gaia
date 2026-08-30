@@ -1022,3 +1022,28 @@ async def test_distributed_lock_keys_both_layers_by_user_id() -> None:
 
     get_lock.assert_awaited_once_with("user-42")
     redis_lock.assert_called_once_with("user-42")
+
+
+async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() -> None:
+    # The whole acquisition runs under the user's cross-replica lease, and on
+    # release it arms the idle pause for THIS user + entry — a mutant that keys
+    # either on the wrong value would lock/pause the wrong sandbox.
+    uid = _uid()
+    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x")
+    pool = get_sandbox_pool()
+
+    @asynccontextmanager
+    async def _fake_lock(user_id: str):
+        yield
+
+    with (
+        patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+        patch.object(lifecycle, "_schedule_pause") as schedule_pause,
+        patch.object(pool, "distributed_lock", side_effect=_fake_lock) as dlock,
+    ):
+        async with lifecycle.acquire_sandbox(uid):
+            pass
+
+    dlock.assert_called_once_with(uid)
+    schedule_pause.assert_called_once_with(uid, entry)

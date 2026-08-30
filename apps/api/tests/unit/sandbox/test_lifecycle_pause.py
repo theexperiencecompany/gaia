@@ -112,6 +112,8 @@ async def test_scheduled_pause_aborts_if_another_replica_is_using_the_sandbox() 
         lifecycle._schedule_pause("u1", entry)
         await entry.pause_task
     sbx.beta_pause.assert_not_awaited(), "paused a sandbox another replica was using"
+    # The idleness check must read THIS user's cross-replica stamp.
+    coll.get_for_user.assert_awaited_once_with("u1")
 
 
 async def test_scheduled_pause_proceeds_when_no_replica_has_touched_it() -> None:
@@ -161,3 +163,19 @@ async def test_pause_sandbox_for_user_noop_when_not_pooled() -> None:
     missing = f"u-{uuid.uuid4().hex}"
     get_sandbox_pool().evict(missing)
     assert await lifecycle.pause_sandbox_for_user(missing) is False
+
+
+async def test_idle_check_treats_the_window_edge_as_idle() -> None:
+    # last_used_at exactly at the window boundary counts as idle (pause proceeds).
+    # The strict `>` is what separates "used since the window" from "used exactly
+    # at its edge"; a `>=` would wrongly keep an idle sandbox alive forever.
+    now = datetime(2099, 1, 1, tzinfo=UTC)
+    idle_since = now - timedelta(seconds=lifecycle.settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+    coll = AsyncMock()
+    coll.get_for_user = AsyncMock(return_value=SimpleNamespace(last_used_at=idle_since))
+    with (
+        patch.object(lifecycle, "_now", return_value=now),
+        patch.object(lifecycle, "e2b_sandbox_repository", coll),
+    ):
+        assert await lifecycle._idle_on_every_replica("u1") is True
+    coll.get_for_user.assert_awaited_once_with("u1")
