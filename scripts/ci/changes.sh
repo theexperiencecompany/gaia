@@ -137,6 +137,15 @@ cmd_docker_inputs() {
     apps/api/pyproject.toml
     libs/pyproject.toml
     scripts/ci/check-playwright-pin.sh
+    # The per-Dockerfile ignore file decides what enters the build CONTEXT, so
+    # editing it changes the image as surely as editing the Dockerfile — a
+    # newly-excluded path silently drops out of the layer while this said
+    # "image inputs unchanged" and skipped the build. The ROOT .dockerignore was
+    # listed from the start; apps/api/Dockerfile.dockerignore, which is the one
+    # BuildKit actually reads for this image, was not. A glob, so a second
+    # image's ignore file is covered the day it is added, not the day someone
+    # notices it is missing.
+    '*Dockerfile.dockerignore'
   )
 
   # No --depth: it re-shallows the box's persistent workspace, and the next
