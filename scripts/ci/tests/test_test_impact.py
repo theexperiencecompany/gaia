@@ -47,6 +47,34 @@ def _load() -> ModuleType:
 ti = _load()
 
 
+# `select` and `fetch` fall back to the slice's own environment so a workflow
+# step stays one command line. That makes these tests inherit whatever the job
+# running them exported — and test-python DOES export SLICE_NAME/SLICE_PATHS/
+# SLICE_IGNORE. Under unit-b the ambient SLICE_PATHS restricted the selection
+# to tests/unit, which dropped the always-on tests/contracts and moved the
+# total from 30 to 28: green locally, red in CI, for a reason that had nothing
+# to do with the code under test. Clear the lot so every test states its own
+# inputs.
+CI_ENV = (
+    "SLICE_NAME",
+    "SLICE_PATHS",
+    "SLICE_IGNORE",
+    "BASE_REF",
+    "MAP_DIR",
+    "TEST_IMPACT_ENABLED",
+    "GITHUB_OUTPUT",
+    "GITHUB_STEP_SUMMARY",
+    "GITHUB_REPOSITORY",
+    "GITHUB_HEAD_REF",
+)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in CI_ENV:
+        monkeypatch.delenv(name, raising=False)
+
+
 # ── suite config: anything shaping the environment widens to ALL ─────────────
 
 
