@@ -44,6 +44,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
 from app.schemas.usage import BudgetWindow, UsageBudget
 from app.services.payments.payment_service import payment_service
@@ -115,13 +116,9 @@ def _is_charged_spend(user_id: str | None, cost_usd: float) -> bool:
 
 async def record_model_call_usage(
     user_id: str | None,
-    cost_usd: float,
+    spend: UsageDailyIncrement,
     root_request_id: str | None,
     *,
-    input_tokens: int,
-    output_tokens: int,
-    cached_tokens: int = 0,
-    reasoning_tokens: int = 0,
     charge_to_budget: bool,
 ) -> None:
     """Record one model call's spend and tokens in a single Redis round trip.
@@ -132,7 +129,9 @@ async def record_model_call_usage(
     durable Mongo cost rollup concurrently. Fail-open: a Redis hiccup must
     never fail the model call.
 
-    ``charge_to_budget`` decides whether the spend counts against the user's
+    ``spend`` carries the dollar figure and the four token counts (see
+    :class:`UsageDailyIncrement`) — the same shape the durable rollup stores,
+    so nothing is repacked between here and Mongo. ``charge_to_budget`` decides whether the spend counts against the user's
     allowance: the agent middleware charges (chat/workflow/bot work the user
     asked for), auxiliary one-shot calls do not — their spend lands only in the
     durable rollup (under ``aux_cost``) so COGS stays measurable per user
@@ -140,17 +139,21 @@ async def record_model_call_usage(
 
     The durable rollup records the token breakdown whenever there is spend OR
     token data — deliberately not gated on ``cost_usd`` alone, since a pricing
-    lookup failure books ``cost_usd=0`` for a call that still burned real
+    lookup failure books ``spend.cost=0`` for a call that still burned real
     tokens (see ``llm_metering.record_llm_call``); the tokens must survive
     that so the call can be re-priced after the fact.
     """
     # The request ceiling bounds runaway loops, not cache economics: a cached
     # prefix rides nearly every call in a turn, so counting it trips the wall
     # on ordinary multi-call turns. The durable rollup below still books raw.
-    billable_tokens = _billable_request_tokens(input_tokens, cached_tokens, output_tokens)
-    record_spend = _is_charged_spend(user_id, cost_usd)
+    billable_tokens = _billable_request_tokens(
+        spend.input_tokens, spend.cached_tokens, spend.output_tokens
+    )
+    record_spend = _is_charged_spend(user_id, spend.cost)
     record_tokens = root_request_id is not None and billable_tokens > 0
-    has_token_data = bool(input_tokens or output_tokens or cached_tokens or reasoning_tokens)
+    has_token_data = bool(
+        spend.input_tokens or spend.output_tokens or spend.cached_tokens or spend.reasoning_tokens
+    )
     # The id itself, not a flag: the durable write below takes a non-optional
     # user_id, and carrying the narrowed value is what lets it type-check
     # without re-testing a None the flag has already ruled out.
@@ -168,15 +171,7 @@ async def record_model_call_usage(
         labeled.append(
             (
                 "mongo_cost_rollup",
-                record_cost(
-                    rollup_user_id,
-                    cost_usd,
-                    charged=charge_to_budget,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cached_tokens=cached_tokens,
-                    reasoning_tokens=reasoning_tokens,
-                ),
+                record_cost(rollup_user_id, spend, charged=charge_to_budget),
             )
         )
 
@@ -188,7 +183,7 @@ async def record_model_call_usage(
         if charge_to_budget and record_spend and user_id is not None:
             for period, ttl in _PERIOD_TTL_SECONDS.items():
                 key = _budget_key(user_id, period)
-                pipe.incrbyfloat(key, cost_usd)
+                pipe.incrbyfloat(key, spend.cost)
                 pipe.expire(key, ttl)
         if record_tokens:
             # The flag already encodes "root_request_id present and something

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.db.repositories.usage_daily import UsageDailyRepository
+from app.db.repositories.usage_daily import UsageDailyIncrement, UsageDailyRepository
 
 USER = "user-rollup-1"
 OTHER_USER = "user-rollup-2"
@@ -32,12 +32,14 @@ class TestIncrement:
         await repo.increment(
             USER,
             DAY,
-            count=1,
-            cost=0.02,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
+            UsageDailyIncrement(
+                count=1,
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
         )
 
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
@@ -52,8 +54,12 @@ class TestIncrement:
     async def test_accumulates_into_the_same_day_instead_of_replacing_it(
         self, repo, raw_collection
     ):
-        await repo.increment(USER, DAY, count=1, cost=0.02, input_tokens=300, output_tokens=120)
-        await repo.increment(USER, DAY, count=1, cost=0.03, input_tokens=200, output_tokens=80)
+        await repo.increment(
+            USER, DAY, UsageDailyIncrement(count=1, cost=0.02, input_tokens=300, output_tokens=120)
+        )
+        await repo.increment(
+            USER, DAY, UsageDailyIncrement(count=1, cost=0.03, input_tokens=200, output_tokens=80)
+        )
 
         assert await raw_collection.count_documents({"user_id": USER, "date": DAY}) == 1
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
@@ -63,15 +69,15 @@ class TestIncrement:
         assert raw["output_tokens"] == 200
 
     async def test_a_second_day_is_its_own_row(self, repo, raw_collection):
-        await repo.increment(USER, DAY, count=1, input_tokens=10)
-        await repo.increment(USER, "2026-03-05", count=1, input_tokens=99)
+        await repo.increment(USER, DAY, UsageDailyIncrement(count=1, input_tokens=10))
+        await repo.increment(USER, "2026-03-05", UsageDailyIncrement(count=1, input_tokens=99))
 
         assert await raw_collection.count_documents({"user_id": USER}) == 2
         second = await raw_collection.find_one({"user_id": USER, "date": "2026-03-05"})
         assert second["input_tokens"] == 99
 
     async def test_amounts_left_at_zero_are_not_written_at_all(self, repo, raw_collection):
-        await repo.increment(USER, DAY, count=1)
+        await repo.increment(USER, DAY, UsageDailyIncrement(count=1))
 
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
         # Pruning zeros keeps a row honest about what it has actually seen: a
@@ -81,7 +87,7 @@ class TestIncrement:
         assert "aux_cost" not in raw
 
     async def test_an_all_zero_call_writes_no_document(self, repo, raw_collection):
-        await repo.increment(USER, DAY)
+        await repo.increment(USER, DAY, UsageDailyIncrement())
 
         assert await raw_collection.count_documents({}) == 0
 
@@ -89,11 +95,13 @@ class TestIncrement:
         await repo.increment(
             USER,
             DAY,
-            cost=0.02,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
         )
 
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
@@ -107,11 +115,14 @@ class TestIncrement:
         await repo.increment(
             USER,
             DAY,
-            aux_cost=0.02,
-            aux_input_tokens=300,
-            aux_output_tokens=120,
-            aux_cached_tokens=50,
-            aux_reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
+            charged=False,
         )
 
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
@@ -128,8 +139,15 @@ class TestIncrement:
     async def test_charged_and_auxiliary_work_on_the_same_day_stay_separate(
         self, repo, raw_collection
     ):
-        await repo.increment(USER, DAY, cost=0.02, input_tokens=300, reasoning_tokens=40)
-        await repo.increment(USER, DAY, aux_cost=0.05, aux_input_tokens=900, aux_reasoning_tokens=7)
+        await repo.increment(
+            USER, DAY, UsageDailyIncrement(cost=0.02, input_tokens=300, reasoning_tokens=40)
+        )
+        await repo.increment(
+            USER,
+            DAY,
+            UsageDailyIncrement(cost=0.05, input_tokens=900, reasoning_tokens=7),
+            charged=False,
+        )
 
         raw = await raw_collection.find_one({"user_id": USER, "date": DAY})
         assert raw["cost"] == pytest.approx(0.02)
@@ -142,9 +160,9 @@ class TestIncrement:
 
 class TestRollupsSince:
     async def test_returns_the_boundary_day_and_drops_the_one_before_it(self, repo):
-        await repo.increment(USER, "2026-03-02", count=1, input_tokens=1)
-        await repo.increment(USER, "2026-03-03", count=1, input_tokens=2)
-        await repo.increment(USER, "2026-03-04", count=1, input_tokens=3)
+        await repo.increment(USER, "2026-03-02", UsageDailyIncrement(count=1, input_tokens=1))
+        await repo.increment(USER, "2026-03-03", UsageDailyIncrement(count=1, input_tokens=2))
+        await repo.increment(USER, "2026-03-04", UsageDailyIncrement(count=1, input_tokens=3))
 
         rows = await repo.rollups_since(USER, "2026-03-03")
 
@@ -154,12 +172,14 @@ class TestRollupsSince:
         await repo.increment(
             USER,
             DAY,
-            count=2,
-            cost=0.02,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
+            UsageDailyIncrement(
+                count=2,
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
         )
 
         (row,) = await repo.rollups_since(USER, DAY)
@@ -172,8 +192,8 @@ class TestRollupsSince:
         assert row.reasoning_tokens == 40
 
     async def test_is_scoped_to_the_asking_user(self, repo):
-        await repo.increment(USER, DAY, count=1, input_tokens=5)
-        await repo.increment(OTHER_USER, DAY, count=9, input_tokens=900)
+        await repo.increment(USER, DAY, UsageDailyIncrement(count=1, input_tokens=5))
+        await repo.increment(OTHER_USER, DAY, UsageDailyIncrement(count=9, input_tokens=900))
 
         (row,) = await repo.rollups_since(USER, DAY)
 
@@ -197,21 +217,23 @@ class TestRollupsSince:
         assert row.aux_input_tokens == 0
 
     async def test_no_rows_in_the_window_is_an_empty_list(self, repo):
-        await repo.increment(USER, "2026-03-01", count=1)
+        await repo.increment(USER, "2026-03-01", UsageDailyIncrement(count=1))
 
         assert await repo.rollups_since(USER, "2026-03-02") == []
 
 
 class TestCountsSince:
     async def test_projects_the_window_down_to_date_to_count(self, repo):
-        await repo.increment(USER, "2026-03-03", count=2, input_tokens=300)
-        await repo.increment(USER, "2026-03-04", count=5, input_tokens=700)
+        await repo.increment(USER, "2026-03-03", UsageDailyIncrement(count=2, input_tokens=300))
+        await repo.increment(USER, "2026-03-04", UsageDailyIncrement(count=5, input_tokens=700))
 
         assert await repo.counts_since(USER, "2026-03-03") == {"2026-03-03": 2, "2026-03-04": 5}
 
     async def test_a_day_with_spend_but_no_metered_action_counts_zero(self, repo):
         # Auxiliary background work books cost/tokens without a `count`; the
         # heatmap must not light that day up as user activity.
-        await repo.increment(USER, DAY, aux_cost=0.04, aux_input_tokens=800)
+        await repo.increment(
+            USER, DAY, UsageDailyIncrement(cost=0.04, input_tokens=800), charged=False
+        )
 
         assert await repo.counts_since(USER, DAY) == {DAY: 0}

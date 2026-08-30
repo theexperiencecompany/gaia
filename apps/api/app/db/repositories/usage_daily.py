@@ -57,6 +57,25 @@ class TrueCostActuals(BaseModel):
     at: datetime
 
 
+class UsageDailyIncrement(BaseModel):
+    """One metered action's contribution to a rollup row.
+
+    The charged and auxiliary halves of the row hold the same six counters
+    under different names, so they are one shape plus a flag at
+    :meth:`UsageDailyRepository.increment` rather than twelve parallel
+    arguments that have to be kept in step by hand.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    count: int = 0
+    cost: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
 class UsageDailyUpdate(BaseModel):
     """Typed ``$set`` fields for a rollup row. Rollups move via ``$inc``-only
     raw updates, so nothing is typed-settable."""
@@ -72,37 +91,26 @@ class UsageDailyRepository(UserScopedRepository[UsageDailyDocument, UsageDailyUp
     cache_policy = None
 
     async def increment(
-        self,
-        user_id: str,
-        day: str,
-        *,
-        count: int = 0,
-        cost: float = 0.0,
-        aux_cost: float = 0.0,
-        input_tokens: int = 0,
-        output_tokens: int = 0,
-        cached_tokens: int = 0,
-        reasoning_tokens: int = 0,
-        aux_input_tokens: int = 0,
-        aux_output_tokens: int = 0,
-        aux_cached_tokens: int = 0,
-        aux_reasoning_tokens: int = 0,
+        self, user_id: str, day: str, delta: UsageDailyIncrement, *, charged: bool = True
     ) -> None:
-        """``$inc``-upsert the user's rollup row for ``day`` (``YYYY-MM-DD``)."""
+        """``$inc``-upsert the user's rollup row for ``day`` (``YYYY-MM-DD``).
+
+        ``charged=False`` books the spend and its tokens under the ``aux_*``
+        fields instead: auxiliary background work is tracked for per-user COGS
+        but never counts against the user's allowance, so the charged fields
+        stay an exact mirror of the Redis windows the budget wall enforces. The
+        action count is not split — the heatmap counts actions, not dollars.
+        """
+        prefix = "" if charged else "aux_"
         inc: dict[str, object] = {
             field: amount
             for field, amount in (
-                ("count", count),
-                ("cost", cost),
-                ("aux_cost", aux_cost),
-                ("input_tokens", input_tokens),
-                ("output_tokens", output_tokens),
-                ("cached_tokens", cached_tokens),
-                ("reasoning_tokens", reasoning_tokens),
-                ("aux_input_tokens", aux_input_tokens),
-                ("aux_output_tokens", aux_output_tokens),
-                ("aux_cached_tokens", aux_cached_tokens),
-                ("aux_reasoning_tokens", aux_reasoning_tokens),
+                ("count", delta.count),
+                (f"{prefix}cost", delta.cost),
+                (f"{prefix}input_tokens", delta.input_tokens),
+                (f"{prefix}output_tokens", delta.output_tokens),
+                (f"{prefix}cached_tokens", delta.cached_tokens),
+                (f"{prefix}reasoning_tokens", delta.reasoning_tokens),
             )
             if amount
         }

@@ -21,6 +21,7 @@ import pytest
 from app.config.rate_limits import get_daily_cost_budget_usd, get_per_request_token_ceiling
 from app.constants.llm import BUDGET_WRAPUP_REMAINING_FRACTION
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
 from app.services.cost_budget import (
     DAILY_BUDGET_STOP_FREE,
@@ -57,13 +58,13 @@ def no_rollup() -> AsyncIterator[None]:
 
 async def _spend(amount: float) -> None:
     await record_model_call_usage(
-        USER, amount, None, input_tokens=0, output_tokens=0, charge_to_budget=True
+        USER, UsageDailyIncrement(cost=amount), None, charge_to_budget=True
     )
 
 
 async def _burn_tokens(count: int) -> None:
     await record_model_call_usage(
-        USER, 0.0, REQUEST, input_tokens=count, output_tokens=0, charge_to_budget=True
+        USER, UsageDailyIncrement(cost=0.0, input_tokens=count), REQUEST, charge_to_budget=True
     )
 
 
@@ -165,11 +166,10 @@ class TestRequestCeiling:
         for _ in range(10):
             await record_model_call_usage(
                 USER,
-                0.003,
+                UsageDailyIncrement(
+                    cost=0.003, input_tokens=32_000, output_tokens=800, cached_tokens=27_000
+                ),
                 REQUEST,
-                input_tokens=32_000,
-                output_tokens=800,
-                cached_tokens=27_000,
                 charge_to_budget=True,
             )
 

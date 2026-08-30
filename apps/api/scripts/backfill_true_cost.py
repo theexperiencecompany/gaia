@@ -53,6 +53,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.db.mongodb.mongodb import init_mongodb
+from app.db.repositories.usage_daily import TrueCostActuals, usage_daily_repository
 from shared.py.wide_events import log
 
 _LOKI_SELECTOR = '{service=~"gaia-backend|arq_worker"} |= "\\"llm_event\\": \\"llm_call\\""'
@@ -193,8 +194,16 @@ def _parse_event(line: str) -> LlmCall | None:
     )
 
 
-def _nanos(moment: datetime) -> str:
-    return f"{int(moment.timestamp())}000000000"
+def _nanos(moment: datetime) -> int:
+    """``moment`` as whole nanoseconds — Loki's own timestamp resolution.
+
+    Integer nanoseconds end to end, deliberately. Rounding the page cursor to
+    a whole second (or round-tripping it through a ``datetime``, whose float
+    seconds cannot hold a nanosecond) makes the next page restart *inside* a
+    second already returned, and every event in that second is folded twice —
+    inflating ``cost_actual`` for exactly the busiest user-days.
+    """
+    return int(moment.timestamp() * 1_000_000_000)
 
 
 async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list[LlmCall]:
@@ -202,19 +211,21 @@ async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list
 
     Pages forward, advancing the cursor past the last nanosecond returned —
     Loki caps a single response at ``limit`` lines and gives no cursor of its
-    own, so a busy day needs several passes.
+    own, so a busy day needs several passes. ``start`` is inclusive, so the
+    cursor is the last timestamp seen PLUS one nanosecond; anything coarser
+    re-reads events the previous page already returned and double-counts them.
     """
     start = datetime.fromisoformat(f"{day}T00:00:00+00:00")
-    end = min(start + timedelta(days=1), datetime.now(UTC))
+    end_nanos = _nanos(min(start + timedelta(days=1), datetime.now(UTC)))
     calls: list[LlmCall] = []
-    cursor = start
+    cursor_nanos = _nanos(start)
     for _ in range(_LOKI_MAX_PAGES):
         response = await client.get(
             f"{loki_url.rstrip('/')}/loki/api/v1/query_range",
             params={
                 "query": _LOKI_SELECTOR,
-                "start": _nanos(cursor),
-                "end": _nanos(end),
+                "start": cursor_nanos,
+                "end": end_nanos,
                 "limit": _LOKI_PAGE,
                 "direction": "forward",
             },
@@ -233,8 +244,8 @@ async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list
                     calls.append(call)
         if seen < _LOKI_PAGE:
             break
-        cursor = datetime.fromtimestamp((latest + 1) / 1_000_000_000, tz=UTC)
-        if cursor >= end:
+        cursor_nanos = latest + 1
+        if cursor_nanos >= end_nanos:
             break
     return calls
 
@@ -281,8 +292,23 @@ def _read_cache(path: Path) -> dict[str, GenerationRecord | None]:
     }
 
 
+def _default_cache_dir() -> Path:
+    """Where resolved generations are cached between runs.
+
+    Under the invoking user's cache home, never a shared temp directory: the
+    cache is written and read back as the script's own input, so a world-
+    writable path lets anyone on the box pre-create it and decide what this
+    backfill believes each call cost — and that number is written to
+    ``usage_daily``. Ephemeral either way; it only makes a re-run cheaper.
+    """
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".cache") / "gaia-true-cost"
+
+
 def _write_cache(path: Path, known: Mapping[str, GenerationRecord | None]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # 0o700: same reason as _default_cache_dir — nobody else gets to write what
+    # this run reads back as the real cost of a call.
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.write_text(json.dumps({k: (v.model_dump() if v else None) for k, v in known.items()}))
 
 
@@ -344,14 +370,6 @@ def _render(rows: Sequence[UserDayTrueCost]) -> None:
 
 async def _apply(rows: Sequence[UserDayTrueCost]) -> tuple[int, int]:
     """Write the actuals onto existing rollup rows. Returns (written, missing)."""
-    # Imported here, not at module top: the repository method that writes these
-    # fields only exists on builds that carry it, and the dry run (the default)
-    # must work against an older running image that has no such method.
-    from app.db.repositories.usage_daily import (
-        TrueCostActuals,
-        usage_daily_repository,
-    )
-
     stamped_at = datetime.now(UTC)
     written = 0
     for row in rows:
@@ -420,8 +438,7 @@ def main() -> None:
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        # Ephemeral and container-local: the cache only makes a re-run cheaper.
-        default=Path("/tmp/true-cost-cache"),
+        default=_default_cache_dir(),
         help="where per-day generation lookups are cached",
     )
     args = parser.parse_args()

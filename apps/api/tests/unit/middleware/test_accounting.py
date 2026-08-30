@@ -734,12 +734,40 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
         "output_tokens": 20,
         "reasoning_tokens": 0,
         "cost_usd": pytest.approx(0.14),
+        "cost_source": "table",
         "step_index": 1,
         "generation_id": None,
     }
     second = emitted[1][1]
     assert second["input_tokens"] == 7  # per step, not a running total
     assert second["step_index"] == 2
+
+
+async def test_the_llm_call_event_says_whether_the_price_was_the_providers_or_ours() -> None:
+    """``cost_usd`` alone cannot be audited: a table guess and a provider
+    invoice look identical in the log. They disagree by more than 10x per
+    upstream, so the event has to name which one it carries — that flag is what
+    makes the coverage number in the true-cost backfill mean anything."""
+    emitted: list[tuple[str, dict[str, Any]]] = []
+    mw = LLMAccountingMiddleware(agent_name="executor_agent")
+    priced = _ai(input_tokens=100, output_tokens=20)
+    priced.response_metadata = {"cost": 0.0031}
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(log, "info", lambda message, **kw: emitted.append((message, kw))),
+    ):
+        await mw.aafter_model(_state(priced), None)
+        # No reported price: the pricing table answers instead, and _fixed_cost
+        # gives it a figure nothing could confuse with 0.0031.
+        await mw.aafter_model(_state(_ai(input_tokens=100, output_tokens=20)), None)
+
+    assert emitted[0][1]["cost_source"] == "provider"
+    assert emitted[0][1]["cost_usd"] == pytest.approx(0.0031)
+    assert emitted[1][1]["cost_source"] == "table"
+    assert emitted[1][1]["cost_usd"] == pytest.approx(0.12)
 
 
 async def test_the_llm_call_event_carries_the_upstream_generation_id() -> None:

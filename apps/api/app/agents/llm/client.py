@@ -1059,13 +1059,16 @@ def _reported_cost(response: LLMResult) -> float | None:
     copies it. ``None`` means the lane reported no price and the caller should
     fall back to the pricing table.
     """
-    llm_output = getattr(response, "llm_output", None) or {}
+    llm_output = response.llm_output or {}
     token_usage = llm_output.get("token_usage") or {}
     for candidate in (llm_output.get("cost"), token_usage.get("cost")):
         if candidate is not None:
+            # A price that will not parse is not a price: skip it and let the
+            # next shape (then the table) answer, rather than failing a call
+            # that already succeeded over its own cost annotation.
             with suppress(TypeError, ValueError):
                 return float(candidate)
-    for generations in getattr(response, "generations", None) or []:
+    for generations in response.generations:
         for generation in generations:
             message = getattr(generation, "message", None)
             cost = extract_message_cost(message) if message is not None else None
@@ -1087,7 +1090,28 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
-        self.cost: float | None = None
+        self._attempts = 0
+        self._priced_attempts = 0
+        self._cost_total = 0.0
+
+    @property
+    def cost(self) -> float | None:
+        """Provider-reported spend summed over EVERY attempt this call made.
+
+        Accumulated, not last-write-wins, because the usage it is booked
+        against accumulates: ``UsageMetadataCallbackHandler`` adds up the
+        tokens of a retry and of a fallback, so keeping only the final
+        attempt's price would charge one attempt's dollars against several
+        attempts' tokens and under-count real spend on exactly the calls that
+        went wrong.
+
+        ``None`` when ANY attempt reported no price — a partial sum is not the
+        call's cost, so the caller falls back to the pricing table for the
+        whole thing rather than booking a number that is confidently short.
+        """
+        if self._attempts == 0 or self._priced_attempts != self._attempts:
+            return None
+        return self._cost_total
 
     def on_llm_end(
         self,
@@ -1096,7 +1120,11 @@ class _GenerationIdCallback(BaseCallbackHandler):
         # the base signature types them Any and this handler reads none.
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
-        self.cost = _reported_cost(response)
+        self._attempts += 1
+        reported = _reported_cost(response)
+        if reported is not None:
+            self._priced_attempts += 1
+            self._cost_total += reported
         llm_output = getattr(response, "llm_output", None) or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
@@ -1156,6 +1184,12 @@ async def _record_auxiliary_usage(
     ``llm_call`` event carries ``background=True``, so auxiliary COGS stays
     fully measurable and splittable from in-turn agent spend.
     """
+    # The handler aggregates per model, so a call that fanned out across models
+    # cannot attribute one price to one of them; only the single-model case
+    # (every real auxiliary call) takes the reported figure, and the rest fall
+    # back to the table. Resolved ONCE, here, so what gets booked and what
+    # ``cost_source`` claims can never disagree.
+    booked_cost = provider_cost if len(handler.usage_metadata) == 1 else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1183,17 +1217,17 @@ async def _record_auxiliary_usage(
                 reasoning_tokens=reasoning_tokens,
             ),
             charge_to_budget=False,
-            # The handler aggregates per model, so a call that fanned out across
-            # models cannot attribute one price to one of them; only the
-            # single-model case (every real auxiliary call) takes the reported
-            # figure, and the rest fall back to the table.
-            provider_cost=provider_cost if len(handler.usage_metadata) == 1 else None,
+            provider_cost=booked_cost,
         )
         log.info(
             "llm_call",
             llm_event="llm_call",
             background=True,
-            cost_source="provider" if provider_cost is not None else "table",
+            # What was actually booked, not what was merely available: the
+            # multi-model fan-out is priced from the table even when a figure
+            # was reported, and the event must say so or coverage reporting
+            # counts table prices as provider prices.
+            cost_source="provider" if booked_cost is not None else "table",
             agent_name=label,
             model=model_name,
             generation_id=generation_id,
