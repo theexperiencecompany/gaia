@@ -98,7 +98,6 @@ apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/chat/stream.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
-apps/api/app/services/cost_budget.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913
 apps/api/app/services/hil/bridge.py	PLR0913
 apps/api/app/services/hil/intent.py	PLR0913

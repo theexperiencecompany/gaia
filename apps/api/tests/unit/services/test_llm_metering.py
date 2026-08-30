@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.llm_metering import (
     TokenUsage,
     extract_generation_id,
@@ -208,12 +209,10 @@ async def test_the_priced_call_reaches_the_rollup_whole(
     assert cost == 0.25
     usage.assert_awaited_once_with(
         "u1",
-        0.25,
+        UsageDailyIncrement(
+            cost=0.25, input_tokens=100, output_tokens=20, cached_tokens=40, reasoning_tokens=7
+        ),
         "req-1",
-        input_tokens=100,
-        output_tokens=20,
-        cached_tokens=40,
-        reasoning_tokens=7,
         charge_to_budget=True,
     )
 
@@ -236,8 +235,8 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
         charge_to_budget=False,
     )
 
-    assert usage.await_args.kwargs["reasoning_tokens"] == 0
-    assert usage.await_args.kwargs["cached_tokens"] == 0
+    assert usage.await_args.args[1].reasoning_tokens == 0
+    assert usage.await_args.args[1].cached_tokens == 0
 
 
 # --- extract_generation_id ------------------------------------------------------ #
@@ -310,7 +309,7 @@ async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: A
     assert cost == 0.0037
     price.assert_not_called()
     assert usage.await_args is not None
-    assert usage.await_args.args[1] == 0.0037
+    assert usage.await_args.args[1].cost == 0.0037
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
@@ -332,7 +331,7 @@ async def test_a_free_call_is_booked_as_free_not_repriced(
     assert cost == 0.0
     price.assert_not_called()
     assert usage.await_args is not None
-    assert usage.await_args.args[1] == 0.0
+    assert usage.await_args.args[1].cost == 0.0
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
@@ -356,7 +355,7 @@ async def test_a_lane_that_reports_no_price_still_uses_the_table(
     assert cost == 0.25
     price.assert_called_once()
     assert usage.await_args is not None
-    assert usage.await_args.args[1] == 0.25
+    assert usage.await_args.args[1].cost == 0.25
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)

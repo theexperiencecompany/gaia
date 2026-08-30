@@ -17,6 +17,8 @@ Mongo in ``tests/contracts/test_usage_daily_repository.py``); everything inside
 """
 
 from collections.abc import Iterator
+import os
+import time
 from unittest.mock import AsyncMock, patch
 
 from pymongo.errors import PyMongoError
@@ -47,6 +49,22 @@ def frozen_clock() -> Iterator[None]:
     a window belongs to, so the day boundary has to be pinned."""
     with time_machine.travel(FROZEN, tick=False):
         yield
+
+
+@pytest.fixture
+def a_box_a_day_ahead_of_utc() -> Iterator[None]:
+    """A worker whose LOCAL calendar day runs ahead of the UTC one."""
+    original = os.environ.get("TZ")
+    os.environ["TZ"] = "Pacific/Kiritimati"  # UTC+14
+    time.tzset()
+    try:
+        yield
+    finally:
+        if original is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = original
+        time.tzset()
 
 
 def _spend(
@@ -166,6 +184,20 @@ class TestRecordCost:
         await record_cost("", _spend(0.02, 300), charged=True)
 
         increment.assert_not_awaited()
+
+    async def test_the_rollup_day_is_the_utc_one_not_the_boxs_local_one(
+        self, increment: AsyncMock, a_box_a_day_ahead_of_utc: None
+    ) -> None:
+        """The row key is a UTC day and every reader joins on that — the
+        heatmap, the percentile window, and the true-cost backfill, which reads
+        the day straight off the ``llm_call`` event's UTC timestamp. A worker
+        reading its own local clock files the same call under a different day,
+        so the durable history and the logs stop lining up for anyone outside
+        UTC. CI runs in UTC, which is exactly why this needs saying out loud."""
+        with time_machine.travel("2026-03-04T23:30:00+00:00", tick=False):
+            await record_cost(USER, _spend(0.02), charged=True)
+
+        assert increment.await_args.args[1] == "2026-03-04"  # not the local 03-05
 
     async def test_a_mongo_failure_never_reaches_the_caller(self, increment: AsyncMock) -> None:
         # record_cost runs after a model call has already completed and been

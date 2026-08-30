@@ -28,6 +28,7 @@ from langchain_core.messages import AIMessage
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
 from shared.py.wide_events import log
 
@@ -134,12 +135,14 @@ async def _record(
     try:
         await record_model_call_usage(
             user_id,
-            total_cost,
+            UsageDailyIncrement(
+                cost=total_cost,
+                input_tokens=usage["input_tokens"],
+                output_tokens=usage["output_tokens"],
+                cached_tokens=usage["cached_tokens"],
+                reasoning_tokens=usage["reasoning_tokens"],
+            ),
             root_request_id,
-            input_tokens=usage["input_tokens"],
-            output_tokens=usage["output_tokens"],
-            cached_tokens=usage["cached_tokens"],
-            reasoning_tokens=usage["reasoning_tokens"],
             charge_to_budget=charge_to_budget,
         )
     except Exception as e:
