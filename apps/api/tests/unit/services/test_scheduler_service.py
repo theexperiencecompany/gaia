@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -14,7 +15,8 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
 )
-from app.services.scheduler_service import BaseSchedulerService
+from app.services.scheduler_service import STALE_EXECUTING_THRESHOLD, BaseSchedulerService
+from app.utils.timezone import Timezone
 
 # ---------------------------------------------------------------------------
 # Concrete subclass for testing
@@ -628,3 +630,159 @@ class TestEnqueueTask:
         call_args = service.arq_pool.enqueue_job.call_args
         defer_until = call_args[1]["_defer_until"]
         assert defer_until.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# reap_stale_executing — exact recovery behaviour
+# ---------------------------------------------------------------------------
+
+_REAP_MSG = "Reaped task stuck in EXECUTING; reset to SCHEDULED"
+
+
+def _stale(**over) -> SimpleNamespace:
+    base = dict(
+        id="t-rec",
+        repeat="0 9 * * *",
+        scheduled_at=datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
+        trigger_config=SimpleNamespace(next_run=None, timezone=None),
+        updated_at=datetime.now(UTC) - timedelta(seconds=120),
+    )
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+class TestReapStaleExecutingExact:
+    async def test_recurring_reset_reschedule_and_log(self, service):
+        now_before = datetime.now(UTC)
+        task = _stale(trigger_config=SimpleNamespace(next_run=None, timezone="America/New_York"))
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        next_run = datetime(2099, 1, 2, 9, 0, tzinfo=UTC)
+        fake_log = MagicMock()
+        with (
+            patch(
+                "app.services.scheduler_service.get_next_run_time", return_value=next_run
+            ) as gnrt,
+            patch("app.services.scheduler_service.log", fake_log),
+        ):
+            reaped = await service.reap_stale_executing()
+        now_after = datetime.now(UTC)
+
+        assert reaped == 1
+        # cutoff is now - threshold (past, never future).
+        cutoff = service.mock_find_stale_executing.await_args.args[0]
+        assert (
+            now_before - STALE_EXECUTING_THRESHOLD - timedelta(seconds=5)
+            <= cutoff
+            <= now_after - STALE_EXECUTING_THRESHOLD + timedelta(seconds=5)
+        )
+        repeat_arg, now_arg, tz_arg = gnrt.call_args.args
+        assert repeat_arg == task.repeat
+        assert isinstance(now_arg, datetime)
+        assert tz_arg == Timezone.parse("America/New_York")
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rec",
+            ScheduledTaskStatus.SCHEDULED,
+            {"scheduled_at": next_run, "trigger_config.next_run": next_run},
+            None,
+        )
+        service.reschedule_task.assert_awaited_once_with("t-rec", next_run)
+        fake_log.warning.assert_called_once()
+        msg = fake_log.warning.call_args.args[0]
+        kw = fake_log.warning.call_args.kwargs
+        assert msg == _REAP_MSG
+        assert kw["task_id"] == "t-rec"
+        assert kw["scheduler_class"] == "ConcreteSchedulerService"
+        assert kw["next_run"] == next_run
+        assert isinstance(kw["stuck_seconds"], int) and 100 <= kw["stuck_seconds"] <= 140
+
+    async def test_one_shot_reset_to_its_original_time_without_trigger_next_run(self, service):
+        task = _stale(id="t-one", repeat=None)
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+
+        assert await service.reap_stale_executing() == 1
+        # No next occurrence: scheduled_at stays, and trigger_config.next_run is NOT written.
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-one", ScheduledTaskStatus.SCHEDULED, {"scheduled_at": task.scheduled_at}, None
+        )
+        service.reschedule_task.assert_awaited_once_with("t-one", task.scheduled_at)
+
+    async def test_missing_updated_at_reports_minus_one(self, service):
+        task = SimpleNamespace(
+            id="t-miss",
+            repeat=None,
+            scheduled_at=datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
+            trigger_config=None,
+        )
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            await service.reap_stale_executing()
+        assert fake_log.warning.call_args.kwargs["stuck_seconds"] == -1
+
+    async def test_naive_updated_at_is_normalized_not_crashed(self, service):
+        # A naive updated_at must be treated as UTC; otherwise now(aware) - naive
+        # raises and the reap dies before resetting the task.
+        naive_120s_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=120)
+        task = _stale(repeat=None, trigger_config=None, updated_at=naive_120s_ago)
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            assert await service.reap_stale_executing() == 1
+        assert 100 <= fake_log.warning.call_args.kwargs["stuck_seconds"] <= 200
+
+    async def test_a_task_without_an_id_is_skipped_but_the_scan_continues(self, service):
+        no_id = _stale(id=None)
+        good = _stale(id="t-good", repeat=None, trigger_config=None)
+        service.mock_find_stale_executing.return_value = [no_id, good]
+        service.reschedule_task = AsyncMock()
+
+        # The id-less one is skipped (continue, not break), so the next is reaped.
+        assert await service.reap_stale_executing() == 1
+        service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
+
+    async def test_the_count_accumulates_across_every_reaped_task(self, service):
+        service.mock_find_stale_executing.return_value = [
+            _stale(id="a", repeat=None, trigger_config=None),
+            _stale(id="b", repeat=None, trigger_config=None),
+        ]
+        service.reschedule_task = AsyncMock()
+        assert await service.reap_stale_executing() == 2
+
+
+# ---------------------------------------------------------------------------
+# _recurrence_timezone
+# ---------------------------------------------------------------------------
+
+
+class TestRecurrenceTimezone:
+    def test_trigger_config_timezone_wins(self):
+        task = SimpleNamespace(
+            trigger_config=SimpleNamespace(timezone="America/New_York"), timezone="UTC"
+        )
+        assert BaseSchedulerService._recurrence_timezone(task) == "America/New_York"
+
+    def test_falls_back_to_the_task_timezone(self):
+        task = SimpleNamespace(trigger_config=None, timezone="Europe/London")
+        assert BaseSchedulerService._recurrence_timezone(task) == "Europe/London"
+
+
+class TestProcessTaskClaim:
+    async def test_a_task_claimed_by_another_run_is_skipped_with_a_warning(
+        self, service, sample_task
+    ):
+        occurrence = datetime(2099, 1, 1, 12, 0, tzinfo=UTC)
+        service.mock_get_task.return_value = sample_task
+        service.mock_claim_task.return_value = False
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            result = await service.process_task_execution("task123", expected_occurrence=occurrence)
+
+        service.mock_claim_task.assert_awaited_once_with("task123", occurrence)
+        fake_log.warning.assert_called_once_with(
+            "Task already claimed by another run", task_id="task123"
+        )
+        assert result.success is False
