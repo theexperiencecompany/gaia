@@ -152,7 +152,7 @@ jobs:
         with:
           main-branch-name: master
       - name: Validate release manifest
-        run: node scripts/ci/validate-release-manifest.mjs
+        run: node scripts/ci/release.mjs validate-manifest
       - uses: ./.github/actions/setup-node-pnpm
       - name: Detect affected
         id: affected

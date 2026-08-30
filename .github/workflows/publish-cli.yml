@@ -69,7 +69,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
-        run: node scripts/ci/verify-cli-release.mjs --tag "$RELEASE_TAG" --version "$RELEASE_VERSION"
+        run: node scripts/ci/release.mjs verify-cli --tag "$RELEASE_TAG" --version "$RELEASE_VERSION"
 
       # Build only when publish is actually required.
       - name: Install dependencies

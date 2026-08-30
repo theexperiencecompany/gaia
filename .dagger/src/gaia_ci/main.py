@@ -301,7 +301,7 @@ class GaiaCi:
         """Validate release manifest versions."""
         return await (
             self.ci_env(source)
-            .with_exec(["node", "scripts/ci/validate-release-manifest.mjs"])
+            .with_exec(["node", "scripts/ci/release.mjs", "validate-manifest"])
             .stdout()
         )
 
@@ -579,7 +579,7 @@ class GaiaCi:
             .stdout()
         )
 
-        validate_task = env.with_exec(["node", "scripts/ci/validate-release-manifest.mjs"]).stdout()
+        validate_task = env.with_exec(["node", "scripts/ci/release.mjs", "validate-manifest"]).stdout()
 
         trivy_task = (
             dag.container()
