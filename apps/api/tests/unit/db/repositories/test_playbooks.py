@@ -11,7 +11,7 @@ write in the base repository goes through.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,6 +20,8 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.db.repositories import playbooks as playbooks_module
 from app.db.repositories.playbooks import PlaybooksRepository
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
 
@@ -62,6 +64,43 @@ def collection() -> Iterator[MagicMock]:
 @pytest.fixture
 def repo() -> PlaybooksRepository:
     return PlaybooksRepository()
+
+
+def _raw_update_spy(*outcomes: Any) -> tuple[Any, list[dict[str, Any]]]:
+    """A stand-in for the base repository's raw-update seam, carrying its real
+    signature so a dropped argument fails here rather than reaching the driver.
+
+    The seam is where the cache scope and the upsert flag are decided; neither
+    reaches ``find_one_and_update``, so they are only observable from this side.
+    Each entry of ``outcomes`` is the next call's return value, or an exception
+    to raise from it.
+    """
+    calls: list[dict[str, Any]] = []
+    queued = list(outcomes)
+
+    async def _apply_raw_update(
+        _self: PlaybooksRepository,
+        filter_: Mapping[str, object],
+        update: Mapping[str, Mapping[str, object]],
+        *,
+        scope: str,
+        upsert: bool = False,
+        **rest: object,
+    ) -> PlaybookDocument | None:
+        calls.append(
+            {
+                "filter": dict(filter_),
+                "update": update,
+                "scope": scope,
+                "upsert": upsert,
+            }
+        )
+        outcome = queued.pop(0) if queued else _doc()
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    return _apply_raw_update, calls
 
 
 class TestUpsertForWorkflow:
@@ -110,6 +149,31 @@ class TestUpsertForWorkflow:
         assert update["$inc"] == {"revision": 1}
         assert "revision" not in set_fields
 
+    async def test_the_written_body_is_the_whole_playbook_and_nothing_else(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        """A rewrite replaces the workflow's one record in place, so the ``$set``
+        IS the new playbook. A field that goes missing here is silently kept from
+        the body just thrown away; one that arrives as null erases it."""
+        await repo.upsert_for_workflow(_doc())
+
+        _filter, update = collection.find_one_and_update.await_args.args
+        set_fields = dict(update["$set"])
+        # Stamped by the base repository on every write, not by this method.
+        assert isinstance(set_fields.pop("updated_at"), datetime)
+        # The step bodies round-trip through the model; their own shape is the
+        # playbook model's contract, not this repository's.
+        assert [step["tool"] for step in set_fields.pop("steps")] == ["list_events"]
+        assert set_fields == {
+            "description": "first",
+            "ask": {},
+            "synthesize": "s",
+            "workflow_hash": "hash-1",
+            "last_run_status": PlaybookRunStatus.NOT_RUN,
+            "last_run_reason": None,
+            "heal_attempts": 0,
+        }
+
     async def test_the_loser_of_a_concurrent_first_authoring_retries_onto_the_winner(
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
@@ -121,6 +185,40 @@ class TestUpsertForWorkflow:
 
         assert collection.find_one_and_update.await_count == 2
         assert stored.description == "second"
+        # The retry is the SAME write, not a plain update: the loser of the race
+        # must still insert when the winner has since been deleted.
+        assert [
+            call.kwargs["upsert"] for call in collection.find_one_and_update.await_args_list
+        ] == [True, True]
+
+    async def test_both_attempts_are_written_in_the_global_scope(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        """``playbooks`` is a global collection, so both the first attempt and the
+        duplicate-key retry name the global cache scope."""
+        spy, calls = _raw_update_spy(DuplicateKeyError("E11000 duplicate key"), _doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.upsert_for_workflow(_doc())
+
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE, REPO_GLOBAL_SCOPE]
+        assert [call["upsert"] for call in calls] == [True, True]
+
+    async def test_a_playbook_that_vanished_mid_upsert_names_its_workflow(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        """An upsert that matches nothing and inserts nothing cannot be reported as
+        a generic failure: the message is the only pointer to which workflow lost
+        its write."""
+        spy, _calls = _raw_update_spy(None)
+
+        with (
+            patch.object(PlaybooksRepository, "_apply_raw_update", spy),
+            pytest.raises(RuntimeError) as raised,
+        ):
+            await repo.upsert_for_workflow(_doc())
+
+        assert str(raised.value) == f"playbook for workflow {WORKFLOW_ID} vanished mid-upsert"
 
 
 class TestRecordRunOutcome:
@@ -337,3 +435,81 @@ class TestIncrementHealAttempts:
         assert update["$set"]["last_run_reason"] == "stopped at step 2"
         assert "suspect_streak" not in update["$set"]
         assert "$inc" not in update
+
+
+class TestTheScopeAndShapeOfEveryRawWrite:
+    """The raw-update seam carries two things ``find_one_and_update`` never sees:
+    the cache scope the write invalidates, and how the outcome update was asked
+    for. ``playbooks`` is a global collection, so every write names the global
+    scope; a per-user scope would bump a generation nobody reads and leave the
+    global one stale."""
+
+    async def test_a_plain_outcome_is_recorded_in_the_global_scope(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        spy, calls = _raw_update_spy()
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.record_run_outcome(
+                WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.FAILED)
+            )
+
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE]
+
+    async def test_both_writes_of_a_suspect_landing_are_global(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        """The growing write is tried first and matches nothing on an already
+        suspect playbook; the plain fallback then runs. Both are the same
+        collection and must invalidate the same scope."""
+        spy, calls = _raw_update_spy(None, _doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.record_run_outcome(
+                WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty")
+            )
+
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE, REPO_GLOBAL_SCOPE]
+        assert calls[0]["filter"]["last_run_status"] == {"$ne": "suspect"}
+        assert "last_run_status" not in calls[1]["filter"]
+
+    async def test_counting_a_heal_attempt_is_written_in_the_global_scope(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        spy, calls = _raw_update_spy()
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.increment_heal_attempts(WORKFLOW_ID, USER_ID, playbook_id="pb_first")
+
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE]
+        assert calls[0]["update"] == {"$inc": {"heal_attempts": 1}}
+
+    async def test_each_outcome_write_states_its_own_streak_intent(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        """The two suspect writes differ ONLY in whether they grow the streak, and
+        the fallback is the one that lands on a playbook already marked suspect.
+        It says so explicitly rather than leaning on a default, because the two
+        calls sit three lines apart and a reader has to be able to tell them
+        apart at the call site."""
+        seen: list[tuple[Any, Any, dict[str, Any]]] = []
+
+        def _outcome_update(
+            status: PlaybookRunStatus, reason: str | None, **kwargs: Any
+        ) -> dict[str, dict[str, object]]:
+            seen.append((status, reason, kwargs))
+            return {"$set": {"last_run_status": status, "last_run_reason": reason}}
+
+        collection.find_one_and_update = AsyncMock(side_effect=[None, _raw()])
+
+        with patch.object(playbooks_module, "_outcome_update", _outcome_update):
+            await repo.record_run_outcome(
+                WORKFLOW_ID,
+                USER_ID,
+                PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty again"),
+            )
+
+        assert seen == [
+            (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": True}),
+            (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": False}),
+        ]

@@ -51,7 +51,11 @@ def _registry() -> ToolRegistry:
 
 
 def _subagent(
-    *, mcp: bool, include_finish_task: bool = True, disable_retrieve_tools: bool = False
+    *,
+    mcp: bool,
+    include_finish_task: bool = True,
+    disable_retrieve_tools: bool = False,
+    auto_bind_tools: list[str] | None = None,
 ) -> Subagent:
     return Subagent(
         id=SUBAGENT_ID,
@@ -69,6 +73,7 @@ def _subagent(
             include_finish_task=include_finish_task,
             use_direct_tools=disable_retrieve_tools,
             disable_retrieve_tools=disable_retrieve_tools,
+            auto_bind_tools=auto_bind_tools,
         ),
         mcp_config=MCPConfig(server_url="https://mcp.example/sse") if mcp else None,
     )
@@ -330,6 +335,31 @@ class TestToolSpaceDenial:
         assert space.runtime is not None
         assert space.runtime.enable_retrieve_tools is False
         assert REGISTRY_TOOL in space.runtime.initial_tool_names
+
+    def test_the_handoff_runtime_binds_exactly_what_the_subagent_declares(self) -> None:
+        """The validator and the runner build this runtime from the same call, so
+        the bound set has to be the subagent's own: its auto-bind tools and its
+        finish_task, in the order the builder produces them. A set that quietly
+        loses either is a playbook accepted at write time and refused at replay."""
+        space = self._space(_subagent(mcp=False, auto_bind_tools=["posthog_fast"]))
+
+        assert space.runtime is not None
+        assert space.runtime.initial_tool_names == [
+            "search_memory",
+            "read",
+            "bash",
+            "finish_task",
+            "posthog_fast",
+        ]
+
+    def test_an_answer_only_subagent_binds_no_finish_task(self) -> None:
+        """``include_finish_task=False`` is how an answer-only subagent terminates
+        with a plain message; defaulting it back to True binds a tool the live
+        subagent never had."""
+        space = self._space(_subagent(mcp=False, include_finish_task=False))
+
+        assert space.runtime is not None
+        assert space.runtime.initial_tool_names == ["search_memory", "read", "bash"]
 
     def test_tools_with_no_subagent_behind_them_have_no_runtime_bound(self) -> None:
         space = self._space(None)

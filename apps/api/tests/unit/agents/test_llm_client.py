@@ -671,7 +671,58 @@ class TestBackgroundStructuredRunnable:
         # and delivered a result cut mid-sentence.
         bounded = mock_build_custom.return_value.model_copy
         bounded.assert_called_once_with(update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS})
+        # The caller's schema is what the endpoint is asked to fill; a runnable
+        # bound to anything else parses the one model call of the whole replay.
+        bounded.return_value.with_structured_output.assert_called_once_with(self._Shape)
         assert runnable is bounded.return_value.with_structured_output.return_value
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_a_base_url_alone_does_not_make_this_a_custom_deployment(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        """BOTH halves have to hold. A deployment that merely has a DEV base URL
+        configured still runs on OpenRouter, and sending its one-shot to the
+        custom endpoint asks an endpoint it does not run on for a result.
+
+        The aux runnable takes ``(schema, temperature, config)`` positionally, so
+        the fake carries the real signature: a dropped argument is a TypeError
+        here rather than a silently mis-modelled one-shot in production.
+        """
+
+        def _aux(schema: Any, temperature: float, config: RunnableConfig | None) -> str:
+            return "aux-runnable"
+
+        mock_aux.side_effect = _aux
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.OPENROUTER
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+        run_config: RunnableConfig = {"configurable": {"session_id": "sess-1"}}
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3, config=run_config)
+
+        mock_build_custom.assert_not_called()
+        mock_aux.assert_called_once_with(self._Shape, 0.3, run_config)
+        assert runnable == "aux-runnable"
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_a_custom_model_with_no_base_url_falls_back_to_the_aux_lane(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        """The other half: naming the custom provider without an endpoint to send
+        it to leaves nowhere to build the client from."""
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = None
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_build_custom.assert_not_called()
+        mock_aux.assert_called_once_with(self._Shape, 0.3, None)
+        assert runnable is mock_aux.return_value
 
 
 # ---------------------------------------------------------------------------

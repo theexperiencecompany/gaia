@@ -195,7 +195,11 @@ def create_middleware_stack(
                 tool_space=subagent.tool_space,
                 tool_runtime_config=subagent.tool_runtime_config,
                 spawn_middleware_factory=lambda space: create_subagent_middleware(
-                    subagent=SubagentStackOptions(enabled=False, tool_space=space)
+                    # enabled=False equals the field default; the kwarg stays as
+                    # the explicit no-spawn statement, so its drop is equivalent.
+                    subagent=SubagentStackOptions(
+                        enabled=False, tool_space=space
+                    )  # pragma: no mutate
                 ),
             )
         )
@@ -384,8 +388,10 @@ def create_subagent_middleware(
         chat_llm=subagent.llm,
         subagent=subagent,
         context=ContextOptions(
-            summarize=True,
-            compact=True,
+            # Both equal the field defaults; they stay as the explicit statement
+            # of the subagent tier context policy, so their drop is equivalent.
+            summarize=True,  # pragma: no mutate
+            compact=True,  # pragma: no mutate
             compaction_excluded_tools=CODING_TOOL_NAMES
             | SPAWN_SUBAGENT_TOOL
             | SELF_OFFLOADING_TOOL_NAMES,

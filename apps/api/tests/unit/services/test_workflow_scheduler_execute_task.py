@@ -44,6 +44,9 @@ class TestExecuteTask:
             result = await scheduler.execute_task(workflow)
 
         assert result.success is True
+        # The fire's own message is the whole result: dropped, the scheduler
+        # reports a success that says nothing about what ran.
+        assert result.message == "Workflow wf_1 executed successfully"
         by_id.assert_awaited_once_with({}, "wf_1")
         as_chat.assert_not_awaited()
 

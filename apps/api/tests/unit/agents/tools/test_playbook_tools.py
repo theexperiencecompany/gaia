@@ -8,7 +8,7 @@ production would reject it.
 
 from datetime import UTC, datetime
 from typing import Annotated, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
@@ -23,6 +23,7 @@ from app.agents.tools.playbook_tools import (
     write_playbook,
 )
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     PlaybookAsk,
     PlaybookBody,
@@ -37,7 +38,11 @@ from app.models.workflow_models import (
     WorkflowDocument,
     WorkflowUpdate,
 )
-from app.services.workflow.playbook.parser import dump_playbook
+from app.services.workflow.playbook.parser import (
+    PlaybookValidation,
+    dump_playbook,
+    validate_playbook,
+)
 from app.services.workflow.playbook.tool_space import SubagentTools
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 
@@ -175,6 +180,16 @@ OLD_YAML = (
     "    calendar_id: primary\n"
     "synthesize: Old synthesis.\n"
 )
+
+
+#: Six steps naming six tools that do not exist, so validation yields six issues
+#: in document order. Six, not five, because the log line truncates at five and
+#: the returned message does not: a single count cannot tell the two apart.
+SIX_INVALID_STEPS: list[dict[str, Any]] = [
+    {"id": f"step{index}", "tool": f"send_owl_{index}", "args": {}} for index in range(6)
+]
+
+SIX_ISSUES = [f"steps[{index}]: no tool named 'send_owl_{index}' exists" for index in range(6)]
 
 
 @pytest.fixture
@@ -372,12 +387,19 @@ class TestDeclinePlaybook:
                 config=_config(),
             )
 
-        assert result["success"] is True
-        assert result["data"] == {"declined": True}
+        assert result == {
+            "success": True,
+            "data": {"declined": True},
+            "message": "Noted. This workflow keeps reasoning out every run for now.",
+        }
         assert store.documents == {}, "a decline must never write a playbook"
-        log.set_ns.assert_any_call(
-            "playbook", declined=True, decline_reason="the call order depends on the inbox"
+        log.set.assert_called_once_with(
+            tool={"name": "decline_playbook", "action": "decline"}, workflow_id=WORKFLOW_ID
         )
+        assert log.set_ns.call_args_list == [
+            call("playbook", declined=True, decline_reason="the call order depends on the inbox"),
+            call("playbook", declines=1),
+        ]
 
     async def test_a_decline_when_the_check_was_not_asked_is_refused_and_not_counted(
         self, store: _FakePlaybookStore
@@ -396,8 +418,11 @@ class TestDeclinePlaybook:
         ):
             result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
 
-        assert result["success"] is False
-        assert result["error"] == "not_asked"
+        assert result == {
+            "success": False,
+            "error": "not_asked",
+            "message": "This workflow is no longer asked about a playbook; nothing to decline.",
+        }
         assert workflows.workflow.playbook_declines == PLAYBOOK_DECLINE_LIMIT
 
     async def test_a_decline_is_counted_against_the_workflow_as_it_stands(
@@ -448,12 +473,17 @@ class TestDeclinePlaybook:
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
 
-        assert result["success"] is True
-        assert result["data"] == {"declined": True, "disabled": True}
-        assert "removed" in result["message"]
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "disabled": True},
+            "message": "Noted. The stored playbook was removed; this workflow reasons out every "
+            "run again.",
+        }
+        log.set_ns.assert_called_with("playbook", disabled=True, reason="order varies")
         assert store.documents == {}
 
     async def test_declining_outside_a_heal_keeps_a_working_playbook(
@@ -466,7 +496,11 @@ class TestDeclinePlaybook:
         ):
             result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
 
-        assert result["data"] == {"declined": True}
+        assert result == {
+            "success": True,
+            "data": {"declined": True},
+            "message": "Noted. This workflow keeps reasoning out every run for now.",
+        }
         assert store.documents[(WORKFLOW_ID, USER_ID)] == before
 
     async def test_a_write_resets_the_declines(self, store: _FakePlaybookStore) -> None:
@@ -496,8 +530,11 @@ class TestDeclinePlaybook:
                 {"reason": "order varies"}, config=_config_for(OTHER_USER)
             )
 
-        assert result["success"] is False
-        assert result["error"] == "workflow_not_found"
+        assert result == {
+            "success": False,
+            "error": "workflow_not_found",
+            "message": f"No workflow {WORKFLOW_ID} for this user.",
+        }
 
 
 @pytest.mark.unit
@@ -510,7 +547,11 @@ class TestDisablePlaybook:
                 config=_config(),
             )
 
-        assert result["data"] == {"disabled": True}
+        assert result == {
+            "success": True,
+            "data": {"disabled": True},
+            "message": "Playbook removed. This workflow reasons out every run again.",
+        }
         assert store.documents == {}
 
     async def test_disabling_a_workflow_without_one_is_not_a_decision(
@@ -523,8 +564,12 @@ class TestDisablePlaybook:
                 {"reason": "nothing to disable"}, config=_config()
             )
 
-        assert result["success"] is False
-        assert result["error"] == "nothing_to_disable"
+        assert result == {
+            "success": False,
+            "error": "nothing_to_disable",
+            "message": f"Workflow {WORKFLOW_ID} has no playbook. Call write_playbook or "
+            "decline_playbook instead.",
+        }
 
 
 @pytest.mark.unit
@@ -625,11 +670,11 @@ class TestPlaybookToolContract:
         ):
             result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
 
-        assert result["success"] is True
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
-        assert result["data"] == {
-            "playbook_id": stored.playbook_id,
-            "steps": len(stored.steps),
+        assert result == {
+            "success": True,
+            "data": {"playbook_id": stored.playbook_id, "steps": len(stored.steps)},
+            "message": "Playbook written. Later runs of this workflow replay it.",
         }
 
     async def test_an_unexpected_write_failure_is_reported_not_swallowed(
@@ -642,12 +687,14 @@ class TestPlaybookToolContract:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
 
-        assert result["success"] is False
-        assert result["error"] == "write_failed"
-        assert "mongo down" in result["message"]
+        assert result == {"success": False, "error": "write_failed", "message": "mongo down"}
+        log.error.assert_called_once_with(
+            f"{LogTag.TOOL} write_playbook: exception", error_type="RuntimeError", exc_info=True
+        )
 
     async def test_reading_a_workflow_without_a_playbook_says_so_without_failing(
         self, store: _FakePlaybookStore
@@ -655,28 +702,62 @@ class TestPlaybookToolContract:
         with patch(f"{TOOLS_MODULE}.playbook_repository", store):
             result = await read_playbook.ainvoke({}, config=_config())
 
-        assert result["success"] is True
-        assert result["data"] == {"exists": False}
+        assert result == {
+            "success": True,
+            "data": {"exists": False},
+            "message": f"Workflow {WORKFLOW_ID} has no playbook yet.",
+        }
 
     async def test_a_read_failure_is_reported_as_a_failure(self, store: _FakePlaybookStore) -> None:
         store.get_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
-        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
             result = await read_playbook.ainvoke({}, config=_config())
 
-        assert result["success"] is False
-        assert result["error"] == "read_failed"
+        assert result == {"success": False, "error": "read_failed", "message": "mongo down"}
+        log.error.assert_called_once_with(
+            f"{LogTag.TOOL} read_playbook: exception", error_type="RuntimeError", exc_info=True
+        )
+
+    async def test_a_decline_failure_is_reported_as_a_failure(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """A decline that failed to persist has not been recorded, so the count
+        did not move and the check will ask again. Reporting it as a success
+        would tell the agent the question is answered when it is not."""
+        workflows = MagicMock()
+        workflows.get_for_user = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+
+        assert result == {"success": False, "error": "decline_failed", "message": "mongo down"}
+        log.error.assert_called_once_with(
+            f"{LogTag.TOOL} decline_playbook: exception", error_type="RuntimeError", exc_info=True
+        )
 
     async def test_a_disable_failure_is_reported_as_a_failure(
         self, store: _FakePlaybookStore
     ) -> None:
         store.delete_for_workflow = AsyncMock(side_effect=RuntimeError("mongo down"))
 
-        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
             result = await disable_playbook.ainvoke({"reason": "r"}, config=_config())
 
-        assert result["success"] is False
-        assert result["error"] == "disable_failed"
+        assert result == {"success": False, "error": "disable_failed", "message": "mongo down"}
+        log.error.assert_called_once_with(
+            f"{LogTag.TOOL} disable_playbook: exception", error_type="RuntimeError", exc_info=True
+        )
 
 
 @pytest.mark.unit
@@ -740,10 +821,77 @@ class TestPlaybookStorageDetails:
         ):
             result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
 
-        assert result["error"] == "invalid_playbook"
-        assert "steps[0]: no tool named 'send_owl' exists" in result["message"]
-        assert "steps[1].args.calendar_id: expected string, got int" in result["message"]
+        assert result == {
+            "success": False,
+            "error": "invalid_playbook",
+            "message": "The playbook was not written. Fix these and call write_playbook again: "
+            "steps[0]: no tool named 'send_owl' exists; "
+            "steps[1].args.calendar_id: expected string, got int",
+        }
         assert store.documents == {}
+
+    async def test_a_rejected_write_logs_the_first_five_problems_and_the_whole_count(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The log line is truncated where the returned message is not: one
+        hopeless playbook must not flood the run's event, but the agent still
+        needs every problem to revise in one pass. The count beside the line is
+        what says how much was cut, so it counts all of them, not the five.
+        """
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": SIX_INVALID_STEPS}, config=_config()
+            )
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.TOOL} write_playbook: rejected — " + "; ".join(SIX_ISSUES[:5]),
+            issues=6,
+            workflow_id=WORKFLOW_ID,
+        )
+        assert result["message"] == (
+            "The playbook was not written. Fix these and call write_playbook again: "
+            + "; ".join(SIX_ISSUES)
+        )
+
+    async def test_the_playbook_is_validated_for_the_user_whose_run_wrote_it(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """Whether a tool exists has no user-independent answer: a handoff's
+        children run in that subagent's space, and an MCP integration's tools
+        live on that user's own client. Validating for nobody would accept steps
+        the replay cannot run, and refuse ones it can.
+        """
+        seen: list[tuple[PlaybookBody, str]] = []
+
+        async def spying_validate(body: PlaybookBody, user_id: str) -> PlaybookValidation:
+            seen.append((body, user_id))
+            return await validate_playbook(body, user_id)
+
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+            patch(f"{TOOLS_MODULE}.validate_playbook", spying_validate),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is True
+        assert seen == [
+            (
+                playbook_body_from_input(
+                    description="Read the day's events",
+                    steps=[PlaybookStepInput.model_validate(step) for step in NEW_STEPS],
+                    synthesize="Say what is on today.",
+                    ask=None,
+                ),
+                USER_ID,
+            )
+        ]
 
 
 @pytest.mark.unit

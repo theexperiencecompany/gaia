@@ -2213,6 +2213,62 @@ class TestTheByIdExceptPathsNameTheirCause:
         )
 
 
+class TestTheWorkflowCardBothRunPathsAttach:
+    """``build_selected_workflow_data`` is the one builder behind the agent turn
+    and the playbook replay. The card is read by the UI by key, so the whole
+    payload is pinned: a renamed step key renders an empty row, and a dropped
+    prompt loses what the run was asked to do."""
+
+    def _workflow(self):
+        wf = MagicMock()
+        wf.id = "wf_card_1"
+        wf.title = "Morning Briefing"
+        wf.description = "Daily morning workflow"
+        wf.prompt = "Run the morning briefing"
+        wf.steps = [
+            MagicMock(id="s1", title="Step 1", description="Check mail", category="comms"),
+            MagicMock(id="s2", title="Step 2", description="Draft the digest", category="general"),
+        ]
+        return wf
+
+    def test_the_card_carries_the_prompt_and_every_step_key_verbatim(self) -> None:
+        card = build_selected_workflow_data(self._workflow())
+
+        assert card.model_dump() == {
+            "id": "wf_card_1",
+            "title": "Morning Briefing",
+            "description": "Daily morning workflow",
+            "prompt": "Run the morning briefing",
+            "steps": [
+                {
+                    "id": "s1",
+                    "title": "Step 1",
+                    "description": "Check mail",
+                    "category": "comms",
+                },
+                {
+                    "id": "s2",
+                    "title": "Step 2",
+                    "description": "Draft the digest",
+                    "category": "general",
+                },
+            ],
+        }
+
+    def test_a_workflow_with_no_prompt_still_builds_a_card(self) -> None:
+        workflow = self._workflow()
+        workflow.prompt = None
+        workflow.steps = []
+
+        assert build_selected_workflow_data(workflow).model_dump() == {
+            "id": "wf_card_1",
+            "title": "Morning Briefing",
+            "description": "Daily morning workflow",
+            "prompt": None,
+            "steps": [],
+        }
+
+
 class TestTheChatRunsTriggerTurnIsBuiltExactly:
     """The trigger turn is the only thing this function persists; the result is
     saved by the delivery path. Its shape is what the UI renders as the

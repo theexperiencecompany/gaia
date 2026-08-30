@@ -90,7 +90,9 @@ class ScriptedModel(BaseChatModel):
                     "name": call.name,
                     "args": dict(call.args),
                     "id": scripted_call_id(turn),
-                    "type": "tool_call",
+                    # LangChain strips and re-sets this key in a before-validator,
+                    # so any written value is provably unobservable.
+                    "type": "tool_call",  # pragma: no mutate
                 }
             ],
         )

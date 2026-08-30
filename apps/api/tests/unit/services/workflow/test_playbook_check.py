@@ -21,11 +21,14 @@ import pytest
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.prompts.playbook_prompts import (
     PLAYBOOK_CHECK_BRIEF,
+    PLAYBOOK_HEAL_ALREADY_RAN,
     PLAYBOOK_HEAL_BRIEF,
+    PLAYBOOK_HEAL_NO_REASON,
     PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE,
 )
 from app.agents.tools.playbook_tools import write_playbook
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
+from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
@@ -38,6 +41,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocum
 from app.services.workflow.playbook.check import (
     distrust_fresh_playbook,
     frozen_on_empty,
+    heal_brief,
     playbook_check_brief,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -186,6 +190,52 @@ async def test_a_swallowed_lookup_failure_is_still_reported():
     assert kwargs["error"] == "mongo down"
 
 
+def _recording_lookup(calls: list, result):
+    """A repository read with the REAL two-positional signature.
+
+    ``AsyncMock`` accepts any arguments, so a call that loses ``user_id`` or
+    passes it in the wrong slot reads exactly like a correct one. Spelling the
+    signature out makes a dropped argument a ``TypeError`` and records the rest.
+    """
+
+    async def lookup(workflow_id: str, user_id: str):
+        calls.append((workflow_id, user_id))
+        return result
+
+    return lookup
+
+
+@pytest.mark.asyncio
+class TestTheLookupsAreScopedToTheOwner:
+    """Both reads are owned reads: the workflow id and the user id, in that
+    order. Swapping or dropping one turns the check into a cross-tenant read (or
+    a swallowed ``TypeError``, which reads as "this workflow never qualified")."""
+
+    async def test_the_playbook_is_read_for_this_workflow_and_this_user(self):
+        calls: list = []
+        with patch(
+            f"{MODULE}.playbook_repository.get_for_workflow", new=_recording_lookup(calls, None)
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+        assert calls == [(WORKFLOW_ID, USER_ID)]
+        assert brief == PLAYBOOK_CHECK_BRIEF
+
+    async def test_the_workflow_behind_the_decline_gate_is_read_for_the_same_pair(self):
+        calls: list = []
+        with (
+            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
+            patch(
+                f"{MODULE}.workflow_repository.get_for_user",
+                new=_recording_lookup(calls, _workflow()),
+            ),
+        ):
+            brief = await playbook_check_brief(WORKFLOW_ID, USER_ID)
+
+        assert calls == [(WORKFLOW_ID, USER_ID)]
+        assert brief == PLAYBOOK_CHECK_BRIEF
+
+
 @pytest.mark.asyncio
 class TestDeclinesAreRemembered:
     """Declining used to persist nothing, so a workflow whose order genuinely
@@ -201,6 +251,26 @@ class TestDeclinesAreRemembered:
         )
         with patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)):
             assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
+
+    async def test_the_skipped_check_says_why_and_how_many_declines(self, _workflow_lookup):
+        """A check that stops happening has to be readable in the wide event.
+
+        Without the namespace a workflow that hit the decline limit is
+        indistinguishable from one that never qualified, and the decline count
+        is the only thing that says how close it got.
+        """
+        _workflow_lookup.return_value = _workflow(
+            declines=PLAYBOOK_DECLINE_LIMIT, declined_hash=self._hash()
+        )
+        with (
+            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.log.set_ns") as set_ns,
+        ):
+            assert await playbook_check_brief(WORKFLOW_ID, USER_ID) == ""
+
+        set_ns.assert_called_once_with(
+            "playbook", check_skipped="declined", declines=PLAYBOOK_DECLINE_LIMIT
+        )
 
     async def test_keeps_asking_below_the_limit(self, _workflow_lookup):
         _workflow_lookup.return_value = _workflow(
@@ -291,6 +361,37 @@ class TestSameFireFallbackBrief:
 
         assert brief.startswith(FALLBACK_NOTE)
         assert brief.endswith(PLAYBOOK_CHECK_BRIEF)
+
+
+class TestHealBriefRendering:
+    """The heal brief is pinned whole, not by substring.
+
+    Every slot in it is model-facing text: the verdict, the recorded reason and
+    the already-ran block. A substring check passes on a brief that renders
+    ``None`` into a slot or leaves a filler token behind, and the executor is
+    the only one who would notice.
+    """
+
+    def test_an_unrecognised_status_renders_a_plain_verdict_and_no_already_ran_block(self):
+        # SUCCESS is not in PLAYBOOK_HEAL_VERDICTS: it reaches heal_brief only
+        # via a same-fire fallback note, and the default is what keeps the
+        # sentence a sentence instead of rendering the missing key.
+        brief = heal_brief(_playbook(PlaybookRunStatus.SUCCESS))
+
+        assert brief == PLAYBOOK_HEAL_BRIEF.format(
+            verdict="did not hold", reason=PLAYBOOK_HEAL_NO_REASON, already_ran=""
+        )
+
+    def test_the_already_ran_block_is_the_stripped_note_in_its_template(self):
+        brief = heal_brief(
+            _playbook(PlaybookRunStatus.FAILED, "boom"), fallback_note=f"\n {FALLBACK_NOTE} \n"
+        )
+
+        assert brief == PLAYBOOK_HEAL_BRIEF.format(
+            verdict="stopped partway",
+            reason="boom",
+            already_ran=PLAYBOOK_HEAL_ALREADY_RAN.format(fallback_note=FALLBACK_NOTE),
+        )
 
 
 def test_the_check_closes_the_executor_brief():
@@ -560,6 +661,91 @@ class TestDistrustFreshPlaybook:
 
         assert reason is None
         record.assert_not_awaited()
+
+    async def test_the_audit_reads_the_playbook_for_this_workflow_and_this_user(self) -> None:
+        calls: list = []
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow",
+                new=_recording_lookup(calls, _frozen("GMAIL_FETCH_MESSAGES")),
+            ),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()),
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+            )
+
+        assert calls == [(WORKFLOW_ID, USER_ID)]
+        assert reason == (
+            "GMAIL_FETCH_MESSAGES returned no items in the run that wrote this playbook"
+        )
+
+    async def test_a_playbook_that_vanished_before_the_audit_is_left_alone(self) -> None:
+        """The write landed but the read came back empty (deleted, or another
+        writer got there first). There is nothing to mark suspect."""
+        with (
+            patch(f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=None)),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+            )
+
+        assert reason is None
+        record.assert_not_awaited()
+
+    async def test_a_playbook_that_has_already_been_replayed_is_not_re_audited(self) -> None:
+        """Only a never-replayed playbook is fresh. A stored verdict belongs to
+        the replay that earned it, and overwriting it with SUSPECT from an old
+        trace would send a working playbook back to the agent.
+        """
+        playbook = _frozen("GMAIL_FETCH_MESSAGES").model_copy(
+            update={"last_run_status": PlaybookRunStatus.SUCCESS}
+        )
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow", AsyncMock(return_value=playbook)
+            ),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()) as record,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+            )
+
+        assert reason is None
+        record.assert_not_awaited()
+
+    async def test_the_distrust_is_reported_with_the_playbook_and_the_reason(self) -> None:
+        """Marking a just-written playbook suspect flips the next fire from
+        replay to heal. Unreported, that looks like the agent simply decided to
+        re-author, with nothing anywhere naming the empty call that caused it.
+        """
+        with (
+            patch(
+                f"{MODULE}.playbook_repository.get_for_workflow",
+                AsyncMock(return_value=_frozen("GMAIL_FETCH_MESSAGES")),
+            ),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", AsyncMock()),
+            patch(f"{MODULE}.log.warning") as warning,
+        ):
+            reason = await distrust_fresh_playbook(
+                WORKFLOW_ID,
+                USER_ID,
+                [_call("GMAIL_FETCH_MESSAGES", EMPTY), _call("write_playbook", WRITTEN)],
+            )
+
+        warning.assert_called_once_with(
+            f"{LogTag.WORKFLOW} Playbook written on an empty result; the next fire heals it",
+            workflow_id=WORKFLOW_ID,
+            playbook_id="pb_1",
+            reason=reason,
+        )
 
     async def test_a_heal_runs_rewrite_is_exempt(self) -> None:
         playbook = _frozen("GMAIL_FETCH_MESSAGES")
