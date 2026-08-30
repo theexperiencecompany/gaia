@@ -102,6 +102,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           WATCHDOG_JOB_NAME: Watch for a stalled home runner
+          # The pool select-runner actually chose: before cancelling, the
+          # watchdog re-probes it and leaves a merely-busy box alone.
+          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
         run: bash scripts/ci/runner.sh watchdog
 
   # ── Detect — on the critical path of every lane. Measured 119s on a GitHub

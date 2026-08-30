@@ -319,39 +319,127 @@ print('|'.join([
 # once a job is picked up — and the PR check sits pending all day.
 #
 # Runs on ubuntu-latest alongside the compute lanes: polls this run's jobs and,
-# when any job has been queued longer than QUEUE_LIMIT_SECS, cancels the run
-# with an error that says what to do (re-run with force_github=true). Exits
-# quietly as soon as no job is queued any more.
+# when any job has been queued past QUEUE_LIMIT_SECS *with the run making no
+# progress and no home runner online*, cancels the run with an error that says
+# what to do (re-run with force_github=true).
+#
+# Two false positives this deliberately does NOT trip on:
+#   * An empty job list. A job whose `needs:` are unmet has no record yet, so
+#     the first poll of a run often lists nothing but this watchdog. Exiting
+#     there (the old behaviour) meant the watchdog was gone before the lanes
+#     it watches existed. It now keeps polling until the run leaves
+#     in_progress or every job it can see is in_progress/terminal.
+#   * A job queued on purpose. `select`'s online-busy-queued branch parks lanes
+#     on a busy box because the box's setup is ~30x cheaper than GitHub's, and
+#     a full box can exceed the limit honestly. So age is measured from when
+#     the job became ELIGIBLE — the later of its creation and the run's last
+#     sign of progress — and before cancelling the runners API is re-probed:
+#     if any instance carrying the label is online, the queue is real work,
+#     not a dead box. An inconclusive probe never cancels; the watchdog's own
+#     timeout-minutes bounds it instead.
 cmd_watchdog() {
-  local LIMIT POLL API jobs queued now name _status created age
+  local LIMIT POLL API LABEL run_status jobs queued live now last_progress
+  local name _status created started completed eligible age stalled probe
+  local stamp online_rc
   LIMIT="${QUEUE_LIMIT_SECS:-480}"
   POLL="${POLL_SECS:-30}"
+  LABEL="${RUNNER_LABEL:-gaia-home}"
   : "${WATCHDOG_JOB_NAME:?WATCHDOG_JOB_NAME is required}"
   export WATCHDOG_JOB_NAME
   API="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
   while :; do
-    # name<TAB>status<TAB>created_at, one job per line, this watchdog excluded.
+    run_status="$(gh api "$API" --jq '.status')"
+    case "$run_status" in
+      queued|pending|waiting|in_progress) ;;
+      *)
+        ci_ok "watchdog: run is ${run_status} — nothing left to watch"
+        exit 0
+        ;;
+    esac
+
+    # name<TAB>status<TAB>created_at<TAB>started_at<TAB>completed_at, one job
+    # per line, this watchdog excluded.
     jobs="$(gh api "${API}/jobs?per_page=100" \
-      --jq '.jobs[] | select(.name != env.WATCHDOG_JOB_NAME) | [.name, .status, .created_at] | @tsv')"
+      --jq '.jobs[] | select(.name != env.WATCHDOG_JOB_NAME)
+            | [.name, .status, (.created_at // ""), (.started_at // ""), (.completed_at // "")] | @tsv')"
     queued="$(printf '%s\n' "$jobs" | awk -F'\t' '$2 == "queued"')"
+    live="$(printf '%s\n' "$jobs" | awk -F'\t' 'NF && $2 != "completed"')"
+
     if [[ -z "$queued" ]]; then
-      ci_ok "watchdog: no queued jobs — every lane was picked up"
-      exit 0
-    fi
-    now="$(date -u +%s)"
-    while IFS=$'\t' read -r name _status created; do
-      [[ -n "$name" ]] || continue
-      age=$(( now - $(date -u -d "$created" +%s) ))
-      echo "watchdog: '$name' queued for ${age}s (limit ${LIMIT}s)"
-      if (( age > LIMIT )); then
-        echo "::error::'$name' has been queued for ${age}s — the home runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
-        gh api -X POST "${API}/cancel" >/dev/null
-        exit 1
+      if [[ -z "$live" && -n "${jobs//[[:space:]]/}" ]]; then
+        ci_ok "watchdog: every lane finished"
+        exit 0
       fi
+      if [[ -n "${jobs//[[:space:]]/}" ]]; then
+        ci_ok "watchdog: no queued jobs — every lane was picked up"
+        exit 0
+      fi
+      # No jobs yet: their `needs:` have not resolved. Keep watching.
+      echo "watchdog: no lanes created yet (run ${run_status}) — waiting"
+      sleep "$POLL"
+      continue
+    fi
+
+    now="$(date -u +%s)"
+    # The run's last sign of progress: the newest moment any lane started or
+    # finished. A lane that only just became eligible has not been stalled for
+    # however long its record has existed.
+    last_progress=0
+    while IFS=$'\t' read -r name _status created started completed; do
+      [[ -n "$name" ]] || continue
+      for stamp in "$started" "$completed"; do
+        [[ -n "$stamp" ]] || continue
+        probe="$(_epoch "$stamp")"
+        (( probe > last_progress )) && last_progress="$probe"
+      done
+    done <<< "$jobs"
+
+    stalled=""
+    while IFS=$'\t' read -r name _status created started completed; do
+      [[ -n "$name" ]] || continue
+      eligible="$(_epoch "$created")"
+      (( last_progress > eligible )) && eligible="$last_progress"
+      age=$(( now - eligible ))
+      echo "watchdog: '$name' eligible for ${age}s (limit ${LIMIT}s)"
+      (( age > LIMIT )) && stalled="$name"
     done <<< "$queued"
+
+    if [[ -n "$stalled" ]]; then
+      _watchdog_home_online "$LABEL" && online_rc=0 || online_rc=$?
+      case "$online_rc" in
+        0) ci_warn "'$stalled' has been queued for over ${LIMIT}s, but instances labelled '${LABEL}' are online — the box is busy, not dead. Not cancelling." ;;
+        2) ci_warn "'$stalled' has been queued for over ${LIMIT}s and the runners API could not be probed — not cancelling on an unknown." ;;
+        *)
+          echo "::error::'$stalled' has been queued past ${LIMIT}s and no runner labelled '${LABEL}' is online — the home runner accepted the run but is not picking jobs up. Cancelling; re-run with force_github=true to use GitHub-hosted runners."
+          gh api -X POST "${API}/cancel" >/dev/null
+          exit 1
+          ;;
+      esac
+    fi
     sleep "$POLL"
   done
+}
+
+# 0 = at least one instance with this label is online, 1 = none is,
+# 2 = the API could not be read (never a reason to cancel a run).
+_watchdog_home_online() {
+  local label="$1" n
+  n="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
+        --jq "[.runners[]? | select(any(.labels[]?; .name == \"${label}\")) | select(.status == \"online\")] | length" \
+        2>/dev/null || true)"
+  [[ -n "$n" ]] || return 2
+  # --paginate concatenates one count per page.
+  n="$(printf '%s\n' "$n" | awk '{s += $1} END {print s + 0}')"
+  (( n > 0 ))
+}
+
+# ISO-8601 (…Z) → epoch seconds. GNU `date -u -d` is not portable to the dev
+# laptop, and the watchdog's decision logic has to be testable there.
+_epoch() {
+  [[ -n "$1" ]] || { echo 0; return 0; }
+  python3 -c 'import sys,datetime
+print(int(datetime.datetime.fromisoformat(sys.argv[1].replace("Z","+00:00")).timestamp()))' "$1"
 }
 
 # ── cancel-superseded ─────────────────────────────────────────────────────
