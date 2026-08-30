@@ -67,15 +67,15 @@ runs:
         GITHUB_ACTOR: ${{ github.actor }}
       run: |
         set -euo pipefail
-        # Single source of truth: scripts/ci/select-runner.sh from the checkout.
+        # Single source of truth: scripts/ci/runner.sh select from the checkout.
         # A colocated copy used to shadow it and went stale — it checked only
         # the first runner instance, so a busy #1 sent every lane to GitHub
         # even with idle instances on the box.
-        SCRIPT="${{ github.action_path }}/../../../scripts/ci/select-runner.sh"
+        SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.sh select"
         if [[ -f "$SCRIPT" ]]; then
           bash "$SCRIPT"
         else
-          echo "::error::scripts/ci/select-runner.sh not found in the checkout" >&2
+          echo "::error::scripts/ci/runner.sh select not found in the checkout" >&2
           ls -R "${{ github.action_path }}" >&2 | head -n 50
           ls -R "scripts/ci" >&2 | head -n 50 || true
           exit 127

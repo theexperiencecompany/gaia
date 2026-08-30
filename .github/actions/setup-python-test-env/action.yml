@@ -79,11 +79,11 @@ runs:
       # release. Versions are hash-pinned via --frozen, so sdist builds run
       # the same audited code as every other install path.
       # Self-hosted: .venv persists in the workspace; skip the sync when the
-      # marker the previous sync left still matches (scripts/ci/dep-marker.sh
+      # marker the previous sync left still matches (scripts/ci/runner.sh dep-marker
       # keys it on uv.lock AND the pyproject files, ~10-20s saved).
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/dep-marker.sh python)"
+        MARK="$(bash scripts/ci/runner.sh dep-marker python)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -x .venv/bin/python ]; then
           echo ".venv already synced ($MARK) — skipping uv sync"
           exit 0

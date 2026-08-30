@@ -450,7 +450,7 @@ description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-
 run = "bash scripts/ci/pnpm-audit.sh"
 
 [tasks."audit:deps:test"]
-description = "Unit tests for the CI shell gates (select-runner.sh, pnpm-audit.sh)"
+description = "Unit tests for the CI shell gates (runner.sh, pnpm-audit.sh)"
 run = "uv run --no-project --with pytest pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────

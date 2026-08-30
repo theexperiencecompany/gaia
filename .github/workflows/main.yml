@@ -6,7 +6,7 @@ name: Quality Checks
 # behind a busy pool, since its environment setup is ~30x cheaper than a
 # GitHub-hosted runner's — and fall back to GitHub-hosted runners when it is
 # offline, unreachable, or the PR comes from a fork; see
-# scripts/ci/select-runner.sh. Release images stay on GitHub-hosted runners
+# scripts/ci/runner.sh select. Release images stay on GitHub-hosted runners
 # (build.yml). `workflow_dispatch` additionally exposes the runner probe.
 
 on:
@@ -32,7 +32,7 @@ on:
 # Per-SHA group: a new push must not wait for the old run's cancellation to
 # finish (a cancelled pytest step wedges the self-hosted worker for the
 # listener's 5-minute cancellation timeout). select-runner cancels the
-# superseded runs via the API instead — scripts/ci/cancel-superseded-runs.sh.
+# superseded runs via the API instead — scripts/ci/runner.sh cancel-superseded.
 concurrency:
   group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -64,7 +64,7 @@ jobs:
       - name: Cancel superseded runs of this branch
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/cancel-superseded-runs.sh
+        run: bash scripts/ci/runner.sh cancel-superseded
 
       - name: Select runner (tests, lint, build)
         id: pick
@@ -102,7 +102,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           WATCHDOG_JOB_NAME: Watch for a stalled home runner
-        run: bash scripts/ci/queued-job-watchdog.sh
+        run: bash scripts/ci/runner.sh watchdog
 
   # ── Detect — on the critical path of every lane. Measured 119s on a GitHub
   # runner (cold pnpm install + nx graph); on the box with persistent
@@ -210,7 +210,7 @@ jobs:
       - name: Detect optimal parallelism
         id: par
         run: |
-          NX=$(bash scripts/ci/detect-parallel.sh --nx)
+          NX=$(bash scripts/ci/runner.sh parallel --nx)
           echo "nx=$NX" >> "$GITHUB_OUTPUT"
           echo "NX parallel=$NX on $(nproc) vCPUs"
       - name: Build (timed, 16c-optimized)
@@ -306,7 +306,7 @@ jobs:
         id: par
         if: needs.select-runner.outputs.is_self_hosted != 'true'
         run: |
-          PY=$(bash scripts/ci/detect-parallel.sh --pytest-n)
+          PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
           echo "py=$PY" >> "$GITHUB_OUTPUT"
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
       # ── Test impact selection (PRs only, never the bridge slice) ───────────
@@ -444,7 +444,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Detect parallelism
         id: par
-        run: echo "nx=$(bash scripts/ci/detect-parallel.sh --nx)" >> "$GITHUB_OUTPUT"
+        run: echo "nx=$(bash scripts/ci/runner.sh parallel --nx)" >> "$GITHUB_OUTPUT"
       - name: Run TS tests (timed, adaptive)
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
         # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and

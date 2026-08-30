@@ -1,4 +1,4 @@
-"""select-runner.sh trust gates, exercised with stubbed GitHub event data.
+"""runner.sh select trust gates, exercised with stubbed GitHub event data.
 
 The home box runs only code from organisation members. Every path here is
 decided before the runners API is probed, so a bogus token keeps the script
@@ -14,7 +14,7 @@ import subprocess
 
 import pytest
 
-SCRIPT = Path(__file__).with_name("select-runner.sh")
+SCRIPT = Path(__file__).parent.parent / "runner.sh"
 REPO = "theexperiencecompany/gaia"
 
 
@@ -29,7 +29,7 @@ def select(**env: str) -> dict[str, str]:
     }
     base.update(env)
     proc = subprocess.run(
-        ["bash", str(SCRIPT)],
+        ["bash", str(SCRIPT), "select"],
         env=base,
         capture_output=True,
         text=True,

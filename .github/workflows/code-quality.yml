@@ -32,7 +32,7 @@ on:
         default: gaia-home-lint
 
 # Per-SHA group; superseded runs are cancelled by select-runner via the API
-# (scripts/ci/cancel-superseded-runs.sh) so a new push never waits on the old
+# (scripts/ci/runner.sh cancel-superseded) so a new push never waits on the old
 # run's cancellation — see main.yml for the measured reason.
 concurrency:
   group: code-quality-${{ github.workflow }}-${{ github.head_ref || github.ref }}-${{ github.sha }}
@@ -44,7 +44,7 @@ permissions:
 jobs:
   # ── Runner selection: home box when online, GitHub otherwise ──────────────
   # Every compute lane below runs on the 16-core home server through this
-  # probe (scripts/ci/select-runner.sh): queued behind a busy pool (setup
+  # probe (scripts/ci/runner.sh select): queued behind a busy pool (setup
   # there is ~30x cheaper than on GitHub), falling back to ubuntu-latest in
   # under 40s when the box is offline or unreachable, and always for fork
   # PRs. The gate and the pure-network scanners stay on GitHub — they gain
@@ -68,7 +68,7 @@ jobs:
       - name: Cancel superseded runs of this branch
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/cancel-superseded-runs.sh
+        run: bash scripts/ci/runner.sh cancel-superseded
       - id: pick
         uses: ./.github/actions/select-runner
         with:

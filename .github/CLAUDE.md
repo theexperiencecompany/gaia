@@ -26,7 +26,7 @@ every PR — pure duplicate spend with zero added enforcement.
 
 Both gate workflows open with a `select-runner` job (`ubuntu-latest`, no
 Tailscale needed) that probes the Actions runners API via
-`scripts/ci/select-runner.sh` through the `./.github/actions/select-runner`
+`scripts/ci/runner.sh select` through the `./.github/actions/select-runner`
 composite. Online + a free instance on the `gaia-home` box → every compute lane
 gets `runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}`; anything
 else → `["ubuntu-latest"]`. The fallback is total — no job ever carries a bare
@@ -46,13 +46,13 @@ Consequences to keep in mind when editing a lane:
 - **Concurrency is per SHA** (`ci-<ref>-<sha>`): cancelling a self-hosted job
   wedges its worker for the listener's 5-minute cancellation timeout, so
   superseded runs are cancelled through the API instead
-  (`scripts/ci/cancel-superseded-runs.sh`).
+  (`scripts/ci/runner.sh cancel-superseded`).
 - `self-hosted-runner/README.md` in the private `gaia-infra` repo documents the
   box, the twenty runner instances (eleven `gaia-home` for main.yml, nine
   `gaia-home-lint` for code-quality.yml), and the install/teardown path. It
   lives there, not here, because this repo is public and the box's topology is
   not.
-- **Fork PRs never run on the box.** `select-runner.sh` sends any PR whose
+- **Fork PRs never run on the box.** `runner.sh select` sends any PR whose
   head repo is not this one to `ubuntu-latest` before it even probes the
   runners API. The repo is public and the runner user's workspace, caches and
   network are shared state.
@@ -235,7 +235,7 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - Wall-clock perf assertions in tests must budget for shared-runner jitter
   (a 500ms bound flaked at 506ms; use order-of-magnitude tripwires, ~2x the
   observed worst case).
-- Parallelism is detected, not hardcoded: `scripts/ci/detect-parallel.sh`
+- Parallelism is detected, not hardcoded: `scripts/ci/runner.sh parallel`
   sizes `--parallel` / `-n` from the runner it lands on (16 threads on the home
   box, 4 vCPU on GitHub-hosted). Do not write a bare `-n auto` or
   `--parallel=3` into a lane.

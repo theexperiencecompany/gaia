@@ -65,7 +65,7 @@ runs:
       # verification pass; --prefer-offline keeps it off the network when the
       # store already has everything.
       # Self-hosted: node_modules persists in the workspace. When the marker
-      # the previous install left still matches (scripts/ci/dep-marker.sh keys
+      # the previous install left still matches (scripts/ci/runner.sh dep-marker keys
       # it on the lockfile AND the linker/workspace settings), the tree is by
       # construction what pnpm would produce — skip the ~15s verify pass.
       env:
@@ -78,7 +78,7 @@ runs:
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: |
         set -euo pipefail
-        MARK="$(bash scripts/ci/dep-marker.sh node)"
+        MARK="$(bash scripts/ci/runner.sh dep-marker node)"
         if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -d node_modules/.pnpm ]; then
           echo "node_modules already installed ($MARK) — skipping pnpm install"
           exit 0
