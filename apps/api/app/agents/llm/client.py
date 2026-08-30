@@ -790,9 +790,9 @@ async def _meter_discarded_replay(
             ),
             thread_id=str(thread_id) if thread_id else None,
             workflow_id=str(workflow_id) if workflow_id else None,
-            # A replay whose answer was thrown away: the discard is handed to
-            # this function already complete, so nothing here timed it.
-            duration_ms=None,
+            # ``duration_ms`` is left at its default: the discard is handed to
+            # this function already complete, so nothing here timed it and there
+            # is no wall time to report.
         ),
     )
     log.info(

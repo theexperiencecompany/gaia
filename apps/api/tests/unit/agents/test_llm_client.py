@@ -1167,6 +1167,62 @@ class TestMeterDiscardedReplay:
     # Unmarked for the same reason as the wide-event test below: this module
     # cannot collect on base, so the mark would report an ERROR rather than
     # proof. test_llm_client_sticky_flip_replay.py carries the mark.
+    async def test_the_discarded_replay_is_attributed_to_the_conversation_it_warmed(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """The replay is a real provider call GAIA chose to make, so its ledger
+        row has to name the conversation it warmed. Recorded against nothing, it
+        is ~20% of LLM spend that no per-conversation cost query can see."""
+        config = RunnableConfig(
+            configurable={
+                "user_id": "u-1",
+                "conversation_id": "conv-1",
+                "thread_id": "executor_conv-1",
+                "workflow_id": "wf-1",
+            }
+        )
+
+        await _meter_discarded_replay(self._DISCARDED, config, "the_judge")
+
+        context = booked_replay.await_args.kwargs["context"]
+        assert context.agent_name == "the_judge"
+        # Our own cache-warming re-send: never the user's allowance.
+        assert context.background is True
+        assert context.charge_to_budget is False
+        assert context.conversation_id == "conv-1"
+        assert context.thread_id == "executor_conv-1"
+        assert context.workflow_id == "wf-1"
+        # This seam meters the message itself and cannot reach the lane, so what
+        # the provider says it served is all there is to record.
+        assert context.model_served == "served/model"
+        # Handed an already-finished discard: nothing here timed it.
+        assert context.duration_ms is None
+
+    async def test_the_discarded_replay_records_the_upstream_and_generation_it_hit(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """A sticky flip is diagnosed by WHICH upstream served the retry, so the
+        replay's own generation id is the whole point of recording it."""
+        discarded = AIMessage(
+            content="warm",
+            response_metadata={
+                "model_name": "served/model",
+                "id": "gen-replay-1",
+                "provider": "fireworks",
+            },
+            usage_metadata={"input_tokens": 10, "output_tokens": 1, "total_tokens": 11},
+        )
+
+        await _meter_discarded_replay(discarded, RunnableConfig(configurable={}), "the_judge")
+
+        context = booked_replay.await_args.kwargs["context"]
+        assert context.generation_id == "gen-replay-1"
+        assert context.provider == "fireworks"
+        # Nothing in the bag to attribute it to — stated as absent, not guessed.
+        assert context.conversation_id is None
+        assert context.thread_id is None
+        assert context.workflow_id is None
+
     async def test_the_whole_token_breakdown_is_booked_as_background_cogs(
         self, booked_replay: AsyncMock
     ) -> None:

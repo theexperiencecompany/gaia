@@ -455,7 +455,7 @@ def extract_message_provider(message: AIMessage) -> str | None:
     ``generation_id`` is the handle that resolves the real upstream after the
     fact; this field only ever carries a name the response volunteered.
     """
-    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_meta = message.response_metadata or {}
     reported = str(resp_meta.get("provider") or "").strip()
     if not reported or reported.lower() == OPENROUTER_PROVIDER:
         return None

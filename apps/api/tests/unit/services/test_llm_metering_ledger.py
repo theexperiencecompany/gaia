@@ -9,12 +9,14 @@ turn.
 """
 
 import asyncio
+from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services import llm_metering
 from app.services.llm_metering import (
@@ -170,7 +172,24 @@ async def test_a_ledger_failure_never_fails_the_metered_call() -> None:
         await _drain()
 
     assert cost == 0.0037
+    # The warning IS the record of the dropped row, so it has to name the call
+    # that lost one and the failure that lost it — a bare "insert failed" cannot
+    # be attributed to a lane, a model, or a cause.
     warned.assert_called_once()
+    message, kwargs = warned.call_args.args[0], warned.call_args.kwargs
+    # The whole line, not a substring: the second half is what tells the reader
+    # the money was still booked, which is the difference between "we lost a row"
+    # and "we lost a charge".
+    assert message == (
+        f"{LogTag.MONGO} llm_calls ledger insert failed — the call is still "
+        "priced, budgeted and on the wide event; only its ledger row is missing"
+    )
+    assert kwargs == {
+        "agent_name": "executor_agent",
+        "model": "deepseek/deepseek-v4-flash",
+        "error": "mongo is down",
+        "error_type": "RuntimeError",
+    }
 
 
 # --- provider attribution ------------------------------------------------------ #
@@ -260,3 +279,51 @@ async def test_a_non_mapping_workflow_field_does_not_crash_the_metered_call() ->
         log.reset()
 
     assert doc.workflow_execution_id is None
+
+
+async def test_the_ledger_write_is_detached_from_the_users_turn() -> None:
+    """The insert is spawned, not awaited: nothing downstream depends on it, and
+    holding a turn open for a Mongo round-trip to write an analytics row would be
+    paying user-visible latency for observability. The task is named so a stuck
+    one is identifiable in a task dump rather than anonymous."""
+    with (
+        patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
+        patch("app.services.llm_metering.spawn_background_task") as spawn,
+    ):
+        await record_llm_call(
+            user_id="u1",
+            model_name="deepseek/deepseek-v4-flash",
+            usage=USAGE,
+            provider_cost=0.0037,
+            context=CONTEXT,
+        )
+        spawn.call_args.args[0].close()
+
+    assert spawn.call_args.kwargs["name"] == "llm_calls_ledger_insert"
+
+
+async def test_the_rows_timestamp_is_timezone_aware_utc() -> None:
+    """``created_at`` is the TTL key. A naive datetime is interpreted as UTC by
+    Mongo but compares wrong against every tz-aware value in the codebase, so a
+    ledger query by time would silently skew by the server's offset."""
+    doc = await _record()
+
+    assert doc.created_at.tzinfo is not None
+    assert doc.created_at.utcoffset() == timedelta(0)
+
+
+async def test_a_child_lane_with_no_conversation_id_recovers_it_from_the_thread() -> None:
+    """An executor run whose config carries only the wrapped thread still has to
+    join its parent turn in the ledger. Without the fallback its calls land with
+    no conversation and the turn's cost breakdown loses them."""
+    doc = await _record(
+        context=LLMCallContext(
+            agent_name="executor_agent",
+            background=False,
+            charge_to_budget=True,
+            thread_id=f"executor_{CONVERSATION}",
+        )
+    )
+
+    assert doc.conversation_id == CONVERSATION
+    assert doc.lane_thread == f"executor_{CONVERSATION}"
