@@ -154,6 +154,51 @@ def test_parse_event_reads_a_wide_event_line() -> None:
     )
 
 
+def test_a_sticky_flip_replay_is_background_even_without_the_background_flag() -> None:
+    # The events already in Loki predate the fix on this branch: the old code
+    # booked the discarded replay as the user's foreground spend, so they carry
+    # sticky_flip_discarded=true and no background flag. Keying off `background`
+    # alone would replay exactly the mistake this branch removes into
+    # cost_actual, splitting the 30-day history by the old rule and everything
+    # after the deploy by the new one.
+    line = (
+        '{"llm_event": "llm_call", "time": "2026-08-01T12:30:00Z", "user_id": "u1", '
+        '"sticky_flip_discarded": true, "cost_usd": 0.125, "generation_id": "gen-abc"}'
+    )
+
+    call = _parse_event(line)
+
+    assert call is not None
+    assert call.background is True
+
+
+def test_a_sticky_flip_replay_lands_in_the_aux_totals_not_the_users_costs() -> None:
+    # The end that matters: a pre-deploy replay's dollars must be COGS, not
+    # spend attributed to the user who never received its answer.
+    replay = _parse_event(
+        '{"llm_event": "llm_call", "time": "2026-08-01T12:30:00Z", "user_id": "u1", '
+        '"sticky_flip_discarded": true, "cost_usd": 0.20, "generation_id": "g2"}'
+    )
+    foreground = _parse_event(
+        '{"llm_event": "llm_call", "time": "2026-08-01T12:00:00Z", "user_id": "u1", '
+        '"cost_usd": 0.10, "generation_id": "g1"}'
+    )
+    assert replay is not None and foreground is not None
+
+    (row,) = aggregate_true_cost(
+        [foreground, replay],
+        {
+            "g1": GenerationRecord(total_cost=0.15, provider_name="alpha"),
+            "g2": GenerationRecord(total_cost=0.30, provider_name="alpha"),
+        },
+    )
+
+    assert row.cost_actual == 0.15
+    assert row.aux_cost_actual == 0.30
+    assert row.logged_cost == 0.10
+    assert row.logged_aux_cost == 0.20
+
+
 def test_parse_event_rejects_lines_that_are_not_llm_calls() -> None:
     assert _parse_event("not json at all") is None
     assert _parse_event('{"llm_event": "budget_stop", "user_id": "u1", "time": "x"}') is None

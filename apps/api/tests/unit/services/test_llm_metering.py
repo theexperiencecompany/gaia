@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+import pytest
 
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.db.repositories.usage_daily import UsageDailyIncrement
@@ -290,6 +291,19 @@ def test_an_unparseable_price_falls_back_rather_than_raising() -> None:
     assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": "n/a"})) is None
 
 
+@pytest.mark.parametrize("raw", ["inf", "-inf", "nan", float("inf"), float("nan")])
+def test_a_non_finite_price_falls_back_to_the_table(raw: str | float) -> None:
+    # These parse cleanly through float() and `inf >= 0.0` is true, so the
+    # ordinary sign check waves them through. A non-finite dollar figure is not
+    # something a provider charged — it poisons every sum it reaches — so the
+    # caller is sent back to the pricing table.
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": raw})) is None
+
+
+def test_a_negative_price_falls_back_to_the_table() -> None:
+    assert extract_message_cost(AIMessage(content="hi", response_metadata={"cost": -1.0})) is None
+
+
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
 @patch(
     "app.services.llm_metering.calculate_token_cost",
@@ -310,6 +324,33 @@ async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: A
     price.assert_not_called()
     assert usage.await_args is not None
     assert usage.await_args.args[1].cost == 0.0037
+
+
+@pytest.mark.parametrize("bad_cost", [float("inf"), float("-inf"), float("nan")])
+@patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)
+@patch(
+    "app.services.llm_metering.calculate_token_cost",
+    return_value={"total_cost": 0.25},
+)
+async def test_a_non_finite_provider_price_is_repriced_from_the_table(
+    price: MagicMock, usage: AsyncMock, bad_cost: float
+) -> None:
+    # `inf >= 0.0` is true, so a bare sign check lets a malformed provider cost
+    # bypass table pricing and write a non-finite dollar figure into the budget
+    # windows and usage_daily — where it contaminates every total that user-day
+    # touches and cannot be summed back out. The table is the fallback.
+    cost = await record_llm_call(
+        user_id="u1",
+        usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
+        model_name="deepseek/deepseek-v4-flash",
+        charge_to_budget=True,
+        provider_cost=bad_cost,
+    )
+
+    assert cost == 0.25
+    price.assert_called_once()
+    assert usage.await_args is not None
+    assert usage.await_args.args[1].cost == 0.25
 
 
 @patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock)

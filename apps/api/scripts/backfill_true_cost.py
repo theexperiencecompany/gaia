@@ -188,10 +188,28 @@ def _parse_event(line: str) -> LlmCall | None:
     return LlmCall(
         user_id=user_id,
         day=timestamp[:10],
-        background=raw.get("background") is True,
+        background=_is_background(raw),
         logged_cost=float(raw.get("cost_usd") or 0.0),
         generation_id=str(generation_id) if generation_id else None,
     )
+
+
+def _is_background(raw: Mapping[str, object]) -> bool:
+    """Whether this event's spend belongs in the auxiliary bucket, not the
+    user's foreground costs.
+
+    A sticky-flip replay counts as background *regardless of the ``background``
+    flag*. That is the whole point of this branch: the replay is a cache-warming
+    re-send GAIA chose to make and whose answer the user never received, so its
+    dollars are COGS, not the user's foreground spend. The events already in
+    Loki were emitted before that fix shipped — they carry
+    ``sticky_flip_discarded=true`` but no ``background=true``, because the old
+    code booked them as foreground. Keying off ``background`` alone would carry
+    exactly the mistake this branch removes into ``cost_actual``, so the
+    30-day history would be split by the old rule and everything after the
+    deploy by the new one.
+    """
+    return raw.get("background") is True or raw.get("sticky_flip_discarded") is True
 
 
 def _nanos(moment: datetime) -> int:

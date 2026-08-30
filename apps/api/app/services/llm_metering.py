@@ -21,6 +21,7 @@ because ``cost_budget`` cannot import ``config.model_pricing`` — that pulls in
 ``app.decorators``, which imports ``cost_budget`` right back.
 """
 
+import math
 from typing import TypedDict
 
 from langchain_core.messages import AIMessage
@@ -76,7 +77,12 @@ async def record_llm_call(
     # mis-states every call in one direction or the other, and it under-stated
     # total spend by 44% over a 1,486-call window. The table stays as the
     # fallback for providers/lanes that report no cost.
-    if provider_cost is not None and provider_cost >= 0.0:
+    # ``isfinite`` before the sign check, because ``inf >= 0.0`` is true: a
+    # malformed provider cost would otherwise bypass the table entirely and
+    # write inf/nan into the budget windows and the durable rollup, where it
+    # poisons every sum that touches that user-day. A non-finite value is not a
+    # cost the provider reported, so it falls through to table pricing.
+    if provider_cost is not None and math.isfinite(provider_cost) and provider_cost >= 0.0:
         return await _record(
             user_id=user_id,
             total_cost=float(provider_cost),
@@ -215,7 +221,11 @@ def extract_message_cost(message: AIMessage) -> float | None:
     :func:`app.config.model_pricing.calculate_token_cost`.
 
     A zero is a real answer (free/promotional routes exist) and is returned as
-    ``0.0``; only a missing or unparseable value returns ``None``.
+    ``0.0``; a missing, unparseable, negative or non-finite value returns
+    ``None`` so the caller falls back to table pricing. ``float("inf")`` and
+    ``float("nan")`` parse cleanly and ``inf >= 0.0`` is true, so they have to
+    be rejected explicitly — otherwise a malformed provider payload becomes a
+    non-finite dollar figure in the budget windows and the durable rollup.
     """
     resp_meta = message.response_metadata or {}
     raw = resp_meta.get("cost")
@@ -225,7 +235,7 @@ def extract_message_cost(message: AIMessage) -> float | None:
         cost = float(raw)
     except (TypeError, ValueError):
         return None
-    return cost if cost >= 0.0 else None
+    return cost if math.isfinite(cost) and cost >= 0.0 else None
 
 
 def extract_message_model(message: AIMessage) -> str:

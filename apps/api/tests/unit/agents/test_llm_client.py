@@ -866,28 +866,11 @@ class TestStickyFlipReplayThresholds:
         assert result.content == "cold"
         assert primary.ainvoke.await_count == 1
 
-    @pytest.mark.regression
-    async def test_the_small_conversation_steady_state_is_not_replayed(self) -> None:
-        """A 0.83-0.90 read is the documented steady state of a small
-        conversation — the provider under-reading a chain it already HOLDS, not a
-        flip to a cold upstream. There is nothing to re-warm, so a re-send here
-        is a second full request bought for a reporting artefact. This band was
-        inside the old 0.92 gate and is the bulk of the replays prod fires."""
-        prompt = 10_000
-        primary = _replaying_primary(
-            _replay_result("warm", prompt=prompt, cached=8_500),
-            _replay_result("unused", prompt=prompt, cached=prompt),
-        )
-
-        result = await ainvoke_llm(
-            primary,
-            [HumanMessage(content="hi")],
-            config=_STICKY_LANE,
-            options=LLMInvokeOptions(meter_auxiliary=False),
-        )
-
-        assert result.content == "warm"
-        assert primary.ainvoke.await_count == 1
+    # The 0.83-0.90 steady-state band (the provider under-reading a chain it
+    # already holds, which the old 0.92 gate swept in) is pinned in
+    # test_llm_client_sticky_flip_replay.py, where the same assertion can also
+    # run against the base revision and carry the regression mark. Not repeated
+    # here.
 
     async def test_a_genuine_cold_flip_is_still_replayed(self) -> None:
         """The narrowing must not disarm the case the replay exists for: a
@@ -1123,7 +1106,9 @@ class TestMeterDiscardedReplay:
         },
     )
 
-    @pytest.mark.regression
+    # Unmarked for the same reason as the wide-event test below: this module
+    # cannot collect on base, so the mark would report an ERROR rather than
+    # proof. test_llm_client_sticky_flip_replay.py carries the mark.
     async def test_the_whole_token_breakdown_is_booked_as_background_cogs(
         self, booked_replay: AsyncMock
     ) -> None:
@@ -1151,7 +1136,12 @@ class TestMeterDiscardedReplay:
             "provider_cost": None,
         }
 
-    @pytest.mark.regression
+    # Unmarked deliberately: this module imports symbols this branch introduces
+    # (ainvoke_structured_gemini, AUX_MODEL_NAME), so it cannot be COLLECTED
+    # against the base revision — the regression-proof lane counts that as an
+    # ERROR ("the harness broke"), not as proof. The runnable-on-base proof for
+    # this behaviour lives in test_llm_client_sticky_flip_replay.py, which
+    # exists for exactly that reason; this stays as coverage.
     @patch("app.agents.llm.client.log")
     async def test_the_discarded_spend_is_flagged_background_on_the_wide_event(
         self, mock_log: MagicMock, booked_replay: AsyncMock
