@@ -15,7 +15,7 @@ from pymongo.errors import PyMongoError
 from app.config.rate_limits import FEATURE_LIMITS
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.db.repositories.usage_daily import usage_daily_repository
+from app.db.repositories.usage_daily import UsageDailyIncrement, usage_daily_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
 from app.schemas.usage import ActivityDay, UsageActivityResponse
@@ -70,7 +70,9 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
     if not user_id or amount <= 0:
         return
     try:
-        await usage_daily_repository.increment(user_id, _day(datetime.now(UTC)), count=amount)
+        await usage_daily_repository.increment(
+            user_id, _day(datetime.now(UTC)), UsageDailyIncrement(count=amount)
+        )
     except PyMongoError as e:
         log.warning(
             f"{LogTag.MONGO} record_activity failed",
@@ -112,27 +114,18 @@ async def record_cost(
     if cost_usd <= 0 and not has_tokens:
         return
     try:
-        day = _day(datetime.now(UTC))
-        if charged:
-            await usage_daily_repository.increment(
-                user_id,
-                day,
+        await usage_daily_repository.increment(
+            user_id,
+            _day(datetime.now(UTC)),
+            UsageDailyIncrement(
                 cost=cost_usd,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 cached_tokens=cached_tokens,
                 reasoning_tokens=reasoning_tokens,
-            )
-        else:
-            await usage_daily_repository.increment(
-                user_id,
-                day,
-                aux_cost=cost_usd,
-                aux_input_tokens=input_tokens,
-                aux_output_tokens=output_tokens,
-                aux_cached_tokens=cached_tokens,
-                aux_reasoning_tokens=reasoning_tokens,
-            )
+            ),
+            charged=charged,
+        )
     except PyMongoError as e:
         log.warning(
             f"{LogTag.MONGO} record_cost failed",

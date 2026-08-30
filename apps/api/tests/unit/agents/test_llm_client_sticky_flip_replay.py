@@ -35,6 +35,24 @@ def _usage_message(content: str, *, prompt: int, cached: int) -> AIMessage:
     )
 
 
+@pytest.fixture(name="invoke_options")
+def _invoke_options() -> type:
+    """``LLMInvokeOptions``, resolved when a test RUNS rather than when this
+    file is imported.
+
+    This module must COLLECT cleanly against the base revision — that is the
+    whole reason it was split out of ``test_llm_client.py`` (see the module
+    docstring) — and ``LLMInvokeOptions`` is introduced by this branch. A
+    module-level import would turn the regression-proof lane's base collection
+    into an ERROR, which proves nothing about the bug this file pins. One
+    documented deferral in a fixture, rather than a bare inline import in
+    every test.
+    """
+    from app.agents.llm.client import LLMInvokeOptions
+
+    return LLMInvokeOptions
+
+
 class TestStickyFlipReplayAccounting:
     """When a graph call's prompt cache misses, ``ainvoke_llm`` re-sends to warm
     the provider's chain and DISCARDS the replay's answer — the first answer is
@@ -57,9 +75,9 @@ class TestStickyFlipReplayAccounting:
 
     @pytest.mark.regression
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_discarded_first_invocation_is_metered(self, mock_record: AsyncMock) -> None:
-        from app.agents.llm.client import LLMInvokeOptions
-
+    async def test_discarded_first_invocation_is_metered(
+        self, mock_record: AsyncMock, invoke_options: type
+    ) -> None:
         mock_record.return_value = 0.004
         primary = self._flipping_primary()
 
@@ -74,7 +92,7 @@ class TestStickyFlipReplayAccounting:
                 }
             },
             label="comms_agent",
-            options=LLMInvokeOptions(meter_auxiliary=False),
+            options=invoke_options(meter_auxiliary=False),
         )
 
         # The first answer is what streamed to the user, so it is what the turn
@@ -94,49 +112,49 @@ class TestStickyFlipReplayAccounting:
         assert charged["charge_to_budget"] is True
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_no_replay_means_no_extra_metering(self, mock_record: AsyncMock) -> None:
+    async def test_no_replay_means_no_extra_metering(
+        self, mock_record: AsyncMock, invoke_options: type
+    ) -> None:
         runnable = NonCallableMagicMock()
         runnable.with_retry = MagicMock(return_value=runnable)
         runnable.ainvoke = AsyncMock(
             return_value=_usage_message("warm", prompt=10_000, cached=9_900)
         )
-        from app.agents.llm.client import LLMInvokeOptions
-
         await ainvoke_llm(
-            runnable, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=False)
+            runnable, [HumanMessage(content="hi")], options=invoke_options(meter_auxiliary=False)
         )
 
         assert runnable.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_auxiliary_lane_never_replays(self, mock_record: AsyncMock) -> None:
+    async def test_auxiliary_lane_never_replays(
+        self, mock_record: AsyncMock, invoke_options: type
+    ) -> None:
         """A one-shot helper call has no prior chain — cold IS its steady
         state, so a replay is pure double billing."""
-        from app.agents.llm.client import LLMInvokeOptions
-
         primary = self._flipping_primary()
 
         await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], options=LLMInvokeOptions(meter_auxiliary=True)
+            primary, [HumanMessage(content="hi")], options=invoke_options(meter_auxiliary=True)
         )
 
         assert primary.ainvoke.await_count == 1
         mock_record.assert_not_awaited()
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_gemini_lane_never_replays(self, mock_record: AsyncMock) -> None:
+    async def test_gemini_lane_never_replays(
+        self, mock_record: AsyncMock, invoke_options: type
+    ) -> None:
         """No sticky routing on Gemini: a replay there is a second full-price
         call with no possible upside."""
-        from app.agents.llm.client import LLMInvokeOptions
-
         primary = self._flipping_primary()
 
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "gemini"}},
-            options=LLMInvokeOptions(meter_auxiliary=False),
+            options=invoke_options(meter_auxiliary=False),
         )
 
         assert primary.ainvoke.await_count == 1
@@ -144,12 +162,10 @@ class TestStickyFlipReplayAccounting:
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
     async def test_replay_is_silenced_so_it_never_streams_to_the_user(
-        self, mock_record: AsyncMock
+        self, mock_record: AsyncMock, invoke_options: type
     ) -> None:
         """Graph providers stream; without the silent stamp both invocations'
         tokens land in one SSE stream and the user sees two answers."""
-        from app.agents.llm.client import LLMInvokeOptions
-
         mock_record.return_value = 0.0
         primary = self._flipping_primary()
 
@@ -157,7 +173,7 @@ class TestStickyFlipReplayAccounting:
             primary,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            options=LLMInvokeOptions(meter_auxiliary=False),
+            options=invoke_options(meter_auxiliary=False),
         )
 
         first_cfg = primary.ainvoke.await_args_list[0].kwargs["config"]
@@ -166,7 +182,9 @@ class TestStickyFlipReplayAccounting:
         assert replay_cfg["metadata"]["silent"] is True
 
     @patch("app.agents.llm.client.record_llm_call", new_callable=AsyncMock)
-    async def test_a_failed_replay_keeps_the_first_response(self, mock_record: AsyncMock) -> None:
+    async def test_a_failed_replay_keeps_the_first_response(
+        self, mock_record: AsyncMock, invoke_options: type
+    ) -> None:
         """The first answer is complete and in hand — a 429 on the re-send
         must never cost the turn (or trigger a third, fallback call)."""
         runnable = NonCallableMagicMock()
@@ -177,13 +195,11 @@ class TestStickyFlipReplayAccounting:
                 RuntimeError("429 on the re-send"),
             ]
         )
-        from app.agents.llm.client import LLMInvokeOptions
-
         result = await ainvoke_llm(
             runnable,
             [HumanMessage(content="hi")],
             config={"configurable": {"provider": "openrouter"}},
-            options=LLMInvokeOptions(meter_auxiliary=False),
+            options=invoke_options(meter_auxiliary=False),
         )
 
         assert result.content == "cold"

@@ -24,7 +24,11 @@ import pytest
 import time_machine
 
 from app.db.redis import redis_cache
-from app.db.repositories.usage_daily import UsageDailyDocument, usage_daily_repository
+from app.db.repositories.usage_daily import (
+    UsageDailyDocument,
+    UsageDailyIncrement,
+    usage_daily_repository,
+)
 from app.services.usage_activity import get_activity, record_cost
 
 USER = "user-activity-1"
@@ -68,11 +72,14 @@ class TestRecordCost:
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            cost=0.02,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
+            charged=True,
         )
 
     async def test_auxiliary_spend_books_everything_under_the_aux_mirrors(
@@ -91,11 +98,14 @@ class TestRecordCost:
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            aux_cost=0.02,
-            aux_input_tokens=300,
-            aux_output_tokens=120,
-            aux_cached_tokens=50,
-            aux_reasoning_tokens=40,
+            UsageDailyIncrement(
+                cost=0.02,
+                input_tokens=300,
+                output_tokens=120,
+                cached_tokens=50,
+                reasoning_tokens=40,
+            ),
+            charged=False,
         )
 
     async def test_tokens_still_land_when_pricing_failed_and_the_cost_is_zero(
@@ -108,11 +118,8 @@ class TestRecordCost:
         increment.assert_awaited_once_with(
             USER,
             TODAY,
-            cost=0.0,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            UsageDailyIncrement(cost=0.0, input_tokens=300, output_tokens=120),
+            charged=True,
         )
 
     @pytest.mark.parametrize(
@@ -124,7 +131,7 @@ class TestRecordCost:
         await record_cost(USER, 0.0, charged=True, **{token_field: 7})
 
         increment.assert_awaited_once()
-        assert increment.await_args.kwargs[token_field] == 7
+        assert getattr(increment.await_args.args[2], token_field) == 7
 
     async def test_priced_spend_lands_even_when_the_token_counts_are_missing(
         self, increment: AsyncMock
@@ -135,13 +142,7 @@ class TestRecordCost:
         await record_cost(USER, 0.02, charged=True)
 
         increment.assert_awaited_once_with(
-            USER,
-            TODAY,
-            cost=0.02,
-            input_tokens=0,
-            output_tokens=0,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            USER, TODAY, UsageDailyIncrement(cost=0.02), charged=True
         )
 
     async def test_spend_is_charged_unless_the_caller_says_otherwise(
@@ -151,8 +152,7 @@ class TestRecordCost:
         # mirroring the Redis windows the wall enforces.
         await record_cost(USER, 0.02, input_tokens=300)
 
-        assert "cost" in increment.await_args.kwargs
-        assert "aux_cost" not in increment.await_args.kwargs
+        assert increment.await_args.kwargs["charged"] is True
 
     async def test_a_call_with_no_spend_and_no_tokens_writes_nothing(
         self, increment: AsyncMock

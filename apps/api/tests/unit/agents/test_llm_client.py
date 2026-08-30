@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.outputs import ChatGeneration, Generation, LLMResult
 from langchain_core.runnables import (
     Runnable,
     RunnableBinding,
@@ -38,11 +39,13 @@ from app.agents.llm.client import (
     LLMInvokeOptions,
     _build_default_llm,
     _create_configurable_llm,
+    _GenerationIdCallback,
     _get_available_providers,
     _get_ordered_providers,
     _meter_discarded_replay,
     _openrouter_wire_configurables,
     _record_auxiliary_usage,
+    _reported_cost,
     _silenced,
     _stamp_fallback,
     ainvoke_llm,
@@ -1125,6 +1128,24 @@ class TestMeterDiscardedReplay:
 
         assert booked_replay.await_args is not None
         assert booked_replay.await_args.kwargs["provider_cost"] == 0.0037
+
+    async def test_the_event_names_which_price_the_replay_was_booked_at(
+        self, booked_replay: AsyncMock
+    ) -> None:
+        """A table guess and a provider invoice are the same number in the log
+        unless the event says which it is — and they disagree by more than 10x
+        per upstream, so the true-cost coverage figure depends on this flag."""
+        config = RunnableConfig(configurable={"user_id": "u-1", "root_request_id": "r-1"})
+        priced = self._DISCARDED.model_copy(
+            update={"response_metadata": {"model_name": "served/model", "cost": 0.0037}}
+        )
+
+        with patch("app.agents.llm.client.log") as mock_log:
+            await _meter_discarded_replay(priced, config, "the_judge")
+            assert mock_log.info.call_args.kwargs["cost_source"] == "provider"
+
+            await _meter_discarded_replay(self._DISCARDED, config, "the_judge")
+            assert mock_log.info.call_args.kwargs["cost_source"] == "table"
 
     async def test_a_discarded_non_message_is_not_booked(self, booked_replay: AsyncMock) -> None:
         """Structured runnables return a schema instance, which carries no usage
@@ -2281,3 +2302,176 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         )
 
         assert fallback.bind.call_args.kwargs == {"session_id": "conv-1"}
+
+
+def _result(
+    *,
+    llm_output: dict[str, Any] | None = None,
+    message: AIMessage | None = None,
+) -> LLMResult:
+    """One provider reply in the shape the callback contract delivers it."""
+    generations = [[ChatGeneration(message=message)]] if message is not None else [[]]
+    return LLMResult(generations=cast(Any, generations), llm_output=llm_output)
+
+
+class TestReportedCost:
+    """What OpenRouter says a call cost, dug out of whichever shape carries it.
+
+    This is the number that replaces the flat pricing table, and the table is
+    wrong by more than 10x depending on which upstream served the request — so
+    every shape that can carry a price has to be read, and anything that is not
+    a price has to come back as ``None`` rather than as a wrong number.
+    """
+
+    def test_a_non_streaming_reply_carries_the_price_in_llm_output(self) -> None:
+        assert _reported_cost(_result(llm_output={"cost": 0.0042})) == 0.0042
+
+    def test_the_price_is_also_read_from_the_token_usage_block(self) -> None:
+        """The OpenAI-wire shape nests usage accounting under ``token_usage``;
+        a reader that only looks one level up prices those calls from the table
+        while logging that a provider figure was used."""
+        assert _reported_cost(_result(llm_output={"token_usage": {"cost": 0.007}})) == 0.007
+
+    def test_the_top_level_price_wins_over_the_nested_one(self) -> None:
+        result = _result(llm_output={"cost": 0.001, "token_usage": {"cost": 0.009}})
+        assert _reported_cost(result) == 0.001
+
+    def test_a_streamed_reply_carries_the_price_on_the_message_instead(self) -> None:
+        """Streaming leaves ``llm_output`` empty; ChatOpenRouter copies the
+        figure onto the message's ``response_metadata``."""
+        streamed = AIMessage(content="x", response_metadata={"cost": 0.0055})
+        assert _reported_cost(_result(llm_output={}, message=streamed)) == 0.0055
+
+    def test_zero_is_a_real_price_and_is_not_confused_with_no_price(self) -> None:
+        """Free and promotional routes genuinely cost 0. Reading that as "no
+        price reported" would fall back to the table and invent spend that
+        never happened."""
+        assert _reported_cost(_result(llm_output={"cost": 0})) == 0.0
+
+    def test_a_reply_that_reported_no_price_returns_none(self) -> None:
+        assert _reported_cost(_result(llm_output={})) is None
+        assert _reported_cost(_result(llm_output=None)) is None
+        assert _reported_cost(_result(llm_output={"token_usage": {}})) is None
+
+    def test_an_unparseable_price_falls_through_to_the_next_shape(self) -> None:
+        """A non-numeric value is not a price. It must not crash the metering
+        and must not be booked — the next shape, then the table, answers."""
+        streamed = AIMessage(content="x", response_metadata={"cost": 0.002})
+        assert _reported_cost(_result(llm_output={"cost": "n/a"}, message=streamed)) == 0.002
+        assert _reported_cost(_result(llm_output={"cost": "n/a"})) is None
+        # A structured value is a TypeError out of float(), not a ValueError —
+        # catching only one of the two turns a malformed price into a crash on
+        # a call the provider already served and charged for.
+        assert _reported_cost(_result(llm_output={"cost": {"amount": 1}})) is None
+        assert _reported_cost(_result(llm_output={"token_usage": {"cost": ["1"]}})) is None
+
+    def test_a_generation_without_a_message_is_skipped_not_crashed(self) -> None:
+        """``generations`` also holds plain ``Generation`` objects, which have
+        no ``message`` at all."""
+        assert _reported_cost(LLMResult(generations=[[Generation(text="x")]])) is None
+
+
+class TestTheGenerationCallbackAccumulatesCostAcrossAttempts:
+    """A retry or a fallback invokes the model more than once under ONE handler
+    pair. ``UsageMetadataCallbackHandler`` adds up every attempt's tokens, so
+    the price has to add up the same way — keeping only the last attempt's cost
+    books one attempt's dollars against several attempts' tokens and silently
+    under-counts spend on exactly the calls that went wrong.
+    """
+
+    def test_one_attempt_reports_that_attempts_price(self) -> None:
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(_result(llm_output={"cost": 0.004}))
+        assert cb.cost == 0.004
+
+    def test_a_retry_books_the_sum_of_every_attempt_not_just_the_last(self) -> None:
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(_result(llm_output={"cost": 0.004}))
+        cb.on_llm_end(_result(llm_output={"cost": 0.006}))
+        assert cb.cost == pytest.approx(0.010)
+
+    def test_an_unpriced_attempt_disqualifies_the_whole_call(self) -> None:
+        """A partial sum is not the call's cost. Booking it would be a number
+        confidently short of what was actually charged, so the caller falls
+        back to pricing the accumulated usage from the table instead."""
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(_result(llm_output={"cost": 0.004}))
+        cb.on_llm_end(_result(llm_output={}))
+        assert cb.cost is None
+
+    def test_a_handler_that_never_ran_reports_no_price(self) -> None:
+        assert _GenerationIdCallback().cost is None
+
+    def test_capturing_a_price_never_costs_the_generation_id(self) -> None:
+        """Both are read off the same reply; a mistake in one must not eat the
+        other."""
+        cb = _GenerationIdCallback()
+        cb.on_llm_end(_result(llm_output={"id": "gen-1", "cost": 0.004}))
+        assert (cb.generation_id, cb.cost) == ("gen-1", 0.004)
+
+
+class TestAuxiliaryCostSource:
+    """The auxiliary lane books a provider price only where it can honestly
+    attribute one, and the ``llm_call`` event says which price it booked."""
+
+    @staticmethod
+    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
+        handler = UsageMetadataCallbackHandler()
+        handler.usage_metadata = dict(usage_by_model)
+        return handler
+
+    async def test_a_single_model_call_books_the_reported_price(self) -> None:
+        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
+            patch("app.agents.llm.client.log") as mock_log,
+        ):
+            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+
+        assert rec.call_args.kwargs["provider_cost"] == 0.008
+        assert mock_log.info.call_args.kwargs["cost_source"] == "provider"
+
+    async def test_a_fan_out_across_models_falls_back_to_the_table(self) -> None:
+        """One reported figure cannot be attributed to one of several models,
+        so every row is priced from the table — and the event must say
+        ``table``, or coverage reporting counts a table guess as an invoice."""
+        handler = self._handler(
+            gemini={"input_tokens": 10, "output_tokens": 2},
+            openrouter={"input_tokens": 20, "output_tokens": 4},
+        )
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
+            patch("app.agents.llm.client.log") as mock_log,
+        ):
+            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+
+        assert [c.kwargs["provider_cost"] for c in rec.call_args_list] == [None, None]
+        assert {c.kwargs["cost_source"] for c in mock_log.info.call_args_list} == {"table"}
+
+    async def test_no_reported_price_is_logged_as_the_table(self) -> None:
+        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+
+        with (
+            patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
+            patch("app.agents.llm.client.log") as mock_log,
+        ):
+            await _record_auxiliary_usage(handler, "memory_extraction", "u1")
+
+        assert rec.call_args.kwargs["provider_cost"] is None
+        assert mock_log.info.call_args.kwargs["cost_source"] == "table"
+
+    async def test_ainvoke_llm_hands_the_accumulated_price_to_the_metering(self) -> None:
+        """The handler being right is worth nothing unless its VALUE is
+        forwarded — a hardcoded None would pass a kwarg-presence check."""
+        from tests.helpers import create_fake_llm
+
+        with (
+            patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
+            patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()) as rec,
+        ):
+            cb_cls.return_value.cost = 0.0123
+            await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
+
+        assert rec.await_args.kwargs["provider_cost"] == 0.0123

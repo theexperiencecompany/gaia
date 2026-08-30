@@ -1063,6 +1063,34 @@ class TestBindSessionId:
 # ---------------------------------------------------------------------------
 
 
+def _openrouter_lane() -> ModelLane:
+    return ModelLane(
+        provider=LLMProviderName.OPENROUTER,
+        model="vendor/dead-model",
+        reasoning={"effort": "low"},
+        provider_pin={"provider": {"only": ["dead-vendor"]}},
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def _gemini_lane() -> ModelLane:
+    return ModelLane(
+        provider=LLMProviderName.GEMINI,
+        model="gemini-x",
+        reasoning=None,
+        provider_pin=None,
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def _next_is_gemini() -> Any:
+    return patch.object(
+        lane_module,
+        "next_fallback_provider",
+        lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
+    )
+
+
 class TestFallbackPreparation:
     """The graph's provider failover.
 
@@ -1073,37 +1101,12 @@ class TestFallbackPreparation:
     different PROVIDER now, which is what these pin.
     """
 
-    def _openrouter_lane(self) -> ModelLane:
-        return ModelLane(
-            provider=LLMProviderName.OPENROUTER,
-            model="vendor/dead-model",
-            reasoning={"effort": "low"},
-            provider_pin={"provider": {"only": ["dead-vendor"]}},
-            max_input_tokens=DEFAULT_MAX_TOKENS,
-        )
-
-    def _gemini_lane(self) -> ModelLane:
-        return ModelLane(
-            provider=LLMProviderName.GEMINI,
-            model="gemini-x",
-            reasoning=None,
-            provider_pin=None,
-            max_input_tokens=DEFAULT_MAX_TOKENS,
-        )
-
-    def _next_is_gemini(self) -> Any:
-        return patch.object(
-            lane_module,
-            "next_fallback_provider",
-            lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
-        )
-
     def test_a_run_with_no_lane_has_no_fallback_to_prepare(self) -> None:
         assert _prepare_fallback(_make_llm(), [dummy_tool_a], {}) is None
 
     def test_no_other_configured_provider_means_no_fallback(self) -> None:
         configurable = cast(
-            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+            AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
 
         with patch.object(lane_module, "next_fallback_provider", lambda _current: None):
@@ -1114,10 +1117,10 @@ class TestFallbackPreparation:
         bound = MagicMock()
         llm.bind_tools.return_value = bound
         configurable = cast(
-            AgentConfigurable, {LANE_FIELD_ID: self._openrouter_lane().to_configurable()}
+            AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
 
-        with self._next_is_gemini():
+        with _next_is_gemini():
             prepared = _prepare_fallback(llm, [dummy_tool_a], configurable)
 
         assert prepared is not None
@@ -1135,12 +1138,12 @@ class TestFallbackPreparation:
         passed config over a bound one, so the stale keys must be REMOVED."""
         config = {
             "configurable": {
-                **self._openrouter_lane().binding_keys(),
+                **_openrouter_lane().binding_keys(),
                 "user_id": "u1",
             }
         }
 
-        rebound = _fallback_config(cast(RunnableConfig, config), self._gemini_lane())
+        rebound = _fallback_config(cast(RunnableConfig, config), _gemini_lane())
 
         configurable = rebound["configurable"]
         assert configurable["provider"] == LLMProviderName.GEMINI
@@ -1150,7 +1153,7 @@ class TestFallbackPreparation:
         assert configurable["user_id"] == "u1"
 
     def test_a_config_carrying_no_configurable_still_gets_the_fallback_lane(self) -> None:
-        rebound = _fallback_config(cast(RunnableConfig, {}), self._gemini_lane())
+        rebound = _fallback_config(cast(RunnableConfig, {}), _gemini_lane())
 
         assert rebound["configurable"]["provider"] == LLMProviderName.GEMINI
 
@@ -1230,6 +1233,102 @@ class TestTheFallbackKeepsTheAgentsOwnChain:
             )
 
         assert invoked.call_args.kwargs["options"].sticky_session_id == "conv-1-comms_agent"
+
+    def _node_config(self) -> RunnableConfig:
+        return _make_config(
+            **_openrouter_lane().binding_keys(),
+            **{LANE_FIELD_ID: _openrouter_lane().to_configurable()},
+            session_id="conv-1",
+            user_id="u1",
+        )
+
+    def _assert_rebound_onto_the_fallback_lane(self, options: Any) -> None:
+        """The fallback must run under the FALLBACK lane's config, carrying the
+        run's own keys. Reusing ``config`` is what made failover a no-op:
+        LangChain merges a passed config over a bound one, so the just-failed
+        provider went straight back on. Passing ``None`` instead loses the
+        user the spend belongs to."""
+        rebound = options.fallback_config
+        assert rebound is not None
+        assert rebound["configurable"]["provider"] == LLMProviderName.GEMINI
+        assert rebound["configurable"]["model"] == "gemini-x"
+        assert rebound["configurable"]["user_id"] == "u1"
+        # The dead lane's pins are cleared, not merged forward.
+        assert "provider_pin" not in rebound["configurable"]
+
+    @pytest.mark.asyncio
+    async def test_the_async_node_runs_the_fallback_under_the_fallback_lane(self) -> None:
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        with (
+            _next_is_gemini(),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
+                new=AsyncMock(return_value=AIMessage(content="ok")),
+            ) as invoked,
+        ):
+            await _agent_runnable(builder).afunc(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                self._node_config(),
+                store=MagicMock(),
+            )
+
+        self._assert_rebound_onto_the_fallback_lane(invoked.await_args.kwargs["options"])
+
+    def test_the_sync_node_runs_the_fallback_under_the_fallback_lane(self) -> None:
+        """Both call sites, again: they drift independently."""
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        with (
+            _next_is_gemini(),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.invoke_llm",
+                return_value=AIMessage(content="ok"),
+            ) as invoked,
+        ):
+            _agent_runnable(builder).func(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                self._node_config(),
+                store=MagicMock(),
+            )
+
+        self._assert_rebound_onto_the_fallback_lane(invoked.call_args.kwargs["options"])
+
+    @pytest.mark.asyncio
+    async def test_no_prepared_fallback_means_no_fallback_config_to_rebind(self) -> None:
+        """With nowhere to fail over to there is no second lane, and handing
+        ``ainvoke_llm`` a config for one would rebind the primary attempt."""
+        builder = create_agent(
+            _make_llm(),
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+        with (
+            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
+                new=AsyncMock(return_value=AIMessage(content="ok")),
+            ) as invoked,
+        ):
+            await _agent_runnable(builder).afunc(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                self._node_config(),
+                store=MagicMock(),
+            )
+
+        assert invoked.await_args.kwargs["options"].fallback_config is None
 
 
 # ---------------------------------------------------------------------------
