@@ -208,11 +208,16 @@ for entry in entries:
   # physical-core budget instead of thrashing it and the test-python/build lanes.
   # Fail-open and a no-op off the self-hosted box; MUTMUT_MAX_CHILDREN honours an
   # explicit override for the local runner.
-  local NPROC BUDGET
+  local NPROC BUDGET SLOTS
   NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
   BUDGET="$(( NPROC > 3 ? NPROC - 2 : 1 ))"
   export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$BUDGET}"
-  cpu_slots_acquire "$BUDGET"
+  # Acquire tokens for the workers we will ACTUALLY spawn, not the default
+  # budget: an explicit MUTMUT_MAX_CHILDREN override (e.g. a local runner) can
+  # exceed BUDGET, and taking only BUDGET tokens would let the shard run more
+  # workers than it holds slots for, weakening the host cap.
+  SLOTS="$MUTMUT_MAX_CHILDREN"; [ "$SLOTS" -ge "$BUDGET" ] || SLOTS="$BUDGET"
+  cpu_slots_acquire "$SLOTS"
 
   rc=0
   failed_modules=()
@@ -231,7 +236,7 @@ for entry in entries:
       failed_modules+=("$module")
     fi
   done < "$SHARD_TSV"
-  cpu_slots_release "$BUDGET"
+  cpu_slots_release "$SLOTS"
 
   # tail, NEVER cat: with mutmut's debug output on, a busy module writes a 13MB
   # shard.log, and feeding that through the runner's live-log pipe is where this
