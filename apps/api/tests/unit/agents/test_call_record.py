@@ -1,5 +1,6 @@
 """Tests for app.agents.core.subagents.call_record."""
 
+from datetime import UTC, datetime
 import json
 
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
@@ -7,8 +8,11 @@ import pytest
 
 from app.agents.core.subagents.call_record import (
     ARG_TRUNCATION_MARKER,
+    CALL_RECORD_LEAD_IN,
     EMPTY_RESULT_SUFFIX,
     MAX_RECORDED_ARG_CHARS,
+    _compact_json,
+    _truncated_arg,
     append_call_record,
     successful_call_lines,
 )
@@ -232,3 +236,74 @@ class TestAppendCallRecord:
 
     def test_text_is_untouched_when_the_run_made_no_calls(self) -> None:
         assert append_call_record("Subagent finished.", []) == "Subagent finished."
+
+
+@pytest.mark.unit
+class TestRenderingOneRecordedValue:
+    def test_a_value_json_cannot_encode_is_recorded_as_its_text_form(self) -> None:
+        """The record is built from whatever a tool was called with — a datetime, an
+        enum, a model. Raising here loses the whole record for one odd argument."""
+        assert _compact_json({"when": datetime(2026, 8, 27, 9, 0, tzinfo=UTC)}) == (
+            '{"when":"2026-08-27 09:00:00+00:00"}'
+        )
+
+    def test_a_value_exactly_at_the_cap_is_kept_whole(self) -> None:
+        at_cap = "x" * MAX_RECORDED_ARG_CHARS
+
+        assert _truncated_arg(at_cap) == at_cap
+        assert _truncated_arg(at_cap + "y") == at_cap + ARG_TRUNCATION_MARKER
+
+
+@pytest.mark.unit
+class TestCallsAreSkippedNotStoppedAt:
+    def test_a_nameless_call_is_dropped_rather_than_recorded_under_a_placeholder(
+        self,
+    ) -> None:
+        messages: list[AnyMessage] = [
+            _ai(
+                {"name": "", "args": {}, "id": "tc1"},
+                _call("GMAIL_SEND_EMAIL", {"to": "a@b.c"}, "tc2"),
+            ),
+            _ok("tc1"),
+            _ok("tc2"),
+        ]
+
+        assert successful_call_lines(messages) == ['GMAIL_SEND_EMAIL({"to":"a@b.c"})']
+
+    def test_a_skipped_call_does_not_end_the_message_it_sits_in(self) -> None:
+        """finish_task is usually emitted alongside the real work in one message.
+        Stopping at it instead of stepping over it records an empty run."""
+        messages: list[AnyMessage] = [
+            _ai(
+                _call(FINISH_TASK_NAME, {"result": "done"}, "tc1"),
+                _call("GMAIL_SEND_EMAIL", {"to": "a@b.c"}, "tc2"),
+            ),
+            _ok("tc1"),
+            _ok("tc2"),
+        ]
+
+        assert successful_call_lines(messages) == ['GMAIL_SEND_EMAIL({"to":"a@b.c"})']
+
+
+@pytest.mark.unit
+class TestTheRecordBlockIsExact:
+    def test_the_lead_in_and_every_call_are_one_line_each(self) -> None:
+        messages: list[AnyMessage] = [
+            _ai(
+                _call("GMAIL_FETCH_MESSAGES", {"max_messages": 5}, "tc1"),
+                _call("GMAIL_SEND_EMAIL", {"to": "a@b.c"}, "tc2"),
+            ),
+            _ok("tc1"),
+            _ok("tc2"),
+        ]
+
+        assert append_call_record("Subagent finished.", messages) == (
+            "Subagent finished.\n\n"
+            "<subagent_call_record>\n"
+            + CALL_RECORD_LEAD_IN
+            + "\n"
+            + 'GMAIL_FETCH_MESSAGES({"max_messages":5})'
+            + "\n"
+            + 'GMAIL_SEND_EMAIL({"to":"a@b.c"})'
+            + "\n</subagent_call_record>\n"
+        )

@@ -90,11 +90,15 @@ def successful_call_lines(messages: Sequence[AnyMessage]) -> list[str]:
     for message in messages:
         for call in getattr(message, "tool_calls", None) or []:
             name = str(call.get("name") or "")
-            if not name or name == FINISH_TASK_NAME or call.get("id") not in results:
+            call_id = call.get("id")
+            # Read once: past the guard, call_id is a key of results, and every
+            # key there is a non-empty tool_call_id, so the second read never
+            # needed a fallback for a missing id.
+            if not name or name == FINISH_TASK_NAME or call_id not in results:
                 continue
             args = {key: _truncated_arg(value) for key, value in (call.get("args") or {}).items()}
             line = f"{name}({_compact_json(args)})"
-            if largest_list_len(results[call.get("id") or ""]) == 0:
+            if largest_list_len(results[call_id]) == 0:
                 line += EMPTY_RESULT_SUFFIX
             lines.append(line)
     return lines

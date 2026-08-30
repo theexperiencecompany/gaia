@@ -140,7 +140,9 @@ def _largest_sequence(
 
     best: list[Any] | None = None
     best_rebuild: Callable[[list[Any]], object] = _as_is
-    best_size = -1
+    # Any sentinel below 2 is equivalent: a candidate is compact JSON of a list,
+    # never shorter than "[]", so the first one always wins the comparison.
+    best_size = -1  # pragma: no mutate
     for key, child in value.items():
         items, rebuild_child = _largest_sequence(child)
         if items is None:
@@ -178,7 +180,9 @@ def largest_list_len(value: object) -> int | None:
         return None
     for child in children:
         nested = largest_list_len(child)
-        if nested is not None and (best is None or nested > best):
+        # On a tie, re-assigning an equal int is a no-op, so > and >= are
+        # equivalent here; the strict form documents first-wins.
+        if nested is not None and (best is None or nested > best):  # pragma: no mutate
             best = nested
     return best
 

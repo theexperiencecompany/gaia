@@ -18,6 +18,7 @@ from app.services.workflow.playbook.evaluator import (
     PlaybookUser,
     RunContext,
     StepResult,
+    _resolve_time,
     last_run_index,
     resolve_args,
     resolve_value,
@@ -75,6 +76,19 @@ def test_time_offsets_move_forward_and_back() -> None:
     context = _context()
     assert resolve_value("$today + 1d", context) == "2026-03-15"
     assert resolve_value("$now - 2h", context) == "2026-03-14T07:30:00+01:00"
+
+
+def test_a_time_offset_is_applied_only_when_both_halves_are_present() -> None:
+    """Called directly, because the grammar can only ever hand this function an
+    amount and a unit together — the offset group in the token regex is all or
+    nothing. The guard is what keeps that a grammar detail: with half an offset
+    it resolves to the plain moment, where reading either half alone would index
+    the unit table with ``None`` or call ``int(None)`` and stop the run partway
+    through building a tool argument.
+    """
+    assert _resolve_time("today", "+", None, "d", NOW) == "2026-03-14"
+    assert _resolve_time("today", "+", "1", None, NOW) == "2026-03-14"
+    assert _resolve_time("today", "+", "1", "d", NOW) == "2026-03-15"
 
 
 def test_user_fields_resolve_from_the_profile() -> None:
@@ -141,6 +155,11 @@ def test_a_last_run_path_the_tool_did_not_return_stops_the_run_by_name() -> None
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$last_run.GMAIL_FETCH.next_page", context)
     _assert_actionable(caught.value, "$last_run.GMAIL_FETCH.next_page")
+    assert caught.value.message == (
+        "$last_run.GMAIL_FETCH.next_page is not in what GMAIL_FETCH returned last run"
+    )
+    assert caught.value.why == ("the previous run's result for that tool has no value at that path")
+    assert caught.value.fix == ("re-author the playbook against a run whose result has this shape")
 
 
 def test_a_last_run_result_recorded_as_text_cannot_be_addressed_into() -> None:
@@ -150,7 +169,11 @@ def test_a_last_run_result_recorded_as_text_cannot_be_addressed_into() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$last_run.GMAIL_FETCH.next_page", context)
     _assert_actionable(caught.value, "$last_run.GMAIL_FETCH.next_page")
-    assert "text" in caught.value.why
+    # A different `why` from the JSON-shaped miss above: "recorded as text" is
+    # the author's cue to look at the tool's output, not at their own path.
+    assert caught.value.why == (
+        "that result was recorded as text, not JSON, so it has no fields to address"
+    )
 
 
 def test_a_last_run_value_that_is_really_null_resolves_to_none() -> None:
@@ -176,23 +199,35 @@ def test_an_unknown_dollar_word_is_literal_text_whole_value_and_embedded() -> No
 def test_unresolvable_step_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$steps.missing.count", _context())
-    assert "$steps.missing.count" in caught.value.message
     _assert_actionable(caught.value, "$steps.missing.count")
+    assert caught.value.message == "$steps.missing.count points at a step that has not run"
+    assert caught.value.why == "no earlier step in this replay is named 'missing'"
+    assert caught.value.fix == (
+        "reference a step that runs before this one, or rewrite the playbook"
+    )
 
 
 def test_unresolvable_step_field_raises_and_names_the_placeholder() -> None:
     context = _context(steps={"inbox": StepResult(value={"count": 12})})
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$steps.inbox.total", context)
-    assert "$steps.inbox.total" in caught.value.message
     _assert_actionable(caught.value, "$steps.inbox.total")
+    # Names the step whose result fell short, not merely "somewhere": the author
+    # has to know which recorded call stopped matching reality.
+    assert caught.value.message == "$steps.inbox.total is not in step 'inbox''s result"
 
 
 def test_unresolvable_trigger_raises_and_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$trigger.email.subject", _context(trigger={"events": []}))
-    assert "$trigger.email.subject" in caught.value.message
     _assert_actionable(caught.value, "$trigger.email.subject")
+    # The whole triple, not fragments: the author is told which token, where it
+    # was looked for by a name they recognise, and what to do about it.
+    assert caught.value.message == "$trigger.email.subject is not in the trigger payload"
+    assert caught.value.why == (
+        "the value the playbook expects to read is absent from what actually came back"
+    )
+    assert caught.value.fix == "re-author the playbook against a run that produced this shape"
 
 
 def test_empty_user_field_raises_and_names_the_placeholder() -> None:
@@ -259,8 +294,8 @@ def test_an_offset_on_a_non_time_root_is_rejected() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$trigger.at + 1d", _context(trigger={"at": "x"}))
     _assert_actionable(caught.value, "$trigger.at")
-    assert "$now" in caught.value.why
-    assert "$today" in caught.value.why
+    assert caught.value.why == "only $now and $today take an offset"
+    assert caught.value.fix == "drop the offset from $trigger"
 
 
 def test_last_run_index_keeps_the_most_recent_call_per_tool() -> None:
@@ -291,7 +326,8 @@ def test_unknown_user_field_is_rejected_and_names_the_real_ones() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$user.phone", _context())
     _assert_actionable(caught.value, "$user.phone")
-    assert "email, name, timezone" in caught.value.why
+    assert caught.value.why == "$user exposes email, name, timezone and nothing else"
+    assert caught.value.fix == "address one of those fields"
 
 
 def test_missing_ask_names_the_placeholder() -> None:
@@ -299,6 +335,9 @@ def test_missing_ask_names_the_placeholder() -> None:
     with pytest.raises(PlaceholderError) as caught:
         resolve_value("$ask.body", _context(asks={"subject": "hi"}))
     _assert_actionable(caught.value, "$ask.body")
+    assert caught.value.message == "$ask.body was never written"
+    assert caught.value.why == "the run's one model call produced no text for that ask"
+    assert caught.value.fix == "declare the ask in the playbook, or stop addressing it"
 
 
 def test_a_step_placeholder_with_no_field_resolves_to_the_whole_result() -> None:
@@ -389,5 +428,11 @@ class TestACutRecordedValueIsNotReplayed:
             asks={},
         )
 
-        with pytest.raises(PlaceholderError):
+        with pytest.raises(PlaceholderError) as caught:
             resolve_args({"page_token": "$last_run.list_events.next_page_token"}, context)
+
+        # Names the argument, so the author knows which one to re-record rather
+        # than being told only that "something" was cut.
+        assert caught.value.message == (
+            "page_token: the recorded value was cut when it was stored and cannot be replayed"
+        )

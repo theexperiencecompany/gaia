@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import (
     AIMessage,
@@ -25,11 +25,16 @@ from app.agents.core.graph_manager import GraphUnavailableError
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     ThreadSeed,
+    _consume_stream_event,
+    _finalize_run,
+    _process_updates_payload,
+    _StreamRun,
     build_initial_messages,
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.agents.llm.lane import AgentRole
+from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import SubAgentConfig
@@ -85,6 +90,25 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
     }
     defaults.update(overrides)
     return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
+
+
+def _make_run(**overrides) -> _StreamRun:
+    """One in-flight ``execute_subagent_stream`` drive, without the stream.
+
+    The per-mode handlers and the finalizer all take this by reference, so a
+    test can drive them directly instead of through the astream loop.
+    """
+    defaults: dict[str, object] = {
+        "ctx": _make_ctx(),
+        "stream_writer": None,
+        "integration_metadata": None,
+        "subagent_id": None,
+    }
+    ctx_overrides = overrides.pop("ctx_overrides", None)
+    if ctx_overrides is not None:
+        defaults["ctx"] = _make_ctx(**ctx_overrides)
+    defaults.update(overrides)
+    return _StreamRun(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict
 
 
 FAKE_SUBAGENTS = (
@@ -612,6 +636,315 @@ class TestExecuteSubagentStream:
         call_kwargs = mock_extract.call_args.kwargs
         assert call_kwargs["integration_metadata"] is metadata
 
+    @pytest.mark.asyncio
+    async def test_the_runs_subagent_id_tags_everything_it_emits(self):
+        """The id the caller passes is what nests every event in the subagent's
+        row; dropped, the client renders the result outside the row it belongs to.
+        """
+        tool_msg = ToolMessage(content="result", tool_call_id="tc-sub")
+        stream_writer = MagicMock()
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (tool_msg, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await execute_subagent_stream(ctx, stream_writer=stream_writer, subagent_id="sub-1")
+
+        assert stream_writer.call_args[0][0]["tool_output"]["subagent_id"] == "sub-1"
+
+
+# ---------------------------------------------------------------------------
+# _process_updates_payload — driven directly, one payload at a time
+# ---------------------------------------------------------------------------
+
+
+class TestProcessUpdatesPayload:
+    """The "updates" branch, called directly: what it records, what it forwards
+    to the tool-entry extractor, and the exact chunk it writes."""
+
+    @staticmethod
+    def _entries(entries: list[tuple[str, dict[str, Any]]]) -> Any:
+        return patch(
+            "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
+            new_callable=AsyncMock,
+            return_value=entries,
+        )
+
+    @pytest.mark.asyncio
+    async def test_an_interrupt_event_records_its_payloads_and_stops_there(self):
+        """The approval values come out of the event's own ``__interrupt__``
+        entry — accumulated, because one event arrives per paused task."""
+        run = _make_run()
+        payload = {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "a1"}, {"approval_id": "a2"})}
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            await _process_updates_payload(run, payload)
+
+        assert run.pending_approvals == [{"approval_id": "a1"}, {"approval_id": "a2"}]
+        assert run.run_messages == []
+
+    @pytest.mark.asyncio
+    async def test_a_non_agent_node_is_skipped_without_abandoning_the_rest(self):
+        """Skipping the pre-model hook must ``continue``, not ``break`` — the
+        agent node's update arrives in the SAME payload behind it."""
+        ai = AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "tc-1"}])
+        writer = MagicMock()
+        run = _make_run(stream_writer=writer)
+        payload = {
+            "filter_messages_node": {"messages": []},
+            "agent": {"messages": [ai]},
+        }
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            self._entries([("tc-1", {"name": "web_search"})]),
+        ):
+            await _process_updates_payload(run, payload)
+
+        assert run.run_messages == [ai]
+        writer.assert_called_once_with({"tool_data": {"name": "web_search"}})
+
+    @pytest.mark.asyncio
+    async def test_an_agent_update_without_messages_records_nothing(self):
+        """The default is an empty list, not ``None`` — a node update that
+        carries no messages at all is ordinary, not a crash."""
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"todos": []}})
+
+        assert run.run_messages == []
+
+    @pytest.mark.asyncio
+    async def test_only_tool_bearing_messages_are_captured(self):
+        """The filter reads ``tool_calls`` defensively: the agent node's update
+        also carries messages that have no such attribute at all."""
+        ai = AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "tc-1"}])
+        plain = HumanMessage(content="not a tool call")
+        run = _make_run()
+
+        with patch("app.agents.core.subagents.subagent_runner.log"), self._entries([]):
+            await _process_updates_payload(run, {"agent": {"messages": [plain, ai]}})
+
+        assert run.run_messages == [ai]
+
+    @pytest.mark.asyncio
+    async def test_the_extractor_receives_this_nodes_update_and_the_runs_own_state(self):
+        metadata = {"icon_url": "https://icon.png"}
+        run = _make_run(integration_metadata=metadata)
+        run.emitted_tool_calls.add("tc-already")
+        state_update = {"messages": []}
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            self._entries([]) as mock_extract,
+        ):
+            await _process_updates_payload(run, {"agent": state_update})
+
+        assert mock_extract.call_args.args == ()
+        assert mock_extract.call_args.kwargs == {
+            "state_update": state_update,
+            "emitted_tool_calls": {"tc-already"},
+            "integration_metadata": metadata,
+        }
+
+    @pytest.mark.asyncio
+    async def test_announcing_a_call_claims_its_result_for_this_stream_and_subagent(self):
+        """``note_tool_output_owner`` is what stops "messages" mode re-emitting
+        the same ToolMessage untagged — all three arguments decide the claim."""
+        run = _make_run(subagent_id="sub-1", ctx_overrides={"stream_id": "s-1"})
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch("app.agents.core.subagents.subagent_runner.note_tool_output_owner") as mock_note,
+            self._entries([("tc-1", {"name": "web_search"})]),
+        ):
+            await _process_updates_payload(run, {"agent": {"messages": []}})
+
+        assert mock_note.call_args_list == [call("s-1", "tc-1", "sub-1")]
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_stream_id_claims_against_the_empty_string(self):
+        run = _make_run(subagent_id="sub-1", ctx_overrides={"stream_id": None})
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            patch("app.agents.core.subagents.subagent_runner.note_tool_output_owner") as mock_note,
+            self._entries([("tc-1", {"name": "web_search"})]),
+        ):
+            await _process_updates_payload(run, {"agent": {"messages": []}})
+
+        assert mock_note.call_args_list == [call("", "tc-1", "sub-1")]
+
+    @pytest.mark.asyncio
+    async def test_a_subagents_tool_data_carries_its_id_beside_the_entry(self):
+        writer = MagicMock()
+        run = _make_run(stream_writer=writer, subagent_id="sub-1")
+        tool_entry = {"name": "web_search", "args": {"q": "test"}}
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            self._entries([("tc-1", tool_entry)]),
+        ):
+            await _process_updates_payload(run, {"agent": {"messages": []}})
+
+        assert writer.call_args_list == [
+            call({"tool_data": {**tool_entry, "subagent_id": "sub-1"}})
+        ]
+        # The entry itself is never mutated in place — the tagged copy is a new dict.
+        assert tool_entry == {"name": "web_search", "args": {"q": "test"}}
+
+    @pytest.mark.asyncio
+    async def test_without_a_subagent_id_the_entry_is_written_untagged(self):
+        writer = MagicMock()
+        run = _make_run(stream_writer=writer, subagent_id=None)
+        tool_entry = {"name": "web_search", "args": {"q": "test"}}
+
+        with (
+            patch("app.agents.core.subagents.subagent_runner.log"),
+            self._entries([("tc-1", tool_entry)]),
+        ):
+            await _process_updates_payload(run, {"agent": {"messages": []}})
+
+        assert writer.call_args_list == [call({"tool_data": tool_entry})]
+
+
+# ---------------------------------------------------------------------------
+# _consume_stream_event — the per-mode dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestConsumeStreamEvent:
+    """The "messages" branch hands five positional arguments down, and every one
+    of them decides where the chunk's output is routed."""
+
+    @staticmethod
+    def _messages_handler() -> Any:
+        return patch(
+            "app.agents.core.subagents.subagent_runner._process_messages_payload",
+            return_value="accumulated",
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_messages_handler_gets_the_runs_writer_id_and_stream(self):
+        writer = MagicMock()
+        run = _make_run(
+            stream_writer=writer, subagent_id="sub-1", ctx_overrides={"stream_id": "s-1"}
+        )
+        run.complete_message = "so far"
+        payload = (AIMessageChunk(content="hi"), {})
+
+        with self._messages_handler() as mock_handler:
+            await _consume_stream_event(run, "messages", payload)
+
+        assert mock_handler.call_args == call(payload, "so far", writer, "sub-1", "s-1")
+        assert run.complete_message == "accumulated"
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_stream_id_passes_the_empty_string_down(self):
+        run = _make_run(ctx_overrides={"stream_id": None})
+        payload = (AIMessageChunk(content="hi"), {})
+
+        with self._messages_handler() as mock_handler:
+            await _consume_stream_event(run, "messages", payload)
+
+        assert mock_handler.call_args.args[4] == ""
+
+
+# ---------------------------------------------------------------------------
+# _finalize_run
+# ---------------------------------------------------------------------------
+
+
+_NARRATION = (
+    "The test_agent subagent ended without running any tool; it only produced "
+    'planning text: "I will send the email". Re-issue the handoff with an '
+    "explicit instruction to perform the action."
+)
+
+
+class TestFinalizeRun:
+    """What a drained (or paused) run turns into, and the wide-event fields the
+    outcome is stamped with."""
+
+    @staticmethod
+    def _ctx_overrides() -> dict[str, object]:
+        return {
+            "initial_state": {
+                "messages": [HumanMessage(content="a"), HumanMessage(content="b")],
+                "todos": [],
+            }
+        }
+
+    def test_a_paused_run_returns_its_partial_text_the_merged_approval_and_its_messages(self):
+        ai = AIMessage(content="", tool_calls=[{"name": "send_email", "args": {}, "id": "tc-1"}])
+        run = _make_run()
+        run.complete_message = "partial"
+        run.run_messages = [ai]
+        run.pending_approvals = [
+            {"approval_id": "a1", "tool": "send_email"},
+            {"approval_id": "a2", "tool": "delete_file"},
+        ]
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            outcome = _finalize_run(run)
+
+        assert outcome.paused
+        assert outcome.text == "partial"
+        assert outcome.interrupt == {
+            "approval_id": "a1",
+            "tool": "send_email",
+            "approval_ids": ["a1", "a2"],
+        }
+        assert outcome.run_messages == (ai,)
+
+    def test_a_narration_only_run_is_reported_as_an_actionable_failure(self):
+        run = _make_run(ctx_overrides=self._ctx_overrides())
+        run.complete_message = "I will send the email"
+
+        with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
+            outcome = _finalize_run(run)
+
+        assert outcome.text == _NARRATION
+        assert not outcome.paused
+        assert mock_log.warning.call_args == call(
+            "subagent_returned_narration_only", subagent_name="test_agent"
+        )
+        assert mock_log.set.call_args == call(
+            subagent={
+                "name": "test_agent",
+                "provider": "test",
+                "response_length": len(_NARRATION),
+                "messages_count": 2,
+            }
+        )
+
+    def test_an_announced_tool_call_makes_the_same_text_an_ordinary_result(self):
+        """The second half of the narration guard: a run that announced a call
+        did the work, even if no ToolMessage came back before the stream ended.
+        """
+        run = _make_run(ctx_overrides=self._ctx_overrides())
+        run.complete_message = "I will send the email"
+        run.emitted_tool_calls.add("tc-1")
+
+        with patch("app.agents.core.subagents.subagent_runner.log") as mock_log:
+            outcome = _finalize_run(run)
+
+        assert outcome.text == "I will send the email"
+        mock_log.warning.assert_not_called()
+        assert mock_log.set.call_args == call(
+            subagent={
+                "name": "test_agent",
+                "provider": "test",
+                "response_length": len("I will send the email"),
+                "messages_count": 2,
+            }
+        )
+
 
 # ---------------------------------------------------------------------------
 # prepare_executor_execution
@@ -963,6 +1296,36 @@ class TestPrepareExecutorExecution:
 
         call_kwargs = mock_build_config.call_args.kwargs
         assert call_kwargs["thread"].vfs_session_id == "t1"
+
+    @pytest.mark.asyncio
+    async def test_the_seed_carries_the_tier_the_user_and_the_unenhanced_query(self):
+        """Every ThreadSeed field is load-bearing: the tier decides which context
+        sections apply, the user id scopes what they retrieve, and the query has
+        to stay the ORIGINAL task — the workflow section injected into
+        ``enhanced_task`` would otherwise pollute the semantic search."""
+        build_config = AsyncMock(return_value={"configurable": {"thread_id": "executor_t1"}})
+        graph, config, system, context = self._prepare_patches(build_config)
+        with graph, config, system, context as mock_assemble:
+            ctx, error = await prepare_executor_execution(
+                task="run tests",
+                configurable={"user_id": "u1", "thread_id": "t1", "workflow_id": "wf-1"},
+            )
+
+        assert error is None
+        seed_ctx = mock_assemble.call_args.args[0]
+        assert seed_ctx.tier is AgentTier.EXECUTOR
+        assert seed_ctx.user_id == "u1"
+        assert seed_ctx.query == "run tests"
+
+        task_msg = next(
+            m
+            for m in ctx.initial_state["messages"]
+            if m.type == "human" and not m.additional_kwargs.get("time_context")
+        )
+        # The seeded turn is the enhanced text, addressed to the executor by name.
+        assert task_msg.additional_kwargs["visible_to"] == {"executor_agent"}
+        assert task_msg.content.startswith("run tests\n")
+        assert task_msg.content != "run tests"
 
 
 # ---------------------------------------------------------------------------

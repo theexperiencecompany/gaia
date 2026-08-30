@@ -12,19 +12,26 @@ The persist itself goes through ``conversation_repository.append_message_tool_da
 these tests mock that repository method (never the DB).
 """
 
+from collections.abc import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 import pytest
 
+from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background import session as sess
 from app.agents.core.background.session import RunKind, create_session, get_session
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
     _attach_executor_tool_data,
+    _consume_agent_stream,
     _finalize_stream,
     _resolve_pending_approval_turn,
     _StreamState,
+    _TurnContext,
 )
 
 
@@ -236,3 +243,158 @@ class TestResolvePendingApprovalTurnDegradesOnFailure:
 
         sm.publish_chunk.assert_not_awaited()
         persist.assert_not_awaited()
+
+
+class TestConsumeAgentStreamCallsTheAgent:
+    """``_consume_agent_stream`` is the only place the turn's identity is handed
+    to ``call_agent``: the request, the user, the conversation, the usage
+    collector + source (as ``AgentRunOptions``) and the three message ids (as
+    ``StreamMessageIds``). Every one of them is a keyword the agent reads and
+    nothing here reads back, so a dropped or nulled argument produces a turn
+    that streams normally and is attributed to nobody.
+    """
+
+    async def test_the_turn_identity_reaches_call_agent_intact(self) -> None:
+        captured: dict[str, Any] = {}
+
+        async def _no_chunks() -> AsyncGenerator[str, None]:
+            return
+            yield ""  # pragma: no cover - makes this an async generator
+
+        # The real ``call_agent`` signature, so a dropped positional/keyword
+        # raises TypeError here instead of silently shifting an argument.
+        async def fake_call_agent(
+            request: MessageRequestWithHistory,
+            conversation_id: str,
+            user: AuthenticatedUser,
+            options: AgentRunOptions | None = None,
+            ids: StreamMessageIds | None = None,
+        ) -> AsyncGenerator[str, None]:
+            captured.update(
+                request=request,
+                conversation_id=conversation_id,
+                user=user,
+                options=options,
+                ids=ids,
+            )
+            return _no_chunks()
+
+        body = MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        user: AuthenticatedUser = {"user_id": "u1"}
+        state = _StreamState(turn_id="turn-1")
+        usage_callback = UsageMetadataCallbackHandler()
+        turn = _TurnContext(
+            conversation_id="conv-1",
+            stream_id="stream-1",
+            source="whatsapp",
+            usage_callback=usage_callback,
+        )
+
+        with patch.object(chat_stream, "call_agent", fake_call_agent):
+            left_over = await _consume_agent_stream(body, user, turn, None, state)
+
+        assert left_over is None
+        assert captured["request"] is body
+        assert captured["user"] is user
+        assert captured["conversation_id"] == "conv-1"
+
+        options = captured["options"]
+        assert isinstance(options, AgentRunOptions)
+        assert options.usage_metadata_callback is usage_callback
+        assert options.source == "whatsapp"
+
+        assert captured["ids"] == StreamMessageIds(
+            stream_id="stream-1",
+            user_message_id=state.user_message_id,
+            bot_message_id=state.bot_message_id,
+        )
+
+
+class TestRunChatStreamTurnDerivations:
+    """``_run_chat_stream`` derives two values before any collaborator runs — the
+    turn state (whose ``user_message_id`` IS the client's send id) and the
+    new-conversation flag — then passes both on by value. Neither is read back,
+    so a wrong derivation streams a perfectly normal-looking turn: the reply is
+    persisted under an id the client never optimistically rendered, or the
+    conversation row / description path is chosen for the wrong branch.
+    """
+
+    async def _run(self, body: MessageRequestWithHistory) -> dict[str, Any]:
+        seen: dict[str, Any] = {}
+
+        async def fake_publish_init(
+            body_: MessageRequestWithHistory,
+            user_: AuthenticatedUser,
+            conversation_id_: str,
+            stream_id_: str,
+            state_: _StreamState,
+            is_new_conversation_: bool,
+        ) -> None:
+            seen["is_new_conversation"] = is_new_conversation_
+
+        async def fake_consume(
+            body_: MessageRequestWithHistory,
+            user_: AuthenticatedUser,
+            turn_: _TurnContext,
+            description_task_: object,
+            state_: _StreamState,
+        ) -> None:
+            seen["turn"] = turn_
+            seen["state"] = state_
+
+        with (
+            patch.object(chat_stream, "stream_manager") as sm,
+            patch.object(chat_stream, "register_executor_capture"),
+            patch.object(chat_stream, "_set_stream_log_context"),
+            patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
+            patch.object(
+                chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
+            ),
+            patch.object(chat_stream, "schedule_last_active_touch"),
+            patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
+            patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
+            patch.object(chat_stream, "_consume_agent_stream", fake_consume),
+            patch.object(chat_stream, "_log_usage_summary"),
+            patch.object(chat_stream, "_persist_turn", AsyncMock()),
+            patch.object(chat_stream, "_attach_executor_tool_data", AsyncMock()),
+            patch.object(chat_stream, "_finalize_description", AsyncMock()),
+            patch.object(chat_stream, "capture_event"),
+            patch.object(chat_stream, "_finalize_stream", AsyncMock()),
+        ):
+            sm.publish_chunk = AsyncMock()
+            sm.complete_stream = AsyncMock()
+            await chat_stream._run_chat_stream(
+                "stream-1", body, {"user_id": "u1"}, "conv-1", "whatsapp"
+            )
+
+        return seen
+
+    async def test_the_clients_send_id_is_the_turns_user_message_id(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="hi", messages=[], conversation_id="conv-1", turn_id="turn-abc"
+            )
+        )
+
+        state = seen["state"]
+        assert state.user_message_id == "turn-abc"
+
+        turn = seen["turn"]
+        assert turn.conversation_id == "conv-1"
+        assert turn.stream_id == "stream-1"
+        assert turn.source == "whatsapp"
+        assert isinstance(turn.usage_callback, UsageMetadataCallbackHandler)
+
+    async def test_a_request_without_a_conversation_id_is_a_new_conversation(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id=None)
+        )
+
+        assert seen["is_new_conversation"] is True
+
+    async def test_a_request_with_a_conversation_id_is_not_a_new_conversation(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="hi", messages=[], conversation_id="conv-1")
+        )
+
+        assert seen["is_new_conversation"] is False

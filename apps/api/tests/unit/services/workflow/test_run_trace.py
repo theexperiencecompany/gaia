@@ -23,6 +23,7 @@ from app.services.workflow.run_trace import (
     LAST_RUN_MAX_CALLS,
     LAST_RUN_MAX_DIGEST_CHARS,
     LAST_RUN_MAX_SUMMARY_CHARS,
+    _recorded_call,
     build_trace,
     render_last_run,
 )
@@ -542,3 +543,67 @@ class TestResultDigest:
 
     def test_no_result_is_an_empty_digest(self) -> None:
         assert build_result_digest(None) == ""
+
+
+class TestTheRenderedBlockIsExactlyWhatTheNextRunReads:
+    """The block is spliced into an instruction-bearing message, so its layout is
+    the contract: one call per line, its result under it, nothing joined or run
+    together."""
+
+    def test_every_line_of_the_block_is_written_out_in_full(self) -> None:
+        rendered = render_last_run(
+            _execution(
+                [
+                    RecordedCall(
+                        tool_name="GMAIL_FETCH",
+                        args={"q": "is:unread"},
+                        result_digest="12 messages",
+                    )
+                ],
+                summary="Archived 12 promos",
+            )
+        )
+
+        assert rendered == (
+            "<last_run>\n"
+            f"{LAST_RUN_DATA_BOUNDARY}\n"
+            "at: 2026-08-27T09:05:00+00:00\n"
+            "status: success\n"
+            'GMAIL_FETCH({"q": "is:unread"})\n'
+            "  -> 12 messages\n"
+            "summary: Archived 12 promos\n"
+            "</last_run>\n"
+        )
+
+    def test_an_argument_json_cannot_encode_is_rendered_rather_than_losing_the_block(
+        self,
+    ) -> None:
+        """A cursor is often a timestamp. Failing to encode it would cost the next
+        run its whole record of the last one, not just that one argument."""
+        rendered = render_last_run(
+            _execution(
+                [
+                    RecordedCall(
+                        tool_name="CAL_LIST",
+                        args={"after": datetime(2026, 8, 27, 9, 0, tzinfo=UTC)},
+                    )
+                ]
+            )
+        )
+
+        assert rendered == (
+            "<last_run>\n"
+            f"{LAST_RUN_DATA_BOUNDARY}\n"
+            "at: 2026-08-27T09:05:00+00:00\n"
+            "status: success\n"
+            'CAL_LIST({"after": "2026-08-27 09:00:00+00:00"})\n'
+            "</last_run>\n"
+        )
+
+
+class TestARecordedCallsOwnFields:
+    def test_a_call_with_no_category_records_an_empty_one(self) -> None:
+        call = _recorded_call({"tool_name": "GMAIL_FETCH", "inputs": {}, "output": ""}, None)
+
+        assert call is not None
+        assert call.tool_category == ""

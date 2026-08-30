@@ -70,7 +70,9 @@ def dump_playbook(body: PlaybookBody) -> str:
     if body.ask:
         document["ask"] = {name: ask.model_dump() for name, ask in body.ask.items()}
     document["synthesize"] = body.synthesize
-    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+    # sort_keys=False and sort_keys=None are byte-identical to PyYAML (it only
+    # tests truthiness), so that mutation is provably equivalent and exempt.
+    return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)  # pragma: no mutate
 
 
 def _dump_step(step: PlaybookStep) -> dict[str, Any]:
@@ -165,7 +167,12 @@ async def _check_steps(
         if step.tool:
             _check_tool_step(step, here, space, walk)
         else:
-            subagent = await resolve_subagent_tools(step.handoff or "", walk.user_id, walk.registry)
+            handoff = step.handoff
+            if handoff is None:
+                # exactly_one_shape forbids a step with neither shape; narrowed
+                # here because mypy cannot see the validator.
+                continue
+            subagent = await resolve_subagent_tools(handoff, walk.user_id, walk.registry)
             if subagent is None:
                 walk.issues.append(
                     PlaybookIssue(
@@ -191,7 +198,11 @@ async def _check_steps(
 
 
 def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk) -> None:
-    tool_name = step.tool or ""
+    if step.tool is None:
+        # exactly_one_shape forbids a tool-less step reaching here; this guard
+        # narrows the type where mypy cannot see the validator.
+        return
+    tool_name = step.tool
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
@@ -207,7 +218,10 @@ def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Wal
     schema: dict[str, Any] = space.tools[tool_name].args
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
-        if ARG_TRUNCATION_MARKER in json.dumps(value, default=str):
+        # ensure_ascii=False, or the marker's ellipsis leaves json.dumps as
+        # a \\u2026 escape and this check can never fire. Seen exactly so:
+        # the recorded-stub refusal below was dead until this run.
+        if ARG_TRUNCATION_MARKER in json.dumps(value, default=str, ensure_ascii=False):
             # The call record cuts long args to keep the record small and marks
             # the cut; a step copied from it would send the stub forever.
             walk.issues.append(

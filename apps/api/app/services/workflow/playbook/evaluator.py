@@ -17,7 +17,7 @@ tool with a hole in it.
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import json
 import re
@@ -84,10 +84,12 @@ class RunContext:
     #: user's clock, not the worker's.
     now: datetime
     trigger: Mapping[str, object]
-    steps: Mapping[str, StepResult]
+    #: Empty until steps run; defaulted so construction sites carry no dead
+    #: placeholder arguments.
+    steps: Mapping[str, StepResult] = field(default_factory=dict)
     #: Previous run's results keyed by TOOL NAME (see the module docstring).
-    last_run: Mapping[str, object]
-    asks: Mapping[str, str]
+    last_run: Mapping[str, object] = field(default_factory=dict)
+    asks: Mapping[str, str] = field(default_factory=dict)
 
 
 def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:

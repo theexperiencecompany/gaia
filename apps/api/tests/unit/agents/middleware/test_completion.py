@@ -420,6 +420,46 @@ class TestPlaybookDecisionPending:
 
         assert playbook_decision_pending(state) is False
 
+    def test_an_empty_delegation_owes_nothing(self) -> None:
+        assert playbook_decision_pending(make_state(messages=[])) is False
+
+    def test_a_mid_run_tool_result_is_not_a_stop(self) -> None:
+        """An ordinary tool result as the last message means the run is still
+        going; only a finish_task result (or plain text) is a stop."""
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_worked(1),
+                AIMessage(content="", tool_calls=[{"name": "x", "args": {}, "id": "c8"}]),
+                ToolMessage(content="ok", tool_call_id="c8", name="x"),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is False
+
+    def test_an_errored_decision_call_does_not_settle_it(self) -> None:
+        """The tool node marks a crashed decision call status="error"; that
+        round-trip left the run exactly where it was."""
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_worked(1),
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "decline_playbook", "args": {}, "id": "pb9"}],
+                ),
+                ToolMessage(
+                    content=json.dumps({"success": True, "data": {}}),
+                    tool_call_id="pb9",
+                    name="decline_playbook",
+                    status="error",
+                ),
+                AIMessage(content="done"),
+            ]
+        )
+
+        assert playbook_decision_pending(state) is True
+
     def test_a_finish_task_stop_without_a_decision_is_pending(self) -> None:
         """Seen live: a briefed run ended through finish_task, not plain text,
         and the gate let it go. finish_task is a stop like any other."""

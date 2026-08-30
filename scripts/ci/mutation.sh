@@ -589,7 +589,12 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts", "pytest.ini"]\n'
-    f'max_stack_depth = 8\n'
+    # 20, not 8: the trampoline drops a test from a mutant's stats when the
+    # mutated module has more frames than this on the stack, so a depth-8 cap
+    # silently unlinked every test that reaches a worker entry point through
+    # its own call chain (execute_workflow_by_id -> _run_workflow -> ...) and
+    # those mutants survived with green tests pointing right at them.
+    f'max_stack_depth = 20\n'
     # The pragma stamping below appends `# pragma: no mutate` to every
     # unchanged line. mutmut's AST visitor only honors that comment on
     # simple statement lines, so interior lines of multi-line statements

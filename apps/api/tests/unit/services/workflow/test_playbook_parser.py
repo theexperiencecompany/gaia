@@ -9,13 +9,14 @@ is the only way a playbook is ever authored — nothing parses YAML back.
 """
 
 from typing import Annotated, Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from langchain_core.tools import BaseTool, tool
 from pydantic import Field, ValidationError
 import pytest
 import yaml
 
+from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
     PlaybookAsk,
@@ -232,6 +233,67 @@ class TestValidatePlaybook:
             result = await validate_playbook(body, USER_ID)
         assert result.valid is True
         assert result.issues == []
+
+    async def test_an_arg_carrying_the_records_cut_marker_is_refused(self) -> None:
+        """The call record cuts long args and marks them; a step copied from the
+        record would replay the stub forever. This check was dead until
+        ensure_ascii=False: json.dumps escaped the marker ellipsis to a
+        backslash-u2026 sequence and the containment test could never fire."""
+        body = _body(
+            f"""
+description: Copied from the record
+steps:
+  - id: one
+    tool: list_events
+    args: {{"query": "newsletters {ARG_TRUNCATION_MARKER}"}}
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [issue.problem for issue in result.issues] == [
+            "'query' was cut short in the call record; pass the full value "
+            "you actually sent, not the recorded stub"
+        ]
+
+    async def test_a_cut_arg_does_not_stop_the_rest_of_the_args_being_checked(self) -> None:
+        """One stubbed arg must not silence the report on its siblings."""
+        from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
+
+        body = _body(
+            f"""
+description: Copied from the record
+steps:
+  - id: one
+    tool: list_events
+    args:
+      query: "newsletters {ARG_TRUNCATION_MARKER}"
+      bogus: "x"
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        problems = sorted(issue.problem for issue in result.issues)
+        assert len(problems) == 2
+        assert problems[0].startswith("'query' was cut short in the call record")
+        assert problems[1].startswith("list_events takes no arg 'bogus'")
+
+    async def test_a_shapeless_step_does_not_stop_its_siblings_being_checked(self) -> None:
+        """exactly_one_shape forbids a step with neither tool nor handoff; if one
+        is conjured anyway (model_construct), the walk skips it and still checks
+        the steps after it."""
+        ghost = PlaybookStep.model_construct(id="ghost", tool=None, handoff=None, steps=[], args={})
+        real = PlaybookStep(id="one", tool="send_owl", args={})
+        body = _body(VALID_YAML)
+        patched = body.model_copy(update={"steps": [ghost, real]})
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(patched, USER_ID)
+
+        assert any("send_owl" in issue.problem for issue in result.issues)
 
     async def test_unknown_tool_is_rejected_by_name(self) -> None:
         body = _body(
@@ -621,11 +683,16 @@ synthesize: x
             result = await validate_playbook(body, USER_ID)
 
         assert result.valid is False
-        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
-        problem = result.issues[0].problem
-        assert "'summary'" in problem
-        assert "'mail'" in problem
-        assert "'calendar'" in problem
+        # Whole message, not fragments of it: the author is told which ask, where
+        # the asks are filled, which step runs too late, and both ways out.
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "ask.summary.uses",
+                "ask 'summary' reads step 'calendar', but the asks are filled at step 'mail' "
+                "(the first to address $ask), before 'calendar' runs; move 'calendar' ahead "
+                "of 'mail' or drop it from uses",
+            )
+        ]
 
     async def test_every_ask_is_filled_at_the_first_ask_step_not_only_the_one_addressed(
         self,
@@ -666,6 +733,43 @@ synthesize: x
         assert result.valid is False
         assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
         assert "'mail'" in result.issues[0].problem
+
+    async def test_an_ask_is_checked_past_the_uses_entries_that_are_already_fine(self) -> None:
+        """``uses`` is checked entry by entry, not up to the first acceptable one.
+
+        Stopping at the first entry that already ran would clear the whole ask,
+        and the later step behind it would be written from nothing at replay.
+        """
+        body = _body(
+            """
+description: An ask reading one earlier step and one later one
+steps:
+  - id: inbox
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $ask.summary
+  - id: calendar
+    tool: list_events
+    args:
+      calendar_id: work
+ask:
+  summary:
+    prompt: Summarise both
+    uses: [inbox, calendar]
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
+        assert "'calendar'" in result.issues[0].problem
 
     async def test_an_ask_reading_only_earlier_steps_is_accepted(self) -> None:
         body = _body(
@@ -746,8 +850,139 @@ synthesize: x
             result = await validate_playbook(body, USER_ID)
 
         assert result.valid is False
-        assert [issue.where for issue in result.issues] == ["steps[1].steps[0]"]
-        assert "'agenda'" in result.issues[0].problem
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].steps[0]",
+                "step id 'agenda' is already used by an earlier step; ids must be unique so "
+                "$steps references and the run's record point at one step",
+            )
+        ]
+
+    async def test_a_handoff_is_resolved_by_its_own_name_for_this_user_and_registry(self) -> None:
+        """Which tools a child step is checked against is decided by all three
+        arguments: an MCP integration's tools are fetched from THAT user's own
+        client, so resolving with anything else validates the playbook against a
+        tool space the replay never has — accepted at write time, refused at
+        replay, or worse, the reverse.
+        """
+        body = _body(
+            """
+description: Delegate a send
+steps:
+  - id: delegate
+    handoff: mail_agent
+    steps:
+      - id: mail
+        tool: send_email
+        args:
+          to: a@b.com
+          subject: hi
+synthesize: x
+"""
+        )
+        registry = _registry()
+        resolve = AsyncMock(
+            return_value=SubagentTools(tools=registry.get_tool_dict(), initial_tool_ids=[])
+        )
+        with (
+            patch(f"{MODULE}.get_tool_registry", return_value=registry),
+            patch(f"{MODULE}.resolve_subagent_tools", resolve),
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+        assert resolve.await_args_list == [call("mail_agent", USER_ID, registry)]
+
+    async def test_an_arg_json_cannot_serialise_is_type_checked_not_a_crash(self) -> None:
+        """A recorded arg can hold a value ``json.dumps`` refuses — a YAML date is
+        the everyday one. Scanning it for the truncation marker must fall back to
+        its text rather than raise, or authoring dies with a TypeError instead of
+        telling the author their date belongs in a string field.
+        """
+        body = _body(
+            """
+description: Send with a date where a string belongs
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: 2026-03-14
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            ("steps[0].args.subject", "expected string, got date")
+        ]
+
+    async def test_a_step_id_keeps_every_leading_character(self) -> None:
+        """Only the separating dot is stripped from a reference's path.
+
+        Trimming anything else silently renames the step, and a reference to a
+        step the document really does declare is refused at authoring time.
+        """
+        body = _body(
+            """
+description: Reference a step whose id starts with X
+steps:
+  - id: XERO_SYNC
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: Synced $steps.XERO_SYNC.organizer
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+
+    async def test_a_union_member_whose_type_has_no_python_mapping_is_skipped(self) -> None:
+        """An MCP schema can declare a JSON type this validator has no mapping
+        for. The unmapped member contributes nothing and the members it does know
+        still decide the check; treating the unknown one as "no types at all"
+        would blow up the walk over a union that is otherwise perfectly checkable.
+        """
+        registry = _schema_registry(
+            query_rows={"cursor": {"anyOf": [{"type": "widget"}, {"type": "string"}]}}
+        )
+        accepted = _body(
+            """
+description: A cursor the union does accept
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      cursor: tok_1
+synthesize: x
+"""
+        )
+        refused = _body(
+            """
+description: A cursor the union does not accept
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      cursor: 7
+synthesize: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            assert (await validate_playbook(accepted, USER_ID)).issues == []
+            result = await validate_playbook(refused, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            ("steps[0].args.cursor", "expected widget or string, got int")
+        ]
 
     async def test_a_union_typed_arg_accepts_every_member_of_the_union(self) -> None:
         """An optional arg is declared as anyOf[string, null].

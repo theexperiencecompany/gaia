@@ -894,7 +894,9 @@ async def _finish_after_replay(
             playbook_id=playbook.playbook_id,
             reason=reason,
         )
-        summary = REPLAY_FLAGGED_SUMMARY.format(reason=(reason or "no reason recorded").rstrip("."))
+        # reason is result.suspect on this branch, and SUSPECT status is reached
+        # only when that is set, so there is no empty case left to name here.
+        summary = REPLAY_FLAGGED_SUMMARY.format(reason=str(reason).rstrip("."))
     conversation_id, agent_trace = await execute_workflow_as_chat(
         workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
     )
@@ -1420,11 +1422,14 @@ async def _resolve_workflow_user(workflow: Workflow, user_id: str) -> Authentica
         user_data["user_id"] = user_id
 
         profile_tz = (user_data.get("timezone") or "").strip()
-        schedule_tz = (getattr(workflow.trigger_config, "timezone", None) or "").strip()
+        # trigger_config always declares timezone, so read it directly. Unset or
+        # blank becomes None rather than a spelled-out UTC fallback: Timezone.parse
+        # already answers UTC for None, and a literal here would be a branch no
+        # input can reach.
+        stored_schedule_tz = workflow.trigger_config.timezone
+        schedule_tz = stored_schedule_tz.strip() if stored_schedule_tz else None
         resolved_tz = Timezone.parse(
-            profile_tz
-            if profile_tz and profile_tz.upper() != "UTC"
-            else (schedule_tz or profile_tz or "UTC")
+            profile_tz if profile_tz and profile_tz.upper() != "UTC" else (schedule_tz or None)
         )
         if resolved_tz.is_utc:
             log.warning(

@@ -216,6 +216,17 @@ class TestCallExecutorDispatch:
         assert run.kind.value == "live"
         assert was_executor_spawned("stream-1") is True
 
+    async def test_a_dispatch_with_no_stream_carries_an_empty_stream_id(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """A run with no live client still gets a run identity. The absent stream is
+        the empty string — a placeholder would be treated as a real stream by every
+        session lookup downstream."""
+        await call_executor_with(config=config_for(stream_id=None), task="check my calendar")
+        await drain_background_tasks()
+
+        assert spawned_runs[0]["run"].stream_id == ""
+
     async def test_holds_the_busy_lock_with_its_own_value_and_a_ttl(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:

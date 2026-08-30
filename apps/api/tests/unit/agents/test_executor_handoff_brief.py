@@ -174,6 +174,33 @@ class TestPreviousRunReachesTheExecutor:
         mock_last_run.assert_awaited_once_with("wf-1", "u-1")
         assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
 
+    async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
+        """The check reads the workflow's playbook and the user's own run history —
+        asked about the wrong one (or about nobody), it answers about a run that
+        never happened and the executor writes a playbook from it."""
+        with (
+            patch(
+                "app.agents.tools.executor_tool.get_last_run_brief",
+                new=AsyncMock(return_value=""),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.playbook_check_brief",
+                new=AsyncMock(return_value=""),
+            ) as mock_check,
+        ):
+            await _dispatched_brief(
+                {"task": "run the briefing", "acceptance_criteria": ["digest sent"]},
+                {
+                    "thread_id": "conv-1",
+                    "workflow_id": "wf-1",
+                    "user_id": "u-1",
+                    "playbook_fallback": "the replay stopped at step 3",
+                },
+            )
+
+        assert mock_check.await_args.args == ("wf-1", "u-1")
+        assert mock_check.await_args.kwargs == {"fallback_note": "the replay stopped at step 3"}
+
     async def test_an_interactive_chat_turn_never_looks_for_one(self):
         with patch(
             "app.agents.tools.executor_tool.get_last_run_brief", new=AsyncMock(return_value="")

@@ -6,7 +6,9 @@ from langchain_core.messages import SystemMessage
 import pytest
 
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.helpers.message_helpers import (
+    _uploaded_file_lines,
     create_system_message,
     format_calendar_event_context,
     format_files_list,
@@ -518,3 +520,138 @@ class TestWorkflowExecutionMessageBranches:
             result = await format_workflow_execution_message(self._selected(), user_id="u1")
 
         assert "already_ran" not in result
+
+    @pytest.mark.asyncio
+    async def test_a_gmail_trigger_missing_every_field_renders_the_stated_defaults(self) -> None:
+        """A Gmail trigger can arrive with an unparsed header or no timestamp. The
+        prompt still has to read as a sentence, so each blank renders its own named
+        placeholder rather than the literal ``None`` a bare ``.get`` would leave."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={"type": "gmail", "email_data": {"message_text": ""}},
+            )
+
+        lines = result.splitlines()
+        assert "- From: Unknown" in lines
+        assert "- Subject: No Subject" in lines
+        assert "- Preview: " in lines
+        assert "- Received: Unknown" in lines
+
+    @pytest.mark.asyncio
+    async def test_an_email_body_at_the_preview_limit_is_not_marked_truncated(self) -> None:
+        """Exactly at the bound is a whole body, not a cut one — an ellipsis here
+        tells the agent to go fetch a rest that does not exist."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 200},
+                },
+            )
+
+        assert f"- Preview: {'x' * 200}" in result.splitlines()
+
+    @pytest.mark.asyncio
+    async def test_an_email_body_one_char_over_the_limit_is_marked_truncated(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    "type": "gmail",
+                    "email_data": {"sender": "a@b.com", "subject": "S", "message_text": "x" * 201},
+                },
+            )
+
+        assert f"- Preview: {'x' * 200}..." in result.splitlines()
+
+    @pytest.mark.asyncio
+    async def test_a_manual_run_ends_with_the_users_own_message(self) -> None:
+        """The user's words are the last thing the prompt says, so the model reads
+        them as the instruction rather than as one more line of workflow boilerplate."""
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", existing_content="Run it now please"
+            )
+
+        assert result.splitlines()[-1] == "Run it now please"
+
+    @pytest.mark.asyncio
+    async def test_a_manual_run_with_no_message_falls_back_to_naming_the_workflow(self) -> None:
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", existing_content=""
+            )
+
+        assert result.splitlines()[-1] == "Execute workflow: Morning Brief"
+
+
+# ---------------------------------------------------------------------------
+# _uploaded_file_lines
+# ---------------------------------------------------------------------------
+
+
+class TestUploadedFileLines:
+    """One attachment's rendered lines. ``format_files_list`` only joins these, so
+    the path, the id and the summary bound are all decided here."""
+
+    @staticmethod
+    def _file(**overrides: object) -> FileData:
+        fields: dict[str, object] = {
+            "fileId": "f1",
+            "url": "u",
+            "filename": "a.txt",
+            "sandbox_path": "/mirrored/a.txt",
+        }
+        fields.update(overrides)
+        return FileData(**fields)  # type: ignore[arg-type]  # overrides are typed per-field by FileData
+
+    def test_a_run_with_no_conversation_uses_the_relative_upload_dir(self) -> None:
+        entry = _uploaded_file_lines(self._file(), None, True)
+
+        assert entry == (["- a.txt  (id: f1)  →  `./user-uploaded/a.txt`"], True)
+
+    def test_a_file_that_never_reached_the_workspace_names_the_search_tool(self) -> None:
+        entry = _uploaded_file_lines(self._file(sandbox_path=None), "conv1", True)
+
+        assert entry == (
+            ["- a.txt  (id: f1) — not on disk, use `search_uploaded_files`"],
+            False,
+        )
+
+    def test_a_summary_exactly_at_the_limit_is_kept_whole(self) -> None:
+        summary = "s" * UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+        entry = _uploaded_file_lines(self._file(description=summary), "conv1", True)
+
+        assert entry == (
+            [
+                "- a.txt  (id: f1)  →  `/workspace/sessions/conv1/user-uploaded/a.txt`",
+                f"    summary: {summary}",
+                "    full summary: `/workspace/sessions/conv1/user-uploaded/a.txt.summary.md`",
+            ],
+            True,
+        )
+
+    def test_an_over_long_summary_is_cut_at_the_limit_with_no_dangling_space(self) -> None:
+        """The cut lands mid-sentence, so the character before it is often a space.
+        Leaving it in puts the ellipsis adrift from the last word it belongs to."""
+        body = "s" * (UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS - 1)
+        entry = _uploaded_file_lines(
+            self._file(description=f"{body} tail-past-the-limit"), "conv1", True
+        )
+
+        assert entry == (
+            [
+                "- a.txt  (id: f1)  →  `/workspace/sessions/conv1/user-uploaded/a.txt`",
+                f"    summary: {body}…",
+                "    full summary: `/workspace/sessions/conv1/user-uploaded/a.txt.summary.md`",
+            ],
+            True,
+        )
+
+    def test_an_unsafe_filename_is_dropped_rather_than_rendered(self) -> None:
+        assert _uploaded_file_lines(self._file(filename=".."), "conv1", True) is None

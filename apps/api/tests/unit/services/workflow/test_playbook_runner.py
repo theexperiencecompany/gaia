@@ -35,20 +35,30 @@ from app.agents.middleware.factory import (
     create_middleware_stack as real_create_middleware_stack,
 )
 from app.agents.workspace.offload import mark_offload
+from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.log_tags import LogTag
 from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
 from app.models.workflow_execution_models import (
+    RECORD_CUT_MARKER,
     RESULT_DIGEST_MAX_CHARS,
     RecordedCall,
     build_result_digest,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
-from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.evaluator import PlaybookUser, RunContext
 from app.services.workflow.playbook.runner import (
     PlaybookAskAnswer,
     PlaybookAskFill,
     PlaybookNarration,
     PlaybookRunResult,
+    _fill_asks,
+    _narrate,
+    _render_asks,
+    _Run,
+    _run_handoff,
+    _run_tool_step,
+    _suspect_verdict,
     run_playbook,
 )
 from app.services.workflow.playbook.scripted_model import (
@@ -57,6 +67,7 @@ from app.services.workflow.playbook.scripted_model import (
     ScriptedModel,
     scripted_call_id,
 )
+from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.chat_utils import get_user_id_from_config
 from app.utils.timezone import Timezone
 
@@ -426,6 +437,11 @@ async def test_one_ask_call_covers_two_asks_and_one_result_call_follows() -> Non
     assert recorder.calls[1][1] == {"to": "team@example.com", "body": "Twelve events today."}
     assert result.text == "Twelve events, mail sent."
     assert result.llm_calls == 2
+    # Both fields reach the end call as separate lines: run together they read
+    # as one field whose text is the other's, which is what it writes from.
+    assert _prompt_block(_result_prompt(llm), "asks") == (
+        "- recipient: team@example.com\n- body: Twelve events today."
+    )
 
 
 async def test_a_playbook_with_no_asks_still_makes_exactly_one_call() -> None:
@@ -610,7 +626,10 @@ async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() ->
         ]
     )
 
+    connected_as: list[str] = []
+
     async def mcp_client(user_id: str) -> MagicMock:
+        connected_as.append(user_id)
         client = MagicMock()
         client.ensure_connected = AsyncMock(return_value=[tools["send_email"]])
         return client
@@ -621,6 +640,10 @@ async def test_a_handoff_child_may_run_a_tool_the_users_mcp_client_provides() ->
     assert result.ok is True, result.failure
     assert [name for name, _ in recorder.calls] == ["send_email"]
     assert [call.tool_name for call in result.trace] == ["handoff", "send_email"]
+    # An MCP subagent's tools live on the OWNER's client, so the playbook's user
+    # is what the handoff resolves against: anyone else's client answers with a
+    # different tool set, or with none, and the recorded step is refused.
+    assert connected_as == ["u_1"]
 
 
 # --- a step or the narration that raises ------------------------------------
@@ -655,16 +678,27 @@ async def test_a_step_that_raises_stops_the_run_with_the_completed_steps_on_reco
 async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(AGENDA_STEPS)
 
     def exploding_agent(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph exploded")
 
     with patch(f"{MODULE}.create_agent", exploding_agent), patch(f"{MODULE}.log") as log:
-        await _run(_playbook(AGENDA_STEPS), registry)
+        await _run(playbook, registry)
 
     assert log.exception.call_count == 1
-    assert log.exception.call_args.kwargs["error_type"] == "RuntimeError"
-    assert log.exception.call_args.kwargs["tool_name"] == "list_events"
+    # The whole event, not a field of it: the message is what a reader searches
+    # for, and each id is what joins this line to the workflow it broke. A line
+    # missing one of them is a raise nobody can attribute afterwards.
+    assert log.exception.call_args.args == (
+        f"{LogTag.WORKFLOW} Playbook step raised instead of returning a result",
+    )
+    assert log.exception.call_args.kwargs == {
+        "playbook_id": playbook.playbook_id,
+        "workflow_id": "wf_1",
+        "tool_name": "list_events",
+        "error_type": "RuntimeError",
+    }
 
 
 async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record() -> None:
@@ -672,20 +706,32 @@ async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record()
     dropped a trace in which EVERY step had already run."""
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(AGENDA_STEPS)
 
-    result, _ = await _run(
-        _playbook(AGENDA_STEPS),
-        registry,
-        seams=_Seams(llm=AsyncMock(side_effect=TimeoutError("model"))),
-    )
+    with patch(f"{MODULE}.log") as log:
+        result, _ = await _run(
+            playbook,
+            registry,
+            seams=_Seams(llm=AsyncMock(side_effect=TimeoutError("model"))),
+        )
 
     assert result.ok is False
     assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
     assert len(result.completed) == 2
     assert result.failure is not None
-    assert "narration" in result.failure
-    assert "TimeoutError" in result.failure
+    assert result.failure.startswith(
+        "Playbook stopped at step 2 (narration): the narration raised TimeoutError: model."
+    )
     assert result.llm_calls == 0
+    # Which of the run's two model calls died, and on what: the failure text
+    # says it to the agent, the event says it to whoever is watching the fleet.
+    assert log.exception.call_args.args == (f"{LogTag.WORKFLOW} Playbook model call raised",)
+    assert log.exception.call_args.kwargs == {
+        "playbook_id": playbook.playbook_id,
+        "workflow_id": "wf_1",
+        "call": "narration",
+        "error_type": "TimeoutError",
+    }
 
 
 async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_it() -> None:
@@ -711,7 +757,11 @@ async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_
     assert [name for name, _ in recorder.calls] == ["list_events"]
     assert [call.tool_name for call in result.trace] == ["list_events"]
     assert result.failure is not None
-    assert result.failure.startswith("Playbook stopped at step 2 (ask_fill): ")
+    # The exception itself, not just its label: the agent picking this fire up
+    # is told what died, and "raised NoneType: None" tells it nothing.
+    assert result.failure.startswith(
+        "Playbook stopped at step 2 (ask_fill): the ask_fill raised TimeoutError: model."
+    )
     assert result.llm_calls == 0
 
 
@@ -820,6 +870,10 @@ class TestNarrationCall:
             "playbook_narration",
         ]
         assert llm.await_args_list[0].kwargs["config"] == {"configurable": {"user_id": "u_1"}}
+        # The mid-run call is metered too: built unmetered it is a replay's COGS
+        # landing on nobody, which is exactly the line a background run hides.
+        assert runnable.call_args_list[0].kwargs == {"config": {"configurable": {"user_id": "u_1"}}}
+        assert _prompt_block(_ask_prompt(llm), "playbook") == playbook.description
 
     async def test_it_is_one_structured_call_metered_to_the_workflows_user(self) -> None:
         recorder = _Recorder()
@@ -883,7 +937,7 @@ class TestNarrationCall:
         assert "mail (send_email)\nevents (list_events)" in prompt
         # Nothing has run yet at that point, and an empty section would read as
         # "the run did nothing" rather than "the run has not started".
-        assert "nothing yet" in prompt
+        assert _prompt_block(prompt, "ran") == "nothing yet"
 
     async def test_the_prompt_states_every_declared_ask_and_its_budget(self) -> None:
         """One call fills every ask, so the per-ask instruction can only travel in its prompt."""
@@ -1235,6 +1289,12 @@ class TestNarrationSections:
                 '  works from: events (list_events {"calendar_id":"primary"}) -> {"count": 12}; mail (send_email {"to":"team@example.com"}) -> sent',
             ]
         )
+        # One step per line: run together, two calls read as one call whose
+        # result is the other's, and the field is written from that.
+        assert _prompt_block(_ask_prompt(llm), "ran") == (
+            'events (list_events {"calendar_id":"primary"}) -> {"count": 12}\n'
+            'mail (send_email {"to":"team@example.com"}) -> sent'
+        )
 
     async def test_an_ask_inside_a_list_argument_still_triggers_the_ask_fill(self) -> None:
         """Placeholders are found wherever they are, not only at the top level.
@@ -1502,6 +1562,10 @@ class TestTrace:
         ]
         assert result.trace[0].args == {"calendar_id": "primary"}
         assert result.trace[1].args == {"to": "team@example.com"}
+        # Marked as the replay's own: the next run's empty-result check compares
+        # only against replayed calls, so a call recorded as an agent's is a
+        # comparison that silently never happens.
+        assert [call.replayed for call in result.trace] == [True, True]
 
     async def test_a_handoff_is_recorded_as_the_delegation_it_was(self) -> None:
         recorder = _Recorder()
@@ -1544,14 +1608,15 @@ class TestTrace:
         trace were lost with it. The run always comes back as a result."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(AGENDA_STEPS)
 
         def over_long(output: object, max_chars: int = RESULT_DIGEST_MAX_CHARS) -> str:
             if output == "sent":
                 return "x" * (RESULT_DIGEST_MAX_CHARS + 1)
             return build_result_digest(output, max_chars=max_chars)
 
-        with patch(f"{MODULE}.build_result_digest", over_long):
-            result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+        with patch(f"{MODULE}.build_result_digest", over_long), patch(f"{MODULE}.log") as log:
+            result, _ = await _run(playbook, registry)
 
         assert result.ok is False
         assert result.failure is not None
@@ -1559,6 +1624,18 @@ class TestTrace:
         assert "could not be recorded" in result.failure
         assert [call.tool_name for call in result.trace] == ["list_events"]
         assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+        # A call that ran and could not be written down is the one failure that
+        # leaves a real side effect off the record, so the event carries every
+        # id needed to find it by hand afterwards.
+        assert log.exception.call_args.args == (
+            f"{LogTag.WORKFLOW} Playbook step ran but its result could not be recorded",
+        )
+        assert log.exception.call_args.kwargs == {
+            "playbook_id": playbook.playbook_id,
+            "workflow_id": "wf_1",
+            "tool_name": "send_email",
+            "error_type": "ValidationError",
+        }
 
 
 # --- the identity a replayed call runs under -------------------------------
@@ -1646,11 +1723,30 @@ def _special_tools(recorder: _Recorder) -> dict[str, BaseTool]:
         recorder.calls.append(("send_note", {"body": body}))
         return "sent"
 
+    @tool
+    async def keep(since: Annotated[Any, "Anything the playbook recorded"]) -> str:
+        """Take an argument of whatever shape the record holds."""
+        recorder.calls.append(("keep", {"since": since}))
+        return "kept"
+
+    @tool
+    async def needs_approval(topic: Annotated[str, "Topic"]) -> ToolMessage:
+        """Answer the way the gate does when it refuses: a verdict, in blocks."""
+        recorder.calls.append(("needs_approval", {"topic": topic}))
+        return ToolMessage(
+            content=[{"type": "text", "text": "not approved for a background run"}],
+            tool_call_id=scripted_call_id(0),
+            name="needs_approval",
+            additional_kwargs={HIL_STATUS_KWARG: "denied"},
+        )
+
     return {
         "big_report": big_report,
         "stash": stash,
         "rich_result": rich_result,
         "send_note": send_note,
+        "keep": keep,
+        "needs_approval": needs_approval,
     }
 
 
@@ -1822,6 +1918,23 @@ class TestErrorEnvelope:
         assert result.ok is False
         assert "rate limited" in (result.failure or "")
 
+    async def test_a_bare_success_false_still_names_a_reason(self) -> None:
+        """An envelope that says only ``success: false`` has no words of its own.
+
+        The report is the whole handover, so the runner supplies the one fact it
+        does have rather than passing an empty reason to the agent.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"success": false}'))
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert result.failure.startswith(
+            "Playbook stopped at step 1 (list_events): the tool reported success=false."
+        )
+
     async def test_a_success_envelope_with_a_null_error_is_a_result(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(
@@ -1877,6 +1990,55 @@ class TestSuspectVerdict:
         assert [name for name, _ in recorder.calls] == ["list_events"]
         assert result.text == ""
         assert llm.await_count == 0
+
+    async def test_a_run_stopped_on_the_records_word_still_reports_what_it_did(self) -> None:
+        """That early return is a full result, not a stub.
+
+        The agent finishes this fire from it: without the trace it repeats the
+        send whose side effect already happened, without ``completed`` it does
+        not know which steps those were, and without ``llm_calls`` the ask fill
+        the run already paid for reads as free.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+        playbook = _playbook(
+            [
+                PlaybookStep(
+                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                ),
+                PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ],
+            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=[])},
+        )
+
+        result, llm = await _run(
+            playbook,
+            registry,
+            ask_fill=_ask_fill(body="Twelve today."),
+            seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
+        )
+
+        assert result.ok is True, result.failure
+        assert result.suspect_source == "record"
+        assert [call.tool_name for call in result.trace] == ["send_email", "list_events"]
+        assert result.completed == [
+            'mail (send_email {"to":"team@example.com","body":"Twelve today."}) -> sent',
+            'events (list_events {"calendar_id":"primary"}) -> {"items": []}',
+        ]
+        assert result.llm_calls == 1
+        assert llm.await_count == 1
+
+    async def test_a_suspect_narration_with_no_reason_still_says_why(self) -> None:
+        """The verdict is acted on by the worker, so "suspect, no reason" would
+        distrust a run and tell nobody what to look at."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        narration = PlaybookNarration(result="Twelve events.", outcome="suspect", reason="")
+
+        result, _ = await _run(_playbook(AGENDA_STEPS), registry, narration=narration)
+
+        assert result.suspect == "the narration judged the results suspect"
+        assert result.suspect_source == "narration"
 
     async def test_a_previous_agent_runs_call_is_not_what_the_replay_is_compared_with(self) -> None:
         """An authoring or heal run probes the same tool broadly; its full result
@@ -2146,8 +2308,327 @@ class TestTheNarrationSeesTheArguments:
 
 class TestANarrationMustSaySomething:
     def test_a_result_with_no_letter_or_digit_is_refused(self) -> None:
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError) as raised:
             PlaybookNarration(result="...", outcome="ok")
+
+        # The refusal's own words: this is what the failure report hands the
+        # agent, and "raised ValidationError: None" names nothing to act on.
+        assert raised.value.errors()[0]["msg"] == "Value error, the result says nothing"
 
     def test_a_short_real_answer_is_fine(self) -> None:
         assert PlaybookNarration(result="No new todos.", outcome="ok").result == "No new todos."
+
+
+async def test_a_replay_that_finished_without_a_narration_refuses_to_report_a_result() -> None:
+    """``ok=True`` with no narration would be a run delivering an empty result.
+
+    Every path to here has written one, so reaching it means the narration was
+    lost between the call and the result; the run says so instead of handing the
+    user a blank success.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    with (
+        patch(f"{MODULE}._narrate", AsyncMock(return_value=None)),
+        pytest.raises(RuntimeError) as raised,
+    ):
+        await _run(_playbook(AGENDA_STEPS), registry)
+
+    assert str(raised.value) == "playbook replay finished every step without a narration"
+
+
+async def test_the_asks_are_filled_once_however_many_steps_address_them() -> None:
+    """The fill is remembered, so the second step reads what the first wrote.
+
+    Forgetting it costs another model call mid-run and lets one field be
+    answered two different ways inside a single replay: the mail says one thing
+    and the note filed about it says another.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+            ),
+            PlaybookStep(
+                id="note", tool="send_email", args={"to": "$user.email", "body": "$ask.body"}
+            ),
+        ],
+        ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+    )
+
+    result, llm = await _run(playbook, registry, ask_fill=_ask_fill(body="Twelve today."))
+
+    assert result.ok is True, result.failure
+    assert llm.await_count == 2
+    assert result.llm_calls == 2
+    assert recorder.calls[1][1]["body"] == "Twelve today."
+    assert recorder.calls[2][1]["body"] == "Twelve today."
+
+
+async def test_a_refusal_carrying_content_blocks_is_quoted_rather_than_lost() -> None:
+    """The gate's verdict IS the step's result, and it is not always a string.
+
+    A refusal flattened to nothing comes back as "refused by the approval gate:"
+    with no reason after it, which is the one thing the report exists to carry.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_special_tools(recorder))
+    playbook = _playbook([PlaybookStep(id="ask", tool="needs_approval", args={"topic": "today"})])
+
+    result, _ = await _run(playbook, registry)
+
+    assert result.ok is False
+    assert result.failure is not None
+    assert "not approved for a background run" in result.failure
+    # Nothing ran, so nothing may reach the record the next run reads.
+    assert result.trace == []
+
+
+# --- how the step's graph is invoked ----------------------------------------
+
+
+@contextmanager
+def _spy_graph_invocations() -> Iterator[list[dict[str, Any]]]:
+    """Record the state and config each step's compiled graph was invoked with.
+
+    The real graph is still built and still run, so everything else the test
+    asserts is about a real replay; only the call is captured on the way past.
+    """
+    invocations: list[dict[str, Any]] = []
+
+    class _SpyGraph:
+        def __init__(self, graph: Any) -> None:
+            self._graph = graph
+
+        async def ainvoke(self, state: Any, config: Any = None, **kwargs: Any) -> Any:
+            invocations.append({"state": dict(state), "config": dict(config or {})})
+            return await self._graph.ainvoke(state, config=config, **kwargs)
+
+    class _SpyBuilder:
+        def __init__(self, builder: Any) -> None:
+            self._builder = builder
+
+        def compile(self, *args: Any, **kwargs: Any) -> _SpyGraph:
+            return _SpyGraph(self._builder.compile(*args, **kwargs))
+
+    def spy_agent(*args: Any, **kwargs: Any) -> _SpyBuilder:
+        return _SpyBuilder(real_create_agent(*args, **kwargs))
+
+    with patch(f"{MODULE}.create_agent", spy_agent):
+        yield invocations
+
+
+class TestTheStepGraphInvocation:
+    """The state and config a replayed step's graph is actually run with.
+
+    Every one of these is silent when wrong. A state whose keys the runtime does
+    not recognise starts the step with defaults instead of the empty history a
+    replay means; a recursion limit written under a key LangGraph does not read
+    is no bound at all, so a tool whose result loops the graph runs away; and the
+    identity fields are what the tool resolves its user and its scope from.
+    """
+
+    async def test_the_graph_starts_from_an_empty_state_under_the_runs_identity(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(
+            [PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"})]
+        )
+
+        with _spy_graph_invocations() as invocations:
+            result, _llm = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert len(invocations) == 1
+        assert invocations[0]["state"] == {"messages": [], "todos": []}
+        config = invocations[0]["config"]
+        assert set(config) == {"configurable", "metadata", "recursion_limit"}
+        # One tool call plus the turn that ends the loop, with room to spare.
+        assert config["recursion_limit"] == 8
+        # ``get_user_id_from_config`` reads metadata and nothing else.
+        assert config["metadata"] == {"user_id": "u_1"}
+        assert config["configurable"]["user_id"] == "u_1"
+        assert config["configurable"]["conversation_id"] == "conv_1"
+        assert config["configurable"]["execution_mode"] == "background"
+        assert config["configurable"]["stream_id"].startswith("playbook_")
+        # A top-level step is not tagged as anyone's subagent.
+        assert "subagent_id" not in config["configurable"]
+
+
+# --- the arguments the narration is shown -----------------------------------
+
+
+class TestTheArgumentsTheNarrationSees:
+    """The rendered arguments on each ``completed`` line.
+
+    They are the model's only view of what a call actually ran with, and the
+    line is built AFTER the call, so a renderer that raises loses a run whose
+    side effects already happened.
+    """
+
+    async def test_an_argument_that_is_not_json_is_rendered_rather_than_raising(self) -> None:
+        """A stored playbook comes back from Mongo with real dates in its args."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_special_tools(recorder))
+        moment = datetime(2026, 8, 27, 9, 30, tzinfo=UTC)
+        playbook = _playbook([PlaybookStep(id="k", tool="keep", args={"since": moment})])
+
+        result, _ = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert result.completed == [f'k (keep {{"since":"{moment}"}}) -> kept']
+
+    async def test_arguments_that_fit_the_bound_are_shown_whole(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        args: dict[str, Any] = {"to": "team@example.com", "body": "y" * 365}
+        rendered = json.dumps(args, separators=(",", ":"), default=str)
+        assert len(rendered) == 400, "the bound itself: this test is the boundary"
+        playbook = _playbook([PlaybookStep(id="mail", tool="send_email", args=args)])
+
+        result, _ = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert result.completed == [f"mail (send_email {rendered}) -> sent"]
+
+    async def test_arguments_past_the_bound_are_cut_and_say_so(self) -> None:
+        """One character over, and the line is cut with the mark that says it was.
+
+        Unmarked, the model reads a truncated argument as the whole argument and
+        judges the call against a filter it never ran with.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        args: dict[str, Any] = {"to": "team@example.com", "body": "y" * 366}
+        rendered = json.dumps(args, separators=(",", ":"), default=str)
+        assert len(rendered) == 401
+        playbook = _playbook([PlaybookStep(id="mail", tool="send_email", args=args)])
+
+        result, _ = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert result.completed == [f"mail (send_email {rendered[:400]}...) -> sent"]
+
+
+async def test_the_narration_reads_the_result_uncut_where_the_record_trims_it() -> None:
+    """The record trims long strings and marks them; the narration must not see that.
+
+    Seen live at the record's bound: the model was handed bodies cut to 200
+    characters with a marker on the end and reported the run as truncated. The
+    two bounds are separate for exactly this reason.
+    """
+    payload = json.dumps({"messages": [{"id": f"msg_{i}", "body": "x" * 1200} for i in range(5)]})
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder, events_result=payload))
+    playbook = _playbook([PlaybookStep(id="mail", tool="list_events", args={"calendar_id": "in"})])
+
+    result, _ = await _run(playbook, registry)
+
+    assert result.ok is True, result.failure
+    assert "msg_4" in result.completed[0]
+    assert "x" * 1200 in result.completed[0]
+    assert RECORD_CUT_MARKER not in result.completed[0]
+    # The record keeps its own, tighter bound; inside a JSON digest the cut
+    # marker rides json.dumps and its ellipsis arrives \u2026-escaped.
+    assert "\\u2026[cut]" in result.trace[0].result_digest
+
+
+async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it() -> None:
+    """The counter is a running total across the replay's model calls; the fill
+    must add its one call, not restart the tally."""
+    run = _bare_run()
+    run.llm_calls = 5
+    playbook = _playbook([PlaybookStep(id="mail", tool="list_events", args={})])
+    fill = PlaybookAskFill(asks=[])
+
+    with (
+        patch(f"{MODULE}.background_structured_runnable", MagicMock()),
+        patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=fill)),
+    ):
+        await _fill_asks(playbook, run, pending=[])
+
+    assert run.llm_calls == 6
+    assert run.ask_fill is fill
+
+
+# --- guards on states the models rule out ------------------------------------
+
+
+def _bare_run(registry: Any = None) -> _Run:
+    """A ``_Run`` at the first position, for calling one internal directly."""
+    return _Run(
+        registry=registry or _FakeRegistry({}),
+        base=RunContext(
+            user=USER,
+            now=datetime.now(UTC),
+            trigger={},
+            steps={},
+            last_run={},
+            asks={},
+        ),
+        configurable={
+            "stream_id": "playbook_test",
+            "user_id": "u_1",
+            "conversation_id": "conv_1",
+            "execution_mode": "background",
+        },
+        position=1,
+    )
+
+
+class TestGuardsOnStatesTheModelsRuleOut:
+    """Branches a valid document cannot currently reach, asserted directly.
+
+    ``PlaybookStep`` enforces exactly one of ``tool``/``handoff``, a playbook
+    carries at least one step, and a run the record already distrusted returns
+    before the narration is ever written. Each guard below is what happens when
+    one of those stops holding — a document written by an older schema, a
+    handoff whose children were dropped — and a guard nobody exercises is a
+    guard that has quietly stopped guarding.
+    """
+
+    async def test_a_handoff_with_no_target_names_the_empty_id(self) -> None:
+        step = PlaybookStep.model_construct(id="h", tool=None, args={}, handoff=None, steps=[])
+
+        with patch(f"{TOOL_SPACE_MODULE}.get_subagent_by_id", lambda subagent_id: None):
+            failure = await _run_handoff(_playbook(AGENDA_STEPS), step, _bare_run())
+
+        assert failure is not None
+        assert failure.label == "handoff"
+        assert failure.reason == "no subagent named '' exists"
+
+    async def test_a_step_with_no_tool_names_the_empty_name(self) -> None:
+        step = PlaybookStep.model_construct(id="s", tool=None, args={}, handoff=None, steps=[])
+        space = ToolSpace(tools={}, runtime=None, subagent_id=None)
+
+        failure = await _run_tool_step(_playbook(AGENDA_STEPS), step, _bare_run(), space)
+
+        assert failure is not None
+        assert failure.position == 1
+        assert failure.reason == "no tool named '' exists"
+
+    def test_a_playbook_with_no_asks_renders_them_as_a_word(self) -> None:
+        assert _render_asks({}, []) == "none"
+
+    def test_a_record_verdict_is_reported_as_the_records(self) -> None:
+        run = _bare_run()
+        run.suspect = "list_events returned no items where the previous run returned 3"
+
+        assert _suspect_verdict(run, _narration()) == (run.suspect, "record")
+
+    async def test_a_narration_written_from_nothing_says_nothing_ran(self) -> None:
+        """An empty section reads as a run whose steps are missing from the list,
+        which is the verdict this prompt spends a paragraph forbidding."""
+        run = _bare_run()
+
+        with (
+            patch(f"{MODULE}.background_structured_runnable", MagicMock()),
+            patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=_narration())) as llm,
+        ):
+            await _narrate(_playbook(AGENDA_STEPS), run)
+
+        assert _prompt_block(str(llm.await_args.args[1]), "ran") == "nothing"

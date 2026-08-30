@@ -17,6 +17,8 @@ from app.agents.core.agent import (
 )
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
+from app.config.settings import settings
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -1252,3 +1254,253 @@ class TestTheExecutorsOwnDevModel:
         )
 
         assert "dev_executor_model" not in configurable
+
+
+# ---------------------------------------------------------------------------
+# what each entry point hands down
+# ---------------------------------------------------------------------------
+
+
+class TestTheWorkflowKeysTheRunStashes:
+    """A briefed workflow run writes its routing keys onto the live configurable.
+
+    The whole bag is asserted, not one key: the background executor's delivery
+    path reads these by name, so a key written under a different spelling — or
+    an extra one nobody reads — is a run whose result never reaches the
+    workflow-completion notification, and nothing raises to say so.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_briefed_run_stashes_its_playbook_fallback_under_that_exact_key(self):
+        config = _fresh_config()
+        trigger = {
+            "workflow_id": "wf-1",
+            "workflow_title": "Daily digest",
+            "workflow_notify_on_completion": False,
+            PLAYBOOK_FALLBACK_CONTEXT_KEY: {"reason": "hash_drift", "step": 3},
+        }
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context=trigger),
+            )
+
+        configurable = dict(config["configurable"])
+        # Env-derived: present only when the machine configures a dev model
+        # override; not part of the workflow-routing contract under test.
+        configurable.pop("dev_executor_model", None)
+        assert configurable == {
+            "thread_id": "conv-1",
+            "user_id": "user-123",
+            "model": "gpt-4o",
+            "workflow_id": "wf-1",
+            "workflow_title": "Daily digest",
+            "workflow_notify_on_completion": False,
+            "playbook_fallback": {"reason": "hash_drift", "step": 3},
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_playbook_brief_stashes_the_key_holding_none(self):
+        """Present-and-None, not absent: the runner distinguishes "no fallback
+        was briefed" from "this run was never a workflow"."""
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context={"workflow_id": "wf-1"}),
+            )
+
+        configurable = dict(config["configurable"])
+        # Env-derived: present only when the machine configures a dev model
+        # override; not part of the workflow-routing contract under test.
+        configurable.pop("dev_executor_model", None)
+        assert configurable == {
+            "thread_id": "conv-1",
+            "user_id": "user-123",
+            "model": "gpt-4o",
+            "workflow_id": "wf-1",
+            "workflow_title": "",
+            "workflow_notify_on_completion": True,
+            "playbook_fallback": None,
+        }
+
+
+class TestTheOptionsEachEntryPointDerives:
+    """``call_agent`` / ``call_agent_silent`` re-pack their own arguments into a
+    fresh ``AgentRunOptions`` for ``_core_agent_logic``. Every field is a run
+    property that has no second source: a blanked or dropped one is a turn that
+    loses its token accounting, its surface, or its Langfuse trace, and the run
+    still completes normally. The whole object is compared, so an extra or
+    missing field fails too.
+
+    The stand-in carries ``_core_agent_logic``'s real signature so a dropped
+    positional argument raises here rather than quietly rebinding.
+    """
+
+    @staticmethod
+    def _recording_core(seen: list, config: dict):
+        async def _fake_core(
+            request,
+            conversation_id,
+            user,
+            options=None,
+        ):
+            seen.append(options)
+            return FAKE_GRAPH, FAKE_STATE, config
+
+        return _fake_core
+
+    @pytest.mark.asyncio
+    async def test_streaming_hands_core_the_callback_source_trace_and_tags(self):
+        async def _fake_stream(*args, **kwargs):
+            yield "data: [DONE]\n\n"
+
+        seen: list = []
+        callback = MagicMock(name="usage_metadata_callback")
+        patches = _common_patches()
+        with (
+            patches["log"],
+            patch(
+                "app.agents.core.agent._core_agent_logic",
+                new=self._recording_core(seen, _fresh_config()),
+            ),
+            patch("app.agents.core.agent.trace_id_for_message", return_value="trace-9"),
+            patch(
+                "app.agents.core.agent.execute_graph_streaming",
+                return_value=_fake_stream(),
+            ),
+        ):
+            await call_agent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(usage_metadata_callback=callback, source="whatsapp"),
+                ids=StreamMessageIds(bot_message_id="bot-7"),
+            )
+
+        assert seen == [
+            AgentRunOptions(
+                usage_metadata_callback=callback,
+                trigger_context=None,
+                source="whatsapp",
+                langfuse_trace_id="trace-9",
+                langfuse_tags=["comms_agent", settings.ENV],
+            )
+        ]
+
+    @pytest.mark.asyncio
+    async def test_silent_hands_core_the_callback_trigger_context_and_source(self):
+        seen: list = []
+        callback = MagicMock(name="usage_metadata_callback")
+        trigger = {"type": "cron", "schedule": "daily"}
+        patches = _common_patches()
+        with (
+            patches["log"],
+            patch(
+                "app.agents.core.agent._core_agent_logic",
+                new=self._recording_core(seen, _fresh_config()),
+            ),
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {"tool": "data"}),
+            ),
+        ):
+            await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(
+                    usage_metadata_callback=callback,
+                    trigger_context=trigger,
+                    source="cron",
+                ),
+            )
+
+        # The silent path deliberately does NOT forward the langfuse fields —
+        # it seeds no trace of its own.
+        assert seen == [
+            AgentRunOptions(
+                usage_metadata_callback=callback,
+                trigger_context=trigger,
+                source="cron",
+                langfuse_trace_id=None,
+                langfuse_tags=None,
+            )
+        ]
+
+
+class TestTheQueuedTaskIdComesFromThisRunsOwnStream:
+    """``queued_without_run`` is read with THIS run's stream_id, off a session
+    only this function can reach. Handed anything else — a blank, no id at all —
+    the turn reports "an executor ran" for work that was only queued, and the
+    caller records it as done.
+    """
+
+    @pytest.mark.asyncio
+    async def test_the_result_carries_the_task_id_keyed_by_this_runs_stream_id(self):
+        config = _fresh_config()
+
+        def _queued_without_run(stream_id: str) -> str | None:
+            return f"queued-for-{stream_id}"
+
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("Hello!", {"tool": "data"}),
+            ),
+            patch(
+                "app.agents.core.agent.queued_without_run",
+                new=_queued_without_run,
+            ),
+        ):
+            result = await call_agent_silent(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+
+        stream_id = config["configurable"]["stream_id"]
+        assert UUID(stream_id)
+        assert result == SilentRunResult(
+            message="Hello!",
+            tool_data={"tool": "data"},
+            queued_task_id=f"queued-for-{stream_id}",
+        )
