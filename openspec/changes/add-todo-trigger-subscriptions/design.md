@@ -9,7 +9,7 @@ The 23 GAIA-facing trigger names in `oauth_config.py` (22 distinct Composio slug
 **Goals:**
 - Tracked todos react to external events via declarative, validated conditions on trigger payloads
 - Full lifecycle symmetry with workflows: registration, refcounted teardown, reconnect resync, expiry pause
-- Self-wiring common case: a todo that sends email auto-watches the reply thread
+- Common case: a todo that sent an email watches the reply thread, because the model subscribed it
 - The LLM constructs subscriptions from known schemas, never guesses
 
 **Non-Goals:**
@@ -98,25 +98,31 @@ The by-trigger-ID lookup is cross-user and runs on every webhook event; the acco
 ### Budget: the gate does not exist on this path yet and must be added
 `enforce_daily_cost_budget` is called from `workflow_tasks.py:619`, `chat.py:147` and `bot.py:340` — never from `tracked_todo_tasks.py`. Scheduled todos are covered only by the middleware wall (`get_budget_stop_reason`), which stops the model mid-run rather than skipping the run cleanly. A trigger-caused execution takes the explicit gate before any execution record or LLM work, with its own `feature_key` in `app/config/rate_limits.py` (workflows use `trigger_workflow_executions`) so chatty triggers are bounded separately from a user's chat budget.
 
-### Self-wiring prompts the model to subscribe; it does not subscribe behind its back
-After a successful outbound action from a todo-bound run — email sent, draft sent, thread replied to, calendar event created — the tool result is appended with a short instruction telling the model to subscribe the active todo, naming the identifier the response just returned (`thread_id`, `event_id`). The model then calls the ordinary subscription tool.
+### Subscribing is the model's own judgement, with no post-send nudge
+A tracked todo watches something because the model decided it should, using
+`subscribe_todo_to_trigger` like any other tool. Nothing appends an instruction to
+outbound tool results.
 
-This is deliberately not a silent auto-arm. Whether an outbound message deserves watching is a judgement — a "thanks, got it" needs no reply-watcher — and *what* to watch for (which action, which cooldown, which extra conditions) is context only the model has. Deterministic arming would have to guess all of it, and would guess wrong often enough to leave junk subscriptions behind for teardown to clean up. Routing through the same tool also means one creation path, one validator, one set of tests, and a subscription that appears in the transcript as a visible tool call instead of a side effect nobody can see.
+A middleware that appended "you just sent this, consider watching it" after every
+Gmail/Calendar send was built and then removed. It bought one prompt at the cost of a
+whole seam: a tool-call wrapper in the middleware stack, a tier flag threaded through
+`create_middleware_stack`, and a two-hop handoff — because Gmail sends run in a provider
+subagent that does not hold the subscription tool, so the identifier had to be reported
+up through `finish_task` for the executor to act on. That handoff was the most fragile
+part of the design and the least verifiable. The system prompt already tells the model
+to watch what a todo is waiting on, and the tool is bound at the executor tier where the
+decision belongs.
 
-The trade is that the model can decline or forget, so this is a prompt, not a guarantee — the spec says SHALL prompt, not SHALL arm. That is the honest failure mode, and it fails visibly (no tool call in the transcript) rather than silently (a subscription armed on the wrong thing).
-
-The seam is still a new `AgentMiddleware.awrap_tool_call` in `create_middleware_stack` — the same shape `MediaDescriptionMiddleware` uses (`middleware/media.py:23-33`): async, wraps the handler, reads `request.runtime.config["configurable"]`. But it only rewrites the `ToolMessage` content; it performs no writes and calls no services. No `active_todo_id` in the configurable means no instruction is appended, which is what keeps ordinary conversation sends inert.
-
-*Alternative*: a dedicated `watch_this_thread` tool — rejected. It would be a second, narrower way to create the same record, diverging from the general subscription path the moment either side changes.
-
-**Open**: Gmail sends usually run inside a provider subagent, whose tool set is integration-scoped. The instruction must reach an agent that actually holds the subscription tool — either by giving provider subagents access to it, or by carrying the identifier back to the executor on the subagent's result. Verify which is true before implementing 6.2.
+*Alternative*: a dedicated `watch_this_thread` tool — rejected. It would be a second,
+narrower way to create the same record, diverging from the general subscription path the
+moment either side changes.
 
 ### Calendar reminders reuse the same machinery, with the window set at registration
 `calendar_event_starting_soon` already carries `minutes_before_start` (1–1440, default 10) which the handler writes as `countdown_window_minutes` on the Composio trigger config (`handlers/calendar.py:118-119`), and its payload carries `event_id`, `attendees`, `organizer_email`, `location` and `minutes_until_start`. So "remind me an hour before the Acme call" is a subscription with `notify` (or `execute`) whose condition narrows on `event_id` — the calendar analog of Gmail's `thread_id`.
 
 The one asymmetry worth stating: the reminder window is **registration** config, not a payload condition. Distinct windows are therefore distinct Composio trigger instances, and two todos wanting the same window on the same calendar share one instance by Composio's upsert — which is exactly the sharing the todo refcount is there to protect. A todo that wants two reminders (an hour before *and* ten minutes before) holds two subscriptions, not one with two windows.
 
-Creating an event from a todo-bound run gets the same post-tool-call instruction as an outbound send, naming the returned `event_id`.
+Creating an event from a todo-bound run is watched the same way as anything else: the model calls the subscription tool with the returned `event_id`.
 
 ### Expiry pause: subscription state, plus the existing `blocked` label
 Workflows pause by flipping `activated=False` (`services/workflow/integration_pause.py:22`). Todos have no such field, and adding a second activation concept to `TodoDocument` for this alone would be a new state machine nobody else reads. Instead the subscription itself carries a status, and the todo gets the `blocked` label that the maintenance sweep already understands. Reconnect clears both.
@@ -137,7 +143,7 @@ The six existing tracked-todo tools are **always loaded** via `initial_tool_ids`
 - [Refcount bug strands or kills live triggers] → contract tests covering workflow-delete/todo-survives, the reverse, and todo-delete
 - [Account-level fan-out evaluates every user's inbound mail] → indexed `(user_id, trigger_name)` lookup on active subscriptions only; conditions evaluated in-process against a typed model
 - [LLM repair weakens intent silently] → repair constrained to catalog fields; rejection path always available; repair attempts logged to the wide event
-- [Self-wiring captures stale thread IDs after user deletes the todo draft] → teardown on terminal states *and deletion* covers it; orphan sweep re-checks armed subscriptions
+- [A subscription outlives the thing it was watching, e.g. the user deletes the draft] → teardown on terminal states *and deletion* covers it; orphan sweep re-checks armed subscriptions
 - [Payload drift upstream repeats this audit] → the verified-schema note lives in each model; periodic re-verification script can be rerun from `openspec` change notes
 
 ## Migration Plan

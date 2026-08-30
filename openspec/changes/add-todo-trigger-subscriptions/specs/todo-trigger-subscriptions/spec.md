@@ -140,27 +140,6 @@ When a connection an active subscription depends on expires, the system SHALL ma
 - **WHEN** the user reconnects that integration
 - **THEN** the paused subscriptions are re-registered and the `blocked` label is cleared
 
-### Requirement: Successful outbound actions prompt the model to subscribe
-When a tool call that starts something worth watching succeeds inside a run bound to an active tracked todo — sending an email, sending a draft, replying to a thread, or creating a calendar event — the system SHALL append an instruction to that tool's result telling the model to subscribe the active todo, naming the identifier the response returned (`thread_id` for mail, `event_id` for calendar).
-
-The system MUST NOT create the subscription itself. Subscriptions created this way go through the ordinary subscription tool and its validator, so there is exactly one creation path. Tool calls made outside a todo-bound run MUST NOT be appended to.
-
-#### Scenario: Todo sends follow-up email
-- **WHEN** a tracked todo's execution successfully sends an email via Gmail
-- **THEN** the tool result carries an instruction to subscribe that todo to replies on the returned `thread_id`, and the model's subscription call arms the watch and adds a `waiting-for-reply` label
-
-#### Scenario: Todo creates a calendar event
-- **WHEN** a tracked todo's execution successfully creates a calendar event
-- **THEN** the tool result carries an instruction to subscribe that todo to `calendar_event_starting_soon` for the returned `event_id`, with a reminder window
-
-#### Scenario: Model declines to subscribe
-- **WHEN** the model judges an outbound message not worth watching and makes no subscription call
-- **THEN** no subscription exists and no error is raised — the prompt is advisory, and its absence is visible in the run transcript
-
-#### Scenario: Regular chat email send
-- **WHEN** GAIA sends an email during ordinary conversation with no active tracked todo bound to the run
-- **THEN** the tool result is unchanged and nothing prompts a subscription
-
 ### Requirement: Calendar reminder subscriptions
 A tracked todo SHALL be able to subscribe to `calendar_event_starting_soon` with a reminder window and a condition narrowing to a specific event. Because the window is registration config rather than a payload field, each distinct window SHALL be its own registration, and a todo wanting several reminders for one event SHALL hold one subscription per window.
 

@@ -42,13 +42,17 @@
 - [x] 5.3 Rejections carry the trigger's catalog so the calling agent corrects and retries — no nested LLM pass inside the tool. A second in-tool model call would repair with less context than the agent loop already has, cost extra, and hide the rewrite from the transcript, which is the silent-intent-drift this section exists to prevent
 - [x] 5.4 E2E test through the compiled graph: agent creates a tracked todo, subscribes with a typo'd field, the repair path resolves it, subscription registers
 
-## 6. Post-send subscription prompt
+## 6. Post-send subscription prompt — REMOVED
 
-- [x] 6.1 Add an `AgentMiddleware.awrap_tool_call` middleware to `create_middleware_stack` (the seam `MediaDescriptionMiddleware` uses) that reads `active_todo_id` from `request.runtime.config["configurable"]` and, on success, appends a subscribe instruction to the `ToolMessage`. It performs no writes and calls no services. Composio's `after_execute` hooks are synchronous and context-free and cannot be used
-- [x] 6.2 **Verified**: Gmail sends DO run in a provider subagent, whose `scoped_tool_dict` is its integration category plus a fixed helper set — no tracked-todo tools, and `subagent_prompts.py` states that boundary. But `active_todo_id` IS inherited (`agent_helpers.py:261`). So the middleware fires in both tiers and its instruction differs: the executor is told to subscribe, the subagent to report the identifier up through `finish_task`. Granting subagents the tool was rejected — it would break a stated architectural boundary
-- [x] 6.3 Wire the watched tool set: `GMAIL_SEND_EMAIL`, draft-send and reply tools, and `GOOGLECALENDAR_CREATE_EVENT`; extract the returned `thread_id` / `event_id` for the instruction text. Keep the list as a named constant, not inline strings
-- [x] 6.4 Same for Slack outbound: instruct a channel-level subscription (documented limitation: no `thread_ts` upstream)
-- [x] 6.5 Tests: instruction appended only when `active_todo_id` is set and the call succeeded; absent on failure and on unbound runs; a subscription created from the instruction passes the ordinary validator; teardown when the todo completes
+- [x] 6.1-6.5 **Built, then removed at the user's request for simplicity.** The
+  `awrap_tool_call` middleware appended a "consider watching this" instruction to
+  successful Gmail/Calendar sends in todo-bound runs. It worked and was tested, but it
+  cost a middleware seam, a tier flag threaded through `create_middleware_stack`, and a
+  two-hop handoff via `finish_task` (Gmail sends run in a provider subagent that does not
+  hold `subscribe_todo_to_trigger`) — the most fragile and least verifiable part of the
+  design. Deleted: `app/agents/middleware/subscription_prompt.py`, its stack registration,
+  the `can_subscribe_todos` flag, and `tests/unit/agents/middleware/test_subscription_prompt.py`.
+  The model now subscribes on its own judgement, prompted only by `todo_prompts.py`.
 
 ## 6a. Calendar reminders
 
