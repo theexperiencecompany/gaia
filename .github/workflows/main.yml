@@ -326,7 +326,7 @@ jobs:
           echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
       # ── Test impact selection (PRs only, never the bridge slice) ───────────
       # The bridge slice is one serial file; selecting inside it saves nothing
-      # and its e2e is the least safe thing to skip. See docs/ci/test-impact.md.
+      # and its e2e is the least safe thing to skip. See the header of scripts/ci/test_impact.py.
       # Artifact, not actions/cache: a PR run cannot restore a cache written on
       # its head branch, only on its merge ref or master (`test_impact.py fetch`).
       - name: Fetch test impact map

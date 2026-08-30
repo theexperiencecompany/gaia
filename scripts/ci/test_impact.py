@@ -29,6 +29,15 @@ Safety is one-directional: every case we are not sure about widens to ALL.
 The full suite on master is the backstop, so a wrong-but-wide answer costs
 seconds and a wrong-but-narrow answer would cost a green PR on a broken tree.
 
+Off switch: TEST_IMPACT_ENABLED=0 (or false) makes `fetch` download nothing and
+`select` write ALL; main.yml exposes it as a workflow_dispatch input so a full
+run on a branch is one click away when a selection looks wrong.
+
+Staleness: a map older than the PR's merge-base is still valid because
+selection is by file, not by revision. What an old map can miss is coverage
+that only exists after a refactor, and every shape of that (new file, moved
+file, changed conftest, changed dependency) is one of the ALL fallbacks.
+
 Map schema (JSON):
   {"meta": {"sha": ..., "slice": ..., "version": 1},
    "files": {"app/foo.py": ["tests/unit/test_foo.py::test_a", ...]},
