@@ -15,6 +15,8 @@ two is how a reply-watching todo silently never fires.
 
 from typing import Any
 
+from pydantic import ValidationError
+
 from app.constants.todos import BLOCKING_LABEL
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoUpdate
@@ -95,13 +97,19 @@ async def register_subscription(
     if not outcome.ok:
         raise SubscriptionError(" ".join(outcome.errors))
 
+    # Registration config (a calendar's reminder window, a channel id) is validated
+    # by the discriminated union, and an out-of-range value must come back as
+    # something the caller can act on rather than a raw pydantic traceback.
+    try:
+        config = build_trigger_config(trigger_name, trigger_data)
+    except ValidationError as e:
+        raise SubscriptionError(
+            f"Invalid configuration for '{trigger_name}': {e.errors()[0]['msg']}"
+        ) from e
+
     try:
         trigger_ids = await TriggerService.register_triggers(
-            user_id,
-            todo_id,
-            trigger_name,
-            build_trigger_config(trigger_name, trigger_data),
-            raise_on_failure=True,
+            user_id, todo_id, trigger_name, config, raise_on_failure=True
         )
     except TriggerRegistrationError as e:
         raise SubscriptionError(f"Could not register '{trigger_name}': {e}") from e
@@ -144,6 +152,53 @@ async def register_subscription(
         repair_count=len(outcome.repairs),
     )
     return subscription, outcome
+
+
+async def unregister_subscription(
+    todo_id: str, user_id: str, subscription_id: str
+) -> TriggerSubscription | None:
+    """Drop one subscription from a todo. Returns it, or None if it was not there.
+
+    The refcount decides whether the Composio trigger actually goes: another todo
+    or workflow may share the instance, and this todo is excluded from its own
+    count so the last reference does release it.
+    """
+    todo = await todo_repository.get(todo_id, user_id=user_id)
+    if todo is None:
+        return None
+
+    target = next((s for s in todo.trigger_subscriptions if s.id == subscription_id), None)
+    if target is None:
+        return None
+
+    remaining = [s for s in todo.trigger_subscriptions if s.id != subscription_id]
+    # Write first: if unregistering upstream fails, the stored subscription is
+    # already gone, so the todo cannot keep firing on a watch the user removed.
+    await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate(trigger_subscriptions=remaining)
+    )
+
+    if target.composio_trigger_ids:
+        try:
+            await TriggerService.unregister_triggers(
+                user_id, target.trigger_name, target.composio_trigger_ids, todo_id=todo_id
+            )
+        except Exception as e:
+            log.error(
+                "todo_subscription.unregister_failed",
+                todo_id=todo_id,
+                subscription_id=subscription_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+    log.info(
+        "todo_subscription.unregistered",
+        todo_id=todo_id,
+        subscription_id=subscription_id,
+        trigger_name=target.trigger_name,
+    )
+    return target
 
 
 async def teardown_subscriptions(todo_id: str, user_id: str, *, reason: str) -> int:

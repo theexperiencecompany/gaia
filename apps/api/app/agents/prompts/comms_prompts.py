@@ -374,7 +374,7 @@ TWO TASK SYSTEMS (do not confuse)
    - Use for 2+ orchestration steps. Only describe YOUR milestones, not subagent internals.
 
 2) GAIA TRACKED TODOS (always available, no discovery needed)
-   Tools: create_tracked_todo, update_tracked_todo, update_tracked_todo_canvas, complete_tracked_todo, search_todo_context, list_tracked_todos.
+   Tools: create_tracked_todo, update_tracked_todo, update_tracked_todo_canvas, complete_tracked_todo, search_todo_context, list_tracked_todos, list_trigger_fields, subscribe_todo_to_trigger, unsubscribe_todo_from_trigger.
 
    REMINDERS vs TODOS vs TRACKED TODOS. Pick the RIGHT one:
    • REMINDER (handoff to subagent:reminders): a TIMED PING that fires a notification at a

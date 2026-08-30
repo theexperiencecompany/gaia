@@ -29,11 +29,17 @@ Each trigger SHALL expose a curated matchable-fields catalog: payload fields (na
 - **THEN** validation fails with a type-specific message
 
 ### Requirement: Two-stage repair loop on validation failure
-On condition-validation failure, the system SHALL first attempt deterministic repair (fuzzy field-name matching against the catalog, operator correction for the field's type). Only genuinely ambiguous failures SHALL be passed to a single LLM repair pass that rewrites conditions using only catalog fields. The repair loop MUST NOT run when validation passes, MUST NOT exceed one LLM attempt, and MUST NOT weaken the subscription's intent to force a match — if no catalog field can express the intent, registration is rejected and alternative triggers are surfaced.
+On condition-validation failure, the system SHALL first attempt deterministic repair (fuzzy field-name matching against the catalog, operator correction for the field's type). Repairs SHALL be reported back to the caller rather than applied silently.
+
+Genuinely ambiguous failures SHALL be rejected with the trigger's matchable fields attached, so the calling agent can correct them and retry — the correction happens in the agent loop, visibly in the transcript, not in a nested LLM call inside the tool. The repair path MUST NOT run when validation passes, and MUST NOT weaken the subscription's intent to force a match — if no catalog field can express the intent, registration is rejected and alternative triggers are surfaced.
 
 #### Scenario: Deterministic repair fixes a field-name typo
 - **WHEN** a condition references `threadId` and the catalog field is `thread_id`
-- **THEN** the condition is repaired mechanically without any LLM call
+- **THEN** the condition is repaired mechanically without any LLM call, and the repair is reported back rather than applied silently
+
+#### Scenario: Ambiguous failure is handed back with the catalog
+- **WHEN** a condition names a field no mechanical repair can resolve
+- **THEN** registration is refused and the response carries the trigger's matchable fields, so the retry is written against real data rather than a second guess
 
 #### Scenario: Intent not expressible
 - **WHEN** the user's intent requires a payload field no supported trigger provides

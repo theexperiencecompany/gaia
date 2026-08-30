@@ -309,3 +309,72 @@ class TestBuildTriggerConfig:
 
         assert config.trigger_name == ACCOUNT_TRIGGER
         assert config.trigger_data is not None
+
+    def test_an_omitted_window_falls_back_to_the_trigger_default(self) -> None:
+        config = build_trigger_config("calendar_event_starting_soon", None)
+
+        assert config.trigger_data is not None
+        assert config.trigger_data.minutes_before_start == 10
+
+
+class TestCalendarReminders:
+    """The reminder window is registration config, not a payload condition.
+
+    Distinct windows are therefore distinct Composio trigger instances, and two
+    todos wanting the same window share one — which is exactly the sharing the
+    todo refcount protects.
+    """
+
+    async def test_a_window_reaches_the_handler_config(self) -> None:
+        with _Harness(_todo(), ["ti_cal"]) as h:
+            subscription, _ = await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name="calendar_event_starting_soon",
+                conditions=[
+                    SubscriptionCondition(
+                        field_name="event_id", operator=ConditionOperator.EQUALS, value="evt-1"
+                    )
+                ],
+                action=SubscriptionAction.NOTIFY,
+                trigger_data={"minutes_before_start": 60},
+            )
+
+        registered_config = h.register.await_args.args[3]
+        assert registered_config.trigger_data.minutes_before_start == 60
+        assert subscription.resolution is SubscriptionResolution.TRIGGER_ID
+
+    async def test_two_windows_are_two_subscriptions(self) -> None:
+        # One subscription cannot carry two windows: the window decides which
+        # Composio trigger gets registered.
+        todo = _todo()
+        windows = []
+        for minutes in (60, 10):
+            with _Harness(todo, [f"ti_{minutes}"]) as h:
+                await register_subscription(
+                    todo_id=TODO_ID,
+                    user_id=USER_ID,
+                    trigger_name="calendar_event_starting_soon",
+                    conditions=[],
+                    action=SubscriptionAction.NOTIFY,
+                    trigger_data={"minutes_before_start": minutes},
+                )
+                windows.append(h.written_subscriptions[-1])
+
+        assert [w.composio_trigger_ids for w in windows] == [["ti_60"], ["ti_10"]]
+
+    async def test_an_out_of_range_window_is_refused_with_a_readable_reason(self) -> None:
+        # A raw pydantic traceback is not something the agent can correct from.
+        with (
+            _Harness(_todo(), ["ti_cal"]) as h,
+            pytest.raises(SubscriptionError, match="Invalid configuration"),
+        ):
+            await register_subscription(
+                todo_id=TODO_ID,
+                user_id=USER_ID,
+                trigger_name="calendar_event_starting_soon",
+                conditions=[],
+                action=SubscriptionAction.NOTIFY,
+                trigger_data={"minutes_before_start": 5000},
+            )
+        h.register.assert_not_awaited()

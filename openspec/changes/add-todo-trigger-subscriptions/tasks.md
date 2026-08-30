@@ -37,10 +37,10 @@
 
 ## 5. Agent tool surface
 
-- [ ] 5.1 Add `subscribe_todo_to_trigger` (and unsubscribe/list variants) in `tracked_todo_tools.py`; the call returns the trigger's matchable-fields catalog
-- [ ] 5.2 Register the new tools in `initial_tool_ids` (`build_graph.py:106`) alongside the other tracked-todo tools, and update the tool lists in `comms_prompts.py:377` and `todo_prompts.py`
-- [ ] 5.3 Single LLM repair pass wired into the tool failure path: ambiguous validation failures rewritten once against catalog fields, then accepted or rejected loudly
-- [ ] 5.4 E2E test: agent creates tracked todo, subscribes to `gmail_new_message` with a typo'd field, repair loop fixes it, subscription registers
+- [x] 5.1 Add `subscribe_todo_to_trigger` (and unsubscribe/list variants) in `tracked_todo_tools.py`; the call returns the trigger's matchable-fields catalog
+- [x] 5.2 Register the new tools in `initial_tool_ids` (`build_graph.py:106`) alongside the other tracked-todo tools, and update the tool lists in `comms_prompts.py:377` and `todo_prompts.py`
+- [x] 5.3 Rejections carry the trigger's catalog so the calling agent corrects and retries — no nested LLM pass inside the tool. A second in-tool model call would repair with less context than the agent loop already has, cost extra, and hide the rewrite from the transcript, which is the silent-intent-drift this section exists to prevent
+- [ ] 5.4 E2E test through the compiled graph: agent creates a tracked todo, subscribes with a typo'd field, the repair path resolves it, subscription registers
 
 ## 6. Post-send subscription prompt
 
@@ -52,9 +52,9 @@
 
 ## 6a. Calendar reminders
 
-- [ ] 6a.1 Add `calendar_event_starting_soon` matchable fields (`event_id`, `attendees`, `organizer_email`, `location`, `start_time`, `minutes_until_start`) to the catalog from `GoogleCalendarEventStartingSoonPayload`
-- [ ] 6a.2 Expose the reminder window as registration config on the subscription, passed through to `CalendarEventStartingSoonConfig.minutes_before_start` (1–1440); one subscription per window
-- [ ] 6a.3 Tests: an hour-before subscription registers a trigger carrying that window and fires on the matching `event_id`; two windows for one event store two subscriptions; two todos sharing a window share one Composio trigger instance and survive one of them completing
+- [x] 6a.1 Add `calendar_event_starting_soon` matchable fields (`event_id`, `attendees`, `organizer_email`, `location`, `start_time`, `minutes_until_start`) to the catalog from `GoogleCalendarEventStartingSoonPayload`
+- [x] 6a.2 Expose the reminder window as registration config on the subscription, passed through to `CalendarEventStartingSoonConfig.minutes_before_start` (1–1440); one subscription per window. Out-of-range values come back as a readable `SubscriptionError`, not a raw pydantic traceback the agent cannot correct from
+- [x] 6a.3 Tests: an hour-before subscription registers a trigger carrying that window and fires on the matching `event_id`; two windows for one event store two subscriptions; two todos sharing a window share one Composio trigger instance and survive one of them completing
 
 ## 7. Observability + frontend
 

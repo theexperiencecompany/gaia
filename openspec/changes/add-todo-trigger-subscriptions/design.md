@@ -47,9 +47,13 @@ Three tiers total: single ops → AND-chains → optional LLM relevance check vs
 Full payload models stay loose (external webhooks omit fields); only the curated subset enters conditions. This gives type safety where it matters without pretending external payloads are strict.
 *Alternative*: validating against full payload models — rejected; would block matching on best-effort fields.
 
-### Repair loop: mechanical first, one bounded LLM pass, loud rejection
-Field-name fuzzy match + operator-for-type table fixes most failures free; ambiguous cases get exactly one LLM rewrite restricted to catalog fields; unexpressible intent rejects with alternative triggers surfaced. Never water down intent — an approximating subscription executes todos on garbage.
-*Alternative*: open-ended agent repair loop — rejected; unbounded cost and silent-intent-drift risk.
+### Repair loop: mechanical first, then hand the catalog back — no second LLM inside the tool
+Field-name fuzzy match + operator-for-type table fixes most failures free. Anything ambiguous is rejected with the trigger's real fields attached to the error, and the *calling* agent corrects it and calls again.
+
+The plan was a second, in-tool LLM pass for ambiguous cases. Building it turned out to be wrong on the design's own terms. The tool is already being called by a model inside a loop: returning a good error is a repair pass, it costs nothing extra, it uses the full conversation context rather than a narrow rewrite prompt, and — the deciding point — it happens **in the transcript**. An in-tool pass that silently rewrites what the model asked to watch is precisely the silent-intent-drift this section exists to prevent; it would just be drift we performed ourselves, one layer down, where no one can see it.
+
+So the requirement it satisfies is unchanged (ambiguous failures get exactly one bounded, catalog-restricted correction attempt) and the mechanism is the agent loop rather than a nested call.
+*Alternative*: open-ended agent repair loop — still rejected; the executor's own loop guard bounds retries, and a rejection that names the real fields converges in one.
 
 ### The triggering payload goes in the prompt, not only in the context dict
 `trigger_context` reaches the model only through `format_workflow_execution_message`, which requires a selected workflow (`agents/core/messages.py:141`). The todo agent path has none, so a payload left in that dict is metadata the model never sees — the todo would wake knowing it was woken but not by what. The payload is rendered into the execution prompt instead.
