@@ -95,25 +95,21 @@ _cpu_slots_dir() {
   printf '%s' "$dir"
 }
 
-# The pool size. A configured value wins; otherwise the PHYSICAL core count,
-# which is the honest ceiling for CPU-bound work (hyperthreads do not add a
-# second real core's throughput to a compile or a test worker). This is the
-# starting point the PR tunes by measurement.
+# The pool size. A configured value wins; otherwise the THREAD count (nproc).
+# This was tuned by measurement, not assumed: the four test-python slices' static
+# worker shares (5+7+4) are deliberately sized to sum to the box's 16 threads for
+# a SINGLE run, so a pool below that (e.g. physical cores = 8) would serialise a
+# lone run's own slices and regress the single-push case. At nproc the pool is a
+# no-op for a single run (its 16 workers exactly fit) yet still halves the
+# oversubscription when TWO runs overlap — measured on two concurrent main.yml
+# dispatches: the 1-min loadavg peak dropped from 59 (governor off) to 32 (pool
+# = 16) on the 16-thread box, with per-run wall going 6.4/6.1 min -> 5.5/4.8 min.
 _cpu_slots_total() {
   if _cpu_slots_is_uint "${GAIA_CPU_TOKENS:-}" && [ "${GAIA_CPU_TOKENS}" -ge 1 ]; then
     printf '%s' "$GAIA_CPU_TOKENS"
     return
   fi
-  local cores
-  cores="$(lscpu 2>/dev/null | awk -F: '
-    /^Core\(s\) per socket/ { gsub(/ /,"",$2); c=$2 }
-    /^Socket\(s\)/          { gsub(/ /,"",$2); s=$2 }
-    END { if (c>0 && s>0) print c*s }')"
-  if ! _cpu_slots_is_uint "${cores:-}" || [ "${cores:-0}" -lt 1 ]; then
-    local n; n="$(nproc 2>/dev/null || echo 2)"
-    cores=$(( n / 2 )); [ "$cores" -lt 1 ] && cores=1
-  fi
-  printf '%s' "$cores"
+  printf '%s' "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
 }
 
 _cpu_slots_jitter() { awk -v r="$RANDOM" 'BEGIN { srand(r); printf "%.2f", 1 + rand()*2 }'; }

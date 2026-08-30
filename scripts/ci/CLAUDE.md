@@ -69,7 +69,13 @@ across every runner instance because they share `$HOME`; deliberately NOT
 budget). A lane takes tokens equal to its real thread appetite and releases them
 at the end, so the concurrent heavy work is capped at the pool size and lanes
 queue instead of thrash. Pool size is `GAIA_CPU_TOKENS`, defaulting to the
-physical core count from `lscpu`.
+thread count (`nproc`, 16 on the box). That default is measured, not assumed:
+the test-python slices' static worker shares (5+7+4) sum to the 16 threads by
+design for a single run, so a smaller pool would serialise a lone run's own
+slices and regress the single-push case; at `nproc` a single run is unaffected
+while two overlapping runs still halve the oversubscription (measured: two
+concurrent `main.yml` dispatches drove the 1-min loadavg peak to 59 with the
+governor off vs 32 with the pool at 16, per-run wall 6.4/6.1 min -> 5.5/4.8 min).
 
 Two rules make it safe to have in the gate at all:
 
