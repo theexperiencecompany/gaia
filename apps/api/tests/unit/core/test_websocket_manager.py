@@ -172,8 +172,11 @@ class TestBroadcastToUser:
         original = redis_cache.redis
         redis_cache.redis = None
         try:
-            with pytest.raises(WebSocketBroadcastError):
+            with pytest.raises(WebSocketBroadcastError) as exc:
                 await self.mgr.broadcast_to_user("user1", {"type": "test"})
+            assert str(exc.value) == (
+                "Redis is not configured; WebSocket broadcasts cannot be delivered"
+            )
         finally:
             redis_cache.redis = original
 
