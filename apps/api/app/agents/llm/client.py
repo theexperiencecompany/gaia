@@ -489,12 +489,18 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
 def _provider_order_kwargs() -> dict[str, Any]:
     """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
 
-    This is what keeps a conversation's prompt cache on ONE provider. The
-    model's pool has ~30 upstreams that each hold their own cache, so a turn
-    served by a different upstream than the last one reads cold no matter how
-    warm the chain is. Measured: a thread that stays on one provider reads
-    90-99% cached, and 49 of 114 measured threads were split across providers —
-    nearly every cold read came from that scattering.
+    This is what keeps a conversation's prompt cache ON THE LISTED providers —
+    not, as live-tested, on exactly one of them: concurrent calls in one
+    conversation can still land on different list members (measured on a real
+    6-turn session: comms split 6/4 across the first two slugs, and the calls
+    interleave within seconds, so it is in-turn concurrency, not expiry). Each
+    provider then warms its own chain, so the cost of a split is one cold read
+    per list member, once — bounded, because every slug on the list is chosen
+    for a real, working cache. The model's pool has ~30 upstreams that each
+    hold their own cache; a turn served by an UNLISTED upstream reads cold no
+    matter how warm the chain is. Measured: a thread that stays on one provider
+    reads 90-99% cached, and 49 of 114 production threads were split across
+    providers — nearly every cold read came from that scattering.
 
     ``allow_fallbacks: False`` is what makes ``order`` binding rather than a
     preference: OpenRouter still walks down the listed slugs on error, but it
