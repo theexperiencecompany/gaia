@@ -282,7 +282,7 @@ def with_unit_mirror(
     # compiles real graphs, and the module collapsed from 9.43 to 0.11
     # mutations/second — all 35 mutants hit mutmut's per-mutant timeout and the
     # run proved nothing. This is the instrument's documented scope (see the
-    # hermetic-fence note in scripts/test/mutation.sh); the slower tiers are
+    # hermetic-fence note in scripts/ci/mutation.sh module); the slower tiers are
     # already run properly, once, by test-python.
     #
     # Kept as a filter rather than a cap: dropping the slow tiers is what makes

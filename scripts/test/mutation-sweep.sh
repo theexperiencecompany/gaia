@@ -139,7 +139,7 @@ COUNT=0
 while read -r module testfiles; do
   COUNT=$((COUNT + 1))
   SLUG="$(echo "$module" | tr '/' '_')"
-  bash "$REPO_ROOT/scripts/test/mutation.sh" "$module" "$testfiles" > "$OUT_DIR/$SLUG.log" 2>&1 &
+  bash "$REPO_ROOT/scripts/ci/mutation.sh" module "$module" "$testfiles" > "$OUT_DIR/$SLUG.log" 2>&1 &
   if [ "$(jobs -r -p | wc -l)" -ge "$PARALLEL" ]; then
     wait -n || true
   fi

@@ -1152,7 +1152,7 @@ jobs:
           persist-credentials: false
       - name: Compute the mutation matrix
         id: plan
-        run: bash scripts/ci/mutation-plan.sh
+        run: bash scripts/ci/mutation.sh plan
 
   # One runner per changed module. mutmut re-runs a module's whole test
   # selection once per mutant, so a heavy module costs tens of minutes; in a
@@ -1180,7 +1180,7 @@ jobs:
       # concurrent shards (measured 2026-08-28) filled every runner slot so the
       # main pipeline's detect job queued behind lint. Four shards keep the
       # lint pool's other lanes moving. Excess modules pack into the four
-      # shards round-robin (scripts/ci/mutation-plan.sh MAX_SHARDS must match).
+      # shards round-robin (scripts/ci/mutation.sh plan MAX_SHARDS must match).
       max-parallel: 4
       matrix:
         include: ${{ fromJson(needs.test-mutation-plan.outputs.matrix) }}
@@ -1202,7 +1202,7 @@ jobs:
         # inline ${{ }} in a run block is a shell-injection seam regardless.
         env:
           GROUP: ${{ matrix.group }}
-        run: bash scripts/ci/mutation-shard.sh
+        run: bash scripts/ci/mutation.sh shard
       - name: Upload shard log
         # Belt and braces for the diagnosis path: runs even when the step
         # above fails or the job is cancelled, so the evidence survives the

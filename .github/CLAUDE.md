@@ -67,7 +67,7 @@ lists, parsing output, loops, multi-line shell — lives in a script under
 
 ```yaml
 - name: Compute the mutation matrix
-  run: bash scripts/ci/mutation-plan.sh
+  run: bash scripts/ci/mutation.sh plan
 ```
 
 Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
@@ -144,7 +144,7 @@ intended semantic, keep it:
 
 ## The mutation lane's shard count
 
-`scripts/ci/mutation-plan.sh` fans the changed modules across a matrix, capped
+`scripts/ci/mutation.sh plan` fans the changed modules across a matrix, capped
 at **the matrix's own `max-parallel`**. Do not raise the cap to "get more
 parallelism" — GitHub runs only `max-parallel` jobs at a time regardless, so a
 wider matrix cannot finish sooner. What it does cost is one check row per job

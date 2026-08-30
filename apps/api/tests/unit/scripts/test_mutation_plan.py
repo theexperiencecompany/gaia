@@ -1,4 +1,4 @@
-"""The mutation gate's matrix planner (scripts/ci/mutation-plan.sh).
+"""The mutation gate's matrix planner (scripts/ci/mutation.sh plan).
 
 The planner decides how many shards the lane fans out to and what each one
 mutates. Both answers are invisible from the lane's own output: an empty
@@ -7,7 +7,7 @@ pass in the quality gate — so a regression here reads as green rather than as
 broken, the exact failure mode the gate exists to prevent.
 
 Driven as a real script against a stubbed sibling: the harness copies
-mutation-plan.sh into a throwaway tree next to a fake ``mutation-matrix.sh``
+`mutation.sh` into a throwaway tree next to a fake ``mutation-matrix.sh``
 that prints a chosen module list. Nothing here runs mutmut.
 """
 
@@ -20,7 +20,8 @@ import subprocess
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
-PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation-plan.sh"
+PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
+LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
 
 # Mirrors MAX_SHARDS in the script under test, which tracks the matrix's
 # max-parallel: a wider matrix cannot finish sooner, it only adds a check row
@@ -30,12 +31,20 @@ PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation-plan.sh"
 MAX_SHARDS = 4
 
 
+def _install(scripts: Path) -> None:
+    """Copy the script under test plus the lib it sources into the sandbox."""
+    shutil.copy(PLAN_SCRIPT, scripts / "mutation.sh")
+    lib = scripts / "lib"
+    lib.mkdir(exist_ok=True)
+    shutil.copy(LOG_LIB, lib / "log.sh")
+
+
 @pytest.fixture
 def harness(tmp_path: Path):
-    """Run mutation-plan.sh against a stubbed matrix, returning its outputs."""
+    """Run `mutation.sh plan` against a stubbed matrix, returning its outputs."""
     scripts = tmp_path / "scripts" / "ci"
     scripts.mkdir(parents=True)
-    shutil.copy(PLAN_SCRIPT, scripts / "mutation-plan.sh")
+    _install(scripts)
     github_output = tmp_path / "github_output"
     github_output.touch()
 
@@ -46,7 +55,7 @@ def harness(tmp_path: Path):
         stub.write_text(f"#!/usr/bin/env bash\ncat <<'JSON'\n{json.dumps(matrix)}\nJSON\n")
         stub.chmod(0o755)
         process = subprocess.run(
-            ["bash", str(scripts / "mutation-plan.sh")],
+            ["bash", str(scripts / "mutation.sh"), "plan"],
             capture_output=True,
             text=True,
             check=False,
@@ -174,13 +183,13 @@ def test_a_failing_matrix_script_fails_the_plan(harness, tmp_path: Path) -> None
     # matrix, and a skipped lane counts as a pass.
     scripts = tmp_path / "scripts" / "ci"
     scripts.mkdir(parents=True, exist_ok=True)
-    shutil.copy(PLAN_SCRIPT, scripts / "mutation-plan.sh")
+    _install(scripts)
     stub = scripts / "mutation-matrix.sh"
     stub.write_text("#!/usr/bin/env bash\necho 'no test file for app/a.py' >&2\nexit 1\n")
     stub.chmod(0o755)
 
     process = subprocess.run(
-        ["bash", str(scripts / "mutation-plan.sh")],
+        ["bash", str(scripts / "mutation.sh"), "plan"],
         capture_output=True,
         text=True,
         check=False,

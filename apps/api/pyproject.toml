@@ -212,7 +212,7 @@ Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
 
 [tool.mutmut]
-# Mutation spot-checks (scripts/test/mutation.sh) — see that script for how
+# Mutation spot-checks (scripts/ci/mutation.sh module) — see that script for how
 # the pieces fit. Key repo integration points:
 # - Single-process pytest: the repo pytest.ini addopts carry -n 4 (xdist),
 #   but mutmut's trampoline stats are collected by in-process pytest plugins
@@ -227,7 +227,7 @@ Issues = "https://github.com/theexperiencecompany/gaia/issues"
 #   other C extensions) cannot be re-imported in the same process.
 source_paths = ["app"]
 also_copy = ["app", "tests", "scripts"]
-# The diff-driven scoping in scripts/test/mutation.sh stamps
+# The diff-driven scoping in scripts/ci/mutation.sh module stamps
 # `# pragma: no mutate` onto every unchanged line; mutmut's AST visitor only
 # honors that comment on simple statement lines and standalone comments, so
 # interior lines of multi-line statements still got mutated. The pattern
