@@ -63,6 +63,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_TITLE,
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    STICKY_FLIP_RETRY_MIN_HIT,
     STICKY_FLIP_RETRY_MIN_INPUT,
 )
 from app.constants.log_tags import LogTag
@@ -862,11 +863,54 @@ class TestStickyFlipReplayThresholds:
         assert result.content == "cold"
         assert primary.ainvoke.await_count == 1
 
+    @pytest.mark.regression
+    async def test_the_small_conversation_steady_state_is_not_replayed(self) -> None:
+        """A 0.83-0.90 read is the documented steady state of a small
+        conversation — the provider under-reading a chain it already HOLDS, not a
+        flip to a cold upstream. There is nothing to re-warm, so a re-send here
+        is a second full request bought for a reporting artefact. This band was
+        inside the old 0.92 gate and is the bulk of the replays prod fires."""
+        prompt = 10_000
+        primary = _replaying_primary(
+            _replay_result("warm", prompt=prompt, cached=8_500),
+            _replay_result("unused", prompt=prompt, cached=prompt),
+        )
+
+        result = await ainvoke_llm(
+            primary,
+            [HumanMessage(content="hi")],
+            config=_STICKY_LANE,
+            options=LLMInvokeOptions(meter_auxiliary=False),
+        )
+
+        assert result.content == "warm"
+        assert primary.ainvoke.await_count == 1
+
+    async def test_a_genuine_cold_flip_is_still_replayed(self) -> None:
+        """The narrowing must not disarm the case the replay exists for: a
+        request that landed on an upstream holding no chain at all."""
+        prompt = 10_000
+        primary = _replaying_primary(
+            _replay_result("cold", prompt=prompt, cached=0),
+            _replay_result("warm", prompt=prompt, cached=9_900),
+        )
+
+        with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.25)):
+            result = await ainvoke_llm(
+                primary,
+                [HumanMessage(content="hi")],
+                config=_STICKY_LANE,
+                options=LLMInvokeOptions(meter_auxiliary=False),
+            )
+
+        assert result.content == "cold"
+        assert primary.ainvoke.await_count == 2
+
     async def test_a_hit_rate_exactly_at_the_floor_is_not_replayed(self) -> None:
         """At the floor the cache is warm enough; re-sending would just pay twice."""
         prompt = 10_000
         primary = _replaying_primary(
-            _replay_result("warm", prompt=prompt, cached=int(prompt * 0.92)),
+            _replay_result("warm", prompt=prompt, cached=int(prompt * STICKY_FLIP_RETRY_MIN_HIT)),
             _replay_result("unused", prompt=prompt, cached=prompt),
         )
 
@@ -1076,12 +1120,14 @@ class TestMeterDiscardedReplay:
         },
     )
 
-    async def test_the_whole_token_breakdown_is_booked_to_the_budget(
+    @pytest.mark.regression
+    async def test_the_whole_token_breakdown_is_booked_as_background_cogs(
         self, booked_replay: AsyncMock
     ) -> None:
-        """The user asked for this turn, so unlike auxiliary COGS the discarded
-        request counts against their allowance — and every token class is priced
-        separately, so a dropped field under-reports the spend."""
+        """The user never received this answer, so it is our COGS, not their
+        allowance — ``charge_to_budget=False``, and no ``root_request_id`` so our
+        own re-send cannot shrink the turn's token ceiling. Every token class is
+        still priced separately, so a dropped field under-reports the spend."""
         config = RunnableConfig(configurable={"user_id": "u-1", "root_request_id": "r-1"})
 
         await _meter_discarded_replay(self._DISCARDED, config, "the_judge")
@@ -1095,12 +1141,28 @@ class TestMeterDiscardedReplay:
                 "cached_tokens": 100,
                 "reasoning_tokens": 7,
             },
-            "root_request_id": "r-1",
-            "charge_to_budget": True,
+            "root_request_id": None,
+            "charge_to_budget": False,
             # The fixture message carries no reported price; a real OpenRouter
             # reply does, and it is what gets booked (see the test below).
             "provider_cost": None,
         }
+
+    @pytest.mark.regression
+    @patch("app.agents.llm.client.log")
+    async def test_the_discarded_spend_is_flagged_background_on_the_wide_event(
+        self, mock_log: MagicMock, booked_replay: AsyncMock
+    ) -> None:
+        """``background=True`` is the field the COGS split reads (the auxiliary
+        route sets it for the same reason). Without it a discarded replay is
+        indistinguishable from spend the user asked for, and the 20% of LLM cost
+        this path burns lands in the wrong column of every cost report."""
+        config = RunnableConfig(configurable={"user_id": "u-1", "root_request_id": "r-1"})
+
+        await _meter_discarded_replay(self._DISCARDED, config, "the_judge")
+
+        assert mock_log.info.call_args.kwargs["background"] is True
+        assert mock_log.info.call_args.kwargs["sticky_flip_discarded"] is True
 
     async def test_the_price_openrouter_reported_is_what_gets_booked(
         self, booked_replay: AsyncMock

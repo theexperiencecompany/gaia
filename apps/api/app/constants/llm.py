@@ -132,14 +132,21 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 # its prompt (the request landed on a cold provider after the ~5-minute sticky
 # expiry — a known OpenRouter behavior), re-send it once — the first attempt
 # wrote the chain there and the re-send hits it (~99%, verified by byte-exact
-# shadow replays of captured requests: 99.2-99.7%). 0.92 catches the full
-# flips (0-5%), the partial static-only dips (65-75%) AND the small-
-# conversation steady state (83-90% — the provider under-reads the fresh
-# chain for a few turns after a big turn; measured live at 83.8% flat while
-# the exact bytes replay at 99.7%). The retry's second call reads ~99% cached,
-# so the turn's aggregate hit rises toward (cached + 0.99*input)/2*input while
-# the extra input bills at the cached-read rate.
-STICKY_FLIP_RETRY_MIN_HIT = 0.92
+# shadow replays of captured requests: 99.2-99.7%).
+#
+# 0.80 covers the two shapes that are actually a flip: the full flips (0-5%)
+# and the partial static-only dips (65-75%).
+#
+# It deliberately EXCLUDES the small-conversation steady state (83-90% — the
+# provider under-reads the fresh chain for a few turns after a big turn;
+# measured live at 83.8% flat while the exact bytes replay at 99.7%), which the
+# previous 0.92 included. That band is a provider under-REPORTING a chain it
+# already holds, not a request that landed cold: there is no cold upstream to
+# re-warm, so the re-send buys nothing but a second request. What it did buy was
+# a higher printed aggregate hit rate — (cached + 0.99*input)/2*input is
+# arithmetic on the average, not a saving — and that band is the bulk of the
+# 3,614 replays / $34.55 measured over 2026-08-16..29.
+STICKY_FLIP_RETRY_MIN_HIT = 0.80
 STICKY_FLIP_RETRY_MIN_INPUT = 8_000
 # The replay's premise — sticky routing that re-reads the chain the first
 # attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
