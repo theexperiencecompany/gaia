@@ -33,7 +33,6 @@ apps/api/app/agents/tools/coding/query_json_tool.py	PLR0911
 apps/api/app/agents/tools/coding/query_json_tool.py	PLR0913
 apps/api/app/agents/tools/coding/read_tool.py	PLR0911
 apps/api/app/agents/tools/core/mutations.py	PLR0913
-apps/api/app/agents/tools/core/registry.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0912
 apps/api/app/agents/tools/core/retrieval.py	PLR0913
 apps/api/app/agents/tools/core/retrieval.py	PLR0915
@@ -139,15 +138,12 @@ apps/api/app/utils/composio_hooks/gmail_hooks.py	PLR0912
 apps/api/app/utils/composio_hooks/reddit_hooks.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0913
-apps/api/app/utils/file_utils.py	PLR0911
-apps/api/app/utils/file_utils.py	PLR0912
 apps/api/app/utils/linkedin_utils.py	PLR0913
 apps/api/app/utils/notification/orchestrator.py	PLR0913
 apps/api/app/utils/notification/storage.py	PLR0913
 apps/api/app/utils/notion_md.py	PLR0911
 apps/api/app/utils/notion_md.py	PLR0912
 apps/api/app/utils/notion_md.py	PLR0915
-apps/api/app/utils/timezone.py	PLR0911
 apps/api/app/utils/todo_vector_utils.py	PLR0913
 apps/api/app/utils/voice_utils.py	PLR0913
 apps/api/app/utils/workflow_utils.py	PLR0912
@@ -160,7 +156,6 @@ apps/api/scripts/evals/core/flaky.py	PLR0912
 apps/api/scripts/evals/core/ingest.py	PLR0913
 apps/api/scripts/evals/core/ingest_check.py	PLR0912
 apps/api/scripts/evals/core/invariants.py	PLR0912
-apps/api/scripts/evals/core/opiksink.py	PLR0913
 apps/api/scripts/evals/core/providers.py	PLR0911
 apps/api/scripts/evals/core/runner.py	PLR0912
 apps/api/scripts/evals/core/runner.py	PLR0913

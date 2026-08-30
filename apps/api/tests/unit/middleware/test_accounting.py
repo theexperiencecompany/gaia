@@ -583,7 +583,7 @@ def test_a_plan_with_no_configured_budget_never_reaches_the_wrapup_threshold() -
     #
     # Lives here rather than beside is_budget_wrapup_threshold's own tests
     # because the mutation gate mutates cost_budget.py against THIS file:
-    # scripts/ci/mutation-matrix.py picks the alphabetically first test file
+    # scripts/ci/lib/mutation_matrix.py picks the alphabetically first test file
     # that references the module, and middleware/ sorts before services/.
     with patch("app.services.cost_budget.get_daily_cost_budget_usd", return_value=0.0):
         assert is_budget_wrapup_threshold(0.0, PlanType.FREE) is False

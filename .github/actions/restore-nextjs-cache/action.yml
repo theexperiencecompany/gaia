@@ -1,13 +1,23 @@
 name: Restore Next.js build cache
 description: >
   Persist apps/web/.next/cache across runs so `next build` compiles warm.
-  Single source of truth for the cache key — used by main.yml (build) and
-  desktop-pr-build.yml (prepare).
+  Single source of truth for the cache key — used by main.yml (build),
+  deploy-web.yml (build) and desktop-pr-build.yml (prepare).
+
+  Two strategies, picked by runner kind. GitHub-hosted runners are ephemeral,
+  so the cache has to travel through actions/cache (measured 3m45s restore).
+  On the self-hosted box apps/web/.next/cache simply persists inside each
+  runner instance's checkout (clean: false, and the job-started hook's scoped
+  git clean spares it), so there is nothing to restore and no two instances
+  ever share one cache — Next.js's cache is not built for concurrent writers.
 
 runs:
   using: composite
   steps:
+    # Self-hosted: nothing to do. apps/web/.next/cache persists in the
+    # instance's checkout (clean: false + the hook's scoped clean spares it).
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: runner.environment != 'self-hosted'
       with:
         path: apps/web/.next/cache
         key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','apps/web/next.config.mjs','apps/web/open-next.config.ts','apps/web/wrangler.jsonc') }}

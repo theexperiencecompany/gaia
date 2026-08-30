@@ -13,7 +13,7 @@
 # literal via `must_not_communicate`. Synthetic fixtures, never real keys, and
 # they cannot do their job without them.
 #
-# .mutation-<pid>/ is a mutation-run workdir (scripts/test/mutation.sh): a
+# .mutation-<pid>/ is a mutation-run workdir (scripts/ci/mutation.sh module): a
 # throwaway copy of app/ + tests/ + scripts/ plus mutmut's mutants/ tree. It is
 # gitignored and removed on exit, but one kept run was committed once, and every
 # finding in it was a COPY of a file already in the repo — including the eval

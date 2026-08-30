@@ -2,8 +2,9 @@
 
 The consolidation LLM is canned (``ConsolidatedDocument``); everything else
 (fact gathering from Postgres, document versioning, Redis pending set,
-debounce waiter, hot-context invalidation) runs for real. Debounce timing is
-shrunk via monkeypatch — no sleeps against the production 120s window.
+debounce waiter, hot-context invalidation) runs for real. The debounce wait
+is a monkeypatched seam the test releases — no sleeps against the production
+120s window, and no shrunk window to race.
 """
 
 import asyncio
@@ -138,11 +139,19 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     monkeypatch: pytest.MonkeyPatch,
     real_redis: Redis,
 ) -> None:
-    # Shrunk from the production 120s, but kept wide enough that both retains
-    # (real embeddings + store writes) reliably land inside one window even
-    # under CI CPU contention — a 1.5s window raced the producer and the
-    # waiter fired a partial pass.
-    monkeypatch.setattr(consolidation, "CONSOLIDATION_DEBOUNCE_SECONDS", 10)
+    # The window is released by the test, never by the clock. Shrinking
+    # CONSOLIDATION_DEBOUNCE_SECONDS instead raced the producer: at 1.5s the
+    # second retain (real embeddings + store writes) could land after the
+    # waiter woke under CI CPU contention, and the waiter fired a partial
+    # pass; the 10s window that cured it cost 10s of wall clock per run.
+    # Gating the waiter on an event set after both retains removes the race
+    # and the wait.
+    release = asyncio.Event()
+
+    async def _wait_for_release() -> None:
+        await release.wait()
+
+    monkeypatch.setattr(consolidation, "_debounce_wait", _wait_for_release)
     fake_llm.respond(ConsolidatedDocument, ConsolidatedDocument(content="# Rewritten"))
     _pass_verification(fake_llm)
     # Short first-person facts can drift into the reconcile band; the verdict
@@ -179,23 +188,10 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
         "second retain inside the window must reuse the live waiter"
     )
 
-    # Deterministic wait for the debounced consolidation to fully land: poll
-    # the observable end state (all three doc types written, pending consumed)
-    # with a generous deadline. Waiting on the waiter task itself races the
-    # producer under load and can observe a partial pass.
-    deadline = asyncio.get_running_loop().time() + 60
-    while True:
-        rows = await fetch_document_rows(memory_user)
-        pending = await real_redis.get(CONSOLIDATION_PENDING_KEY.format(user_id=memory_user))
-        if {row.doc_type for row in rows} >= {
-            MemoryDocType.PEOPLE_MD.value,
-            MemoryDocType.USER_MD.value,
-            MemoryDocType.MEMORY_MD.value,
-        } and pending is None:
-            break
-        if asyncio.get_running_loop().time() > deadline:
-            pytest.fail("debounced consolidation did not complete within 60s")
-        await asyncio.sleep(0.25)
+    # Both retains have fully landed before the window opens, so awaiting the
+    # waiter is deterministic: it can only ever observe the merged pending set.
+    release.set()
+    await waiter
 
     # relationships -> people_md + user_md; food-preferences -> memory_md.
     # One merged pass: exactly three rewrites, no second consolidation.

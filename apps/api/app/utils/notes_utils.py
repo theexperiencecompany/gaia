@@ -1,5 +1,6 @@
 from langchain_core.documents import Document
 
+from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.notes import note_repository
@@ -51,7 +52,7 @@ async def insert_note(
 
 async def index_note(note_id: str, user_id: str, plaintext: str) -> None:
     """Index one note's plaintext into the ``notes`` vector collection."""
-    collection = await ChromaClient.get_langchain_client(collection_name="notes")
+    collection = await ChromaClient.get_langchain_client(collection_name=CHROMA_NOTES_COLLECTION)
     await collection.aadd_documents(
         documents=[
             Document(page_content=plaintext, metadata={"note_id": note_id, "user_id": user_id})

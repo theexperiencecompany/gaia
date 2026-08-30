@@ -1,5 +1,5 @@
 {
-  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root \u2014 keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, test-python-coverage (coverage>=70%, diff-cover>=90%, schemathesis fuzz), regression-proof, test-device-bridge, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate shards; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
+  "$comment": "GAIA verify lanes \u2014 local mirror of CI quality gates (.github/workflows/code-quality.yml + main.yml). name matches the CI job/step (rows may be step-granular). scope = extended regex over changed paths; lane runs if ANY file matches (--all overrides). heavy=true needs --with-heavy. timeout_s hard cap; expiry -> status=timeout (exit 2). require_cmd: any missing -> skipped(missing-tool). command runs at repo root \u2014 keep byte-parity with the CI job's own repro line. Edit a workflow lane and this file in the SAME commit. INTENTIONALLY NOT MIRRORED (CI-only): build, build-images, coverage (combines the unit/integration/bridge slices; fail-under 80 on master, report-only on PRs), docker-image, regression-proof, validate-release-manifest, test-harness-tools, trivy-scan (advisory), changelog-sync (auto-fix PR job). Known deltas: py-tests mirrors via Dagger not byte-parity flake-gate slices; alert-rules needs locally installed pint/promtool (CI pins v0.87.0/v3.1.0 from release tarballs); whole-repo scopes are stricter than CI's changed-file scoping (safe direction). Post-merge note: master pinned bandit/xenon/interrogate and split ignore-ratchet into ignore-whys + ignore-staleness + tool-pins (2026-08 merge of origin/master).",
   "schema_version": 1,
   "lanes": [
     {
@@ -40,7 +40,7 @@
       "heavy": false,
       "timeout_s": 120,
       "require_cmd": [],
-      "command": "node scripts/ci/check-types-location.mjs --enforce"
+      "command": "node scripts/ci/checks.mjs types-location --enforce"
     },
     {
       "name": "components-per-file",
@@ -75,7 +75,7 @@
       "command": "pnpm exec nx run-many -t type-check --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
     },
     {
-      "name": "suppression-ratchet",
+      "name": "suppression-hygiene",
       "scope": "\\.(ts|tsx|js|jsx|py)$",
       "heavy": false,
       "timeout_s": 120,
@@ -192,7 +192,7 @@
       "heavy": false,
       "timeout_s": 300,
       "require_cmd": [],
-      "command": "python3 tools/evlog_map --github-summary --no-write --min-score 100 && node scripts/ci/evlog-map-bots.mjs --min-score 100"
+      "command": "python3 tools/evlog_map --github-summary --no-write --min-score 100 && node scripts/ci/checks.mjs evlog-map-bots --min-score 100"
     },
     {
       "name": "observability-ratchet",
@@ -200,7 +200,7 @@
       "heavy": false,
       "timeout_s": 120,
       "require_cmd": [],
-      "command": "scripts/ci/evlog-ratchet.sh"
+      "command": "scripts/ci/audit.sh evlog"
     },
     {
       "name": "wide-event-conformance",
@@ -212,7 +212,7 @@
     },
     {
       "name": "alert-rules",
-      "scope": "^tools/alert-rules/|^infra/docker/observability/|^config/pint\\.hcl$",
+      "scope": "^tools/alert-rules/|^infra/docker/observability/grafana/provisioning/alerting/|^config/pint\\.hcl$",
       "heavy": true,
       "timeout_s": 600,
       "require_cmd": ["pint", "promtool"],
@@ -240,7 +240,7 @@
       "heavy": true,
       "timeout_s": 3600,
       "require_cmd": ["uv"],
-      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/test/mutation-local.sh"
+      "command": "uv sync --frozen --package gaia --group backend --group dev && bash scripts/ci/mutation.sh local"
     },
     {
       "name": "ts-tests",
@@ -248,7 +248,7 @@
       "heavy": true,
       "timeout_s": 1800,
       "require_cmd": [],
-      "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage"
+      "command": "pnpm exec nx run-many -t test --projects=web,desktop,mobile,cli,bot-discord,bot-slack,bot-telegram,bot-whatsapp,bot-imessage --output-style=stream"
     },
     {
       "name": "py-tests",

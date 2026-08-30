@@ -14,12 +14,15 @@ tests.
 import asyncio
 from collections.abc import AsyncGenerator, Callable
 import fcntl
+import os
 from pathlib import Path
 import tempfile
+import time
 import uuid
 
 import chromadb
 from chromadb.api import AsyncClientAPI
+import httpx
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 import pytest
@@ -33,6 +36,7 @@ from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
     CHROMA_MEMORY_EPISODES_COLLECTION,
     CONSOLIDATION_PENDING_KEY,
+    EMBEDDING_SIDECAR_URL_ENV,
 )
 from app.db.chroma.chromadb import ChromaClient
 import app.db.postgresql as postgresql_module
@@ -62,6 +66,25 @@ def warm_embedding_models() -> None:
     live-server suite that reuses the same cache. The winner downloads; the
     rest block here and read a complete cache.
     """
+    # With the shared sidecar configured (CI sets MEMORY_EMBEDDING_SIDECAR_URL),
+    # the weights live in ONE process and the app's embed/rerank calls go over
+    # HTTP — loading them here as well would put ~1.8 GB into every xdist
+    # worker and serialize sixteen model loads behind the lock below, which is
+    # exactly the cost the sidecar exists to remove. Warm the sidecar instead.
+    sidecar = os.getenv(EMBEDDING_SIDECAR_URL_ENV, "").strip()
+    if sidecar:
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                r = httpx.get(f"{sidecar}/health", timeout=5.0)
+                if r.status_code == 200:
+                    return
+            except httpx.HTTPError:
+                pass
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"embedding sidecar at {sidecar} not healthy after 120s")
+            time.sleep(1)
+
     lock_path = Path(tempfile.gettempdir()) / "gaia-fastembed-warmup.lock"
     with lock_path.open("w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)

@@ -1,33 +1,136 @@
 name: Quality Checks
 
-# Primary CI gate: validates code quality on every PR to master.
+# THE correctness pipeline: build + tests + harness tooling + trivy +
+# regression-proof, gated by `quality-gate` (the required check on master).
+# Compute lanes run on gaia-home-server (16c/46G) when it is online — queueing
+# behind a busy pool, since its environment setup is ~30x cheaper than a
+# GitHub-hosted runner's — and fall back to GitHub-hosted runners when it is
+# offline, unreachable, or the PR comes from a fork; see
+# scripts/ci/runner.sh select. Release images stay on GitHub-hosted runners
+# (build.yml). `workflow_dispatch` additionally exposes the runner probe.
+
 on:
   pull_request:
-    branches:
-      - master
+    branches: [master]
   push:
-    branches:
-      - master
+    branches: [master]
   workflow_dispatch:
+    inputs:
+      force_home:
+        description: Fail if home runner unavailable (smoke test)
+        type: boolean
+        default: false
+      force_github:
+        description: Run every lane on GitHub-hosted runners (exercises the fallback path)
+        type: boolean
+        default: false
+      runner_label:
+        description: Home runner label to probe (default gaia-home; a new pool under a temporary label can be proven before it takes real traffic)
+        type: string
+        default: gaia-home
 
+# Per-SHA group: a new push must not wait for the old run's cancellation to
+# finish (a cancelled pytest step wedges the self-hosted worker for the
+# listener's 5-minute cancellation timeout). select-runner cancels the
+# superseded runs via the API instead — scripts/ci/runner.sh cancel-superseded.
 concurrency:
-  group: ci-${{ github.head_ref || github.ref }}
+  group: ci-${{ github.head_ref || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 env:
   NX_NO_CLOUD: "true"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22.15.1"
+  PNPM_VERSION: "10.17.1"
 
 jobs:
-  # --- Detect affected projects -------------------------------------------
-  detect:
+  # ── Runner selection (always runs on GH — no Tailscale needed) ─────────
+  select-runner:
+    name: Select runner
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: write # cancel superseded runs
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+      runner_label: ${{ steps.pick.outputs.runner_label }}
+      is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
+    steps:
+      # This job checks out the PR ref and hands a token to
+      # `scripts/ci/runner.sh select`. Pinning the checkout to the default
+      # branch instead is NOT an option: this composite and that script do not
+      # exist on master yet, so a master checkout fails with exit 127 (measured
+      # — run 33301039221). Revisit once they have landed there.
+      #
+      # What makes that acceptable meanwhile: GitHub does not pass Actions
+      # secrets to a workflow triggered by a fork's `pull_request`, so
+      # HOMELAB_GH_PAT is empty on exactly the runs whose code we do not
+      # control, and the composite falls back to `github.token`. A same-repo
+      # PR's author already has write access. See the token expression below,
+      # which says so in code rather than relying on that default.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cancel superseded runs of this branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/runner.sh cancel-superseded
+
+      - name: Select runner (tests, lint, build)
+        id: pick
+        uses: ./.github/actions/select-runner
+        with:
+          runner-label: ${{ inputs.runner_label || 'gaia-home' }}
+          force-home: ${{ inputs.force_home && 'true' || 'false' }}
+          force-github: ${{ inputs.force_github && 'true' || 'false' }}
+          github-token: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (secrets.HOMELAB_GH_PAT || github.token) || github.token }}
+
+      - name: Summary
+        run: |
+          echo "Selected: ${{ steps.pick.outputs.runner }} (is_self_hosted=${{ steps.pick.outputs.is_self_hosted }}, reason=${{ steps.pick.outputs.reason }})"
+
+  # ── Watchdog: a run parked on a box that died after selection ────────────
+  # select-runner decides once. If the box goes away before pickup, GitHub
+  # keeps the self-hosted jobs queued for up to 24 h (timeout-minutes starts
+  # at pickup). This GitHub-hosted job polls the run and cancels it with a
+  # clear error once any job has queued past the limit. Not in the gate's
+  # needs: it only ever fails a run that could not have finished anyway.
+  runner-watchdog:
+    name: Watch for a stalled home runner
+    needs: [select-runner]
+    if: needs.select-runner.outputs.is_self_hosted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write # cancel the run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Cancel the run if a lane stays queued
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WATCHDOG_JOB_NAME: Watch for a stalled home runner
+          # The pool select-runner actually chose: before cancelling, the
+          # watchdog re-probes it and leaves a merely-busy box alone.
+          RUNNER_LABEL: ${{ needs.select-runner.outputs.runner_label }}
+        run: bash scripts/ci/runner.sh watchdog
+
+  # ── Detect — on the critical path of every lane. Measured 119s on a GitHub
+  # runner (cold pnpm install + nx graph); on the box with persistent
+  # node_modules and the git mirror it is seconds. ─────────────────────────
+  detect:
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    # 15, not 5: the first install after a lockfile/layout change on a persistent
+    # workspace converts the whole node_modules tree (one-time, >5 min).
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
-      # nx-set-shas queries the Actions API for the last successful master
-      # run; without this it silently falls back to HEAD~1 on every push —
-      # correct today only because the ruleset forces merge commits.
       actions: read
     outputs:
       has_python: ${{ steps.affected.outputs.has_python }}
@@ -37,39 +140,25 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          # Full history for nx-set-shas. Every self-hosted checkout in this
+          # repo uses depth 0: a depth-1 checkout marks the persistent
+          # workspace shallow, and the next depth-0 fetch on that runner then
+          # re-unshallows from GitHub (measured 21-104 s). A depth-0 fetch on
+          # an already-full workspace is a ~1 s delta.
           fetch-depth: 0
-          # Jobs below run PR-controlled code; none of them push/fetch after
-          # checkout, so never leave the token in git config (zizmor artipacked).
           persist-credentials: false
-
-      - name: Restore Nx cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
-          restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
-
       - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
         with:
           main-branch-name: master
-
-      - uses: ./.github/actions/setup-node-pnpm
-
       - name: Validate release manifest
-        run: node scripts/ci/validate-release-manifest.mjs
-
-      - name: Detect affected projects
+        run: node scripts/ci/release.mjs validate-manifest
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Detect affected
         id: affected
         run: |
-          # Fail loud: an nx error must fail this job, not yield an empty
-          # affected list that green-lights an unchecked PR.
           set -euo pipefail
-          trap 'echo "::error::repro: pnpm exec nx show projects"' ERR
-
-          # nx may print JSON arrays or one-per-line; normalize to CSV.
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
-
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
             TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
@@ -77,308 +166,459 @@ jobs:
             PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
             TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
           fi
-
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
           echo "typescript_projects=$TS" >> "$GITHUB_OUTPUT"
           echo "has_python=$([[ -n "$PY" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_typescript=$([[ -n "$TS" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "Affected Python: $PY"
+          echo "Affected TS: $TS"
 
-          echo "Affected Python:     $PY"
-          echo "Affected TypeScript: $TS"
-          echo "### Detect affected — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+  # ── Probe the actual execution capability on the chosen runner ───────────
+  # This proves fallback works: the job lands wherever select-runner decided,
+  # and we echo the provenance so the experiment can measure it.
+  probe:
+    # No needs.* in the name: job names cannot read it and render the
+    # expression literally in the checks list.
+    name: Probe execution
+    # Diagnostic only — it held a runner instance on every PR for a 12s echo.
+    if: github.event_name == 'workflow_dispatch'
+    needs: [select-runner]
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 5
+    steps:
+      - name: Runner provenance
+        run: |
+          echo "## Hybrid probe" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner label:** \`${{ needs.select-runner.outputs.runner_label }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **is_self_hosted:** \`${{ needs.select-runner.outputs.is_self_hosted }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Runner expression:** \`${{ needs.select-runner.outputs.runner }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Hostname:** \`$(hostname)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **nproc:** \`$(nproc)\` vCPUs" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Mem:** \`$(free -h | awk '/^Mem:/{print $2}')\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Kernel:** \`$(uname -r)\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Docker:** \`$(docker --version 2>&1 | head -n1)\`" >> "$GITHUB_STEP_SUMMARY"
+          printf "%-18s %s\n" "hostname:" "$(hostname)"
+          printf "%-18s %s\n" "nproc:" "$(nproc)"
+          printf "%-18s %s\n" "runner_label:" "${{ needs.select-runner.outputs.runner_label }}"
+          cat /proc/cpuinfo 2>/dev/null | grep -m1 "model name" || true
+          free -h 2>/dev/null | head -n 3 || vm_stat 2>/dev/null | head -n 10 || true
+          df -h . | head -n 5
+          echo "probe: OK — fallback contract verified (job landed, did not queue forever)"
 
-  # Static checks and dead code live in code-quality.yml (enforced lanes on
-  # the same events) — never duplicate them here.
-  # --- Build (runner-native, typescript only) -----------------------------
+  # ── Build — insanely parallel on 16c (auto-detected), fallback 3 on 2c ---
   build:
-    needs: [detect]
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
-      # Without a warm compiler cache every PR pays a full cold `next build`
-      # (~4 min, the job's critical path).
       - uses: ./.github/actions/restore-nextjs-cache
-      - name: Build
-        env:
-          NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
-          # Through env, not inline ${{ }}: project names come from PR-controlled
-          # project.json files and must never expand inside the script itself.
-          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+      - name: Detect optimal parallelism
+        id: par
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t build"' ERR
-          echo "::group::nx build output"
-          pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel=3 2>&1 | tee /tmp/build-nx.out; _rc=${PIPESTATUS[0]}; cat /tmp/build-nx.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
+          NX=$(bash scripts/ci/runner.sh parallel --nx)
+          echo "nx=$NX" >> "$GITHUB_OUTPUT"
+          echo "NX parallel=$NX on $(nproc) vCPUs"
+      - name: Build (timed, 16c-optimized)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
+        env:
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
+          NX_PARALLEL: ${{ steps.par.outputs.nx }}
+        run: |
+          echo "::group::env"
+          echo "runner=${{ needs.select-runner.outputs.runner_label }} is_self_hosted=${{ needs.select-runner.outputs.is_self_hosted }} nproc=$(nproc) NX_PARALLEL=$NX_PARALLEL"
+          free -h | head -n 2; df -h . | head -n 2
           echo "::endgroup::"
-          echo "### Build (nx) — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "Build: OK ($AFFECTED_TS_PROJECTS)"
-      - name: Save Nx cache
-        # PR build outputs aren't reusable by master (different source hash);
-        # the upload is ~160s of wall time for a cache only exact re-runs of
-        # this SHA would hit. Master pushes keep the shared cache warm.
-        if: always() && github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}-${{ github.run_id }}
+          # On 16c we push to --parallel=16 and let Nx schedule; on 2c we cap at 3 to avoid OOM.
+          # --output-style=stream: nx's static output is one async pipe write
+          # followed by process.exit(), so the tail — the part `tail -n 60`
+          # keeps — is exactly what gets dropped (see test-typescript).
+          /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
+          echo "Build: OK (parallel=$NX_PARALLEL)"
 
-  # --- Test: Python (runner-native + live service containers) -------------
-  # Same service topology as `dagger call test-python` (the local harness),
-  # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
-  # per run for a ~2.5 min suite.
-  # Sharded 6-way via pytest-split (8 shards measured no wall gain under the
-  # shared-pool cap — jobs just queued longer — and cost 2 more runners per
-  # PR). Each shard boots the same live services via setup-python-test-env,
-  # measures its subset's coverage to a per-shard data file, and uploads
-  # that file; test-python-coverage (below) combines them and enforces the
-  # 80% floor + diff-cover so neither shard gates a partial view.
+  # ── Test Python — four slices on four runner instances ───────────────────
+  # One 16-worker run measured 183s; the box runs eleven `gaia-home` runner
+  # instances, so the suite is split by directory into jobs that run
+  # concurrently and the wall clock becomes max(slice) instead of the sum. Splitting
+  # on one machine only became viable once the embedding sidecar took a worker
+  # from ~2.7 GB to ~1 GB — the parallel lanes now fit in RAM together.
+  # Each lane writes its own coverage data; the `coverage` job below combines
+  # them and enforces the threshold, so coverage never blocks either lane.
   test-python:
-    needs: [detect]
+    name: test-python (${{ matrix.slice.name }})
+    needs: [select-runner, detect]
     if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 22
+    permissions:
+      contents: read
+      actions: read # `test_impact.py fetch` reads the map artifact of a master run
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
-    name: test-python (shard ${{ matrix.shard }}/6)
+        slice:
+          # node: only the bridge slice (tests/integration/real/test_device_bridge_e2e.py)
+          # drives the real `gaia bridge` CLI via tsx; every other slice skips the
+          # Node setup (pnpm self-installer alone cost the integration lane 8 s).
+          # unit + meta need no service containers, sidecar or Node (verified on
+          # the box: 10,542 passed, 0 errors, nothing running). contracts needs
+          # Redis/Mongo, so it rides with integration.
+          # Static worker shares: the lanes start together, so a runtime probe of
+          # "workers already running" sees zero on every lane and each took 16 —
+          # 32+ workers on 16 threads (8 physical cores). Shares sum to the box.
+          # integration 4 / unit-b 7 / unit-a 5 (2026-08-28, box idle, -n 6..16):
+          # the integration slice's wall is FLAT from 6 to 16 workers (58-66 s,
+          # 53-58 % of its allotted threads — it waits on pg/mongo/chroma/sidecar)
+          # while each extra worker burns ~38 CPU-s of collection + imports, so
+          # its share goes to unit-b, whose wall is ~30 s fixed + ~270 CPU-s / n.
+          # unit is two slices on two runner instances: xdist re-collects the
+          # whole slice in EVERY worker (measured 20 s for 13.2k tests, CPU-bound),
+          # so 10 workers on one slice burn ~200 s of CPU on collection alone.
+          # Halving the slice halves per-worker collection and takes the lane's
+          # contention with integration off a single instance. services/agents/
+          # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
+          - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
+          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
+          # Long tests first. py-spy sampling of this lane showed 47% of worker
+          # time idle in the scheduler tail: the slice ends on a few 5-15s
+          # e2e/memory tests while the other workers sit finished. Handing
+          # those out first makes the tail out of quick tests instead.
+          - { name: integration, paths: "tests/integration/real tests/e2e tests/stress tests/integration tests/contracts", ignore: "--ignore=tests/integration/real/test_device_bridge_e2e.py", node: "false", services: "true", workers: "4", serial: "false" }
+          # The device-bridge e2e TRUNCATEs bridge_devices on the lane's shared
+          # Postgres (clean_bridge_tables); under xdist another worker's fixture
+          # wipes its rows mid-test ("Refresh token is invalid"). Serial, in
+          # its own slice.
+          # serial: GitHub's expression engine treats the string "0" as falsy, so a
+          # `workers: "0"` fell through to the detected 16 and the 4 tests raced.
+          - { name: bridge, paths: "tests/integration/real/test_device_bridge_e2e.py", ignore: "", node: "true", services: "true", workers: "0", serial: "true" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
-          fetch-depth: 0
-      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
-      # Restore the uv venv BEFORE the composite below (its uv sync becomes a
-      # fast no-op against a matching lock). Key is lock-scoped, so one
-      # upload serves every PR until the lock moves.
-      - name: Restore uv venv
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
-      # install-node: false — the sharded selection doesn't drive the
-      # device-bridge CLI; skipping pnpm saves ~56-75s per shard (measured
-      # green in the 6-shard era, 8.6m total vs 13.4m with Node).
+          # Selection diffs against the merge-base, which a depth-1 clone has not
+          # got. Master keeps depth 1 — it never selects.
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || (github.event_name == 'pull_request' && '200' || '1') }}
       - uses: ./.github/actions/setup-python-test-env
         with:
-          install-node: "false"
-      - name: Restore pytest-split cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.pytest_cache
-          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}
-          restore-keys: |
-            pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-
-      - name: Run Python tests (shard ${{ matrix.shard }}/6)
-        working-directory: apps/api
+          node: ${{ matrix.slice.node }}
+          services: ${{ matrix.slice.services }}
+      # Only the GitHub-hosted fallback uses this: the static shares below are
+      # sized for the 16-thread box and would put 7 workers on a 4-vCPU VM.
+      - name: Detect parallelism
+        id: par
+        if: needs.select-runner.outputs.is_self_hosted != 'true'
+        run: |
+          PY=$(bash scripts/ci/runner.sh parallel --pytest-n)
+          echo "py=$PY" >> "$GITHUB_OUTPUT"
+          echo "pytest xdist n=$PY on $(nproc) vCPUs ($(free -g | awk '/^Mem:/{print $7}')G available)"
+      # ── Test impact selection (PRs only, never the bridge slice) ───────────
+      # The bridge slice is one serial file; selecting inside it saves nothing
+      # and its e2e is the least safe thing to skip. See the header of scripts/ci/test_impact.py.
+      # Artifact, not actions/cache: a PR run cannot restore a cache written on
+      # its head branch, only on its merge ref or master (`test_impact.py fetch`).
+      - name: Fetch test impact map
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
         env:
-          COVERAGE_FILE: .coverage.${{ matrix.shard }}
+          SLICE_NAME: ${{ matrix.slice.name }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/ci/test_impact.py fetch
+      - name: Select impacted tests
+        id: impact
+        if: github.event_name == 'pull_request' && matrix.slice.name != 'bridge'
+        env:
+          SLICE_NAME: ${{ matrix.slice.name }}
+          SLICE_PATHS: ${{ matrix.slice.paths }}
+          # The slice's paths and its ignores TOGETHER say what it runs; without
+          # the ignores unit-b re-ran every unit-a file the diff touched.
+          SLICE_IGNORE: ${{ matrix.slice.ignore }}
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/ci/test_impact.py select
+      # --cov-fail-under=0: pyproject's fail_under=80 is the COMBINED gate,
+      # enforced by the coverage job below; one slice alone cannot reach it.
+      - name: Run Python tests (${{ matrix.slice.name }})
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
+        env:
+          # Coverage is traced only on master/dispatch runs, where the gate and
+          # the test-impact map read it (C tracer: sysmon cannot record the
+          # per-test contexts the map needs). PR runs skip tracing entirely.
+          COVERAGE: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          COVERAGE_FILE: .coverage.${{ matrix.slice.name }}
+          COV_CONTEXT: ${{ github.event_name != 'pull_request' && 'test' || '' }}
+          HYPOTHESIS_PROFILE: ${{ github.event_name == 'pull_request' && 'ci' || 'default' }}
+          SLICE_NAME: ${{ matrix.slice.name }}
+          SLICE_PATHS: ${{ matrix.slice.paths }}
+          SLICE_IGNORE: ${{ matrix.slice.ignore }}
+          # serial lanes get -n 0 (GitHub's expression engine treats the string "0" as
+          # falsy, hence the explicit flag); the box gets its static share, the
+          # GitHub-hosted fallback the count detected on the VM it landed on.
+          XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (needs.select-runner.outputs.is_self_hosted == 'true' && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
-          trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest"' ERR
-          # -p no:randomly: pytest-split slices the COLLECTED ORDER into 6
-          # chunks, and pytest-randomly shuffles that order with a fresh seed
-          # per runner — six differently-shuffled lists sliced positionally
-          # neither cover the suite nor stay disjoint. Measured on one PR run:
-          # 9,817 distinct tests executed of ~14,100 collected, 3,540 ran in
-          # more than one shard, and ~4,300 ran in NO shard — silently, with
-          # every shard green. Random ordering still applies inside the
-          # unsharded lanes; the split itself must be deterministic.
-          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -p no:randomly -m 'not composio and not model_onboarding and not schemathesis' \
-            --splits 6 --group ${{ matrix.shard }} \
-            --ignore=tests/integration/real/test_device_bridge_e2e.py \
-            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
-            --cov=app --cov-report=term-missing --cov-report=xml:coverage.${{ matrix.shard }}.xml \
-            --cov-fail-under=0 \
-            --junitxml=test-results/pytest-${{ matrix.shard }}.xml --durations=50 2>&1 | tee /tmp/python-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/python-tests.out | python3 ../../scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "Python tests shard ${{ matrix.shard }}/6: OK"
-          echo "### Python tests shard ${{ matrix.shard }}/6 — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-      - name: Save pytest-split cache
-        if: always()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.pytest_cache
-          key: pytest-split-${{ runner.os }}-${{ hashFiles('apps/api/tests/**/*.py','apps/api/pyproject.toml','uv.lock') }}-${{ matrix.shard }}-${{ github.run_id }}
-      - name: Save uv venv
-        if: always()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
-      - name: Upload shard coverage + junit
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: pytest-results-${{ matrix.shard }}
-          path: |
-            apps/api/.coverage.${{ matrix.shard }}
-            apps/api/coverage.${{ matrix.shard }}.xml
-            apps/api/test-results/pytest-${{ matrix.shard }}.xml
-          retention-days: 7
-          if-no-files-found: error
-          include-hidden-files: true
-
-  # --- Coverage combine + gates (runs after both shards) ------------------
-  # Merges the per-shard .coverage.* files and enforces the repo-wide gates
-  # that cannot be checked per-shard: 70% line coverage (temporary — TOTAL is 78%;
-  # target is 80% — see TODO bump to 80% when coverage improves) and 90% diff-cover.
-  # Also runs the non-sharded checks that belong to the Python lane:
-  # junit failure summary, gaia-shared tests, and schemathesis contract fuzz
-  # (the latter boots a live server and must run serially/isolated, so it
-  # lives here rather than inside a shard).
-  test-python-coverage:
-    needs: [test-python]
-    # Run even if a shard failed so the junit summary still posts; but skip
-    # entirely when the Python lane was skipped (no affected Python projects).
-    if: always() && needs.test-python.result != 'skipped'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      # This job merges .coverage files and runs schemathesis/gaia-shared;
-      # none of them drive the device-bridge CLI, so skip Node (~56-75s).
-      - name: Restore uv venv
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: apps/api/.venv
-          key: uvvenv-${{ runner.os }}-${{ hashFiles('uv.lock','apps/api/pyproject.toml','.python-version') }}
-      - uses: ./.github/actions/setup-python-test-env
-        with:
-          install-node: "false"
-          restore-models: "false"
-      - name: Download shard artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          path: /tmp/shard-artifacts
-          pattern: pytest-results-*
-          merge-multiple: true
-      # Guards the gate below: a shard overlap means the same number of tests
-      # ran nowhere, and their files read as uncovered rather than as skipped.
-      - name: Assert shards partitioned the suite
-        # Only meaningful once every shard finished — a shard that died early
-        # uploads a partial junit that has no overlap to find.
-        if: needs.test-python.result == 'success'
-        run: |
-          trap 'echo "::error::repro: uv run --no-project scripts/ci/assert_shard_partition.py /tmp/shard-artifacts/test-results/pytest-*.xml"' ERR
-          uv run --no-project scripts/ci/assert_shard_partition.py /tmp/shard-artifacts/test-results/pytest-*.xml
-      - name: Combine coverage and enforce gates
+          echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
+          bash scripts/ci/pytest.sh slice
+      # ── gaia-shared ────────────────────────────────────────────────────────
+      # Its OWN pytest invocation, never a slice path. gaia-shared lives under
+      # libs/, and handing pytest paths from two trees at once moves rootdir to
+      # the repo root — apps/api/pytest.ini stops being the inifile, so
+      # asyncio_mode=auto and the marker registrations vanish and the entire
+      # slice dies (measured: 2145 failed, 891 errors, run 33301137881).
+      # A separate run keeps each invocation's rootdir and ini intact. It had a
+      # step in the retired test-python-coverage job and was lost with it.
+      - name: gaia-shared tests
+        if: matrix.slice.name == 'unit-b'
         working-directory: apps/api
         run: |
-          set -euo pipefail
-          ls -la /tmp/shard-artifacts/
-          cp /tmp/shard-artifacts/.coverage.* . 2>/dev/null || { echo "::error::Missing per-shard .coverage files"; ls -R /tmp/shard-artifacts; exit 1; }
-          shards=$(ls .coverage.* | wc -l)
-          echo "Combining coverage from shards..."
-          uv run --frozen coverage combine
-          uv run --frozen coverage report --fail-under=70 --show-missing
-          uv run --frozen coverage xml -o coverage.xml
-          echo "Coverage combine: OK (merged $shards shards)"
-          mkdir -p test-results
-          cp /tmp/shard-artifacts/test-results/pytest-*.xml test-results/
-          echo "## Python coverage (merged shards)" >> "$GITHUB_STEP_SUMMARY"
-          echo "fail-under 70% enforced on merged coverage" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f coverage.xml ]; then echo "coverage.xml exists (merged)" >> "$GITHUB_STEP_SUMMARY"; fi
-      - name: Diff coverage gate (changed lines must be covered)
-        if: github.event_name == 'pull_request'
-        working-directory: apps/api
-        run: |
-          trap 'echo "::error::repro: uv tool run 'diff-cover==10.5.1' coverage.xml"' ERR
-          uv tool run 'diff-cover==10.5.1' coverage.xml --compare-branch=origin/master --fail-under=90
-          echo "diff-cover: OK"
-          echo "### Diff coverage — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-      - name: Summary of failed tests (merged)
-        if: always()
-        working-directory: apps/api
-        run: |
-          for f in test-results/pytest-*.xml; do [ -e "$f" ] || continue; echo "=== $f ==="; uv run --no-project ../../scripts/ci/junit_failures.py "$f" || true; done
-      - name: Upload merged pytest artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: pytest-results
-          path: |
-            apps/api/test-results/
-            apps/api/coverage.xml
-            apps/api/.coverage
-          retention-days: 7
-          if-no-files-found: error
-          include-hidden-files: true
-      - name: Schemathesis contract fuzz (isolated live-server run)
-        if: always()
-        working-directory: apps/api
-        run: |
-          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh \
-            uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
-            --override-ini=addopts=--strict-markers --timeout=600
-          echo "Schemathesis: OK"
-          echo "### Schemathesis — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-      - name: Run gaia-shared tests
-        working-directory: apps/api
-        run: |
-          trap 'echo "::error::repro: uv run --frozen pytest ../../libs/shared/py/tests"' ERR
           uv run --frozen pytest ../../libs/shared/py/tests \
             --tb=short -q --override-ini=addopts=--strict-markers
           echo "gaia-shared tests: OK"
-          echo "### gaia-shared tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+      # ── Schemathesis contract fuzz ─────────────────────────────────────────
+      # Its own step, not a slice member: it boots a REAL server and must run
+      # serially and isolated, and the slice runs exclude `-m schemathesis`
+      # (the plugin costs ~2 s of import per xdist worker on lanes that never
+      # use it). It had a step in the retired test-python-coverage job and was
+      # lost with that job — nothing has fuzzed the API contract since. It runs
+      # in the integration slice because that is the lane with the services up.
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        if: matrix.slice.name == 'integration'
+        working-directory: apps/api
+        env:
+          USE_REAL_SERVICES: "1"
+        run: |
+          bash ../../scripts/ci/pytest.sh flake-gate \
+            uv run --frozen pytest tests/integration/real/test_schemathesis.py -q --tb=short \
+            -m schemathesis --override-ini=addopts=--strict-markers --timeout=600
+          echo "Schemathesis: OK"
+      # ── Record the map (master / dispatch only) ────────────────────────────
+      # !cancelled(): a lane with a red test still produced a valid file→test map,
+      # and a missing map makes every PR run the whole slice.
+      - name: Record test impact map
+        if: github.event_name != 'pull_request' && !cancelled()
+        working-directory: apps/api
+        run: |
+          mkdir -p ../../.test-impact-map
+          uv run --frozen python ../../scripts/ci/test_impact.py record \
+            --coverage-db .coverage.${{ matrix.slice.name }} \
+            --out ../../.test-impact-map/test-impact-map-${{ matrix.slice.name }}.json \
+            --sha "$GITHUB_SHA" --slice ${{ matrix.slice.name }}
+      - name: Upload test impact map
+        if: github.event_name != 'pull_request' && !cancelled()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-impact-map-${{ matrix.slice.name }}
+          path: .test-impact-map/test-impact-map-${{ matrix.slice.name }}.json
+          include-hidden-files: true
+          retention-days: 30
+      - name: Upload coverage data
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-${{ matrix.slice.name }}
+          path: apps/api/.coverage.${{ matrix.slice.name }}
+          include-hidden-files: true
+          retention-days: 1
+      - name: Release the test services
+        if: always()
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/embedding-sidecar.sh stop
 
-# --- Test: TypeScript (runner-native) -----------------------------------
-  test-typescript:
-    needs: [detect]
-    if: needs.detect.outputs.has_typescript == 'true'
+  # ── Coverage gate — its own job, off the test lanes' critical path ────────
+  #
+  # A PR HAS NO COVERAGE GATE. This is deliberate, not an oversight: diff-cover
+  # was retired with the slice split, because a PR's slices run a test-impact
+  # SELECTION and a coverage total measured over a subset is not a coverage
+  # total — it fails honest PRs and passes dishonest ones. The full suite and
+  # the 80% combined gate run on master, which is the backstop. Do not
+  # "restore" diff-cover to a PR lane; it would be measuring the selection.
+  coverage:
+    needs: [select-runner, detect, test-python]
+    # PR lanes do not trace coverage at all (see the COVERAGE env on
+    # test-python) — tracing costs ~35 CPU-points per lane for a number
+    # nothing would be entitled to read.
+    if: needs.detect.outputs.has_python == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 1
           persist-credentials: false
-      - name: Restore Nx cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: ./.github/actions/setup-uv
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}
-          restore-keys: |
-            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: Run TypeScript tests
+          pattern: coverage-*
+          path: apps/api
+          merge-multiple: true
+      # PRs never reach this job (see the `if` above): they do not trace
+      # coverage, and a test-impact selection would leave the combined data
+      # covering only the impacted slice of app/, where 80% is unreachable by
+      # construction. The gate is enforced on master, which runs the full suite.
+      - name: Combine and gate (80%)
+        working-directory: apps/api
         env:
-          ENV: test
+          FAIL_UNDER: "80"
+        run: |
+          set -euo pipefail
+          ls -la .coverage.*
+          uv run --frozen --package gaia --group dev coverage combine .coverage.unit-a .coverage.unit-b .coverage.integration .coverage.bridge
+          uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
+          echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
+          uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-xml
+          path: apps/api/coverage.xml
+          retention-days: 7
+
+  # ── Test TypeScript — Nx parallel scales with cores ----------------------
+  test-typescript:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_typescript == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Detect parallelism
+        id: par
+        run: echo "nx=$(bash scripts/ci/runner.sh parallel --nx)" >> "$GITHUB_OUTPUT"
+      - name: Run TS tests (timed, adaptive)
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        #
+        # `--output-style=stream` is load-bearing, not cosmetic. Nx's default CI
+        # output buffers each task's whole terminal output and replays it in ONE
+        # `process.stdout.write()` after the task exits. Here stdout is a pipe (to
+        # `tee`), and pipe writes in Node are async: `nx run-many` then calls
+        # `process.exit()`, which drops whatever is still queued. On bots-e2e —
+        # ~250KB of output because the suite logs a JSON line per event — only the
+        # first ~66KB survived, cut mid-token, taking vitest's `FAIL` block and
+        # `Test Files … failed` summary (both printed last) with it. The log showed
+        # every test as ✓ and then 'target test for 7 projects failed'. Streaming
+        # writes output incrementally as tasks produce it, so nothing large is ever
+        # pending at exit. It also drops the ::group:: wrapping, which matches
+        # .github/CLAUDE.md: test steps leave failure output un-grouped.
+        shell: bash
+        env:
           AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
-          trap 'echo "::error::repro: pnpm exec nx run-many -t test"' ERR
-          echo "::group::vitest output"
-          pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=3 2>&1 | tee /tmp/typescript-tests.out; _rc=${PIPESTATUS[0]}; cat /tmp/typescript-tests.out | python3 scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "::endgroup::"
-          echo "### TypeScript tests — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "TypeScript tests: OK (projects with a test target among: $AFFECTED_TS_PROJECTS)"
-      - name: Save Nx cache
-        if: always()
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .nx/cache
-          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml','nx.json','**/project.json') }}-${{ hashFiles('apps/**','libs/**') }}-${{ github.run_id }}
+          /usr/bin/time -v pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=${{ steps.par.outputs.nx }} --output-style=stream 2>&1 | tee "$RUNNER_TEMP/tstest.time"
+          echo "TS tests: OK (parallel=${{ steps.par.outputs.nx }})"
 
-
-  # --- Test: harness tooling (runner-native, always) ----------------------
-  # Deliberately ungated. `tools/` belongs to no Nx project, so a PR touching
-  # only it leaves `has_python` false and every gated lane skips; `test-python`
-  # cannot cover it either, since it runs pytest from apps/api. Without this the
-  # custom lint rules and the sim stack's directive parser have no test gate at
-  # all. The suite is ~0.1s, so always-on costs nothing.
-  test-harness-tools:
-    needs: [detect]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+  # ── Docker image build — proves the api image still builds, and times it ──
+  # On the home box this uses the persistent shared `gaia-ci` builder created
+  # by gaia-infra:self-hosted-runner/setup.sh: the apt/uv cache mounts live inside
+  # that builder, so a warm build is ~40s against ~14-29 minutes cold over the
+  # residential uplink. On GitHub-hosted fallback a throwaway builder is used
+  # and the build is simply slower. The image is not pushed — build.yml owns
+  # releases; this lane is validation plus a timing signal.
+  docker-image:
+    needs: [select-runner, detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 40
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Check the persistent shared builder exists (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: docker buildx inspect gaia-ci >/dev/null || { echo "::error::gaia-ci builder missing — run setup.sh from the private gaia-infra repo (self-hosted-runner/setup.sh)"; exit 1; }
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        if: runner.environment != 'self-hosted'
+      # Rebuild the image on a PR only when its inputs changed: Dockerfile,
+      # Python deps, ignore file. Code-only changes rebuild the last COPY layer
+      # in seconds and prove nothing the test lanes don't. Master always builds.
+      - name: Decide whether the image inputs changed
+        id: inputs
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: bash scripts/ci/changes.sh docker-inputs
+      - name: Playwright pin matches uv.lock
+        if: steps.inputs.outputs.build != 'false'
+        run: bash scripts/ci/audit.sh playwright-pin
+      - name: Build api image (timed, not pushed)
+        if: steps.inputs.outputs.build != 'false'
+        # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e
+        # WITHOUT pipefail, so `cmd | tee` swallowed the flake gate's exit code and
+        # a lane with 'FLAKY TESTS DETECTED' reported success.
+        shell: bash
+        env:
+          # The box's persistent shared builder (created by setup.sh). Passed as
+          # --builder on the build command, never `buildx use`: `use` rewrites
+          # the runner user's global default, which every other instance on the
+          # box shares. GitHub-hosted runners get the action's throwaway builder.
+          BUILDX_BUILDER: ${{ runner.environment == 'self-hosted' && 'gaia-ci' || '' }}
+        run: |
+          set -euo pipefail
+          echo "runner=${{ needs.select-runner.outputs.runner_label }} builder=$(docker buildx inspect --bootstrap ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} 2>/dev/null | head -1 | awk '{print $2}')"
+          /usr/bin/time -v docker buildx build --progress=plain ${BUILDX_BUILDER:+--builder "$BUILDX_BUILDER"} \
+            -f apps/api/Dockerfile -t gaia-api:pr-${{ github.run_id }} \
+            --output type=cacheonly . 2>&1 | tee "$RUNNER_TEMP/docker-build.log" | tail -n 40 | tee "$RUNNER_TEMP/docker.time"
+          grep -E "Elapsed \(wall clock\)" "$RUNNER_TEMP/docker.time" | sed 's/^/api image build: /' | tee -a "$GITHUB_STEP_SUMMARY"
+          # Stage profile: every step that took >= 5 s, so a slow build says
+          # which layer missed the cache (tail -n 40 alone hid a 356 s build).
+          echo "::group::stages >= 5 s"
+          awk '/^#[0-9]+ \[/{name[$1]=$0} /^#[0-9]+ DONE/{split($3,t,"s"); if (t[1]+0>=5) printf "%6.1fs  %s\n", t[1], substr(name[$1],1,110)}' "$RUNNER_TEMP/docker-build.log"
+          echo "::endgroup::"
+      # The persistent builder idles at ~1.8 GB RSS; stopping it costs ~2s to
+      # boot on the next build and gives the RAM back to test lanes meanwhile.
+      # Only when no other instance on the box is mid-build against it.
+      - name: Stop the persistent builder when idle (self-hosted)
+        if: always() && runner.environment == 'self-hosted'
+        run: pgrep -f 'docker buildx build' >/dev/null || docker buildx stop gaia-ci
+
+  # --- Test: harness tooling (runner-native, every run) ---------------------
+  # Not gated on the affected lists. `tools/` belongs to no Nx project, so a
+  # PR touching only it leaves `has_python` false and every gated lane skips;
+  # `test-python` cannot cover it either, since it runs pytest from apps/api.
+  # Without this the custom lint rules and the sim stack's directive parser
+  # have no test gate at all. The suite is ~0.1s. Scheduled behind build +
+  # test-typescript like the other light lanes (see trivy-scan).
+  test-harness-tools:
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-uv
       - name: Run harness tooling tests
         run: |
           trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR
@@ -389,8 +629,10 @@ jobs:
           echo "Harness tooling tests: OK (tools/lints + tools/llm-stub + scripts/ci)"
 
   # --- Changelog sync check (always) --------------------------------------
+  # GitHub-hosted on purpose: it pushes a branch and opens a PR, not compute.
   changelog-sync:
-    needs: [detect]
+    needs: [detect, build, test-typescript]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -398,6 +640,8 @@ jobs:
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
       - uses: ./.github/actions/setup-node-pnpm
       - name: Regenerate changelog sub-pages
         run: node docs/scripts/generate-changelog-pages.js
@@ -436,24 +680,66 @@ jobs:
           echo "::error::Changelog sub-pages were out of date. A fix PR has been opened automatically — merge it to unblock CI."
           exit 1
 
-  # --- Trivy scan (blocking) ------------------------------------------
-  # Restored per user request: PRs go red on HIGH/CRITICAL. Previously advisory
-  # due to 12 pre-existing HIGH findings in pnpm-lock.yaml — those must be
-  # fixed (axios, brace-expansion, etc.) or explicitly ignored per finding.
+  # --- Trivy scan -----------------------------------------------------
+  # Scheduling on the home box: the four Python lanes, build and docker-image
+  # start with the cores to themselves; these light jobs (each ~30-80 s,
+  # mostly I/O) wait for build + test-typescript (~30-45 s) and fill in behind
+  # them, finishing well before the integration lane — same wall, less
+  # contention in the lanes' first minute. `!cancelled()` keeps them from
+  # being hidden by a failing build. See code-quality.yml for the same idea.
   trivy-scan:
-    needs: [detect]
-    runs-on: ubuntu-latest
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
+          fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
+      # The action's own cache is actions/cache: on the box that meant a 95 s
+      # post-step uploading the 42 MB vuln DB over the residential uplink every
+      # run. Self-hosted keeps the DB on local disk instead.
+      - name: Pick the trivy DB location
+        shell: bash
+        run: |
+          if [ "$RUNNER_ENVIRONMENT" = "self-hosted" ]; then
+            echo "TRIVY_DB_DIR=${RUNNER_LOCAL_CACHE:-$HOME/ci-cache}/trivy" >> "$GITHUB_ENV"
+            # setup.sh installs the pinned trivy here; setup-trivy otherwise
+            # downloads the binary from GitHub releases on every job (a silent
+            # 3 min on the residential uplink, measured run 33137994987).
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          else
+            echo "TRIVY_DB_DIR=${GITHUB_WORKSPACE}/.cache/trivy" >> "$GITHUB_ENV"
+          fi
+      # Self-hosted: scan the committed tree, not the persistent workspace. The
+      # workspace carries 8 GB of node_modules, apps/api/.venv and 16 nested
+      # install dirs that --skip-dirs (top-level patterns) does not fully avoid;
+      # trivy walked them for 67 s per run (18 s on an idle box) while the same
+      # scan of a `git archive HEAD` extraction — exactly what a GitHub-hosted
+      # checkout contains — takes 3.6 s with identical findings (measured
+      # 2026-08-28, run 33189680858).
+      - name: Extract the committed tree for scanning (self-hosted)
+        if: runner.environment == 'self-hosted'
+        run: |
+          rm -rf "$RUNNER_TEMP/trivy-src" && mkdir -p "$RUNNER_TEMP/trivy-src"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/trivy-src"
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          skip-setup-trivy: ${{ runner.environment == 'self-hosted' }}
           scan-type: "fs"
           severity: "CRITICAL,HIGH"
           format: "table"
-          scan-ref: "."
+          scan-ref: ${{ runner.environment == 'self-hosted' && format('{0}/trivy-src', runner.temp) || '.' }}
+          cache: ${{ runner.environment != 'self-hosted' }}
+          cache-dir: ${{ env.TRIVY_DB_DIR }}
+          # The self-hosted workspace persists node_modules/.venv/.nx between
+          # jobs; walking them made the scan 6+ min. Lockfiles carry the
+          # dependency truth, and the installed trees only repeat it.
+          skip-dirs: "node_modules,.venv,.nx,apps/web/.next,.mypy_cache,.pytest_cache"
           # TODO: make blocking (exit-code:1) after chore/trivy-npm-audit lands
           # Currently 25 HIGH from pnpm-lock (axios/tar/undici) would red every PR;
           # keep advisory until that PR merges, then flip to exit-code:1.
@@ -463,122 +749,98 @@ jobs:
   # --- Regression-proof: changed tests must FAIL on base -------------------
   # FastAPI's lesson: run the PR's changed test files against origin/master
   # and report any that PASS there (the fix may no longer be needed).
-  # ENFORCED. It was informational because it checked EVERY changed test file,
-  # and gap-fill/restructure branches legitimately add tests for behavior the
-  # base already gets right — a guaranteed false positive. It is now scoped to
-  # tests that opt in with `@pytest.mark.regression`, which only a test claiming
-  # to pin a bug carries, so there is nothing left to false-positive on: a diff
-  # with no such tests passes trivially, and one that has them must prove them.
+  # Scoped to tests that opt in with `@pytest.mark.regression`, which only a
+  # test claiming to pin a bug carries: a diff with no such tests passes
+  # trivially, and one that has them must prove them.
   regression-proof:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    needs: [select-runner, detect, build, test-typescript]
+    if: ${{ !cancelled() && needs.select-runner.result == 'success' && needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request' }}
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/setup-python-test-env
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/regression-proof.sh origin/master
-
-  # Node-dependent e2e: the device-bridge tests drive the real `gaia bridge`
-  # CLI via tsx, so they need pnpm install (setup-python-test-env default).
-  # Excluded from the shards (--ignore) so python shards can skip Node.
-  test-device-bridge:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      - uses: ./.github/actions/setup-python-test-env
-      - name: Run device-bridge e2e (real gaia bridge daemon via tsx)
-        working-directory: apps/api
-        run: |
-          trap 'echo "::error::repro: bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest tests/integration/real/test_device_bridge_e2e.py"' ERR
-          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest tests/integration/real/test_device_bridge_e2e.py -q --tb=short --override-ini=addopts=--strict-markers --timeout=300 2>&1 | tee /tmp/device-bridge.out; _rc=${PIPESTATUS[0]}; cat /tmp/device-bridge.out | python3 ../../scripts/ci/emit-github-annotations.py || true; test $_rc -eq 0
-          echo "Device-bridge e2e: OK"
-          echo "### Device-bridge e2e — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
+        run: bash ../../scripts/ci/pytest.sh regression-proof origin/master
+      # setup-python-test-env brings up services + the embedding sidecar; on the
+      # shared box that namespace must be released like every other lane does.
+      - name: Release the test services
+        if: always()
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/embedding-sidecar.sh stop
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     name: quality-gate
     if: always()
     needs:
+      - select-runner
       - detect
+      - probe
       - build
       - test-python
-      - test-python-coverage
+      - coverage
       - test-typescript
+      - docker-image
       - test-harness-tools
       - trivy-scan
       - regression-proof
-      - test-device-bridge
-      # test-fast deliberately absent: it's the same suite selection the
-      # shards already run (hermetic, no services), and as a gating lane it
-      # only added a runner to the queue and a redundant red signal. It still
-      # runs as a non-blocking budget probe (its documented role).
-      # static checks + dead-code live in code-quality.yml (its own gate)
+      # The pre-consolidation `test-fast` lane was dropped: it was the same
+      # hermetic selection the test-python slices already run.
+      # `test-device-bridge` was dropped too: the `bridge` slice of test-python
+      # is that exact file, run serially, with services + Node.
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
-      # coverage is measured inside test-python itself (--cov-fail-under=70 temporary, target 80),
-      # not a separate job -- a second job would re-run the whole suite
+      # static checks + dead-code live in code-quality.yml (its own gate)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
+    permissions: {}
     steps:
-      - name: Evaluate results
+      - name: Verdict
         run: |
-          echo "Job results:"
-          echo "  detect:             ${{ needs.detect.result }}"
-          echo "  build:              ${{ needs.build.result }}"
-          echo "  test-python:        ${{ needs.test-python.result }}"
-          echo "  test-typescript:    ${{ needs.test-typescript.result }}"
-          echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
-          echo "  trivy-scan:         ${{ needs.trivy-scan.result }}"
-          echo "  regression-proof:   ${{ needs.regression-proof.result }}"
-
-          {
-            echo "## Quality gate"
-            echo "| job | result |"
-            echo "|---|---|"
-            echo "| detect | ${{ needs.detect.result }} |"
-            echo "| build | ${{ needs.build.result }} |"
-            echo "| test-python | ${{ needs.test-python.result }} |"
-            echo "| test-python-coverage | ${{ needs.test-python-coverage.result }} |"
-            echo "| test-typescript | ${{ needs.test-typescript.result }} |"
-            echo "| test-harness-tools | ${{ needs.test-harness-tools.result }} |"
-            echo "| trivy-scan | ${{ needs.trivy-scan.result }} |"
-            echo "| regression-proof | ${{ needs.regression-proof.result }} |"
-          } >> "$GITHUB_STEP_SUMMARY"
-                    for r in \
-            "${{ needs.detect.result }}" \
-            "${{ needs.build.result }}" \
-            "${{ needs.test-python.result }}" \
-            "${{ needs.test-python-coverage.result }}" \
-            "${{ needs.test-typescript.result }}" \
-            "${{ needs.test-harness-tools.result }}" \
-            "${{ needs.trivy-scan.result }}" \
-            "${{ needs.regression-proof.result }}"; do
+          echo "Runner: ${{ needs.select-runner.outputs.runner }} (${{ needs.select-runner.outputs.runner_label }}, self_hosted=${{ needs.select-runner.outputs.is_self_hosted }})"
+          # select-runner is in the loop below: if it fails, every compute lane
+          # is skipped, and skipped counts as passing — the verdict would be
+          # green by accident.
+          printf "  %-16s %s\n" "select-runner:" "${{ needs.select-runner.result }}"
+          printf "  %-16s %s\n" "detect:" "${{ needs.detect.result }}"
+          printf "  %-16s %s\n" "probe:" "${{ needs.probe.result }}"
+          printf "  %-16s %s\n" "build:" "${{ needs.build.result }}"
+          printf "  %-16s %s\n" "test-python:" "${{ needs.test-python.result }}"
+          printf "  %-16s %s\n" "test-typescript:" "${{ needs.test-typescript.result }}"
+          printf "  %-16s %s\n" "coverage:" "${{ needs.coverage.result }}"
+          printf "  %-18s %s\n" "docker-image:" "${{ needs.docker-image.result }}"
+          printf "  %-18s %s\n" "test-harness-tools:" "${{ needs.test-harness-tools.result }}"
+          printf "  %-18s %s\n" "trivy-scan:" "${{ needs.trivy-scan.result }}"
+          printf "  %-18s %s\n" "regression-proof:" "${{ needs.regression-proof.result }}"
+          for r in "${{ needs.select-runner.result }}" "${{ needs.detect.result }}" "${{ needs.probe.result }}" "${{ needs.build.result }}" \
+                   "${{ needs.test-python.result }}" "${{ needs.coverage.result }}" "${{ needs.test-typescript.result }}" \
+                   "${{ needs.docker-image.result }}" "${{ needs.test-harness-tools.result }}" \
+                   "${{ needs.trivy-scan.result }}" "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "::error::Required job result: $r"
+              echo "::error::Required job $r"
               exit 1
             fi
           done
-          echo "All required jobs passed or were skipped."
+          echo "quality-gate: PASSED"
 
   # --- Docker phase, split so the long part runs parallel to the gate -------
   # build-images starts right after detect (master only) and builds/publishes
   # the docker images while all test lanes run; trigger-build then runs the
   # deploy plan + swarm deploy after quality-gate, using the build phase's
   # outputs as inputs (see build.yml phase input). The deploy decision lives
-  # in compute-deploy-plan.sh with GATE_RESULT as an explicit input, so a
+  # in `deploy.sh plan` with GATE_RESULT as an explicit input, so a
   # failed gate still fires the publish-without-deploy orphan alert instead of
-  # silently skipping everything.
+  # silently skipping everything. build.yml owns its own runners
+  # (GitHub-hosted) and is deliberately not routed through select-runner.
   build-images:
     needs: [detect]
     if: ${{ always() && needs.detect.result == 'success' && github.ref == 'refs/heads/master' }}

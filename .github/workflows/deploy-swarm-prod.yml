@@ -11,6 +11,9 @@ on:
         options:
           - deploy
           - rollback
+          # Rehearsal: resolves the private gaia-infra checkout and renders the
+          # stack against the prod context without touching a service.
+          - verify
       rollback_mode:
         description: "Rollback mode (rollback only)"
         required: false
@@ -75,7 +78,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: inputs.action == 'deploy'
+    if: inputs.action == 'deploy' || inputs.action == 'verify'
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -89,10 +92,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Checkout gaia-infra (private)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: theexperiencecompany/gaia-infra
+          ref: main
+          ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
+          path: .infra
+          persist-credentials: false
+
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          tailscale_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
@@ -103,7 +116,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Deploy stack
+      - name: ${{ inputs.action == 'verify' && 'Render the stack (verify only)' || 'Deploy stack' }}
         env:
           # Pin the stack to this run's immutable tags. Empty values fall
           # through to the compose file's ${VAR:-latest} defaults, i.e. the
@@ -111,27 +124,13 @@ jobs:
           GAIA_IMAGE_TAG: ${{ inputs.apps_image_tag }}
           GAIA_BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
           GAIA_GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
-        run: |
-          set -euo pipefail
-          # Observability configs ship as Swarm configs (stored in the cluster),
-          # not host bind mounts, so this deploys cleanly via the remote context
-          # with no files on the VM. Swarm configs are immutable, so their names
-          # carry a content hash: a changed config file produces a new config
-          # object that services roll onto. Compute it over all config files.
-          OBS_CFG_HASH=$(cat \
-            infra/docker/observability/prometheus.yml \
-            infra/docker/observability/loki-config.yaml \
-            infra/docker/observability/promtail-config.yaml \
-            infra/docker/observability/blackbox.yml \
-            infra/docker/observability/rabbitmq-enabled-plugins \
-            | sha256sum | cut -c1-12)
-          export OBS_CFG_HASH
-          docker --context prod stack deploy \
-            --with-registry-auth \
-            -c infra/docker/docker-compose.prod.yml \
-            gaia-prod
+          # inputs.action is deploy|verify; the subcommand for a real deploy is
+          # `stack` (`verify` is the rehearsal that touches no service).
+          STACK_ACTION: ${{ inputs.action == 'verify' && 'verify' || 'stack' }}
+        run: bash scripts/ci/deploy.sh "$STACK_ACTION"
 
       - name: Wait for convergence
+        if: inputs.action == 'deploy'
         id: converge
         env:
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
@@ -197,15 +196,15 @@ jobs:
       # this is what makes :latest "what prod runs" instead of "what was last
       # built". A failed deploy leaves :latest on the previous good images.
       - name: Point :latest at the deployed images
-        if: success() && (inputs.apps_image_tag != '' || inputs.bots_image_tag != '' || inputs.grafana_image_tag != '')
+        if: success() && inputs.action == 'deploy' && (inputs.apps_image_tag != '' || inputs.bots_image_tag != '' || inputs.grafana_image_tag != '')
         env:
           APPS_IMAGE_TAG: ${{ inputs.apps_image_tag }}
           BOTS_IMAGE_TAG: ${{ inputs.bots_image_tag }}
           GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
-        run: bash scripts/ci/retag-latest-alias.sh from-env
+        run: bash scripts/ci/deploy.sh retag from-env
 
       - name: Push deploy annotation to Loki
-        if: success()
+        if: success() && inputs.action == 'deploy'
         env:
           LOKI_PUSH_URL: ${{ secrets.LOKI_PUSH_URL }}
         run: |
@@ -222,13 +221,13 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD"
 
-      # All Discord sends go through scripts/ci/notify-discord.sh (appleboy's
+      # All Discord sends go through scripts/ci/deploy.sh notify (appleboy's
       # action 400s on long messages and fragments comma-containing ones —
       # see the script header). continue-on-error on the send steps only: the
       # message is fully logged by the script either way, and a dropped
       # webhook must not repaint an otherwise-decided run.
       - name: Notify Discord — deploy succeeded
-        if: success()
+        if: success() && inputs.action == 'deploy'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -239,7 +238,7 @@ jobs:
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
             **Images:** apps `${{ inputs.apps_image_tag || 'latest' }}` / bots `${{ inputs.bots_image_tag || 'latest' }}` / grafana `${{ inputs.grafana_image_tag || 'latest' }}`
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
       - name: Notify Discord — Swarm auto-rollback
         if: failure() && steps.converge.outputs.rolled_back == 'true'
@@ -253,7 +252,7 @@ jobs:
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
       - name: Notify Discord — convergence timeout
         if: failure() && steps.converge.outputs.timed_out == 'true'
@@ -267,10 +266,10 @@ jobs:
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
       - name: Notify Discord — deploy failed
-        if: failure() && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
+        if: failure() && inputs.action == 'deploy' && steps.converge.outputs.rolled_back != 'true' && steps.converge.outputs.timed_out != 'true'
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
@@ -281,7 +280,7 @@ jobs:
             **Commit:** `${{ github.sha }}`
             **Branch:** ${{ github.ref_name }}
             **Actor:** ${{ github.actor }}
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.action == 'rollback'
@@ -300,7 +299,8 @@ jobs:
       - name: Set up Docker Swarm context
         uses: ./.github/actions/setup-swarm-context
         with:
-          ssh_key: ${{ secrets.PROD_VM_SSH_KEY }}
+          tailscale_oauth_client_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          tailscale_oauth_secret: ${{ secrets.TS_OAUTH_SECRET }}
           ssh_host: ${{ secrets.PROD_VM_SSH_HOST }}
           ssh_user: ${{ secrets.PROD_VM_SSH_USER }}
 
@@ -378,7 +378,7 @@ jobs:
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           DOCKER_CONTEXT: prod
           STACK: gaia-prod
-        run: bash scripts/ci/retag-latest-alias.sh rolled-back
+        run: bash scripts/ci/deploy.sh retag rolled-back
 
       - name: Push rollback annotation to Loki
         if: success()
@@ -414,7 +414,7 @@ jobs:
             **Actor:** ${{ github.actor }}
             `:latest` now points at the rolled-back images.
             ${{ steps.converge.outputs.timed_out == 'true' && '⚠️ Note: not all services stabilised within 3 minutes — verify manually.' || '' }}
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
       - name: Notify Discord — rollback failed
         if: failure()
@@ -427,4 +427,4 @@ jobs:
             **Mode:** ${{ inputs.rollback_mode }}
             **Actor:** ${{ github.actor }}
             The rollback job failed — the run log shows whether the rollback command itself or a follow-up step (`:latest` retag / Loki annotation) broke. Check the VM immediately.
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify

@@ -39,7 +39,7 @@ _IGNORE = [
 ]
 
 # Service images pinned by digest (tag kept for readability). Keep in sync
-# with scripts/ci/start-test-services.sh (the CI variant of this topology).
+# with scripts/ci/test-services.sh (the CI variant of this topology).
 _POSTGRES_IMAGE = "postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
 _REDIS_IMAGE = (
     "redis:7.4.9-alpine3.21@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
@@ -301,7 +301,7 @@ class GaiaCi:
         """Validate release manifest versions."""
         return await (
             self.ci_env(source)
-            .with_exec(["node", "scripts/ci/validate-release-manifest.mjs"])
+            .with_exec(["node", "scripts/ci/release.mjs", "validate-manifest"])
             .stdout()
         )
 
@@ -579,7 +579,7 @@ class GaiaCi:
             .stdout()
         )
 
-        validate_task = env.with_exec(["node", "scripts/ci/validate-release-manifest.mjs"]).stdout()
+        validate_task = env.with_exec(["node", "scripts/ci/release.mjs", "validate-manifest"]).stdout()
 
         trivy_task = (
             dag.container()
