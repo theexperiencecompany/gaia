@@ -286,9 +286,7 @@ class StreamManager:
             await cls._refresh_active_index(progress_data)
 
     @classmethod
-    async def _control_signal_frame(
-        cls, stream_id: str, data: str, chunks_received: int
-    ) -> tuple[bool, str | None]:
+    async def _control_signal_frame(cls, stream_id: str, data: str) -> tuple[bool, str | None]:
         """Map a stream entry to ``(is_terminal, frame_to_yield)``.
 
         DONE ends the stream with no frame; CANCELLED and ERROR end it with a
@@ -296,11 +294,7 @@ class StreamManager:
         yields it and keeps reading.
         """
         if data == STREAM_DONE_SIGNAL:
-            log.debug(
-                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
-                stream_id=stream_id,
-                chunks_received=chunks_received,
-            )
+            log.debug(f"{LogTag.STARTUP} Stream completed successfully", stream_id=stream_id)
             return True, None
 
         if data == STREAM_CANCELLED_SIGNAL:
@@ -350,7 +344,7 @@ class StreamManager:
 
         events_key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
         cursor = last_event_id or "0-0"
-        chunks_received = 0
+        saw_chunk = False
         block_ms = int(keepalive_interval * 1000)
 
         try:
@@ -372,15 +366,13 @@ class StreamManager:
                         cursor = entry_id
                         data = fields.get("data", "")
 
-                        is_terminal, frame = await cls._control_signal_frame(
-                            stream_id, data, chunks_received
-                        )
+                        is_terminal, frame = await cls._control_signal_frame(stream_id, data)
                         if is_terminal:
                             if frame is not None:
                                 yield frame
                             return
 
-                        chunks_received += 1
+                        saw_chunk = True
                         yield f"id: {entry_id}\n{data}"
 
         except Exception as e:
@@ -393,7 +385,7 @@ class StreamManager:
             )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
-            if chunks_received == 0:
+            if not saw_chunk:
                 log.warning(
                     f"{LogTag.STARTUP} Stream ended without receiving any chunks",
                     stream_id=stream_id,

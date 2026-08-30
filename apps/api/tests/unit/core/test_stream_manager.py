@@ -18,16 +18,19 @@ from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
     STREAM_EVENTS_MAXLEN,
     STREAM_EVENTS_PREFIX,
+    STREAM_LIVENESS_REFRESH_AFTER,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
 )
+from app.constants.log_tags import LogTag
 from app.constants.streaming import (
     STREAM_CANCELLED_SIGNAL,
     STREAM_DONE_SIGNAL,
     STREAM_ERROR_SIGNAL,
 )
 from app.core.stream_manager import StreamManager, StreamProgress
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -427,6 +430,69 @@ class TestSubscribeStream:
         payload = json.loads(chunks[0].removeprefix("data: ").strip())
         assert payload["error"] == "An unexpected error occurred"
 
+    async def test_error_signal_defaults_when_progress_lacks_error_key(self) -> None:
+        # Progress exists but carries no `error` key: the `.get` default (a distinct
+        # code path from the no-progress branch above) must supply the message.
+        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
+        mock_get = AsyncMock(return_value={"conversation_id": "c"})
+
+        with self._patch_redis(client, get=mock_get):
+            chunks = await self._collect()
+
+        assert chunks == ['data: {"error": "An unexpected error occurred"}\n\n']
+
+    async def test_error_signal_reads_progress_for_this_stream_and_logs_it(self) -> None:
+        # The error frame is built from THIS stream's progress, and the failure is
+        # recorded on the wide event — a mutant that reads another stream (or None)
+        # would serve the wrong error or crash.
+        client = _stream_client([_entries_batch(("1-0", STREAM_ERROR_SIGNAL))])
+        with (
+            self._patch_redis(client),
+            patch.object(
+                StreamManager, "get_progress", new=AsyncMock(return_value={"error": "x"})
+            ) as get_progress,
+        ):
+            async with captured_wide_event() as event:
+                _ = [chunk async for chunk in StreamManager.subscribe_stream("sid-9")]
+
+        get_progress.assert_awaited_once_with("sid-9")
+        (error,) = [e for e in event["errors"] if "Stream encountered" in e["msg"]]
+        assert error["msg"] == f"{LogTag.STARTUP} Stream encountered an error"
+        assert error["stream_id"] == "sid-9"
+
+    async def test_warns_when_the_stream_ends_without_any_chunk(self) -> None:
+        # DONE with no data frames before it: the client got nothing, which is
+        # the one condition worth an operator warning.
+        client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
+        with self._patch_redis(client):
+            async with captured_wide_event() as event:
+                _ = await self._collect(stream_id="sid-empty")
+        warnings = [w for w in event["warnings"] if "without receiving any chunks" in w["msg"]]
+        assert len(warnings) == 1
+        assert warnings[0]["stream_id"] == "sid-empty"
+
+    async def test_no_warning_when_a_chunk_was_delivered(self) -> None:
+        client = _stream_client(
+            [_entries_batch(("1-0", "data: hi\n\n"), ("2-0", STREAM_DONE_SIGNAL))]
+        )
+        with self._patch_redis(client):
+            async with captured_wide_event() as event:
+                _ = await self._collect()
+        assert [
+            w for w in event.get("warnings", []) if "without receiving any chunks" in w["msg"]
+        ] == []
+
+    async def test_subscription_error_is_logged_and_yields_an_error_frame(self) -> None:
+        client = _stream_client()
+        client.xread = AsyncMock(side_effect=RuntimeError("redis blew up"))
+        with self._patch_redis(client):
+            async with captured_wide_event() as event:
+                chunks = await self._collect()
+        assert chunks == ['data: {"error": "Stream subscription failed"}\n\n']
+        (error,) = [e for e in event["errors"] if "Error in stream subscription" in e["msg"]]
+        assert error["msg"] == f"{LogTag.STARTUP} Error in stream subscription"
+        assert error["error_type"] == "RuntimeError"
+
     async def test_keepalive_on_idle_read(self) -> None:
         """An empty XREAD (idle interval) yields a keepalive frame with no id line."""
         client = _stream_client(
@@ -720,3 +786,35 @@ class TestSetError:
         self.mock_set.assert_not_awaited()
         # Error signal should still be appended
         self.mock_redis_client.xadd.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# _touch_liveness — the TTL-window throttle
+# ---------------------------------------------------------------------------
+
+
+class TestTouchLiveness:
+    @staticmethod
+    def _patched(ttl_value: int):
+        client = MagicMock()
+        client.ttl = AsyncMock(return_value=ttl_value)
+        client.expire = AsyncMock()
+        rc = MagicMock(redis=client)
+        rc.get = AsyncMock(return_value=None)
+        return patch("app.core.stream_manager.redis_cache", new=rc), client
+
+    @pytest.mark.parametrize("ttl_value", [0, STREAM_LIVENESS_REFRESH_AFTER])
+    async def test_refreshes_inside_the_window(self, ttl_value: int) -> None:
+        # 0 and exactly REFRESH_AFTER are the inclusive boundaries that MUST refresh.
+        patcher, client = self._patched(ttl_value)
+        with patcher:
+            await StreamManager._touch_liveness("s1")
+        client.expire.assert_awaited_once_with(f"{STREAM_PROGRESS_PREFIX}s1", STREAM_TTL)
+
+    @pytest.mark.parametrize("ttl_value", [-1, STREAM_LIVENESS_REFRESH_AFTER + 1])
+    async def test_skips_outside_the_window(self, ttl_value: int) -> None:
+        # A missing/no-TTL key (<0) or one still far from expiry must not refresh.
+        patcher, client = self._patched(ttl_value)
+        with patcher:
+            await StreamManager._touch_liveness("s1")
+        client.expire.assert_not_awaited()
