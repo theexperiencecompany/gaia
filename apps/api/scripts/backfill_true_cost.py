@@ -292,8 +292,23 @@ def _read_cache(path: Path) -> dict[str, GenerationRecord | None]:
     }
 
 
+def _default_cache_dir() -> Path:
+    """Where resolved generations are cached between runs.
+
+    Under the invoking user's cache home, never a shared temp directory: the
+    cache is written and read back as the script's own input, so a world-
+    writable path lets anyone on the box pre-create it and decide what this
+    backfill believes each call cost — and that number is written to
+    ``usage_daily``. Ephemeral either way; it only makes a re-run cheaper.
+    """
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".cache") / "gaia-true-cost"
+
+
 def _write_cache(path: Path, known: Mapping[str, GenerationRecord | None]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # 0o700: same reason as _default_cache_dir — nobody else gets to write what
+    # this run reads back as the real cost of a call.
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.write_text(json.dumps({k: (v.model_dump() if v else None) for k, v in known.items()}))
 
 
@@ -423,8 +438,7 @@ def main() -> None:
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        # Ephemeral and container-local: the cache only makes a re-run cheaper.
-        default=Path("/tmp/true-cost-cache"),
+        default=_default_cache_dir(),
         help="where per-day generation lookups are cached",
     )
     args = parser.parse_args()
