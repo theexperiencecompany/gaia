@@ -209,16 +209,19 @@ def _nanos(moment: datetime) -> int:
 async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list[LlmCall]:
     """Every ``llm_call`` event Loki holds for one UTC day.
 
-    Pages forward, advancing the cursor past the last nanosecond returned —
-    Loki caps a single response at ``limit`` lines and gives no cursor of its
-    own, so a busy day needs several passes. ``start`` is inclusive, so the
-    cursor is the last timestamp seen PLUS one nanosecond; anything coarser
-    re-reads events the previous page already returned and double-counts them.
+    Pages forward — Loki caps a single response at ``limit`` lines and gives
+    no cursor of its own, so a busy day needs several passes. ``start`` is
+    inclusive, and several lines can share one nanosecond, so the next page
+    re-opens AT the last timestamp seen and the lines already taken from that
+    timestamp are skipped by identity. Starting one nanosecond later would drop
+    the rest of that group; starting any coarser would double-count.
     """
     start = datetime.fromisoformat(f"{day}T00:00:00+00:00")
     end_nanos = _nanos(min(start + timedelta(days=1), datetime.now(UTC)))
     calls: list[LlmCall] = []
     cursor_nanos = _nanos(start)
+    # Lines already taken at exactly ``cursor_nanos`` — the overlap between pages.
+    taken_at_cursor: set[str] = set()
     for _ in range(_LOKI_MAX_PAGES):
         response = await client.get(
             f"{loki_url.rstrip('/')}/loki/api/v1/query_range",
@@ -234,17 +237,33 @@ async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list
         response.raise_for_status()
         streams = response.json()["data"]["result"]
         seen = 0
+        fresh = 0
         latest = 0
+        at_latest: set[str] = set()
         for stream in streams:
             for nanos, line in stream["values"]:
                 seen += 1
-                latest = max(latest, int(nanos))
+                at = int(nanos)
+                if at == cursor_nanos and line in taken_at_cursor:
+                    continue
+                fresh += 1
+                if at > latest:
+                    latest, at_latest = at, set()
+                if at == latest:
+                    at_latest.add(line)
                 call = _parse_event(line)
                 if call is not None:
                     calls.append(call)
         if seen < _LOKI_PAGE:
             break
-        cursor_nanos = latest + 1
+        if fresh == 0:
+            # A whole page of lines already taken: more than a page shares this
+            # nanosecond, which Loki cannot page through. Step past it.
+            cursor_nanos, taken_at_cursor = cursor_nanos + 1, set()
+        elif latest == cursor_nanos:
+            taken_at_cursor |= at_latest
+        else:
+            cursor_nanos, taken_at_cursor = latest, at_latest
         if cursor_nanos >= end_nanos:
             break
     return calls

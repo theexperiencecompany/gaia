@@ -71,6 +71,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import ProviderRegistry
 from shared.py.wide_events import log
+from tests.helpers import create_fake_llm
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1607,7 +1608,6 @@ class TestRecordAuxiliaryUsage:
         """The callback being correct is worth nothing if ainvoke_llm does not
         attach it and hand its CAPTURED VALUE to the metering — the value, not
         just the kwarg, or a hardcoded None passes unnoticed."""
-        from tests.helpers import create_fake_llm
 
         with (
             patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
@@ -1622,7 +1622,6 @@ class TestRecordAuxiliaryUsage:
         """A fallback that drops the handler makes exactly the calls that
         changed provider — the ones whose serving upstream matters MOST —
         unattributable. Both invoke sites must attach it."""
-        from tests.helpers import create_fake_llm
 
         failing = NonCallableMagicMock()
         failing.with_retry = MagicMock(return_value=failing)
@@ -2216,7 +2215,6 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         mutation gate down with it; the real client is covered by the live
         probe in the commit message instead.
         """
-        from tests.helpers import create_fake_llm
 
         runnable = NonCallableMagicMock(spec=RunnableBinding)
         runnable.bound = create_fake_llm(["ok"])
@@ -2238,7 +2236,6 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
 
     def test_another_provider_is_not_mistaken_for_openrouter(self) -> None:
         from app.agents.llm.client import _is_openrouter_wire
-        from tests.helpers import create_fake_llm
 
         other = create_fake_llm(["ok"])
 
@@ -2260,7 +2257,6 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         that does not understand it rejects the call outright — the exact
         failure the bound exists to avoid, reintroduced by the safeguard."""
         from app.agents.llm.client import _WIRE_WALK_MAX_HOPS, _is_openrouter_wire
-        from tests.helpers import create_fake_llm
 
         node: Runnable = create_fake_llm(["ok"])
         for _ in range(_WIRE_WALK_MAX_HOPS + 1):
@@ -2465,7 +2461,6 @@ class TestAuxiliaryCostSource:
     async def test_ainvoke_llm_hands_the_accumulated_price_to_the_metering(self) -> None:
         """The handler being right is worth nothing unless its VALUE is
         forwarded — a hardcoded None would pass a kwarg-presence check."""
-        from tests.helpers import create_fake_llm
 
         with (
             patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
