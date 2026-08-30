@@ -38,3 +38,17 @@ coverage
 .env
 .env.*
 !.env.example
+
+**/test-results
+**/.turbo
+# Anchored AND nested: a bare `__pycache__` only matches at the context root, so
+# libs/shared/py/__pycache__/*.pyc (rewritten by every test lane, different
+# bytes per workspace) rode into the `libs` bind mount of the uv sync layer and
+# re-keyed it on every runner change — measured 2026-08-28: 48-72 s uv sync +
+# ~3 min of dependent layers on an app-only change.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv

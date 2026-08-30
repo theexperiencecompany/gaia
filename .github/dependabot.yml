@@ -1,5 +1,15 @@
 version: 2
 
+# Every entry below carries a `cooldown`. A cooldown makes Dependabot wait N
+# days after a version is published before it will propose that version in a
+# PR. Supply-chain attacks on npm/PyPI are typically caught and the poisoned
+# release yanked within hours to a few days, so a 7-day cooldown means such a
+# release never reaches one of our PRs (and never reaches a dev machine via a
+# Dependabot merge). This only delays *version* updates; Dependabot *security*
+# updates (advisory-driven) ignore cooldown and still land immediately.
+# The pnpm side of the same idea is `minimumReleaseAge` in pnpm-workspace.yaml
+# and the uv side is `[tool.uv] exclude-newer` in pyproject.toml.
+
 updates:
   # --- JavaScript/TypeScript (pnpm workspace) ------------------------------
   # Single pnpm-lock.yaml at the repo root covers every workspace member
@@ -10,6 +20,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   # --- Python (uv workspace) ------------------------------------------------
   # Single uv.lock at the repo root covers every uv workspace member
@@ -20,6 +32,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   # --- GitHub Actions --------------------------------------------------------
   # "/" covers .github/workflows/*.yml. Composite actions under
@@ -29,18 +43,26 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/.github/actions/setup-node-pnpm"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/.github/actions/restore-nextjs-cache"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: "github-actions"
     directory: "/.github/actions/setup-python-test-env"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7

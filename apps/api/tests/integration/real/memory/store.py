@@ -6,14 +6,25 @@ shape ingestion produces. Inspection helpers read Postgres/Chroma directly
 so tests assert on persisted state, not on return values.
 """
 
+import asyncio
 from datetime import datetime
+import hashlib
+import os
+from pathlib import Path
+import tempfile
 from typing import Any, TypedDict
 import uuid
+import warnings
+import zipfile
 
+import numpy as np
 from sqlalchemy import func, select
 
 from app.constants.memory import (
     CHROMA_MEMORIES_COLLECTION,
+    EMBEDDING_DIM,
+    EMBEDDING_MODEL_NAME,
+    MODEL_CACHE_DIR,
     MemoryKind,
     MemoryShelfLife,
     MemorySourceType,
@@ -44,9 +55,100 @@ class MemorySpec(TypedDict, total=False):
     entities: list[tuple[str, str]]  # (name, entity_type)
 
 
+# Passage embedding is a pure function of (model, text), and the seeded corpora
+# are fixed module constants re-planted under a fresh uuid user for every test.
+# The vectors ARE the real model's output, nothing is synthesized — but the
+# same 60-memory corpus is not re-embedded on every test, nor cold by every
+# xdist worker on every run: an in-process dict sits in front of an on-disk
+# per-model archive under the fastembed weights cache, so only the first run
+# ever pays the sidecar round-trip. The seed path is not what these tests
+# assert on; recall still runs real embed_query, real Chroma ANN, real
+# Postgres FTS and the real cross-encoder rerank.
+_seed_embedding_cache: dict[str, list[float]] = {}
+
+# Override for the on-disk archive's directory; defaults to a subdirectory of
+# MEMORY_MODEL_CACHE_DIR. Unset both and only the in-process dict is used.
+_SEED_EMBED_CACHE_DIR_ENV = "MEMORY_TEST_EMBED_CACHE_DIR"
+_SEED_EMBED_CACHE_SUBDIR = ".test-embed-cache"
+
+
+def _seed_cache_path() -> Path | None:
+    """One .npz per embedding model, so a model swap never serves stale vectors."""
+    override = os.getenv(_SEED_EMBED_CACHE_DIR_ENV, "").strip()
+    if override:
+        root = Path(override)
+    elif MODEL_CACHE_DIR:
+        root = Path(MODEL_CACHE_DIR) / _SEED_EMBED_CACHE_SUBDIR
+    else:
+        return None
+    return root / f"{EMBEDDING_MODEL_NAME.replace('/', '__')}.npz"
+
+
+def _seed_cache_key(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _load_seed_cache(path: Path) -> dict[str, np.ndarray]:
+    """Read the archive; a missing, corrupt or wrong-dim file just means embed again."""
+    try:
+        with np.load(path) as archive:
+            keys, vectors = archive["keys"], archive["vectors"]
+    except (OSError, ValueError, EOFError, KeyError, zipfile.BadZipFile):
+        # A half-written or truncated archive must cost a re-embed, never a
+        # test failure — the cache is an optimisation, not a fixture.
+        return {}
+    if vectors.ndim != 2 or vectors.shape[1] != EMBEDDING_DIM or len(keys) != len(vectors):
+        return {}
+    return dict(zip(keys.tolist(), vectors))
+
+
+def _store_seed_cache(path: Path, vectors: dict[str, np.ndarray]) -> None:
+    """Merge into the archive atomically (temp file + os.replace) so concurrent
+    xdist writers never leave a torn file; last writer wins on the merge."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    merged = {**_load_seed_cache(path), **vectors}
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".npz.tmp")
+    with os.fdopen(fd, "wb") as handle:
+        np.savez(
+            handle,
+            keys=np.array(list(merged), dtype=str),
+            vectors=np.stack(list(merged.values())).astype(np.float32),
+        )
+    Path(tmp_path).replace(path)
+
+
+async def _embed_seed_contents(contents: list[str]) -> list[list[float]]:
+    """Embed seed contents through the real model, once per distinct string."""
+    missing = list(dict.fromkeys(text for text in contents if text not in _seed_embedding_cache))
+    if not missing:
+        return [_seed_embedding_cache[text] for text in contents]
+
+    path = _seed_cache_path()
+    on_disk = await asyncio.to_thread(_load_seed_cache, path) if path else {}
+    for text in missing:
+        vector = on_disk.get(_seed_cache_key(text))
+        if vector is not None:
+            _seed_embedding_cache[text] = vector.tolist()
+
+    uncached = [text for text in missing if text not in _seed_embedding_cache]
+    if uncached:
+        embedded = await embed_batch(uncached)
+        _seed_embedding_cache.update(zip(uncached, embedded))
+        if path:
+            fresh = {
+                _seed_cache_key(text): np.asarray(vector, dtype=np.float32)
+                for text, vector in zip(uncached, embedded)
+            }
+            try:
+                await asyncio.to_thread(_store_seed_cache, path, fresh)
+            except OSError as exc:  # a cache that cannot be written must not fail a test
+                warnings.warn(f"seed embedding cache not written to {path}: {exc}", stacklevel=2)
+    return [_seed_embedding_cache[text] for text in contents]
+
+
 async def seed_memories(user_id: str, specs: list[MemorySpec]) -> list[MemoryRecord]:
     """Insert memories into Postgres + Chroma exactly as ingestion would."""
-    embeddings = await embed_batch([spec["content"] for spec in specs])
+    embeddings = await _embed_seed_contents([spec["content"] for spec in specs])
     records = [
         MemoryRecord(
             user_id=user_id,

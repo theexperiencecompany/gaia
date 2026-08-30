@@ -183,7 +183,7 @@ dump.rdb
 # Embedding sidecar benchmark outputs (regenerable; charts live in the PR)
 apps/api/scripts/sidecar_benchmark/results/
 
-# Per-invocation mutation workdirs (scripts/test/mutation.sh, .mutation-$$) —
+# Per-invocation mutation workdirs (scripts/ci/mutation.sh module, .mutation-$$) —
 # a full app/tests/scripts copy plus mutmut's mutants/ tree, ~3.5k files. Left
 # behind only on a crash or MUTMUT_KEEP_WORKDIR=1, and swept into a commit once.
 .mutation-*/
@@ -195,3 +195,10 @@ piolium/
 
 # Local agent-session tooling (untracked workspace scripts)
 .agents/gateway-adapter/
+
+# Test impact selection artifacts (scripts/ci/test_impact.py)
+apps/api/.test-impact/
+.test-impact-map/
+
+# Private prod infra checked out by CI (theexperiencecompany/gaia-infra)
+/.infra/

@@ -7,7 +7,6 @@ check fails when the versions drift apart:
   - apps/api/.pre-commit-config.yaml must invoke exactly these pinned tools:
       ruff@0.14.13, mypy@1.19.1, bandit@1.9.4, pip-audit@2.10.1
   - code-quality.yml must scan with ruff@0.14.13 (the ruff lane)
-  - main.yml's diff-cover gate must use diff-cover==10.5.1
   - code-quality.yml's interrogate/xenon lanes must use interrogate==1.7.0 /
     xenon==0.9.3
 
@@ -41,7 +40,7 @@ REPO_ROOT = _HERE.parents[1]
 
 PRE_COMMIT = REPO_ROOT / "apps/api/.pre-commit-config.yaml"
 CODE_QUALITY = REPO_ROOT / ".github/workflows/code-quality.yml"
-MAIN = REPO_ROOT / ".github/workflows/main.yml"
+UV_LOCK = REPO_ROOT / "uv.lock"
 
 #: tool -> exact version every surface must agree on.
 EXPECTED = {
@@ -49,7 +48,6 @@ EXPECTED = {
     "mypy": "1.19.1",
     "bandit": "1.9.4",
     "pip-audit": "2.10.1",
-    "diff-cover": "10.5.1",
     "interrogate": "1.7.0",
     "xenon": "0.9.3",
 }
@@ -60,10 +58,10 @@ EXPECTED = {
 # tests can monkeypatch them onto fixture files.
 SURFACES = {
     "ruff": ("PRE_COMMIT", "CODE_QUALITY"),
-    "mypy": ("PRE_COMMIT",),
+    # The api mypy hook runs `uv run mypy`, so the lockfile IS the pin.
+    "mypy": ("UV_LOCK",),
     "bandit": ("PRE_COMMIT",),
     "pip-audit": ("PRE_COMMIT",),
-    "diff-cover": ("MAIN",),
     "interrogate": ("CODE_QUALITY",),
     "xenon": ("CODE_QUALITY",),
 }
@@ -97,6 +95,11 @@ def _missing(tool: str, version: str) -> list[Path]:
         if tool == "ruff":
             # pre-commit expresses this as a rev under the ruff-pre-commit repo
             pat = re.compile(rf"ruff-pre-commit\n\s*rev:\s*v{re.escape(version)}")
+            if pat.search(text):
+                continue
+        if surface == UV_LOCK:
+            # uv.lock pins as a [[package]] block: name = "mypy" / version = "x"
+            pat = re.compile(rf'name = "{re.escape(tool)}"\nversion = "{re.escape(version)}"')
             if pat.search(text):
                 continue
         if f"{tool}@{version}" in text or f"{tool}=={version}" in text:

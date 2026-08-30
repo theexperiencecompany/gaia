@@ -1,5 +1,6 @@
 from datetime import UTC
 from functools import lru_cache
+import os
 import sys
 from typing import Any
 
@@ -15,7 +16,11 @@ from shared.py.wide_events import log
 # The app always uses this database, whatever database `MONGO_DB` names in its
 # path — so anything that has to reach the same data (tests seeding the app's
 # startup preconditions) must resolve it from here rather than from the URL.
-MONGO_DATABASE_NAME = "GAIA"
+#
+# MONGO_DB_NAME overrides it so several CI lanes can share ONE mongod: the URI's
+# database component is ignored by design (above), so the name is the only
+# namespace available. Unset = "GAIA", the production database.
+MONGO_DATABASE_NAME = os.getenv("MONGO_DB_NAME", "GAIA")
 
 
 class MongoDB:

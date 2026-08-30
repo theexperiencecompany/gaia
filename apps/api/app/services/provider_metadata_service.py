@@ -7,14 +7,28 @@ system prompts with user context.
 """
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
 from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
-from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from app.services.composio.composio_service import ComposioService
+
+
+def get_composio_service() -> "ComposioService":
+    """Resolve the Composio service at call time rather than importing
+    ``app.services.composio.composio_service`` (Composio SDK, ``app.patches``,
+    every custom tool: seconds of import) into everything that imports this
+    module, e.g. the agent context sections."""
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- defers the Composio SDK import chain out of module import
+        get_composio_service as _get_composio_service,
+    )
+
+    return _get_composio_service()
 
 
 def _extract_nested_field(data: dict[str, Any], field_path: str) -> str | None:

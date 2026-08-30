@@ -187,7 +187,9 @@ class LiveApiServer:
 
 
 @pytest.fixture
-async def live_api_server(real_redis: Redis, mongo_db) -> AsyncIterator[LiveApiServer]:
+async def live_api_server(
+    real_redis: Redis, mongo_db, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[LiveApiServer]:
     """A live, real GAIA API bound to a real localhost port.
 
     Depends on real_redis so redis_cache.redis is already patched to the
@@ -201,6 +203,13 @@ async def live_api_server(real_redis: Redis, mongo_db) -> AsyncIterator[LiveApiS
     (create integration -> resolve -> add_user_integration) hits an earlier
     test's closed loop and raises ``RuntimeError: Event loop is closed``.
     """
+    from app.services.device import device_service
+
+    # The daemon sleeps for the server's `interval` hint BEFORE each poll, so
+    # approval is never seen in under PAIRING_POLL_INTERVAL_SECONDS (5s), paid once
+    # per pairing. The wire contract (daemon obeys the server hint) is still
+    # exercised for real; only the cadence is faster here.
+    monkeypatch.setattr(device_service, "PAIRING_POLL_INTERVAL_SECONDS", 1)
     app = _create_live_app()
     server = LiveApiServer(pick_free_port(), app)
     await server.start()
