@@ -96,7 +96,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: theexperiencecompany/gaia-infra
-          ref: ${{ vars.GAIA_INFRA_REF || 'main' }}
+          ref: main
           ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
           path: .infra
           persist-credentials: false

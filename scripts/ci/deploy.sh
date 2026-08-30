@@ -11,8 +11,8 @@
 #                               from the private gaia-infra checkout at .infra/.
 #   verify                      Everything a deploy needs, without touching a
 #                               single service — the rehearsal to run after
-#                               changing the infra split, the deploy key or
-#                               GAIA_INFRA_REF.
+#                               changing the infra repo, the deploy key or
+#                               the tailnet path.
 #   retag from-env|rolled-back  Re-point the :latest tags in GHCR at what
 #                               production actually runs, so ":latest ==
 #                               deployed" holds as an invariant.
