@@ -391,6 +391,43 @@ class TestStyleGuardRegeneration:
         assert charged["usage"]["cached_tokens"] == 800
         assert charged["context"].charge_to_budget is True
 
+    async def test_the_retracted_draft_lands_in_the_ledger_with_the_turns_own_identity(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The draft the user paid for and never saw is a real call, so its ledger
+        row has to name the same conversation and the same model as the reply that
+        replaced it — otherwise the turn's cost breakdown is missing a call that
+        has no obvious home."""
+        draft = _draft(DIRTY_DRAFT, "m1")
+        draft.usage_metadata = {"input_tokens": 900, "output_tokens": 40, "total_tokens": 940}
+        draft.response_metadata = {
+            "model_name": "served/model",
+            "id": "gen-abc123",
+            "provider": "fireworks",
+        }
+        interactive_run["configurable"]["conversation_id"] = "conv-1"
+        interactive_run["configurable"]["thread_id"] = "executor_conv-1"
+        interactive_run["configurable"]["workflow_id"] = "wf-1"
+        handler = _ScriptedHandler(draft, _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        context = record.call_args.kwargs["context"]
+        assert context.agent_name == "comms_agent"
+        assert context.background is False
+        assert context.conversation_id == "conv-1"
+        assert context.thread_id == "executor_conv-1"
+        assert context.workflow_id == "wf-1"
+        assert context.model_served == "served/model"
+        assert context.generation_id == "gen-abc123"
+        assert context.provider == "fireworks"
+        # Nothing here timed the draft: it arrives already finished, so an
+        # invented latency would be worse than no latency.
+        assert context.duration_ms is None
+
     async def test_the_retracted_draft_is_charged_what_the_provider_said_it_cost(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
     ) -> None:

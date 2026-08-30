@@ -23,6 +23,7 @@ from app.services.llm_metering import (
     extract_message_provider,
     record_llm_call,
 )
+from shared.py.wide_events import WorkflowContext, log
 
 CONVERSATION = "8f2a1c4e-0b3d-4a71-9c62-5d8e1f0a7b34"
 
@@ -189,3 +190,73 @@ def test_a_real_upstream_name_is_recorded_verbatim() -> None:
     message = AIMessage(content="hi", response_metadata={"provider": "Fireworks"})
 
     assert extract_message_provider(message) == "Fireworks"
+
+
+# --- worker / workflow attribution --------------------------------------------- #
+#
+# ``workflow_execution_id``, ``job_id`` and the task name exist only on the wide
+# event's boundary — ARQ stamps the job identity in ``arq_task`` and the workflow
+# task stamps its execution id — so they reach the ledger through that ContextVar
+# rather than through ``config.configurable``. If that read breaks, "what did this
+# workflow run cost" silently returns nothing and looks like an empty answer
+# rather than a bug.
+
+
+async def test_a_call_made_inside_a_worker_task_is_attributed_to_its_job_and_workflow_run() -> None:
+    log.reset()
+    log.set(
+        task="run_workflow",
+        job_id="job-9",
+        workflow=WorkflowContext(id="wf-1", execution_id="exec_wf-1_ab12cd34"),
+    )
+    try:
+        doc = await _record()
+    finally:
+        log.reset()
+
+    assert doc.workflow_execution_id == "exec_wf-1_ab12cd34"
+    assert doc.job_id == "job-9"
+    assert doc.task_name == "run_workflow"
+
+
+async def test_a_workflow_boundary_with_no_execution_id_yet_records_none() -> None:
+    """A workflow event is stamped in stages; a call metered before the execution
+    id lands must record its absence, not an empty-string id."""
+    log.reset()
+    log.set(task="run_workflow", workflow=WorkflowContext(id="wf-1"))
+    try:
+        doc = await _record()
+    finally:
+        log.reset()
+
+    assert doc.workflow_execution_id is None
+    assert doc.task_name == "run_workflow"
+    assert doc.job_id is None
+
+
+async def test_a_call_outside_any_boundary_invents_no_worker_identity() -> None:
+    """An HTTP request path has no ARQ job and no workflow run. The fields are
+    absent, never a fabricated id."""
+    log.reset()
+    try:
+        doc = await _record()
+    finally:
+        log.reset()
+
+    assert doc.workflow_execution_id is None
+    assert doc.job_id is None
+    assert doc.task_name is None
+
+
+async def test_a_non_mapping_workflow_field_does_not_crash_the_metered_call() -> None:
+    """``log.set`` takes arbitrary values, and some call sites stamp
+    ``workflow=<id string>``. Reaching into that for ``execution_id`` would raise
+    inside the metering path of a call that already succeeded."""
+    log.reset()
+    log.set(workflow="wf-1")
+    try:
+        doc = await _record()
+    finally:
+        log.reset()
+
+    assert doc.workflow_execution_id is None

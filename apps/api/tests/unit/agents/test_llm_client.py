@@ -83,6 +83,8 @@ from tests.helpers import create_fake_llm
 # The identity every auxiliary one-shot now states about itself. These tests are
 # about what gets BOOKED, not about the ledger row, so they share one minimal
 # context; the row it produces is covered in test_llm_metering_ledger.py.
+_CLIENT = "app.agents.llm.client"
+
 _AUX_CONTEXT = LLMCallContext(
     agent_name="memory_extraction", background=True, charge_to_budget=False
 )
@@ -718,6 +720,52 @@ class TestAinvokeLlm:
             options=LLMInvokeOptions(meter_auxiliary=False),
         )
         assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
+
+    async def test_an_auxiliary_call_is_metered_with_the_runs_own_context(self) -> None:
+        """The ledger row for a one-shot helper has to name the conversation it
+        ran for. Auxiliary spend used to be attributable to nothing but a label,
+        which is how "what did this turn actually cost" stayed unanswerable —
+        the helper's spend sat in a bucket with no link back to the turn."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+        config = RunnableConfig(
+            configurable={
+                "user_id": "u1",
+                "conversation_id": "conv-1",
+                "thread_id": "executor_conv-1",
+                "workflow_id": "wf-1",
+            }
+        )
+
+        with patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record:
+            await ainvoke_llm(
+                primary, [HumanMessage(content="hi")], config=config, label="memory_extraction"
+            )
+
+        context = record.await_args.kwargs["context"]
+        assert context.agent_name == "memory_extraction"
+        # Never the user's allowance: a memory save is work GAIA chose to do.
+        assert context.background is True
+        assert context.charge_to_budget is False
+        assert context.conversation_id == "conv-1"
+        assert context.thread_id == "executor_conv-1"
+        assert context.workflow_id == "wf-1"
+        # Measured around the whole retry/fallback chain, so it is a real
+        # number rather than a placeholder zero.
+        assert context.duration_ms is not None
+        assert context.duration_ms >= 0.0
+
+    async def test_an_auxiliary_call_with_a_bare_config_attributes_nothing_it_lacks(self) -> None:
+        """Most one-shots run outside any conversation. Their ledger rows say so
+        rather than inheriting whichever ids happened to be around."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+
+        with patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record:
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+
+        context = record.await_args.kwargs["context"]
+        assert context.conversation_id is None
+        assert context.thread_id is None
+        assert context.workflow_id is None
 
 
 class TestFallbackHandover:
