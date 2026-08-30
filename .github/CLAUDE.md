@@ -67,7 +67,10 @@ Consequences to keep in mind when editing a lane:
 
 A workflow step is one command line. Any logic beyond that — computing file
 lists, parsing output, loops, multi-line shell — lives in a script under
-`scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
+`scripts/ci/` (or `scripts/test/` for tooling), and the step calls it.
+**`scripts/ci/CLAUDE.md` is the contract for that directory** — one script per
+concept, a new responsibility joins the script for its concept as a subcommand
+and never becomes a new file. Read it before adding anything there:
 
 ```yaml
 - name: Compute the mutation matrix

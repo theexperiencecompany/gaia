@@ -215,7 +215,7 @@ cmd_local() {
     exit 0
   fi
 
-  # One TSV row per module, the same three fields mutation-shard.sh reads.
+  # One TSV row per module, the same three fields `shard` reads.
   TSV="$(mktemp)"
   trap 'rm -f "$TSV"' EXIT
   MATRIX="$MATRIX" python3 - > "$TSV" <<'PY'
