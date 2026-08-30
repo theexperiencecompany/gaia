@@ -109,9 +109,8 @@ def _iter_nested(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
     score the handler's own body. Boundary detection is different: a boundary
     inside a nested helper (an SSE generator, a ``asyncio.create_task`` coroutine
     defined inline, a websocket relay) is a real wide-event boundary — the JS
-    scanner credits nested inline functions the same way (the bots scanner in
-    scripts/ci/lib/evlog-map-bots.mjs: ``analyzeBody`` recurses via
-    ``ts.forEachChild``). Converging the two keeps a
+    scanner credits nested inline functions the same way (evlog-map-bots.mjs
+    ``analyzeBody`` recurses via ``ts.forEachChild``). Converging the two keeps a
     boundary that lives in a nested scope from being invisible here.
     """
     out: list[ast.AST] = []
