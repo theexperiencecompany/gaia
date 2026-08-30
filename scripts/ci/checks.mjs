@@ -108,8 +108,8 @@ const gitLsFiles = (patterns) =>
     .split("\n")
     .filter(Boolean);
 
-function sizeFiles() {
-  const explicit = explicitFileList();
+function sizeFiles(args) {
+  const explicit = explicitFileList(args);
   if (explicit.length > 0) {
     return explicit
       .filter((p) => SCANNED_EXTENSIONS.some((ext) => p.endsWith(ext)))
@@ -135,7 +135,7 @@ function cmdFileSizes(argv) {
   const offenders = [];
   const hardOffenders = [];
 
-  for (const file of sizeFiles()) {
+  for (const file of sizeFiles(argv)) {
     const lines = countLines(file);
     const limit = limitFor(file);
     if (lines > HARD_LIMIT && !exemptFromHardCap(file)) {
@@ -278,8 +278,8 @@ function componentInScope(path) {
   );
 }
 
-function componentFiles() {
-  const explicit = explicitFileList();
+function componentFiles(args) {
+  const explicit = explicitFileList(args);
   if (explicit.length > 0) {
     return explicit.filter(componentInScope);
   }
@@ -309,10 +309,10 @@ function findComponents(src) {
 
 const MAX_COMPONENTS_PER_FILE = 2;
 
-function cmdComponentsPerFile() {
+function cmdComponentsPerFile(argv) {
   const violations = [];
 
-  for (const file of componentFiles()) {
+  for (const file of componentFiles(argv)) {
     if (componentIsAllowed(file)) continue;
     const src = readFileSync(file, "utf8");
     const components = findComponents(src);
@@ -405,8 +405,8 @@ function typesInScope(path) {
   return underTrackedRoot && (path.endsWith(".ts") || path.endsWith(".tsx"));
 }
 
-function typesFiles() {
-  const explicit = explicitFileList();
+function typesFiles(args) {
+  const explicit = explicitFileList(args);
   if (explicit.length > 0) {
     return explicit.filter(typesInScope);
   }
@@ -431,7 +431,7 @@ const MAX_TYPES_OUTSIDE = 3;
 function cmdTypesLocation(argv) {
   const violations = [];
 
-  for (const file of typesFiles()) {
+  for (const file of typesFiles(argv)) {
     if (isTypeFile(file)) continue;
     if (typesIsAllowed(file)) continue;
 
