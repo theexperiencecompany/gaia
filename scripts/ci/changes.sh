@@ -4,6 +4,9 @@
 # Subcommands:
 #   files <ext> [<ext> ...]  The changed files for a lane to scope to, filtered
 #                            to those extensions. See the contract below.
+#   py-source                Like `files py`, but drops the paths the Python
+#                            tools exclude in a full scan (tests, scripts,
+#                            migrations, …). Same three-state contract.
 #   docker-inputs            Does this PR touch anything the api image build
 #                            depends on? Writes build=true|false to
 #                            $GITHUB_OUTPUT.
@@ -39,6 +42,7 @@
 #
 # Env contract:
 #   files          GITHUB_BASE_REF, GITHUB_ACTIONS, NX_BASE (local fallback).
+#   py-source      as `files`; also reads pyproject.toml from the repo root.
 #   docker-inputs  BASE_BRANCH (github.base_ref), GITHUB_OUTPUT.
 set -euo pipefail
 
@@ -126,6 +130,53 @@ cmd_files() {
       done
 }
 
+# Passing explicit files to interrogate/xenon/bandit bypasses their config
+# excludes, so a changed test file gets scanned on a PR when a full scan would
+# skip it. The exclude list is read from pyproject's [tool.interrogate].exclude
+# so there is a single source of truth.
+cmd_py_source() {
+
+  # A subshell, so the `exit 0` cmd_files uses for its two sentinel states ends
+  # the substitution rather than this script.
+  local FILES
+  FILES="$(cmd_files py)"
+
+  if [[ "$FILES" == "__FULL__" || -z "$FILES" ]]; then
+    printf '%s\n' "$FILES"
+    return 0
+  fi
+
+  # Program via -c so the file list can be piped on stdin. Each exclude glob
+  # reduces to a path segment (**/tests) or a basename (**/conftest.py).
+  printf '%s\n' "$FILES" | python3 -c '
+import pathlib
+import sys
+import tomllib
+
+patterns = tomllib.loads(pathlib.Path("pyproject.toml").read_text())[
+    "tool"
+]["interrogate"]["exclude"]
+
+segments, basenames = set(), set()
+for pat in patterns:
+    core = pat.strip("/")
+    if core.startswith("**/"):
+        core = core[3:]
+    if core.endswith("/**"):
+        core = core[:-3]
+    core = core.strip("/")
+    if "/" in core or "*" in core:
+        continue
+    (basenames if core.endswith(".py") else segments).add(core)
+
+for line in filter(None, sys.stdin.read().splitlines()):
+    parts = line.split("/")
+    if segments & set(parts) or parts[-1] in basenames:
+        continue
+    print(line)
+'
+}
+
 cmd_docker_inputs() {
 
   BASE_BRANCH="${BASE_BRANCH:?BASE_BRANCH is required (github.base_ref)}"
@@ -165,7 +216,7 @@ cmd_docker_inputs() {
 }
 
 usage() {
-  sed -n '2,10p' "$0" >&2
+  sed -n '2,13p' "$0" >&2
 }
 
 main() {
@@ -173,6 +224,7 @@ main() {
   shift || true
   case "$sub" in
     files)         cmd_files "$@" ;;
+    py-source)     cmd_py_source "$@" ;;
     docker-inputs) cmd_docker_inputs "$@" ;;
     *)
       echo "changes.sh: unknown subcommand '${sub}'" >&2

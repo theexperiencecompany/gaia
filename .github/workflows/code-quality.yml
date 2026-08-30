@@ -573,7 +573,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: uvx xenon --max-absolute F --max-modules E --max-average B"' ERR
           echo "::group::xenon"
-          FILES=$(scripts/ci/changed-py-source.sh)
+          FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
             uvx xenon==0.9.3 \
               --max-absolute F \
@@ -601,7 +601,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: uvx interrogate -c pyproject.toml"' ERR
           echo "::group::interrogate"
-          FILES=$(scripts/ci/changed-py-source.sh)
+          FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
             uvx interrogate==1.7.0 -c pyproject.toml apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
@@ -621,7 +621,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: uvx bandit -c pyproject.toml"' ERR
           echo "::group::bandit (low severity, low confidence — no exclusions)"
-          FILES=$(scripts/ci/changed-py-source.sh)
+          FILES=$(scripts/ci/changes.sh py-source)
           if [ "$FILES" = "__FULL__" ]; then
             uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/report.py annotations < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
           elif [ -z "$FILES" ]; then
