@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -82,3 +83,27 @@ def test_member_pr_and_push_reach_the_probe(association: str) -> None:
     # outcome that proves the gates let them through is the probe's fallback.
     out = select(PR_AUTHOR_ASSOCIATION=association)
     assert out["reason"] == "api-unavailable"
+
+
+def test_every_ci_script_path_in_the_workflows_resolves() -> None:
+    """A `scripts/ci/<x>.sh` named anywhere in CI must be a file that exists.
+
+    Consolidating the scripts turned paths into path-plus-subcommand, and one
+    blanket rename put the subcommand inside the select-runner composite's
+    ``SCRIPT=`` variable. ``[[ -f "$SCRIPT" ]]`` then failed, select-runner
+    exited 127, and every lane in both workflows skipped behind it.
+    """
+    repo = SCRIPT.parent.parent.parent
+    pattern = re.compile(r"scripts/ci/[A-Za-z0-9_./-]+\.sh")
+    missing = []
+    for path in [*sorted(repo.glob(".github/**/*.yml")), repo / "mise.toml"]:
+        for ref in pattern.findall(path.read_text()):
+            if not (repo / ref).is_file():
+                missing.append(f"{path.relative_to(repo)} -> {ref}")
+    assert not missing, missing
+
+
+def test_the_select_runner_composite_passes_select_as_an_argument() -> None:
+    action = (SCRIPT.parent.parent.parent / ".github/actions/select-runner/action.yml").read_text()
+    assert 'SCRIPT="${{ github.action_path }}/../../../scripts/ci/runner.sh"' in action
+    assert 'bash "$SCRIPT" select' in action
