@@ -583,6 +583,14 @@ async def _run_and_record_success(
     context: dict[str, Any] | None,
     execution_id: str,
 ) -> str:
+    # Stamp the run's identity onto the task's wide event BEFORE the agent runs.
+    # It is what the ``llm_calls`` ledger reads to attribute each model call to
+    # this execution (``llm_metering._ambient_worker_context``): the execution id
+    # exists only here, never in ``config.configurable``, so without this stamp
+    # every workflow call lands in the ledger with no execution to attribute it
+    # to and "what did this run cost" stays unanswerable.
+    log.set(workflow=WorkflowContext(id=workflow_id, execution_id=execution_id))
+
     # Run the workflow as a silent chat turn. The executor does all the
     # steps and its result is delivered as the completion notification
     # from the background delivery path (gated by workflow_id), so there

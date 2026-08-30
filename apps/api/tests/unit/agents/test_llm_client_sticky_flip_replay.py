@@ -136,7 +136,7 @@ class TestStickyFlipReplayAccounting:
         # user's daily allowance pay for a discarded reply (3,614 of them,
         # $34.55, ~20% of all LLM spend over 2026-08-16..29). It is recorded
         # durably as auxiliary COGS instead.
-        assert charged["charge_to_budget"] is False
+        assert charged["context"].charge_to_budget is False
         # And it carries no root_request_id: that counter is the per-request
         # token ceiling bounding one agent tree against runaway loops. Our own
         # re-send is not the model looping, and letting it count lets a turn be

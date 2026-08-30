@@ -13,6 +13,7 @@ Covers:
 
 import asyncio
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
@@ -71,12 +72,20 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import ProviderRegistry
+from app.services.llm_metering import LLMCallContext
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# The identity every auxiliary one-shot now states about itself. These tests are
+# about what gets BOOKED, not about the ledger row, so they share one minimal
+# context; the row it produces is covered in test_llm_metering_ledger.py.
+_AUX_CONTEXT = LLMCallContext(
+    agent_name="memory_extraction", background=True, charge_to_budget=False
+)
 
 
 def _make_fake_provider(name: str = "fake") -> MagicMock:
@@ -1131,10 +1140,17 @@ class TestMeterDiscardedReplay:
                 "reasoning_tokens": 7,
             },
             "root_request_id": None,
-            "charge_to_budget": False,
             # The fixture message carries no reported price; a real OpenRouter
             # reply does, and it is what gets booked (see the test below).
             "provider_cost": None,
+            # Background COGS on a lane with no conversation in its config: the
+            # ledger row says so rather than inheriting the user's turn.
+            "context": LLMCallContext(
+                agent_name="the_judge",
+                background=True,
+                charge_to_budget=False,
+                model_served="served/model",
+            ),
         }
 
     # Unmarked deliberately: this module imports symbols this branch introduces
@@ -1619,7 +1635,11 @@ class TestRecordAuxiliaryUsage:
             patch("app.agents.llm.client.log") as mock_log,
         ):
             await _record_auxiliary_usage(
-                handler, "follow_up_actions", "user-1", generation_id="gen-abc123"
+                handler,
+                "follow_up_actions",
+                "user-1",
+                context=_AUX_CONTEXT,
+                generation_id="gen-abc123",
             )
 
         assert mock_log.info.call_args.kwargs["generation_id"] == "gen-abc123"
@@ -1707,7 +1727,9 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 77
 
@@ -1717,14 +1739,18 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs["usage"]["input_tokens"] == 0
         assert rec.call_args.kwargs["usage"]["output_tokens"] == 20
 
         handler = self._handler(gemini={"input_tokens": 100})
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs["usage"]["input_tokens"] == 100
         assert rec.call_args.kwargs["usage"]["output_tokens"] == 0
@@ -1735,7 +1761,9 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
@@ -1749,7 +1777,9 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
@@ -1766,7 +1796,9 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         assert rec.call_args.kwargs == {
             "user_id": "user-1",
@@ -1777,16 +1809,21 @@ class TestRecordAuxiliaryUsage:
                 "cached_tokens": 40,
                 "reasoning_tokens": 7,
             },
-            "charge_to_budget": False,
             # This lane reported no price, so metering falls back to the table.
             "provider_cost": None,
+            # The model the handler keyed its usage by is what answered, so the
+            # ledger records it as served; the upstream stays unknown here (the
+            # raw response never reaches this seam) and is never guessed.
+            "context": replace(_AUX_CONTEXT, model_served="gemini"),
         }
 
     async def test_a_call_that_burned_no_tokens_is_not_booked(self) -> None:
         handler = self._handler(gemini={"input_tokens": 0, "output_tokens": 0})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock()) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         rec.assert_not_called()
 
@@ -1803,7 +1840,9 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "user-1", context=_AUX_CONTEXT
+            )
 
         booked = {
             c.kwargs["model_name"]: c.kwargs["usage"]["reasoning_tokens"]
@@ -1817,7 +1856,7 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", None)
+            await _record_auxiliary_usage(handler, "memory_extraction", None, context=_AUX_CONTEXT)
 
         assert rec.call_args.kwargs["user_id"] is None
 
@@ -2483,7 +2522,9 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "u1", context=_AUX_CONTEXT, provider_cost=0.008
+            )
 
         assert rec.call_args.kwargs["provider_cost"] == 0.008
         assert mock_log.info.call_args.kwargs["cost_source"] == "provider"
@@ -2501,7 +2542,9 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "u1", context=_AUX_CONTEXT, provider_cost=0.008
+            )
 
         assert [c.kwargs["provider_cost"] for c in rec.call_args_list] == [None, None]
         assert {c.kwargs["cost_source"] for c in mock_log.info.call_args_list} == {"table"}
@@ -2513,7 +2556,7 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1")
+            await _record_auxiliary_usage(handler, "memory_extraction", "u1", context=_AUX_CONTEXT)
 
         assert rec.call_args.kwargs["provider_cost"] is None
         assert mock_log.info.call_args.kwargs["cost_source"] == "table"

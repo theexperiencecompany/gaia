@@ -389,7 +389,7 @@ class TestStyleGuardRegeneration:
         assert charged["usage"]["input_tokens"] == 900
         assert charged["usage"]["output_tokens"] == 40
         assert charged["usage"]["cached_tokens"] == 800
-        assert charged["charge_to_budget"] is True
+        assert charged["context"].charge_to_budget is True
 
     async def test_the_retracted_draft_is_charged_what_the_provider_said_it_cost(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig

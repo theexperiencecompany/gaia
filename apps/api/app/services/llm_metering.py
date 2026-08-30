@@ -21,16 +21,25 @@ because ``cost_budget`` cannot import ``config.model_pricing`` — that pulls in
 ``app.decorators``, which imports ``cost_budget`` right back.
 """
 
+from dataclasses import dataclass
+from datetime import UTC, datetime
 import math
 from typing import TypedDict
 
 from langchain_core.messages import AIMessage
 
 from app.config.model_pricing import calculate_token_cost
-from app.constants.llm import UNKNOWN_MODEL_NAME
+from app.constants.llm import OPENROUTER_PROVIDER, UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
+from app.db.repositories.llm_calls import (
+    CostSource,
+    LLMCallDocument,
+    llm_calls_repository,
+    split_lane_thread,
+)
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 
@@ -43,14 +52,155 @@ class TokenUsage(TypedDict):
     reasoning_tokens: int
 
 
+@dataclass(frozen=True)
+class LLMCallContext:
+    """Everything about a model call that is NOT its price or its token counts.
+
+    One object rather than a dozen keyword arguments, for the same reason
+    ``LLMInvokeOptions`` exists: the seam already sits at the repo's
+    argument-count ceiling. Every field is what the CALL SITE knows and the
+    metering seam cannot re-derive — the seam is shared by four routes that see
+    very different amounts of context, so each states what it has and leaves the
+    rest ``None`` instead of the seam guessing.
+
+    Deliberately carries no message content. This object is what becomes an
+    ``llm_calls`` ledger document, and that collection stores counts and
+    identifiers only.
+    """
+
+    #: The lane label the ``llm_call`` wide event carries, verbatim.
+    agent_name: str
+    #: Auxiliary work GAIA chose to do, rather than the user's own turn.
+    background: bool
+    #: Whether this spend counts against the user's allowance (agent-graph work
+    #: they asked for) or is auxiliary background COGS (recorded durably, never
+    #: charged). Required, with no default, so every call site states it — it
+    #: sits beside ``background`` because they are the same judgement about the
+    #: same call, and keeping them apart is how they drift.
+    charge_to_budget: bool
+    #: The model the provider says answered (``extract_message_model``).
+    model_served: str | None = None
+    #: The serving UPSTREAM when the response names one — see
+    #: ``LLMCallDocument.provider`` for why this is almost always ``None``.
+    provider: str | None = None
+    #: OpenRouter's generation id (``extract_generation_id``).
+    generation_id: str | None = None
+    #: The TRUE conversation id when the call site holds one. Falls back to the
+    #: id derived from ``thread_id``.
+    conversation_id: str | None = None
+    #: LangGraph's checkpoint thread, wrapper included.
+    thread_id: str | None = None
+    workflow_id: str | None = None
+    #: Wall time of the provider call, where the seam wraps the invocation.
+    duration_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class _PricedCall:
+    """One model call after pricing — the shared input of both internal writes.
+
+    Grouped rather than passed as eight parallel keywords so the rollup write
+    and the ledger write cannot be handed different versions of the same call.
+    """
+
+    user_id: str | None
+    model_name: str
+    usage: TokenUsage
+    root_request_id: str | None
+    total_cost: float
+    #: Whether ``total_cost`` came from the provider or from our price table.
+    cost_source: CostSource
+
+
+def _ambient_worker_context() -> dict[str, str | None]:
+    """Worker/workflow identity for the call in flight, from the wide event.
+
+    ``job_id`` and the task name are stamped by ``arq_task``'s ``wide_task``
+    boundary and ``workflow.execution_id`` by the workflow task — none of them
+    exist in ``config.configurable``, so there is no call-site value to thread:
+    the boundary's own ContextVar IS where they live, and it is the same one the
+    ``llm_call`` log line is built from. Reading it here keeps the ledger and
+    the wide event agreeing by construction. Empty outside a boundary (an HTTP
+    request, a test), which reads back as ``None`` rather than a fabricated id.
+    """
+    fields = log.get()
+    workflow = fields.get("workflow")
+    execution_id = workflow.get("execution_id") if isinstance(workflow, dict) else None
+    return {
+        "workflow_execution_id": str(execution_id) if execution_id else None,
+        "job_id": str(fields["job_id"]) if fields.get("job_id") else None,
+        "task_name": str(fields["task"]) if fields.get("task") else None,
+    }
+
+
+def _build_ledger_document(call: _PricedCall, context: LLMCallContext) -> LLMCallDocument:
+    """Assemble one ledger row. Pure — no I/O, so it is directly testable."""
+    usage = call.usage
+    lane = split_lane_thread(context.thread_id)
+    ambient = _ambient_worker_context()
+    return LLMCallDocument(
+        created_at=datetime.now(UTC),
+        user_id=call.user_id,
+        agent_name=context.agent_name,
+        background=context.background,
+        charge_to_budget=context.charge_to_budget,
+        model_requested=call.model_name,
+        model_served=context.model_served,
+        provider=context.provider,
+        input_tokens=usage["input_tokens"],
+        cached_tokens=usage["cached_tokens"],
+        output_tokens=usage["output_tokens"],
+        reasoning_tokens=usage["reasoning_tokens"],
+        cost_usd=call.total_cost,
+        cost_source=call.cost_source,
+        generation_id=context.generation_id,
+        conversation_id=context.conversation_id or lane.conversation_id,
+        lane_thread=lane.lane_thread,
+        root_request_id=call.root_request_id,
+        workflow_id=context.workflow_id,
+        workflow_execution_id=ambient["workflow_execution_id"],
+        job_id=ambient["job_id"],
+        task_name=ambient["task_name"],
+        duration_ms=context.duration_ms,
+    )
+
+
+async def _insert_ledger_row(doc: LLMCallDocument) -> None:
+    """Append one row to the ``llm_calls`` ledger, or warn and move on.
+
+    This is the ONE place in the metering path allowed to degrade silently, and
+    the reason is narrow: the ledger is an observability artifact, not the
+    system of record. The money is already booked by ``record_model_call_usage``
+    (Redis budget windows + the durable ``usage_daily`` rollup) and the call is
+    already described by the ``llm_call`` wide event, so a Mongo blip costs a
+    row of analytics — not a user's reply, and not a dollar. Raising here would
+    take chat down to protect a metering table, which is exactly backwards.
+
+    The failure is a ``log.warning``, not a swallow: it is greppable, it lands
+    on the wide event, and a sustained gap between ``usage_daily`` and the
+    ledger's own row count is measurable after the fact.
+    """
+    try:
+        await llm_calls_repository.create(doc)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.MONGO} llm_calls ledger insert failed — the call is still "
+            "priced, budgeted and on the wide event; only its ledger row is missing",
+            agent_name=doc.agent_name,
+            model=doc.model_requested,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+
+
 async def record_llm_call(
     *,
     user_id: str | None,
     model_name: str,
     usage: TokenUsage,
     root_request_id: str | None = None,
-    charge_to_budget: bool,
     provider_cost: float | None = None,
+    context: LLMCallContext,
 ) -> float:
     """Price one model call and record its spend + tokens. Returns the USD cost.
 
@@ -62,12 +212,16 @@ async def record_llm_call(
     already billed as output). All four ride alongside the cost into the
     durable rollup so a mispriced call can be re-derived from raw usage after
     the fact. Omit ``root_request_id``
-    for work that is not bounded by a single agent tree. ``charge_to_budget``
-    is required so every call site states whether this spend counts against
-    the user's allowance (agent-graph work the user asked for) or is auxiliary
-    background COGS (recorded durably, never charged). Fail-open: a pricing or
+    for work that is not bounded by a single agent tree. Fail-open: a pricing or
     write failure degrades cost to 0.0 and never fails a model call that
     already succeeded.
+
+    ``context`` is the call's identity — lane, models, conversation, workflow,
+    latency, and ``charge_to_budget`` (see :class:`LLMCallContext`). It is
+    required, not optional: it is what becomes the call's ``llm_calls`` ledger
+    row, and the ledger is only worth having if every route states what it
+    knows. An optional argument is how the log lines ended up with no context
+    ids on 55% of calls.
     """
     # What the provider says it charged always wins over what we would have
     # guessed. MODEL_PRICING carries ONE rate per model, but OpenRouter routes
@@ -84,11 +238,15 @@ async def record_llm_call(
     # cost the provider reported, so it falls through to table pricing.
     if provider_cost is not None and math.isfinite(provider_cost) and provider_cost >= 0.0:
         return await _record(
-            user_id=user_id,
-            total_cost=float(provider_cost),
-            root_request_id=root_request_id,
-            usage=usage,
-            charge_to_budget=charge_to_budget,
+            _PricedCall(
+                user_id=user_id,
+                model_name=model_name,
+                usage=usage,
+                root_request_id=root_request_id,
+                total_cost=float(provider_cost),
+                cost_source="provider",
+            ),
+            context,
         )
 
     try:
@@ -116,40 +274,51 @@ async def record_llm_call(
         total_cost = 0.0
 
     return await _record(
-        user_id=user_id,
-        total_cost=total_cost,
-        root_request_id=root_request_id,
-        usage=usage,
-        charge_to_budget=charge_to_budget,
+        _PricedCall(
+            user_id=user_id,
+            model_name=model_name,
+            usage=usage,
+            root_request_id=root_request_id,
+            total_cost=total_cost,
+            cost_source="table",
+        ),
+        context,
     )
 
 
-async def _record(
-    *,
-    user_id: str | None,
-    total_cost: float,
-    root_request_id: str | None,
-    usage: TokenUsage,
-    charge_to_budget: bool,
-) -> float:
-    """Write one already-priced call to the budget windows and the durable rollup.
+async def _record(call: _PricedCall, context: LLMCallContext) -> float:
+    """Write one already-priced call to the budget windows, the durable rollup
+    and the ``llm_calls`` ledger.
 
     Split out so the provider-reported and table-priced paths record through
     exactly the same seam — the only difference between them is where the
-    dollar figure came from.
+    dollar figure came from, which is exactly what ``cost_source`` records.
+
+    The ledger insert is spawned rather than awaited: it is the one write here
+    that nothing downstream depends on, and holding the user's turn open for a
+    Mongo round-trip to write an analytics row would be paying latency for
+    observability. Every field it needs is captured into the document BEFORE the
+    spawn, so the row is a snapshot of this call and not of whatever context the
+    task happens to run in.
     """
+    spawn_background_task(
+        _insert_ledger_row(_build_ledger_document(call, context)),
+        name="llm_calls_ledger_insert",
+    )
+
+    usage = call.usage
     try:
         await record_model_call_usage(
-            user_id,
+            call.user_id,
             UsageDailyIncrement(
-                cost=total_cost,
+                cost=call.total_cost,
                 input_tokens=usage["input_tokens"],
                 output_tokens=usage["output_tokens"],
                 cached_tokens=usage["cached_tokens"],
                 reasoning_tokens=usage["reasoning_tokens"],
             ),
-            root_request_id,
-            charge_to_budget=charge_to_budget,
+            call.root_request_id,
+            charge_to_budget=context.charge_to_budget,
         )
     except Exception as e:
         # Infra fail-open per the cost-budget module's documented degradation
@@ -162,7 +331,7 @@ async def _record(
             error_type=type(e).__name__,
         )
 
-    return total_cost
+    return call.total_cost
 
 
 def extract_message_usage(message: AIMessage) -> TokenUsage:
@@ -270,3 +439,24 @@ def extract_generation_id(message: AIMessage) -> str | None:
     """
     resp_meta = getattr(message, "response_metadata", None) or {}
     return str(resp_meta.get("id") or "") or None
+
+
+def extract_message_provider(message: AIMessage) -> str | None:
+    """The UPSTREAM that served this call, when the response actually names one.
+
+    Returns ``None`` far more often than not, and that is the honest answer, not
+    a gap to paper over: ``ChatOpenRouter`` drops OpenRouter's ``provider``
+    response field and stamps ``model_provider`` with the literal
+    ``"openrouter"`` (see :func:`extract_generation_id`). The aggregator's own
+    name is not the upstream, so it is rejected explicitly — recording it would
+    make every row claim a provider we never learned, and a ``group by
+    provider`` over the ledger would read as one homogeneous pool when the whole
+    point of the field is that the pool's rates differ by more than 10x.
+    ``generation_id`` is the handle that resolves the real upstream after the
+    fact; this field only ever carries a name the response volunteered.
+    """
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    reported = str(resp_meta.get("provider") or "").strip()
+    if not reported or reported.lower() == OPENROUTER_PROVIDER:
+        return None
+    return reported

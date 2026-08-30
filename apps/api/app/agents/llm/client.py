@@ -1,8 +1,9 @@
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 import math
+import time
 from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -70,9 +71,12 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    LLMCallContext,
     TokenUsage,
+    extract_generation_id,
     extract_message_cost,
     extract_message_model,
+    extract_message_provider,
     extract_message_usage,
     record_llm_call,
 )
@@ -761,13 +765,35 @@ async def _meter_discarded_replay(
     model_name = extract_message_model(discarded)
     user_id = configurable.get("user_id")
     provider_cost = extract_message_cost(discarded)
+    thread_id = configurable.get("thread_id")
+    workflow_id = configurable.get("workflow_id")
     cost = await record_llm_call(
         user_id=str(user_id) if user_id else None,
         model_name=model_name,
         usage=usage,
         root_request_id=None,
-        charge_to_budget=False,
         provider_cost=provider_cost,
+        context=LLMCallContext(
+            agent_name=label,
+            background=True,
+            charge_to_budget=False,
+            # This seam meters the message itself, so what the provider says it
+            # served is all there is — there is no lane here to state what was
+            # asked for (``lane`` imports this module).
+            model_served=model_name,
+            provider=extract_message_provider(discarded),
+            generation_id=extract_generation_id(discarded),
+            conversation_id=(
+                str(configurable["conversation_id"])
+                if configurable.get("conversation_id")
+                else None
+            ),
+            thread_id=str(thread_id) if thread_id else None,
+            workflow_id=str(workflow_id) if workflow_id else None,
+            # A replay whose answer was thrown away: the discard is handed to
+            # this function already complete, so nothing here timed it.
+            duration_ms=None,
+        ),
     )
     log.info(
         "llm_call",
@@ -879,6 +905,11 @@ async def ainvoke_llm(
     usage_handler = UsageMetadataCallbackHandler() if opts.meter_auxiliary else None
     generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
+    # Wall time of the whole provider interaction — retries, backoff sleeps and
+    # the fallback attempt included, because that is what the caller waited for.
+    # Started before the timeout scope so a call killed by the ceiling still
+    # reports how long it burned rather than nothing at all.
+    invoke_start = time.monotonic()
     try:
         async with asyncio.timeout(opts.timeout):
             try:
@@ -963,10 +994,23 @@ async def ainvoke_llm(
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
         if usage_handler is not None:
+            aux_configurable = agent_configurable(config)
+            aux_thread_id = aux_configurable.get("thread_id")
+            aux_conversation_id = aux_configurable.get("conversation_id")
+            aux_workflow_id = aux_configurable.get("workflow_id")
             await _record_auxiliary_usage(
                 usage_handler,
                 label,
                 str(user_id) if user_id else None,
+                context=LLMCallContext(
+                    agent_name=label,
+                    background=True,
+                    charge_to_budget=False,
+                    conversation_id=str(aux_conversation_id) if aux_conversation_id else None,
+                    thread_id=str(aux_thread_id) if aux_thread_id else None,
+                    workflow_id=str(aux_workflow_id) if aux_workflow_id else None,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
                 generation_id=generation_handler.generation_id if generation_handler else None,
                 provider_cost=generation_handler.cost if generation_handler else None,
             )
@@ -1169,6 +1213,7 @@ async def _record_auxiliary_usage(
     label: str,
     user_id: str | None,
     *,
+    context: LLMCallContext,
     generation_id: str | None = None,
     provider_cost: float | None = None,
 ) -> None:
@@ -1221,8 +1266,13 @@ async def _record_auxiliary_usage(
                 cached_tokens=cached_tokens,
                 reasoning_tokens=reasoning_tokens,
             ),
-            charge_to_budget=False,
             provider_cost=booked_cost,
+            # The handler keys its usage by the model that answered, and that
+            # is the same string being priced — requested and served are one
+            # value on this route, not two. ``provider`` stays None: the raw
+            # response never reaches here (the handler aggregates counts only),
+            # so the upstream name is not recoverable and must not be guessed.
+            context=replace(context, model_served=model_name),
         )
         log.info(
             "llm_call",

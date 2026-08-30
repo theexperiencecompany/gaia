@@ -16,6 +16,7 @@ import pytest
 from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.llm_metering import (
+    LLMCallContext,
     TokenUsage,
     extract_generation_id,
     extract_message_cost,
@@ -184,6 +185,13 @@ def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
     )
 
 
+# The call's identity, which every route now has to state. These tests are about
+# pricing and the rollup, so they pass the same minimal one throughout — the
+# ledger row it produces is covered in test_llm_metering_ledger.py.
+_CONTEXT = LLMCallContext(agent_name="test_agent", background=False, charge_to_budget=True)
+_UNCHARGED = LLMCallContext(agent_name="test_agent", background=True, charge_to_budget=False)
+
+
 # --- record_llm_call ---------------------------------------------------------- #
 #
 # Reached only through the callers above and LLMAccountingMiddleware, all of
@@ -204,7 +212,7 @@ async def test_the_priced_call_reaches_the_rollup_whole(
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=40, reasoning_tokens=7),
         model_name="deepseek/deepseek-v4-flash",
         root_request_id="req-1",
-        charge_to_budget=True,
+        context=_CONTEXT,
     )
 
     assert cost == 0.25
@@ -233,7 +241,7 @@ async def test_an_unreported_reasoning_count_is_booked_as_none_of_it(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        charge_to_budget=False,
+        context=_UNCHARGED,
     )
 
     assert usage.await_args.args[1].reasoning_tokens == 0
@@ -316,8 +324,8 @@ async def test_the_provider_price_wins_over_the_table(price: MagicMock, usage: A
             input_tokens=73_093, output_tokens=390, cached_tokens=0, reasoning_tokens=0
         ),
         model_name="deepseek/deepseek-v4-flash",
-        charge_to_budget=True,
         provider_cost=0.0037,
+        context=_CONTEXT,
     )
 
     assert cost == 0.0037
@@ -343,8 +351,8 @@ async def test_a_non_finite_provider_price_is_repriced_from_the_table(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        charge_to_budget=True,
         provider_cost=bad_cost,
+        context=_CONTEXT,
     )
 
     assert cost == 0.25
@@ -365,8 +373,8 @@ async def test_a_free_call_is_booked_as_free_not_repriced(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        charge_to_budget=False,
         provider_cost=0.0,
+        context=_UNCHARGED,
     )
 
     assert cost == 0.0
@@ -389,8 +397,8 @@ async def test_a_lane_that_reports_no_price_still_uses_the_table(
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="gemini-3.1-flash-lite",
-        charge_to_budget=True,
         provider_cost=None,
+        context=_CONTEXT,
     )
 
     assert cost == 0.25
@@ -413,8 +421,8 @@ async def test_the_provider_priced_path_records_against_the_same_call_as_the_tab
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
         root_request_id="req-42",
-        charge_to_budget=False,
         provider_cost=0.0037,
+        context=_UNCHARGED,
     )
 
     price.assert_not_called()
@@ -433,8 +441,8 @@ async def test_the_provider_priced_path_charges_the_budget_when_the_caller_says_
         user_id="u1",
         usage=TokenUsage(input_tokens=100, output_tokens=20, cached_tokens=0, reasoning_tokens=0),
         model_name="deepseek/deepseek-v4-flash",
-        charge_to_budget=True,
         provider_cost=0.0037,
+        context=_CONTEXT,
     )
 
     assert usage.await_args is not None
