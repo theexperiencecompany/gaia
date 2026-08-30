@@ -389,7 +389,7 @@ jobs:
         run: bash scripts/ci/test-services.sh down
       - name: Stop the embedding sidecar
         if: always()
-        run: bash scripts/ci/stop-embedding-sidecar.sh
+        run: bash scripts/ci/embedding-sidecar.sh stop
 
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   coverage:
@@ -721,7 +721,7 @@ jobs:
         run: bash scripts/ci/test-services.sh down
       - name: Stop the embedding sidecar
         if: always()
-        run: bash scripts/ci/stop-embedding-sidecar.sh
+        run: bash scripts/ci/embedding-sidecar.sh stop
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:

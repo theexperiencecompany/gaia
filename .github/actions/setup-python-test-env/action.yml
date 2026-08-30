@@ -45,16 +45,15 @@ runs:
     # Container boot (image pull on a cold daemon, then 10-30s of Postgres /
     # Mongo / RabbitMQ / Chroma readiness) is pure waiting, and uv sync is
     # mostly I/O — they overlap. Started here, joined after the sync.
-    # Self-hosted: ONE persistent set of service containers per box, and this
-    # job gets its own namespace (Postgres database, Redis DB stripe, Mongo
-    # database, Chroma collection suffix, RabbitMQ vhost) keyed by RUNNER_INDEX.
-    # Measured: prepare 1s, reset 2s, versus 20-45s to boot five containers per
-    # job and ~0.6 GB of RAM instead of ~15 GB for six sets. The memory suite
-    # ran at identical speed against it. GitHub-hosted runners are ephemeral
-    # and keep the per-job containers below.
     # test-services.sh decides for itself whether this runner gets the box's
     # shared set or its own per-job containers, so there is one step here, not
     # a self-hosted branch and a GitHub-hosted branch that could drift.
+    # On the box that is ONE persistent set per box and a namespace per job
+    # (Postgres database, Redis DB stripe, Mongo database, Chroma collection
+    # suffix, RabbitMQ vhost) keyed by RUNNER_INDEX — measured: prepare 1s,
+    # reset 2s, versus 20-45s to boot five containers per job, and ~0.6 GB of
+    # RAM instead of ~15 GB for six sets, with the memory suite running at
+    # identical speed. GitHub-hosted runners are ephemeral and get their own.
     - name: Start test services (background)
       if: inputs.services == 'true'
       shell: bash
@@ -204,9 +203,9 @@ runs:
     # One shared embedding sidecar for the whole pytest run, started only once
     # the models are guaranteed on disk (cache hit or prefetch above). Without
     # it every xdist worker loads ~1.8 GB of ONNX weights itself, serialized
-    # behind a file lock. The workflow owns teardown (stop-embedding-sidecar.sh
+    # behind a file lock. The workflow owns teardown (embedding-sidecar.sh stop
     # with if: always()) — composite actions have no post step.
     - name: Start embedding sidecar
       if: inputs.services == 'true' && inputs.restore-models == 'true'
       shell: bash
-      run: bash scripts/ci/start-embedding-sidecar.sh
+      run: bash scripts/ci/embedding-sidecar.sh start

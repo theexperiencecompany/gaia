@@ -19,7 +19,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
-import textwrap
 
 import pytest
 
@@ -311,6 +310,3 @@ def test_usage_on_unknown_subcommand(tmp_path: Path) -> None:
     proc = run(tmp_path, "nope")
     assert proc.returncode == 2
     assert "Usage: test-services.sh" in proc.stderr
-
-
-assert textwrap  # keeps the import honest if the stubs are refactored

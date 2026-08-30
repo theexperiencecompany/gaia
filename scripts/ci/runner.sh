@@ -527,7 +527,7 @@ cmd_prime_archive() {
 #   eval "$(bash scripts/ci/runner.sh parallel --env)"
 #   bash scripts/ci/runner.sh parallel --env >> "$GITHUB_ENV"
 cmd_parallel() {
-  # Names kept identical to the old detect-parallel.sh so the contract reads
+  # Names kept identical to the variables the lanes read, so the contract reads
   # the same; _parallel_emit_env sees them through bash's dynamic scoping.
   local NPROC MEM_GB NX_PARALLEL PYTEST_XDIST PYTEST_XDIST_N RUFF_JOBS MYPY_JOBS
   local DOCKER_JOBS MEM_AVAIL_GB PER_WORKER_GB HEADROOM_GB MEM_WORKERS
