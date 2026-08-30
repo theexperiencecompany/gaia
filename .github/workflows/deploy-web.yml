@@ -28,8 +28,8 @@ name: Deploy Web (Cloudflare)
 #   scope + endpoint is dashboard-only for some plans). A best-effort API
 #   probe is included in the `preflight` step and logged to the job summary.
 #   If the probe reports "connected", perform the manual step above. See
-#   scripts/ci/disable-cf-builds.sh for a local manual API attempt:
-#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/disable-cf-builds.sh
+#   scripts/ci/release.sh disable-cf-builds for a local manual API attempt:
+#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/release.sh disable-cf-builds
 #
 # After disabling, pushes to master deploy ONLY via this workflow (visible
 # duration + failure in GitHub). PRs deploy a preview version alias.

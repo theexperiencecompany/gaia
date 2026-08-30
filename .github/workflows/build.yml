@@ -283,7 +283,7 @@ jobs:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
           BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
-        run: bash scripts/ci/resolve-image-tags.sh
+        run: bash scripts/ci/release.sh resolve-image-tags
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
@@ -611,4 +611,4 @@ jobs:
         env:
           WEB_IMAGE_TAG: ${{ inputs.web_image_tag }}
           GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
-        run: bash scripts/ci/promote-latest.sh
+        run: bash scripts/ci/release.sh promote-latest
