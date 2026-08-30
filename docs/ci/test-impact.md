@@ -40,7 +40,7 @@ is the union of:
   brand-new tests the map has never seen still run);
 - `tests/contracts`, always — it is the API contract.
 
-`scripts/ci/run-python-slice.sh` reads the selection into a bash array and passes
+`scripts/ci/pytest.sh slice` reads the selection into a bash array and passes
 it to pytest, so node ids containing spaces or brackets survive intact.
 
 ## Everything uncertain widens to ALL
@@ -61,7 +61,7 @@ slice when:
 - anything that configures the run itself changed, wherever it lives: any
   `uv.lock` (the workspace lockfile is the **root** one — there is no
   `apps/api/uv.lock`), any `pyproject.toml`, `.python-version`, `pytest.ini`,
-  `setup.cfg`, `tox.ini`, `scripts/ci/run-python-slice.sh`,
+  `setup.cfg`, `tox.ini`, `scripts/ci/pytest.sh`,
   `scripts/ci/test-impact*`, `.github/workflows/main.yml`,
   `.github/actions/setup-python-test-env/**`;
 - any other non-source file under `apps/api` changed (Dockerfile, scripts, …).

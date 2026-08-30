@@ -73,7 +73,7 @@ INERT_DIRS = ("docs/",)
 SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
-SUITE_CONFIG_PATHS = frozenset({"scripts/ci/run-python-slice.sh", ".github/workflows/main.yml"})
+SUITE_CONFIG_PATHS = frozenset({"scripts/ci/pytest.sh", ".github/workflows/main.yml"})
 SUITE_CONFIG_PREFIXES = ("scripts/ci/test-impact", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"

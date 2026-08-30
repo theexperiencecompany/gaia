@@ -260,7 +260,7 @@ def test_a_conftest_change_widens_to_all(suite) -> None:
         "pyproject.toml",
         ".python-version",
         "libs/pyproject.toml",
-        "scripts/ci/run-python-slice.sh",
+        "scripts/ci/pytest.sh",
         "scripts/ci/test-impact.py",
         "scripts/ci/test-impact-select.sh",
         ".github/workflows/main.yml",

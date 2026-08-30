@@ -5,7 +5,7 @@
 # ///
 """Decide whether a regression-proof run actually proved anything.
 
-Reads the JUnit XML of the base-revision run (see scripts/ci/regression-proof.sh)
+Reads the JUnit XML of the base-revision run (see scripts/ci/pytest.sh regression-proof)
 and applies one rule per `@pytest.mark.regression` test:
 
     it must FAIL — an assertion that goes red without the fix.

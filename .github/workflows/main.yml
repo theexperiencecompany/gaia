@@ -355,7 +355,7 @@ jobs:
           XDIST_N: ${{ matrix.slice.serial == 'true' && '0' || (needs.select-runner.outputs.is_self_hosted == 'true' && matrix.slice.workers || steps.par.outputs.py) }}
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
-          bash scripts/ci/run-python-slice.sh
+          bash scripts/ci/pytest.sh slice
       # ── Record the map (master / dispatch only) ────────────────────────────
       # !cancelled(): a lane with a red test still produced a valid file→test map,
       # and a missing map makes every PR run the whole slice.
@@ -713,7 +713,7 @@ jobs:
       - uses: ./.github/actions/setup-python-test-env
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/regression-proof.sh origin/master
+        run: bash ../../scripts/ci/pytest.sh regression-proof origin/master
       # setup-python-test-env brings up services + the embedding sidecar; on the
       # shared box that namespace must be released like every other lane does.
       - name: Release the test services

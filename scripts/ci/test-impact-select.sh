@@ -4,7 +4,7 @@
 # Reads the map fetched by test-impact-fetch.sh (newest master / head-branch
 # artifact), diffs the PR against its merge-base, and writes
 # apps/api/.test-impact/selected-<slice>.txt — either a
-# list of pytest node ids or the single line ALL. run-python-slice.sh consumes
+# list of pytest node ids or the single line ALL. `pytest.sh slice` consumes
 # it; every failure mode here falls back to ALL rather than skipping tests.
 #
 # Outputs (GITHUB_OUTPUT): mode=all|selected, summary=<one line>
