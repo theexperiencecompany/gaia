@@ -17,6 +17,7 @@ from app.models.scheduler_models import (
 )
 from app.models.workflow_models import TriggerType, Workflow
 from app.services.scheduler_service import BaseSchedulerService
+from app.utils.occurrence import occurrence_stamp
 from shared.py.wide_events import log
 
 # How long a workflow may sit in EXECUTING before the recovery scan treats it as a
@@ -74,7 +75,7 @@ class WorkflowScheduler(BaseSchedulerService):
             task_id,
             {
                 "trigger_type": TriggerType.SCHEDULE.value,
-                "scheduled_for": int(scheduled_at.timestamp()),
+                "scheduled_for": occurrence_stamp(scheduled_at),
             },
         )
 

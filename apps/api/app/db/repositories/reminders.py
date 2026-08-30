@@ -16,6 +16,7 @@ from typing import Any
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.reminder_models import ReminderDocument, ReminderStatus, ReminderUpdate
+from app.utils.occurrence import occurrence_window
 
 
 class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
@@ -91,6 +92,9 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
         so a sibling pod's late job would find it claimable again and deliver
         the same reminder twice. Jobs enqueued before the stamp existed pass
         ``None`` and claim on status alone, so a deploy never strands them.
+        Matched at second resolution (``occurrence_window``) because the stamp
+        the job carries is a unix int — see that helper for why equality here
+        silently matched nothing.
         Mirrors ``WorkflowsRepository.claim_for_execution``.
         """
         filter_: dict[str, Any] = {
@@ -98,7 +102,7 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             "status": ReminderStatus.SCHEDULED.value,
         }
         if expected_scheduled_at is not None:
-            filter_["scheduled_at"] = expected_scheduled_at
+            filter_["scheduled_at"] = occurrence_window(expected_scheduled_at)
         result = await self._apply_raw_update(
             filter_,
             {"$set": {"status": ReminderStatus.EXECUTING.value, "updated_at": datetime.now(UTC)}},

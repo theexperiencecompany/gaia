@@ -23,6 +23,7 @@ from app.models.scheduler_models import (
 )
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
+from app.utils.occurrence import occurrence_stamp
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -188,7 +189,7 @@ class ReminderScheduler(BaseSchedulerService):
         Carried as a unix int because ARQ args are serialized; the worker turns
         it back into the datetime the claim pins on.
         """
-        return (task_id, int(scheduled_at.timestamp()))
+        return (task_id, occurrence_stamp(scheduled_at))
 
     async def update_task_status(
         self,

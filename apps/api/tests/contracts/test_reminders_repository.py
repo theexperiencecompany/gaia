@@ -20,6 +20,8 @@ from app.models.reminder_models import (
     ReminderUpdate,
     StaticReminderPayload,
 )
+from app.services.reminder_service import ReminderScheduler
+from app.utils.occurrence import parse_occurrence_stamp
 
 _MISSING_OBJECT_ID = "0" * 24
 
@@ -185,6 +187,34 @@ class TestRemindersScheduler:
         strand them."""
         rem = await repo.create(_reminder(status=ReminderStatus.SCHEDULED))
         assert await repo.claim_for_execution(rem.id) is True
+
+    async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
+        """The pin must match the armed occurrence through ARQ's serialized args.
+
+        "Remind me in 10 minutes" arms ``now + delta``, which carries
+        microseconds. The stamp the job travels with is a unix int, so it comes
+        back floored to the second, while Mongo holds the armed instant at BSON's
+        millisecond precision — an equality pin never matched and the reminder
+        silently never fired. Driven through the real producer and parser so the
+        encoding itself is under test, not a hand-built stamp.
+        """
+        armed = datetime.now(UTC) + timedelta(minutes=10)
+        assert armed.microsecond, "fixture must carry a sub-second component"
+        rem = await repo.create(_reminder(scheduled_at=armed, status=ReminderStatus.SCHEDULED))
+
+        _, stamp = ReminderScheduler()._build_job_args(rem.id, armed)
+        expected = parse_occurrence_stamp(stamp, rem.id)
+
+        # The neighbouring seconds stay rejected — matching the armed second must
+        # not degrade into matching anything.
+        for skew in (-1, 1):
+            assert (
+                await repo.claim_for_execution(
+                    rem.id, expected_scheduled_at=expected + timedelta(seconds=skew)
+                )
+                is False
+            )
+        assert await repo.claim_for_execution(rem.id, expected_scheduled_at=expected) is True
 
 
 class TestRemindersUpdate:

@@ -17,6 +17,7 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.utils.cron_utils import get_next_run_time
+from app.utils.occurrence import occurrence_stamp
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -40,34 +41,6 @@ class TriggerConfigLike(Protocol):
 # Comfortably above the ARQ job timeout so a genuinely long run is never reaped
 # out from under itself.
 STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
-
-
-def parse_occurrence_stamp(raw: object, task_id: str) -> datetime | None:
-    """The occurrence a scheduled job was armed for, or None when unstamped.
-
-    Lives next to ``_build_job_args``, which writes the stamp, so the two sides
-    of the format cannot drift. Only a real number is scheduler provenance:
-    manual "run now" callers build their own job args, so a hand-typed value is
-    discarded (leaving the fire ungated) rather than crashing ``fromtimestamp``
-    mid-run. ``bool`` is excluded explicitly — it is an ``int`` subclass.
-    """
-    if isinstance(raw, bool) or not isinstance(raw, int | float):
-        if raw is not None:
-            log.warning(
-                "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
-                task_id=task_id,
-                scheduled_for=str(raw)[:32],
-            )
-        return None
-    try:
-        return datetime.fromtimestamp(raw, tz=UTC)
-    except (ValueError, OverflowError, OSError):
-        log.warning(
-            "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
-            task_id=task_id,
-            scheduled_for=str(raw)[:32],
-        )
-        return None
 
 
 class BaseSchedulerService(ABC):
@@ -410,7 +383,7 @@ class BaseSchedulerService(ABC):
         job_name = self.get_job_name()
         # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
         # repeated enqueues can't stack duplicate jobs for the same occurrence.
-        job_id = f"{job_name}:{task_id}:{int(scheduled_at.timestamp())}"
+        job_id = f"{job_name}:{task_id}:{occurrence_stamp(scheduled_at)}"
         job = await enqueue_worker_job(
             self.arq_pool,
             job_name,

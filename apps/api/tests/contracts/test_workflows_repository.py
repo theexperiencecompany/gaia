@@ -25,6 +25,8 @@ from app.models.workflow_models import (
     WorkflowStep,
     WorkflowUpdate,
 )
+from app.services.workflow.scheduler import WorkflowScheduler
+from app.utils.occurrence import parse_occurrence_stamp
 
 
 def _uid(prefix: str) -> str:
@@ -243,6 +245,38 @@ class TestWorkflowsScheduler:
         # New job fires: matches the current occurrence -> claims cleanly.
         assert await repo.claim_for_execution(wf.id, expected_next_run=new_fire) is True
         assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
+
+    async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
+        """The pin must match the armed occurrence through ARQ's serialized args.
+
+        The stamp travels as a unix int and comes back floored to the second,
+        while Mongo holds ``next_run`` at BSON's millisecond precision. Cron
+        fires land on whole seconds, so only a sub-second ``next_run`` — a
+        one-shot re-armed by the stale-executing reaper at its original time —
+        exposes it; the gate must not depend on that luck. Driven through the
+        real producer and parser so the encoding itself is under test.
+        """
+        armed = datetime.now(UTC) + timedelta(hours=5)
+        assert armed.microsecond, "fixture must carry a sub-second component"
+        wf = await repo.create(
+            _workflow(
+                activated=True,
+                status=ScheduledTaskStatus.SCHEDULED,
+                scheduled_at=armed,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 16 * * *",
+                    timezone="UTC",
+                    next_run=armed,
+                ),
+            )
+        )
+
+        _, context = WorkflowScheduler()._build_job_args(wf.id, armed)
+        expected = parse_occurrence_stamp(context["scheduled_for"], wf.id)
+
+        assert await repo.claim_for_execution(wf.id, expected_next_run=expected) is True
 
     async def test_claim_without_pin_stays_ungated(self, repo):
         """Jobs enqueued before the stamp existed carry no expected time; they

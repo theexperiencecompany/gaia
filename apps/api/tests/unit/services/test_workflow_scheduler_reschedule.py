@@ -151,11 +151,13 @@ class TestStaleScheduledFireRejected:
         assert claimed is False
         # The whole atomic filter: liveness, run-state, and the occurrence pin
         # must all hold together or the fire is not claimable.
+        # The pin is the one-second occurrence window, not an equality: the
+        # stamp the job carries only survives at second resolution.
         assert captured_filters[0] == {
             "_id": "wf_1",
             "activated": True,
             "status": ScheduledTaskStatus.SCHEDULED.value,
-            "trigger_config.next_run": new_fire,
+            "trigger_config.next_run": {"$gte": new_fire, "$lt": new_fire + timedelta(seconds=1)},
         }
 
     @pytest.mark.regression
@@ -170,7 +172,7 @@ class TestStaleScheduledFireRejected:
                 "_id": "wf_1",
                 "activated": True,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
-                "trigger_config.next_run": fire,
+                "trigger_config.next_run": {"$gte": fire, "$lt": fire + timedelta(seconds=1)},
             }
             return MagicMock()
 
@@ -260,9 +262,10 @@ class TestWorkerRejectsStaleFire:
             patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch("app.workers.tasks.workflow_tasks.log") as mock_log,
-            # The stamp parser lives beside the code that WRITES the stamp
-            # (scheduler_service), so its discard warning is emitted there.
-            patch("app.services.scheduler_service.log") as mock_stamp_log,
+            # The stamp parser lives beside the code that writes and compares
+            # the stamp (app.utils.occurrence), so its discard warning is
+            # emitted there.
+            patch("app.utils.occurrence.log") as mock_stamp_log,
             patch(
                 "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
                 AsyncMock(),

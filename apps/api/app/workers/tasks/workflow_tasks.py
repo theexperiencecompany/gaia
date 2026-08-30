@@ -48,7 +48,6 @@ from app.models.workflow_models import (
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 from app.services.notification_service import notification_service
-from app.services.scheduler_service import parse_occurrence_stamp
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -63,6 +62,7 @@ from app.services.workflow.execution_service import complete_execution, create_e
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import create_error
+from app.utils.occurrence import parse_occurrence_stamp
 from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log
 

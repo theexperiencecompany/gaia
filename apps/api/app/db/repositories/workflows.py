@@ -37,6 +37,7 @@ from app.models.workflow_models import (
     WorkflowUpdate,
 )
 from app.utils.creator import creator_lookup_stage
+from app.utils.occurrence import occurrence_window
 
 # The scheduler's occurrence field, written by every arm/re-arm path and pinned
 # by the stale-fire claim gate. One constant keeps the dotted key from drifting
@@ -509,8 +510,9 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         ``expected_next_run`` pins the occurrence the fire was armed for: ARQ has
         no job cancellation, so after a reschedule the old deferred job still
         fires — but ``trigger_config.next_run`` has moved on, and the mismatch
-        rejects it. Jobs enqueued before this stamp existed pass ``None`` and
-        claim exactly as before.
+        rejects it. Matched at second resolution (``occurrence_window``), the
+        resolution the stamp survives. Jobs enqueued before this stamp existed
+        pass ``None`` and claim exactly as before.
         """
         filter_: dict[str, Any] = {
             "_id": workflow_id,
@@ -518,7 +520,7 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             "status": ScheduledTaskStatus.SCHEDULED.value,
         }
         if expected_next_run is not None:
-            filter_[NEXT_RUN_FIELD] = expected_next_run
+            filter_[NEXT_RUN_FIELD] = occurrence_window(expected_next_run)
         result = await self._apply_raw_update(
             filter_,
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},

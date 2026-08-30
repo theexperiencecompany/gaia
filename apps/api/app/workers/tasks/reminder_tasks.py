@@ -8,7 +8,7 @@ from typing import Any
 from app.constants.log_tags import LogTag
 from app.db.repositories.reminders import reminder_repository
 from app.services.reminder_service import reminder_scheduler
-from app.services.scheduler_service import parse_occurrence_stamp
+from app.utils.occurrence import parse_occurrence_stamp
 from shared.py.wide_events import log
 
 
