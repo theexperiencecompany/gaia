@@ -6,9 +6,11 @@ matrix is indistinguishable from a clean run, and a skipped lane counts as a
 pass in the quality gate — so a regression here reads as green rather than as
 broken, the exact failure mode the gate exists to prevent.
 
-Driven as a real script against a stubbed sibling: the harness copies
-`mutation.sh` into a throwaway tree next to a fake ``mutation-matrix.sh``
-that prints a chosen module list. Nothing here runs mutmut.
+Driven as a real script against stubbed externals: the harness copies
+`mutation.sh` into a throwaway tree next to a fake ``changes.sh`` (which names
+the changed Python files) and a fake ``lib/mutation_matrix.py`` (which prints
+the module list). The script's own `matrix` subcommand — the diff filtering
+between those two — runs for real. Nothing here runs mutmut.
 """
 
 import json
@@ -19,7 +21,7 @@ import subprocess
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
 LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
 
@@ -39,6 +41,20 @@ def _install(scripts: Path) -> None:
     shutil.copy(LOG_LIB, lib / "log.sh")
 
 
+def _stub_changes(scripts: Path, changed: list[str]) -> None:
+    """`changes.sh files py` — the changed-file list `matrix` filters."""
+    stub = scripts / "changes.sh"
+    stub.write_text("#!/usr/bin/env bash\n" + "".join(f"echo {p}\n" for p in changed))
+    stub.chmod(0o755)
+
+
+def _stub_detector(scripts: Path, body: str) -> None:
+    """`lib/mutation_matrix.py` — the AST detector `matrix` pipes modules into."""
+    stub = scripts / "lib" / "mutation_matrix.py"
+    stub.write_text(body)
+    stub.chmod(0o755)
+
+
 @pytest.fixture
 def harness(tmp_path: Path):
     """Run `mutation.sh plan` against a stubbed matrix, returning its outputs."""
@@ -51,9 +67,16 @@ def harness(tmp_path: Path):
     def run(
         matrix: list[dict[str, object]],
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
-        stub = scripts / "mutation-matrix.sh"
-        stub.write_text(f"#!/usr/bin/env bash\ncat <<'JSON'\n{json.dumps(matrix)}\nJSON\n")
-        stub.chmod(0o755)
+        # The changed-file list the real `matrix` filtering runs over: every
+        # module in the fixture, under the apps/api/app/ prefix it selects on.
+        _stub_changes(
+            scripts,
+            [f"apps/api/{entry['module']}" for entry in matrix] or ["libs/shared/py/x.py"],
+        )
+        _stub_detector(
+            scripts,
+            f"import sys\nsys.stdin.read()\nprint({json.dumps(json.dumps(matrix))})\n",
+        )
         process = subprocess.run(
             ["bash", str(scripts / "mutation.sh"), "plan"],
             capture_output=True,
@@ -176,17 +199,19 @@ class TestPackingAHugeDiff:
         assert all(len(group) == 1 for group in _groups(outputs))
 
 
-def test_a_failing_matrix_script_fails_the_plan(harness, tmp_path: Path) -> None:
-    # The matrix script is what fails loudly when changed app code has no test
-    # file anywhere. That failure lands on this job, and the quality gate
-    # requires it by name — a plan that swallowed the error would skip the
-    # matrix, and a skipped lane counts as a pass.
+def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
+    # The detector is what fails loudly when changed app code has no test file
+    # anywhere. That failure lands on this job, and the quality gate requires
+    # it by name — a plan that swallowed the error would skip the matrix, and a
+    # skipped lane counts as a pass.
     scripts = tmp_path / "scripts" / "ci"
-    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "lib").mkdir(parents=True, exist_ok=True)
     _install(scripts)
-    stub = scripts / "mutation-matrix.sh"
-    stub.write_text("#!/usr/bin/env bash\necho 'no test file for app/a.py' >&2\nexit 1\n")
-    stub.chmod(0o755)
+    _stub_changes(scripts, ["apps/api/app/a.py"])
+    _stub_detector(
+        scripts,
+        "import sys\nsys.stderr.write('no test file for app/a.py')\nraise SystemExit(1)\n",
+    )
 
     process = subprocess.run(
         ["bash", str(scripts / "mutation.sh"), "plan"],
@@ -197,3 +222,38 @@ def test_a_failing_matrix_script_fails_the_plan(harness, tmp_path: Path) -> None
     )
 
     assert process.returncode != 0
+
+
+def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -> None:
+    # `matrix` filters the diff before the detector sees it: only apps/api/app
+    # sources, and never the entry points or package files that have nothing
+    # meaningful to mutate. Handing those through would fail the detector's
+    # "no test file" check on files that were never mutation targets.
+    scripts = tmp_path / "scripts" / "ci"
+    (scripts / "lib").mkdir(parents=True, exist_ok=True)
+    _install(scripts)
+    _stub_changes(
+        scripts,
+        [
+            "apps/api/app/services/real.py",
+            "apps/api/app/main.py",
+            "apps/api/app/worker.py",
+            "apps/api/app/services/__init__.py",
+            "libs/shared/py/elsewhere.py",
+            "scripts/ci/mutation.sh",
+        ],
+    )
+    # Echo back exactly what the filter passed in, so the assertion is about
+    # the filter and not about the detector.
+    _stub_detector(scripts, "import sys\nsys.stdout.write(sys.stdin.read())\n")
+
+    process = subprocess.run(
+        ["bash", str(scripts / "mutation.sh"), "matrix"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin"},
+    )
+
+    assert process.returncode == 0, process.stderr
+    assert process.stdout.split() == ["apps/api/app/services/real.py"]

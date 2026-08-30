@@ -46,7 +46,7 @@ from pathlib import Path
 
 modules_file, entries_file, no_test_file = sys.argv[1], sys.argv[2], sys.argv[3]
 spec = importlib.util.spec_from_file_location(
-    "mutation_matrix", Path("../../scripts/ci/mutation-matrix.py")
+    "mutation_matrix", Path("../../scripts/ci/lib/mutation_matrix.py")
 )
 mm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mm)
@@ -81,7 +81,7 @@ def _direct_hits(rel_py: str) -> list[str]:
 
 
 def _tests_for(rel_py: str, seen: set[str] | None = None) -> list[str]:
-    # Mirror mutation-matrix.py's _test_files_for: direct hits, then follow
+    # Mirror lib/mutation_matrix.py's _test_files_for: direct hits, then follow
     # consumers RECURSIVELY (each consumer's own derivation). The one-level
     # version missed modules like app.memory.chroma_store (reachable only
     # through app.memory.engine's own consumer chain).

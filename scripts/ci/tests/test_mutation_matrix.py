@@ -1,4 +1,4 @@
-"""Unit tests for the mutation-matrix detector (scripts/ci/mutation-matrix.py).
+"""Unit tests for the mutation-matrix detector (scripts/ci/lib/mutation_matrix.py).
 
 The detector's reference logic is what decides whether a changed module has
 tests — a silent regression here would let the mutation lane skip modules
@@ -12,9 +12,9 @@ import subprocess
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[5]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 _SPEC = importlib.util.spec_from_file_location(
-    "mutation_matrix", REPO_ROOT / "scripts" / "ci" / "mutation-matrix.py"
+    "mutation_matrix", REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_matrix.py"
 )
 assert _SPEC is not None and _SPEC.loader is not None
 mm = importlib.util.module_from_spec(_SPEC)

@@ -3,6 +3,9 @@
 # to notice if this code were wrong?
 #
 # Subcommands:
+#   matrix                   Emit the changed app modules + their test files as
+#                            JSON — the input `plan` and `local` fan out from.
+#                            Fails loudly when changed app code has no test.
 #   plan                     Emit the lane's GitHub Actions matrix — one shard
 #                            per changed module, capped at the matrix's own
 #                            max-parallel. Writes matrix/count to $GITHUB_OUTPUT.
@@ -18,6 +21,7 @@
 #                            verify-logs/mutation/.
 #
 # Env contract:
+#   matrix  none directly; delegates the diff to `changes.sh files py`.
 #   plan    GITHUB_OUTPUT (stdout-only when unset).
 #   shard   GROUP (required, compact JSON array of {module,testfiles,ranges});
 #           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY.
@@ -31,6 +35,54 @@ source "$(dirname "$0")/lib/log.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Emit the mutation-check matrix: every changed app module + its test file.
+#
+# Used by the test-mutation lane (code-quality.yml) to run mutation testing
+# per changed module in parallel GitHub jobs. Reference detection is AST-based
+# (lib/mutation_matrix.py) because grep misses this codebase's patch-target
+# strings and from-package submodule imports.
+#
+# Fails loudly when changed app code has no test file anywhere — the "no
+# bullshit tests" rule enforced mechanically.
+cmd_matrix() {
+
+  cd "$REPO_ROOT"
+
+  CHANGED_PY="$(scripts/ci/changes.sh files py)"
+  if [ -z "$CHANGED_PY" ]; then
+    echo '[]'
+    return 0
+  fi
+  if [ "$CHANGED_PY" = "__FULL__" ]; then
+    # Push / workflow_dispatch events have no PR diff to target mutants at, and
+    # this check is inherently diff-based (lib/mutation_matrix.py mutates only
+    # changed lines) — there is no "full repo" equivalent to run instead, and
+    # faking one across every apps/api/app module would blow the lane's 30 min
+    # budget many times over. The gate already ran against this exact diff on
+    # the PR before merge; skip rather than silently report zero mutants as if
+    # nothing needed proving. Logged so a push-triggered run doesn't read as
+    # "nothing to mutate" when it actually means "not applicable here".
+    echo "mutation matrix: push/full-scan event — skipping (diff-based check; already gated on the originating PR)" >&2
+    echo '[]'
+    return 0
+  fi
+
+  # Changed app modules only; entry points and __init__ files are not
+  # mutation targets (nothing meaningful to mutate, no natural test).
+  #
+  # Each grep is guarded: it exits 1 when nothing matches, which under `pipefail`
+  # failed the whole lane for any PR that changed Python outside apps/api/app/ and
+  # nothing inside it (tools/, scripts/, libs/ — this file's own tests included).
+  # An empty selection is a valid answer, and the orchestrator already handles it
+  # ("no changed app modules — nothing to mutate"); only a real error should fail.
+  printf '%s\n' "$CHANGED_PY" |
+    { grep '^apps/api/app/.*\.py$' || true; } |
+    { grep -v 'app/main\.py$' || true; } |
+    { grep -v 'app/worker\.py$' || true; } |
+    { grep -v '__init__\.py$' || true; } |
+    python3 "$SCRIPT_DIR/lib/mutation_matrix.py"
+}
+
 cmd_plan() {
 
   cd "$REPO_ROOT"
@@ -39,7 +91,7 @@ cmd_plan() {
   # one machine would otherwise clobber each other's file, and the symptom would
   # be a wrong matrix rather than an error. set -e still aborts here when the
   # matrix script exits non-zero.
-  MATRIX_JSON="$(bash scripts/ci/mutation-matrix.sh)"
+  MATRIX_JSON="$(cmd_matrix)"
   export MATRIX_JSON
 
   python3 - << 'EOF'
@@ -204,9 +256,9 @@ cmd_local() {
 
   if [ "$#" -gt 0 ]; then
     MATRIX="$(printf '%s\n' "$@" | sed 's|^apps/api/||; s|^|apps/api/|' |
-      python3 scripts/ci/mutation-matrix.py)" || exit 1
+      python3 "$SCRIPT_DIR/lib/mutation_matrix.py")" || exit 1
   else
-    MATRIX="$(bash scripts/ci/mutation-matrix.sh)" || exit 1
+    MATRIX="$(cmd_matrix)" || exit 1
   fi
 
   MODULE_COUNT="$(MATRIX="$MATRIX" python3 -c 'import json,os;print(len(json.loads(os.environ["MATRIX"])))')"
@@ -355,14 +407,14 @@ cmd_module() {
   # PR-changed line ranges for this module ([[start,end],...], compact JSON).
   # The gate is diff-driven: survivors on lines the PR did not touch are noted,
   # not failures. The CI lane passes them; omit the argument and they are derived
-  # from the same code the lane uses (mutation-matrix.py --scope), so a local run
+  # from the same code the lane uses (lib/mutation_matrix.py --scope), so a local run
   # scopes identically instead of defaulting to a scope that cannot fail.
   CHANGED_RANGES="${3-}"
 
   cd "$REPO_ROOT/apps/api"
 
   if [ -z "$CHANGED_RANGES" ]; then
-    CHANGED_RANGES="$(cd "$REPO_ROOT" && python3 scripts/ci/mutation-matrix.py --scope "$MODULE")" || exit 1
+    CHANGED_RANGES="$(cd "$REPO_ROOT" && python3 "$SCRIPT_DIR/lib/mutation_matrix.py" --scope "$MODULE")" || exit 1
   fi
   # An empty scope buckets EVERY survivor as out-of-scope, so the run prints "no
   # survivors" and exits 0 no matter how broken the module is. That false green
@@ -938,13 +990,14 @@ sys.exit(proc.returncode)
 }
 
 usage() {
-  sed -n '2,26p' "$0" >&2
+  sed -n '2,29p' "$0" >&2
 }
 
 main() {
   local sub="${1:-}"
   shift || true
   case "$sub" in
+    matrix) cmd_matrix "$@" ;;
     plan)   cmd_plan "$@" ;;
     shard)  cmd_shard "$@" ;;
     module) cmd_module "$@" ;;
