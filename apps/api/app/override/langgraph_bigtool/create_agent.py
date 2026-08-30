@@ -76,6 +76,7 @@ from app.constants.llm import (
     RECURSION_WRAPUP_THRESHOLD_STEPS,
     STICKY_ROUTING_PROVIDERS,
 )
+from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.agent_config import (
     AgentConfig,
@@ -629,6 +630,23 @@ def _owes_playbook_decision(state: State) -> bool:
     ) < MAX_PLAYBOOK_DECISION_NUDGES and playbook_decision_pending(state)
 
 
+def _after_finish_task(exit_node: str) -> Callable[[State], str]:
+    """Route out of the finish node: ``finish_task`` is the executor's other
+    way to stop, so a briefed workflow run that finishes without deciding
+    about its playbook is nudged here exactly as a plain-text stop is. Same
+    bound (MAX_PLAYBOOK_DECISION_NUDGES), so a model that finishes twice
+    without deciding still ends; the later finish_task result is the one the
+    runner reports."""
+
+    def route(state: State) -> str:
+        if _owes_playbook_decision(state):
+            log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
+            return "nudge_continue"
+        return exit_node
+
+    return route
+
+
 def nudge_continue_node(state: State) -> State:
     # The message IS the tally: completion_nudges_spent / playbook_nudges_spent
     # count these back out of the current delegation, so there is no counter
@@ -820,10 +838,15 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
     )
 
     builder.add_edge("tools", "agent")
-    builder.add_edge(
-        FINISH_TASK_NAME,
-        "end_graph_hooks" if deps.end_graph_hooks else END,
-    )
+    exit_node = "end_graph_hooks" if deps.end_graph_hooks else END
+    if deps.require_finish_to_end:
+        builder.add_conditional_edges(
+            FINISH_TASK_NAME,
+            _after_finish_task(exit_node),
+            path_map=["nudge_continue", exit_node],
+        )
+    else:
+        builder.add_edge(FINISH_TASK_NAME, exit_node)
     builder.add_edge(REJECT_UNBOUND_TOOLS_NODE, "agent")
     if retrieve_enabled:
         builder.add_edge("select_tools", "agent")

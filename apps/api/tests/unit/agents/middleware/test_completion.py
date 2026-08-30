@@ -32,6 +32,7 @@ from app.constants.agents import (
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
     PLAYBOOK_DECISION_TOOL_NAMES,
 )
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     COMPLETION_PROMISE_MARKERS,
@@ -378,6 +379,14 @@ def _asked_task() -> HumanMessage:
     return HumanMessage(content=f"triage the inbox\n\n{PLAYBOOK_CHECK_TAG}\n...\n</playbook_check>")
 
 
+def _finished() -> list[AnyMessage]:
+    """The executor ending through finish_task, as the finish node records it."""
+    return [
+        AIMessage(content="", tool_calls=[{"name": FINISH_TASK_NAME, "args": {}, "id": "f_1"}]),
+        ToolMessage(content="Task completed.", tool_call_id="f_1", name=FINISH_TASK_NAME),
+    ]
+
+
 def _decision(name: str, *, ok: bool = True) -> list[AnyMessage]:
     """One round-trip on a playbook decision tool, as the tool node records it."""
     body = {"success": True, "data": {}} if ok else {"success": False, "error": "refused"}
@@ -407,6 +416,32 @@ class TestPlaybookDecisionPending:
     def test_each_decision_tool_settles_it(self, name: str) -> None:
         state = make_state(
             messages=[_asked_task(), *_worked(1), *_decision(name), AIMessage(content="done")]
+        )
+
+        assert playbook_decision_pending(state) is False
+
+    def test_a_finish_task_stop_without_a_decision_is_pending(self) -> None:
+        """Seen live: a briefed run ended through finish_task, not plain text,
+        and the gate let it go. finish_task is a stop like any other."""
+        state = make_state(messages=[_asked_task(), *_worked(2), *_finished()])
+
+        assert playbook_decision_pending(state) is True
+
+    def test_a_finish_task_stop_after_a_decision_owes_nothing(self) -> None:
+        state = make_state(
+            messages=[_asked_task(), *_worked(1), *_decision("decline_playbook"), *_finished()]
+        )
+
+        assert playbook_decision_pending(state) is False
+
+    def test_a_tool_calling_turn_is_not_a_stop(self) -> None:
+        """Mid-run, with a tool call outstanding, nothing is owed yet."""
+        state = make_state(
+            messages=[
+                _asked_task(),
+                *_worked(1),
+                AIMessage(content="", tool_calls=[{"name": "x", "args": {}, "id": "c9"}]),
+            ]
         )
 
         assert playbook_decision_pending(state) is False

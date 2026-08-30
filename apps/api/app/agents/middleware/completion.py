@@ -26,6 +26,7 @@ from app.constants.agents import (
     PLAYBOOK_DECISION_NUDGE_MESSAGE,
     PLAYBOOK_DECISION_TOOL_NAMES,
 )
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NON_WORK_TOOLS,
     COMPLETION_NUDGE_MESSAGE,
@@ -117,14 +118,24 @@ def playbook_nudges_spent(state: State) -> int:
     return sum(1 for message in current_delegation(state) if _is_playbook_nudge(message))
 
 
+def _is_stop(message: AnyMessage) -> bool:
+    """A plain-text reply or a ``finish_task`` result: the executor's two ways
+    to end a run. A tool-calling turn is not a stop; the run is still going."""
+    if isinstance(message, AIMessage):
+        return not message.tool_calls
+    return isinstance(message, ToolMessage) and message.name == FINISH_TASK_NAME
+
+
 def playbook_decision_pending(state: State) -> bool:
     """True when this delegation was briefed for a playbook decision and is
-    stopping in plain text without having made one.
+    stopping, in plain text or through ``finish_task``, without having made one.
 
     The brief is recognised by its tag on the task turn. A decision is a call
     to one of the decision tools whose result is not an error envelope: a
     refused ``write_playbook`` leaves the run exactly where it was, and the
-    brief says so.
+    brief says so. Seen live: a briefed run that ended with ``finish_task`` and
+    no decision was never nudged, so no decline was counted and the same brief
+    came back on every later fire.
     """
     delegation = current_delegation(state)
     if not delegation:
@@ -132,7 +143,7 @@ def playbook_decision_pending(state: State) -> bool:
     task, last = delegation[0], delegation[-1]
     if not isinstance(task, HumanMessage) or not _briefed(extract_text_content(task.content)):
         return False
-    if not isinstance(last, AIMessage) or last.tool_calls:
+    if not _is_stop(last):
         return False
     return not any(
         isinstance(m, ToolMessage)
