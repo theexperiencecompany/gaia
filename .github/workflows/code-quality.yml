@@ -316,7 +316,7 @@ jobs:
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            CHANGED_FILES="$FILES" node scripts/ci/check-file-sizes.mjs
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs file-sizes
           fi
           echo "::endgroup::"
           echo "### File size — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -338,15 +338,15 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Type / interface / enum location enforcer
         run: |
-          trap 'echo "::error::repro: node scripts/ci/check-types-location.mjs --enforce"' ERR
+          trap 'echo "::error::repro: node scripts/ci/checks.mjs types-location --enforce"' ERR
           echo "::group::types-location check"
           FILES=$(scripts/ci/changes.sh files ts tsx)
           if [ "$FILES" = "__FULL__" ]; then
-            node scripts/ci/check-types-location.mjs --enforce
+            node scripts/ci/checks.mjs types-location --enforce
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            CHANGED_FILES="$FILES" node scripts/ci/check-types-location.mjs --enforce
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs types-location --enforce
           fi
           echo "::endgroup::"
           echo "### Types location — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -376,7 +376,7 @@ jobs:
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            CHANGED_FILES="$FILES" node scripts/ci/check-components-per-file.mjs
+            CHANGED_FILES="$FILES" node scripts/ci/checks.mjs components-per-file
           fi
           echo "::endgroup::"
           echo "### Components per file — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -401,7 +401,7 @@ jobs:
           trap 'echo "::error::repro: pnpm run quality:dupe"' ERR
           echo "::group::jscpd"
           # No fetch: the checkout above is fetch-depth: 0, so
-          # origin/$GITHUB_BASE_REF — the ref check-duplication.mjs diffs
+          # origin/$GITHUB_BASE_REF — the ref `checks.mjs duplication` diffs
           # against — is already local.
           pnpm run quality:dupe
           echo "::endgroup::"
@@ -800,11 +800,11 @@ jobs:
       - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
           set -euo pipefail
-          trap 'echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/evlog-map-bots.mjs --min-score 100"' ERR
+          trap 'echo "::error::repro: python3 tools/evlog_map --min-score 100  /  node scripts/ci/checks.mjs evlog-map-bots --min-score 100"' ERR
           echo "evlog map — python surface (apps/api + apps/voice-agent)"
           python3 tools/evlog_map --github-summary --no-write --min-score 100
           echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
-          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
           echo "observability: full scores above; per-entry detail in the job summary only"
           echo "### Observability — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
       - name: Changed-files regression gate (per-file, score must not drop)
@@ -841,7 +841,7 @@ jobs:
           # outright rather than baselining per file. An empty map scores 0
           # (not 100), so --min-score also catches the scanner going blind.
           echo "::group::evlog map — bots surface gate"
-          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          node scripts/ci/checks.mjs evlog-map-bots --min-score 100
           echo "::endgroup::"
           echo "observability-bots: OK (surface held at 100)"
 

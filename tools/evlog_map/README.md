@@ -125,7 +125,7 @@ and message of the real exception are destroyed before anything reads them. A
 `return` is fine — but only alongside a record; on its own it is a swallow.
 This is stricter than upstream evlog, which counts any throw-or-return.
 
-`scripts/ci/evlog-map-bots.mjs` holds `catch` to the same bar. `raise ... from e`
+`scripts/ci/checks.mjs evlog-map-bots` holds `catch` to the same bar. `raise ... from e`
 has no JS keyword, so the `cause` option carries it: `throw <caught>` is the
 rethrow (JS has no bare `throw`, so nothing maps to bare `raise`) and
 `throw new X(..., { cause: <caught> })` is the `from` — anything else drops the
@@ -214,7 +214,7 @@ entry points), give the new kind a name in `HANDLER_KINDS`, and decide which
 existing rules apply to it via each rule's `kinds`. Then raise the CI
 `--min-entries` floor by the number of entry points you just added. A surface
 on a different runtime (the TypeScript bots) gets its own port instead —
-`scripts/ci/evlog-map-bots.mjs` mirrors the ids, weights, grade bands and JSON
+`scripts/ci/checks.mjs evlog-map-bots` mirrors the ids, weights, grade bands and JSON
 schema so the two maps stay mergeable; any change to the contract here has to
 land there too.
 
@@ -275,7 +275,7 @@ every ARQ task registered in `app/worker.py`, and the LiveKit voice worker
 a boundary), and the `start`/`download-files` CLI wrappers are not LiveKit
 entry points, so they carry no runtime instrumentation to score. The
 TypeScript bots (`apps/bots` + `libs/shared/ts`) run on a separate logging
-stack and are scored by their own port, `scripts/ci/evlog-map-bots.mjs`.
+stack and are scored by their own port, `scripts/ci/checks.mjs evlog-map-bots`.
 
 ## Limitations
 

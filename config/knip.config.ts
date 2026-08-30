@@ -244,7 +244,7 @@ const config: KnipConfig = {
         "@babel/parser",
         "@babel/traverse",
         // Invoked dynamically as `pnpm exec jscpd` inside
-        // scripts/ci/check-duplication.mjs, so knip can't see the usage.
+        // scripts/ci/checks.mjs duplication, so knip can't see the usage.
         "jscpd",
         // Imported by scripts/openui/generate-prompt.ts (the OpenUI prompt
         // codegen). Declared in apps/web; resolved here via pnpm workspace

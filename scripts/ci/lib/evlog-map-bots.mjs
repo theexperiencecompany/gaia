@@ -1,6 +1,10 @@
-#!/usr/bin/env node
 /**
  * evlog map for the TypeScript bots — observability score for bot entry points.
+ *
+ * The implementation behind `node scripts/ci/checks.mjs evlog-map-bots`. It
+ * lives here rather than inline in checks.mjs because the scanner alone is
+ * ~1000 lines — inlining it would push checks.mjs past the 1200-line hard cap
+ * that checks.mjs's own `file-sizes` subcommand enforces.
  *
  * The bots-side counterpart of tools/evlog_map (a Python port of evlog's `map`
  * command), targeting the bots' wide-event runtime
@@ -16,11 +20,11 @@
  * "bots-ts").
  *
  * Usage:
- *   node scripts/ci/evlog-map-bots.mjs                # terminal report
- *   node scripts/ci/evlog-map-bots.mjs --json         # evlog.map.json schema on stdout
- *   node scripts/ci/evlog-map-bots.mjs --min-score 90 # exit 1 below N
- *   node scripts/ci/evlog-map-bots.mjs --min-entries 15 # exit 1 below N entry points
- *   node scripts/ci/evlog-map-bots.mjs --files-from F # scan only listed files
+ *   node scripts/ci/checks.mjs evlog-map-bots                  # terminal report
+ *   node scripts/ci/checks.mjs evlog-map-bots --json           # evlog.map.json schema on stdout
+ *   node scripts/ci/checks.mjs evlog-map-bots --min-score 90   # exit 1 below N
+ *   node scripts/ci/checks.mjs evlog-map-bots --min-entries 15 # exit 1 below N entry points
+ *   node scripts/ci/checks.mjs evlog-map-bots --files-from F   # scan only listed files
  *
  * Suppressions (same contract as tools/evlog_map, `//` instead of `#`):
  *   // evlog-map-disable-next-line audit -- covered elsewhere
@@ -42,10 +46,12 @@ import {
   indexFunctions,
   parseSource,
   reachableFacts,
-} from "./lib/bots-facts.mjs";
+} from "./bots-facts.mjs";
 
+// scripts/ci/lib/ -> repo root
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
+  "..",
   "..",
   "..",
 );
@@ -969,34 +975,36 @@ function readFileFilter(source) {
   return new Set(files);
 }
 
-const args = parseArgs(process.argv.slice(2));
-const fileFilter = args.filesFrom ? readFileFilter(args.filesFrom) : null;
-const result = scan(fileFilter);
+export function runEvlogMapBots(argv) {
+  const args = parseArgs(argv);
+  const fileFilter = args.filesFrom ? readFileFilter(args.filesFrom) : null;
+  const result = scan(fileFilter);
 
-if (args.json) {
-  console.log(JSON.stringify(toJson(result), null, 2));
-} else {
-  console.log(renderTerminal(result));
-}
+  if (args.json) {
+    console.log(JSON.stringify(toJson(result), null, 2));
+  } else {
+    console.log(renderTerminal(result));
+  }
 
-let failed = false;
-if (args.minScore !== null && result.score < args.minScore) {
-  console.error(
-    `\nobservability score ${result.score} is below the required minimum ${args.minScore}`,
-  );
-  failed = true;
-}
-if (args.minEntries !== null) {
-  // The score says nothing about what was never discovered: a refactor that
-  // hides bot registrations reads as a perfect run, because an empty map
-  // scores 100. Assert the surface is still there before trusting the number.
-  const entryCount = result.entries.filter((entry) => !entry.exempt).length;
-  if (entryCount < args.minEntries) {
+  let failed = false;
+  if (args.minScore !== null && result.score < args.minScore) {
     console.error(
-      `\ndiscovery found ${entryCount} scored entry point(s), below --min-entries ` +
-        `${args.minEntries} — the scan is not seeing the surface`,
+      `\nobservability score ${result.score} is below the required minimum ${args.minScore}`,
     );
     failed = true;
   }
+  if (args.minEntries !== null) {
+    // The score says nothing about what was never discovered: a refactor that
+    // hides bot registrations reads as a perfect run, because an empty map
+    // scores 100. Assert the surface is still there before trusting the number.
+    const entryCount = result.entries.filter((entry) => !entry.exempt).length;
+    if (entryCount < args.minEntries) {
+      console.error(
+        `\ndiscovery found ${entryCount} scored entry point(s), below --min-entries ` +
+          `${args.minEntries} — the scan is not seeing the surface`,
+      );
+      failed = true;
+    }
+  }
+  if (failed) process.exit(1);
 }
-if (failed) process.exit(1);
