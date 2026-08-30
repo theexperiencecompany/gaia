@@ -318,6 +318,19 @@ async def test_paging_drains_every_line_that_shares_the_boundary_nanosecond(
     assert client.starts == [_DAY_START_NANOS, base + 2, base + 5]
 
 
+async def test_more_lines_than_a_page_at_one_nanosecond_refuses_the_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Loki cannot page inside one timestamp. A group larger than the page can
+    never be drained, so the day is refused rather than written short."""
+    monkeypatch.setattr(backfill, "_LOKI_PAGE", 3)
+    base = _DAY_START_NANOS + 60_000_000_000
+    client = _FakeLokiClient([(base, _event_line(f"g{i}")) for i in range(4)])
+
+    with pytest.raises(backfill.UndrainableTimestampError, match=_DAY):
+        await backfill._fetch_day(cast(httpx.AsyncClient, client), "http://loki", _DAY)
+
+
 async def test_paging_stops_once_a_page_comes_back_short(monkeypatch: pytest.MonkeyPatch) -> None:
     """A page under the limit is the last one — asking again costs a round trip
     and, on the old whole-second cursor, re-read events it had already folded."""
