@@ -384,9 +384,12 @@ jobs:
           path: apps/api/.coverage.${{ matrix.slice.name }}
           include-hidden-files: true
           retention-days: 1
-      - name: Tear down service containers and sidecar
+      - name: Release the test services
         if: always()
-        run: bash scripts/ci/teardown-test-services.sh
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/stop-embedding-sidecar.sh
 
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
   coverage:
@@ -713,9 +716,12 @@ jobs:
         run: bash ../../scripts/ci/regression-proof.sh origin/master
       # setup-python-test-env brings up services + the embedding sidecar; on the
       # shared box that namespace must be released like every other lane does.
-      - name: Tear down service containers and sidecar
+      - name: Release the test services
         if: always()
-        run: bash scripts/ci/teardown-test-services.sh
+        run: bash scripts/ci/test-services.sh down
+      - name: Stop the embedding sidecar
+        if: always()
+        run: bash scripts/ci/stop-embedding-sidecar.sh
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:

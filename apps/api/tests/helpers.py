@@ -56,7 +56,7 @@ def pick_free_port() -> int:
 # per worker).
 #
 # GAIA_REDIS_DB_BASE moves that block so several CI lanes can share ONE Redis
-# (scripts/ci/shared-test-services.sh runs it with --databases 256 and hands lane
+# (scripts/ci/test-services.sh runs it with --databases 448 and hands lane
 # r the base ``8 + r*32``). Unset = 8, the historical single-lane block.
 try:
     _TEST_REDIS_DB_BLOCK_START = int(os.environ.get("GAIA_REDIS_DB_BASE", "8"))
@@ -84,7 +84,7 @@ def worker_redis_url(base_url: str) -> str:
 
     Setting ``GAIA_REDIS_DB_BASE`` to ``8 + lane*32`` gives each concurrent CI
     lane a disjoint 32-DB stripe on one shared Redis, so lanes cannot flush each
-    other's keys either — see scripts/ci/shared-test-services.sh.
+    other's keys either — see scripts/ci/test-services.sh.
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -93,8 +93,8 @@ def worker_redis_url(base_url: str) -> str:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
     configured_db = int(match.group(1)) if match else 0
-    # The per-lane block is 24 DBs wide (start-test-services.sh runs Redis with
-    # --databases 32, shared-test-services.sh with 256): room for 24 workers with
+    # The per-lane block is 24 DBs wide (test-services.sh runs Redis with
+    # --databases 32 per job and 448 for the shared set): room for 24 workers with
     # NO wrapping. The original 8-15 block wrapped at eight workers, which on a
     # 16-worker run put gw0 and gw8 on the same DB — and teardown is flushdb(),
     # so each wiped the other's in-flight keys. Wrapping only happens past 24

@@ -22,7 +22,7 @@ PORT=$(( ${SIDECAR_PORT_BASE:-18200} + RUNNER_INDEX * 100 ))
 URL="http://127.0.0.1:${PORT}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # Per-user run dir (same rule in scripts/ci/start-embedding-sidecar.sh,
-# stop-embedding-sidecar.sh, shared-test-services.sh, the runner hooks and
+# stop-embedding-sidecar.sh, test-services.sh, the runner hooks and
 # .github/actions/setup-python-test-env): GitHub-hosted has no
 # RUNNER_LOCAL_CACHE and keeps /tmp.
 RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"

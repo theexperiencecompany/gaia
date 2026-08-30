@@ -52,24 +52,19 @@ runs:
     # job and ~0.6 GB of RAM instead of ~15 GB for six sets. The memory suite
     # ran at identical speed against it. GitHub-hosted runners are ephemeral
     # and keep the per-job containers below.
-    - name: Prepare shared services namespace (self-hosted)
-      if: inputs.services == 'true' && runner.environment == 'self-hosted'
+    # test-services.sh decides for itself whether this runner gets the box's
+    # shared set or its own per-job containers, so there is one step here, not
+    # a self-hosted branch and a GitHub-hosted branch that could drift.
+    - name: Start test services (background)
+      if: inputs.services == 'true'
       shell: bash
       run: |
         set -euo pipefail
-        bash scripts/ci/shared-test-services.sh up
-        bash scripts/ci/shared-test-services.sh prepare "${RUNNER_INDEX:-0}"
-
-    - name: Start service containers (background, GitHub-hosted)
-      if: inputs.services == 'true' && runner.environment != 'self-hosted'
-      shell: bash
-      run: |
-        set -euo pipefail
-        # Per-user run dir (same rule as scripts/ci/shared-test-services.sh and
-        # the sidecar scripts); GitHub-hosted has no RUNNER_LOCAL_CACHE -> /tmp.
+        # Per-user run dir (same rule as scripts/ci/test-services.sh and the
+        # sidecar script); GitHub-hosted has no RUNNER_LOCAL_CACHE -> /tmp.
         RUNDIR="${GAIA_CI_RUNDIR:-${RUNNER_LOCAL_CACHE:-/tmp}}"
         LOG="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.log"
-        nohup bash scripts/ci/start-test-services.sh > "$LOG" 2>&1 < /dev/null &
+        nohup bash scripts/ci/test-services.sh up > "$LOG" 2>&1 < /dev/null &
         echo "$!" > "${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.start.pid"
         echo "services starting in background (pid $!, log $LOG)"
 
@@ -92,8 +87,12 @@ runs:
         rm -f .venv/.gaia-synced-* 2>/dev/null || true
         touch "$MARK"
 
-    - name: Wait for service containers (GitHub-hosted)
-      if: inputs.services == 'true' && runner.environment != 'self-hosted'
+    # Join the background boot, then claim this lane's namespace and export its
+    # endpoints. `prepare` owns the port arithmetic and the namespace names, so
+    # nothing here may repeat an endpoint: doing so would override the resolved
+    # values with the canonical ports and break every parallel lane.
+    - name: Claim the test-services namespace
+      if: inputs.services == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -103,16 +102,7 @@ runs:
         # `wait` only works on children of this shell; poll the pid instead.
         while kill -0 "$pid" 2>/dev/null; do sleep 1; done
         cat "$LOG"
-        # The script writes the resolved URLs to GITHUB_ENV itself, but that
-        # file is per-step: re-publish from the services env file it wrote.
-        ENVF="${RUNDIR}/gaia-test-services-${RUNNER_INDEX:-0}.env"
-        [ -f "$ENVF" ] || { echo "::error::service containers did not come up"; exit 1; }
-        grep -v '^GAIA_TEST_CONTAINERS=' "$ENVF" >> "$GITHUB_ENV"
-
-    # The service URLs (and their per-runner port offsets) are written to
-    # $GITHUB_ENV by start-test-services.sh above — it owns the port
-    # arithmetic, so repeating the endpoints here would silently override
-    # them with the canonical ports and break every parallel lane.
+        bash scripts/ci/test-services.sh prepare "${RUNNER_INDEX:-0}"
     - name: Export test-suite environment
       shell: bash
       run: |

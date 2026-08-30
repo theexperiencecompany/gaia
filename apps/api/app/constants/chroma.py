@@ -1,7 +1,7 @@
 """ChromaDB collection naming, shared by every feature that owns a collection.
 
 One Chroma process can be shared by several concurrent test lanes (see
-``scripts/ci/shared-test-services.sh``), and Chroma has no database/namespace
+``scripts/ci/test-services.sh``), and Chroma has no database/namespace
 concept — collections are a single flat namespace per server. So the *name* is
 the namespace: ``GAIA_CHROMA_COLLECTION_SUFFIX`` is appended to every
 collection GAIA creates, which is what keeps lane r0's ``notes_r0`` from

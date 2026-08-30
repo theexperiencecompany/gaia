@@ -40,9 +40,11 @@ Consequences to keep in mind when editing a lane:
   (`clean:` only off self-hosted): a depth-1 checkout marks the persistent
   clone shallow and the next depth-0 fetch re-unshallows over a residential
   uplink (measured 21-104 s).
-- **Service containers are shared, not per job** — `scripts/ci/shared-test-services.sh`
-  namespaces one container set per runner instance; every lane that starts them
-  must release its namespace in an `if: always()` teardown step.
+- **Service containers are shared, not per job** — `scripts/ci/test-services.sh`
+  namespaces one shared container set per runner instance; every lane that
+  starts them must release its namespace in an `if: always()` teardown step
+  (`test-services.sh down`). The script decides shared-vs-per-job itself from
+  `RUNNER_ENVIRONMENT`/`RUNNER_INDEX` — no caller branches on runner kind.
 - **Concurrency is per SHA** (`ci-<ref>-<sha>`): cancelling a self-hosted job
   wedges its worker for the listener's 5-minute cancellation timeout, so
   superseded runs are cancelled through the API instead
@@ -109,7 +111,7 @@ could silently skip production deploys).
 
 `test-python` (and master-only `coverage`) run pytest directly on the runner
 against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by
-`scripts/ci/start-test-services.sh` via the composite action
+`scripts/ci/test-services.sh` via the composite action
 `actions/setup-python-test-env`. Plain `docker run`, not GitHub `services:`,
 because Redis needs a command override (`--databases 32` for xdist isolation)
 which `services:` cannot express.
@@ -211,8 +213,9 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   (ISC004, RUF036) four minutes before a scheduled run and turned the lane
   red with zero code changes. Pin to the uv.lock version; bump deliberately.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
-  `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
-  bump both together; the tag part is a readability label, the digest is
+  `scripts/ci/lib/service-images.sh` AND `.dagger/src/gaia_ci/main.py` —
+  those two files are the ONLY places a service image reference may appear,
+  and they are bumped together; the tag part is a readability label, the digest is
   what's pulled. The readiness wait recreates a container once on
   timeout (a genuine boot flake costs ~90s instead of a red build); a second
   timeout fails loud with container logs.
