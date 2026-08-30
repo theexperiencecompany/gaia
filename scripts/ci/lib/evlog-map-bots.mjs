@@ -287,12 +287,13 @@ function collectSuppressions(text) {
 }
 
 function findSuppression(suppressions, checkId, anchorLines) {
+  const anchors = new Set(anchorLines);
   for (const s of suppressions) {
     if (!s.reason) continue;
     if (s.checkId !== checkId && s.checkId !== ALL_CHECKS) continue;
     if (s.scope === "file") return s;
     const anchored = s.scope === "next-line" ? s.declaredAt + 1 : s.declaredAt;
-    if (anchorLines.includes(anchored)) return s;
+    if (anchors.has(anchored)) return s;
   }
   return null;
 }
@@ -542,14 +543,25 @@ function applySuppressions(entry, checks, suppressions, warnings, file) {
       };
     }
   }
+  // Seeded from what is already in `warnings`: this runs once per entry and
+  // the list accumulates across the whole scan, so the dedupe has to see
+  // earlier entries' warnings too.
+  const seen = new Set(warnings);
+  const warnOnce = (warning) => {
+    if (seen.has(warning)) return;
+    seen.add(warning);
+    warnings.push(warning);
+  };
   for (const s of suppressions) {
     if (s.checkId !== ALL_CHECKS && !RULE_IDS.has(s.checkId)) {
-      const warning = `${file}:${s.declaredAt} disables '${s.checkId}', which is not a check evlog-map-bots runs`;
-      if (!warnings.includes(warning)) warnings.push(warning);
+      warnOnce(
+        `${file}:${s.declaredAt} disables '${s.checkId}', which is not a check evlog-map-bots runs`,
+      );
     }
     if (!s.reason) {
-      const warning = `${file}:${s.declaredAt} disables a check with no '-- <reason>' — rejected, the check still applies`;
-      if (!warnings.includes(warning)) warnings.push(warning);
+      warnOnce(
+        `${file}:${s.declaredAt} disables a check with no '-- <reason>' — rejected, the check still applies`,
+      );
     }
   }
 }
@@ -630,19 +642,17 @@ function canonicalFieldNames() {
       node.id.name === SCHEMA_INTERFACE
     ) {
       fields = new Set(
-        node.body.body
-          .filter(
-            (member) =>
-              member.type === "TSPropertySignature" && member.key,
-          )
-          .map((member) =>
+        node.body.body.flatMap((member) => {
+          if (member.type !== "TSPropertySignature" || !member.key) return [];
+          return [
             member.key.type === "Identifier"
               ? member.key.name
               : (sf.sourceText ?? "").slice(
                   member.key.start ?? 0,
                   member.key.end ?? 0,
                 ),
-          ),
+          ];
+        }),
       );
     }
     forEachChild(node, visit);
@@ -875,10 +885,10 @@ function renderTerminal(result) {
 
   const chips = (entry) =>
     Object.entries(entry.checks)
-      .filter(([, result]) => result.status !== "n/a")
-      .map(
-        ([checkId, result]) =>
-          `${RULE_TITLES[checkId] ?? checkId}:${result.status === "pass" ? "ok" : "x"}`,
+      .flatMap(([checkId, result]) =>
+        result.status === "n/a"
+          ? []
+          : [`${RULE_TITLES[checkId] ?? checkId}:${result.status === "pass" ? "ok" : "x"}`],
       )
       .join("  ");
   lines.push("");
