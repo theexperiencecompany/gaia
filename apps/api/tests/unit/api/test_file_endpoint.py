@@ -63,6 +63,48 @@ class TestUploadFile:
         assert data["message"] == "File uploaded successfully"
 
     @patch(
+        "app.api.v1.endpoints.file.FileService.upload",
+        new_callable=AsyncMock,
+    )
+    async def test_upload_response_carries_the_workspace_path(
+        self, mock_upload: AsyncMock, client: AsyncClient
+    ):
+        """``sandbox_path`` is declared on the response, so it has to be filled.
+
+        The field's contract is "where the file landed, or None when the JuiceFS
+        mirror was unavailable". Omitting it from the constructed response made
+        None permanent, so a client could never tell a mirrored file from an
+        unmirrored one.
+        """
+        mock_upload.return_value = _file_doc(
+            sandbox_path="/workspace/sessions/conv-1/user-uploaded/doc.pdf",
+        )
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("doc.pdf", BytesIO(b"pdf bytes"), "application/pdf")},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["sandbox_path"] == "/workspace/sessions/conv-1/user-uploaded/doc.pdf"
+
+    @patch(
+        "app.api.v1.endpoints.file.FileService.upload",
+        new_callable=AsyncMock,
+    )
+    async def test_upload_response_reports_no_path_when_the_mirror_failed(
+        self, mock_upload: AsyncMock, client: AsyncClient
+    ):
+        """None must still mean "not on disk" — the honest signal, not a default."""
+        mock_upload.return_value = _file_doc(sandbox_path=None)
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("doc.pdf", BytesIO(b"pdf bytes"), "application/pdf")},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["sandbox_path"] is None
+
+    @patch(
         "app.api.v1.endpoints.file.conversation_repository",
     )
     @patch(
