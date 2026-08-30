@@ -15,6 +15,7 @@ filters, the TSV parsing and the arithmetic are all exercised.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import datetime
 import json
 import os
@@ -43,22 +44,28 @@ def job(name: str, status: str, created: str, started: str = "", completed: str 
     }
 
 
-def run_watchdog(
-    tmp_path: Path,
-    *,
-    run_status: str = "in_progress",
-    jobs: list[dict],
-    runners: list[dict] | None = None,
-    runners_fail: bool = False,
-    limit: int = 480,
-    polls_before_exit: int = 1,
-) -> subprocess.CompletedProcess[str]:
-    """Run the watchdog against canned API responses.
+@dataclass
+class Scenario:
+    """What the stubbed GitHub API reports for one watchdog run."""
 
-    The stub records each poll; after ``polls_before_exit`` it reports the run
-    as ``completed`` so a watchdog that correctly keeps polling still
-    terminates instead of hanging the test.
-    """
+    jobs: list[dict]
+    run_status: str = "in_progress"
+    runners: list[dict] = field(default_factory=list)
+    runners_fail: bool = False
+    limit: int = 480
+    # After this many polls the stub reports the run completed, so a watchdog
+    # that correctly keeps polling still terminates instead of hanging.
+    polls_before_exit: int = 1
+
+
+def run_watchdog(tmp_path: Path, scenario: Scenario) -> subprocess.CompletedProcess[str]:
+    """Run the watchdog against the canned API responses in `scenario`."""
+    run_status = scenario.run_status
+    jobs = scenario.jobs
+    runners = scenario.runners
+    runners_fail = scenario.runners_fail
+    limit = scenario.limit
+    polls_before_exit = scenario.polls_before_exit
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (tmp_path / "jobs.json").write_text(json.dumps({"jobs": jobs}))
@@ -134,8 +141,10 @@ def test_no_jobs_yet_keeps_watching(tmp_path: Path) -> None:
     # resolved. It must not declare victory and leave.
     proc = run_watchdog(
         tmp_path,
-        jobs=[job(WATCHDOG, "in_progress", ago(10), started=ago(10))],
-        polls_before_exit=2,
+        Scenario(
+            jobs=[job(WATCHDOG, "in_progress", ago(10), started=ago(10))],
+            polls_before_exit=2,
+        ),
     )
     assert "no lanes created yet" in proc.stdout
     assert "every lane was picked up" not in proc.stdout
@@ -146,9 +155,11 @@ def test_no_jobs_yet_keeps_watching(tmp_path: Path) -> None:
 def test_dead_box_is_cancelled(tmp_path: Path) -> None:
     proc = run_watchdog(
         tmp_path,
-        jobs=[job("build", "queued", ago(900))],
-        runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
-        limit=480,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+        ),
     )
     assert cancelled(tmp_path)
     assert proc.returncode == 1
@@ -159,10 +170,12 @@ def test_busy_box_is_not_cancelled(tmp_path: Path) -> None:
     # select's online-busy-queued branch parks lanes on a busy box on purpose.
     proc = run_watchdog(
         tmp_path,
-        jobs=[job("build", "queued", ago(900))],
-        runners=[{"status": "online", "labels": [{"name": "gaia-home"}]}],
-        limit=480,
-        polls_before_exit=1,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners=[{"status": "online", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+            polls_before_exit=1,
+        ),
     )
     assert not cancelled(tmp_path)
     assert "the box is busy, not dead" in proc.stderr
@@ -172,9 +185,11 @@ def test_busy_box_is_not_cancelled(tmp_path: Path) -> None:
 def test_unreadable_runners_api_never_cancels(tmp_path: Path) -> None:
     proc = run_watchdog(
         tmp_path,
-        jobs=[job("build", "queued", ago(900))],
-        runners_fail=True,
-        limit=480,
+        Scenario(
+            jobs=[job("build", "queued", ago(900))],
+            runners_fail=True,
+            limit=480,
+        ),
     )
     assert not cancelled(tmp_path)
     assert "not cancelling on an unknown" in proc.stderr
@@ -186,12 +201,14 @@ def test_age_runs_from_eligibility_not_creation(tmp_path: Path) -> None:
     # its record being 900 s old is not evidence of a stall.
     proc = run_watchdog(
         tmp_path,
-        jobs=[
-            job("detect", "completed", ago(900), started=ago(880), completed=ago(30)),
-            job("build", "queued", ago(900)),
-        ],
-        runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
-        limit=480,
+        Scenario(
+            jobs=[
+                job("detect", "completed", ago(900), started=ago(880), completed=ago(30)),
+                job("build", "queued", ago(900)),
+            ],
+            runners=[{"status": "offline", "labels": [{"name": "gaia-home"}]}],
+            limit=480,
+        ),
     )
     assert not cancelled(tmp_path)
     assert proc.returncode == 0
@@ -201,7 +218,9 @@ def test_age_runs_from_eligibility_not_creation(tmp_path: Path) -> None:
 def test_all_lanes_picked_up_exits_clean(tmp_path: Path) -> None:
     proc = run_watchdog(
         tmp_path,
-        jobs=[job("build", "in_progress", ago(100), started=ago(90))],
+        Scenario(
+            jobs=[job("build", "in_progress", ago(100), started=ago(90))],
+        ),
     )
     assert "every lane was picked up" in proc.stdout
     assert not cancelled(tmp_path)
@@ -212,9 +231,11 @@ def test_all_lanes_picked_up_exits_clean(tmp_path: Path) -> None:
 def test_finished_run_stops_watching(tmp_path: Path, terminal: str) -> None:
     proc = run_watchdog(
         tmp_path,
-        run_status=terminal,
-        jobs=[job("build", "queued", ago(900))],
-        polls_before_exit=0,
+        Scenario(
+            run_status=terminal,
+            jobs=[job("build", "queued", ago(900))],
+            polls_before_exit=0,
+        ),
     )
     assert "nothing left to watch" in proc.stdout
     assert not cancelled(tmp_path)
