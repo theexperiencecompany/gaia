@@ -234,10 +234,10 @@ class StyleGuardMiddleware(AgentMiddleware):
                 ),
                 thread_id=str(thread_id) if thread_id else None,
                 workflow_id=str(workflow_id) if workflow_id else None,
-                # The draft was produced by the wrapped model call that
-                # accounting timed; this seam only sees the finished message,
-                # so there is no second latency to report and none is invented.
-                duration_ms=None,
+                # ``duration_ms`` is left at its default: the draft was produced
+                # by the wrapped model call that accounting timed, and this seam
+                # only sees the finished message — there is no second latency to
+                # report and none is invented.
             ),
         )
 

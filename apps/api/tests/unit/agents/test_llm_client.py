@@ -749,10 +749,28 @@ class TestAinvokeLlm:
         assert context.conversation_id == "conv-1"
         assert context.thread_id == "executor_conv-1"
         assert context.workflow_id == "wf-1"
-        # Measured around the whole retry/fallback chain, so it is a real
-        # number rather than a placeholder zero.
-        assert context.duration_ms is not None
-        assert context.duration_ms >= 0.0
+
+    async def test_an_auxiliary_calls_wall_time_is_reported_in_milliseconds(self) -> None:
+        """Measured around the whole retry/fallback chain, because that is what
+        the caller waited for. The clock is pinned rather than slept against: a
+        real elapsed time cannot tell a millisecond from a second-scaled one
+        within its own noise, and 50.1234 ms survives rounding to 2dp so a
+        different scale, offset or precision is visible."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+        clock = iter([100.0])
+
+        def _monotonic() -> float:
+            # First read is the start; every later read is the finish, so an
+            # extra clock read inside the retry wrapper cannot shift the result.
+            return next(clock, 100.0501234)
+
+        with (
+            patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record,
+            patch.object(client_module.time, "monotonic", _monotonic),
+        ):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+
+        assert record.await_args.kwargs["context"].duration_ms == 50.12
 
     async def test_an_auxiliary_call_with_a_bare_config_attributes_nothing_it_lacks(self) -> None:
         """Most one-shots run outside any conversation. Their ledger rows say so
