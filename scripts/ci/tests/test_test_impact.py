@@ -75,8 +75,7 @@ def test_a_ci_script_change_widens_the_selection_to_all(tmp_path: Path) -> None:
         {"app/alpha.py": ["tests/unit/test_alpha.py::test_a"]},
         {"tests/unit/test_alpha.py": ["tests/unit/test_alpha.py::test_a"]},
         repo_root=tmp_path,
-        restrict_to=[],
-        always=[],
+        scope=ti.SliceScope.of(),
     )
     assert ids == [ti.ALL_MARKER]
     assert "test-suite config changed" in reason
@@ -124,9 +123,7 @@ def test_unit_b_does_not_rerun_a_file_unit_a_owns(two_slice_suite) -> None:
         files,
         test_files,
         repo_root=root,
-        restrict_to=UNIT_B_PATHS,
-        always=[],
-        exclude=UNIT_B_IGNORE,
+        scope=ti.SliceScope.of(paths=UNIT_B_PATHS, exclude=UNIT_B_IGNORE),
     )
     # app/svc.py's only tests live in unit-a's directory, so unit-b runs none.
     assert ids == []
@@ -139,9 +136,7 @@ def test_a_changed_test_file_in_the_excluded_directory_is_dropped(two_slice_suit
         files,
         test_files,
         repo_root=root,
-        restrict_to=UNIT_B_PATHS,
-        always=[],
-        exclude=UNIT_B_IGNORE,
+        scope=ti.SliceScope.of(paths=UNIT_B_PATHS, exclude=UNIT_B_IGNORE),
     )
     assert ids == []
 
@@ -153,9 +148,7 @@ def test_the_total_denominator_excludes_the_other_slices_tests(two_slice_suite) 
         files,
         test_files,
         repo_root=root,
-        restrict_to=UNIT_B_PATHS,
-        always=[],
-        exclude=UNIT_B_IGNORE,
+        scope=ti.SliceScope.of(paths=UNIT_B_PATHS, exclude=UNIT_B_IGNORE),
     )
     # 4 of unit-b's own, not the 10 both directories hold: the ALL_THRESHOLD
     # is a fraction of what THIS slice runs.
@@ -174,8 +167,7 @@ def test_without_the_exclusions_the_same_change_selects_the_other_slices_tests(
         files,
         test_files,
         repo_root=root,
-        restrict_to=UNIT_B_PATHS,
-        always=[],
+        scope=ti.SliceScope.of(paths=UNIT_B_PATHS),
     )
     assert ids == ["tests/unit/services/test_svc.py::test_a"]
     assert total == 10

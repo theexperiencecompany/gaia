@@ -36,12 +36,32 @@ def slices(test_python: dict[str, Any]) -> list[dict[str, Any]]:
     return test_python["strategy"]["matrix"]["slice"]
 
 
-def test_the_slices_cover_the_gaia_shared_suite(slices: list[dict[str, Any]]) -> None:
+def test_the_gaia_shared_suite_still_runs(test_python: dict[str, Any]) -> None:
     # gaia-shared is imported by the API; its tests had their own step in the
     # retired coverage job and went with it.
-    assert any("libs/shared/py/tests" in s["paths"] for s in slices), (
-        "no slice runs libs/shared/py/tests — the gaia-shared suite is not running"
-    )
+    steps = [s for s in _steps(test_python) if "libs/shared/py/tests" in str(s.get("run", ""))]
+    assert steps, "nothing runs libs/shared/py/tests — the gaia-shared suite is not running"
+
+
+def test_gaia_shared_runs_in_its_own_pytest_invocation(test_python: dict[str, Any]) -> None:
+    # NOT as a slice path. Handing pytest paths from two trees at once moves
+    # rootdir to the repo root, apps/api/pytest.ini stops being the inifile,
+    # and asyncio_mode/marker registration vanish — which killed the whole
+    # slice (2145 failed, 891 errors) the one time it was tried.
+    for entry in test_python["strategy"]["matrix"]["slice"]:
+        assert "libs/shared" not in entry["paths"], (
+            f"slice {entry['name']} lists libs/shared in its paths; it needs its own run"
+        )
+
+
+def test_no_slice_reaches_outside_apps_api(slices: list[dict[str, Any]]) -> None:
+    # The general form of the rule above: every slice path stays inside the
+    # tree that owns pytest.ini, so rootdir is stable for every slice.
+    for entry in slices:
+        for path in entry["paths"].split():
+            assert not path.startswith(".."), (
+                f"slice {entry['name']}: {path} escapes apps/api and moves pytest's rootdir"
+            )
 
 
 def test_every_slice_path_exists(slices: list[dict[str, Any]]) -> None:

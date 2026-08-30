@@ -38,6 +38,7 @@ Map schema (JSON):
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -315,19 +316,41 @@ def _classify_change(
         sel.widen(f"non-source change under apps/api: {rel}")
 
 
+@dataclass(frozen=True)
+class SliceScope:
+    """What ONE slice runs — the three lists are only meaningful together.
+
+    `paths` and `exclude` come from the same matrix entry (`matrix.slice.paths`
+    and its `--ignore` flags): unit-b's paths are `tests/unit tests/meta` and it
+    ignores the three directories unit-a owns, so neither list alone says what
+    the slice runs. `always` is the API contract, which every slice runs.
+    """
+
+    paths: tuple[str, ...] = ()
+    always: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+
+    @classmethod
+    def of(
+        cls,
+        paths: list[str] | None = None,
+        always: list[str] | None = None,
+        exclude: list[str] | None = None,
+    ) -> SliceScope:
+        return cls(tuple(paths or ()), tuple(always or ()), tuple(exclude or ()))
+
+
 def select_tests(
     changed: list[str],
     files: dict[str, list[str]],
     test_files: dict[str, list[str]],
     *,
     repo_root: Path,
-    restrict_to: list[str],
-    always: list[str],
-    exclude: list[str] | None = None,
+    scope: SliceScope,
 ) -> tuple[list[str], str, int, int]:
     """Return (node ids or [ALL_MARKER], reason, n_selected, n_total)."""
     sel = Selection()
-    excluded = exclude or []
+    restrict_to, always, excluded = scope.paths, scope.always, scope.exclude
 
     def _under(path: str, root: str) -> bool:
         return path == root or path.startswith(root.rstrip("/") + "/")
@@ -480,9 +503,11 @@ def cmd_select(args: argparse.Namespace) -> int:
             files,
             test_files,
             repo_root=Path(args.repo_root),
-            restrict_to=restrict_to,
-            always=args.always or ["tests/contracts"],
-            exclude=exclude,
+            scope=SliceScope.of(
+                paths=restrict_to,
+                always=args.always or ["tests/contracts"],
+                exclude=exclude,
+            ),
         )
 
     out.write_text("".join(f"{i}\n" for i in node_ids))

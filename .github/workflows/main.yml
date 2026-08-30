@@ -290,12 +290,7 @@ jobs:
           # contention with integration off a single instance. services/agents/
           # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
           - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
-          # libs/shared/py/tests rides here: gaia-shared is imported by the API
-          # and had its own step in the retired test-python-coverage job, which
-          # took the suite with it when it was removed. Any change under
-          # libs/shared widens test-impact to ALL (it is python outside
-          # apps/api), so the selection can never skip it on a PR that touches it.
-          - { name: unit-b, paths: "tests/unit tests/meta ../../libs/shared/py/tests", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
+          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
@@ -376,6 +371,21 @@ jobs:
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
+      # ── gaia-shared ────────────────────────────────────────────────────────
+      # Its OWN pytest invocation, never a slice path. gaia-shared lives under
+      # libs/, and handing pytest paths from two trees at once moves rootdir to
+      # the repo root — apps/api/pytest.ini stops being the inifile, so
+      # asyncio_mode=auto and the marker registrations vanish and the entire
+      # slice dies (measured: 2145 failed, 891 errors, run 33301137881).
+      # A separate run keeps each invocation's rootdir and ini intact. It had a
+      # step in the retired test-python-coverage job and was lost with it.
+      - name: gaia-shared tests
+        if: matrix.slice.name == 'unit-b'
+        working-directory: apps/api
+        run: |
+          uv run --frozen pytest ../../libs/shared/py/tests \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "gaia-shared tests: OK"
       # ── Schemathesis contract fuzz ─────────────────────────────────────────
       # Its own step, not a slice member: it boots a REAL server and must run
       # serially and isolated, and the slice runs exclude `-m schemathesis`

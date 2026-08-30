@@ -113,16 +113,16 @@ cmd_shard() {
   SHARD_TSV="$(mktemp)"
   trap 'rm -f "$SHARD_TSV"' EXIT
   if ! GROUP="$GROUP" python3 -c '
-  import json
-  import os
-  import sys
+import json
+import os
+import sys
 
-  entries = json.loads(os.environ["GROUP"])
-  if not entries:
-      sys.exit("group is empty")
-  for entry in entries:
-      sys.stdout.write("\t".join((entry["module"], entry["testfiles"], entry["ranges"])) + "\n")
-  ' > "$SHARD_TSV"; then
+entries = json.loads(os.environ["GROUP"])
+if not entries:
+    sys.exit("group is empty")
+for entry in entries:
+    sys.stdout.write("\t".join((entry["module"], entry["testfiles"], entry["ranges"])) + "\n")
+' > "$SHARD_TSV"; then
     echo "::error::mutation shard could not read its GROUP — the plan job emitted something unusable"
     exit 1
   fi
@@ -242,15 +242,15 @@ PY
     local module="$1" testfiles="$2" ranges="$3"
     local slug="${module//\//_}"
     GROUP="$(module="$module" testfiles="$testfiles" ranges="$ranges" python3 -c '
-  import json
-  import os
+import json
+import os
 
-  print(
-      json.dumps(
-          [{k: os.environ[k] for k in ("module", "testfiles", "ranges")}],
-          separators=(",", ":"),
-      )
-  )')" \
+print(
+    json.dumps(
+        [{k: os.environ[k] for k in ("module", "testfiles", "ranges")}],
+        separators=(",", ":"),
+    )
+)')" \
       SHARD_LOG="$LOG_DIR/$slug.log" \
       bash "$SCRIPT_DIR/mutation.sh" shard > "$LOG_DIR/$slug.out" 2>&1
     local rc=$?
@@ -580,74 +580,74 @@ EOF
   # Absolute: the run cd's into $WORKDIR, so a relative path resolves nowhere.
   CLASSIFIER="$REPO_ROOT/scripts/test/mutation_classify.py"
   "$VENV_PY" -c "
-  import os
-  import signal
-  import subprocess
-  import sys
+import os
+import signal
+import subprocess
+import sys
 
-  env = dict(os.environ)
-  # The Dagger CI container exports USE_REAL_SERVICES=1; under the lane's
-  # 4-way parallelism that makes every mutant's covering tests dial real
-  # Postgres/Mongo/Redis on a 2-core runner — runs that take seconds
-  # hermetically stretch past mutmut's per-mutant timeout and read as ⏰
-  # timeouts. The mutation lane is a unit-test instrument: the conftest
-  # hermetic fence (blanked creds, mocked DBs) is the intended environment,
-  # and real-service integration is covered by test-python.
-  env.pop('USE_REAL_SERVICES', None)
-  patch_dir = sys.argv[1]
-  env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
-  max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
-  run_args = ['run'] + (['--max-children', max_children] if max_children else [])
-  # Pre-import the C-extension-heavy modules in the MUTMUT process BEFORE it
-  # starts: the covered-lines coverage pass unloads every module imported
-  # during the stats run, and numpy/PyO3 extensions cannot be re-imported in
-  # one process. Anything imported here is in the baseline snapshot and never
-  # unloaded.
-  child_code = (
-      'import mutmut_decorated_patch; '
-      'import mutmut_diff_scope; '
-      'import sys as _sys; '
-      f'_sys.argv += {run_args!r}; '
-      'from mutmut.__main__ import cli; cli()'
-  )
-  proc = subprocess.Popen(
-      [sys.executable, '-c', child_code],
-      env=env,
-      start_new_session=True,
-  )
-  try:
-      # 12 minutes per module. This was 45, sized for when a module paid ~30s of
-      # fresh-process startup per mutant; with the selection scoped to unit tests
-      # the SLOWEST real module measured on CI is 1.2 minutes, so 12 is ~10x the
-      # worst honest case and anything beyond it is a hang, not slow work.
-      #
-      # The cap length is load-bearing for the whole lane, not just one module:
-      # the orchestrator runs N modules concurrently, so N hung modules occupy
-      # every worker and NOTHING else starts. That is what happened — four
-      # modules hung, four workers, and the lane was cancelled at its 90-minute
-      # budget having never started 13 of the 54 modules. A hang must surface as
-      # a fast, named failure rather than eating the whole budget silently.
-      proc.communicate(timeout=720)
-  except subprocess.TimeoutExpired:
-      os.killpg(proc.pid, signal.SIGKILL)
-      proc.wait()
-      sys.exit(124)
-  finally:
-      # Reap the detached session on EVERY path, not just timeout. mutmut runs
-      # in its own session (start_new_session above) so killpg can take the
-      # mutant brood down as one unit — but that same detachment hides any
-      # straggler from a CI runner's step-abort, which signals the step's
-      # process group and walks its tree. A leaked child in the detached
-      # session survived the in-script watchdog, timeout(1) --signal=KILL, AND
-      # GitHub's own step timeout, holding the rate_limiting shard open to the
-      # job cap six runs in a row — and a job cancelled at its cap keeps no
-      # logs, which is why there was never any evidence.
-      try:
-          os.killpg(proc.pid, signal.SIGKILL)
-      except (ProcessLookupError, PermissionError):
-          pass
-  sys.exit(proc.returncode)
-  " "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
+env = dict(os.environ)
+# The Dagger CI container exports USE_REAL_SERVICES=1; under the lane's
+# 4-way parallelism that makes every mutant's covering tests dial real
+# Postgres/Mongo/Redis on a 2-core runner — runs that take seconds
+# hermetically stretch past mutmut's per-mutant timeout and read as ⏰
+# timeouts. The mutation lane is a unit-test instrument: the conftest
+# hermetic fence (blanked creds, mocked DBs) is the intended environment,
+# and real-service integration is covered by test-python.
+env.pop('USE_REAL_SERVICES', None)
+patch_dir = sys.argv[1]
+env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
+max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
+run_args = ['run'] + (['--max-children', max_children] if max_children else [])
+# Pre-import the C-extension-heavy modules in the MUTMUT process BEFORE it
+# starts: the covered-lines coverage pass unloads every module imported
+# during the stats run, and numpy/PyO3 extensions cannot be re-imported in
+# one process. Anything imported here is in the baseline snapshot and never
+# unloaded.
+child_code = (
+    'import mutmut_decorated_patch; '
+    'import mutmut_diff_scope; '
+    'import sys as _sys; '
+    f'_sys.argv += {run_args!r}; '
+    'from mutmut.__main__ import cli; cli()'
+)
+proc = subprocess.Popen(
+    [sys.executable, '-c', child_code],
+    env=env,
+    start_new_session=True,
+)
+try:
+    # 12 minutes per module. This was 45, sized for when a module paid ~30s of
+    # fresh-process startup per mutant; with the selection scoped to unit tests
+    # the SLOWEST real module measured on CI is 1.2 minutes, so 12 is ~10x the
+    # worst honest case and anything beyond it is a hang, not slow work.
+    #
+    # The cap length is load-bearing for the whole lane, not just one module:
+    # the orchestrator runs N modules concurrently, so N hung modules occupy
+    # every worker and NOTHING else starts. That is what happened — four
+    # modules hung, four workers, and the lane was cancelled at its 90-minute
+    # budget having never started 13 of the 54 modules. A hang must surface as
+    # a fast, named failure rather than eating the whole budget silently.
+    proc.communicate(timeout=720)
+except subprocess.TimeoutExpired:
+    os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+    sys.exit(124)
+finally:
+    # Reap the detached session on EVERY path, not just timeout. mutmut runs
+    # in its own session (start_new_session above) so killpg can take the
+    # mutant brood down as one unit — but that same detachment hides any
+    # straggler from a CI runner's step-abort, which signals the step's
+    # process group and walks its tree. A leaked child in the detached
+    # session survived the in-script watchdog, timeout(1) --signal=KILL, AND
+    # GitHub's own step timeout, holding the rate_limiting shard open to the
+    # job cap six runs in a row — and a job cancelled at its cap keeps no
+    # logs, which is why there was never any evidence.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+sys.exit(proc.returncode)
+" "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
   if [ "$MUTMUT_RC" -ne 0 ]; then
     # mutmut 3.7 cannot mutate decorated functions (verified in its source:
     # file_mutation.py skips every FunctionDef with decorators — FastAPI

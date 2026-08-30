@@ -188,8 +188,11 @@ def run_select(suite, changed: list[str], **kwargs):
         files,
         test_files,
         repo_root=root,
-        restrict_to=kwargs.get("restrict_to", []),
-        always=kwargs.get("always", []),
+        scope=ti.SliceScope.of(
+            paths=kwargs.get("restrict_to", []),
+            always=kwargs.get("always", []),
+            exclude=kwargs.get("exclude", []),
+        ),
     )
 
 
