@@ -1148,10 +1148,10 @@ async def _stream_tool_message_frames(
     """Emit the tool_output frame for a ToolMessage, plus any deferred mcp_app event."""
     # Todo tools already stream todo_progress; suppress tool_output noise.
     # Safe: doesn't affect agent state; only avoids redundant UI events.
-    if getattr(chunk, "name", None) in {
+    if chunk.name in {
         "plan_tasks",
         "update_tasks",
-    } or chunk.additional_kwargs.get("todo_tool", False):
+    } or chunk.additional_kwargs.get("todo_tool"):
         return
     # Text-extract block content so inline media (base64 image blocks)
     # never streams to the frontend or lands in the persisted message.
@@ -1231,11 +1231,11 @@ def _buffer_subagent_mcp_app(
             if tc_id_for_app:
                 pending_mcp_apps[tc_id_for_app] = {
                     "tool_category": sub_entry.get("tool_category", ""),
-                    "tool_name": sub_entry.get("data", {}).get("tool_name", ""),
+                    "tool_name": sub_entry["data"].get("tool_name", ""),
                     "server_url": sub_entry.get("mcp_server_url", ""),
                     "mcp_ui": sub_entry["mcp_ui"],
                     "timestamp": sub_entry.get("timestamp"),
-                    "tool_arguments": sub_entry.get("data", {}).get("inputs", {}),
+                    "tool_arguments": sub_entry["data"].get("inputs", {}),
                 }
 
 

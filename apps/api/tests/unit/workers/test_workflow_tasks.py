@@ -1997,6 +1997,7 @@ class _FirePatches:
         self.drain = AsyncMock(return_value=[{"event": "one"}])
         self.reschedule = AsyncMock()
         self.coalesce = MagicMock(return_value=30)
+        self.distrust = AsyncMock()
         self.log = MagicMock()
 
     def enter(self, stack) -> None:
@@ -2013,7 +2014,7 @@ class _FirePatches:
             patch(f"{MODULE}.drain_trigger_batch", self.drain),
             patch(f"{MODULE}.reschedule_if_refilled", self.reschedule),
             patch(f"{MODULE}.coalesce_window_seconds", self.coalesce),
-            patch(f"{MODULE}.distrust_fresh_playbook", AsyncMock()),
+            patch(f"{MODULE}.distrust_fresh_playbook", self.distrust),
             patch(f"{MODULE}.log", self.log),
         ):
             stack.enter_context(patcher)
@@ -2072,6 +2073,24 @@ class TestTheByIdTaskThreadsItsIdsThrough:
 
         assert seams.increment.await_args_list == [
             call(workflow.id, workflow.user_id, is_successful=True)
+        ]
+
+    async def test_the_fresh_playbook_is_distrust_checked_under_this_workflow_and_user(self):
+        """The distrust check is what stops a playbook frozen on an empty result
+        from being replayed forever. Keyed on the wrong id it reads a playbook
+        that is not this run's — so the bad body is never marked, and every later
+        fire replays it."""
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+        trace = [RecordedCall(tool_name="GMAIL_FETCH", args={"query": "is:unread"})]
+        seams.chat = AsyncMock(return_value=("conv_1", trace))
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            await execute_workflow_by_id({}, workflow.id)
+
+        assert seams.distrust.await_args_list == [
+            call(workflow.id, workflow.user_id, trace, healing=False)
         ]
 
     async def test_an_unstamped_context_reads_as_a_manual_fire_and_is_not_captured(
@@ -2210,6 +2229,32 @@ class TestTheByIdExceptPathsNameTheirCause:
             workflow_id=workflow.id,
             error="gmail exploded",
             error_type="RuntimeError",
+        )
+
+    async def test_a_quota_capped_fire_is_warned_with_the_quota_it_hit(self):
+        """The quota refusal is WARNING, not exception, so this line is the only
+        record of it — a blanked message or type leaves an unexplained skipped
+        run and no way to tell a quota stop from a crash."""
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+        capped = RateLimitExceededException(
+            feature="trigger_workflow_executions", plan_required="pro"
+        )
+        seams.chat.side_effect = capped
+        failure = AsyncMock(return_value="skipped")
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            stack.enter_context(patch(f"{MODULE}._record_run_failure", failure))
+            result = await execute_workflow_by_id({}, workflow.id)
+
+        assert result == "skipped"
+        seams.log.exception.assert_not_called()
+        seams.log.warning.assert_called_once_with(
+            "[WORKER] Workflow skipped — rate limit exceeded",
+            workflow_id=workflow.id,
+            error=str(capped),
+            error_type="RateLimitExceededException",
         )
 
 

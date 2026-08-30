@@ -109,6 +109,15 @@ os.environ["LANGFUSE_HOST"] = ""
 # child died on SIGTRAP (exit -5) before writing a byte, so every mutant of
 # chroma_store came back "suspicious" and the module could never be graded.
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
+# darwin getproxies() falls through to the SystemConfiguration framework
+# (_scproxy), which is not fork-safe: mutmut forks a child per mutant, and any
+# child that builds an httpx client segfaults inside that native call, leaving
+# the mutant without a verdict. A non-empty proxy var makes
+# getproxies_environment() truthy and short-circuits the native path, and
+# NO_PROXY=* is behavior-neutral: httpx returns no proxies for it, which is
+# what a hermetic suite gets on Linux anyway.
+os.environ["no_proxy"] = "*"
+os.environ["NO_PROXY"] = "*"
 
 # HOST leaks into the model's context: fetchers.py renders the public artifact
 # URL from it, so the effective prompt — and the recorded context snapshots —

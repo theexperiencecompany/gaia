@@ -195,11 +195,9 @@ def create_middleware_stack(
                 tool_space=subagent.tool_space,
                 tool_runtime_config=subagent.tool_runtime_config,
                 spawn_middleware_factory=lambda space: create_subagent_middleware(
-                    # enabled=False equals the field default; the kwarg stays as
-                    # the explicit no-spawn statement, so its drop is equivalent.
-                    subagent=SubagentStackOptions(
-                        enabled=False, tool_space=space
-                    )  # pragma: no mutate
+                    # No enabled=True here: a spawned child must not spawn again,
+                    # and SubagentStackOptions defaults to enabled=False.
+                    subagent=SubagentStackOptions(tool_space=space)
                 ),
             )
         )
@@ -388,10 +386,9 @@ def create_subagent_middleware(
         chat_llm=subagent.llm,
         subagent=subagent,
         context=ContextOptions(
-            # Both equal the field defaults; they stay as the explicit statement
-            # of the subagent tier context policy, so their drop is equivalent.
-            summarize=True,  # pragma: no mutate
-            compact=True,  # pragma: no mutate
+            # Summarization and compaction stay on (the ContextOptions defaults):
+            # without summarization a subagent run grows unbounded, averaging 91k
+            # input tokens per call in production against 43k for comms/executor.
             compaction_excluded_tools=CODING_TOOL_NAMES
             | SPAWN_SUBAGENT_TOOL
             | SELF_OFFLOADING_TOOL_NAMES,
