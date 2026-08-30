@@ -1,6 +1,8 @@
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache
+import math
 from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -68,6 +70,8 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    TokenUsage,
+    extract_message_cost,
     extract_message_model,
     extract_message_usage,
     record_llm_call,
@@ -257,6 +261,13 @@ def init_openrouter_llm() -> LanguageModelLike:
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
             **_app_attribution(),
+            # The same routing preference the default/aux model carries. Without
+            # it this lane sat on OpenRouter's default rotation and drew twelve
+            # different upstreams in a month, at rates 10x apart. session_id
+            # sticky routing composes with `order` (measured: order + session
+            # lands on the ordered upstream every time), so the preference only
+            # decides which upstream a NEW conversation starts on.
+            **_provider_order_kwargs(),
             reasoning=OPENROUTER_REASONING,
         )
     )
@@ -732,7 +743,20 @@ async def _meter_discarded_replay(
     label: str,
 ) -> None:
     """Meter the sticky-flip replay whose answer was thrown away — otherwise its
-    tokens miss the daily budget, the per-request ceiling and COGS entirely.
+    tokens miss COGS entirely.
+
+    Recorded exactly like auxiliary spend, and for the same reason: this is a
+    cache-warming re-send GAIA chose to make, and the user never received its
+    answer. So it is booked durably (``usage_daily.aux_cost``) with
+    ``background=True`` on the ``llm_call`` event, and:
+
+    - ``charge_to_budget=False`` — charging it made the user's daily allowance
+      pay for a reply that was discarded. Measured over 2026-08-16..29: 3,614
+      of these, $34.55, ~20% of all LLM spend, all of it billed to users.
+    - no ``root_request_id`` — that counter is the per-request token ceiling
+      that bounds one agent tree against runaway loops. Our own re-send is not
+      the model looping, and letting it count means a turn can be truncated by
+      the optimisation meant to make it cheaper.
 
     Graph-lane only by construction: the replay itself is gated on
     ``not meter_auxiliary``, and the graph lane meters from the AIMessage that
@@ -746,21 +770,21 @@ async def _meter_discarded_replay(
     # ModelLane back would close the cycle.
     model_name = extract_message_model(discarded)
     user_id = configurable.get("user_id")
-    root_request_id = configurable.get("root_request_id")
+    provider_cost = extract_message_cost(discarded)
     cost = await record_llm_call(
         user_id=str(user_id) if user_id else None,
         model_name=model_name,
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
-        root_request_id=str(root_request_id) if root_request_id else None,
-        charge_to_budget=True,
+        usage=usage,
+        root_request_id=None,
+        charge_to_budget=False,
+        provider_cost=provider_cost,
     )
     log.info(
         "llm_call",
         llm_event="llm_call",
         sticky_flip_discarded=True,
+        background=True,
+        cost_source="provider" if provider_cost is not None else "table",
         agent_name=label,
         model=model_name,
         user_id=user_id,
@@ -773,15 +797,41 @@ async def _meter_discarded_replay(
 
 
 @dataclass(frozen=True)
-class LLMCallOptions:
-    """The optional retry/fallback settings of :func:`ainvoke_llm` and
-    :func:`invoke_llm`, grouped so both keep a readable signature.
+class LLMInvokeOptions:
+    """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
+    :func:`invoke_llm`), grouped so the call signature stays under the repo's
+    argument-count ceiling.
 
-    ``timeout`` and ``meter_auxiliary`` are async-only — :func:`invoke_llm` has
-    neither a wall-clock ceiling nor auxiliary metering and ignores them.
+    Attributes:
+        max_attempts: Retry attempts before falling back to ``fallback``.
+            ``max_attempts=1`` disables retry for callers on a hard latency
+            budget. Honored by both ``ainvoke_llm`` and ``invoke_llm``.
+        timeout: A total wall-clock ceiling over the retries, their backoff
+            sleeps and the fallback attempt — the guarantee being that the
+            call cannot outlive it. Retry alone cannot cover a provider that
+            accepts the connection and then never answers, because nothing
+            is ever raised to retry on. The ceiling deliberately wraps the
+            fallback too: expiring mid-fallback raises ``TimeoutError``
+            rather than starting a second, unbounded attempt. ``None``
+            disables it. ``ainvoke_llm`` only — ``invoke_llm`` is sync and
+            does not honor this field.
+        meter_auxiliary: Routes the call through the one metering seam for
+            auxiliary spend when ``True``. The agent graph passes ``False``
+            because it is already metered by ``LLMAccountingMiddleware`` —
+            metering here too would book every graph call twice.
+            ``ainvoke_llm`` only — ``invoke_llm`` never meters.
+        fallback_config: The config the fallback runs under, when given.
+            Reusing ``config`` for the fallback is what made provider
+            failover a no-op: LangChain merges a passed config OVER a
+            ``with_config`` one, so the run's own configurable put the
+            just-failed provider straight back. Honored by both
+            ``ainvoke_llm`` and ``invoke_llm``.
+        sticky_session_id: The provider's sticky-routing key to bind the
+            fallback to, overriding what :func:`_sticky_session_id` would
+            derive from ``config``. Honored by both ``ainvoke_llm`` and
+            ``invoke_llm``.
     """
 
-    fallback: LLMFallback = None
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
     meter_auxiliary: bool = True
@@ -798,7 +848,6 @@ class StructuredCallOptions:
     timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
 
 
-_DEFAULT_CALL_OPTIONS = LLMCallOptions()
 _DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
 
 
@@ -806,9 +855,10 @@ async def ainvoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
     *,
+    fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    options: LLMCallOptions = _DEFAULT_CALL_OPTIONS,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -847,13 +897,14 @@ async def ainvoke_llm(
     # The agent graph also comes through here (create_agent wants the retry +
     # fallback policy) but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
-    usage_handler = UsageMetadataCallbackHandler() if options.meter_auxiliary else None
-    generation_handler = _GenerationIdCallback() if options.meter_auxiliary else None
+    opts = options or LLMInvokeOptions()
+    usage_handler = UsageMetadataCallbackHandler() if opts.meter_auxiliary else None
+    generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
     try:
-        async with asyncio.timeout(options.timeout):
+        async with asyncio.timeout(opts.timeout):
             try:
-                result = await with_llm_retry(primary, max_attempts=options.max_attempts).ainvoke(
+                result = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                     messages,
                     config=_with_usage_handler(
                         _with_usage_handler(config, usage_handler), generation_handler
@@ -880,7 +931,7 @@ async def ainvoke_llm(
                     # one-shots have no prior chain (cold IS their steady
                     # state), and Gemini has no stickiness to re-hit — for
                     # both, a replay is pure double billing.
-                    not options.meter_auxiliary
+                    not opts.meter_auxiliary
                     and agent_configurable(config).get("provider") in STICKY_ROUTING_PROVIDERS
                     and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
                     and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
@@ -917,15 +968,15 @@ async def ainvoke_llm(
                 # own configurable put the just-failed provider straight back.
                 return _stamp_fallback(
                     await _resolve_fallback(
-                        options.fallback,
+                        fallback,
                         label,
                         primary_error,
-                        session_id=options.sticky_session_id
-                        or _sticky_session_id(config, auxiliary=options.meter_auxiliary),
+                        session_id=opts.sticky_session_id
+                        or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
                     ).ainvoke(
                         messages,
                         config=_with_usage_handler(
-                            _with_usage_handler(options.fallback_config or config, usage_handler),
+                            _with_usage_handler(opts.fallback_config or config, usage_handler),
                             generation_handler,
                         ),
                     )
@@ -939,6 +990,7 @@ async def ainvoke_llm(
                 label,
                 str(user_id) if user_id else None,
                 generation_id=generation_handler.generation_id if generation_handler else None,
+                provider_cost=generation_handler.cost if generation_handler else None,
             )
 
 
@@ -946,28 +998,31 @@ def invoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
     *,
+    fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    options: LLMCallOptions = _DEFAULT_CALL_OPTIONS,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
-    """Sync counterpart of :func:`ainvoke_llm`. ``options.timeout`` and
-    ``options.meter_auxiliary`` do not apply to this path."""
+    """Sync counterpart of :func:`ainvoke_llm`. Only ``options.max_attempts``,
+    ``options.fallback_config`` and ``options.sticky_session_id`` apply here —
+    ``timeout``/``meter_auxiliary`` are async-only (see :class:`LLMInvokeOptions`)."""
+    opts = options or LLMInvokeOptions()
     try:
-        return with_llm_retry(primary, max_attempts=options.max_attempts).invoke(
+        return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
             messages, config=config
         )
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
             _resolve_fallback(
-                options.fallback,
+                fallback,
                 label,
                 primary_error,
                 # Passed through like the async path: this branch used to hand
                 # _resolve_fallback nothing, so a sync fallback silently landed
                 # on whatever provider the router picked instead of the chain
                 # the primary had been warming.
-                session_id=options.sticky_session_id or _sticky_session_id(config, auxiliary=False),
-            ).invoke(messages, config=options.fallback_config or config)
+                session_id=opts.sticky_session_id or _sticky_session_id(config, auxiliary=False),
+            ).invoke(messages, config=opts.fallback_config or config)
         )
 
 
@@ -1017,6 +1072,38 @@ def _silenced(config: RunnableConfig) -> RunnableConfig:
     return cast(RunnableConfig, merged)
 
 
+def _reported_cost(response: LLMResult) -> float | None:
+    """What OpenRouter charged for this call, from whichever shape carries it.
+
+    Auxiliary one-shots return the parsed schema rather than the ``AIMessage``,
+    so the price has to be read off the raw result like the generation id is.
+    Non-streaming puts ``token_usage`` in ``llm_output``; streaming leaves the
+    figure on the message's ``response_metadata``, where ``ChatOpenRouter``
+    copies it. ``None`` means the lane reported no price and the caller should
+    fall back to the pricing table.
+    """
+    llm_output = response.llm_output or {}
+    token_usage = llm_output.get("token_usage") or {}
+    for candidate in (llm_output.get("cost"), token_usage.get("cost")):
+        if candidate is not None:
+            # A price that will not parse is not a price: skip it and let the
+            # next shape (then the table) answer, rather than failing a call
+            # that already succeeded over its own cost annotation. The same goes
+            # for a negative or non-finite one — it would be summed across the
+            # retries of this call and land in a budget window.
+            with suppress(TypeError, ValueError):
+                parsed = float(candidate)
+                if math.isfinite(parsed) and parsed >= 0.0:
+                    return parsed
+    for generations in response.generations:
+        for generation in generations:
+            message = getattr(generation, "message", None)
+            cost = extract_message_cost(message) if message is not None else None
+            if cost is not None:
+                return cost
+    return None
+
+
 class _GenerationIdCallback(BaseCallbackHandler):
     """Captures the upstream generation id for auxiliary calls.
 
@@ -1030,6 +1117,28 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
+        self._attempts = 0
+        self._priced_attempts = 0
+        self._cost_total = 0.0
+
+    @property
+    def cost(self) -> float | None:
+        """Provider-reported spend summed over EVERY attempt this call made.
+
+        Accumulated, not last-write-wins, because the usage it is booked
+        against accumulates: ``UsageMetadataCallbackHandler`` adds up the
+        tokens of a retry and of a fallback, so keeping only the final
+        attempt's price would charge one attempt's dollars against several
+        attempts' tokens and under-count real spend on exactly the calls that
+        went wrong.
+
+        ``None`` when ANY attempt reported no price — a partial sum is not the
+        call's cost, so the caller falls back to the pricing table for the
+        whole thing rather than booking a number that is confidently short.
+        """
+        if self._attempts == 0 or self._priced_attempts != self._attempts:
+            return None
+        return self._cost_total
 
     def on_llm_end(
         self,
@@ -1038,6 +1147,11 @@ class _GenerationIdCallback(BaseCallbackHandler):
         # the base signature types them Any and this handler reads none.
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
+        self._attempts += 1
+        reported = _reported_cost(response)
+        if reported is not None:
+            self._priced_attempts += 1
+            self._cost_total += reported
         llm_output = getattr(response, "llm_output", None) or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
@@ -1078,6 +1192,7 @@ async def _record_auxiliary_usage(
     user_id: str | None,
     *,
     generation_id: str | None = None,
+    provider_cost: float | None = None,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1096,6 +1211,12 @@ async def _record_auxiliary_usage(
     ``llm_call`` event carries ``background=True``, so auxiliary COGS stays
     fully measurable and splittable from in-turn agent spend.
     """
+    # The handler aggregates per model, so a call that fanned out across models
+    # cannot attribute one price to one of them; only the single-model case
+    # (every real auxiliary call) takes the reported figure, and the rest fall
+    # back to the table. Resolved ONCE, here, so what gets booked and what
+    # ``cost_source`` claims can never disagree.
+    booked_cost = provider_cost if len(handler.usage_metadata) == 1 else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1116,16 +1237,24 @@ async def _record_auxiliary_usage(
         cost = await record_llm_call(
             user_id=user_id,
             model_name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            ),
             charge_to_budget=False,
+            provider_cost=booked_cost,
         )
         log.info(
             "llm_call",
             llm_event="llm_call",
             background=True,
+            # What was actually booked, not what was merely available: the
+            # multi-model fan-out is priced from the table even when a figure
+            # was reported, and the event must say so or coverage reporting
+            # counts table prices as provider prices.
+            cost_source="provider" if booked_cost is not None else "table",
             agent_name=label,
             model=model_name,
             generation_id=generation_id,
@@ -1238,7 +1367,7 @@ async def ainvoke_structured(
             prompt,
             config=config,
             label=label,
-            options=LLMCallOptions(timeout=options.timeout),
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )
 
@@ -1300,7 +1429,7 @@ async def ainvoke_structured_gemini(
                 prompt,
                 config=config,
                 label=label,
-                options=LLMCallOptions(timeout=options.timeout),
+                options=LLMInvokeOptions(timeout=options.timeout),
             ),
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
@@ -1315,8 +1444,9 @@ async def ainvoke_structured_gemini(
         await ainvoke_llm(
             _aux_structured_runnable(schema, options.temperature, config),
             prompt,
+            fallback=fallback,
             config=config,
             label=label,
-            options=LLMCallOptions(fallback=fallback, timeout=options.timeout),
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )

@@ -240,7 +240,7 @@ def _patch_structured_output_for_pinned_lane() -> None:
     from langchain_core.output_parsers import JsonOutputParser
 
     from app.agents.llm.client import (
-        LLMCallOptions,
+        LLMInvokeOptions,
         StructuredCallOptions,
         ainvoke_llm,
         get_default_llm,
@@ -279,7 +279,7 @@ def _patch_structured_output_for_pinned_lane() -> None:
             messages,
             config=invoke_config,
             label=label,
-            options=LLMCallOptions(timeout=timeout),
+            options=LLMInvokeOptions(timeout=timeout),
         )
         content = message.content
         if isinstance(content, list):

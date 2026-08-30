@@ -67,7 +67,6 @@ apps/api/app/db/repositories/base.py	PLR0913
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
 apps/api/app/db/repositories/notifications.py	PLR0913
 apps/api/app/db/repositories/todos.py	PLR0912
-apps/api/app/db/repositories/usage_daily.py	PLR0913
 apps/api/app/db/repositories/users.py	PLR0913
 apps/api/app/db/repositories/workflows.py	PLR0913
 apps/api/app/memory/extraction.py	PLR0913
@@ -81,13 +80,11 @@ apps/api/app/services/analytics_service.py	PLR0913
 apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
-apps/api/app/services/cost_budget.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913
 apps/api/app/services/hil/bridge.py	PLR0913
 apps/api/app/services/integrations/custom_crud.py	PLR0912
 apps/api/app/services/integrations/integration_connection_service.py	PLR0911
 apps/api/app/services/integrations/integration_connection_service.py	PLR0913
-apps/api/app/services/llm_metering.py	PLR0913
 apps/api/app/services/mcp/langchain_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
@@ -110,7 +107,6 @@ apps/api/app/services/triggers/handlers/github.py	PLR0912
 apps/api/app/services/triggers/handlers/google_sheets.py	PLR0912
 apps/api/app/services/triggers/handlers/notion.py	PLR0912
 apps/api/app/services/triggers/handlers/slack.py	PLR0912
-apps/api/app/services/usage_activity.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0912
 apps/api/app/services/workflow/generation_service.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0915

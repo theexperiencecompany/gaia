@@ -211,7 +211,10 @@ cmd_regression_proof() {
   echo "regression-proof: ${#changed[@]} changed test file(s):"
   printf '  %s\n' "${changed[@]}"
 
-  local WT LOG JUNIT BASE_COPIES
+  # NOT `local`: the EXIT trap below runs when the SHELL exits, by which time a
+  # function-local is out of scope — under `set -u` the trap then dies with
+  # "WT: unbound variable" and fails the job AFTER the verdict has already
+  # printed success, which is how this lane reported a pass as a failure.
   WT="$(mktemp -d)"
   LOG="$(mktemp)"
   # Bare mktemp, no -t template: BSD/macOS appends the random suffix for you, GNU

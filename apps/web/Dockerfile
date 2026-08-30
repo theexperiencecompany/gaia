@@ -20,12 +20,10 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 # Copy all package manifests first for better cache signal.
-# .npmrc rides along: node-linker=hoisted must not arrive only via
-# `COPY . .` after the install (it changes module layout used by next build).
 # patches/ too: root package.json's pnpm.patchedDependencies references
 # these files — install fails with ENOENT without them (proved in CI:
 # "pnpm: ENOENT ... /app/patches/dmg-builder.patch").
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches/
 COPY apps/web/package.json         ./apps/web/
 COPY apps/desktop/package.json     ./apps/desktop/
