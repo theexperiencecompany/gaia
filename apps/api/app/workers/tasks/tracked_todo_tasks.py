@@ -429,7 +429,14 @@ async def _execute_via_agent(
 
     request = MessageRequestWithHistory(
         message=prompt,
-        messages=[],
+        # The prompt has to be here, not only in `message`.
+        # `construct_langchain_messages` reads the run's content from
+        # `messages[-1]`; `message` reaches it as `query=`, which only feeds
+        # memory retrieval. With neither this nor a selected workflow/tool, the
+        # content is empty and the run raises before the model is called.
+        # `workflow_tasks` passes `messages=[]` and gets away with it only
+        # because it supplies `selectedWorkflow`, which builds content instead.
+        messages=[{"role": "user", "content": prompt}],
         fileIds=[],
         fileData=[],
         selectedTool=None,

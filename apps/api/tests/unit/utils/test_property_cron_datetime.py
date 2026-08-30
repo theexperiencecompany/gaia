@@ -89,13 +89,29 @@ class TestGetNextRunTime:
         minute, hour = (int(part) for part in cron_expr.split()[:2])
         if (local.hour, local.minute) != (hour, minute):
             # Spring-forward gap: the cron wall time does not exist on the
-            # fire date (e.g. 02:30 in America/New_York on the transition
-            # day), and the schedule library fires at the next real instant —
-            # the wall time shifted forward by the DST offset. Assert that is
-            # what happened, not a genuine miss.
+            # fire date (e.g. 02:00 in America/New_York on 2025-03-09), and the
+            # schedule library fires at the next real instant — the wall time
+            # shifted forward by the DST offset. Assert that is what happened,
+            # not a genuine miss.
+            #
+            # A nonexistent wall time is detected by a round trip, not by
+            # ``utcoffset() is None``: ZoneInfo resolves a gap time to the
+            # pre-transition offset (PEP 495) and never returns None, so the
+            # previous check could not be true for any input. It made this whole
+            # branch unreachable-but-green, and the first example to land in the
+            # branch — 0 2 * * * in New York, firing 03:00 on the transition day,
+            # which is correct behaviour — turned it red.
             wall_naive = datetime(local.year, local.month, local.day, hour, minute)
-            assert wall_naive.replace(tzinfo=tz.tzinfo).utcoffset() is None, (
-                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
+            round_tripped = (
+                wall_naive.replace(tzinfo=tz.tzinfo)
+                .astimezone(UTC)
+                .astimezone(tz.tzinfo)
+                .replace(tzinfo=None)
+            )
+            assert round_tripped != wall_naive, (
+                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected "
+                f"{(hour, minute)} — and {wall_naive:%Y-%m-%d %H:%M} is a real "
+                f"local time that day, so this is a genuine miss"
             )
             assert (local.hour - hour, local.minute - minute) == (1, 0), (
                 f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
