@@ -57,20 +57,17 @@ jobs:
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
-      # This job checks out the PR ref and hands a token to
-      # `scripts/ci/runner.sh select`. Pinning the checkout to the default
-      # branch instead is NOT an option: this composite and that script do not
-      # exist on master yet, so a master checkout fails with exit 127 (measured
-      # — run 33301039221). Revisit once they have landed there.
-      #
-      # What makes that acceptable meanwhile: GitHub does not pass Actions
-      # secrets to a workflow triggered by a fork's `pull_request`, so
-      # HOMELAB_GH_PAT is empty on exactly the runs whose code we do not
-      # control, and the composite falls back to `github.token`. A same-repo
-      # PR's author already has write access. See the token expression below,
-      # which says so in code rather than relying on that default.
+      # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
+      # `scripts/ci/runner.sh select` through the composite below, and on a
+      # `pull_request` event the head ref is code the PR author controls — a
+      # checkout of it would run their script with our secret. Pinning the
+      # checkout to the default branch means the composite and the script both
+      # come from a reviewed commit. The cost: a PR changing runner.sh does not
+      # exercise the change in THIS job (it does everywhere else) — the right
+      # trade for a job whose only purpose is routing.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
       - name: Cancel superseded runs of this branch
@@ -85,7 +82,7 @@ jobs:
           runner-label: ${{ inputs.runner_label || 'gaia-home' }}
           force-home: ${{ inputs.force_home && 'true' || 'false' }}
           force-github: ${{ inputs.force_github && 'true' || 'false' }}
-          github-token: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (secrets.HOMELAB_GH_PAT || github.token) || github.token }}
+          github-token: ${{ secrets.HOMELAB_GH_PAT || github.token }}
 
       - name: Summary
         run: |
