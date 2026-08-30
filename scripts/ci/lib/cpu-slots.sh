@@ -46,8 +46,11 @@
 # there is no TOCTOU.
 #
 # Env:
-#   GAIA_CPU_TOKENS         Pool size (TOTAL). Default: physical core count from
-#                           lscpu (Core(s)*Socket(s)); falls back to nproc/2.
+#   GAIA_CPU_TOKENS         Pool size (TOTAL). Default: the thread count (nproc,
+#                           16 on the box). At nproc a single run's own xdist
+#                           workers fit exactly, so a lone run never blocks
+#                           (neutral) while two overlapping runs are held to the
+#                           thread count instead of thrashing to ~4x.
 #   GAIA_CPU_SLOTS_DIR      Override the pool directory (tests point this at a
 #                           throwaway path).
 #   GAIA_CPU_SLOTS_TIMEOUT  Max seconds to wait before failing open (600).
