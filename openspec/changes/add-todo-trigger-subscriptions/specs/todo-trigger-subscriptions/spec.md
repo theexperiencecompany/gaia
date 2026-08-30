@@ -17,17 +17,6 @@ Registration SHALL record how the subscription is resolved at dispatch time: by 
 - **WHEN** a subscription is requested for a trigger whose integration is not connected
 - **THEN** registration is rejected with a message naming the required integration
 
-### Requirement: The agent can discover which triggers a user can watch
-The system SHALL expose a tool that lists the watchable triggers for the current user: the intersection of the matchable-fields catalog with the integrations that user has connected. It MUST NOT list a trigger whose integration is not connected, since a subscription to it could never fire. When the user has no connected integrations, the tool SHALL say so rather than return an empty list.
-
-#### Scenario: Only connected integrations are offered
-- **WHEN** the agent lists available triggers for a user who has connected Gmail and Slack but not Linear
-- **THEN** the Gmail and Slack triggers are returned and the Linear triggers are not
-
-#### Scenario: Nothing connected
-- **WHEN** the agent lists available triggers for a user with no connected integrations
-- **THEN** the response says no integrations are connected, rather than an empty catalog
-
 ### Requirement: Conditions validate against curated matchable fields
 Each trigger SHALL expose a curated matchable-fields catalog: payload fields (name, type, description) verified to arrive reliably. Subscription conditions MUST reference only fields in that catalog, with operators valid for the field's type. Invalid conditions MUST be rejected at subscription time, never silently stored.
 

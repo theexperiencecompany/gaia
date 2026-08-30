@@ -23,7 +23,6 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
     SubscriptionStatus,
 )
-from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
@@ -34,7 +33,6 @@ from app.services.triggers.subscription_service import (
     unregister_subscription,
 )
 from app.services.user_service import get_user_by_id
-from app.services.workflow.trigger_service import TriggerService
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
@@ -896,54 +894,12 @@ async def list_tracked_todos(
 
 
 @tool
-async def list_available_triggers(config: RunnableConfig) -> str:
-    """List the integration events this todo can watch, for THIS user right now.
-
-    Returns only triggers whose integration the user has actually connected, so
-    every slug it returns can be subscribed to. Call this before
-    subscribe_todo_to_trigger when you are unsure what is watchable, instead of
-    guessing a slug: a watch on an unconnected integration cannot fire.
-    """
-    user_id = config.get("metadata", {}).get("user_id")
-    if not user_id:
-        return _ERR_NO_USER_ID
-
-    connected = await get_connected_integration_ids(user_id)
-    if not connected:
-        return (
-            "No integrations are connected, so there is nothing to watch yet. "
-            "The user connects an integration (Gmail, Calendar, Slack, Linear, ...) "
-            "on their integrations page first."
-        )
-
-    available = [
-        schema
-        for schema in await TriggerService.get_all_workflow_triggers()
-        if schema.slug in MATCHABLE_TRIGGERS and schema.integration_id in connected
-    ]
-    if not available:
-        return "None of the connected integrations publish a watchable trigger."
-
-    by_provider: dict[str, list[str]] = {}
-    for schema in available:
-        by_provider.setdefault(schema.provider, []).append(
-            f"  {schema.slug} ({schema.name}): {schema.description}"
-        )
-
-    lines = ["Watchable triggers for this user:"]
-    for provider in sorted(by_provider):
-        lines.append(f"{provider}:")
-        lines.extend(sorted(by_provider[provider]))
-    lines.append("Call list_trigger_fields <slug> to see the fields you can write conditions on.")
-    return "\n".join(lines)
-
-
-@tool
 async def list_trigger_fields(
     trigger_name: Annotated[
         str,
         "GAIA trigger slug, e.g. 'gmail_new_message', 'calendar_event_starting_soon', "
-        "'slack_new_message'. Use list_available_triggers to see the valid slugs.",
+        "'slack_new_message'. Call with a wrong name to get the full list of "
+        "subscribable triggers back.",
     ],
 ) -> str:
     """Show exactly what an integration trigger delivers, before subscribing to it.
@@ -1121,7 +1077,6 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
-    list_available_triggers,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,

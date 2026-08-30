@@ -22,8 +22,8 @@ Two modes:
 A long-running todo waiting on something outside GAIA (a reply, a meeting, an
 issue changing) should watch for it rather than only being re-checked on a
 schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
-Call list_available_triggers to see what this user can watch, then list_trigger_fields
-to see what a trigger delivers; conditions must name real payload fields.
+Call list_trigger_fields first to see what a trigger actually delivers (call it with
+a wrong name to list every subscribable trigger); conditions must name real payload fields.
 Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
 
