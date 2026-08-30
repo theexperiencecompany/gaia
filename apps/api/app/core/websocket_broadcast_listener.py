@@ -77,7 +77,7 @@ async def _consume() -> None:
                 continue
             raw = message["data"]
             if isinstance(raw, bytes):
-                raw = raw.decode("utf-8")
+                raw = raw.decode()
             await _dispatch(raw)
     finally:
         with contextlib.suppress(Exception):

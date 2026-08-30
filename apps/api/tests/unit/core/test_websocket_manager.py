@@ -11,14 +11,19 @@ Covers:
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 import pytest
 
-from app.constants.websocket import WEBSOCKET_BROADCAST_CHANNEL
+from app.constants.log_tags import LogTag
+from app.constants.websocket import (
+    WEBSOCKET_BROADCAST_CHANNEL,
+    WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS,
+)
 from app.core import websocket_broadcast_listener as listener
 from app.core.websocket_manager import (
     WebSocketBroadcastError,
@@ -434,3 +439,149 @@ async def test_workers_publish_without_needing_to_be_the_main_app(fake_redis) ->
     await pubsub.aclose()
 
     assert received == {"user_id": "u4", "message": {"type": "from_arq"}}
+
+
+# ---------------------------------------------------------------------------
+# broadcast listener: _dispatch and _listener_loop
+# ---------------------------------------------------------------------------
+
+_MOD = "app.core.websocket_broadcast_listener"
+
+
+@asynccontextmanager
+async def _noop_log_context(*_a: Any, **_k: Any):
+    yield
+
+
+class TestBroadcastDispatchLogging:
+    @staticmethod
+    async def _run(raw: str, *, deliver_return: int = 0):
+        fake_log = MagicMock()
+        deliver = AsyncMock(return_value=deliver_return)
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.websocket_manager.deliver_local", deliver),
+        ):
+            await listener._dispatch(raw)
+        return fake_log, ctx, deliver
+
+    async def test_delivers_a_valid_broadcast_to_local_sockets(self):
+        raw = json.dumps({"user_id": "u1", "message": {"type": "x"}})
+        fake_log, ctx, deliver = await self._run(raw, deliver_return=3)
+
+        deliver.assert_awaited_once_with("u1", {"type": "x"})
+        ctx.assert_called_once_with("websocket_broadcast")
+        fake_log.set.assert_any_call(user={"id": "u1"})
+        fake_log.set.assert_any_call(result_count=3)
+
+    async def test_drops_malformed_json_with_a_reason(self):
+        try:
+            json.loads("not-json")
+        except json.JSONDecodeError as e:
+            expected_error = str(e)
+
+        fake_log, _ctx, deliver = await self._run("not-json")
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped malformed WebSocket broadcast",
+            reason="json_decode",
+            error=expected_error,
+            error_type="JSONDecodeError",
+            raw_length=len("not-json"),
+        )
+
+    async def test_drops_payload_with_non_string_user_id(self):
+        fake_log, _ctx, deliver = await self._run(json.dumps({"user_id": 1, "message": {}}))
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped WebSocket broadcast missing user_id or message",
+            reason="invalid_payload",
+        )
+
+    async def test_drops_payload_with_non_dict_message(self):
+        # user_id is a valid str but message is not a dict — the `or` in the guard
+        # must still drop it (an `and` would let it through).
+        fake_log, _ctx, deliver = await self._run(json.dumps({"user_id": "u1", "message": "x"}))
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped WebSocket broadcast missing user_id or message",
+            reason="invalid_payload",
+        )
+
+
+class TestBroadcastListenerLoop:
+    async def test_logs_and_returns_when_redis_is_absent(self):
+        fake_log = MagicMock()
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.redis_cache") as rc,
+        ):
+            rc.redis = None
+            await listener._listener_loop()
+        fake_log.error.assert_called_once_with(
+            f"{LogTag.STARTUP} WebSocket broadcast listener disabled (no Redis)"
+        )
+        ctx.assert_called_once_with("websocket_broadcast_subscription")
+
+    async def test_resubscribes_and_logs_when_the_subscription_drops(self):
+        fake_log = MagicMock()
+        consume = AsyncMock(side_effect=RuntimeError("dropped"))
+        # Break the otherwise-infinite loop on the first resubscribe sleep.
+        sleep = AsyncMock(side_effect=asyncio.CancelledError)
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.redis_cache") as rc,
+            patch(f"{_MOD}._consume", consume),
+            patch(f"{_MOD}.asyncio.sleep", sleep),
+        ):
+            rc.redis = MagicMock()
+            with pytest.raises(asyncio.CancelledError):
+                await listener._listener_loop()
+
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} WebSocket broadcast listener dropped, resubscribing",
+            error="dropped",
+            error_type="RuntimeError",
+        )
+        sleep.assert_awaited_once_with(WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS)
+        ctx.assert_any_call("websocket_broadcast_subscription")
+
+
+class TestBroadcastConsume:
+    @staticmethod
+    def _client_with(pubsub):
+        client = MagicMock()
+        client.pubsub = MagicMock(return_value=pubsub)
+        return client
+
+    async def test_subscribes_decodes_dispatches_and_cleans_up(self):
+        pubsub = AsyncMock()
+        pubsub.get_message = AsyncMock(
+            side_effect=[{"type": "message", "data": b'{"x":1}'}, asyncio.CancelledError()]
+        )
+        dispatch = AsyncMock()
+        with (
+            patch(f"{_MOD}.redis_cache") as rc,
+            patch(f"{_MOD}._dispatch", dispatch),
+        ):
+            rc.redis = self._client_with(pubsub)
+            with pytest.raises(asyncio.CancelledError):
+                await listener._consume()
+
+        pubsub.subscribe.assert_awaited_once_with(WEBSOCKET_BROADCAST_CHANNEL)
+        pubsub.get_message.assert_awaited_with(ignore_subscribe_messages=True, timeout=1.0)
+        dispatch.assert_awaited_once_with('{"x":1}')  # bytes decoded to str
+        pubsub.unsubscribe.assert_awaited_once_with(WEBSOCKET_BROADCAST_CHANNEL)
+        pubsub.aclose.assert_awaited_once()
+
+    async def test_teardown_errors_do_not_mask_the_loop_exit(self):
+        pubsub = AsyncMock()
+        pubsub.get_message = AsyncMock(side_effect=asyncio.CancelledError())
+        pubsub.unsubscribe = AsyncMock(side_effect=RuntimeError("redis gone"))
+        with patch(f"{_MOD}.redis_cache") as rc:
+            rc.redis = self._client_with(pubsub)
+            with pytest.raises(asyncio.CancelledError):
+                await listener._consume()
