@@ -102,9 +102,7 @@ class TestMainAppRegistersTheBroadcastListener:
         # broadcast listener — and it must be func + name + required exactly, or a
         # replica silently stops delivering pushes.
         monkeypatch.setattr(provider_registration.settings, "ENABLE_LAZY_LOADING", True)
-        monkeypatch.setattr(
-            provider_registration, "init_websocket_broadcast_listener", AsyncMock()
-        )
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
         monkeypatch.setattr(provider_registration, "resync_stale_user_workspaces", AsyncMock())
         monkeypatch.setattr(provider_registration, "spawn_logged_task", lambda *a, **k: None)
 
@@ -129,9 +127,7 @@ class TestMainAppRegistersTheBroadcastListener:
     async def test_the_worker_does_not_register_the_broadcast_listener(
         self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            provider_registration, "init_websocket_broadcast_listener", AsyncMock()
-        )
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
         real = provider_registration.StartupService
         seen: list[tuple] = []
 
