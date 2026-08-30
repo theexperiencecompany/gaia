@@ -22,6 +22,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/cpu-slots.sh
+source "$(dirname "$0")/lib/cpu-slots.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -94,10 +96,18 @@ cmd_slice() {
     fi
   fi
 
+  # Host CPU governor: this slice's real appetite is its xdist worker count, so
+  # take that many tokens for the duration of the run. On the shared box this is
+  # what makes the four slices, the nx build and the mutation shards queue to the
+  # physical-core budget instead of oversubscribing 16 threads ~2.3x. A no-op off
+  # the box, and the serial bridge slice (XDIST_N=0) takes nothing. Released after
+  # the run; the lib's EXIT trap is the safety net for a failed or cancelled job.
+  local N_SLOTS="${XDIST_N:?XDIST_N required}"
+  cpu_slots_acquire "$N_SLOTS"
   # Re-entered as a subprocess on purpose: /usr/bin/time -v measures the whole
   # pytest tree, and the gate needs its own exit status through the pipe.
   /usr/bin/time -v bash "$SCRIPT_DIR/pytest.sh" flake-gate \
-    uv run --frozen pytest -n "${XDIST_N:?XDIST_N required}" --dist worksteal \
+    uv run --frozen pytest -n "$N_SLOTS" --dist worksteal \
     "${TARGETS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} \
     -m 'not composio and not model_onboarding and not schemathesis' \
     --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
@@ -107,6 +117,7 @@ cmd_slice() {
   # console upload); a single multi-MB line — a parametrize id carrying a 2 MB
   # string in --durations, measured 2026-08-29 — spun Runner.Worker at 100 %
   # CPU until the job timeout. 20k chars keeps every real traceback intact.
+  cpu_slots_release "$N_SLOTS"
   ci_ok "Python tests ($SLICE): OK (xdist=$XDIST_N coverage=${COVERAGE:-off})"
 }
 
