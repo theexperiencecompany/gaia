@@ -136,7 +136,8 @@ cmd_docker_inputs() {
     pyproject.toml
     apps/api/pyproject.toml
     libs/pyproject.toml
-    scripts/ci/check-playwright-pin.sh
+    # The pin gate that keeps the browsers stage honest lives in here now.
+    scripts/ci/audit.sh
     # The per-Dockerfile ignore file decides what enters the build CONTEXT, so
     # editing it changes the image as surely as editing the Dockerfile — a
     # newly-excluded path silently drops out of the layer while this said

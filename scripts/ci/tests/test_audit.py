@@ -1,4 +1,6 @@
-"""pnpm-audit.sh allowlist and expiry handling, exercised with a stubbed pnpm.
+"""audit.sh: the standing dependency and pin gates.
+
+`pnpm` allowlist and expiry handling, exercised with a stubbed pnpm.
 
 The real registry is never contacted: a fake ``pnpm`` on PATH prints a canned
 ``pnpm audit --json`` report and exits 1 the way the real one does whenever it
@@ -16,7 +18,7 @@ import textwrap
 
 import pytest
 
-SCRIPT = Path(__file__).with_name("pnpm-audit.sh")
+SCRIPT = Path(__file__).resolve().parent.parent / "audit.sh"
 
 
 def advisory(num: int, module: str, severity: str, cves: list[str]) -> dict:
@@ -75,7 +77,12 @@ def run(
         "PNPM_AUDIT_LEVEL": level,
     }
     return subprocess.run(
-        ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=60, check=False
+        ["bash", str(SCRIPT), "pnpm"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
 
 

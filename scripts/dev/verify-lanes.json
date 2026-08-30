@@ -200,7 +200,7 @@
       "heavy": false,
       "timeout_s": 120,
       "require_cmd": [],
-      "command": "scripts/ci/evlog-ratchet.sh"
+      "command": "scripts/ci/audit.sh evlog"
     },
     {
       "name": "wide-event-conformance",

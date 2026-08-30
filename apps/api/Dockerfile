@@ -25,7 +25,7 @@
 #
 # PLAYWRIGHT_VERSION / PATCHRIGHT_VERSION must equal the uv.lock entries: a
 # drift means the runtime's crawl4ai looks for a revision that is not in
-# /opt/browsers and Chromium fails to launch. scripts/ci/check-playwright-pin.sh
+# /opt/browsers and Chromium fails to launch. scripts/ci/audit.sh playwright-pin
 # enforces both in CI, and unlike before the pin is load-bearing — nothing
 # downloads browsers at runtime to paper over a mismatch.
 FROM python:3.12-slim AS browsers

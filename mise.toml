@@ -447,10 +447,10 @@ run = "nx affected -t type-check --parallel=3"
 
 [tasks."audit:deps"]
 description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-audit-allowlist.json"
-run = "bash scripts/ci/pnpm-audit.sh"
+run = "bash scripts/ci/audit.sh pnpm"
 
 [tasks."audit:deps:test"]
-description = "Unit tests for the CI shell gates (runner.sh, pnpm-audit.sh)"
+description = "Unit tests for the CI shell gates (runner.sh, audit.sh, ...)"
 run = "uv run --no-project --with pytest pytest scripts/ci -q"
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -514,7 +514,7 @@ jobs:
         run: bash scripts/ci/changes.sh docker-inputs
       - name: Playwright pin matches uv.lock
         if: steps.inputs.outputs.build != 'false'
-        run: bash scripts/ci/check-playwright-pin.sh
+        run: bash scripts/ci/audit.sh playwright-pin
       - name: Build api image (timed, not pushed)
         if: steps.inputs.outputs.build != 'false'
         # Explicit shell = `bash -eo pipefail`. The default `run:` shell is bash -e

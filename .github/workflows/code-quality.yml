@@ -436,7 +436,7 @@ jobs:
       # fail the lane unless allowlisted with a reason and an expiry in
       # config/pnpm-audit-allowlist.json (an expired entry fails the lane too).
       - name: pnpm audit (production dependencies, high and above)
-        run: bash scripts/ci/pnpm-audit.sh
+        run: bash scripts/ci/audit.sh pnpm
 
   # --- TypeScript strict type-check ---------------------------------------
   type-check:
@@ -809,7 +809,7 @@ jobs:
             exit 0
           fi
           echo "::group::evlog map — changed files vs merge-base (per-file ratchet)"
-          scripts/ci/evlog-ratchet.sh
+          scripts/ci/audit.sh evlog
           echo "::endgroup::"
           echo "observability: OK (no per-file regression on changed Python files)"
       - name: Bots regression gate (full surface, held at 100)
@@ -928,7 +928,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
       - name: Install pint + promtool (pinned release binaries, same versions prod runs)
-        run: bash scripts/ci/install-alert-rule-tools.sh
+        run: bash scripts/ci/audit.sh alert-rule-tools
       - name: Extract rules and enforce test coverage (no silent skips)
         run: |
           trap 'echo "::error::repro: uv run --no-build tools/alert-rules/extract_promql.py"' ERR

@@ -1,5 +1,5 @@
 {
-  "_comment": "Advisories scripts/ci/pnpm-audit.sh may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. The 2026-08-29 sweep cleared 15 of the original 17 entries by pinning fixed versions through pnpm.overrides in the root package.json (CLAUDE.md §9). What remains is image-size, which has no fixed release on the registry at all — pnpm audit reports patched_versions '<0.0.0' for both advisories, so there is nothing to bump to.",
+  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. The 2026-08-29 sweep cleared 15 of the original 17 entries by pinning fixed versions through pnpm.overrides in the root package.json (CLAUDE.md §9). What remains is image-size, which has no fixed release on the registry at all — pnpm audit reports patched_versions '<0.0.0' for both advisories, so there is nothing to bump to.",
   "allow": [
     {
       "id": "GHSA-5p2g-fcmc-qvqq",
