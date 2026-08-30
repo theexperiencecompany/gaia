@@ -53,12 +53,28 @@ if [ -z "$TESTFILE_ARG" ]; then
   TESTFILE_ARG="tests/unit/$(dirname "$REL")/test_$(basename "$REL" .py).py"
 fi
 # PR-changed line ranges for this module ([[start,end],...], compact JSON).
-# The gate is diff-driven: survivors on lines the PR did not touch are
-# noted, not failures. Passed by the CI lane; empty locally.
-CHANGED_RANGES="${3:-[]}"
+# The gate is diff-driven: survivors on lines the PR did not touch are noted,
+# not failures. The CI lane passes them; omit the argument and they are derived
+# from the same code the lane uses (mutation-matrix.py --scope), so a local run
+# scopes identically instead of defaulting to a scope that cannot fail.
+CHANGED_RANGES="${3-}"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT/apps/api"
+
+if [ -z "$CHANGED_RANGES" ]; then
+  CHANGED_RANGES="$(cd "$REPO_ROOT" && python3 scripts/ci/mutation-matrix.py --scope "$MODULE")" || exit 1
+fi
+# An empty scope buckets EVERY survivor as out-of-scope, so the run prints "no
+# survivors" and exits 0 no matter how broken the module is. That false green
+# is the one result this gate must never produce — refuse instead.
+if [ "$CHANGED_RANGES" = "[]" ] || [ -z "$CHANGED_RANGES" ]; then
+  echo "mutation: empty line scope for $MODULE — refusing to run." >&2
+  echo "  An empty scope classifies every survivor as out-of-scope and exits 0," >&2
+  echo "  which reports a pass it did not earn. Pass explicit ranges as argument 3," >&2
+  echo "  or let them be derived (omit it) from the diff against the base branch." >&2
+  exit 2
+fi
 
 # Argument 2 is either ONE path — what a human types, and what the derived
 # default above produces — or a compact JSON array of them, which is how the CI
@@ -145,7 +161,12 @@ _phase() {
 # log, and nothing can outlive this script holding its stdout open.
 _cleanup() {
   rm -f "$PHASE_FILE"
-  [ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"
+  # Explicit if, not `&&`: a short-circuit here returns 1 when the keep-var is
+  # set, and an EXIT trap's failing last command clobbers the script's exit
+  # status — a passing verdict would report EXIT=1.
+  if [ -z "${MUTMUT_KEEP_WORKDIR:-}" ]; then
+    rm -rf "$WORKDIR"
+  fi
 }
 trap _cleanup EXIT
 # EXIT alone does not run on a signal, so a killed run would leave its scratch

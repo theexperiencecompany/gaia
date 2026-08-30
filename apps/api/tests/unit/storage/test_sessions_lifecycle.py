@@ -20,6 +20,7 @@ import json
 import os
 from pathlib import Path
 import stat
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -615,3 +616,22 @@ async def test_provisioning_without_a_connected_set_materializes_an_empty_one(
     await lc.provision_user_workspace(USER)
     assert ("skills", set()) in materializers
     assert (mount / "users" / USER / CONNECTED_MARKER).read_text() == ""
+
+
+async def test_provisioning_schedules_a_sync_for_every_workspace_area(
+    linker: list[str],
+    materializers: list[tuple[str, Any]],
+    instructions_source: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Each registered area is told WHOSE workspace to resync — a None here
+    # schedules nothing observable and the projection silently never lands.
+    scheduled: list[str | None] = []
+    monkeypatch.setattr(
+        "app.services.workspace_areas.all_areas",
+        lambda: (SimpleNamespace(schedule_sync=scheduled.append),),
+    )
+
+    await lc.provision_user_workspace(USER)
+
+    assert scheduled == [USER]

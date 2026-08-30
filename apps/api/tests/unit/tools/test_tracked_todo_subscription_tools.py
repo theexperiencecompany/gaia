@@ -370,7 +370,10 @@ class TestToolsAreReachable:
 
     def test_they_are_bound_to_the_executor_up_front(self) -> None:
         source = Path(build_graph.__file__).read_text()
-        executor_block = source.split('agent_name="executor_agent"', 1)[1].split("]", 1)[0]
+        # Anchor on the executor builder and its initial_tool_ids list directly:
+        # agent_name now sits after the list in the config-object call shape.
+        executor_fn = source.split("def build_executor_graph", 1)[1]
+        executor_block = executor_fn.split("initial_tool_ids=[", 1)[1].split("]", 1)[0]
 
         for name in (
             "list_available_triggers",

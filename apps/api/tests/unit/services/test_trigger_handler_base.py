@@ -1,18 +1,12 @@
 """Tests for TriggerHandler.unregister in app.services.triggers.base."""
 
 from collections.abc import Iterator
-import sys
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from composio_client import APIStatusError, InternalServerError, PermissionDeniedError
 import httpx
 import pytest
-
-# Pre-populate the circular-import path with a stub so importing the base
-# handler does not trigger the full workflow → trigger_service → triggers loop.
-sys.modules.setdefault("app.services.workflow.queue_service", MagicMock())
-sys.modules.setdefault("app.services.workflow.trigger_service", MagicMock())
 
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep

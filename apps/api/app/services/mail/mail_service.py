@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import json
 from typing import Any
 
@@ -88,15 +89,43 @@ def _process_attachments(attachments: list[UploadFile]) -> list[GmailAttachmentP
     return processed
 
 
+@dataclass
+class EmailContent:
+    """Subject/body plus the secondary recipients of one Gmail compose or draft."""
+
+    subject: str
+    body: str
+    extra_recipients: list[str] | None = None
+    cc_list: list[str] | None = None
+    bcc_list: list[str] | None = None
+
+
+@dataclass
+class MessageFetchOptions:
+    """Presentation knobs for fetched/searched Gmail messages."""
+
+    output_format: str | None = None
+    include_payload: bool | None = None
+    verbose: bool | None = None
+
+
+@dataclass
+class LabelChanges:
+    """Optional field updates for an existing Gmail label."""
+
+    name: str | None = None
+    label_list_visibility: str | None = None
+    message_list_visibility: str | None = None
+    background_color: str | None = None
+    text_color: str | None = None
+
+
 async def send_email(
     user_id: str,
     to: str,
-    subject: str,
-    body: str,
+    content: EmailContent,
+    *,
     thread_id: str | None = None,
-    extra_recipients: list[str] | None = None,
-    cc_list: list[str] | None = None,
-    bcc_list: list[str] | None = None,
     attachments: list[UploadFile] | None = None,
 ) -> GmailToolResult:
     """Send an email via Composio Gmail tools.
@@ -121,9 +150,9 @@ async def send_email(
         # consistently.
         parameters: dict[str, Any] = {
             "recipient_email": to,
-            "extra_recipients": extra_recipients or [],
-            body_param: body,
-            "subject": subject,
+            "extra_recipients": content.extra_recipients or [],
+            body_param: content.body,
+            "subject": content.subject,
         }
 
         # Add thread_id for replies
@@ -131,10 +160,10 @@ async def send_email(
             parameters["thread_id"] = thread_id
 
         # Add optional parameters
-        if cc_list:
-            parameters["cc"] = cc_list
-        if bcc_list:
-            parameters["bcc"] = bcc_list
+        if content.cc_list:
+            parameters["cc"] = content.cc_list
+        if content.bcc_list:
+            parameters["bcc"] = content.bcc_list
         if attachments:
             parameters["attachments"] = await asyncio.to_thread(_process_attachments, attachments)
 
@@ -372,17 +401,16 @@ async def search_messages(
     query: str | None = None,
     max_results: int = 20,
     page_token: str | None = None,
-    message_format: str | None = None,
-    include_payload: bool | None = None,
-    verbose: bool | None = None,
+    options: MessageFetchOptions | None = None,
 ) -> GmailMessagesResponse:
     """
     Search Gmail messages using Composio Gmail tool.
 
-    Pass message_format="metadata" with include_payload=False and verbose=False to
-    skip body decode and bypass GMAIL_FULL_FETCH_HARD_LIMIT.
+    Pass MessageFetchOptions(output_format="metadata", include_payload=False,
+    verbose=False) to skip body decode and bypass GMAIL_FULL_FETCH_HARD_LIMIT.
     """
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
+    opts = options or MessageFetchOptions()
     try:
         parameters: dict[str, Any] = {
             "query": query or "",
@@ -390,12 +418,12 @@ async def search_messages(
         }
         if page_token:
             parameters["page_token"] = page_token
-        if message_format is not None:
-            parameters["format"] = message_format
-        if include_payload is not None:
-            parameters["include_payload"] = include_payload
-        if verbose is not None:
-            parameters["verbose"] = verbose
+        if opts.output_format is not None:
+            parameters["format"] = opts.output_format
+        if opts.include_payload is not None:
+            parameters["include_payload"] = opts.include_payload
+        if opts.verbose is not None:
+            parameters["verbose"] = opts.verbose
 
         result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_EMAILS", parameters)
 
@@ -411,7 +439,7 @@ async def search_messages(
 
     except Exception:
         log.set_ns("mail", success=False)
-        return GmailMessagesResponse(messages=[])
+        raise
 
 
 async def create_label(
@@ -455,11 +483,7 @@ async def create_label(
 async def update_label(
     user_id: str,
     label_id: str,
-    name: str | None = None,
-    label_list_visibility: str | None = None,
-    message_list_visibility: str | None = None,
-    background_color: str | None = None,
-    text_color: str | None = None,
+    changes: LabelChanges,
 ) -> GmailToolResult:
     """Update an existing Gmail label."""
     log.info(f"{LogTag.MAIL} Updating label", label_id=label_id)
@@ -469,20 +493,20 @@ async def update_label(
         }
 
         # Add parameters if provided
-        if name:
-            parameters["name"] = name
-        if label_list_visibility:
-            parameters["label_list_visibility"] = label_list_visibility
-        if message_list_visibility:
-            parameters["message_list_visibility"] = message_list_visibility
+        if changes.name:
+            parameters["name"] = changes.name
+        if changes.label_list_visibility:
+            parameters["label_list_visibility"] = changes.label_list_visibility
+        if changes.message_list_visibility:
+            parameters["message_list_visibility"] = changes.message_list_visibility
 
         # Add color parameters if provided
-        if background_color or text_color:
+        if changes.background_color or changes.text_color:
             color_data = {}
-            if background_color:
-                color_data["background_color"] = background_color
-            if text_color:
-                color_data["text_color"] = text_color
+            if changes.background_color:
+                color_data["background_color"] = changes.background_color
+            if changes.text_color:
+                color_data["text_color"] = changes.text_color
             parameters["color"] = json.dumps(color_data)
 
         return await invoke_gmail_tool(user_id, "GMAIL_PATCH_LABEL", parameters)
@@ -645,10 +669,7 @@ async def update_draft(
     user_id: str,
     draft_id: str,
     to_list: list[str],
-    subject: str,
-    body: str,
-    cc_list: list[str] | None = None,
-    bcc_list: list[str] | None = None,
+    content: EmailContent,
 ) -> GmailToolResult:
     """Update an existing Gmail draft.
 
@@ -659,15 +680,15 @@ async def update_draft(
         parameters = {
             "draft_id": draft_id,
             "to": to_list,
-            "subject": subject,
-            "body": body,
+            "subject": content.subject,
+            "body": content.body,
         }
 
         # Add optional parameters if provided
-        if cc_list:
-            parameters["cc"] = cc_list
-        if bcc_list:
-            parameters["bcc"] = bcc_list
+        if content.cc_list:
+            parameters["cc"] = content.cc_list
+        if content.bcc_list:
+            parameters["bcc"] = content.bcc_list
 
         result = await invoke_gmail_tool(user_id, "GMAIL_UPDATE_DRAFT", parameters)
 

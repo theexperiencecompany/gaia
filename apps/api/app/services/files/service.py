@@ -70,22 +70,28 @@ def _page_count(page_wise_summary: PageWiseSummary) -> int:
     return 1 if page_wise_summary else 0
 
 
+@dataclass
+class _UploadSummary:
+    """AI summary for one upload: a short description plus per-page details."""
+
+    description: str | None
+    page_wise_summary: PageWiseSummary
+
+
 def _log_upload_context(
     upload: _PreparedUpload,
     conversation_id: str | None,
-    description: str | None,
-    page_wise_summary: PageWiseSummary,
+    summary: _UploadSummary,
 ) -> None:
     log.set(
         file=FileContext(
             operation="upload",
             file_id=upload.file_id,
-            filename=upload.filename,
             content_type=upload.content_type,
             size_bytes=upload.size_bytes,
             conversation_id=conversation_id or "",
-            has_summary=bool(description),
-            page_count=_page_count(page_wise_summary),
+            has_summary=bool(summary.description),
+            page_count=_page_count(summary.page_wise_summary),
         )
     )
 
@@ -95,8 +101,7 @@ def _build_file_metadata(
     *,
     user_id: str,
     url: str,
-    description: str | None,
-    page_wise_summary: PageWiseSummary,
+    summary: _UploadSummary,
     sandbox_path: str | None,
     conversation_id: str | None,
 ) -> FileDocument:
@@ -110,8 +115,8 @@ def _build_file_metadata(
         url=url,
         public_id=upload.public_id,
         user_id=user_id,
-        description=description,
-        page_wise_summary=page_wise_summary,
+        description=summary.description,
+        page_wise_summary=summary.page_wise_summary,
         sandbox_path=sandbox_path,
         conversation_id=conversation_id,
         created_at=now,
@@ -166,7 +171,8 @@ class FileService:
                 ),
             )
             description, page_wise_summary = process_summary(generated_summary)
-            _log_upload_context(upload, conversation_id, description, page_wise_summary)
+            summary = _UploadSummary(description=description, page_wise_summary=page_wise_summary)
+            _log_upload_context(upload, conversation_id, summary)
 
             # 2. Mirror into the session workspace + summary sidecar (best-effort; needs JuiceFS).
             sandbox_path = (
@@ -176,8 +182,7 @@ class FileService:
                     filename=upload.filename,
                     content=upload.content,
                     content_type=content_type,
-                    description=description,
-                    page_wise_summary=page_wise_summary,
+                    summary=summary,
                 )
                 if conversation_id
                 else None
@@ -188,8 +193,7 @@ class FileService:
                 upload,
                 user_id=user_id,
                 url=blob_url,
-                description=description,
-                page_wise_summary=page_wise_summary,
+                summary=summary,
                 sandbox_path=sandbox_path,
                 conversation_id=conversation_id,
             )
@@ -229,7 +233,7 @@ class FileService:
                 conversation_id=conversation_id,
                 exc_info=True,
             )
-            raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
     async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
@@ -350,7 +354,7 @@ class FileService:
                     conversation_id=conversation_id,
                     exc_info=True,
                 )
-                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")
+                raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}") from e
 
         description_updated = "description" in set_fields
         # updated_at is stamped by the repository.
@@ -409,8 +413,7 @@ class FileService:
         filename: str,
         content: bytes,
         content_type: str,
-        description: str | None,
-        page_wise_summary: PageWiseSummary,
+        summary: _UploadSummary,
     ) -> str | None:
         """Mirror an upload + its summary sidecar into the session workspace (best-effort).
 
@@ -444,8 +447,8 @@ class FileService:
             summary_md=render_summary_markdown(
                 filename=filename,
                 content_type=content_type,
-                description=description,
-                page_wise_summary=page_wise_summary,
+                description=summary.description,
+                page_wise_summary=summary.page_wise_summary,
             ),
         )
         return sandbox_path

@@ -85,14 +85,17 @@ def test_promotes_naive_column_whose_name_requires_quoting(connection: Connectio
 @pytest.mark.usefixtures("legacy_table", "promote_probe_column")
 def test_promotion_reinterprets_the_stored_value_as_utc(connection: Connection) -> None:
     """A naive value is UTC wall-clock, so promotion must reinterpret, not shift."""
+    # _QUALIFIED/_QUOTED_COLUMN are hardcoded test constants, not user input.
     connection.execute(
-        text(f"INSERT INTO {_QUALIFIED} ({_QUOTED_COLUMN}) VALUES (:value)"),
+        text(f"INSERT INTO {_QUALIFIED} ({_QUOTED_COLUMN}) VALUES (:value)"),  # noqa: S608 -- hardcoded test constants, not user input
         {"value": "2026-01-02 03:04:05"},
     )
 
     postgresql._ensure_timestamptz_columns(connection)
 
-    stored = connection.execute(text(f"SELECT {_QUOTED_COLUMN} FROM {_QUALIFIED}")).scalar()
+    stored = connection.execute(
+        text(f"SELECT {_QUOTED_COLUMN} FROM {_QUALIFIED}")  # noqa: S608 -- hardcoded test constants, not user input
+    ).scalar()
     assert stored is not None
     assert stored.tzinfo is not None, "column should be tz-aware after promotion"
     assert stored.astimezone(UTC).replace(tzinfo=None) == datetime(2026, 1, 2, 3, 4, 5)

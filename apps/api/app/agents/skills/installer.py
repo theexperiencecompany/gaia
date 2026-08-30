@@ -9,6 +9,7 @@ JuiceFS stores body-only content (no frontmatter). Metadata lives in MongoDB
 as flat fields on the Skill document.
 """
 
+from dataclasses import dataclass
 import re
 from typing import cast
 
@@ -21,6 +22,7 @@ from app.agents.skills.parser import (
     validate_skill_content,
 )
 from app.agents.skills.registry import (
+    SkillInstallRequest,
     get_skill,
     get_skill_by_name,
     install_skill,
@@ -220,10 +222,7 @@ async def install_from_github(
 
         # Download subdirectories and files recursively
         await _download_github_dir(
-            user_id=user_id,
-            skill_name=metadata.name,
-            owner=owner,
-            repo=repo,
+            _GitHubRef(user_id=user_id, skill_name=metadata.name, owner=owner, repo=repo),
             remote_path=base_path,
             contents=contents,
             file_list=file_list,
@@ -236,19 +235,21 @@ async def install_from_github(
     installed = cast(
         Skill,
         await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=target,
-            vfs_path=storage_path,
-            source=SkillSource.GITHUB,
-            source_url=source_url,
-            body_content=body,
-            files=file_list,
-            skill_license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
+            SkillInstallRequest(
+                user_id=user_id,
+                name=metadata.name,
+                description=metadata.description,
+                target=target,
+                vfs_path=storage_path,
+                source=SkillSource.GITHUB,
+                source_url=source_url,
+                body_content=body,
+                files=file_list,
+                license_name=metadata.license,
+                compatibility=metadata.compatibility,
+                metadata=metadata.metadata,
+                allowed_tools=metadata.allowed_tools,
+            )
         ),
     )
 
@@ -261,11 +262,18 @@ async def install_from_github(
     return installed
 
 
+@dataclass
+class _GitHubRef:
+    """Where a skill's files come from and whose workspace they land in."""
+
+    user_id: str
+    skill_name: str
+    owner: str
+    repo: str
+
+
 async def _download_github_dir(
-    user_id: str,
-    skill_name: str,
-    owner: str,
-    repo: str,
+    ref: _GitHubRef,
     remote_path: str,
     contents: list[dict],
     file_list: list[str],
@@ -282,16 +290,15 @@ async def _download_github_dir(
         if entry_type == "file":
             content = await _fetch_file_content(entry["download_url"], client=client)
             relative_path = entry["path"].removeprefix(f"{remote_path}/")
-            await write_skill_file(user_id, skill_name, relative_path, content)
+            await write_skill_file(ref.user_id, ref.skill_name, relative_path, content)
             file_list.append(relative_path)
 
         elif entry_type == "dir":
-            sub_contents = await _fetch_github_contents(owner, repo, entry["path"], client=client)
+            sub_contents = await _fetch_github_contents(
+                ref.owner, ref.repo, entry["path"], client=client
+            )
             await _download_github_dir(
-                user_id=user_id,
-                skill_name=skill_name,
-                owner=owner,
-                repo=repo,
+                ref,
                 remote_path=remote_path,
                 contents=sub_contents,
                 file_list=file_list,
@@ -355,18 +362,20 @@ async def install_from_inline(
     installed = cast(
         Skill,
         await install_skill(
-            user_id=user_id,
-            name=metadata.name,
-            description=metadata.description,
-            target=metadata.target,
-            vfs_path=storage_path,
-            source=SkillSource.INLINE,
-            body_content=body,
-            files=["SKILL.md"],
-            skill_license=metadata.license,
-            compatibility=metadata.compatibility,
-            metadata=metadata.metadata,
-            allowed_tools=metadata.allowed_tools,
+            SkillInstallRequest(
+                user_id=user_id,
+                name=metadata.name,
+                description=metadata.description,
+                target=metadata.target,
+                vfs_path=storage_path,
+                source=SkillSource.INLINE,
+                body_content=body,
+                files=["SKILL.md"],
+                license_name=metadata.license,
+                compatibility=metadata.compatibility,
+                metadata=metadata.metadata,
+                allowed_tools=metadata.allowed_tools,
+            )
         ),
     )
 

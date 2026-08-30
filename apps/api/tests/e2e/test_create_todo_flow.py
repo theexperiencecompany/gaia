@@ -659,7 +659,12 @@ class TestCreateTodoFlow:
         tool_registry = {t.name: t for t in todo_tools}
 
         # Build graph with all three hooks: filter → manage_system_prompts → todo_pre_model
-        from app.override.langgraph_bigtool.create_agent import create_agent
+        from app.override.langgraph_bigtool.create_agent import (
+            AgentConfig,
+            HookConfig,
+            ToolRetrievalConfig,
+            create_agent,
+        )
 
         pre_model_hooks: list[HookType] = [
             cast(HookType, filter_messages_node),
@@ -669,12 +674,13 @@ class TestCreateTodoFlow:
 
         builder = create_agent(
             llm=fake_llm,
-            agent_name="test_agent",
             tool_registry=tool_registry,
-            disable_retrieve_tools=True,
-            initial_tool_ids=list(tool_registry.keys()),
-            middleware=None,
-            pre_model_hooks=pre_model_hooks,
+            tools_config=ToolRetrievalConfig(
+                disable_retrieve_tools=True,
+                initial_tool_ids=list(tool_registry.keys()),
+            ),
+            hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
+            agent_config=AgentConfig(agent_name="test_agent"),
         )
         graph = builder.compile(checkpointer=memory_saver, store=in_memory_store)
 

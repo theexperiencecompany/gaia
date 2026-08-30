@@ -31,3 +31,32 @@ class TestReadManual:
         result = await read_manual.coroutine(topic="Workflows")
 
         assert result == doc.body
+
+
+class TestAccountTopic:
+    """The account topic is the discovery surface for the account tools."""
+
+    async def test_account_topic_serves_its_manual_body(self) -> None:
+        result = await read_manual.coroutine(topic="account")
+
+        assert result.startswith("# Account")
+        # The body must name every mutation tool — this IS the doors-open doc.
+        for tool in (
+            "update_notification_settings",
+            "update_preferences",
+            "update_custom_instructions",
+            "set_selected_voice",
+            "manage_linked_account",
+        ):
+            assert tool in result, tool
+
+    async def test_account_states_the_billing_limit(self) -> None:
+        body = get_manual("account").body
+
+        assert "cannot modify or cancel subscriptions" in body
+        assert "read-only" in body
+
+    def test_account_appears_in_the_topic_index(self) -> None:
+        index = manual_index_text()
+
+        assert "- account:" in index

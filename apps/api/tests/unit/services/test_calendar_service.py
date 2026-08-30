@@ -9,7 +9,7 @@ those two seams and assert the shape of each request. Pure helpers
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from fastapi import HTTPException
 import pytest
@@ -26,9 +26,13 @@ from app.models.calendar_models import (
     GoogleCalendarEventDateTime,
     GoogleCalendarEventResource,
     GoogleCalendarEventsPage,
+    GoogleCalendarListEntry,
+    RecurrenceData,
+    RecurrenceRule,
 )
 from app.services.calendar_service import (
     _all_day_bounds,
+    _selected_search_calendars,
     create_calendar_event,
     delete_calendar_event,
     fetch_calendar_events,
@@ -76,6 +80,23 @@ def _http_error(status: int, body: dict[str, Any] | None = None) -> AppError:
         status_code=status,
         meta={"provider_response": body or {}},
     )
+
+
+class TestSelectedSearchCalendars:
+    async def test_preferences_matching_no_listed_calendar_search_everything(
+        self, mock_calendar_repo: AsyncMock
+    ):
+        """Stored selections that reference calendars absent from Google's list
+        would otherwise search nothing — the fallback covers every calendar."""
+        mock_calendar_repo.get_for_user.return_value = _prefs(["deleted-cal"])
+        calendars = [
+            GoogleCalendarListEntry(id="cal-a", summary="A"),
+            GoogleCalendarListEntry(id="cal-b", summary="B"),
+        ]
+
+        result = await _selected_search_calendars(USER_ID, calendars)
+
+        assert result == calendars
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +374,59 @@ class TestCreateCalendarEvent:
             await create_calendar_event(event, USER_ID)
         assert exc.value.status_code == 400
 
+    @pytest.mark.parametrize("missing", ["start", "end"])
+    async def test_missing_single_bound_for_timed_event_raises(self, mock_proxy, missing):
+        """Both bounds are required individually — dropping either check lets a
+        half-bounded timed event reach Google."""
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        setattr(event, missing, None)
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Start and end times are required for time-specific events"
+        mock_proxy.assert_not_awaited()
+
+    async def test_invalid_timezone_for_timed_event_raises(self, mock_proxy):
+        """A timezone that fails GoogleCalendarEventDateTime validation surfaces
+        as a 400 'Invalid datetime format' error."""
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        event.timezone = 123  # type-invalid value; set post-construction like above
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert str(exc.value.detail).startswith("Invalid datetime format:")
+        mock_proxy.assert_not_awaited()
+
+    async def test_failing_recurrence_conversion_raises_400(self, mock_proxy):
+        event = EventCreateRequest(
+            summary="x",
+            description="",
+            is_all_day=False,
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+            recurrence=RecurrenceData(rrule=RecurrenceRule(frequency="DAILY")),
+        )
+        recurrence = Mock(spec=["to_google_calendar_format"])
+        recurrence.to_google_calendar_format.side_effect = ValueError("boom")
+        event.recurrence = recurrence
+        with pytest.raises(HTTPException) as exc:
+            await create_calendar_event(event, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid recurrence rule format: boom"
+        mock_proxy.assert_not_awaited()
+
 
 class TestDeleteCalendarEvent:
     async def test_deletes_event(self, mock_proxy):
@@ -372,7 +446,7 @@ class TestDeleteCalendarEvent:
                 EventDeleteRequest(event_id="x", calendar_id="primary"), USER_ID
             )
         assert exc.value.status_code == 404
-        assert "Event not found" in str(exc.value.detail)
+        assert exc.value.detail == "Event not found or already deleted"
 
     async def test_percent_encodes_calendar_id_with_reserved_chars(self, mock_proxy):
         """Google calendar IDs like 'user@group.calendar.google.com' or
@@ -426,6 +500,77 @@ class TestUpdateCalendarEvent:
         get_endpoint = mock_proxy.call_args_list[0].kwargs["endpoint"]
         assert "user@group.calendar.google.com" not in get_endpoint
         assert get_endpoint.endswith("/calendars/user%40group.calendar.google.com/events/evt")
+
+    async def test_get_404_raises_not_found_detail(self, mock_proxy):
+        mock_proxy.side_effect = _http_error(404)
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(
+                EventUpdateRequest(event_id="gone", calendar_id="primary", summary="New"),
+                USER_ID,
+            )
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Event not found or access denied"
+        assert mock_proxy.await_count == 1
+
+    async def test_put_404_raises_not_found_detail(self, mock_proxy):
+        mock_proxy.side_effect = [
+            {"summary": "Old", "description": "d", "start": {}, "end": {}},
+            _http_error(404),
+        ]
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(
+                EventUpdateRequest(event_id="evt", calendar_id="primary", summary="New"),
+                USER_ID,
+            )
+        assert exc.value.status_code == 404
+        assert exc.value.detail == "Event not found or access denied"
+        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET", "PUT"]
+
+    async def test_failing_recurrence_conversion_logs_and_raises_400(self, mock_proxy):
+        existing = {
+            "summary": "Old",
+            "description": "d",
+            "start": {"dateTime": "2025-01-10T09:00:00Z"},
+            "end": {"dateTime": "2025-01-10T10:00:00Z"},
+        }
+        mock_proxy.side_effect = [existing]
+        request = EventUpdateRequest(event_id="evt", calendar_id="primary")
+        recurrence = Mock(spec=["to_google_calendar_format"])
+        recurrence.to_google_calendar_format.side_effect = ValueError("bad rule")
+        request.recurrence = recurrence
+        with (
+            patch("app.services.calendar_service.log") as mock_log,
+            pytest.raises(HTTPException) as exc,
+        ):
+            await update_calendar_event(request, USER_ID)
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "Invalid recurrence rule format: bad rule"
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValueError"
+        mock_proxy.assert_awaited_once()
+
+    async def test_invalid_timezone_offset_in_update_raises_400(self, mock_proxy):
+        """A bad timezone on a timed update surfaces as a 400 before any write."""
+        mock_proxy.side_effect = [
+            {
+                "summary": "Old",
+                "description": "d",
+                "start": {"dateTime": "2025-01-10T09:00:00Z"},
+                "end": {"dateTime": "2025-01-10T10:00:00Z"},
+            },
+        ]
+        request = EventUpdateRequest(
+            event_id="evt",
+            calendar_id="primary",
+            start="2025-01-15T10:00:00Z",
+            end="2025-01-15T11:00:00Z",
+        )
+        request.timezone_offset = 123  # type-invalid value; set post-construction
+        with pytest.raises(HTTPException) as exc:
+            await update_calendar_event(request, USER_ID)
+        assert exc.value.status_code == 400
+        assert str(exc.value.detail).startswith("Invalid datetime format:")
+        assert [call.kwargs["method"] for call in mock_proxy.call_args_list] == ["GET"]
 
 
 # ---------------------------------------------------------------------------
@@ -517,3 +662,181 @@ class TestPreferences:
         assert await update_user_calendar_preferences(
             USER_ID, ["c1"]
         ) == CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")
+
+
+# ---------------------------------------------------------------------------
+# Exact-behavior pins for the native search + delete paths
+# ---------------------------------------------------------------------------
+
+
+class TestSearchCalendarEventsNativePins:
+    async def test_result_fields_are_exact(self, mock_proxy, mock_calendar_repo):
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            result = await search_calendar_events_native(
+                "foo", USER_ID, time_min="2025-01-01", time_max="2025-02-01"
+            )
+        assert result.query == "foo"
+        assert result.matching_events == []
+        assert result.total_matches == 0
+        assert result.total_events_searched == 0
+        assert result.searched_calendars == ["Work"]
+        # time bounds are forwarded to every per-calendar search
+        search_kwargs = mock_search.await_args.kwargs
+        assert search_kwargs["time_min"] == "2025-01-01"
+        assert search_kwargs["time_max"] == "2025-02-01"
+
+    async def test_empty_selected_search_falls_back_to_all_calendars(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        # Preferences select c1, but c1 yields nothing → all calendars searched.
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        mock_proxy.return_value = {
+            "items": [
+                {"id": "c1", "summary": "Work"},
+                {"id": "c2", "summary": "Home"},
+            ]
+        }
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            result = await search_calendar_events_native("foo", USER_ID)
+
+        searched_ids = [call.args[0] for call in mock_search.await_args_list]
+        assert searched_ids == ["c1", "c2"]  # fallback covered c2 too
+        assert result.searched_calendars == ["Work"]
+
+    async def test_hits_are_tagged_with_their_source_calendar(self, mock_proxy, mock_calendar_repo):
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        event = GoogleCalendarEventResource(
+            id="e1", start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00")
+        )
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[event])
+            result = await search_calendar_events_native("foo", USER_ID)
+
+        assert result.total_matches == 1
+        assert result.matching_events[0].calendarId == "c1"
+        assert result.matching_events[0].calendarTitle == "Work"
+
+    async def test_a_failing_calendar_is_skipped_not_fatal(self, mock_proxy, mock_calendar_repo):
+        mock_calendar_repo.get_for_user.return_value = None  # all calendars selected
+        mock_proxy.return_value = {
+            "items": [
+                {"id": "c1", "summary": "Work"},
+                {"id": "c2", "summary": "Home"},
+            ]
+        }
+        good = GoogleCalendarEventResource(
+            id="e2", start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00")
+        )
+        responses = [RuntimeError("c1 exploded")]
+
+        async def search(cal_id: str, *args: Any, **kwargs: Any) -> GoogleCalendarEventsPage:
+            if isinstance(responses[0], Exception) and cal_id == "c1":
+                raise responses[0]
+            return GoogleCalendarEventsPage(items=[good] if cal_id == "c2" else [])
+
+        with patch("app.services.calendar_service.search_events_in_calendar", side_effect=search):
+            result = await search_calendar_events_native("foo", USER_ID)
+
+        assert result.total_matches == 1
+        assert result.matching_events[0].calendarId == "c2"
+        assert result.searched_calendars == ["Work", "Home"]
+
+    async def test_no_preferences_searches_every_calendar(self, mock_proxy, mock_calendar_repo):
+        mock_calendar_repo.get_for_user.return_value = None
+        mock_proxy.return_value = {
+            "items": [
+                {"id": "c1", "summary": "Work"},
+                {"id": "c2", "summary": ""},
+            ]
+        }
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            result = await search_calendar_events_native("foo", USER_ID)
+
+        assert [call.args[0] for call in mock_search.await_args_list] == ["c1", "c2"]
+        # A calendar without a summary contributes an empty string, not None.
+        assert result.searched_calendars == ["Work", ""]
+
+
+class TestSearchArgumentPropagation:
+    """Every search input must arrive intact at each seam: the preference
+    lookup, the calendar listing, and both per-calendar search passes."""
+
+    async def test_first_pass_forwards_user_query_and_bounds_exactly(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        mock_calendar_repo.get_for_user.return_value = None
+        mock_proxy.return_value = {"items": [{"id": "c1", "summary": "Work"}]}
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            await search_calendar_events_native(
+                "lunch", USER_ID, time_min="2025-01-01", time_max="2025-02-01"
+            )
+
+        # Preference lookup is keyed by the requesting user.
+        mock_calendar_repo.get_for_user.assert_awaited_once_with(USER_ID)
+        # The calendar listing ran for the requesting user.
+        assert mock_proxy.call_args.kwargs["user_id"] == USER_ID
+        # The per-calendar search got every argument, positionally intact.
+        assert mock_search.await_args.args == ("c1", "lunch", USER_ID)
+        assert mock_search.await_args.kwargs == {
+            "time_min": "2025-01-01",
+            "time_max": "2025-02-01",
+        }
+
+    async def test_fallback_pass_forwards_user_query_and_bounds_exactly(
+        self, mock_proxy, mock_calendar_repo
+    ):
+        mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
+        mock_proxy.return_value = {
+            "items": [
+                {"id": "c1", "summary": "Work"},
+                {"id": "c2", "summary": "Home"},
+            ]
+        }
+        with patch(
+            "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
+        ) as mock_search:
+            mock_search.return_value = GoogleCalendarEventsPage(items=[])
+            await search_calendar_events_native(
+                "lunch", USER_ID, time_min="2025-01-01", time_max="2025-02-01"
+            )
+
+        assert len(mock_search.await_args_list) == 2
+        fallback_call = mock_search.await_args_list[1]
+        assert fallback_call.args == ("c2", "lunch", USER_ID)
+        assert fallback_call.kwargs == {"time_min": "2025-01-01", "time_max": "2025-02-01"}
+
+
+class TestDeleteCalendarEventPins:
+    async def test_missing_calendar_id_defaults_to_primary(self, mock_proxy):
+        mock_proxy.return_value = {}
+        # Omitted calendar id: the model defaults it to "primary".
+        request = EventDeleteRequest(event_id="evt1")
+        result = await delete_calendar_event(request, USER_ID)
+        assert result.success is True
+        assert result.message == "Event deleted successfully"
+        kwargs = mock_proxy.await_args.kwargs
+        assert kwargs["endpoint"].endswith("/calendars/primary/events/evt1")
+        assert kwargs["method"] == "DELETE"
+
+    async def test_given_calendar_id_is_used(self, mock_proxy):
+        mock_proxy.return_value = {}
+        request = EventDeleteRequest(event_id="evt1", calendar_id="cal-9")
+        await delete_calendar_event(request, USER_ID)
+        assert mock_proxy.await_args.kwargs["endpoint"].endswith("/calendars/cal-9/events/evt1")

@@ -84,7 +84,7 @@ def get_next_run_time(
         next_local: datetime = cron.get_next(datetime)
         return next_local.replace(tzinfo=zone.tzinfo).astimezone(UTC)
     except Exception as e:
-        raise CronError(f"Failed to calculate next run time: {e!s}")
+        raise CronError(f"Failed to calculate next run time: {e!s}") from e
 
 
 def calculate_next_occurrences(
@@ -127,7 +127,7 @@ def calculate_next_occurrences(
 
         return occurrences
     except Exception as e:
-        raise CronError(f"Failed to calculate next occurrences: {e!s}")
+        raise CronError(f"Failed to calculate next occurrences: {e!s}") from e
 
 
 # Common cron expressions for easy reference

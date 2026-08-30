@@ -17,6 +17,7 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.webhook_models import ComposioWebhookEvent
+from app.services.integrations.integration_expiry import ExpiryOptions
 
 ENDPOINT = "/api/v1/webhook/composio"
 MODULE = "app.api.v1.endpoints.webhook_composio"
@@ -336,11 +337,13 @@ class TestTheBackgroundExpiry:
         expire.assert_awaited_once_with(
             "user-1",
             "gmail",
-            reason="refresh_token_revoked",
-            trigger="webhook",
-            notify=True,
-            connected_account_id="ca_1",
-            paused_workflows=["Morning digest"],
+            ExpiryOptions(
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+                connected_account_id="ca_1",
+                paused_workflows=["Morning digest"],
+            ),
         )
 
     async def test_a_stall_is_logged_rather_than_disappearing_with_the_task(self) -> None:
