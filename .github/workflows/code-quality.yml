@@ -61,8 +61,17 @@ jobs:
       runner_label: ${{ steps.pick.outputs.runner_label }}
       is_self_hosted: ${{ steps.pick.outputs.is_self_hosted }}
     steps:
+      # The default branch, NOT the PR head. This job hands HOMELAB_GH_PAT to
+      # `scripts/ci/runner.sh select` through the composite below, and on a
+      # `pull_request` event the head ref is code the PR author controls — a
+      # checkout of it would run their script with our secret. Pinning the
+      # checkout to master means the composite and the script both come from
+      # a reviewed commit. The cost is that a PR changing runner.sh does not
+      # exercise the change in THIS job (it does everywhere else); that is the
+      # right trade for a job whose only purpose is routing.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           persist-credentials: false
       - name: Cancel superseded runs of this branch
