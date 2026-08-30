@@ -679,6 +679,28 @@ class TestAinvokeLlm:
         with pytest.raises(ConnectionError):
             await ainvoke_llm(primary, [HumanMessage(content="hi")])
 
+    async def test_max_attempts_bounds_the_primary_retry(self) -> None:
+        """``max_attempts`` is a latency budget, so it has to reach the PRIMARY's
+        retry wrapper. Dropped there, a caller that asked for one attempt
+        silently spends the default three plus their exponential backoff — the
+        stall the knob exists to prevent, and invisible from the outside because
+        the call still returns the same error in the end."""
+        attempts = 0
+
+        def _always_fails(_: Any) -> AIMessage:
+            nonlocal attempts
+            attempts += 1
+            raise ConnectionError("provider down")
+
+        with pytest.raises(ConnectionError):
+            await ainvoke_llm(
+                RunnableLambda(_always_fails),
+                [HumanMessage(content="hi")],
+                options=LLMInvokeOptions(max_attempts=1),
+            )
+
+        assert attempts == 1
+
     async def test_programming_error_propagates_not_downgraded(self) -> None:
         primary = self._runnable(side_effect=ValueError("a real bug"))
         fallback = self._runnable(result=AIMessage(content="must-not-be-used"))
