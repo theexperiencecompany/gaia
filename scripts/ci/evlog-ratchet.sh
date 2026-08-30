@@ -23,7 +23,7 @@ BASE_DIR="$WORK/obs-merge-base"
 trap 'rm -rf "$WORK"; git worktree prune' EXIT
 git worktree add --detach "$BASE_DIR" "$BASE_SHA"
 
-# Same merge-base diff + ACMR filter as changed-files.sh, plus -M and
+# Same merge-base diff + ACMR filter as `changes.sh files`, plus -M and
 # --name-status to see the old path of each rename.
 : > "$WORK"/head-files.txt
 : > "$WORK"/base-files.txt

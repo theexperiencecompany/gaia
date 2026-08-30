@@ -13,7 +13,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-CHANGED_PY="$(scripts/ci/changed-files.sh py)"
+CHANGED_PY="$(scripts/ci/changes.sh files py)"
 if [ -z "$CHANGED_PY" ]; then
   echo '[]'
   exit 0

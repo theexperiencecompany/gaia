@@ -279,7 +279,7 @@ genuine one-off, justify it in review and add it to the baseline with
 `--update`). If it's grandfathered but your PR touches that file, fix the
 violation now and delete its line from the baseline.
 
-**Scope:** on a PR, "touched" is the same `scripts/ci/changed-files.sh py`
+**Scope:** on a PR, "touched" is the same `scripts/ci/changes.sh files py`
 diff every other lane uses. On a push/full scan (no PR base ref), there is no
 notion of "touched" — grandfathered violations stay quiet, same as before.
 

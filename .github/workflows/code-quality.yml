@@ -85,7 +85,7 @@ jobs:
   # Unified with main.yml detect: uses nx-set-shas + nx show projects --affected
   # with same base (origin/master via NX_BASE/NX_HEAD) so both workflows
   # agree on what "affected" means. Push/dispatch → __FULL__ semantics via
-  # workflow_dispatch branch; PRs use --affected. No changed-files.sh grep.
+  # workflow_dispatch branch; PRs use --affected. No changes.sh grep.
   changes:
     name: Detect changed languages
     needs: [select-runner]
@@ -186,7 +186,7 @@ jobs:
           # is excluded by config, so the lane must not feed it those paths
           # in the first place. Keep this list in sync with biome.json
           # `files.includes` negations.
-          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx json jsonc css \
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx json jsonc css \
             | grep -Ev '^(apps/api|apps/voice-agent|apps/web/public|infra|docs|\.github|\.claude|\.agents|\.husky|\.yarn|\.vscode|\.idea|\.mise|\.opencode|\.worktrees|\.jscpd-report)/' || true)
           if [ "$FILES" = "__FULL__" ]; then
             FILES="."
@@ -298,7 +298,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: pnpm run quality:size"' ERR
           echo "::group::File size scan"
-          FILES=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs)
+          FILES=$(scripts/ci/changes.sh files ts tsx js jsx mjs cjs)
           if [ "$FILES" = "__FULL__" ]; then
             pnpm run quality:size
           elif [ -z "$FILES" ]; then
@@ -328,7 +328,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: node scripts/ci/check-types-location.mjs --enforce"' ERR
           echo "::group::types-location check"
-          FILES=$(scripts/ci/changed-files.sh ts tsx)
+          FILES=$(scripts/ci/changes.sh files ts tsx)
           if [ "$FILES" = "__FULL__" ]; then
             node scripts/ci/check-types-location.mjs --enforce
           elif [ -z "$FILES" ]; then
@@ -358,7 +358,7 @@ jobs:
         run: |
           trap 'echo "::error::repro: pnpm run quality:components"' ERR
           echo "::group::components-per-file check"
-          FILES=$(scripts/ci/changed-files.sh tsx)
+          FILES=$(scripts/ci/changes.sh files tsx)
           if [ "$FILES" = "__FULL__" ]; then
             pnpm run quality:components
           elif [ -z "$FILES" ]; then
@@ -503,7 +503,7 @@ jobs:
         # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
         run: |
           echo "::group::ruff check + format --check"
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changes.sh files py)
           if [ "$FILES" = "__FULL__" ]; then
             # Whole repo, not a list of roots. The old list was
             # "apps/api apps/voice-agent libs/shared/py", which silently excluded
@@ -708,7 +708,7 @@ jobs:
           # projects changed (from the .py diff) and check only those project
           # roots. libs/shared/py is a dependency of both apps, so any change
           # there pulls both apps in. On push we check everything.
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changes.sh files py)
           if [ "$FILES" = "__FULL__" ]; then
             # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
             # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
@@ -799,7 +799,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          FILES=$(scripts/ci/changed-files.sh py)
+          FILES=$(scripts/ci/changes.sh files py)
           if [ -z "$FILES" ]; then
             echo "observability: OK (no changed Python files)"
             exit 0
@@ -816,7 +816,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
-          BOT_FILES=$(scripts/ci/changed-files.sh ts)
+          BOT_FILES=$(scripts/ci/changes.sh files ts)
           if [ -z "$BOT_FILES" ]; then
             echo "observability-bots: OK (no changed TypeScript files)"
             exit 0
@@ -979,7 +979,7 @@ jobs:
     # FILES themselves (code-quality.yml, main.yml), so a workflow-only PR is
     # exactly the change this lane validates — and nx-affected correctly marks
     # no language project affected for such PRs. The steps self-scope via
-    # changed-files.sh and skip when nothing relevant changed.
+    # changes.sh files and skip when nothing relevant changed.
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
     timeout-minutes: 5
     steps:
@@ -995,7 +995,7 @@ jobs:
       - name: Fail on any inline suppression without a same-line reason
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_suppressions.py"' ERR
-          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
+          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml)
           if [ -z "$FILES" ]; then
             echo "Suppression hygiene: skipped (no changed Python or TypeScript files)"
             exit 0
@@ -1008,7 +1008,7 @@ jobs:
       - name: Escape-hatch staleness (per-file-ignores entries must still mask a finding)
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_ignore_staleness.py"' ERR
-          FILES=$(scripts/ci/changed-files.sh py toml lock)
+          FILES=$(scripts/ci/changes.sh files py toml lock)
           if [ -z "$FILES" ]; then
             echo "Escape-hatch staleness: skipped (no changed Python files)"
             exit 0
@@ -1025,7 +1025,7 @@ jobs:
         # PR is exactly the change it validates.
         run: |
           trap 'echo "::error::repro: python3 tools/lints/check_tool_pins.py"' ERR
-          FILES=$(scripts/ci/changed-files.sh py toml lock ts tsx js jsx mjs cjs json jsonc css yaml yml)
+          FILES=$(scripts/ci/changes.sh files py toml lock ts tsx js jsx mjs cjs json jsonc css yaml yml)
           if [ -z "$FILES" ]; then
             echo "Tool pins: skipped (no changed workflow or language files)"
             exit 0

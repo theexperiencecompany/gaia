@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# changed-py-source.sh — like `changed-files.sh py`, but drops the paths the
+# changed-py-source.sh — like `changes.sh files py`, but drops the paths the
 # Python tools exclude in a full scan (tests, scripts, migrations, …).
 #
 # Passing explicit files to interrogate/xenon/bandit bypasses their config
@@ -8,10 +8,10 @@
 # skip it. The exclude list is read from pyproject's [tool.interrogate].exclude
 # so there is a single source of truth.
 #
-# Same output contract as changed-files.sh: "__FULL__", empty, or a file list.
+# Same output contract as `changes.sh files`: "__FULL__", empty, or a file list.
 set -euo pipefail
 
-FILES=$(scripts/ci/changed-files.sh py)
+FILES=$(scripts/ci/changes.sh files py)
 
 if [[ "$FILES" == "__FULL__" || -z "$FILES" ]]; then
   printf '%s\n' "$FILES"

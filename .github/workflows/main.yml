@@ -511,7 +511,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_BRANCH: ${{ github.base_ref }}
-        run: bash scripts/ci/docker-image-inputs-changed.sh
+        run: bash scripts/ci/changes.sh docker-inputs
       - name: Playwright pin matches uv.lock
         if: steps.inputs.outputs.build != 'false'
         run: bash scripts/ci/check-playwright-pin.sh

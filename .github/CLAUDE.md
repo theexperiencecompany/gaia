@@ -92,11 +92,11 @@ Three layers, from cheap to precise:
    that includes workflow/config files (yaml/yml/toml/lock/json): a
    workflow-only (`.yml`) PR lights every lane up so changes to CI itself
    get validated, but each lane self-skips via its own narrower
-   `changed-files.sh` list — lane lists NEVER include yml.
+   `changes.sh files` list — lane lists NEVER include yml.
 2. **`main.yml` `detect` job** — `nx show projects --affected` (via
    `nrwl/nx-set-shas`, base `master`) computes the affected project lists
    that gate build/test jobs and scope their `-p` arguments.
-3. **`scripts/ci/changed-files.sh` inside lanes** — scopes each tool to the
+3. **`scripts/ci/changes.sh files` inside lanes** — scopes each tool to the
    exact changed files. Contract: prints `__FULL__` (push/dispatch → full
    scan), nothing (PR with no relevant changes → skip & pass), or one path
    per line. Lanes using it need `fetch-depth: 0` checkouts.
