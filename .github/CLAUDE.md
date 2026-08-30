@@ -60,7 +60,12 @@ Consequences to keep in mind when editing a lane:
   `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
   security boundary: on `pull_request` a fork supplies its own workflow file,
   so it can choose not to call the composite at all. Do not weaken the approval
-  policy on the strength of that check. The repo is public and the runner
+  policy on the strength of that check. What keeps the box's PAT away from fork
+  code is that GitHub passes no Actions secrets to a fork's `pull_request` run
+  at all — `select-runner` states that in its `github-token:` expression rather
+  than relying on the default. (Pinning that job's checkout to master would be
+  better still, but the composite and `runner.sh` do not exist there yet; it
+  fails with exit 127 until they land.) The repo is public and the runner
   user's workspace, caches and network are shared state.
 
 ## Workflow files are thin orchestration — nothing else
