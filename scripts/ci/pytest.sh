@@ -314,7 +314,7 @@ cmd_regression_proof() {
     fi
   done
   SELECTED="$(mktemp -p "$BASE_COPIES")"
-  if ! "$VENV_PY" "$SCRIPT_DIR/regression_proof_select.py" "${select_args[@]}" > "$SELECTED"; then
+  if ! "$VENV_PY" "$SCRIPT_DIR/report.py" regression-proof-select "${select_args[@]}" > "$SELECTED"; then
     ci_die "regression-proof — could not attribute this diff's regression marks to tests (see above)."
   fi
   local new_regression_ids=()
@@ -361,8 +361,8 @@ cmd_regression_proof() {
 
   # The verdict is per-test and structural (JUnit), not a count scraped from the
   # summary line: a run can be "0 passed" while proving nothing, because a test
-  # that ERRORS never reached its assertions. See regression_proof_verdict.py.
-  if ! uv run --no-project "$SCRIPT_DIR/regression_proof_verdict.py" "$JUNIT"; then
+  # that ERRORS never reached its assertions. See `report.py regression-proof-verdict`.
+  if ! uv run --no-project "$SCRIPT_DIR/report.py" regression-proof-verdict "$JUNIT"; then
     echo "--- pytest output (base revision) ---"
     tail -40 "$LOG"
     exit 1

@@ -623,11 +623,11 @@ jobs:
           echo "::group::bandit (low severity, low confidence — no exclusions)"
           FILES=$(scripts/ci/changed-py-source.sh)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/emit-github-annotations.py < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml -r apps/api/app apps/voice-agent/src libs/shared/py --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/report.py annotations < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/emit-github-annotations.py < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
+            uvx --no-build bandit@1.9.4 -c pyproject.toml $FILES --severity-level low --confidence-level low 2>&1 | tee "$RUNNER_TEMP/bandit.out"; _rc=${PIPESTATUS[0]}; python3 scripts/ci/report.py annotations < "$RUNNER_TEMP/bandit.out" || true; test $_rc -eq 0
           fi
           echo "::endgroup::"
           echo "### Bandit — ✅ passed" >> "$GITHUB_STEP_SUMMARY"
@@ -660,7 +660,7 @@ jobs:
           BANDIT: ${{ steps.bandit.outcome }}
           PIP_AUDIT: ${{ steps.pip-audit.outcome }}
         run: |
-          bash scripts/ci/check-step-outcomes.sh \
+          python3 scripts/ci/report.py step-outcomes \
             "ruff=$RUFF" \
             "custom-lints=$CUSTOM_LINTS" \
             "ignore-whys=$IGNORE_WHYS" \
