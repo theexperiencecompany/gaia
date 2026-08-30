@@ -287,7 +287,12 @@ jobs:
           # contention with integration off a single instance. services/agents/
           # storage ≈ 5.2k tests; the rest of unit + meta ≈ 6.4k.
           - { name: unit-a, paths: "tests/unit/services tests/unit/agents tests/unit/storage", ignore: "", node: "false", services: "false", workers: "5", serial: "false" }
-          - { name: unit-b, paths: "tests/unit tests/meta", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
+          # libs/shared/py/tests rides here: gaia-shared is imported by the API
+          # and had its own step in the retired test-python-coverage job, which
+          # took the suite with it when it was removed. Any change under
+          # libs/shared widens test-impact to ALL (it is python outside
+          # apps/api), so the selection can never skip it on a PR that touches it.
+          - { name: unit-b, paths: "tests/unit tests/meta ../../libs/shared/py/tests", ignore: "--ignore=tests/unit/services --ignore=tests/unit/agents --ignore=tests/unit/storage", node: "false", services: "false", workers: "7", serial: "false" }
           # Long tests first. py-spy sampling of this lane showed 47% of worker
           # time idle in the scheduler tail: the slice ends on a few 5-15s
           # e2e/memory tests while the other workers sit finished. Handing
@@ -368,6 +373,23 @@ jobs:
         run: |
           echo "Runner: ${{ needs.select-runner.outputs.runner_label }} (self_hosted=${{ needs.select-runner.outputs.is_self_hosted }}) nproc=$(nproc) xdist=$XDIST_N slice=${{ matrix.slice.name }}"
           bash scripts/ci/pytest.sh slice
+      # ── Schemathesis contract fuzz ─────────────────────────────────────────
+      # Its own step, not a slice member: it boots a REAL server and must run
+      # serially and isolated, and the slice runs exclude `-m schemathesis`
+      # (the plugin costs ~2 s of import per xdist worker on lanes that never
+      # use it). It had a step in the retired test-python-coverage job and was
+      # lost with that job — nothing has fuzzed the API contract since. It runs
+      # in the integration slice because that is the lane with the services up.
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        if: matrix.slice.name == 'integration'
+        working-directory: apps/api
+        env:
+          USE_REAL_SERVICES: "1"
+        run: |
+          bash ../../scripts/ci/pytest.sh flake-gate \
+            uv run --frozen pytest tests/integration/real/test_schemathesis.py -q --tb=short \
+            -m schemathesis --override-ini=addopts=--strict-markers --timeout=600
+          echo "Schemathesis: OK"
       # ── Record the map (master / dispatch only) ────────────────────────────
       # !cancelled(): a lane with a red test still produced a valid file→test map,
       # and a missing map makes every PR run the whole slice.
