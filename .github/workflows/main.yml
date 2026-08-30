@@ -28,6 +28,10 @@ on:
         description: Home runner label to probe (default gaia-home; a new pool under a temporary label can be proven before it takes real traffic)
         type: string
         default: gaia-home
+      cpu_tokens:
+        description: Override GAIA_CPU_TOKENS for the host CPU governor (empty = physical-core default; a large value like 999 effectively disables it for before/after measurement)
+        type: string
+        default: ""
 
 # Per-SHA group: a new push must not wait for the old run's cancellation to
 # finish (a cancelled pytest step wedges the self-hosted worker for the
@@ -42,6 +46,11 @@ env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "22.15.1"
   PNPM_VERSION: "10.17.1"
+  # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh). Empty on
+  # push/PR → the lib defaults to the box's physical core count; a dispatch may
+  # override it (e.g. 999 to disable for before/after measurement, or a value
+  # between physical-cores and threads to tune).
+  GAIA_CPU_TOKENS: ${{ inputs.cpu_tokens || '' }}
 
 jobs:
   # ── Runner selection (always runs on GH — no Tailscale needed) ─────────
@@ -242,7 +251,11 @@ jobs:
           # --output-style=stream: nx's static output is one async pipe write
           # followed by process.exit(), so the tail — the part `tail -n 60`
           # keeps — is exactly what gets dropped (see test-typescript).
-          /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
+          # with-slots holds NX_PARALLEL host CPU tokens for the build so it
+          # queues against the box's physical-core budget instead of thrashing
+          # the concurrent test/mutation lanes; the wait is BEFORE /usr/bin/time
+          # so build.time still measures only the build. No-op off the box.
+          bash scripts/ci/runner.sh with-slots "$NX_PARALLEL" -- /usr/bin/time -v bash -c 'pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel="$NX_PARALLEL" --output-style=stream 2>&1 | tail -n 60' 2>&1 | tee "$RUNNER_TEMP/build.time"
           echo "Build: OK (parallel=$NX_PARALLEL)"
 
   # ── Test Python — four slices on four runner instances ───────────────────
