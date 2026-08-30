@@ -331,6 +331,35 @@ async def test_more_lines_than_a_page_at_one_nanosecond_refuses_the_day(
         await backfill._fetch_day(cast(httpx.AsyncClient, client), "http://loki", _DAY)
 
 
+async def test_exhausting_the_page_budget_refuses_the_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Forty full pages is a prefix of the day, not the day. Writing it would
+    understate cost_actual, coverage and the provider mix, so the day is refused."""
+    monkeypatch.setattr(backfill, "_LOKI_PAGE", 2)
+    monkeypatch.setattr(backfill, "_LOKI_MAX_PAGES", 3)
+    base = _DAY_START_NANOS + 60_000_000_000
+    # 3 pages x 2 lines fill the budget; the seventh line is still unread.
+    client = _FakeLokiClient([(base + i, _event_line(f"g{i}")) for i in range(7)])
+
+    with pytest.raises(backfill.PageBudgetExhaustedError, match=_DAY):
+        await backfill._fetch_day(cast(httpx.AsyncClient, client), "http://loki", _DAY)
+
+
+async def test_identical_lines_at_the_boundary_are_each_kept_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two identical lines can share a nanosecond — the same model call logged
+    twice is indistinguishable by text. The next page must skip only as many as
+    were already taken, not every line that looks like them."""
+    monkeypatch.setattr(backfill, "_LOKI_PAGE", 2)
+    base = _DAY_START_NANOS + 60_000_000_000
+    twin = _event_line("twin")
+    client = _FakeLokiClient([(base, twin), (base, twin), (base + 5, _event_line("later"))])
+
+    calls = await backfill._fetch_day(cast(httpx.AsyncClient, client), "http://loki", _DAY)
+
+    assert [c.generation_id for c in calls] == ["twin", "twin", "later"]
+
+
 async def test_paging_stops_once_a_page_comes_back_short(monkeypatch: pytest.MonkeyPatch) -> None:
     """A page under the limit is the last one — asking again costs a round trip
     and, on the old whole-second cursor, re-read events it had already folded."""

@@ -38,8 +38,8 @@ long backfill is resumable and an interrupted one costs nothing to restart.
 
 import argparse
 import asyncio
-from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -226,6 +226,18 @@ def _nanos(moment: datetime) -> int:
     return int(moment.timestamp() * 1_000_000_000)
 
 
+class PageBudgetExhaustedError(RuntimeError):
+    """A day needed more than ``_LOKI_MAX_PAGES`` pages, so what was read is a
+    prefix, not the day — it must not be written."""
+
+    def __init__(self, day: str) -> None:
+        super().__init__(
+            f"{day}: more than {_LOKI_MAX_PAGES * _LOKI_PAGE} llm_call lines; "
+            "raise _LOKI_MAX_PAGES rather than backfilling a prefix of the day"
+        )
+        self.day = day
+
+
 class UndrainableTimestampError(RuntimeError):
     """More log lines share one nanosecond than fit in a Loki page, so the day
     cannot be read completely and must not be written."""
@@ -253,74 +265,123 @@ async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list
     end_nanos = _nanos(min(start + timedelta(days=1), datetime.now(UTC)))
     calls: list[LlmCall] = []
     cursor_nanos = _nanos(start)
-    # Lines already taken at exactly ``cursor_nanos`` — the overlap between pages.
-    taken_at_cursor: set[str] = set()
+    # Lines already taken at exactly ``cursor_nanos``, counted — the overlap
+    # between pages. Identical lines can repeat within one nanosecond, so the
+    # count matters: skipping by identity alone would drop the repeats.
+    taken_at_cursor: Counter[str] = Counter()
+    scan_complete = False
     for _ in range(_LOKI_MAX_PAGES):
-        response = await client.get(
-            f"{loki_url.rstrip('/')}/loki/api/v1/query_range",
-            params={
-                "query": _LOKI_SELECTOR,
-                "start": cursor_nanos,
-                "end": end_nanos,
-                "limit": _LOKI_PAGE,
-                "direction": "forward",
-            },
-            headers={"accept": "application/json"},
-        )
-        response.raise_for_status()
-        page = _fold_page(response.json()["data"]["result"], cursor_nanos, taken_at_cursor, calls)
+        streams = await _query(client, loki_url, cursor_nanos, end_nanos, _LOKI_PAGE)
+        page = _fold_page(streams, cursor_nanos, taken_at_cursor, calls)
         if page.seen < _LOKI_PAGE:
+            scan_complete = True
             break
         if page.fresh == 0:
-            # A whole page of lines already taken: more than a page shares this
-            # nanosecond and Loki cannot page inside one timestamp. Anything we
-            # wrote for this day would be short, so refuse the day instead.
-            raise UndrainableTimestampError(day, cursor_nanos)
-        if page.latest == cursor_nanos:
-            taken_at_cursor |= page.at_latest
+            # The page held nothing but the overlap, so it cannot say whether the
+            # group at this nanosecond is finished or runs past a page. Read that
+            # one nanosecond on its own to find out.
+            if not await _drain_timestamp(client, loki_url, cursor_nanos, taken_at_cursor, calls):
+                raise UndrainableTimestampError(day, cursor_nanos)
+            cursor_nanos, taken_at_cursor = cursor_nanos + 1, Counter()
+        elif page.latest == cursor_nanos:
+            taken_at_cursor += page.at_latest
         else:
-            cursor_nanos, taken_at_cursor = page.latest, set(page.at_latest)
+            cursor_nanos, taken_at_cursor = page.latest, Counter(page.at_latest)
         if cursor_nanos >= end_nanos:
+            scan_complete = True
             break
+    if not scan_complete:
+        raise PageBudgetExhaustedError(day)
     return calls
+
+
+async def _query(
+    client: httpx.AsyncClient, loki_url: str, start: int, end: int, limit: int
+) -> list[dict[str, Any]]:
+    """One Loki range query, forward, over [start, end) nanoseconds."""
+    response = await client.get(
+        f"{loki_url.rstrip('/')}/loki/api/v1/query_range",
+        params={
+            "query": _LOKI_SELECTOR,
+            "start": start,
+            "end": end,
+            "limit": limit,
+            "direction": "forward",
+        },
+        headers={"accept": "application/json"},
+    )
+    response.raise_for_status()
+    streams: list[dict[str, Any]] = response.json()["data"]["result"]
+    return streams
+
+
+async def _drain_timestamp(
+    client: httpx.AsyncClient,
+    loki_url: str,
+    nanos: int,
+    taken: Counter[str],
+    calls: list[LlmCall],
+) -> bool:
+    """Read everything logged at exactly ``nanos``, keeping whatever was not taken
+    on an earlier page. False means the group is larger than one page, so Loki
+    cannot serve it whole and the day cannot be read completely.
+    """
+    streams = await _query(client, loki_url, nanos, nanos + 1, _LOKI_PAGE + 1)
+    lines = Counter(line for _, line in _page_values(streams))
+    if sum(lines.values()) > _LOKI_PAGE:
+        return False
+    for line in (lines - taken).elements():
+        call = _parse_event(line)
+        if call is not None:
+            calls.append(call)
+    return True
 
 
 @dataclass(frozen=True)
 class _PageScan:
     """What one Loki page contributed: how many lines it held, how many were new,
-    and the lines at its last nanosecond (the overlap the next page must skip)."""
+    and the lines at its last nanosecond WITH their multiplicity — two identical
+    lines can share a timestamp, and the next page must skip exactly the ones
+    already taken, not every line that looks like them."""
 
     seen: int
     fresh: int
     latest: int
-    at_latest: frozenset[str]
+    at_latest: Counter[str]
 
 
 def _fold_page(
     streams: list[dict[str, Any]],
     cursor_nanos: int,
-    taken_at_cursor: set[str],
+    taken_at_cursor: Counter[str],
     calls: list[LlmCall],
 ) -> _PageScan:
     seen = 0
     fresh = 0
     latest = 0
-    at_latest: set[str] = set()
+    at_latest: Counter[str] = Counter()
+    skipped: Counter[str] = Counter()
+    for at, line in _page_values(streams):
+        seen += 1
+        if at == cursor_nanos and skipped[line] < taken_at_cursor[line]:
+            skipped[line] += 1
+            continue
+        fresh += 1
+        if at > latest:
+            latest, at_latest = at, Counter()
+        if at == latest:
+            at_latest[line] += 1
+        call = _parse_event(line)
+        if call is not None:
+            calls.append(call)
+    return _PageScan(seen=seen, fresh=fresh, latest=latest, at_latest=at_latest)
+
+
+def _page_values(streams: list[dict[str, Any]]) -> Iterator[tuple[int, str]]:
+    """Every (nanosecond, line) in a Loki page, across its streams."""
     for stream in streams:
         for nanos, line in stream["values"]:
-            seen += 1
-            at = int(nanos)
-            if at == cursor_nanos and line in taken_at_cursor:
-                continue
-            fresh += 1
-            if at > latest:
-                latest, at_latest = at, set()
-            if at == latest:
-                at_latest.add(line)
-            call = _parse_event(line)
-            if call is not None:
-                calls.append(call)
-    return _PageScan(seen=seen, fresh=fresh, latest=latest, at_latest=frozenset(at_latest))
+            yield int(nanos), line
 
 
 async def _lookup_generation(
