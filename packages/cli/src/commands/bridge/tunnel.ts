@@ -182,6 +182,12 @@ export class Tunnel {
       return;
     }
 
+    // The cloud's /mcp/test request blocks on this spawn, so a slow or failing
+    // local server looks like a hung tunnel from the other side. Say what we
+    // are doing and how long it took, or the only evidence is the caller's
+    // timeout.
+    const startedAt = Date.now();
+    console.error(`[gaia bridge] opening MCP session for '${serverKey}'…`);
     try {
       const session = await openServerSession(config);
       // Frames from the local server → up the tunnel.
@@ -212,13 +218,15 @@ export class Tunnel {
       await session.transport.start();
       this.sessions.set(sid, session);
       this.send({ t: FRAME.MCP_OPENED, sid, pod });
+      console.error(
+        `[gaia bridge] MCP session for '${serverKey}' ready in ${Date.now() - startedAt}ms`,
+      );
     } catch (e) {
-      this.send({
-        t: FRAME.MCP_ERROR,
-        sid,
-        pod,
-        error: e instanceof Error ? e.message : String(e),
-      });
+      const message = e instanceof Error ? e.message : String(e);
+      console.error(
+        `[gaia bridge] MCP session for '${serverKey}' failed after ${Date.now() - startedAt}ms: ${message}`,
+      );
+      this.send({ t: FRAME.MCP_ERROR, sid, pod, error: message });
     }
   }
 

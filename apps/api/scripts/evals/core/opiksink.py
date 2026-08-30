@@ -17,16 +17,19 @@ from http import HTTPStatus
 import json
 from pathlib import Path
 import re
+from typing import TYPE_CHECKING, NotRequired, TypedDict, Unpack
 import uuid
 
 from dotenv import load_dotenv
-import opik
-from opik import id_helpers
-from opik.evaluation import evaluate
-from opik.rest_api.core.api_error import ApiError
 
 from .journal import RunJournal
 from .types import Case, CaseTrace
+
+# ``opik`` costs ~1.3s to import and is only needed to talk to the backend, so
+# every SDK import is function-local: id derivation (``trace_id_for``, the
+# child interpreter in test_trace_identity, seed dry-runs) never pays for it.
+if TYPE_CHECKING:
+    import opik
 
 _EVALS_DIR = Path(__file__).resolve().parent.parent
 ENV_OPIK = _EVALS_DIR / ".env.opik"
@@ -107,7 +110,25 @@ def _stable_uuid7(key: str, when: datetime) -> str:
     digest = bytearray(hashlib.blake2b(key.encode(), digest_size=16).digest())
     digest[6] = 0x40 | (digest[6] & 0x0F)  # claim version 4 for uuid4_to_uuid7
     digest[8] = 0x80 | (digest[8] & 0x3F)  # RFC 4122 variant
-    return str(id_helpers.uuid4_to_uuid7(when, str(uuid.UUID(bytes=bytes(digest)))))
+    return str(_uuid4_to_uuid7(when, uuid.UUID(bytes=bytes(digest))))
+
+
+def _uuid4_to_uuid7(when: datetime, uuid4: uuid.UUID) -> uuid.UUID:
+    """``opik.id_helpers.uuid4_to_uuid7``, byte for byte.
+
+    Copied rather than imported because importing it drags the whole SDK in.
+    ``test_trace_identity`` pins it against the SDK's own function: any drift
+    would re-key every seeded trace and duplicate the projects on the next seed.
+    """
+    if uuid4.version != 4:
+        raise ValueError("Input UUID must be version 4")
+    out = bytearray(16)
+    out[0:6] = int(when.timestamp() * 1000).to_bytes(6, byteorder="big")
+    out[6] = 0x70 | (uuid4.bytes[6] & 0x0F)
+    out[7] = uuid4.bytes[7]
+    out[8] = 0x80 | (uuid4.bytes[8] & 0x3F)
+    out[9:16] = uuid4.bytes[9:16]
+    return uuid.UUID(bytes=bytes(out))
 
 
 _CLIENTS: dict[str, opik.Opik] = {}
@@ -120,6 +141,8 @@ def client(project_name: str) -> opik.Opik:
     thousands of journal records into an hours-long job.
     """
     if project_name not in _CLIENTS:
+        import opik
+
         _CLIENTS[project_name] = opik.Opik(project_name=project_name)
     return _CLIENTS[project_name]
 
@@ -144,21 +167,29 @@ def close_clients() -> None:
     _CLIENTS.clear()
 
 
+class ExperimentOptions(TypedDict):
+    """What to call the Opik experiment and how to score it (see ``finalize``)."""
+
+    scoring_metrics: list[object]
+    experiment_name: str
+    tags: list[str]
+    nb_samples: NotRequired[int | None]
+
+
 def finalize(
     project: str,
     cases: list[Case],
     journal: RunJournal,
-    scoring_metrics: list[object],
-    experiment_name: str,
-    tags: list[str],
     replay: Callable[[dict[str, object]], dict[str, object]],
-    nb_samples: int | None = None,
+    **experiment: Unpack[ExperimentOptions],
 ) -> object:
     """Evaluate the journal's stored outputs as an Opik experiment.
 
     ``replay(item)`` returns the stored run output for a case (never calls the
     agent again); metrics see dataset-item keys merged with those outputs.
     """
+    from opik.evaluation import evaluate
+
     opik_client = client(project)
     dataset = _dataset_for(opik_client, f"{project}-cases", project)
     dataset.insert(
@@ -176,14 +207,14 @@ def finalize(
     result = evaluate(
         dataset=dataset,
         task=replay,
-        scoring_metrics=scoring_metrics,
-        experiment_name=experiment_name,
-        experiment_tags=tags,
-        nb_samples=nb_samples,
+        scoring_metrics=experiment["scoring_metrics"],
+        experiment_name=experiment["experiment_name"],
+        experiment_tags=experiment["tags"],
+        nb_samples=experiment.get("nb_samples"),
         task_threads=4,
         verbose=1,
     )
-    journal.update_meta(experiment_name=experiment_name)
+    journal.update_meta(experiment_name=experiment["experiment_name"])
     return result
 
 
@@ -199,6 +230,8 @@ def _dataset_for(opik_client: opik.Opik, name: str, project: str) -> opik.Datase
     Looking it up by name — its real identity — resolves the orphan. The create
     is still guarded, because two runs finalizing at once would otherwise race.
     """
+    from opik.rest_api.core.api_error import ApiError
+
     try:
         return opik_client.get_dataset(name)
     except ApiError as e:
@@ -218,6 +251,8 @@ def delete_datasets(names: list[str]) -> list[str]:
     Teardown deletes projects; datasets live beside them in the workspace and
     would otherwise survive as orphans that no project-scoped lookup can find.
     """
+    from opik.rest_api.core.api_error import ApiError
+
     opik_client = client("default")
     gone: list[str] = []
     for name in names:
@@ -306,6 +341,8 @@ def legacy_case_traces(project: str, expected_ids: set[str]) -> int:
     This is why the rebuild tears the projects down first. Seeding without a
     teardown must say so loudly rather than quietly double the data.
     """
+    from opik.rest_api.core.api_error import ApiError
+
     try:
         traces = client(project).search_traces(project_name=project, max_results=_MAX_TRACES)
     except ApiError as e:

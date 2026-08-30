@@ -283,7 +283,7 @@ jobs:
           VERSION_SCHEME: ${{ steps.version.outputs.scheme }}
           APPS_RELEASE_OUTCOME: ${{ steps.release-apps.outcome }}
           BOTS_RELEASE_OUTCOME: ${{ steps.release-bots.outcome }}
-        run: bash scripts/ci/resolve-image-tags.sh
+        run: bash scripts/ci/release.sh resolve-image-tags
 
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
@@ -431,6 +431,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout gaia-infra (private)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: theexperiencecompany/gaia-infra
+          ref: main
+          ssh-key: ${{ secrets.GAIA_INFRA_DEPLOY_KEY }}
+          path: .infra
+          persist-credentials: false
+
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -442,7 +451,7 @@ jobs:
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       # Same phase rule as docker-web: no :latest before the gate — the
-      # deploy's retag-latest-alias.sh (post-convergence) and promote-latest
+      # deploy's `deploy.sh retag` (post-convergence) and promote-latest
       # (gate success, no backend deploy needed) own the :latest alias.
       - name: Determine image tag
         id: tag
@@ -462,8 +471,8 @@ jobs:
       - name: Build and push Grafana image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: infra/docker/observability/grafana
-          file: infra/docker/observability/grafana/Dockerfile
+          context: .infra/docker/observability/grafana
+          file: .infra/docker/observability/grafana/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/gaia-grafana:${{ steps.tag.outputs.tag }}
@@ -476,7 +485,7 @@ jobs:
     # Keep deploy planning behind the build lanes so trigger-deploy never
     # races ahead, but never let a failed/cancelled lane skip planning
     # outright — the lane's result is evaluated explicitly by
-    # compute-deploy-plan.sh instead of relying on implicit all-success
+    # `deploy.sh plan` instead of relying on implicit all-success
     # gating (the pre-`always()` behavior: any lane result other than
     # 'success' skipped this whole job, and with it trigger-deploy, even
     # when the deploy was ready to ship). Backend only: the frontend deploys
@@ -522,7 +531,7 @@ jobs:
           DOCKER_RELEASE_RESULT: ${{ inputs.phase == 'deploy' && inputs.docker_release_result || needs.docker-release.result || 'skipped' }}
           BACKEND_IMAGES_PUBLISHED: ${{ inputs.phase == 'deploy' && inputs.images_published || needs.docker-release.outputs.images_published || 'false' }}
           GATE_RESULT: ${{ inputs.phase == 'deploy' && inputs.gate_result || 'success' }}
-        run: bash scripts/ci/compute-deploy-plan.sh
+        run: bash scripts/ci/deploy.sh plan
 
   # Loud, self-explaining alert for the exact incident this workflow used to
   # hide: an image lane published to GHCR as :latest but its deploy did not
@@ -555,7 +564,7 @@ jobs:
             **Backend images (api/voice-agent/bots) were published to GHCR (immutable tags) but the backend deploy did NOT run.** docker-release result: `${{ needs.deployment-plan.outputs.docker_release_result }}`.
             `:latest` did not move — it is re-pointed only after a successful deploy — so restarts on the Swarm host keep the deployed build. But master is now ahead of production: the published images are sitting undeployed.
             **To ship them:** fix the red lane and re-run the master workflow (or push a fix). `gh workflow run build.yml --ref master -f deployment_mode=deploy` redeploys only what `:latest` currently points at — the last successfully deployed build, not this run's images.
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify
 
   # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
@@ -579,7 +588,7 @@ jobs:
   # :latest promotion for the two images the Swarm deploy does not own:
   # gaia-web (self-host package; never deployed by us) and gaia-grafana when
   # no backend deploy runs to retag it (grafana-only changes). Backend repos'
-  # :latest is re-pointed exclusively by retag-latest-alias.sh after a
+  # :latest is re-pointed exclusively by `deploy.sh retag` after a
   # successful deploy/rollback convergence — ":latest == gated" for these two,
   # ":latest == deployed" for the backend. phase=build never touches :latest.
   promote-latest:
@@ -602,4 +611,4 @@ jobs:
         env:
           WEB_IMAGE_TAG: ${{ inputs.web_image_tag }}
           GRAFANA_IMAGE_TAG: ${{ inputs.grafana_image_tag }}
-        run: bash scripts/ci/promote-latest.sh
+        run: bash scripts/ci/release.sh promote-latest

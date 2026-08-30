@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
 from dataclasses import dataclass
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from langchain_core.tools import BaseTool
 
@@ -9,9 +9,26 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
-from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from app.services.composio.composio_service import ComposioService
+
+
+def get_composio_service() -> "ComposioService":
+    """Resolve the Composio service at call time. Importing
+    ``app.services.composio.composio_service`` at module level drags the
+    Composio SDK, ``app.patches`` and every custom tool in behind it (~4s of
+    import per process/xdist worker) into everything that merely imports the
+    tool registry; the registry only needs the service inside the async
+    provider-registration paths."""
+    from app.services.composio.composio_service import (
+        get_composio_service as _get_composio_service,
+    )
+
+    return _get_composio_service()
+
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
 # are gated to desktop-app conversations in retrieval.py.

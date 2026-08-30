@@ -121,7 +121,8 @@ docker compose -f infra/docker/docker-compose.yml --profile all up -d
 For production, use `docker-compose.prod.yml`:
 
 ```bash
-docker compose -f infra/docker/docker-compose.prod.yml up -d
+# the production compose lives in the private theexperiencecompany/gaia-infra repo
+docker compose -f docker/docker-compose.prod.yml up -d
 ```
 
 Key differences:

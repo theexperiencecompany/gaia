@@ -18,7 +18,33 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from hypothesis import HealthCheck, settings as _hypothesis_settings
 import pytest
+
+# Hypothesis profiles. Profiled: 20 hypothesis tests were 10.4s of the 10.8s
+# of test time in tests/unit/utils — 100 examples each. PR lanes select the
+# "ci" profile (HYPOTHESIS_PROFILE=ci) to keep the feedback loop short; the
+# default (full) profile runs on master and locally, so nothing is lost.
+# The property tests do not set ``max_examples`` themselves (a per-test value
+# would silently override the profile); ``deadline=None`` stays per-test.
+# differing_executors: hypothesis flags a @given method whose class is
+# instantiated anew between calls — exactly what mutmut's in-process runner
+# does when it re-runs the suite per mutant (the "clean" run of the registry
+# shard failed on test_property_cron_datetime). The explicit per-test
+# @settings(max_examples=...) used to mask it; the profiles carry it now.
+_hypothesis_settings.register_profile(
+    "ci",
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "default",
+    max_examples=200,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
@@ -119,7 +145,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -312,8 +337,11 @@ def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None
     leaked = {
         key: (baseline.get(key), os.environ.get(key))
         for key in set(os.environ) | set(baseline)
-        if key.startswith("PYTEST_") is False and baseline.get(key) != os.environ.get(key)
+        if key.startswith(("PYTEST_", "KMP_")) is False and baseline.get(key) != os.environ.get(key)
     }
+    # KMP_*: set by the OpenMP runtime (onnxruntime/fastembed) on first import,
+    # not by a test. Only visible when embeddings run in-process (no sidecar,
+    # i.e. GitHub-hosted lanes).
     assert not leaked, f"tests leaked environment changes: {leaked}"
 
 
@@ -650,4 +678,10 @@ def _reset_limit_origin() -> Iterator[None]:
     later cases mail the wrong email.
     """
     yield
+    # Imported here, not at module level: limit_upsell -> email senders ->
+    # constants.llm -> langchain_core.language_models, whose ``base`` module
+    # eagerly imports ``transformers`` (~0.85s). Collection and workers that
+    # never run a test should not pay for it.
+    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
+
     mark_run_origin(LimitHitOrigin.INTERACTIVE)

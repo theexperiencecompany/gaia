@@ -1,7 +1,15 @@
 name: Setup Node.js + pnpm
 description: >
   Install pnpm 10.17.1, Node.js 22.15.1, and project dependencies.
-  Caches the pnpm store via setup-node so pnpm install resolves from local store.
+
+  Store strategy is runner-dependent. On GitHub-hosted runners the machine is
+  discarded after the job, so setup-node's GH-cache save/restore of the pnpm
+  store is the only way to avoid a cold install. On the self-hosted home
+  runner the opposite is true: the box keeps its NVMe between runs, so the
+  GH cache round-trip is pure WAN cost over a residential uplink — measured at
+  5m14s to restore and 5m36s to save on a build whose compile step took 19s.
+  There we pin pnpm at a persistent local store and skip the GH cache
+  entirely.
 
 inputs:
   nx-cloud-access-token:
@@ -12,24 +20,94 @@ inputs:
 runs:
   using: composite
   steps:
+    # dest is load-bearing. pnpm/action-setup self-installs into ~/setup-pnpm
+    # by default — one path shared by every runner instance on the home box.
+    # Three jobs starting together raced on it (ENOTEMPTY on rmdir, ENOENT on
+    # package.json) and all three failed. runner.temp is per instance.
     - name: Setup pnpm
       uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       with:
         version: 10.17.1
+        dest: ${{ runner.temp }}/setup-pnpm
 
-    - name: Setup Node.js
+    # Self-hosted: ONE persistent per-user store, named explicitly. pnpm's
+    # default store is $PNPM_HOME/store whenever PNPM_HOME is set, and
+    # pnpm/action-setup above sets PNPM_HOME to the job's temp dir — so the
+    # default is an empty store that dies with the job, and every install
+    # re-downloads the whole tree (measured 2026-08-29 on a fresh runner user:
+    # 3,558 packages, past the 5-minute changes job). The store is
+    # content-addressed and concurrency-safe, so the twenty instances dedupe
+    # against each other.
+    - name: Setup Node.js (self-hosted — persistent local store)
+      if: runner.environment == 'self-hosted'
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
+      with:
+        node-version: "22.15.1"
+
+    - name: Setup Node.js (GitHub-hosted — cache pnpm store)
+      if: runner.environment != 'self-hosted'
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.1
       with:
         node-version: "22.15.1"
         cache: "pnpm"
         cache-dependency-path: pnpm-lock.yaml
 
+    # Persistent workspace (self-hosted): actions/checkout runs with
+    # clean: false there and the runner's job-started hook does one scoped
+    # `git clean` that spares node_modules, .venv, .nx/cache and
+    # apps/web/.next/cache — so they simply live in the instance's checkout
+    # between jobs, no symlinks. (The symlink design died with the isolated
+    # linker: pnpm recreates node_modules itself and fails with ENOTDIR on a
+    # symlink.) pnpm install below is then a verify pass, seconds.
     - name: Install dependencies
       shell: bash
+      # On self-hosted the persisted tree is usually complete, so this is a
+      # verification pass; --prefer-offline keeps it off the network when the
+      # store already has everything.
+      # Self-hosted: node_modules persists in the workspace. When the marker
+      # the previous install left still matches (scripts/ci/runner.sh dep-marker keys
+      # it on the lockfile AND the linker/workspace settings), the tree is by
+      # construction what pnpm would produce — skip the ~15s verify pass.
+      env:
+        # electron is on the build allowlist so its postinstall may run, but
+        # that postinstall downloads the ~110 MB Electron binary on every
+        # fresh install. No CI job runs Electron: desktop-pr-build packages
+        # with electron-builder, which fetches its own distribution. Skipping
+        # the download also kept the 5-minute `changes` job from timing out on
+        # a cold self-hosted workspace (2026-08-29).
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
       run: |
+        set -euo pipefail
+        MARK="$(bash scripts/ci/runner.sh dep-marker node)"
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f "$MARK" ] && [ -d node_modules/.pnpm ]; then
+          echo "node_modules already installed ($MARK) — skipping pnpm install"
+          exit 0
+        fi
+        # The marker covers the install *settings* (lockfile, linker, build
+        # allowlists), and pnpm caches the settings it last installed with in
+        # node_modules/.modules.yaml, trusting that over pnpm-workspace.yaml.
+        # A settings change on a persistent workspace therefore fails with
+        # ERR_PNPM_IGNORED_BUILDS (measured 2026-08-29, strictDepBuilds) unless
+        # that cache goes: pnpm then rebuilds the tree from the content store.
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ] && [ -f node_modules/.modules.yaml ]; then
+          echo "install settings changed since the last install — resetting node_modules/.modules.yaml"
+          rm -f node_modules/.modules.yaml
+        fi
+        STORE_ARGS=()
+        if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+          STORE_ARGS=(--store-dir "${PNPM_STORE_DIR:-$HOME/.local/share/pnpm/store/v10}")
+        fi
         echo "::group::pnpm install"
-        pnpm install --frozen-lockfile --prefer-offline
+        # ${ARR[@]+"${ARR[@]}"}, not "${ARR[@]}": macOS runners are bash 3.2,
+        # where expanding an EMPTY array under `set -u` is itself the error
+        # ("STORE_ARGS[@]: unbound variable") — bash only stopped treating that
+        # as unset in 4.4. STORE_ARGS is empty on every GitHub-hosted runner,
+        # so the plain form broke `Package desktop (mac)` on each run while the
+        # Linux lanes (bash 5) sailed through.
+        pnpm install --frozen-lockfile --prefer-offline ${STORE_ARGS[@]+"${STORE_ARGS[@]}"}
         echo "::endgroup::"
+        rm -f node_modules/.gaia-installed-* 2>/dev/null || true
+        touch "$MARK"
 
     - name: Set NX_CLOUD_ACCESS_TOKEN
       if: false # Nx Cloud plan exceeded — restore condition to re-enable: inputs.nx-cloud-access-token != ''

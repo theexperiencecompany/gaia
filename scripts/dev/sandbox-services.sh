@@ -5,7 +5,7 @@
 # Cloud sandboxes (Claude Code on the web, CI runners, dev containers) usually
 # have no /var/run/docker.sock, so `docker compose up` in infra/docker/ is not
 # an option. Everything here installs and runs natively instead, pinned to the
-# same major versions we ship in infra/docker/docker-compose.prod.yml.
+# same major versions we ship in prod (the prod compose lives in gaia-infra).
 #
 #   ./scripts/dev/sandbox-services.sh up      # install (if needed) + start
 #   ./scripts/dev/sandbox-services.sh status  # per-service port probe

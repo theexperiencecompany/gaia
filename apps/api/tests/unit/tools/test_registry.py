@@ -672,3 +672,39 @@ class TestInitializeCategories:
             assert tool.destructive is False, (
                 f"{tool.name} must be curated non-destructive, not left to the classifier"
             )
+
+
+@pytest.mark.unit
+class TestAddCategoryOptions:
+    """``_add_category`` forwards its keyword options to ``ToolCategory`` and
+    nothing else decides their defaults (mutation survivors 2026-08-28: the
+    default values and the option keys were not pinned)."""
+
+    def test_defaults_are_tool_category_defaults(self):
+        registry = ToolRegistry()
+        registry._add_category("bare")
+        category = registry._categories["bare"]
+        assert category.space == "general"
+        assert category.require_integration is False
+        assert category.integration_name is None
+        assert category.is_delegated is False
+        assert category.internal is False
+
+    def test_every_option_lands_on_the_category(self):
+        registry = ToolRegistry()
+        registry._add_category(
+            "full",
+            options=CategoryOptions(
+                space="productivity",
+                require_integration=True,
+                integration_name="gmail",
+                is_delegated=True,
+                internal=True,
+            ),
+        )
+        category = registry._categories["full"]
+        assert category.space == "productivity"
+        assert category.require_integration is True
+        assert category.integration_name == "gmail"
+        assert category.is_delegated is True
+        assert category.internal is True

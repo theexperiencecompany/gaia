@@ -45,7 +45,7 @@ DOC = "tools/lints/README.md#plr-complexity-ratchet"
 _HERE = Path(__file__).resolve().parent
 REPO_ROOT = _HERE.parents[1]
 BASELINE = _HERE / "plr_complexity_baseline.txt"
-CHANGED_FILES_SCRIPT = REPO_ROOT / "scripts" / "ci" / "changed-files.sh"
+CHANGES_SCRIPT = REPO_ROOT / "scripts" / "ci" / "changes.sh"
 PLR_RULES = ("PLR0911", "PLR0912", "PLR0913", "PLR0915")
 FULL_SENTINEL = "__FULL__"
 
@@ -104,7 +104,7 @@ def _current_violations() -> dict[tuple[str, str], int]:
 def _touched_files() -> set[str] | None:
     """Files this PR changed, or ``None`` on a full/push scan (no diff to check)."""
     proc = subprocess.run(  # nosec B603 - fixed repo script argv, no shell
-        [str(CHANGED_FILES_SCRIPT), "py"],
+        [str(CHANGES_SCRIPT), "files", "py"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

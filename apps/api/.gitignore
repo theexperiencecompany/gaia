@@ -11,7 +11,7 @@ models_backup_*.json
 # Written by every `seed_explore_workflows.py` run unless --no-backup is passed.
 explore_workflows_backup_*.json
 
-# Mutation-testing scratch dirs (scripts/test/mutation.sh, one per run).
+# Mutation-testing scratch dirs (scripts/ci/mutation.sh module, one per run).
 # Normally removed by its EXIT trap, but a killed run leaves one behind and a
 # `git add -A` then sweeps thousands of copied files into the index.
 .mutation-*/

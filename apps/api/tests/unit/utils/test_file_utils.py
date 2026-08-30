@@ -80,7 +80,6 @@ def _slow_block(seconds: float = 0.2) -> None:
 def processor() -> DocumentProcessor:
     """Return a DocumentProcessor with mocked parser and llm."""
     with (
-        patch("app.utils.file_utils.LlamaParse"),
         patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
     ):
         proc = DocumentProcessor(user_id="u-test")
@@ -94,7 +93,6 @@ class TestDocumentProcessorInit:
     async def test_summarization_runs_on_the_helper_llm_the_constructor_built(self) -> None:
         helper = _mock_llm(batch_return=[AIMessage(content="Summary 1")])
         with (
-            patch("app.utils.file_utils.LlamaParse"),
             patch("app.utils.file_utils.get_helper_llm", return_value=helper) as get_llm,
         ):
             proc = DocumentProcessor(user_id="u-test")
@@ -112,7 +110,6 @@ class TestDocumentProcessorInit:
         assert the mock rather than the cap. Only the key is pinned — the
         hermetic conftest blanks it, and building the client dials nothing."""
         with (
-            patch("app.utils.file_utils.LlamaParse"),
             patch("app.agents.llm.client.settings.OPENROUTER_API_KEY", new="sk-unit-test"),
         ):
             proc = DocumentProcessor(user_id="u-test")
@@ -124,7 +121,6 @@ class TestDocumentProcessorInit:
 
     def test_user_id_is_held_for_cost_attribution(self) -> None:
         with (
-            patch("app.utils.file_utils.LlamaParse"),
             patch("app.utils.file_utils.get_helper_llm", return_value=_mock_llm()),
         ):
             proc = DocumentProcessor(user_id="u-billed")
@@ -677,7 +673,6 @@ class TestProcessText:
         """A freshly built processor summarizes with get_helper_llm's model."""
         helper = _mock_llm(invoke_return="Helper summary")
         with (
-            patch("app.utils.file_utils.LlamaParse"),
             patch("app.utils.file_utils.get_helper_llm", return_value=helper),
         ):
             proc = DocumentProcessor(user_id="u-test")
