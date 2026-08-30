@@ -15,7 +15,7 @@ same PR (its header says so too).
   docstrings + security in one job, mypy, dead code, evlog-map observability
   score, wide-event cross-runtime conformance, semgrep, sharded mutation
   testing, …) behind the
-  ratcheted `Quality gate (required)` check.
+  `Quality gate (required)` check.
 
 
 **Never add a check to both.** Every static check lives in code-quality.yml
@@ -54,10 +54,14 @@ Consequences to keep in mind when editing a lane:
   `gaia-home-lint` for code-quality.yml), and the install/teardown path. It
   lives there, not here, because this repo is public and the box's topology is
   not.
-- **Fork PRs never run on the box.** `runner.sh select` sends any PR whose
-  head repo is not this one to `ubuntu-latest` before it even probes the
-  runners API. The repo is public and the runner user's workspace, caches and
-  network are shared state.
+- **What actually keeps fork code off the box is the repo's fork-PR approval
+  policy** (all outside collaborators require approval before any workflow
+  runs). `runner.sh select` does send a PR whose head repo is not this one to
+  `ubuntu-latest` before it probes the runners API — but that is ROUTING, not a
+  security boundary: on `pull_request` a fork supplies its own workflow file,
+  so it can choose not to call the composite at all. Do not weaken the approval
+  policy on the strength of that check. The repo is public and the runner
+  user's workspace, caches and network are shared state.
 
 ## Workflow files are thin orchestration — nothing else
 
@@ -108,6 +112,12 @@ goes green on an unchecked PR (this bug shipped once; build.yml's variant
 could silently skip production deploys).
 
 ## Python tests: runner-native against live services
+
+**A PR has no coverage gate.** diff-cover was retired with the slice split: a
+PR's slices run a test-impact selection, and a coverage percentage measured
+over a subset is not a coverage percentage. The full suite and the 80%
+combined gate run on master, which is the backstop — do not restore diff-cover
+to a PR lane.
 
 `test-python` (and master-only `coverage`) run pytest directly on the runner
 against PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ started by

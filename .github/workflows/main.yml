@@ -426,10 +426,18 @@ jobs:
         run: bash scripts/ci/embedding-sidecar.sh stop
 
   # ── Coverage gate — its own job, off the test lanes' critical path ────────
+  #
+  # A PR HAS NO COVERAGE GATE. This is deliberate, not an oversight: diff-cover
+  # was retired with the slice split, because a PR's slices run a test-impact
+  # SELECTION and a coverage total measured over a subset is not a coverage
+  # total — it fails honest PRs and passes dishonest ones. The full suite and
+  # the 80% combined gate run on master, which is the backstop. Do not
+  # "restore" diff-cover to a PR lane; it would be measuring the selection.
   coverage:
     needs: [select-runner, detect, test-python]
-    # PR lanes do not trace coverage (see the COVERAGE env on test-python);
-    # the combined gate only exists on master and dispatch runs.
+    # PR lanes do not trace coverage at all (see the COVERAGE env on
+    # test-python) — tracing costs ~35 CPU-points per lane for a number
+    # nothing would be entitled to read.
     if: needs.detect.outputs.has_python == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 8
