@@ -19,6 +19,7 @@ from app.helpers.lifespan_helpers import (
     init_websocket_broadcast_listener,
     init_workflow_service,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Init functions
@@ -74,8 +75,13 @@ class TestInitWebsocketBroadcastListener:
             "app.helpers.lifespan_helpers.start_websocket_broadcast_listener",
             side_effect=RuntimeError("ws fail"),
         ):
-            with pytest.raises(RuntimeError):
-                await init_websocket_broadcast_listener()
+            async with captured_wide_event() as event:
+                with pytest.raises(RuntimeError):
+                    await init_websocket_broadcast_listener()
+        (error,) = event["errors"]
+        assert error["msg"] == "Failed to start WebSocket broadcast listener"
+        assert error["error"] == "ws fail"
+        assert error["error_type"] == "RuntimeError"
 
 
 class TestInitMongodbAsync:
@@ -171,7 +177,12 @@ class TestCloseWebsocketAsync:
             new_callable=AsyncMock,
             side_effect=RuntimeError("ws stop fail"),
         ):
-            await close_websocket_async()
+            async with captured_wide_event() as event:
+                await close_websocket_async()
+        (error,) = event["errors"]
+        assert error["msg"] == "Error stopping WebSocket broadcast listener"
+        assert error["error"] == "ws stop fail"
+        assert error["error_type"] == "RuntimeError"
 
 
 class TestClosePublisherAsync:
