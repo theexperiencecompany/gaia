@@ -9,7 +9,7 @@ can actually see the change.
 
 Every non-PR run of `test-python` (push to master, `workflow_dispatch`) runs
 pytest with `--cov-context=test`, so coverage.py records a *dynamic context* per
-test: which test id executed which line of which file. `scripts/ci/test-impact.py
+test: which test id executed which line of which file. `scripts/ci/test_impact.py
 record` reads that database and inverts it into
 
 ```json
@@ -29,10 +29,10 @@ record a map, and their coverage total would be meaningless after selection.
 
 ## How a PR uses it
 
-`scripts/ci/test-impact-fetch.sh` downloads the newest map artifact for the slice
+`test_impact.py fetch` downloads the newest map artifact for the slice
 (master or the PR's head branch, whichever recorded later); then
-`scripts/ci/test-impact-select.sh` diffs against
-`git merge-base origin/$BASE HEAD`, and runs `test-impact.py select`. The result
+`test_impact.py select` diffs against
+`git merge-base origin/$BASE HEAD`, and applies the rules below. The result
 is the union of:
 
 - every test covering a changed `app/**` file;
@@ -77,8 +77,8 @@ selecting inside it saves nothing and skipping it is the least safe thing to do.
 ## Off switch
 
 Selection is on by default. Setting `TEST_IMPACT_ENABLED=0` (or `false`) for a
-run turns it off: `test-impact-fetch.sh` downloads no map, and
-`test-impact-select.sh` writes `ALL` and prints
+run turns it off: `fetch` downloads no map, and
+`select` writes `ALL` and prints
 `test impact (<slice>): disabled by TEST_IMPACT_ENABLED=0, running ALL`. The
 workflow exposes it as a `workflow_dispatch` input, so a full run on a branch is
 one click away when a selection looks wrong.

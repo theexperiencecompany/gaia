@@ -7,14 +7,23 @@ three files. This script turns a coverage database recorded WITH dynamic
 contexts (``--cov-context=test``) into a source-file -> test-ids map, and then
 turns a diff into the subset of tests that can actually see the change.
 
-Two commands:
+Three subcommands:
 
   record --coverage-db .coverage.unit --out test-impact-map-unit.json
       Read a coverage DB and emit the map.
 
-  select --map test-impact-map-unit.json --changed changed-files.txt \
-         --out selected.txt
-      Emit the node ids to run (or the single line ``ALL``).
+  fetch
+      Download the newest map artifact for this slice into $MAP_DIR.
+
+  select
+      Diff the PR against its merge-base and write
+      apps/api/.test-impact/selected-<slice>.txt — either a list of pytest
+      node ids or the single line ``ALL``. `pytest.sh slice` consumes it.
+
+`fetch` and `select` read their inputs from the environment (SLICE_NAME,
+SLICE_PATHS, SLICE_IGNORE, BASE_REF, MAP_DIR, TEST_IMPACT_ENABLED,
+GITHUB_REPOSITORY, GITHUB_HEAD_REF) so a workflow step stays one command
+line; every input also has an explicit flag, which is how the tests drive it.
 
 Safety is one-directional: every case we are not sure about widens to ALL.
 The full suite on master is the backstop, so a wrong-but-wide answer costs
@@ -32,10 +41,18 @@ import argparse
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 from typing import Any
 
 MAP_VERSION = 1
+
+# Where the slice's selection and its scratch files live, relative to the repo
+# root. `pytest.sh slice` reads selected-<slice>.txt from here.
+SELECTION_DIR = Path("apps/api/.test-impact")
+DEFAULT_MAP_DIR = ".test-impact-map"
+ARTIFACT_PREFIX = "test-impact-map-"
 
 # Selecting more than this fraction of the suite is not worth the argv risk
 # (10k node ids is ~1 MB, near ARG_MAX) nor the bookkeeping: just run it all.
@@ -74,7 +91,7 @@ SUITE_CONFIG_NAMES = frozenset(
     {"uv.lock", "pyproject.toml", ".python-version", "pytest.ini", "setup.cfg", "tox.ini"}
 )
 SUITE_CONFIG_PATHS = frozenset({"scripts/ci/pytest.sh", ".github/workflows/main.yml"})
-SUITE_CONFIG_PREFIXES = ("scripts/ci/test-impact", ".github/actions/setup-python-test-env/")
+SUITE_CONFIG_PREFIXES = ("scripts/ci/test_impact", ".github/actions/setup-python-test-env/")
 
 TEST_MODULE_PREFIX = "test_"
 TEST_MODULE_SUFFIX = "_test.py"
@@ -339,9 +356,91 @@ def select_tests(
     return node_ids, head + extra, estimated, total
 
 
+def _enabled() -> bool:
+    """The off switch: an explicit 0/false runs the whole slice, unselected."""
+    return os.environ.get("TEST_IMPACT_ENABLED", "1").lower() not in {"0", "false"}
+
+
+def _emit(slice_name: str, mode: str, summary: str) -> None:
+    """Print the one-line verdict and hand it to the job's outputs/summary."""
+    label = f"test impact ({slice_name})" if slice_name else "test impact"
+    line = f"{label}: {summary}"
+    print(line)
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a") as fh:
+            fh.write(f"mode={mode}\nsummary={summary}\n")
+    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary:
+        with open(step_summary, "a") as fh:
+            fh.write(f"{line}\n\n")
+
+
+def _git(*argv: str) -> str | None:
+    """Run git, returning stdout, or None when it fails (caller widens to ALL)."""
+    proc = subprocess.run(["git", *argv], capture_output=True, text=True, check=False)
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def _changed_since_merge_base(base_ref: str, scratch: Path) -> list[str] | None:
+    """The PR's own diff, or None when the merge-base cannot be resolved.
+
+    The merge-base, not the base tip: we only want what this PR changed. No
+    --depth on the fetch — on the box's persistent workspace a depth-limited
+    fetch marks the repo shallow again, and the next checkout pays a full
+    re-unshallow from GitHub (measured 104 s per job).
+    """
+    _git("fetch", "--no-tags", "origin", base_ref)
+    merge_base = _git("merge-base", f"origin/{base_ref}", "HEAD")
+    if not merge_base or not merge_base.strip():
+        return None
+    diff = _git("diff", "--name-only", merge_base.strip(), "HEAD")
+    if diff is None:
+        return None
+    scratch.write_text(diff)
+    return [line for line in diff.splitlines() if line.strip()]
+
+
 def cmd_select(args: argparse.Namespace) -> int:
-    files, test_files = load_maps(args.map)
-    changed = [line for line in Path(args.changed).read_text().splitlines() if line.strip()]
+    slice_name = args.slice or os.environ.get("SLICE_NAME", "")
+    if not slice_name and not (args.out and args.map):
+        raise SystemExit("select: SLICE_NAME (or --slice) is required to derive its paths")
+    out = Path(args.out) if args.out else SELECTION_DIR / f"selected-{slice_name}.txt"
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    if not _enabled():
+        out.write_text(f"{ALL_MARKER}\n")
+        value = os.environ.get("TEST_IMPACT_ENABLED")
+        _emit(slice_name, "all", f"disabled by TEST_IMPACT_ENABLED={value}, running ALL")
+        return 0
+
+    map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
+    map_paths = args.map or [str(map_dir / f"{ARTIFACT_PREFIX}{slice_name}.json")]
+    if not all(Path(p).is_file() for p in map_paths):
+        out.write_text(f"{ALL_MARKER}\n")
+        _emit(slice_name, "all", f"ran ALL (no map artifact for slice {slice_name} yet)")
+        return 0
+
+    if args.changed:
+        changed = [line for line in Path(args.changed).read_text().splitlines() if line.strip()]
+    else:
+        base_ref = os.environ.get("BASE_REF") or "master"
+        found = _changed_since_merge_base(base_ref, out.parent / "changed-files.txt")
+        if found is None:
+            out.write_text(f"{ALL_MARKER}\n")
+            _emit(
+                slice_name,
+                "all",
+                f"ran ALL (no merge-base with origin/{base_ref} — shallow checkout?)",
+            )
+            return 0
+        changed = found
+
+    # tests/contracts is the API contract and always runs; the bridge slice
+    # never reaches this command at all (see main.yml).
+    restrict_to = args.restrict_to or os.environ.get("SLICE_PATHS", "").split()
+
+    files, test_files = load_maps(map_paths)
     if not files:
         node_ids, reason, n, total = [ALL_MARKER], "no map available", 0, 0
     else:
@@ -350,20 +449,120 @@ def cmd_select(args: argparse.Namespace) -> int:
             files,
             test_files,
             repo_root=Path(args.repo_root),
-            restrict_to=args.restrict_to,
-            always=args.always,
+            restrict_to=restrict_to,
+            always=args.always or ["tests/contracts"],
         )
 
-    Path(args.out).write_text("".join(f"{i}\n" for i in node_ids))
+    out.write_text("".join(f"{i}\n" for i in node_ids))
     if node_ids == [ALL_MARKER]:
         summary = f"selected ALL of {total or 'unknown'} tests ({reason})"
+        mode = "all"
     else:
         summary = f"selected {n} of {total} tests ({reason})"
-    print(summary)
-    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if step_summary:
-        with open(step_summary, "a") as fh:
-            fh.write(f"test impact: {summary}\n\n")
+        mode = "selected"
+    _emit(slice_name, mode, summary)
+    return 0
+
+
+# ── map fetching ─────────────────────────────────────────────────────────────
+
+
+def cmd_fetch(args: argparse.Namespace) -> int:
+    """Download the newest map artifact for this slice into $MAP_DIR.
+
+    Maps are uploaded as workflow artifacts by master / dispatch runs (main.yml
+    "Upload test impact map"), not actions/cache: a pull_request run may only
+    restore caches written on its own merge ref or on the default branch, so a
+    map recorded by a dispatch run on the PR's head branch was invisible to the
+    PR — measured: four maps in the cache, every lane "ran ALL". Artifacts are
+    fetched by run, which any job with actions:read may do.
+
+    Every failure mode leaves no map, and `select` then runs the whole slice.
+    """
+    slice_name = args.slice or os.environ.get("SLICE_NAME", "")
+    if not slice_name:
+        raise SystemExit("fetch: SLICE_NAME (or --slice) is required")
+    if not _enabled():
+        value = os.environ.get("TEST_IMPACT_ENABLED")
+        print(
+            f"test impact ({slice_name}): disabled by TEST_IMPACT_ENABLED={value}, "
+            "skipping map fetch"
+        )
+        return 0
+
+    repo = os.environ["GITHUB_REPOSITORY"]
+    artifact = f"{ARTIFACT_PREFIX}{slice_name}"
+    map_dir = Path(os.environ.get("MAP_DIR", DEFAULT_MAP_DIR))
+    map_dir.mkdir(parents=True, exist_ok=True)
+
+    # One call: the repo-wide artifact list filtered by name carries each
+    # artifact's run id and head branch (walking runs and asking each for its
+    # artifacts cost 27 s per lane). Newest unexpired one on master or the head
+    # branch wins.
+    branches = {"master"}
+    head_ref = os.environ.get("GITHUB_HEAD_REF")
+    if head_ref:
+        branches.add(head_ref)
+    listing = _gh_json(
+        f"repos/{repo}/actions/artifacts?name={artifact}&per_page=50",
+    )
+    candidates = [
+        (a["created_at"], a["workflow_run"]["id"])
+        for a in (listing or {}).get("artifacts", [])
+        if not a.get("expired") and a.get("workflow_run", {}).get("head_branch") in branches
+    ]
+    if not candidates:
+        print(
+            f"test impact ({slice_name}): no map artifact on master or "
+            f"{head_ref or '<no head ref>'} yet"
+        )
+        return 0
+    created, run_id = max(candidates)
+    return _download_map(repo, artifact, run_id, created, map_dir, slice_name)
+
+
+def _gh_json(endpoint: str) -> dict[str, Any] | None:
+    """`gh api <endpoint>` decoded, or None when gh/the API fails."""
+    if shutil.which("gh") is None:
+        return None
+    proc = subprocess.run(["gh", "api", endpoint], capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _download_map(
+    repo: str, artifact: str, run_id: int, created: str, map_dir: Path, slice_name: str
+) -> int:
+    proc = subprocess.run(
+        [
+            "gh",
+            "run",
+            "download",
+            str(run_id),
+            "--repo",
+            repo,
+            "--name",
+            artifact,
+            "--dir",
+            str(map_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    landed = map_dir / f"{artifact}.json"
+    if proc.returncode == 0 and landed.is_file() and landed.stat().st_size > 0:
+        print(f"test impact ({slice_name}): map from run {run_id} ({created})")
+        return 0
+    landed.unlink(missing_ok=True)
+    print(
+        f"::warning::test impact ({slice_name}): could not download {artifact} "
+        f"from run {run_id}; running the whole slice"
+    )
     return 0
 
 
@@ -381,12 +580,18 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("--slice", default="")
     rec.set_defaults(func=cmd_record)
 
+    fetch = sub.add_parser("fetch", help="download this slice's newest map artifact")
+    fetch.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
+    fetch.set_defaults(func=cmd_fetch)
+
+    # Every input defaults from the environment so the workflow step is one
+    # command line; the flags exist so the tests can drive it hermetically.
     sel = sub.add_parser("select", help="impact map + diff -> node ids")
-    sel.add_argument("--map", action="append", required=True)
-    sel.add_argument("--changed", required=True)
-    sel.add_argument("--out", required=True)
-    sel.add_argument("--repo-root", default=".", help="apps/api, for existence checks")
-    sel.add_argument("--tests-root", default="tests", help="kept for CLI symmetry; unused")
+    sel.add_argument("--slice", default="", help="defaults to $SLICE_NAME")
+    sel.add_argument("--map", action="append", help="defaults to $MAP_DIR/<artifact>.json")
+    sel.add_argument("--changed", help="defaults to the diff against the merge-base")
+    sel.add_argument("--out", help="defaults to apps/api/.test-impact/selected-<slice>.txt")
+    sel.add_argument("--repo-root", default="apps/api", help="for existence checks")
     sel.add_argument(
         "--restrict-to",
         action="append",

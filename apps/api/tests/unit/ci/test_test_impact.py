@@ -1,4 +1,4 @@
-"""Tests for scripts/ci/test-impact.py.
+"""Tests for scripts/ci/test_impact.py.
 
 The map is built from a REAL coverage database (coverage's own API, dynamic
 contexts and all) rather than a hand-written JSON fixture — the thing most
@@ -18,7 +18,7 @@ from types import ModuleType
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[5] / "scripts" / "ci" / "test-impact.py"
+SCRIPT = Path(__file__).resolve().parents[5] / "scripts" / "ci" / "test_impact.py"
 
 
 def load_module() -> ModuleType:
@@ -261,8 +261,7 @@ def test_a_conftest_change_widens_to_all(suite) -> None:
         ".python-version",
         "libs/pyproject.toml",
         "scripts/ci/pytest.sh",
-        "scripts/ci/test-impact.py",
-        "scripts/ci/test-impact-select.sh",
+        "scripts/ci/test_impact.py",
         ".github/workflows/main.yml",
         ".github/actions/setup-python-test-env/action.yml",
     ],
@@ -382,7 +381,12 @@ def test_select_cli_writes_the_file_and_prints_a_summary(
         ]
     )
     assert rc == 0
-    assert out.read_text().splitlines() == [f"tests/unit/test_alpha.py::test_{i}" for i in range(4)]
+    # tests/contracts is the built-in always-on path (the API contract), so the
+    # CLI default appends it — this is what the lane really runs.
+    assert out.read_text().splitlines() == [
+        *[f"tests/unit/test_alpha.py::test_{i}" for i in range(4)],
+        "tests/contracts",
+    ]
     assert "selected 4 of 30 tests" in capsys.readouterr().out
 
 
@@ -413,7 +417,7 @@ def test_missing_map_is_treated_as_run_everything(
     assert "no map available" in capsys.readouterr().out
 
 
-# ── off switch (shell wrappers) ──────────────────────────────────────────────
+# ── off switch (the env-driven CI entry points) ──────────────────────────────
 
 
 @pytest.mark.parametrize("value", ["0", "false"])
@@ -428,7 +432,7 @@ def test_select_script_disabled_writes_all_without_selecting(tmp_path: Path, val
         "GITHUB_OUTPUT": str(tmp_path / "out.txt"),
     }
     proc = subprocess.run(
-        ["bash", str(SCRIPT.with_name("test-impact-select.sh"))],
+        [sys.executable, str(SCRIPT), "select"],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -445,7 +449,7 @@ def test_select_script_disabled_writes_all_without_selecting(tmp_path: Path, val
 def test_fetch_script_disabled_downloads_nothing(tmp_path: Path) -> None:
     env = {"PATH": os.environ["PATH"], "SLICE_NAME": "unit-a", "TEST_IMPACT_ENABLED": "0"}
     proc = subprocess.run(
-        ["bash", str(SCRIPT.with_name("test-impact-fetch.sh"))],
+        [sys.executable, str(SCRIPT), "fetch"],
         cwd=tmp_path,
         env=env,
         capture_output=True,

@@ -196,7 +196,7 @@ piolium/
 # Local agent-session tooling (untracked workspace scripts)
 .agents/gateway-adapter/
 
-# Test impact selection artifacts (scripts/ci/test-impact.py)
+# Test impact selection artifacts (scripts/ci/test_impact.py)
 apps/api/.test-impact/
 .test-impact-map/
 
