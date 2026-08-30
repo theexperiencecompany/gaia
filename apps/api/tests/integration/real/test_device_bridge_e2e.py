@@ -41,6 +41,8 @@ import time
 import httpx
 import pytest
 
+from tests.helpers import pick_free_port
+
 pytestmark = [pytest.mark.service, pytest.mark.slow]
 
 # Anchor by walking up to the repo root that owns the CLI package (which ships
@@ -88,6 +90,26 @@ def _npm_cache_dir() -> str:
 
 
 USER_CODE_RE = re.compile(r"enter this code:\s*([A-Z0-9-]+)")
+
+# How long the daemon gets to print its pairing code, measured rather than guessed.
+# `runLogin` prints NOTHING until `startPairing` returns, so this window covers
+# node boot + tsx transpiling src/index.ts's whole import graph (it statically
+# imports every command — ink, react, simple-git, execa, the MCP SDK — before
+# commander even parses argv) + one HTTP round trip. Measured cost of that whole
+# prefix: 0.76s on a dev laptop, ~1s on the runner's i7-10700K, and the complete
+# golden path (pair, tunnel up, real MCP round trip, revoke) runs in 5.0s when the
+# runner is idle (run 33302182969, bridge alone on the box).
+#
+# The old 10s was inside the noise, not outside it. The self-hosted box schedules
+# up to seven jobs across 8 physical cores at once — unit-a/unit-b/integration
+# claim 16 xdist workers between them, plus test-typescript, build and
+# docker-image — and this slice is budgeted no share at all. Under that load the
+# same fixture's setup goes 4.1s -> 9.5s (run 33301137881) and the daemon's spawn
+# is hit harder still: the test failed ~50% of the time with an EMPTY transcript.
+# This is the contended ceiling, not the expected cost; a genuinely dead child now
+# fails in under a second via the liveness check in wait_for_user_code, so the
+# only thing a large ceiling buys is not flaking on a busy machine.
+USER_CODE_TIMEOUT_SECONDS = 60.0
 
 
 def everything_server(entry: Path) -> dict:
@@ -177,16 +199,37 @@ class BridgeDaemon:
         self._pump(self.login_process.stdout, self.login_output, "login/out")
         self._pump(self.login_process.stderr, self.login_output, "login/err")
 
-    async def wait_for_user_code(self, timeout: float = 10.0) -> str:
+    async def _drain(self, timeout: float = 2.0) -> None:
+        """Let the output pumps reach EOF so a dead child's last words — the
+        stack trace saying *why* it died — make it into the message we raise."""
+        if self._tasks:
+            await asyncio.wait(self._tasks, timeout=timeout)
+
+    async def wait_for_user_code(self, timeout: float = USER_CODE_TIMEOUT_SECONDS) -> str:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         while True:
             match = USER_CODE_RE.search("".join(self.login_output))
             if match:
                 return match.group(1)
+            assert self.login_process is not None
+            # The same liveness guard wait_connected already has. Without it a
+            # daemon that crashed and a daemon that is merely slow both report
+            # the collected output after the full timeout, which is how a CI
+            # failure with an empty transcript stayed ambiguous for two days.
+            returncode = self.login_process.returncode
+            if returncode is not None:
+                await self._drain()
+                raise AssertionError(
+                    f"`gaia bridge login` exited with exit code {returncode} before "
+                    f"printing a user_code; output: {''.join(self.login_output)!r}"
+                )
             if loop.time() >= deadline:
                 raise AssertionError(
-                    f"user_code never appeared in `gaia bridge login` output: "
+                    f"user_code never appeared in `gaia bridge login` output within "
+                    f"{timeout:.0f}s — the child is still running (pid "
+                    f"{self.login_process.pid}), so this is starvation or a hung "
+                    f"request, not a crash. Output so far: "
                     f"{''.join(self.login_output)!r}"
                 )
             await asyncio.sleep(0.1)
@@ -303,6 +346,35 @@ def everything_server_cached() -> Path:
     return entry
 
 
+@pytest.fixture(scope="session")
+def warm_cli() -> None:
+    """Run the real CLI once, before any test's readiness clock starts.
+
+    Two jobs, both learned from a CI failure whose only symptom was an empty
+    transcript. It pays node's boot plus tsx's transpile of src/index.ts's whole
+    import graph (every command is a static import — ink, react, simple-git,
+    execa, the MCP SDK — so `bridge login` loads all of it before printing
+    anything) outside the window the tests measure. And it turns an unrunnable
+    CLI — tsx missing, a node_modules symlink dangling after a pnpm store move,
+    a node/ABI mismatch — into a named failure here rather than a silent
+    "user_code never appeared" inside a test that looks like a timing flake.
+
+    Same trick, for the same reason, as everything_server_cached above.
+    """
+    probe = subprocess.run(
+        [str(TSX_BIN), "src/index.ts", "--version"],
+        cwd=str(CLI_DIR),
+        capture_output=True,
+        text=True,
+        timeout=180.0,
+        check=False,
+    )
+    assert probe.returncode == 0, (
+        f"the `gaia` CLI is not runnable via {TSX_BIN} (rc={probe.returncode}); "
+        f"every bridge test below would fail as a bare timeout. stderr: {probe.stderr}"
+    )
+
+
 def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
     headers = {"x-test-user-id": user_id} if user_id else {}
     # Sized from the measured cost of the slowest call these clients make — the
@@ -316,7 +388,7 @@ def _client(base_url: str, user_id: str | None = None) -> httpx.AsyncClient:
 
 class TestFullDeviceLifecycle:
     async def test_pair_up_real_mcp_round_trip_then_revoke(
-        self, tmp_path, live_api_server, clean_bridge_tables, everything_server_cached
+        self, tmp_path, live_api_server, clean_bridge_tables, everything_server_cached, warm_cli
     ):
         """The golden path, end to end, with no shortcuts anywhere in the chain."""
         daemon = BridgeDaemon(tmp_path / "home")
@@ -400,7 +472,7 @@ class TestFullDeviceLifecycle:
 
 class TestCrossUserIsolation:
     async def test_intruder_cannot_see_or_revoke_anothers_device(
-        self, tmp_path, live_api_server, clean_bridge_tables
+        self, tmp_path, live_api_server, clean_bridge_tables, warm_cli
     ):
         daemon = BridgeDaemon(tmp_path / "home")
         owner = _client(live_api_server.url, "cross-user-owner")
@@ -424,6 +496,41 @@ class TestCrossUserIsolation:
         finally:
             await owner.aclose()
             await intruder.aclose()
+            await daemon.stop_all()
+
+
+class TestDaemonStartupDiagnostics:
+    async def test_a_dead_login_child_is_reported_as_a_death_not_as_silence(
+        self, tmp_path, warm_cli
+    ):
+        """A `gaia bridge login` that exits must fail the wait immediately, naming
+        its exit code — not time out looking like a slow one.
+
+        This is the gap that cost two days of CI triage: `wait_connected` below
+        already checks `returncode is not None` and says "exited early", but
+        `wait_for_user_code` only ever reported the collected output, so a child
+        that died at 0.8s and a child still transpiling at 10s produced the same
+        message. Pointing the CLI at a port nothing is listening on makes
+        `startPairing`'s fetch reject, which is a real, unmocked death of the
+        real child process.
+        """
+        daemon = BridgeDaemon(tmp_path / "home")
+        try:
+            await daemon.start_login(f"http://127.0.0.1:{pick_free_port()}", "dead-child")
+            started = time.monotonic()
+            with pytest.raises(AssertionError) as excinfo:
+                await daemon.wait_for_user_code()
+            elapsed = time.monotonic() - started
+
+            message = str(excinfo.value)
+            assert "exit code 1" in message, message
+            # The child's own last words, which say *why* it died.
+            assert "fetch failed" in message, message
+            # And it must not burn the readiness budget on a process already gone.
+            assert elapsed < USER_CODE_TIMEOUT_SECONDS / 2, (
+                f"waited {elapsed:.1f}s for a child that had already exited"
+            )
+        finally:
             await daemon.stop_all()
 
 
