@@ -40,11 +40,13 @@ import argparse
 import asyncio
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import os
 from pathlib import Path
 import sys
+from typing import Any
 
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -206,6 +208,19 @@ def _nanos(moment: datetime) -> int:
     return int(moment.timestamp() * 1_000_000_000)
 
 
+class UndrainableTimestampError(RuntimeError):
+    """More log lines share one nanosecond than fit in a Loki page, so the day
+    cannot be read completely and must not be written."""
+
+    def __init__(self, day: str, nanos: int) -> None:
+        super().__init__(
+            f"{day}: more than {_LOKI_PAGE} llm_call lines share timestamp {nanos}ns; "
+            "Loki cannot page inside one timestamp, so this day cannot be backfilled completely"
+        )
+        self.day = day
+        self.nanos = nanos
+
+
 async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list[LlmCall]:
     """Every ``llm_call`` event Loki holds for one UTC day.
 
@@ -235,38 +250,59 @@ async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list
             headers={"accept": "application/json"},
         )
         response.raise_for_status()
-        streams = response.json()["data"]["result"]
-        seen = 0
-        fresh = 0
-        latest = 0
-        at_latest: set[str] = set()
-        for stream in streams:
-            for nanos, line in stream["values"]:
-                seen += 1
-                at = int(nanos)
-                if at == cursor_nanos and line in taken_at_cursor:
-                    continue
-                fresh += 1
-                if at > latest:
-                    latest, at_latest = at, set()
-                if at == latest:
-                    at_latest.add(line)
-                call = _parse_event(line)
-                if call is not None:
-                    calls.append(call)
-        if seen < _LOKI_PAGE:
+        page = _fold_page(response.json()["data"]["result"], cursor_nanos, taken_at_cursor, calls)
+        if page.seen < _LOKI_PAGE:
             break
-        if fresh == 0:
+        if page.fresh == 0:
             # A whole page of lines already taken: more than a page shares this
-            # nanosecond, which Loki cannot page through. Step past it.
-            cursor_nanos, taken_at_cursor = cursor_nanos + 1, set()
-        elif latest == cursor_nanos:
-            taken_at_cursor |= at_latest
+            # nanosecond and Loki cannot page inside one timestamp. Anything we
+            # wrote for this day would be short, so refuse the day instead.
+            raise UndrainableTimestampError(day, cursor_nanos)
+        if page.latest == cursor_nanos:
+            taken_at_cursor |= page.at_latest
         else:
-            cursor_nanos, taken_at_cursor = latest, at_latest
+            cursor_nanos, taken_at_cursor = page.latest, set(page.at_latest)
         if cursor_nanos >= end_nanos:
             break
     return calls
+
+
+@dataclass(frozen=True)
+class _PageScan:
+    """What one Loki page contributed: how many lines it held, how many were new,
+    and the lines at its last nanosecond (the overlap the next page must skip)."""
+
+    seen: int
+    fresh: int
+    latest: int
+    at_latest: frozenset[str]
+
+
+def _fold_page(
+    streams: list[dict[str, Any]],
+    cursor_nanos: int,
+    taken_at_cursor: set[str],
+    calls: list[LlmCall],
+) -> _PageScan:
+    seen = 0
+    fresh = 0
+    latest = 0
+    at_latest: set[str] = set()
+    for stream in streams:
+        for nanos, line in stream["values"]:
+            seen += 1
+            at = int(nanos)
+            if at == cursor_nanos and line in taken_at_cursor:
+                continue
+            fresh += 1
+            if at > latest:
+                latest, at_latest = at, set()
+            if at == latest:
+                at_latest.add(line)
+            call = _parse_event(line)
+            if call is not None:
+                calls.append(call)
+    return _PageScan(seen=seen, fresh=fresh, latest=latest, at_latest=frozenset(at_latest))
 
 
 async def _lookup_generation(
