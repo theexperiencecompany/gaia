@@ -288,7 +288,34 @@ async def test_paging_does_not_re_read_the_second_it_stopped_inside(
     assert [c.generation_id for c in calls] == ["g1", "g2", "g3", "g4"]
     # The second request resumes one nanosecond past the last event returned,
     # not at the start of its second.
-    assert client.starts == [base, base + 500_000_001]
+    # The second request re-opens AT the last nanosecond returned (inclusive) and skips
+    # the line it already took there, not at the start of its second.
+    assert client.starts == [base, base + 500_000_000]
+
+
+async def test_paging_drains_every_line_that_shares_the_boundary_nanosecond(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Several lines can carry the same nanosecond. When a page ends inside such
+    a group, the next page must re-open AT that nanosecond and skip only the
+    lines already taken — advancing by one nanosecond would drop the rest of the
+    group, and their dollars with it."""
+    monkeypatch.setattr(backfill, "_LOKI_PAGE", 3)
+    base = _DAY_START_NANOS + 3_600_000_000_000
+    client = _FakeLokiClient(
+        [
+            (base, _event_line("g0")),
+            (base + 1, _event_line("g1")),
+            (base + 2, _event_line("g2")),
+            (base + 2, _event_line("g3")),
+            (base + 5, _event_line("later")),
+        ]
+    )
+
+    calls = await backfill._fetch_day(cast(httpx.AsyncClient, client), "http://loki", _DAY)
+
+    assert [c.generation_id for c in calls] == ["g0", "g1", "g2", "g3", "later"]
+    assert client.starts == [_DAY_START_NANOS, base + 2, base + 5]
 
 
 async def test_paging_stops_once_a_page_comes_back_short(monkeypatch: pytest.MonkeyPatch) -> None:
