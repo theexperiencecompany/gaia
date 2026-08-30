@@ -181,6 +181,10 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index([("user_id", 1), ("messages.message_id", 1)]),
             # For message pinning aggregations
             conversations_collection.create_index([("user_id", 1), ("messages.pinned", 1)]),
+            # For "active since <date>" range queries (e.g. the cost/usage dashboard).
+            # updatedAt is the only activity timestamp stored as a real BSON date —
+            # createdAt is an ISO string and can't be range-queried efficiently.
+            conversations_collection.create_index([("updatedAt", -1)]),
         )
 
     except Exception as e:
