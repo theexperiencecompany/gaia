@@ -5,7 +5,7 @@
 # aliasing only (`docker buildx imagetools create`) — no layers move.
 #
 # Backend repos are deliberately absent: their :latest is re-pointed
-# exclusively by retag-latest-alias.sh after a successful deploy/rollback
+# exclusively by `deploy.sh retag` after a successful deploy/rollback
 # convergence, preserving the ":latest == deployed" invariant.
 #
 # Inputs (env): WEB_IMAGE_TAG / GRAFANA_IMAGE_TAG — the immutable tag pushed

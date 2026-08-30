@@ -114,4 +114,4 @@ jobs:
             **Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
             The release tag exists but npm was never updated, so `npm install -g @heygaia/cli` still serves the previous version.
             **To retry:** fix the cause, then re-run this workflow with the same tag/version — it is idempotent and skips versions already on npm.
-        run: bash scripts/ci/notify-discord.sh
+        run: bash scripts/ci/deploy.sh notify

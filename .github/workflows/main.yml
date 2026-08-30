@@ -785,7 +785,7 @@ jobs:
   # the docker images while all test lanes run; trigger-build then runs the
   # deploy plan + swarm deploy after quality-gate, using the build phase's
   # outputs as inputs (see build.yml phase input). The deploy decision lives
-  # in compute-deploy-plan.sh with GATE_RESULT as an explicit input, so a
+  # in `deploy.sh plan` with GATE_RESULT as an explicit input, so a
   # failed gate still fires the publish-without-deploy orphan alert instead of
   # silently skipping everything. build.yml owns its own runners
   # (GitHub-hosted) and is deliberately not routed through select-runner.

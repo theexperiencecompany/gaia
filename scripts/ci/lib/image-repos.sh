@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Single source of truth for the GHCR repos each deployable image group maps
-# to. Sourced by resolve-image-tags.sh (build), retag-latest-alias.sh
+# to. Sourced by resolve-image-tags.sh (build), `deploy.sh retag`
 # (deploy/rollback) and promote-latest.sh (gate) so the ends of the pipeline
 # can never disagree about which repos share a tag. Keep in sync with the
 # image: lines in the prod compose (lives in gaia-infra) and nx.json release groups.
