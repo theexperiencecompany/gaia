@@ -766,16 +766,48 @@ class TestMCPClientEnsureConnected:
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
 
-        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True):
-            with patch.object(client, "connect", new_callable=AsyncMock, return_value=tools):
-                result = await client.ensure_connected(INTEGRATION_ID)
-                assert result is tools
+        with (
+            patch.object(
+                client, "is_connected_db", new_callable=AsyncMock, return_value=True
+            ) as is_connected,
+            patch.object(client, "connect", new_callable=AsyncMock, return_value=tools) as connect,
+        ):
+            result = await client.ensure_connected(INTEGRATION_ID)
+
+        assert result is tools
+        is_connected.assert_awaited_once_with(INTEGRATION_ID)
+        connect.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_raises_when_not_connected(self):
         client = MCPClient(user_id=USER_ID)
         with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False):
             with pytest.raises(ValueError, match="not connected"):
                 await client.ensure_connected(INTEGRATION_ID)
+
+    async def test_drops_a_stale_warm_session_when_db_says_disconnected(self):
+        # Revoked elsewhere but still in THIS replica's transport cache: the stale
+        # session must be dropped, whether it lingers in _tools or _clients.
+        for attr in ("_tools", "_clients"):
+            client = MCPClient(user_id=USER_ID)
+            getattr(client, attr)[INTEGRATION_ID] = [_mock_tool()]
+            with (
+                patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
+                patch.object(client, "disconnect", new_callable=AsyncMock) as disconnect,
+            ):
+                with pytest.raises(ValueError, match="not connected"):
+                    await client.ensure_connected(INTEGRATION_ID)
+            disconnect.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_no_disconnect_when_nothing_is_cached(self):
+        # Nothing warm to drop → raise without a spurious disconnect.
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
+            patch.object(client, "disconnect", new_callable=AsyncMock) as disconnect,
+        ):
+            with pytest.raises(ValueError, match="not connected"):
+                await client.ensure_connected(INTEGRATION_ID)
+        disconnect.assert_not_awaited()
 
 
 class TestMCPClientNormalizeServerUrl:
@@ -4889,6 +4921,29 @@ class TestServerUrlMatchingHelpersExact:
             match = await client._match_active_client_by_server_url(target)
 
         assert match is None
+
+    async def test_match_active_client_skips_a_revoked_one_and_returns_a_live_one(self):
+        # Two warm clients match the URL; the first is revoked in the DB. The scan
+        # must SKIP it (not stop) and return the second, live one — keyed by the
+        # right integration id.
+        client = MCPClient(user_id=USER_ID)
+        client._clients["revoked"] = MagicMock()
+        client._clients["live"] = MagicMock()
+        target = client._normalize_server_url(SERVER_URL)
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(
+                client,
+                "is_connected_db",
+                new_callable=AsyncMock,
+                side_effect=lambda iid: iid == "live",
+            ),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=self._resolved_with(SERVER_URL))
+            match = await client._match_active_client_by_server_url(target)
+
+        assert match == "live"
 
     async def test_match_active_client_returns_none_when_nothing_matches(self):
         client = MCPClient(user_id=USER_ID)
