@@ -90,7 +90,7 @@ class DeviceConnector(BaseConnector):
         # Register the inbox BEFORE sending open so the 'opened' ack can't slip
         # past us (the shared up-listener is always subscribed; this makes it
         # dispatch this session's frames to us).
-        self._inbox = register_up_session(self.session_id)
+        self._inbox = register_up_session(self.session_id, self.device_id)
         self._reader_task = asyncio.create_task(self._drain_inbox(read_send))
 
         try:

@@ -54,6 +54,11 @@ DEVICE_UP_POD_CHANNEL_PREFIX: Final[str] = "device:up:pod:"
 # Revocation fan-out: publish a device_id here to force any owning pod to drop it.
 # One shared per-pod listener watches this channel (not one per connection).
 DEVICE_REVOKE_CHANNEL: Final[str] = "device:revoke"
+# Disconnect fan-out: publish a device_id here when its socket tears down, so the
+# pod running each in-flight MCP session on that device fails the call at once
+# instead of leaving it parked until MCP_SESSION_CALL_TIMEOUT_SECONDS. The
+# up-listener watches this channel alongside its own up-channel.
+DEVICE_DISCONNECT_CHANNEL: Final[str] = "device:disconnect"
 # Shared per-pod listeners (revoke, up-frames) wait this long before re-subscribing
 # after a dropped Redis connection.
 DEVICE_LISTENER_RESUBSCRIBE_SECONDS: Final[float] = 5.0

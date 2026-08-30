@@ -18,7 +18,11 @@ import contextlib
 import json
 from typing import Any
 
-from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
+from app.constants.device_bridge import (
+    DEVICE_DISCONNECT_CHANNEL,
+    DEVICE_LISTENER_RESUBSCRIBE_SECONDS,
+    FRAME_MCP_ERROR,
+)
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.services.device.bridge import POD_ID, up_pod_channel
@@ -28,19 +32,54 @@ Frame = dict[str, Any]
 
 # session_id -> that session's inbox. The owning connector creates and drains it.
 _inboxes: dict[str, asyncio.Queue[Frame]] = {}
+# device_id -> its live session ids on this pod, so a device's socket teardown
+# fails exactly the sessions tunneling through it.
+_sessions_by_device: dict[str, set[str]] = {}
+# session_id -> device_id, for O(1) reverse-index cleanup on unregister.
+_session_devices: dict[str, str] = {}
 
 _listener_task: asyncio.Task[None] | None = None
 
 
-def register_up_session(session_id: str) -> asyncio.Queue[Frame]:
+def register_up_session(session_id: str, device_id: str) -> asyncio.Queue[Frame]:
     """Create and register an inbox for a session; the connector drains it."""
     queue: asyncio.Queue[Frame] = asyncio.Queue()
     _inboxes[session_id] = queue
+    _sessions_by_device.setdefault(device_id, set()).add(session_id)
+    _session_devices[session_id] = device_id
     return queue
 
 
 def unregister_up_session(session_id: str) -> None:
     _inboxes.pop(session_id, None)
+    device_id = _session_devices.pop(session_id, None)
+    if device_id is None:
+        return
+    sessions = _sessions_by_device.get(device_id)
+    if sessions is not None:
+        sessions.discard(session_id)
+        if not sessions:
+            del _sessions_by_device[device_id]
+
+
+def fail_device_sessions(device_id: str, error: str) -> int:
+    """Inject a synthetic mcp.error into every local session tunneling through a device.
+
+    Returns the count notified. ``_drain_inbox`` turns the frame into a
+    read-stream error, so an in-flight call fails at once instead of parking on
+    ``inbox.get()`` until the tunnel's call timeout.
+    """
+    session_ids = _sessions_by_device.get(device_id)
+    if not session_ids:
+        return 0
+    failed = 0
+    for session_id in list(session_ids):
+        queue = _inboxes.get(session_id)
+        if queue is None:
+            continue
+        queue.put_nowait({"t": FRAME_MCP_ERROR, "sid": session_id, "error": error})
+        failed += 1
+    return failed
 
 
 async def _dispatch(raw: str) -> None:
@@ -80,25 +119,50 @@ async def _dispatch(raw: str) -> None:
         queue.put_nowait(frame)
 
 
+async def _handle_disconnect(device_id: str) -> None:
+    """Fail every local session tunneling through a device whose socket dropped.
+
+    Own boundary per disconnect so a stall shows which device dropped and how
+    many parked calls it unblocked; a pod that holds no session for the device
+    records zero and moves on.
+    """
+    async with log_context("device_disconnect", device={"id": device_id}):
+        failed = fail_device_sessions(device_id, "device disconnected")
+        log.set_ns("device", sessions_failed=failed)
+        if failed:
+            log.info(f"{LogTag.API} Failed in-flight device sessions on disconnect")
+
+
 async def _consume() -> None:
-    """Subscribe once to this pod's up-channel and fan frames to session inboxes."""
+    """Subscribe once to this pod's up-channel plus the disconnect fan-out.
+
+    Both channels feed the session inboxes — up-frames route replies by ``sid``,
+    a disconnect fails every session on the named device — so one subscription
+    serves both rather than a second per-pod Redis connection.
+    """
     client = redis_cache.redis
     if client is None:
         return
     pubsub = client.pubsub()
-    await pubsub.subscribe(up_pod_channel(POD_ID))
+    await pubsub.subscribe(up_pod_channel(POD_ID), DEVICE_DISCONNECT_CHANNEL)
     try:
         while True:
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message is None or message.get("type") != "message":
                 continue
+            channel = message.get("channel")
+            if isinstance(channel, bytes):
+                channel = channel.decode("utf-8")
             raw = message["data"]
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
-            await _dispatch(raw)
+            if channel == DEVICE_DISCONNECT_CHANNEL:
+                await _handle_disconnect(raw)
+            else:
+                await _dispatch(raw)
     finally:
         with contextlib.suppress(Exception):
-            await pubsub.unsubscribe(up_pod_channel(POD_ID))
+            await pubsub.unsubscribe(up_pod_channel(POD_ID), DEVICE_DISCONNECT_CHANNEL)
             await pubsub.aclose()
 
 

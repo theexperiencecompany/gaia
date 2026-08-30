@@ -209,6 +209,21 @@ export class Tunnel {
         }
         void this.closeSession(sid);
       };
+      session.transport.onerror = (error: Error) => {
+        // A `type: "url"` server's HTTP transport surfaces a dropped connection
+        // through onerror and does not always follow with onclose, so without
+        // this the cloud call hangs until its read timeout. closeSession()
+        // removes the session before onclose can fire, so the error is sent once.
+        if (this.sessions.has(sid)) {
+          this.send({
+            t: FRAME.MCP_ERROR,
+            sid,
+            pod,
+            error: `Local server '${serverKey}' error: ${error.message}`,
+          });
+        }
+        void this.closeSession(sid);
+      };
       await session.transport.start();
       this.sessions.set(sid, session);
       this.send({ t: FRAME.MCP_OPENED, sid, pod });

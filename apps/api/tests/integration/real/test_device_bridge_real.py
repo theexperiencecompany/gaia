@@ -160,8 +160,8 @@ class TestUpListenerDispatch:
         up_listener_module.start_up_listener()
         try:
             await asyncio.sleep(0.2)  # let the listener's subscribe() land first
-            inbox_a = up_listener_module.register_up_session("session-a")
-            inbox_b = up_listener_module.register_up_session("session-b")
+            inbox_a = up_listener_module.register_up_session("session-a", "dev-a")
+            inbox_b = up_listener_module.register_up_session("session-b", "dev-b")
             try:
                 await bridge_module.publish_up_to_pod(
                     up_listener_module.POD_ID,
@@ -201,7 +201,7 @@ class TestUpListenerDispatch:
             )
 
             # The listener must still be alive and dispatching afterward.
-            inbox = up_listener_module.register_up_session("session-after")
+            inbox = up_listener_module.register_up_session("session-after", "dev-after")
             try:
                 await bridge_module.publish_up_to_pod(
                     up_listener_module.POD_ID,
@@ -212,6 +212,39 @@ class TestUpListenerDispatch:
             finally:
                 up_listener_module.unregister_up_session("session-after")
         finally:
+            await up_listener_module.stop_up_listener()
+
+
+@pytest.mark.service
+class TestDeviceDisconnect:
+    async def test_disconnect_fails_only_that_devices_in_flight_sessions(self, real_redis):
+        """A device socket teardown must unblock its parked calls, not every call.
+
+        Without the disconnect fan-out the session parks on ``inbox.get()`` until
+        MCP_SESSION_CALL_TIMEOUT_SECONDS; the broadcast turns that 120s hang into
+        an immediate mcp.error. It must reach only the sessions on the dropped
+        device — a session on a still-connected device keeps running.
+        """
+        up_listener_module.start_up_listener()
+        dropped_a = up_listener_module.register_up_session("drop-1", "dev-dropped")
+        dropped_b = up_listener_module.register_up_session("drop-2", "dev-dropped")
+        survivor = up_listener_module.register_up_session("keep-1", "dev-live")
+        try:
+            await asyncio.sleep(0.2)  # let the listener's subscribe() land first
+            await bridge_module.publish_disconnect("dev-dropped")
+
+            frame_a = await asyncio.wait_for(dropped_a.get(), timeout=2)
+            frame_b = await asyncio.wait_for(dropped_b.get(), timeout=2)
+            assert frame_a["t"] == "mcp.error"
+            assert frame_b["t"] == "mcp.error"
+            assert frame_a["error"]  # carries a reason the connector surfaces
+
+            # The session on the still-connected device was never touched.
+            assert survivor.empty()
+        finally:
+            up_listener_module.unregister_up_session("drop-1")
+            up_listener_module.unregister_up_session("drop-2")
+            up_listener_module.unregister_up_session("keep-1")
             await up_listener_module.stop_up_listener()
 
 
