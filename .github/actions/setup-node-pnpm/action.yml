@@ -98,7 +98,13 @@ runs:
           STORE_ARGS=(--store-dir "${PNPM_STORE_DIR:-$HOME/.local/share/pnpm/store/v10}")
         fi
         echo "::group::pnpm install"
-        pnpm install --frozen-lockfile --prefer-offline "${STORE_ARGS[@]}"
+        # ${ARR[@]+"${ARR[@]}"}, not "${ARR[@]}": macOS runners are bash 3.2,
+        # where expanding an EMPTY array under `set -u` is itself the error
+        # ("STORE_ARGS[@]: unbound variable") — bash only stopped treating that
+        # as unset in 4.4. STORE_ARGS is empty on every GitHub-hosted runner,
+        # so the plain form broke `Package desktop (mac)` on each run while the
+        # Linux lanes (bash 5) sailed through.
+        pnpm install --frozen-lockfile --prefer-offline ${STORE_ARGS[@]+"${STORE_ARGS[@]}"}
         echo "::endgroup::"
         rm -f node_modules/.gaia-installed-* 2>/dev/null || true
         touch "$MARK"

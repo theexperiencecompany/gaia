@@ -61,6 +61,13 @@ leave the other three files behind and hide where the tool really lives.
 - Fail loud. Never `2>/dev/null || echo ""` in detection code: a swallowed
   error yields an empty list, every lane skips, and the gate goes green on an
   unchecked PR.
+- An array that may be empty is expanded `${arr[@]+"${arr[@]}"}`, never
+  `"${arr[@]}"`. macOS runners are bash 3.2, where expanding an empty array
+  under `set -u` is itself an "unbound variable" error — bash only stopped
+  treating that as unset in 4.4. These scripts reach a mac: `setup-node-pnpm`
+  calls `runner.sh dep-marker` on the desktop build. The plain form broke
+  `Package desktop (mac)` on every run for two days while every Linux lane
+  (bash 5) stayed green, which is exactly how long it takes to notice.
 - The log convention, via `lib/log.sh`: raw tool output inside
   `ci_group`/`ci_endgroup`, and the LAST line a one-line verdict (`ci_ok`).
   Test steps are the exception — a traceback must be readable uncollapsed.
