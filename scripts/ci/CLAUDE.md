@@ -15,15 +15,40 @@ lane without grepping the workflow first.
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | Running the Python suite | `pytest.sh` | `slice`, `flake-gate`, `regression-proof` |
-| Is the suite strong enough | `mutation.sh` | `plan`, `shard`, `module`, `local` |
+| Is the suite strong enough | `mutation.sh` | `matrix`, `plan`, `shard`, `module`, `local` |
 | Which tests a diff can reach | `test_impact.py` | `record`, `select`, `fetch` |
-| What this PR changed | `changes.sh` | `files`, `docker-inputs` |
+| What this PR changed | `changes.sh` | `files`, `py-source`, `docker-inputs` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `playwright-pin`, `alert-rule-tools`, `evlog` |
+| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots` |
+| Turning a run's output into a verdict | `report.py` | `regression-proof-select`, `regression-proof-verdict`, `annotations`, `step-outcomes` |
+| Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `disable-cf-builds` |
+| The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify` |
 
-`lib/` holds what several of them share: `log.sh` (the log convention),
-`service-images.sh` (the digest-pinned test-service images), `image-repos.sh`
-(the GHCR repo per image group).
+Release and deploy are two concepts, not one: `release.sh` publishes artifacts
+(image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
+
+`lib/` holds what the entrypoints share or delegate to: `log.sh` (the log
+convention), `service-images.sh` (the digest-pinned test-service images),
+`image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
+`CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
+observability scanner behind `checks.mjs evlog-map-bots`) and
+`mutation_matrix.py` (the AST detector behind `mutation.sh matrix`).
+
+The last two live in `lib/` rather than inline because they are large bodies
+with their own tests and a second consumer: inlining the 1000-line bots scanner
+would push `checks.mjs` past the 1200-line hard cap `checks.mjs file-sizes`
+itself enforces, and `mutation_matrix.py` is imported directly by
+`scripts/test/mutation-sweep.sh` and by `tests/test_mutation_matrix.py`. A
+`lib/` module is never an entrypoint — every one of them is reached through its
+concept's script.
+
+`wide-event-conformance/` is the one directory that is not a single script, and
+deliberately so: it is a multi-file tool, not a responsibility that could be a
+subcommand. `contract.json` is the cross-runtime contract data, and `run.py`
+drives two separate runtimes through `emit_python.py` and `emit_typescript.ts`
+to diff what they actually print. Folding an entry point into `checks.mjs` would
+leave the other three files behind and hide where the tool really lives.
 
 ## Conventions every script here follows
 
@@ -39,6 +64,12 @@ lane without grepping the workflow first.
 - The log convention, via `lib/log.sh`: raw tool output inside
   `ci_group`/`ci_endgroup`, and the LAST line a one-line verdict (`ci_ok`).
   Test steps are the exception — a traceback must be readable uncollapsed.
+
+The three non-bash entrypoints keep the same shape in their own language:
+`checks.mjs` and `release.mjs` dispatch on `process.argv[2]` into `cmd*`
+functions and exit 2 with the usage on an unknown subcommand; `report.py`
+dispatches on `sys.argv[1]` into `cmd_<sub>` functions and returns 2 the same
+way. Nothing in any of them runs at import time.
 
 ## One command line per workflow step
 
