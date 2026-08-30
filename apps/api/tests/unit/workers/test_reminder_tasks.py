@@ -9,6 +9,7 @@ from app.workers.tasks.reminder_tasks import (
     cleanup_expired_reminders,
     process_reminder,
 )
+from tests.helpers import captured_wide_event
 
 
 class TestProcessReminder:
@@ -49,6 +50,30 @@ class TestProcessReminder:
             await process_reminder(ctx, "reminder_abc", "not-a-number")  # type: ignore[arg-type]  # deliberately bad-typed stamp: proves a non-numeric stamp degrades to an unstamped claim
 
         mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", None)
+
+    async def test_parses_the_stamp_scoped_to_this_reminder(self, ctx):
+        # The reminder id is passed to the parser (for its diagnostics) and the
+        # parsed occurrence is what pins the claim.
+        with (
+            patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler,
+            patch(
+                "app.workers.tasks.reminder_tasks.parse_occurrence_stamp", return_value="OCC"
+            ) as parse,
+        ):
+            mock_scheduler.process_task_execution = AsyncMock()
+            await process_reminder(ctx, "reminder_abc", 777)
+
+        parse.assert_called_once_with(777, "reminder_abc")
+        mock_scheduler.process_task_execution.assert_awaited_once_with("reminder_abc", "OCC")
+
+    async def test_stamps_the_wide_event_with_the_reminder_and_schedule(self, ctx):
+        with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
+            mock_scheduler.process_task_execution = AsyncMock()
+            async with captured_wide_event() as event:
+                await process_reminder(ctx, "reminder_abc", 777)
+
+        assert event["reminder_id"] == "reminder_abc"
+        assert event["scheduled_for"] == 777
 
     async def test_exception_propagates(self, ctx):
         with patch("app.workers.tasks.reminder_tasks.reminder_scheduler") as mock_scheduler:
