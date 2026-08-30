@@ -127,7 +127,6 @@ apps/api/app/services/triggers/handlers/github.py	PLR0912
 apps/api/app/services/triggers/handlers/google_sheets.py	PLR0912
 apps/api/app/services/triggers/handlers/notion.py	PLR0912
 apps/api/app/services/triggers/handlers/slack.py	PLR0912
-apps/api/app/services/usage_activity.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0912
 apps/api/app/services/workflow/generation_service.py	PLR0913
 apps/api/app/services/workflow/generation_service.py	PLR0915

@@ -169,7 +169,7 @@ def extract_message_usage(message: AIMessage) -> TokenUsage:
     Missing fields default to 0.
     """
     usage = getattr(message, "usage_metadata", None) or {}
-    resp_meta = message.response_metadata or {}
+    resp_meta = getattr(message, "response_metadata", None) or {}
     resp_usage = resp_meta.get("usage_metadata") or {}
 
     input_tokens = int(usage.get("input_tokens") or 0)
@@ -214,7 +214,7 @@ def extract_message_cost(message: AIMessage) -> float | None:
     A zero is a real answer (free/promotional routes exist) and is returned as
     ``0.0``; only a missing or unparseable value returns ``None``.
     """
-    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_meta = message.response_metadata or {}
     raw = resp_meta.get("cost")
     if raw is None:
         return None

@@ -29,6 +29,7 @@ from app.db.repositories.usage_daily import (
     UsageDailyIncrement,
     usage_daily_repository,
 )
+from app.services import usage_activity
 from app.services.usage_activity import get_activity, record_cost
 
 USER = "user-activity-1"
@@ -48,6 +49,22 @@ def frozen_clock() -> Iterator[None]:
         yield
 
 
+def _spend(
+    cost: float = 0.0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    cached_tokens: int = 0,
+    reasoning_tokens: int = 0,
+) -> UsageDailyIncrement:
+    return UsageDailyIncrement(
+        cost=cost,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cached_tokens=cached_tokens,
+        reasoning_tokens=reasoning_tokens,
+    )
+
+
 @pytest.fixture
 def increment() -> Iterator[AsyncMock]:
     with patch.object(usage_daily_repository, "increment", AsyncMock()) as mock:
@@ -59,15 +76,7 @@ class TestRecordCost:
     async def test_charged_spend_books_cost_and_tokens_under_the_charged_fields(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(
-            USER,
-            0.02,
-            charged=True,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
-        )
+        await record_cost(USER, _spend(0.02, 300, 120, 50, 40), charged=True)
 
         increment.assert_awaited_once_with(
             USER,
@@ -85,15 +94,7 @@ class TestRecordCost:
     async def test_auxiliary_spend_books_everything_under_the_aux_mirrors(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(
-            USER,
-            0.02,
-            charged=False,
-            input_tokens=300,
-            output_tokens=120,
-            cached_tokens=50,
-            reasoning_tokens=40,
-        )
+        await record_cost(USER, _spend(0.02, 300, 120, 50, 40), charged=False)
 
         increment.assert_awaited_once_with(
             USER,
@@ -113,7 +114,7 @@ class TestRecordCost:
     ) -> None:
         # The real shape of a pricing-table miss: real usage, no dollar figure.
         # Dropping this write would make the call unrepriceable forever.
-        await record_cost(USER, 0.0, charged=True, input_tokens=300, output_tokens=120)
+        await record_cost(USER, _spend(0.0, 300, 120), charged=True)
 
         increment.assert_awaited_once_with(
             USER,
@@ -128,7 +129,7 @@ class TestRecordCost:
     async def test_any_single_token_field_alone_is_enough_to_write(
         self, increment: AsyncMock, token_field: str
     ) -> None:
-        await record_cost(USER, 0.0, charged=True, **{token_field: 7})
+        await record_cost(USER, UsageDailyIncrement(**{token_field: 7}), charged=True)
 
         increment.assert_awaited_once()
         assert getattr(increment.await_args.args[2], token_field) == 7
@@ -139,7 +140,7 @@ class TestRecordCost:
         # The mirror image of the pricing miss: a provider that priced the call
         # but returned no usage metadata. Spend without tokens is still spend,
         # and dropping it would under-bill the day's rollup against Redis.
-        await record_cost(USER, 0.02, charged=True)
+        await record_cost(USER, _spend(0.02), charged=True)
 
         increment.assert_awaited_once_with(
             USER, TODAY, UsageDailyIncrement(cost=0.02), charged=True
@@ -150,19 +151,19 @@ class TestRecordCost:
     ) -> None:
         # Defaulting to the aux bucket would quietly stop the durable rollup
         # mirroring the Redis windows the wall enforces.
-        await record_cost(USER, 0.02, input_tokens=300)
+        await record_cost(USER, _spend(0.02, 300))
 
         assert increment.await_args.kwargs["charged"] is True
 
     async def test_a_call_with_no_spend_and_no_tokens_writes_nothing(
         self, increment: AsyncMock
     ) -> None:
-        await record_cost(USER, 0.0, charged=True)
+        await record_cost(USER, _spend(0.0), charged=True)
 
         increment.assert_not_awaited()
 
     async def test_a_call_without_a_user_writes_nothing(self, increment: AsyncMock) -> None:
-        await record_cost("", 0.02, charged=True, input_tokens=300)
+        await record_cost("", _spend(0.02, 300), charged=True)
 
         increment.assert_not_awaited()
 
@@ -172,9 +173,16 @@ class TestRecordCost:
         # has already paid for.
         increment.side_effect = PyMongoError("rollup write failed")
 
-        await record_cost(USER, 0.02, charged=True, input_tokens=300)
+        with patch.object(usage_activity.log, "warning") as warned:
+            await record_cost(USER, _spend(0.02, 300), charged=True)
 
         increment.assert_awaited_once()
+        # Swallowed, but never silent: the dropped rollup is the only per-day
+        # cost history there is, so the warning has to name whose spend went
+        # missing and what actually failed — otherwise the loss is invisible.
+        assert warned.call_args.kwargs["user"] == {"id": USER}
+        assert warned.call_args.kwargs["error"] == "rollup write failed"
+        assert warned.call_args.kwargs["error_type"] == "PyMongoError"
 
 
 @pytest.fixture

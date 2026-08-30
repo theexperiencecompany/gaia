@@ -44,6 +44,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.models.payment_models import PlanType
 from app.schemas.usage import BudgetWindow, UsageBudget
 from app.services.payments.payment_service import payment_service
@@ -170,12 +171,14 @@ async def record_model_call_usage(
                 "mongo_cost_rollup",
                 record_cost(
                     rollup_user_id,
-                    cost_usd,
+                    UsageDailyIncrement(
+                        cost=cost_usd,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cached_tokens=cached_tokens,
+                        reasoning_tokens=reasoning_tokens,
+                    ),
                     charged=charge_to_budget,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    cached_tokens=cached_tokens,
-                    reasoning_tokens=reasoning_tokens,
                 ),
             )
         )

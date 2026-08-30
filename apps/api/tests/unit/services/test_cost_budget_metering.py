@@ -19,6 +19,7 @@ import pytest
 
 from app.config.rate_limits import RateLimitPeriod
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services import cost_budget
 from app.services.cost_budget import (
     get_cost,
@@ -66,13 +67,7 @@ class TestChargedSpend:
         )
 
         rollup.assert_awaited_once_with(
-            USER,
-            0.01,
-            charged=True,
-            input_tokens=300,
-            output_tokens=200,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            USER, UsageDailyIncrement(cost=0.01, input_tokens=300, output_tokens=200), charged=True
         )
 
     async def test_accumulates_across_calls(self) -> None:
@@ -122,13 +117,7 @@ class TestAuxiliarySpend:
         )
 
         rollup.assert_awaited_once_with(
-            USER,
-            0.02,
-            charged=False,
-            input_tokens=400,
-            output_tokens=300,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            USER, UsageDailyIncrement(cost=0.02, input_tokens=400, output_tokens=300), charged=False
         )
 
     async def test_leaves_the_request_ceiling_alone_without_a_request_id(
@@ -203,13 +192,7 @@ class TestDegradation:
         # The durable rollup still ran — losing Redis must not also lose the
         # cost history the usage charts are plotted from.
         rollup.assert_awaited_once_with(
-            USER,
-            0.01,
-            charged=True,
-            input_tokens=300,
-            output_tokens=200,
-            cached_tokens=0,
-            reasoning_tokens=0,
+            USER, UsageDailyIncrement(cost=0.01, input_tokens=300, output_tokens=200), charged=True
         )
 
 
@@ -248,7 +231,7 @@ class TestTokenOnlyCalls:
         await record_model_call_usage(USER, 0.0, REQUEST, charge_to_budget=True, **counters)
 
         assert rollup.await_count == 1
-        assert rollup.await_args.kwargs[field] == value
+        assert getattr(rollup.await_args.args[1], field) == value
 
     async def test_a_call_with_neither_spend_nor_tokens_books_nothing(
         self, rollup: AsyncMock
@@ -357,7 +340,7 @@ class TestTokenOnlyCalls:
 
         assert await get_request_tokens(REQUEST) == 0
         rollup.assert_awaited_once()
-        assert rollup.await_args.kwargs["cached_tokens"] == 1000
+        assert rollup.await_args.args[1].cached_tokens == 1000
 
     async def test_an_ordinary_multi_call_turn_stays_well_under_the_ceiling(self) -> None:
         """The production shape that used to trip the wall: ~10 model calls per
