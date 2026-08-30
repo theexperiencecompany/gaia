@@ -43,6 +43,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
+import math
 import os
 from pathlib import Path
 import sys
@@ -186,14 +187,32 @@ def _parse_event(line: str) -> LlmCall | None:
     timestamp = str(raw.get("time") or "")
     if not user_id or not timestamp:
         return None
+    # json.loads accepts NaN/Infinity, and one of those would poison every sum
+    # this day feeds — including what --apply writes to cost_actual. A line whose
+    # own cost is not a real number is not evidence of anything: drop it.
+    logged_cost = _finite_cost(raw.get("cost_usd"))
+    if logged_cost is None:
+        return None
     generation_id = raw.get("generation_id")
     return LlmCall(
         user_id=user_id,
         day=timestamp[:10],
         background=_is_background(raw),
-        logged_cost=float(raw.get("cost_usd") or 0.0),
+        logged_cost=logged_cost,
         generation_id=str(generation_id) if generation_id else None,
     )
+
+
+def _finite_cost(value: object) -> float | None:
+    """A cost we are willing to add up: a real, non-negative number. ``None`` for
+    anything else — missing, unparseable, negative, NaN or infinite."""
+    if value is None:
+        return 0.0
+    try:
+        cost = float(value)  # type: ignore[arg-type]  # guarded by the except below
+    except (TypeError, ValueError):
+        return None
+    return cost if math.isfinite(cost) and cost >= 0.0 else None
 
 
 def _is_background(raw: Mapping[str, object]) -> bool:

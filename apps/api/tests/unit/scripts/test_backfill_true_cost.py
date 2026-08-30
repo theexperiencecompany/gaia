@@ -360,6 +360,26 @@ async def test_identical_lines_at_the_boundary_are_each_kept_once(
     assert [c.generation_id for c in calls] == ["twin", "twin", "later"]
 
 
+@pytest.mark.parametrize("poison", ["NaN", "Infinity", "-Infinity", "-0.5"])
+def test_a_cost_that_is_not_a_real_number_drops_the_line(poison: str) -> None:
+    """json.loads accepts NaN and Infinity. One such line summed into a day would
+    make every figure that day feeds NaN — including what --apply writes."""
+    line = (
+        '{"llm_event": "llm_call", "user_id": "u1", "time": "2026-08-25T10:00:00Z", '
+        f'"cost_usd": {poison}, "generation_id": "g1"}}'
+    )
+    assert backfill._parse_event(line) is None
+
+
+def test_a_missing_cost_is_zero_not_a_dropped_line() -> None:
+    """No cost_usd at all is an unpriced call, not a corrupt one: it still counts
+    toward coverage and tokens."""
+    line = '{"llm_event": "llm_call", "user_id": "u1", "time": "2026-08-25T10:00:00Z"}'
+    call = backfill._parse_event(line)
+    assert call is not None
+    assert call.logged_cost == 0.0
+
+
 async def test_paging_stops_once_a_page_comes_back_short(monkeypatch: pytest.MonkeyPatch) -> None:
     """A page under the limit is the last one — asking again costs a round trip
     and, on the old whole-second cursor, re-read events it had already folded."""

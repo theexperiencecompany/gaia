@@ -2418,6 +2418,14 @@ class TestReportedCost:
         no ``message`` at all."""
         assert _reported_cost(LLMResult(generations=[[Generation(text="x")]])) is None
 
+    @pytest.mark.parametrize("poison", [float("inf"), float("-inf"), float("nan"), -0.5])
+    def test_a_price_that_is_not_a_real_number_is_no_price(self, poison: float) -> None:
+        """A negative or non-finite price would be summed across this call's retries
+        and land in a budget window. Fall through to the table instead."""
+        response = LLMResult(generations=[], llm_output={"cost": poison})
+
+        assert _reported_cost(response) is None
+
 
 class TestTheGenerationCallbackAccumulatesCostAcrossAttempts:
     """A retry or a fallback invokes the model more than once under ONE handler

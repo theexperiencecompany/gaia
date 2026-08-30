@@ -2,6 +2,7 @@ import asyncio
 from contextlib import suppress
 from dataclasses import dataclass
 from functools import cache
+import math
 from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -1065,9 +1066,13 @@ def _reported_cost(response: LLMResult) -> float | None:
         if candidate is not None:
             # A price that will not parse is not a price: skip it and let the
             # next shape (then the table) answer, rather than failing a call
-            # that already succeeded over its own cost annotation.
+            # that already succeeded over its own cost annotation. The same goes
+            # for a negative or non-finite one — it would be summed across the
+            # retries of this call and land in a budget window.
             with suppress(TypeError, ValueError):
-                return float(candidate)
+                parsed = float(candidate)
+                if math.isfinite(parsed) and parsed >= 0.0:
+                    return parsed
     for generations in response.generations:
         for generation in generations:
             message = getattr(generation, "message", None)
