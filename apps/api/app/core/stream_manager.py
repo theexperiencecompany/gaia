@@ -344,7 +344,9 @@ class StreamManager:
 
         events_key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
         cursor = last_event_id or "0-0"
-        saw_chunk = False
+        # no mutate: the only read is `if not saw_chunk`, so any falsy init (False
+        # vs None) is behaviourally identical — an equivalent mutant no test can kill.
+        saw_chunk = False  # pragma: no mutate
         block_ms = int(keepalive_interval * 1000)
 
         try:

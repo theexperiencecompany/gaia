@@ -364,6 +364,18 @@ class TestSubscribeStream:
             "id: 2-0\ndata: chunk2\n\n",
         ]
 
+    async def test_entry_missing_a_data_field_yields_empty_data_not_a_placeholder(self) -> None:
+        # A Stream entry with no "data" field defaults to the empty string, so the
+        # frame carries an empty body — never "None" or a placeholder token.
+        client = _stream_client(
+            [[(EVENTS_KEY, [("1-0", {}), ("2-0", {"data": STREAM_DONE_SIGNAL})])]]
+        )
+
+        with self._patch_redis(client):
+            chunks = await self._collect()
+
+        assert chunks == ["id: 1-0\n"]
+
     async def test_reads_from_beginning_by_default(self) -> None:
         client = _stream_client([_entries_batch(("1-0", STREAM_DONE_SIGNAL))])
 
