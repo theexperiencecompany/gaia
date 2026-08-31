@@ -9,7 +9,7 @@ import {
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import {
   PhoneLinkModal,
   type PhoneLinkTarget,
@@ -97,7 +97,7 @@ export default function LinkedAccountsSettings() {
   // starting over) invalidates that request, so a late reply cannot drop the
   // previous attempt's number into the session the user is now in.
   const connectAttemptRef = useRef(0);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown } = useIsPaid();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
 
   const clearPollTimer = () => {
@@ -134,7 +134,11 @@ export default function LinkedAccountsSettings() {
   };
 
   const startConnect = (platform: PlatformConfig) => {
-    if (platform.premium && !subscriptionStatus?.is_subscribed) {
+    // While the subscription status is still unknown, let the connect
+    // attempt proceed instead of paywalling — the backend enforces the
+    // premium gate server-side, so a brief permissive window here is safe,
+    // but blocking a paying customer's connect attempt is not.
+    if (platform.premium && !isUnknown && !isPaid) {
       openPricingModal();
       return;
     }
@@ -287,7 +291,7 @@ export default function LinkedAccountsSettings() {
               }
             >
               <div className="flex items-center gap-3">
-                {platform.premium && !subscriptionStatus?.is_subscribed && (
+                {platform.premium && !isUnknown && !isPaid && (
                   <Chip size="sm" variant="flat" color="warning">
                     Pro
                   </Chip>

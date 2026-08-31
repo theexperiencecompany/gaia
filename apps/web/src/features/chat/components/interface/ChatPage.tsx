@@ -23,7 +23,6 @@ import { VoiceModeBackground } from "@/features/chat/components/voice-agent/Voic
 import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -48,7 +47,6 @@ const MainChat = React.memo(function MainChat() {
   const voiceModeActive = useVoiceModeActive();
   const storeDiscoveredId = useDiscoveredConversationId();
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
   const { clearPendingPrompt } = useComposerTextActions();
@@ -229,13 +227,20 @@ const MainChat = React.memo(function MainChat() {
     hasMessages,
     // Warm the session token on hover so clicking starts ~instantly. Gated
     // on subscription — /token is plan-limited and free users get the modal.
+    // Only warms when we positively know the user is paid; skipping the
+    // warm-up while unknown is harmless (no blocking consequence, just a
+    // missed prefetch), unlike the click handler below which must never
+    // block a paying user.
     onVoiceModeHover: () => {
-      if (subscriptionStatus?.is_subscribed) prefetchConnectionDetails();
+      if (isPaid) prefetchConnectionDetails();
     },
     voiceModeActive: () => {
       // Voice mode is paid-only (the /token endpoint enforces it server-side
-      // too). Free users get the upgrade modal instead of a session.
-      if (!subscriptionStatus?.is_subscribed) {
+      // too). Free users get the upgrade modal instead of a session. While
+      // the subscription status is still unknown, let the user proceed —
+      // the backend's 402 is the real enforcement, so a brief permissive
+      // window here is safe, but wrongly paywalling a paying customer is not.
+      if (!isSubscriptionStatusUnknown && !isPaid) {
         trackEvent(ANALYTICS_EVENTS.CHAT_VOICE_MODE_TOGGLED, {
           voice_mode_enabled: false,
           conversation_id: convoIdParam,

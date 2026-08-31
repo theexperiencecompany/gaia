@@ -35,6 +35,13 @@ interface PricingCardProps {
   isCurrentPlan?: boolean;
   hasActiveSubscription?: boolean;
   isPro?: boolean;
+  /** True while the signed-in user's plan status is genuinely not yet known
+   * (cold cache / user store rehydrating) — `isCurrentPlan` and
+   * `hasActiveSubscription` are unresolvable in that window, so the CTA is
+   * held disabled instead of risking a paying user triggering a duplicate
+   * checkout via a stale "not subscribed" read. Always false for a logged-
+   * out visitor. */
+  isSubscriptionStatusUnknown?: boolean;
 }
 
 // Derives every price figure shown on a card from the raw cents + billing
@@ -88,6 +95,7 @@ export function PricingCard({
   isCurrentPlan,
   hasActiveSubscription,
   isPro = false,
+  isSubscriptionStatusUnknown = false,
 }: PricingCardProps) {
   const {
     perMonthDollars,
@@ -155,6 +163,12 @@ export function PricingCard({
       return;
     }
 
+    // Plan status not yet resolved — isCurrentPlan/hasActiveSubscription
+    // read as false in this window, which would otherwise let an already-
+    // subscribed user click straight into a duplicate checkout. The button
+    // is disabled while this is true, so this is a defensive no-op.
+    if (isSubscriptionStatusUnknown) return;
+
     if (isCurrentPlan && hasActiveSubscription) {
       toast.info("This is your current active plan");
       return;
@@ -177,6 +191,7 @@ export function PricingCard({
 
   const getButtonText = () => {
     if (isCreatingSubscription) return "Creating subscription...";
+    if (isSubscriptionStatusUnknown) return "Checking your plan...";
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
     return `Get GAIA ${title}`;
@@ -196,7 +211,9 @@ export function PricingCard({
           color="#00bbff"
           onClick={handleGetStarted}
           disabled={
-            isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
+            isCreatingSubscription ||
+            isSubscriptionStatusUnknown ||
+            (isCurrentPlan && hasActiveSubscription)
           }
         >
           {getButtonText()}

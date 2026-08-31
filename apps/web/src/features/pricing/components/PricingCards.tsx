@@ -5,7 +5,10 @@ import { useUser } from "@/features/auth/hooks/useUser";
 
 import type { Plan } from "../api/pricingApi";
 import { ANNUAL_PRICE_RETENTION } from "../constants";
-import { usePricing } from "../hooks/usePricing";
+import {
+  useIsSubscriptionStatusUnknown,
+  usePricing,
+} from "../hooks/usePricing";
 import { convertToUSDCents } from "../utils/currencyConverter";
 import { isProPlan } from "../utils/planPredicates";
 import { EnterpriseBar } from "./EnterpriseBar";
@@ -56,6 +59,11 @@ export function PricingCards({
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
   const user = useUser();
+  // Whether the signed-in user's plan status is genuinely not yet known
+  // (cold cache / user store still rehydrating). While true, `isCurrentPlan`
+  // / `hasActiveSubscription` below are unresolvable — never infer "on free
+  // plan" from that and let a paying user click into a duplicate checkout.
+  const isSubscriptionStatusUnknown = useIsSubscriptionStatusUnknown();
 
   // Only show loading if we're actually loading AND don't have any plans yet
   if (isLoading && (!plans || plans.length === 0)) {
@@ -191,6 +199,9 @@ export function PricingCards({
               isCurrentPlan={isCurrentPlan}
               hasActiveSubscription={hasActiveSubscription}
               isPro={isPro}
+              isSubscriptionStatusUnknown={
+                !!user.userId && isSubscriptionStatusUnknown
+              }
             />
           );
         })}

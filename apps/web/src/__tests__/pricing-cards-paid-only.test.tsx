@@ -63,6 +63,7 @@ vi.mock("@/features/pricing/hooks/usePricing", () => ({
     error: null,
     subscriptionStatus: undefined,
   }),
+  useIsSubscriptionStatusUnknown: () => false,
 }));
 
 // Imported after the mocks above so PricingCards picks up the mocked hooks.
