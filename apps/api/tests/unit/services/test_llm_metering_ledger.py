@@ -15,6 +15,12 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
+from openrouter.errors import (
+    BadRequestResponseError,
+    RequestTimeoutResponseError,
+    ServiceUnavailableResponseError,
+    TooManyRequestsResponseError,
+)
 import pytest
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
@@ -490,8 +496,130 @@ async def test_a_failed_call_books_no_money_and_no_tokens() -> None:
     assert doc.status == "error"
     assert doc.error_family == "timeout"
     assert (doc.cost_usd, doc.input_tokens, doc.output_tokens) == (0.0, 0, 0)
+    # All four counts, not just the two that are usually non-zero: a cached or
+    # reasoning number invented here would be summed as real usage.
+    assert (doc.cached_tokens, doc.reasoning_tokens) == (0, 0)
     # Latency to the failure is the whole point — a slow failure and a fast one
     # are different incidents.
     assert doc.duration_ms == 1200.0
     # The budget and the durable rollup are untouched: nothing was spent.
     paid.assert_not_awaited()
+
+
+# Provider exception types, instantiated without their constructors: the real
+# ones need an httpx response and a parsed body, and the classifier reads only
+# the TYPE — which is the whole point of classifying on it rather than on text.
+_RATE_LIMITED = TooManyRequestsResponseError.__new__(TooManyRequestsResponseError)
+_BAD_REQUEST = BadRequestResponseError.__new__(BadRequestResponseError)
+_UPSTREAM_DOWN = ServiceUnavailableResponseError.__new__(ServiceUnavailableResponseError)
+_UPSTREAM_TIMEOUT = RequestTimeoutResponseError.__new__(RequestTimeoutResponseError)
+
+
+def test_a_provider_throttling_us_is_its_own_family() -> None:
+    """The one failure that is our fault to fix (back off, spread load) rather
+    than the upstream's — it must not be lumped in with the outages."""
+    assert classify_error_family(_RATE_LIMITED) == "rate_limit"
+
+
+def test_a_rejected_request_is_not_an_outage() -> None:
+    """A 400 means we sent something wrong; nothing upstream is down. Counting
+    it as unavailability sends an incident response after a bug."""
+    assert classify_error_family(_BAD_REQUEST) == "invalid_request"
+
+
+def test_an_upstream_outage_is_provider_unavailable() -> None:
+    assert classify_error_family(_UPSTREAM_DOWN) == "provider_unavailable"
+
+
+def test_an_upstream_timeout_is_a_timeout_not_an_outage() -> None:
+    """Both are unavailability in the broad sense, and the specific answer is
+    the useful one — which is why the checks are ordered."""
+    assert classify_error_family(_UPSTREAM_TIMEOUT) == "timeout"
+
+
+async def test_the_error_row_carries_the_calls_identity_like_any_other() -> None:
+    """An error row that could not be filtered by conversation, lane or surface
+    would be a count with nothing to drill into."""
+    with (
+        patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1",
+            model_name="deepseek/deepseek-v4-flash",
+            error=_RATE_LIMITED,
+            context=CONTEXT,
+        )
+        await _drain()
+
+    doc = create.await_args.args[0]
+    assert doc.error_family == "rate_limit"
+    assert doc.agent_name == "executor_agent"
+    assert doc.conversation_id == CONVERSATION
+    assert doc.channel == "web"
+    assert doc.model_requested == "deepseek/deepseek-v4-flash"
+    # No provider answered, so nothing can claim a provider price.
+    assert doc.cost_source == "table"
+
+
+async def test_a_failed_call_is_never_charged_to_the_user() -> None:
+    """Whatever the context said, a call that produced nothing cannot count
+    against an allowance."""
+    with (
+        patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock),
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1",
+            model_name="m",
+            error=TimeoutError("x"),
+            context=replace(CONTEXT, charge_to_budget=True),
+        )
+        await _drain()
+
+    assert create.await_args.args[0].root_request_id is None
+
+
+async def test_a_ledger_failure_on_an_error_row_still_does_not_raise() -> None:
+    """The degrade rule applies to error rows too — an outage must not be made
+    worse by the code that records it."""
+    with (
+        patch.object(
+            llm_metering.llm_calls_repository,
+            "create",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("mongo is down"),
+        ),
+        patch.object(llm_metering.log, "warning") as warned,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1", model_name="m", error=TimeoutError("x"), context=CONTEXT
+        )
+        await _drain()
+
+    warned.assert_called_once()
+
+
+async def test_the_error_rows_insert_is_named_for_what_it_is() -> None:
+    """Named distinctly from the success insert so a stuck or failing error-row
+    task is identifiable in a task dump rather than anonymous."""
+    with patch("app.services.llm_metering.spawn_background_task") as spawn:
+        await llm_metering.record_failed_llm_call(
+            user_id="u1", model_name="m", error=TimeoutError("x"), context=CONTEXT
+        )
+        spawn.call_args.args[0].close()
+
+    assert spawn.call_args.kwargs["name"] == "llm_calls_ledger_error_insert"
+
+
+async def test_the_error_row_is_booked_against_the_user_whose_call_failed() -> None:
+    """A failure with no user attached cannot answer "who is this failing for"."""
+    with (
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u-42", model_name="m", error=TimeoutError("x"), context=CONTEXT
+        )
+        await _drain()
+
+    assert create.await_args.args[0].user_id == "u-42"

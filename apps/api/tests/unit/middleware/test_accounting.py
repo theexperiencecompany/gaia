@@ -199,9 +199,27 @@ async def test_a_run_with_no_conversation_id_states_its_absence() -> None:
 async def test_the_metered_call_names_the_workflow_that_triggered_it() -> None:
     context = await _ledger_context(_ai())
     assert context.workflow_id == "wf-1"
+    # No interactive source on this bag, so the workflow IS the channel.
+    assert context.channel == "workflow"
 
     outside_a_workflow = await _ledger_context(_ai(), CONFIG)
     assert outside_a_workflow.workflow_id is None
+
+
+async def test_the_surface_the_turn_came_from_reaches_the_ledger() -> None:
+    """``conversation_source`` was already on the configurable and simply unread.
+    An executor call inherits it, so a child reports its root turn's surface."""
+    config = {"configurable": {**_LEDGER_CONFIG["configurable"], "conversation_source": "slack"}}
+
+    assert (await _ledger_context(_ai(), config)).channel == "slack"
+
+
+async def test_why_the_provider_stopped_reaches_the_ledger() -> None:
+    """A run of ``length`` on one lane is a truncation bug that otherwise only
+    surfaces as users reporting answers that stop mid-sentence."""
+    message = _ai(response_metadata={"finish_reason": "length"})
+
+    assert (await _ledger_context(message)).finish_reason == "length"
 
 
 async def test_the_metered_call_records_what_the_provider_actually_served() -> None:

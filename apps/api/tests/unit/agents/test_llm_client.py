@@ -46,6 +46,7 @@ from app.agents.llm.client import (
     _openrouter_wire_configurables,
     _record_auxiliary_usage,
     _reported_cost,
+    _requested_model,
     _stamp_fallback,
     ainvoke_llm,
     ainvoke_structured,
@@ -67,6 +68,7 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_TITLE,
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    UNKNOWN_MODEL_NAME,
 )
 from app.core.lazy_loader import ProviderRegistry
 from app.services.llm_metering import LLMCallContext
@@ -899,6 +901,7 @@ class TestAinvokeLlm:
         assert context.conversation_id is None
         assert context.thread_id is None
         assert context.workflow_id is None
+        assert context.channel is None
 
 
 class TestOneInvocationPerCall:
@@ -2468,20 +2471,57 @@ class TestFailedCallsReachTheLedger:
                 await ainvoke_llm(primary, [HumanMessage(content="hi")], label="memory:extraction")
 
         failed.assert_awaited_once()
-        assert failed.await_args.kwargs["context"].agent_name == "memory:extraction"
+        context = failed.await_args.kwargs["context"]
+        assert context.agent_name == "memory:extraction"
+        # A failure is described like a success or the two cannot be compared.
+        assert context.channel is None
+        assert context.charge_to_budget is False
+
+    async def test_the_error_row_names_the_surface_and_the_model_it_asked_for(self) -> None:
+        """A failed call has no reply, so the model it INTENDED to use is all the
+        row can name — and without the surface, an outage cannot be told from a
+        single broken client."""
+        primary = self._runnable(TimeoutError("no answer"))
+        primary.model_name = "deepseek/deepseek-v4-flash"
+        config = RunnableConfig(configurable={"user_id": "u1", "conversation_source": "telegram"})
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], config=config)
+
+        assert failed.await_args.kwargs["model_name"] == "deepseek/deepseek-v4-flash"
+        assert failed.await_args.kwargs["context"].channel == "telegram"
 
     async def test_the_error_row_classifies_the_failure_and_times_it(self) -> None:
-        """``error_family`` is what an operator groups by. It is derived from the
-        exception type, so it stays stable while provider message text does not."""
+        """``error_family`` is what an operator groups by, and the latency says
+        whether the call died fast or hung — different incidents. The clock is
+        pinned because a real elapsed time cannot tell a millisecond from a
+        second-scaled one within its own noise."""
         primary = self._runnable(TimeoutError("deadline exceeded"))
+        clock = iter([100.0])
+        config = RunnableConfig(configurable={"user_id": "u-7"})
+
+        with (
+            patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed,
+            patch.object(client_module.time, "monotonic", lambda: next(clock, 100.0501234)),
+        ):
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], config=config)
+
+        assert isinstance(failed.await_args.kwargs["error"], TimeoutError)
+        # Whose call failed — an error rate with no user cannot be triaged.
+        assert failed.await_args.kwargs["user_id"] == "u-7"
+        assert failed.await_args.kwargs["context"].duration_ms == 50.12
+
+    async def test_a_failure_with_no_user_records_none_rather_than_a_string(self) -> None:
+        """System lanes fail too. ``"None"`` would look like a real user id."""
+        primary = self._runnable(TimeoutError("x"))
 
         with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
             with pytest.raises(TimeoutError):
                 await ainvoke_llm(primary, [HumanMessage(content="hi")])
 
-        assert isinstance(failed.await_args.kwargs["error"], TimeoutError)
-        duration_ms = failed.await_args.kwargs["context"].duration_ms
-        assert duration_ms is not None and duration_ms >= 0.0
+        assert failed.await_args.kwargs["user_id"] is None
 
     async def test_a_cancelled_turn_is_not_recorded_as_a_provider_failure(self) -> None:
         """The user closing the tab is not the provider failing. Recording it
@@ -2508,3 +2548,39 @@ class TestFailedCallsReachTheLedger:
 
         assert result.content == "rescued"
         failed.assert_not_awaited()
+
+
+class TestRequestedModel:
+    """What a failed call says it was going to ask for.
+
+    There is no reply to read the served model off, so this is the only model
+    identity an error row can carry — and a row that cannot name its model
+    cannot answer "is one model failing, or all of them".
+    """
+
+    def test_a_chat_model_reports_its_model_name(self) -> None:
+        runnable = NonCallableMagicMock()
+        runnable.model_name = "deepseek/deepseek-v4-flash"
+
+        assert _requested_model(runnable) == "deepseek/deepseek-v4-flash"
+
+    def test_a_runnable_that_only_carries_model_is_still_read(self) -> None:
+        """The auxiliary lane's ``with_structured_output`` wrapper exposes the
+        name under a different attribute than a bare chat model does."""
+        runnable = NonCallableMagicMock(spec=["model"])
+        runnable.model = "gemini-3-pro"
+
+        assert _requested_model(runnable) == "gemini-3-pro"
+
+    def test_a_runnable_that_names_no_model_is_unknown_not_a_crash(self) -> None:
+        """Metering a failure must not itself fail — an unnameable model is
+        recorded as unknown, which is still a row."""
+        assert _requested_model(NonCallableMagicMock(spec=[])) == UNKNOWN_MODEL_NAME
+
+    def test_a_blank_model_name_is_unknown_rather_than_empty(self) -> None:
+        """An empty string would land in the ledger as a real-looking model that
+        groups with nothing."""
+        runnable = NonCallableMagicMock(spec=["model_name"])
+        runnable.model_name = ""
+
+        assert _requested_model(runnable) == UNKNOWN_MODEL_NAME

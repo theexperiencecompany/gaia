@@ -56,7 +56,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 import hashlib
 import json
-import math
 import os
 from pathlib import Path
 import sys
@@ -70,6 +69,7 @@ from pydantic import BaseModel
 from app.config.model_pricing import MODEL_PRICING, calculate_token_cost
 from app.db.mongodb.mongodb import init_mongodb
 from app.db.repositories.llm_calls import LLMCallDocument, llm_calls_repository, split_lane_thread
+from scripts._events import finite_cost
 from scripts._loki import MAX_DAYS, fetch_day
 from scripts._openrouter import GenerationRecord, default_cache_dir, resolve_generations
 
@@ -134,24 +134,6 @@ class LedgerEvent(BaseModel):
         return hashlib.sha256(fingerprint.encode()).hexdigest()
 
 
-def _finite_cost(value: object) -> float | None:
-    """``value`` as a real dollar amount, or ``None`` if it is not one.
-
-    ``json.loads`` accepts ``NaN`` and ``Infinity``, and either one poisons every
-    sum it reaches — so a malformed cost drops the whole line rather than
-    silently contaminating a day's total.
-    """
-    if value is None:
-        return 0.0
-    try:
-        cost = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(cost) or cost < 0:
-        return None
-    return cost
-
-
 def normalise_model(model: str) -> str:
     """Collapse a model id that was stamped twice back to one.
 
@@ -178,7 +160,7 @@ def parse_event(line: str) -> LedgerEvent | None:
     timestamp = raw.get("time")
     if not isinstance(timestamp, str):
         return None
-    cost = _finite_cost(raw.get("cost_usd"))
+    cost = finite_cost(raw.get("cost_usd"))
     if cost is None:
         return None
     model = normalise_model(str(raw.get("model") or "unknown"))
@@ -240,7 +222,7 @@ def price_event(event: LedgerEvent, record: GenerationRecord | None) -> Priced:
         output_tokens=event.output_tokens,
         cached_tokens=event.cached_tokens,
     )
-    total = _finite_cost(computed.get("total_cost"))
+    total = finite_cost(computed.get("total_cost"))
     if total is None:
         return Priced(cost=event.logged_cost, source="logged")
     return Priced(cost=total, source="table")
