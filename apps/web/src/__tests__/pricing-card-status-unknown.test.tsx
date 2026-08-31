@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 //
 // Regression coverage found while closing out the "unknown treated as free"
-// bug class: PricingCard's `isCurrentPlan` / `hasActiveSubscription` derive
-// from the raw subscription-status query in PricingCards, which reads
-// `undefined` while the plan status is genuinely not yet known (cold cache /
-// user store rehydrating). Before this fix that made `isOnFreePlan`-style
-// logic read "not subscribed" for a paying user, and — worse — let them
-// click straight into `createSubscriptionAndRedirect`, risking a duplicate
-// checkout. The fix threads `isSubscriptionStatusUnknown` down from
-// PricingCards and holds the CTA disabled (never actionable) while true.
+// bug class: PricingCard's `planViewerState` derives from the raw
+// subscription-status query in PricingCards, which reads `undefined` while
+// the plan status is genuinely not yet known (cold cache / user store
+// rehydrating). Before this fix that made `isOnFreePlan`-style logic read
+// "not subscribed" for a paying user, and — worse — let them click straight
+// into `createSubscriptionAndRedirect`, risking a duplicate checkout. The
+// fix threads a `planViewerState="unknown"` down from PricingCards and holds
+// the CTA disabled (never actionable) while it is.
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,9 +70,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
         price={2000}
         durationIsMonth
         planId="dodo_pro_monthly"
-        isCurrentPlan={false}
-        hasActiveSubscription={false}
-        isSubscriptionStatusUnknown={false}
+        planViewerState="available"
       />,
     );
 
@@ -91,9 +89,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
         price={2000}
         durationIsMonth
         planId="dodo_pro_monthly"
-        isCurrentPlan={false}
-        hasActiveSubscription={false}
-        isSubscriptionStatusUnknown
+        planViewerState="unknown"
       />,
     );
 

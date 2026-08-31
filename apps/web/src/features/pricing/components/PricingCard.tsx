@@ -21,6 +21,7 @@ import {
 import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { writePendingCheckout } from "../lib/pendingCheckout";
+import type { PlanViewerState } from "../types";
 
 interface PricingCardProps {
   title: string;
@@ -32,16 +33,14 @@ interface PricingCardProps {
   durationIsMonth: boolean;
   className?: string;
   planId?: string;
-  isCurrentPlan?: boolean;
-  hasActiveSubscription?: boolean;
   isPro?: boolean;
-  /** True while the signed-in user's plan status is genuinely not yet known
-   * (cold cache / user store rehydrating) — `isCurrentPlan` and
-   * `hasActiveSubscription` are unresolvable in that window, so the CTA is
-   * held disabled instead of risking a paying user triggering a duplicate
-   * checkout via a stale "not subscribed" read. Always false for a logged-
-   * out visitor. */
-  isSubscriptionStatusUnknown?: boolean;
+  /** The viewer's relationship to this plan — computed once by PricingCards
+   * (see `getPlanViewerState`). While "unknown" the CTA is held disabled
+   * instead of risking a paying user triggering a duplicate checkout via a
+   * stale "not subscribed" read. Always "available" for a logged-out
+   * visitor. Defaults to "available" so a standalone render (e.g. a demo
+   * card with no plan context) shows an actionable CTA. */
+  planViewerState?: PlanViewerState;
 }
 
 // Derives every price figure shown on a card from the raw cents + billing
@@ -92,11 +91,13 @@ export function PricingCard({
   durationIsMonth,
   className,
   planId,
-  isCurrentPlan,
-  hasActiveSubscription,
   isPro = false,
-  isSubscriptionStatusUnknown = false,
+  planViewerState = "available",
 }: PricingCardProps) {
+  const isCurrentPlan = planViewerState === "current";
+  const isSubscribedElsewhere = planViewerState === "subscribedElsewhere";
+  const isSubscriptionStatusUnknown = planViewerState === "unknown";
+  const hasActiveSubscription = isCurrentPlan || isSubscribedElsewhere;
   const {
     perMonthDollars,
     yearlyTotalDollars,

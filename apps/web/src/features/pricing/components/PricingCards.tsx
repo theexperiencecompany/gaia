@@ -9,6 +9,7 @@ import {
   useIsSubscriptionStatusUnknown,
   usePricing,
 } from "../hooks/usePricing";
+import { getPlanViewerState } from "../types";
 import { convertToUSDCents } from "../utils/currencyConverter";
 import { isProPlan } from "../utils/planPredicates";
 import { EnterpriseBar } from "./EnterpriseBar";
@@ -178,9 +179,18 @@ export function PricingCards({
 
           // Only consider truly active subscriptions when user is logged in
           const hasActiveSubscription = user
-            ? subscriptionStatus?.is_subscribed &&
-              subscriptionStatus?.subscription?.status === "active"
+            ? !!(
+                subscriptionStatus?.is_subscribed &&
+                subscriptionStatus?.subscription?.status === "active"
+              )
             : false;
+
+          const planViewerState = getPlanViewerState({
+            isSubscriptionStatusUnknown:
+              !!user.userId && isSubscriptionStatusUnknown,
+            isCurrentPlan: !!isCurrentPlan,
+            hasActiveSubscription,
+          });
 
           return (
             <PricingCard
@@ -196,12 +206,8 @@ export function PricingCards({
               price={priceInUSDCents} // Always in USD cents
               originalPrice={originalPriceInUSDCents}
               title={plan.name}
-              isCurrentPlan={isCurrentPlan}
-              hasActiveSubscription={hasActiveSubscription}
               isPro={isPro}
-              isSubscriptionStatusUnknown={
-                !!user.userId && isSubscriptionStatusUnknown
-              }
+              planViewerState={planViewerState}
             />
           );
         })}
