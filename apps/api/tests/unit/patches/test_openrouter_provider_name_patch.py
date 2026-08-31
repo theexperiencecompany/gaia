@@ -108,10 +108,40 @@ class TestSDKKeepsTheField:
         chunk = SDKChatStreamChunk.model_validate(_chunk("hi", provider=UPSTREAM, finish="stop"))
         assert chunk.model_dump(by_alias=True)["provider"] == UPSTREAM
 
+    @pytest.mark.parametrize("model", [SDKChatResult, SDKChatStreamChunk])
+    def test_field_is_declared_and_optional(self, model: type) -> None:
+        """Absent on the wire must stay absent, not become a required field."""
+        field = model.model_fields["provider"]
+        assert field.default is None
+
     def test_declaring_twice_fails_loudly_as_a_stale_patch(self) -> None:
         """apply() already declared the field, so a redeclare means the SDK caught up."""
-        with pytest.raises(AttributeError, match="stale"):
+        with pytest.raises(AttributeError) as excinfo:
             _patch._declare_provider_field()
+        # Naming both the model and the key is what makes the failure actionable
+        # on a dependency bump; assert the real message, not a fragment of it.
+        assert "ChatResult already declares 'provider'" in str(excinfo.value)
+        assert "this patch is stale" in str(excinfo.value)
+
+
+class TestWiring:
+    """apply() must rebind the two specific seams, on the right objects."""
+
+    def test_non_streaming_seam_is_rebound(self) -> None:
+        from langchain_openrouter import ChatOpenRouter
+
+        assert ChatOpenRouter._create_chat_result is _patch._create_chat_result
+
+    def test_streaming_seam_is_rebound(self) -> None:
+        from langchain_openrouter import chat_models
+
+        assert chat_models._convert_chunk_to_message_chunk is _patch._convert_chunk_to_message_chunk
+
+    def test_wrappers_delegate_to_the_captured_originals(self) -> None:
+        """The originals must be the library's, not our own wrappers (a self-referential
+        capture would recurse forever the first time either seam is called)."""
+        assert _patch._ORIGINAL_CREATE_CHAT_RESULT is not _patch._create_chat_result
+        assert _patch._ORIGINAL_CONVERT_CHUNK is not _patch._convert_chunk_to_message_chunk
 
 
 class TestNonStreaming:
@@ -145,18 +175,26 @@ class TestStreaming:
         assert merged is not None
         assert merged.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 
-    def test_upstream_travels_with_the_integration_metadata(self) -> None:
-        """Every chunk the library stamps `model_provider` on also gets the real name.
+    def test_only_the_final_chunk_carries_the_upstream(self) -> None:
+        """Response-level data goes on the finish_reason chunk, once.
 
-        Keyed off `model_provider` rather than off the chunk count because the
-        stream ends with an empty chunk that carries no response metadata at
-        all — asserting on every chunk would pin that artifact, not the patch.
+        OpenRouter repeats `provider` on all three scripted chunks; exactly one
+        of them may come out carrying it, or the merge concatenates the repeats.
         """
         with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
             metadata = [c.response_metadata for c in _client(wire.base_url).stream("hi")]
-        stamped = [m for m in metadata if "model_provider" in m]
-        assert len(stamped) == 3, "expected one stamped chunk per scripted frame"
-        assert all(m[PROVIDER_NAME_METADATA_KEY] == UPSTREAM for m in stamped)
+        stamped = [m for m in metadata if PROVIDER_NAME_METADATA_KEY in m]
+        assert len(stamped) == 1
+        assert stamped[0][PROVIDER_NAME_METADATA_KEY] == UPSTREAM
+        # It is the terminal chunk — the one the library puts model_name/id on.
+        assert stamped[0]["finish_reason"] == "stop"
+
+    def test_intermediate_chunks_are_left_alone(self) -> None:
+        with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
+            metadata = [c.response_metadata for c in _client(wire.base_url).stream("hi")]
+        intermediate = [m for m in metadata if "model_provider" in m and "finish_reason" not in m]
+        assert len(intermediate) == 2, "expected two non-terminal chunks"
+        assert all(PROVIDER_NAME_METADATA_KEY not in m for m in intermediate)
 
     def test_absent_provider_leaves_the_key_off(self) -> None:
         with _ScriptedWire(_turn(provider=None)) as wire:

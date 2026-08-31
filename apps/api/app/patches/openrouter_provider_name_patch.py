@@ -32,13 +32,12 @@ Overwriting it would make the two meanings collide.
 
 Verified against live OpenRouter traffic (openai/gpt-4o-mini, 2026-08): the
 non-streaming body carries ``provider``, and so does *every* streamed chunk —
-7 of 7 on an 8-chunk answer, not just the terminal one. That repetition is why
-``PROVIDER_NAME_METADATA_KEY`` joins the idempotent-string set in
-``langchain_merge_dicts_model_name_patch``: ``AIMessageChunk.__add__`` merges
-``response_metadata`` with ``merge_dicts``, which concatenates equal strings for
-any key outside that set, so the merged message would otherwise report
-"OpenAIOpenAIOpenAIOpenAIOpenAIOpenAIOpenAI". This is the same failure that
-doubled ``model_name``.
+7 of 7 on an 8-chunk answer, not just the terminal one. The streaming wrapper
+therefore stamps only the chunk carrying ``finish_reason``, matching where
+``ChatOpenRouter`` puts every other response-level field. Stamping all of them
+would hand ``AIMessageChunk.__add__`` N copies to merge, and ``merge_dicts``
+concatenates equal strings outside its small idempotent set — the same failure
+that once doubled ``model_name`` into a pricing key matching nothing.
 
 Both wrappers delegate to the original and only add the key, so upstream's
 behaviour is untouched everywhere ``provider`` is absent (custom base-URL lanes,
@@ -116,15 +115,28 @@ def _create_chat_result(
 def _convert_chunk_to_message_chunk(
     chunk: Mapping[str, Any], default_class: type[BaseMessageChunk]
 ) -> BaseMessageChunk:
-    """Stamp the serving upstream's name onto one streamed chunk.
+    """Stamp the serving upstream's name onto the final chunk of a stream.
 
     Patched here rather than in ``_stream``/``_astream`` because this is the one
     function both of them route every chunk through, so a single wrapper covers
     the sync and async paths without duplicating either.
+
+    Only the chunk carrying ``finish_reason`` is stamped, which is where
+    ``ChatOpenRouter`` itself attaches every other response-level field
+    (``model_name``, ``id``, ``created``, ``system_fingerprint``, ``object``).
+    OpenRouter repeats ``provider`` on every chunk, so stamping them all would
+    leave ``AIMessageChunk.__add__`` to merge N equal strings — and
+    ``merge_dicts`` concatenates equal strings outside its small idempotent set,
+    turning "Baidu" into "BaiduBaiduBaidu". Attaching response-level data once,
+    where the library already does, avoids that by construction rather than by
+    adding another key to that set.
     """
     message_chunk = _ORIGINAL_CONVERT_CHUNK(chunk, default_class)
     provider = chunk.get(_WIRE_PROVIDER_KEY)
     if not provider or not isinstance(message_chunk, AIMessageChunk):
+        return message_chunk
+    choices = chunk.get("choices") or [{}]
+    if not choices[0].get("finish_reason"):
         return message_chunk
     return message_chunk.model_copy(
         update={

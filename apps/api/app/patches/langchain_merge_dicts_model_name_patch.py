@@ -20,13 +20,8 @@ in the idempotent set, two equal values get string-concatenated instead of colla
 matches nothing in the pricing catalog, so every auxiliary call metered this way is
 silently charged at ``DEFAULT_PRICING`` instead of its real (much cheaper) rate.
 
-``provider_name`` (``PROVIDER_NAME_METADATA_KEY``) has the same shape of problem
-and rides along in the same set: ``openrouter_provider_name_patch`` stamps the
-serving upstream's name onto every streamed chunk, because OpenRouter sends it
-on every chunk, so without this it would merge to "OpenAIOpenAIOpenAI...".
-
 This copies ``merge_dicts`` verbatim from ``langchain_core.utils._merge`` and adds
-"model_name" and "provider_name" to the existing idempotent-string-key set, then rebinds the name in
+"model_name" to the existing idempotent-string-key set, then rebinds the name in
 every module that imported it directly (a module-level ``from x import merge_dicts``
 holds its own reference — patching ``_merge.merge_dicts`` alone does not reach them).
 Unreported upstream as of langchain-core 1.x. Drop this patch once "model_name" joins
@@ -45,11 +40,7 @@ from langchain_core.messages import (
 from langchain_core.outputs import chat_generation as _chat_generation, generation as _generation
 from langchain_core.utils import _merge as _merge_module
 
-from app.constants.llm import PROVIDER_NAME_METADATA_KEY
-
-_IDEMPOTENT_STRING_KEYS = frozenset(
-    {"id", "output_version", "model_provider", "model_name", PROVIDER_NAME_METADATA_KEY}
-)
+_IDEMPOTENT_STRING_KEYS = frozenset({"id", "output_version", "model_provider", "model_name"})
 
 # Modules that did `from ._merge import merge_dicts`, so each holds its own
 # reference that patching `_merge` alone cannot reach. Typed as Any because the
@@ -68,8 +59,8 @@ _REBIND_TARGETS: tuple[Any, ...] = (
 
 def merge_dicts(left: dict[str, Any], *others: dict[str, Any]) -> dict[str, Any]:
     r"""Merge dictionaries, treating equal-valued identity/metadata strings
-    (id, output_version, model_provider, model_name, provider_name) as idempotent
-    instead of concatenating them. Otherwise identical to the upstream implementation."""
+    (id, output_version, model_provider, model_name) as idempotent instead of
+    concatenating them. Otherwise identical to the upstream implementation."""
     merged = left.copy()
     for right in others:
         for right_k, right_v in right.items():
