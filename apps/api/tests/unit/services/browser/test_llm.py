@@ -10,6 +10,18 @@ import pytest
 
 from app.services.browser.exceptions import BrowserUnavailableError
 
+
+@pytest.fixture(autouse=True)
+def _custom_lane_off_by_default(monkeypatch):
+    """Default the browser LLM to the EXPLICIT lane so provider/model tests are
+    deterministic — the dev .env's DEV_LLM_* would otherwise leak in and make the
+    browser inherit the custom lane. Tests that want the custom lane set it back on.
+    """
+    monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_BASE_URL", None)
+    monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_API_KEY", None)
+    monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_MODEL", None)
+
+
 pytestmark = pytest.mark.unit
 
 
@@ -387,3 +399,50 @@ class TestResolveUseVision:
         from app.services.browser.llm import resolve_use_vision
 
         assert await resolve_use_vision() is True
+
+
+@pytest.mark.unit
+class TestBrowserInheritsCustomLane:
+    def _set(self, monkeypatch, **kw):
+        for k, v in kw.items():
+            monkeypatch.setattr(f"app.services.browser.llm.settings.{k}", v)
+
+    def test_inherits_dev_llm_when_no_browser_key(self, monkeypatch):
+        """No browser-specific key + custom lane set → browser rides comms' lane.
+
+        This is the fix for the silent outage: browser and comms shared one
+        (dead) key, but the browser kept a redundant copy. Now there is one
+        source of truth, so a stale key can't kill the browser while chat works.
+        """
+        from app.services.browser.llm import _resolve_browser_lane
+
+        self._set(
+            monkeypatch,
+            BROWSER_USE_LLM_API_KEY=None,
+            DEV_LLM_BASE_URL="https://gw/v1",
+            DEV_LLM_API_KEY="shared-key",
+            DEV_LLM_MODEL="zai/glm-5.3-flash",
+        )
+        provider, model, api_key, base_url = _resolve_browser_lane()
+        assert (provider, model, api_key, base_url) == (
+            "openai",
+            "zai/glm-5.3-flash",
+            "shared-key",
+            "https://gw/v1",
+        )
+
+    def test_explicit_browser_key_still_wins(self, monkeypatch):
+        from app.services.browser.llm import _resolve_browser_lane
+
+        self._set(
+            monkeypatch,
+            BROWSER_USE_LLM_API_KEY="browser-only",
+            BROWSER_USE_LLM_PROVIDER="google",
+            BROWSER_USE_LLM_MODEL="gemini-x",
+            BROWSER_USE_LLM_BASE_URL=None,
+            DEV_LLM_BASE_URL="https://gw/v1",
+            DEV_LLM_API_KEY="shared-key",
+            DEV_LLM_MODEL="zai/glm-5.3-flash",
+        )
+        provider, model, api_key, _ = _resolve_browser_lane()
+        assert (provider, model, api_key) == ("google", "gemini-x", "browser-only")

@@ -53,6 +53,35 @@ def _resolve_api_key(provider: str) -> str | None:
     return override or _provider_fallback_keys().get(provider)
 
 
+def _custom_lane_configured() -> bool:
+    """Whether the shared custom LLM endpoint (DEV_LLM_*) comms uses is set.
+
+    Mirrors the same three-setting check the comms default LLM makes
+    (agents/llm/client.py); the settings are the single source of truth.
+    """
+    return bool(settings.DEV_LLM_BASE_URL and settings.DEV_LLM_API_KEY and settings.DEV_LLM_MODEL)
+
+
+def _resolve_browser_lane() -> tuple[str, str, str | None, str | None]:
+    """(provider, model, api_key, base_url) for the browser LLM.
+
+    When no browser-specific key is set, inherit the SAME custom endpoint comms
+    runs on (DEV_LLM_*) — one credential to manage, one failure domain. A stale
+    key can no longer kill the browser silently while chat keeps working (which
+    is exactly how a dead shared key surfaced as a fake "site blocked us"). An
+    explicit BROWSER_USE_LLM_API_KEY still wins, for a deliberately different lane.
+    """
+    if not settings.BROWSER_USE_LLM_API_KEY and _custom_lane_configured():
+        return "openai", settings.DEV_LLM_MODEL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_BASE_URL
+    provider = settings.BROWSER_USE_LLM_PROVIDER.lower()
+    return (
+        provider,
+        settings.BROWSER_USE_LLM_MODEL,
+        _resolve_api_key(provider),
+        settings.BROWSER_USE_LLM_BASE_URL,
+    )
+
+
 def build_browser_llm() -> BaseChatModel:
     """Build the Browser-Use chat model for the configured provider.
 
@@ -60,9 +89,7 @@ def build_browser_llm() -> BaseChatModel:
     API key is missing, so the tool reports a clean reason instead of the agent
     failing deep inside a run.
     """
-    provider = settings.BROWSER_USE_LLM_PROVIDER.lower()
-    model = settings.BROWSER_USE_LLM_MODEL
-    api_key = _resolve_api_key(provider)
+    provider, model, api_key, override_base_url = _resolve_browser_lane()
     if not api_key:
         raise BrowserUnavailableError(
             f"Browser agent LLM not configured: set an API key for provider '{provider}'."
@@ -86,18 +113,14 @@ def build_browser_llm() -> BaseChatModel:
 
         # Only override base_url when set — ChatDeepSeek's own default already
         # points at DeepSeek's official endpoint.
-        if settings.BROWSER_USE_LLM_BASE_URL:
-            return ChatDeepSeek(
-                model=model, api_key=api_key, base_url=settings.BROWSER_USE_LLM_BASE_URL
-            )
+        if override_base_url:
+            return ChatDeepSeek(model=model, api_key=api_key, base_url=override_base_url)
         return ChatDeepSeek(model=model, api_key=api_key)
 
     if provider in ("openai", "openrouter"):
         from browser_use import ChatOpenAI  # noqa: PLC0415
 
-        base_url = settings.BROWSER_USE_LLM_BASE_URL or (
-            _OPENROUTER_BASE_URL if provider == "openrouter" else None
-        )
+        base_url = override_base_url or (_OPENROUTER_BASE_URL if provider == "openrouter" else None)
         # When the endpoint cannot serve `json_schema`, hand Browser-Use its own
         # fallback: schema in the system prompt, plain-text JSON parsed back.
         # Vision is unaffected — image input alone is fine on those lanes.
@@ -135,7 +158,9 @@ async def resolve_use_vision() -> bool:
     if not settings.BROWSER_USE_VISION:
         return False
 
-    provider = settings.BROWSER_USE_LLM_PROVIDER.lower()
+    # Same lane the agent will actually run on (inherits the custom endpoint when
+    # no browser-specific key is set), so the vision check judges the real model.
+    provider, model, _api_key, _base_url = _resolve_browser_lane()
     if provider in _TEXT_ONLY_PROVIDERS:
         return False
 
@@ -143,6 +168,6 @@ async def resolve_use_vision() -> bool:
         from app.agents.llm.model_catalog import get_openrouter_catalog  # noqa: PLC0415
 
         catalog = await get_openrouter_catalog()
-        return await catalog.accepts_images(settings.BROWSER_USE_LLM_MODEL)
+        return await catalog.accepts_images(model)
 
     return True
