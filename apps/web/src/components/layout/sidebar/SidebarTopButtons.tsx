@@ -100,7 +100,10 @@ export default function SidebarTopButtons() {
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
       {!subscriptionStatus?.is_subscribed && (
-        <SidebarPromo price={price} onUpgrade={() => openPaywallModal()} />
+        <SidebarPromo
+          price={price}
+          onUpgrade={() => openPaywallModal(undefined, { dismissible: true })}
+        />
       )}
 
       <div className="flex w-full flex-col gap-0.5">

@@ -16,7 +16,7 @@ import { isProPlan } from "../utils/planPredicates";
 import { PlanFeature } from "./PlanFeature";
 
 export function PaywallModal() {
-  const { open, offer, closeModal } = usePaywallModalStore();
+  const { open, offer, dismissible, closeModal } = usePaywallModalStore();
   const { plans } = usePricing();
   const { logout } = useLogout();
   const { createSubscriptionAndRedirect, isLoading: isCreatingSubscription } =
@@ -56,9 +56,12 @@ export function PaywallModal() {
   return (
     <Modal
       isOpen={open}
-      isDismissable={false}
-      isKeyboardDismissDisabled
-      hideCloseButton
+      onOpenChange={(isOpen) => {
+        if (!isOpen) closeModal();
+      }}
+      isDismissable={dismissible}
+      isKeyboardDismissDisabled={!dismissible}
+      hideCloseButton={!dismissible}
       backdrop="blur"
       className="outline-none"
     >
@@ -113,14 +116,16 @@ export function PaywallModal() {
               : "Subscribe to GAIA Pro"}
           </RaisedButton>
 
-          <Button
-            variant="light"
-            size="sm"
-            className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
-            onPress={() => logout()}
-          >
-            Log out
-          </Button>
+          {!dismissible && (
+            <Button
+              variant="light"
+              size="sm"
+              className="mx-auto mt-1 h-auto min-w-0 p-0 text-xs text-zinc-500 data-[hover=true]:bg-transparent data-[hover=true]:text-zinc-300 data-[hover=true]:underline"
+              onPress={() => logout()}
+            >
+              Log out
+            </Button>
+          )}
         </ModalBody>
       </ModalContent>
     </Modal>

@@ -14,28 +14,61 @@ export interface PaywallOffer {
   message?: string;
 }
 
+export interface PaywallModalOptions {
+  /** See `openModal` doc-comment for when to set this. Defaults to false. */
+  dismissible?: boolean;
+}
+
 interface PaywallModalStore {
   open: boolean;
   offer: PaywallOffer | null;
-  openModal: (offer?: PaywallOffer) => void;
+  dismissible: boolean;
+  openModal: (offer?: PaywallOffer, options?: PaywallModalOptions) => void;
   closeModal: () => void;
 }
 
 /**
- * The paid-only paywall. Unlike `pricingModalStore` (the optional "Level Up"
- * upsell), this modal is non-dismissible — no backdrop click, no Escape, no
- * close button. `closeModal` exists only for programmatic resets (e.g. once
- * checkout succeeds and `useIsPaid` flips true), never for a user-facing
- * dismiss control.
+ * The paid-only paywall. It has two modes, chosen per call site via
+ * `openModal`'s `options.dismissible`:
+ *
+ * - **Enforcement (default, `dismissible: false`)** — a user tried to do
+ *   something that requires Pro (send a chat message, toggle a workflow, a
+ *   402 `subscription_required` response) and got redirected here instead.
+ *   No backdrop click, no Escape, no close button — subscribe or log out are
+ *   the only exits. This is the default so every existing enforcement call
+ *   site keeps today's behavior without passing anything.
+ * - **Voluntary (`dismissible: true`)** — the user chose to open this
+ *   themselves (e.g. an "Upgrade to Pro" button) while already able to use
+ *   the app. Trapping them here would be a UX trap, not enforcement, so the
+ *   modal behaves like a normal dismissible dialog: backdrop click, Escape,
+ *   and a close button all work.
+ *
+ * `closeModal` exists for both the programmatic reset (e.g. once checkout
+ * succeeds and `useIsPaid` flips true) and the dismissible mode's user-facing
+ * close controls — its own semantics don't change between modes.
  */
 export const usePaywallModalStore = create<PaywallModalStore>()(
   devtools(
     (set) => ({
       open: false,
       offer: null,
-      openModal: (offer) =>
-        set({ open: true, offer: offer ?? null }, false, "openModal"),
-      closeModal: () => set({ open: false, offer: null }, false, "closeModal"),
+      dismissible: false,
+      openModal: (offer, options) =>
+        set(
+          {
+            open: true,
+            offer: offer ?? null,
+            dismissible: options?.dismissible ?? false,
+          },
+          false,
+          "openModal",
+        ),
+      closeModal: () =>
+        set(
+          { open: false, offer: null, dismissible: false },
+          false,
+          "closeModal",
+        ),
     }),
     { name: "paywallModal-store" },
   ),

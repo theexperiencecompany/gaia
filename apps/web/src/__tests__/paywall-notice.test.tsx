@@ -48,5 +48,9 @@ describe("PaywallNotice", () => {
     fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
 
     expect(usePaywallModalStore.getState().open).toBe(true);
+    // Enforcement — the composer's paywall notice is itself a consequence of
+    // being blocked, so its "Upgrade to Pro" must not open a dismissible
+    // paywall the user could close their way past.
+    expect(usePaywallModalStore.getState().dismissible).toBe(false);
   });
 });

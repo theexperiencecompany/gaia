@@ -89,6 +89,9 @@ describe("useComposerSubmit paywall pre-check", () => {
 
     expect(sendMessage).not.toHaveBeenCalled();
     expect(usePaywallModalStore.getState().open).toBe(true);
+    // Enforcement — the composer pre-check must never let the user dismiss
+    // their way past the paywall.
+    expect(usePaywallModalStore.getState().dismissible).toBe(false);
     // Composer input is left intact — free users can keep typing.
     expect(clearInputText).not.toHaveBeenCalled();
   });

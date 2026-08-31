@@ -11,6 +11,7 @@ import {
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 
@@ -85,7 +86,10 @@ export function SubscriptionSettings() {
     isLoading,
     refetch: refetchStatus,
   } = useUserSubscriptionStatus();
-  const handleUpgrade = usePricingModalStore((s) => s.openModal);
+  // Managing an existing Pro plan (monthly <-> yearly) is a different job
+  // than subscribing for the first time — see the branches below.
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
   if (isLoading) {
     return (
@@ -132,7 +136,7 @@ export function SubscriptionSettings() {
               color="primary"
               className="w-full font-semibold text-black"
               size="sm"
-              onPress={() => handleUpgrade()}
+              onPress={() => openPaywallModal(undefined, { dismissible: true })}
             >
               View plans
             </Button>
@@ -309,7 +313,7 @@ export function SubscriptionSettings() {
           <Button
             color="primary"
             variant="flat"
-            onPress={() => handleUpgrade()}
+            onPress={() => openPricingModal()}
             size="sm"
             className="w-full"
           >

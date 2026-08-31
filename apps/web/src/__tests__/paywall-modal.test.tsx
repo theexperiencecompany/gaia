@@ -57,7 +57,11 @@ import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
 describe("PaywallModal", () => {
   beforeEach(() => {
-    usePaywallModalStore.setState({ open: false, offer: null });
+    usePaywallModalStore.setState({
+      open: false,
+      offer: null,
+      dismissible: false,
+    });
     isPaid = false;
     isSubscriptionStatusLoading = false;
     vi.clearAllMocks();
@@ -78,6 +82,32 @@ describe("PaywallModal", () => {
       screen.getByRole("button", { name: /subscribe to gaia pro/i }),
     ).not.toBeNull();
     expect(screen.getByRole("button", { name: /log out/i })).not.toBeNull();
+  });
+
+  it("renders dismissible with a close button and no logout link when opened dismissible (voluntary upgrade entry points)", async () => {
+    usePaywallModalStore.getState().openModal(undefined, { dismissible: true });
+    render(<PaywallModal />);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).not.toBeNull();
+
+    // The close (×) button is shown, and the logout link is redundant next
+    // to it, so it's dropped in this mode.
+    expect(screen.getByRole("button", { name: /close/i })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /log out/i })).toBeNull();
+  });
+
+  it("clears store state when dismissed via the close button (voluntary upgrade entry points)", async () => {
+    usePaywallModalStore.getState().openModal(undefined, { dismissible: true });
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: /close/i }));
+
+    await waitFor(() => {
+      expect(usePaywallModalStore.getState().open).toBe(false);
+    });
+    expect(usePaywallModalStore.getState().dismissible).toBe(false);
   });
 
   it("shows the discount banner only when a discount code is present", async () => {
