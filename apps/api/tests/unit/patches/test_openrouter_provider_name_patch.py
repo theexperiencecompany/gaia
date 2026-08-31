@@ -190,6 +190,8 @@ class TestWiring:
         monkeypatch.setattr(
             chat_models, "_convert_chunk_to_message_chunk", _patch._ORIGINAL_CONVERT_CHUNK
         )
+        monkeypatch.setattr(ChatOpenRouter, "_stream", _patch._ORIGINAL_STREAM)
+        monkeypatch.setattr(ChatOpenRouter, "_astream", _patch._ORIGINAL_ASTREAM)
 
     def test_apply_rebinds_the_non_streaming_seam(self) -> None:
         from langchain_openrouter import ChatOpenRouter
@@ -212,6 +214,15 @@ class TestWiring:
         _patch.apply()
         assert SDKChatResult.model_fields["provider"] is _patch._INJECTED_FIELD
         assert SDKChatStreamChunk.model_fields["provider"] is _patch._INJECTED_FIELD
+
+    def test_apply_rebinds_both_streaming_seams(self) -> None:
+        from langchain_openrouter import ChatOpenRouter
+
+        assert ChatOpenRouter._stream is _patch._ORIGINAL_STREAM
+        assert ChatOpenRouter._astream is _patch._ORIGINAL_ASTREAM
+        _patch.apply()
+        assert ChatOpenRouter._stream is _patch._stream
+        assert ChatOpenRouter._astream is _patch._astream
 
     def test_wrappers_delegate_to_the_captured_originals(self) -> None:
         """The originals must be the library's, not our own wrappers — a
@@ -239,6 +250,27 @@ class TestNonStreaming:
         result = llm._create_chat_result(_sdk_result(provider=None))
         assert PROVIDER_NAME_METADATA_KEY not in result.generations[0].message.response_metadata
 
+    def test_an_already_dumped_payload_works_too(self) -> None:
+        """`_create_chat_result` accepts a plain dict as well as an SDK object."""
+        llm = _client("http://127.0.0.1:1/v1")
+        payload = _sdk_result(provider="Baidu").model_dump(by_alias=True)
+        result = llm._create_chat_result(payload)
+        assert (
+            result.generations[0].message.response_metadata[PROVIDER_NAME_METADATA_KEY] == "Baidu"
+        )
+
+    def test_a_non_ai_message_is_left_alone(self) -> None:
+        """Only an AI message gets the stamp — response_metadata is its field."""
+        llm = _client("http://127.0.0.1:1/v1")
+        payload = _sdk_result(provider="Baidu").model_dump(by_alias=True)
+        payload["choices"][0]["message"]["role"] = "system"
+
+        result = llm._create_chat_result(payload)
+
+        message = result.generations[0].message
+        assert not isinstance(message, AIMessage)
+        assert PROVIDER_NAME_METADATA_KEY not in message.response_metadata
+
 
 class TestStreaming:
     def test_merged_message_reports_the_upstream_exactly_once(self) -> None:
@@ -251,26 +283,29 @@ class TestStreaming:
         assert merged is not None
         assert merged.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 
-    def test_only_the_final_chunk_carries_the_upstream(self) -> None:
-        """Response-level data goes on the finish_reason chunk, once.
-
-        OpenRouter repeats `provider` on all three scripted chunks; exactly one
-        of them may come out carrying it, or the merge concatenates the repeats.
-        """
+    def test_exactly_one_chunk_carries_the_upstream(self) -> None:
+        """OpenRouter repeats `provider` on all three scripted chunks; only the
+        first may come out carrying it, or the merge concatenates the repeats."""
         with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
             metadata = [c.response_metadata for c in _client(wire.base_url).stream("hi")]
         stamped = [m for m in metadata if PROVIDER_NAME_METADATA_KEY in m]
         assert len(stamped) == 1
         assert stamped[0][PROVIDER_NAME_METADATA_KEY] == UPSTREAM
-        # It is the terminal chunk — the one the library puts model_name/id on.
-        assert stamped[0]["finish_reason"] == "stop"
 
-    def test_intermediate_chunks_are_left_alone(self) -> None:
-        with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
-            metadata = [c.response_metadata for c in _client(wire.base_url).stream("hi")]
-        intermediate = [m for m in metadata if "model_provider" in m and "finish_reason" not in m]
-        assert len(intermediate) == 2, "expected two non-terminal chunks"
-        assert all(PROVIDER_NAME_METADATA_KEY not in m for m in intermediate)
+    def test_a_second_finish_event_does_not_double_the_name(self) -> None:
+        """Live reasoning streams carry TWO finish events (reasoning block, then
+        content), so "the finish chunk" is not a unique slot — measured, not
+        hypothetical. First-one-wins is what holds regardless."""
+        turn = [
+            _sse(_chunk("think", provider=UPSTREAM, finish="stop")),
+            _sse(_chunk("answer", provider=UPSTREAM, finish="stop")),
+        ]
+        with _ScriptedWire(turn) as wire:
+            merged = None
+            for chunk in _client(wire.base_url).stream("hi"):
+                merged = chunk if merged is None else merged + chunk
+        assert merged is not None
+        assert merged.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 
     def test_absent_provider_leaves_the_key_off(self) -> None:
         with _ScriptedWire(_turn(provider=None)) as wire:
@@ -279,6 +314,18 @@ class TestStreaming:
                 merged = chunk if merged is None else merged + chunk
         assert merged is not None
         assert PROVIDER_NAME_METADATA_KEY not in merged.response_metadata
+
+    def test_a_non_ai_chunk_is_left_alone(self) -> None:
+        """Tool/system deltas have no response_metadata to carry the name."""
+        from langchain_core.messages import ToolMessageChunk
+
+        chunk = _chunk("x", provider=UPSTREAM, finish="stop")
+        chunk["choices"][0]["delta"] = {"role": "tool", "tool_call_id": "t1", "content": "x"}
+
+        converted = _patch._convert_chunk_to_message_chunk(chunk, ToolMessageChunk)
+
+        assert isinstance(converted, ToolMessageChunk)
+        assert PROVIDER_NAME_METADATA_KEY not in converted.response_metadata
 
     def test_content_and_model_provider_are_untouched(self) -> None:
         with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:

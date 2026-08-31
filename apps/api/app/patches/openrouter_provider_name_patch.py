@@ -32,12 +32,20 @@ Overwriting it would make the two meanings collide.
 
 Verified against live OpenRouter traffic (openai/gpt-4o-mini, 2026-08): the
 non-streaming body carries ``provider``, and so does *every* streamed chunk —
-7 of 7 on an 8-chunk answer, not just the terminal one. The streaming wrapper
-therefore stamps only the chunk carrying ``finish_reason``, matching where
-``ChatOpenRouter`` puts every other response-level field. Stamping all of them
-would hand ``AIMessageChunk.__add__`` N copies to merge, and ``merge_dicts``
-concatenates equal strings outside its small idempotent set — the same failure
-that once doubled ``model_name`` into a pricing key matching nothing.
+7 of 7 on an 8-chunk answer. Those repeats would merge into
+"OpenAIOpenAIOpenAI...", because ``AIMessageChunk.__add__`` merges
+``response_metadata`` with ``merge_dicts``, which concatenates equal strings for
+any key outside its small idempotent set — the same failure that once doubled
+``model_name`` into a pricing key matching nothing. So ``_stream``/``_astream``
+are wrapped to keep the name on the first chunk that carries it and strip it
+from the rest.
+
+Stamping only the ``finish_reason`` chunk instead would look tidier and is
+wrong: that slot is not unique either. The same live 8-chunk answer carried TWO
+finish events — one closing the reasoning block, one closing the content — and
+doubled the name just as thoroughly. "First one wins" is the only rule that
+holds however many chunks carry it, and it keeps the fix in this module rather
+than adding a key to another patch's idempotent set.
 
 Both wrappers delegate to the original and only add the key, so upstream's
 behaviour is untouched everywhere ``provider`` is absent (custom base-URL lanes,
@@ -49,11 +57,11 @@ SDK adds the field, so a dependency bump cannot silently leave a stale patch in
 place.
 """
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from typing import Any
 
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessageChunk
-from langchain_core.outputs import ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, BaseMessageChunk
+from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openrouter import ChatOpenRouter, chat_models as _chat_models
 from openrouter.components.chatresult import ChatResult as SDKChatResult
 from openrouter.components.chatstreamchunk import ChatStreamChunk as SDKChatStreamChunk
@@ -76,6 +84,12 @@ _PROVIDER_ANNOTATION: Any = str | None
 _SDK_RESPONSE_MODELS = (SDKChatResult, SDKChatStreamChunk)
 
 _ORIGINAL_CREATE_CHAT_RESULT = ChatOpenRouter._create_chat_result
+#: Typed as the pass-throughs this module treats them as — it hands them whatever
+#: it was handed. `run_manager` is deliberately absent from the wrappers'
+#: signatures: langchain-core never passes it, and letting it ride in `**kwargs`
+#: forwards it untouched if that ever changes, rather than silently dropping it.
+_ORIGINAL_STREAM: Callable[..., Iterator[ChatGenerationChunk]] = ChatOpenRouter._stream
+_ORIGINAL_ASTREAM: Callable[..., AsyncIterator[ChatGenerationChunk]] = ChatOpenRouter._astream
 _ORIGINAL_CONVERT_CHUNK = _chat_models._convert_chunk_to_message_chunk
 
 
@@ -105,45 +119,37 @@ def _create_chat_result(
     self: ChatOpenRouter, response: SDKChatResult | dict[str, Any]
 ) -> ChatResult:
     """Stamp the serving upstream's name onto the non-streaming result."""
-    # Normalise here rather than dumping twice: the original accepts a dict and
-    # only dumps when handed an SDK object.
-    if not isinstance(response, dict):
-        response = response.model_dump(by_alias=True)
     result = _ORIGINAL_CREATE_CHAT_RESULT(self, response)
-    provider = response.get(_WIRE_PROVIDER_KEY)
-    if provider:
-        for generation in result.generations:
-            message = generation.message
-            if isinstance(message, AIMessage):
-                message.response_metadata[PROVIDER_NAME_METADATA_KEY] = provider
+    # Read the name off whichever shape came in rather than dumping the model
+    # again — the original already normalises internally, and a second
+    # `model_dump` here would just be the same work done twice.
+    provider = (
+        response.get(_WIRE_PROVIDER_KEY)
+        if isinstance(response, dict)
+        else getattr(response, _WIRE_PROVIDER_KEY, None)
+    )
+    if not provider:
+        return result
+    for generation in result.generations:
+        message = generation.message
+        if isinstance(message, AIMessage):
+            message.response_metadata[PROVIDER_NAME_METADATA_KEY] = provider
     return result
 
 
 def _convert_chunk_to_message_chunk(
     chunk: Mapping[str, Any], default_class: type[BaseMessageChunk]
 ) -> BaseMessageChunk:
-    """Stamp the serving upstream's name onto the final chunk of a stream.
+    """Stamp the serving upstream's name onto one streamed chunk.
 
     Patched here rather than in ``_stream``/``_astream`` because this is the one
-    function both of them route every chunk through, so a single wrapper covers
-    the sync and async paths without duplicating either.
-
-    Only the chunk carrying ``finish_reason`` is stamped, which is where
-    ``ChatOpenRouter`` itself attaches every other response-level field
-    (``model_name``, ``id``, ``created``, ``system_fingerprint``, ``object``).
-    OpenRouter repeats ``provider`` on every chunk, so stamping them all would
-    leave ``AIMessageChunk.__add__`` to merge N equal strings — and
-    ``merge_dicts`` concatenates equal strings outside its small idempotent set,
-    turning "Baidu" into "BaiduBaiduBaidu". Attaching response-level data once,
-    where the library already does, avoids that by construction rather than by
-    adding another key to that set.
+    function both of them route every chunk through, and it is the only place
+    with the raw wire chunk the name arrives on. ``_keep_first_provider_name``
+    then reduces the repeats to one — see its docstring for why.
     """
     message_chunk = _ORIGINAL_CONVERT_CHUNK(chunk, default_class)
     provider = chunk.get(_WIRE_PROVIDER_KEY)
     if not provider or not isinstance(message_chunk, AIMessageChunk):
-        return message_chunk
-    choices = chunk.get("choices") or [{}]
-    if not choices[0].get("finish_reason"):
         return message_chunk
     return message_chunk.model_copy(
         update={
@@ -153,6 +159,58 @@ def _convert_chunk_to_message_chunk(
             }
         }
     )
+
+
+def _keep_first_provider_name(chunk: ChatGenerationChunk, already_seen: bool) -> bool:
+    """Drop the name from every chunk after the first, returning whether it is now seen.
+
+    OpenRouter repeats ``provider`` on every chunk, and ``AIMessageChunk.__add__``
+    merges ``response_metadata`` with ``merge_dicts``, which CONCATENATES equal
+    strings for any key outside its small idempotent set — so N stamped chunks
+    merge into "BaiduBaiduBaidu". This is the same defect that once doubled
+    ``model_name`` into a pricing key matching nothing.
+
+    De-duplicating per stream rather than stamping only the ``finish_reason``
+    chunk, because that is not unique either: verified on live traffic, an
+    8-chunk answer carried TWO finish events (reasoning block, then content),
+    which doubled the name just as thoroughly. "First one wins" is the only rule
+    that holds regardless of how many chunks carry it, and it keeps the fix
+    inside this module instead of adding a key to another patch's set.
+    """
+    if not isinstance(chunk.message, AIMessageChunk):
+        return already_seen
+    if PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata:
+        return already_seen
+    if already_seen:
+        del chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY]
+        return True
+    return True
+
+
+def _stream(
+    self: ChatOpenRouter,
+    messages: list[BaseMessage],
+    stop: list[str] | None = None,
+    **kwargs: object,
+) -> Iterator[ChatGenerationChunk]:
+    """``ChatOpenRouter._stream`` with the repeated provider name reduced to one."""
+    seen = False
+    for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
+        seen = _keep_first_provider_name(chunk, seen)
+        yield chunk
+
+
+async def _astream(
+    self: ChatOpenRouter,
+    messages: list[BaseMessage],
+    stop: list[str] | None = None,
+    **kwargs: object,
+) -> AsyncIterator[ChatGenerationChunk]:
+    """``ChatOpenRouter._astream`` with the repeated provider name reduced to one."""
+    seen = False
+    async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
+        seen = _keep_first_provider_name(chunk, seen)
+        yield chunk
 
 
 #: The chat_models module, typed Any because the rebind below writes an
@@ -166,8 +224,13 @@ def apply() -> None:
     # setattr through a variable name: monkeypatching a method is exactly what
     # this patch exists to do, and neither mypy's method-assign check nor ruff's
     # B010 has a way to express "this assignment is the point".
-    method_name = "_create_chat_result"
-    setattr(ChatOpenRouter, method_name, _create_chat_result)
+    replacements: dict[str, object] = {
+        "_create_chat_result": _create_chat_result,
+        "_stream": _stream,
+        "_astream": _astream,
+    }
+    for method_name, replacement in replacements.items():
+        setattr(ChatOpenRouter, method_name, replacement)
     # `_stream`/`_astream` resolve this by module-global lookup at call time, so
     # rebinding the module attribute reaches both without touching either.
     _CHAT_MODELS._convert_chunk_to_message_chunk = _convert_chunk_to_message_chunk
