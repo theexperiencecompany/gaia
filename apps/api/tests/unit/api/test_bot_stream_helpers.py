@@ -25,6 +25,7 @@ from app.api.v1.endpoints.bot import (
     _paywall_notice_stream,
 )
 from app.models.bot_models import BotChatRequest
+from app.models.message_models import FileData
 
 
 class TestBotStreamControlFrame:
@@ -160,12 +161,25 @@ class TestBotStreamPayloadFrame:
         assert frame is None
         assert stop is False
 
-    async def test_web_only_field_takes_priority_over_a_response_field(self):
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "conversation_description",
+            "user_message_id",
+            "bot_message_id",
+            "stream_id",
+            "tool_data",
+            "tool_output",
+            "follow_up_actions",
+        ],
+    )
+    async def test_each_web_only_field_takes_priority_over_a_response_field(self, key: str):
         """A payload carrying BOTH a web-only field and `response` is dropped —
-        the web-only check runs first, same as the real message stream shape."""
-        frame, stop = await _bot_stream_payload_frame(
-            {"response": "hello", "user_message_id": "m1"}, "user-1"
-        )
+        the web-only check runs first, same as the real message stream shape.
+        Parametrized per key so a mutation to any single list entry (rather than
+        the whole check) still shows up as a different result than the no-op
+        catchall branch."""
+        frame, stop = await _bot_stream_payload_frame({"response": "hello", key: "x"}, "user-1")
         assert frame is None
         assert stop is False
 
@@ -196,9 +210,10 @@ class TestBuildBotMessageRequest:
             "app.api.v1.endpoints.bot.BotService.load_conversation_history",
             new_callable=AsyncMock,
             return_value=[{"role": "user", "content": "old turn"}],
-        ):
+        ) as mock_load:
             result = await _build_bot_message_request(body, "conv-1", "user-1")
 
+        mock_load.assert_awaited_once_with("conv-1", "user-1")
         assert result.message == "new turn"
         assert result.conversation_id == "conv-1"
         assert [m["role"] for m in result.messages] == ["user", "user"]
@@ -231,6 +246,19 @@ class TestBuildBotMessageRequest:
         ):
             result = await _build_bot_message_request(body, "conv-3", "user-1")
         assert result.fileIds == ["f1", "f2"]
+
+    async def test_passes_through_provided_file_data(self):
+        file_data = [FileData(fileId="f1", url="https://x/f1", filename="a.txt")]
+        body = BotChatRequest(
+            message="hi", platform="discord", platform_user_id="u1", file_data=file_data
+        )
+        with patch(
+            "app.api.v1.endpoints.bot.BotService.load_conversation_history",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await _build_bot_message_request(body, "conv-4", "user-1")
+        assert result.fileData == file_data
 
 
 class TestBotStreamFailureLogger:

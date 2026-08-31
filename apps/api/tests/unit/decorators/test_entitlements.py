@@ -199,3 +199,36 @@ class TestRequireSubscriptionDecorator:
 
         assert getattr(exc_info.value, "status_code", None) == 401
         handler.assert_not_called()
+
+    async def test_falls_back_to_an_explicit_user_kwarg_with_no_request_context(self) -> None:
+        """A bot resolving its own user via an explicit ``user=`` kwarg — no
+        request-scoped auth context at all (direct, non-HTTP invocation)."""
+        handler = AsyncMock(return_value="ok")
+        wrapped = require_subscription()(handler)
+        plan_lookup = AsyncMock(return_value=PlanType.PRO)
+
+        with (
+            patch(f"{RCX}.get_authenticated_user", return_value=None),
+            patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup),
+        ):
+            result = await wrapped(user={"user_id": "kwarg-user"})
+
+        assert result == "ok"
+        plan_lookup.assert_awaited_once_with("kwarg-user")
+        handler.assert_called_once_with(user={"user_id": "kwarg-user"})
+
+    async def test_falls_back_to_a_positional_dict_with_no_request_context(self) -> None:
+        """A bot passing its resolved user as a positional dict arg."""
+        handler = AsyncMock(return_value="ok")
+        wrapped = require_subscription()(handler)
+        plan_lookup = AsyncMock(return_value=PlanType.PRO)
+
+        with (
+            patch(f"{RCX}.get_authenticated_user", return_value=None),
+            patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup),
+        ):
+            result = await wrapped("unrelated-positional", {"user_id": "positional-user"})
+
+        assert result == "ok"
+        plan_lookup.assert_awaited_once_with("positional-user")
+        handler.assert_called_once_with("unrelated-positional", {"user_id": "positional-user"})

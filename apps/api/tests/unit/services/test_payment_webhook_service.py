@@ -1,7 +1,9 @@
-"""subscription.active / subscription.renewed reactivating paused workflows.
+"""The billing-webhook <-> workflow-pause integration in ``PaymentWebhookService``.
 
-Workflows deactivated with DeactivationReason.SUBSCRIPTION_LAPSED (cancel,
-expire, payment failure, on-hold) were never turned back on when the user
+subscription.active / subscription.renewed reactivate paused workflows;
+subscription.failed / subscription.on_hold deactivate them. Workflows
+deactivated with DeactivationReason.SUBSCRIPTION_LAPSED (cancel, expire,
+payment failure, on-hold) were never turned back on when the user
 resubscribed — nothing called ``reactivate_workflows_for_restored_subscription``
 from the billing webhook path. See ``app/services/workflow/subscription_pause.py``.
 """
@@ -146,3 +148,178 @@ class TestSubscriptionRenewedReactivatesWorkflows:
             )
 
         assert result.status == "processed"
+
+
+@pytest.mark.unit
+class TestSubscriptionFailedDeactivatesWorkflows:
+    async def test_marks_the_subscription_failed_and_deactivates_workflows(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch.object(
+                service, "_deactivate_workflows_for_lapsed_subscription", new_callable=AsyncMock
+            ) as deactivate,
+        ):
+            sub_repo.apply_update_by_dodo_id = AsyncMock()
+            sub_repo.get_user_id_by_dodo_id = AsyncMock(return_value=USER_ID)
+
+            result = await service._handle_subscription_failed(
+                _event(DodoWebhookEventType.SUBSCRIPTION_FAILED, subscription_id="sub_failed")
+            )
+
+        sub_repo.apply_update_by_dodo_id.assert_awaited_once()
+        call_args = sub_repo.apply_update_by_dodo_id.call_args
+        assert call_args.args[0] == "sub_failed"
+        assert call_args.args[1].status == "failed"
+        deactivate.assert_awaited_once_with(USER_ID)
+        assert result.event_type == DodoWebhookEventType.SUBSCRIPTION_FAILED.value
+        assert result.status == "processed"
+        assert result.message == "Subscription failed"
+        assert result.subscription_id == "sub_failed"
+
+    async def test_no_resolvable_user_never_calls_deactivate(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch.object(
+                service, "_deactivate_workflows_for_lapsed_subscription", new_callable=AsyncMock
+            ) as deactivate,
+        ):
+            sub_repo.apply_update_by_dodo_id = AsyncMock()
+            sub_repo.get_user_id_by_dodo_id = AsyncMock(return_value=None)
+
+            await service._handle_subscription_failed(
+                _event(DodoWebhookEventType.SUBSCRIPTION_FAILED)
+            )
+
+        deactivate.assert_not_awaited()
+
+    async def test_missing_subscription_data_raises(self) -> None:
+        service = PaymentWebhookService()
+        event = MagicMock(spec=DodoWebhookEvent)
+        event.get_subscription_data.return_value = None
+
+        with pytest.raises(ValueError, match="Invalid subscription data"):
+            await service._handle_subscription_failed(event)
+
+
+@pytest.mark.unit
+class TestSubscriptionOnHoldDeactivatesWorkflows:
+    async def test_marks_the_subscription_on_hold_and_deactivates_workflows(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch.object(
+                service, "_deactivate_workflows_for_lapsed_subscription", new_callable=AsyncMock
+            ) as deactivate,
+        ):
+            sub_repo.apply_update_by_dodo_id = AsyncMock()
+            sub_repo.get_user_id_by_dodo_id = AsyncMock(return_value=USER_ID)
+
+            result = await service._handle_subscription_on_hold(
+                _event(DodoWebhookEventType.SUBSCRIPTION_ON_HOLD, subscription_id="sub_hold")
+            )
+
+        sub_repo.apply_update_by_dodo_id.assert_awaited_once()
+        call_args = sub_repo.apply_update_by_dodo_id.call_args
+        assert call_args.args[0] == "sub_hold"
+        assert call_args.args[1].status == "on_hold"
+        deactivate.assert_awaited_once_with(USER_ID)
+        assert result.event_type == DodoWebhookEventType.SUBSCRIPTION_ON_HOLD.value
+        assert result.status == "processed"
+        assert result.message == "Subscription on hold"
+        assert result.subscription_id == "sub_hold"
+
+    async def test_no_resolvable_user_never_calls_deactivate(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch.object(
+                service, "_deactivate_workflows_for_lapsed_subscription", new_callable=AsyncMock
+            ) as deactivate,
+        ):
+            sub_repo.apply_update_by_dodo_id = AsyncMock()
+            sub_repo.get_user_id_by_dodo_id = AsyncMock(return_value=None)
+
+            await service._handle_subscription_on_hold(
+                _event(DodoWebhookEventType.SUBSCRIPTION_ON_HOLD)
+            )
+
+        deactivate.assert_not_awaited()
+
+    async def test_missing_subscription_data_raises(self) -> None:
+        service = PaymentWebhookService()
+        event = MagicMock(spec=DodoWebhookEvent)
+        event.get_subscription_data.return_value = None
+
+        with pytest.raises(ValueError, match="Invalid subscription data"):
+            await service._handle_subscription_on_hold(event)
+
+
+@pytest.mark.unit
+class TestDeactivateWorkflowsWrapperNeverRaises:
+    """The private wrapper ``_deactivate_workflows_for_lapsed_subscription`` — a
+    workflow-deactivation bug must not turn an otherwise-successful billing
+    webhook into a Dodo retry."""
+
+    async def test_delegates_to_the_free_function(self) -> None:
+        service = PaymentWebhookService()
+        with patch(
+            f"{MODULE}.deactivate_workflows_for_lapsed_subscription", new_callable=AsyncMock
+        ) as deactivate:
+            await service._deactivate_workflows_for_lapsed_subscription(USER_ID)
+
+        deactivate.assert_awaited_once_with(USER_ID)
+
+    async def test_a_failure_is_swallowed_and_logged_with_exact_context(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(
+                f"{MODULE}.deactivate_workflows_for_lapsed_subscription",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("mongo exploded"),
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await service._deactivate_workflows_for_lapsed_subscription(USER_ID)  # must not raise
+
+        mock_log.error.assert_called_once_with(
+            "[PAYMENT] Failed to deactivate workflows for lapsed subscription",
+            error="mongo exploded",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )
+
+
+@pytest.mark.unit
+class TestReactivateWorkflowsWrapperNeverRaises:
+    """The private wrapper ``_reactivate_workflows_for_restored_subscription`` —
+    same swallow-and-log posture as deactivation."""
+
+    async def test_delegates_to_the_free_function(self) -> None:
+        service = PaymentWebhookService()
+        with patch(
+            f"{MODULE}.reactivate_workflows_for_restored_subscription", new_callable=AsyncMock
+        ) as reactivate:
+            await service._reactivate_workflows_for_restored_subscription(USER_ID)
+
+        reactivate.assert_awaited_once_with(USER_ID)
+
+    async def test_a_failure_is_swallowed_and_logged_with_exact_context(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(
+                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("mongo exploded"),
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await service._reactivate_workflows_for_restored_subscription(USER_ID)  # must not raise
+
+        mock_log.error.assert_called_once_with(
+            "[PAYMENT] Failed to reactivate workflows for restored subscription",
+            error="mongo exploded",
+            error_type="RuntimeError",
+            user_id=USER_ID,
+        )

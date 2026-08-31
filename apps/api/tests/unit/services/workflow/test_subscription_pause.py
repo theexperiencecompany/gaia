@@ -268,7 +268,7 @@ class TestReactivateWorkflowsForRestoredSubscription:
 
         mock_log.warning.assert_called_once()
         message, kwargs = mock_log.warning.call_args.args[0], mock_log.warning.call_args.kwargs
-        assert "Could not reactivate workflow" in message
+        assert message == "[WORKFLOW] Could not reactivate workflow for restored subscription"
         assert kwargs == {
             "workflow_id": "wf-1",
             "user_id": USER_ID,
@@ -291,7 +291,7 @@ class TestReactivateWorkflowsForRestoredSubscription:
 
         mock_log.info.assert_called_once()
         message, kwargs = mock_log.info.call_args.args[0], mock_log.info.call_args.kwargs
-        assert "Reactivated workflows" in message
+        assert message == "[WORKFLOW] Reactivated workflows for restored subscription"
         assert kwargs == {"user_id": USER_ID, "reactivated": 1}
 
     async def test_the_summary_log_is_silent_on_a_no_op_run(self) -> None:
