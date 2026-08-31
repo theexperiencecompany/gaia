@@ -2,8 +2,7 @@
 seam both metering routes share.
 
 Covers ``extract_message_usage`` (the AIMessage -> token counts read, including
-every provider-shape fallback), ``extract_message_model`` (the model the
-provider says served the call), and ``record_llm_call`` itself (the funnel every
+every provider-shape fallback) and ``record_llm_call`` itself (the funnel every
 metering route prices through).
 """
 
@@ -13,13 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
-from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.llm_metering import (
     TokenUsage,
     extract_generation_id,
     extract_message_cost,
-    extract_message_model,
     extract_message_usage,
     record_llm_call,
 )
@@ -156,32 +153,6 @@ def test_missing_input_token_details_does_not_raise() -> None:
         usage_metadata={"input_tokens": 5, "output_tokens": 1, "total_tokens": 6},
     )
     assert extract_message_usage(message)["cached_tokens"] == 0
-
-
-# --- extract_message_model ----------------------------------------------------- #
-
-
-def test_the_model_is_read_from_what_the_provider_reported() -> None:
-    """The response is the only account of what actually RAN. A provider that
-    fell back serves a different model than the lane asked for, and the spend
-    belongs to the one that answered."""
-    message = AIMessage(content="hi", response_metadata={"model_name": "served/model"})
-
-    assert extract_message_model(message) == "served/model"
-
-
-def test_a_response_with_no_model_is_unknown_rather_than_guessed() -> None:
-    """``unknown`` prices at DEFAULT_PRICING instead of a real rate, so the
-    metering seams log it loudly; silently substituting a plausible default
-    would hide the miss."""
-    assert extract_message_model(AIMessage(content="hi")) == UNKNOWN_MODEL_NAME
-    assert extract_message_model(AIMessage(content="hi", response_metadata={})) == (
-        UNKNOWN_MODEL_NAME
-    )
-    assert (
-        extract_message_model(AIMessage(content="hi", response_metadata={"model_name": ""}))
-        == UNKNOWN_MODEL_NAME
-    )
 
 
 # --- record_llm_call ---------------------------------------------------------- #

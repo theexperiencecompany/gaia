@@ -174,8 +174,8 @@ def _bind_session_id(
     one chain and evicted each other. Measured end-to-end on the real graph, the
     executor — which runs in a burst and re-reads its own chain immediately —
     held 72.2%, while comms, which idles across a turn while the others run,
-    collapsed to 26.8%. That comms' own sticky-flip REPLAY of the identical bytes
-    read 99.9% seconds later is the proof the bytes were always cacheable: the
+    collapsed to 26.8%. A byte-identical re-send of comms' own request read
+    99.9% seconds later, which is the proof the bytes were always cacheable: the
     chain existed, something else had taken the slot by the next turn.
     """
     # Must run AFTER bind_tools (which rebuilds the runnable and drops outer bindings), so the
