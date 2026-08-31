@@ -22,7 +22,9 @@ from typing import Any
 from langchain_core.messages import AIMessage
 from openrouter.components.chatresult import ChatResult as SDKChatResult
 from openrouter.components.chatstreamchunk import ChatStreamChunk as SDKChatStreamChunk
+from openrouter.types import BaseModel as SDKBaseModel
 from pydantic import SecretStr
+from pydantic.fields import FieldInfo
 import pytest
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
@@ -114,32 +116,106 @@ class TestSDKKeepsTheField:
         field = model.model_fields["provider"]
         assert field.default is None
 
-    def test_declaring_twice_fails_loudly_as_a_stale_patch(self) -> None:
-        """apply() already declared the field, so a redeclare means the SDK caught up."""
+
+def _throwaway_model(name: str) -> type[SDKBaseModel]:
+    """A disposable stand-in for an SDK response model.
+
+    The declaration logic is exercised against these rather than against the real
+    `ChatResult`/`ChatStreamChunk`, which the patch has already modified at import
+    and whose rebuilt validators would outlive any monkeypatch of `model_fields`.
+    """
+    return type(name, (SDKBaseModel,), {"__annotations__": {"model": str}})
+
+
+class TestFieldDeclaration:
+    """`_declare_provider_field`, driven over disposable models."""
+
+    def test_the_field_is_added_and_actually_takes_effect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Declared *and* rebuilt — without the rebuild the validator still drops it."""
+        model = _throwaway_model("Fresh")
+        monkeypatch.setattr(_patch, "_SDK_RESPONSE_MODELS", (model,))
+
+        _patch._declare_provider_field()
+
+        parsed = model.model_validate({"model": "m", "provider": "Baidu"})
+        assert parsed.model_dump()["provider"] == "Baidu"
+
+    def test_every_model_in_the_tuple_is_declared(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Already-patched models must not stop the loop before later ones."""
+        done = _throwaway_model("AlreadyOurs")
+        done.model_fields["provider"] = _patch._INJECTED_FIELD
+        pending = _throwaway_model("Pending")
+        monkeypatch.setattr(_patch, "_SDK_RESPONSE_MODELS", (done, pending))
+
+        _patch._declare_provider_field()
+
+        assert pending.model_fields["provider"] is _patch._INJECTED_FIELD
+
+    def test_a_field_the_sdk_declares_itself_fails_loudly_as_a_stale_patch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A dependency bump that adds `provider` upstream must not pass silently."""
+        model = _throwaway_model("ChatResult")
+        model.model_fields["provider"] = FieldInfo(annotation=str, default=None)
+        monkeypatch.setattr(_patch, "_SDK_RESPONSE_MODELS", (model,))
+
         with pytest.raises(AttributeError) as excinfo:
             _patch._declare_provider_field()
-        # Naming both the model and the key is what makes the failure actionable
-        # on a dependency bump; assert the real message, not a fragment of it.
-        assert "ChatResult already declares 'provider'" in str(excinfo.value)
-        assert "this patch is stale" in str(excinfo.value)
+        # The exact message: it has to name the model and the key to be
+        # actionable on a bump, and say plainly what the reader must do.
+        assert str(excinfo.value) == (
+            "ChatResult already declares 'provider'; the openrouter SDK now keeps "
+            "the provider name itself and this patch is stale."
+        )
 
 
 class TestWiring:
-    """apply() must rebind the two specific seams, on the right objects."""
+    """apply() must rebind the two specific seams, on the right objects.
 
-    def test_non_streaming_seam_is_rebound(self) -> None:
+    These re-run `apply()` rather than only inspecting the state left by import,
+    so the wiring is actually exercised: a rebind pointed at the wrong attribute
+    or the wrong function would otherwise never be executed by the suite.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _unbind_then_restore(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Put both seams back to the library's originals for the duration."""
+        from langchain_openrouter import ChatOpenRouter, chat_models
+
+        monkeypatch.setattr(
+            ChatOpenRouter, "_create_chat_result", _patch._ORIGINAL_CREATE_CHAT_RESULT
+        )
+        monkeypatch.setattr(
+            chat_models, "_convert_chunk_to_message_chunk", _patch._ORIGINAL_CONVERT_CHUNK
+        )
+
+    def test_apply_rebinds_the_non_streaming_seam(self) -> None:
         from langchain_openrouter import ChatOpenRouter
 
+        assert ChatOpenRouter._create_chat_result is _patch._ORIGINAL_CREATE_CHAT_RESULT
+        _patch.apply()
         assert ChatOpenRouter._create_chat_result is _patch._create_chat_result
 
-    def test_streaming_seam_is_rebound(self) -> None:
+    def test_apply_rebinds_the_streaming_seam(self) -> None:
         from langchain_openrouter import chat_models
 
+        assert chat_models._convert_chunk_to_message_chunk is _patch._ORIGINAL_CONVERT_CHUNK
+        _patch.apply()
         assert chat_models._convert_chunk_to_message_chunk is _patch._convert_chunk_to_message_chunk
 
+    def test_apply_is_idempotent(self) -> None:
+        """It runs once at import and again on every reload; a second call must
+        not trip the stale-patch guard on the field it declared itself."""
+        _patch.apply()
+        _patch.apply()
+        assert SDKChatResult.model_fields["provider"] is _patch._INJECTED_FIELD
+        assert SDKChatStreamChunk.model_fields["provider"] is _patch._INJECTED_FIELD
+
     def test_wrappers_delegate_to_the_captured_originals(self) -> None:
-        """The originals must be the library's, not our own wrappers (a self-referential
-        capture would recurse forever the first time either seam is called)."""
+        """The originals must be the library's, not our own wrappers — a
+        self-referential capture would recurse forever on the first call."""
         assert _patch._ORIGINAL_CREATE_CHAT_RESULT is not _patch._create_chat_result
         assert _patch._ORIGINAL_CONVERT_CHUNK is not _patch._convert_chunk_to_message_chunk
 

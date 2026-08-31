@@ -79,18 +79,25 @@ _ORIGINAL_CREATE_CHAT_RESULT = ChatOpenRouter._create_chat_result
 _ORIGINAL_CONVERT_CHUNK = _chat_models._convert_chunk_to_message_chunk
 
 
+#: The exact field object injected into both models. Identity is what tells our
+#: own injection apart from a field the SDK started declaring itself, which is
+#: what makes `apply()` idempotent without silently tolerating a stale patch.
+_INJECTED_FIELD = FieldInfo(annotation=_PROVIDER_ANNOTATION, default=None)
+
+
 def _declare_provider_field() -> None:
     """Give both SDK response models a real ``provider`` field so pydantic keeps it."""
     for model in _SDK_RESPONSE_MODELS:
-        if _WIRE_PROVIDER_KEY in model.model_fields:
+        existing = model.model_fields.get(_WIRE_PROVIDER_KEY)
+        if existing is _INJECTED_FIELD:
+            continue
+        if existing is not None:
             msg = (
                 f"{model.__name__} already declares '{_WIRE_PROVIDER_KEY}'; the openrouter "
                 "SDK now keeps the provider name itself and this patch is stale."
             )
             raise AttributeError(msg)
-        model.model_fields[_WIRE_PROVIDER_KEY] = FieldInfo(
-            annotation=_PROVIDER_ANNOTATION, default=None
-        )
+        model.model_fields[_WIRE_PROVIDER_KEY] = _INJECTED_FIELD
         model.model_rebuild(force=True)
 
 
