@@ -10,6 +10,14 @@ which agent — so today those answers only exist in log lines, which expire.
 only. The whole point of a durable ledger is that it outlives a retention
 window; message content must not.
 
+**Any COGS or spend query must filter on ``charge_to_budget``.** Summing
+``cost_usd`` across every row double-counts: on this base a sticky-flip replay
+writes a ``charge_to_budget=False`` twin beside its charged sibling, and the two
+share the same turn's tokens by design (the replay re-sends the same prompt).
+``charge_to_budget=True`` is the user-attributable spend; ``False`` is COGS GAIA
+chose to incur. Add them only when you mean total cost of goods, never when you
+mean what a user was charged.
+
 ``created_at`` carries a 90-day TTL (see ``create_llm_call_indexes``), which is
 what keeps the collection bounded — the durable per-day money history stays in
 ``usage_daily``, which this never replaces.
@@ -77,7 +85,10 @@ class LLMCallDocument(MongoDocument):
     agent_name: str
     #: Auxiliary/background work GAIA chose to do, rather than the user's turn.
     background: bool
-    #: Whether this spend counted against the user's daily allowance.
+    #: Whether this spend counted against the user's daily allowance. Every
+    #: spend query must filter on this — see the module docstring: the charged
+    #: and un-charged rows of one turn can share the same tokens, so summing
+    #: across both double-counts.
     charge_to_budget: bool
 
     # --- what served it ---

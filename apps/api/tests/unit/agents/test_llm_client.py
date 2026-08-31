@@ -1296,6 +1296,28 @@ class TestMeterDiscardedReplay:
         assert mock_log.info.call_args.kwargs["background"] is True
         assert mock_log.info.call_args.kwargs["sticky_flip_discarded"] is True
 
+    @patch("app.agents.llm.client.log")
+    async def test_the_discarded_replays_generation_is_named_on_its_wide_event(
+        self, mock_log: MagicMock, booked_replay: AsyncMock
+    ) -> None:
+        """Observed live: every replay row in the ledger carried a generation id
+        that appeared in NO log line, which reads like a neighbouring call's id
+        leaked in. It is the replay's own — the event simply never named it, and
+        an id that nothing else mentions cannot be told apart from a wrong one.
+        The event and the ledger row must name the same generation.
+        """
+        discarded = AIMessage(
+            content="warm",
+            response_metadata={"model_name": "served/model", "id": "gen-replay-1"},
+            usage_metadata={"input_tokens": 10, "output_tokens": 1, "total_tokens": 11},
+        )
+        config = RunnableConfig(configurable={"user_id": "u-1"})
+
+        await _meter_discarded_replay(discarded, config, "the_judge")
+
+        assert mock_log.info.call_args.kwargs["generation_id"] == "gen-replay-1"
+        assert booked_replay.await_args.kwargs["context"].generation_id == "gen-replay-1"
+
     async def test_the_price_openrouter_reported_is_what_gets_booked(
         self, booked_replay: AsyncMock
     ) -> None:
@@ -2695,3 +2717,99 @@ class TestAuxiliaryCostSource:
             await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
 
         assert rec.await_args.kwargs["provider_cost"] == 0.0123
+
+
+class TestAuxiliaryGenerationIdAttribution:
+    """Which upstream generation each auxiliary ledger row names.
+
+    ``generation_id`` is the ONLY handle back to the upstream that served a
+    call, and the ledger exists to be spot-audited against OpenRouter's
+    generation-metadata endpoint. A row whose id is missing cannot be audited
+    at all; a row carrying a NEIGHBOUR's id audits clean against a call that
+    was never it, which is worse than carrying nothing. So each row must name
+    its own call's generation or none.
+    """
+
+    @staticmethod
+    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
+        handler = UsageMetadataCallbackHandler()
+        handler.usage_metadata = dict(usage_by_model)
+        return handler
+
+    async def test_the_ledger_row_carries_the_generation_id_its_log_line_reports(self) -> None:
+        """Observed live: every auxiliary doc (chatbot, follow_up_actions,
+        memory:extraction, memory:reconcile) had no generation_id while its
+        matching ``llm_call`` log line carried one. The id reached the log and
+        was dropped on the way to the ledger."""
+        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(
+                handler,
+                "memory:extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                generation_id="gen-its-own",
+            )
+
+        assert rec.call_args.kwargs["context"].generation_id == "gen-its-own"
+
+    async def test_a_fan_out_across_models_attributes_the_generation_id_to_none_of_them(
+        self,
+    ) -> None:
+        """One id cannot name two provider calls. The price already falls back
+        to the table on a fan-out for exactly this reason; stamping the single
+        captured id onto every row would attribute one upstream's generation to
+        a model it never served."""
+        handler = self._handler(
+            gemini={"input_tokens": 10, "output_tokens": 2},
+            deepseek={"input_tokens": 5, "output_tokens": 1},
+        )
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(
+                handler,
+                "memory:extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                generation_id="gen-one-of-them",
+            )
+
+        assert [call.kwargs["context"].generation_id for call in rec.call_args_list] == [None, None]
+
+    async def test_two_concurrent_auxiliary_calls_each_record_their_own_generation(self) -> None:
+        """The cross-attribution guard. Two one-shots in flight at once — the
+        normal state of a chat turn, where memory extraction, follow-ups and the
+        chatbot lane overlap — must not be able to hand each other's generation
+        ids to the ledger."""
+        seen: dict[str, str | None] = {}
+
+        async def _record(**kwargs: Any) -> float:
+            # Yield mid-flight so the two calls genuinely interleave rather than
+            # running to completion one after the other.
+            await asyncio.sleep(0)
+            seen[kwargs["context"].agent_name] = kwargs["context"].generation_id
+            return 0.0
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(side_effect=_record)):
+            await asyncio.gather(
+                _record_auxiliary_usage(
+                    self._handler(gemini={"input_tokens": 10, "output_tokens": 2}),
+                    "memory:extraction",
+                    "u1",
+                    context=replace(_AUX_CONTEXT, agent_name="memory:extraction"),
+                    generation_id="gen-extraction",
+                ),
+                _record_auxiliary_usage(
+                    self._handler(gemini={"input_tokens": 7, "output_tokens": 3}),
+                    "follow_up_actions",
+                    "u1",
+                    context=replace(_AUX_CONTEXT, agent_name="follow_up_actions"),
+                    generation_id="gen-followup",
+                ),
+            )
+
+        assert seen == {
+            "memory:extraction": "gen-extraction",
+            "follow_up_actions": "gen-followup",
+        }

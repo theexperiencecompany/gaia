@@ -765,6 +765,11 @@ async def _meter_discarded_replay(
     model_name = extract_message_model(discarded)
     user_id = configurable.get("user_id")
     provider_cost = extract_message_cost(discarded)
+    # Read ONCE and used by both the ledger row and the event below. The replay
+    # is a second, real provider call, so it has its own generation — and while
+    # only the ledger named it, every replay row carried an id that appeared in
+    # no log line anywhere, which is indistinguishable from a leaked one.
+    generation_id = extract_generation_id(discarded)
     thread_id = configurable.get("thread_id")
     workflow_id = configurable.get("workflow_id")
     cost = await record_llm_call(
@@ -782,7 +787,7 @@ async def _meter_discarded_replay(
             # asked for (``lane`` imports this module).
             model_served=model_name,
             provider=extract_message_provider(discarded),
-            generation_id=extract_generation_id(discarded),
+            generation_id=generation_id,
             conversation_id=(
                 str(configurable["conversation_id"])
                 if configurable.get("conversation_id")
@@ -803,6 +808,7 @@ async def _meter_discarded_replay(
         cost_source="provider" if provider_cost is not None else "table",
         agent_name=label,
         model=model_name,
+        generation_id=generation_id,
         user_id=user_id,
         input_tokens=usage["input_tokens"],
         cached_tokens=usage["cached_tokens"],
@@ -1235,11 +1241,14 @@ async def _record_auxiliary_usage(
     fully measurable and splittable from in-turn agent spend.
     """
     # The handler aggregates per model, so a call that fanned out across models
-    # cannot attribute one price to one of them; only the single-model case
-    # (every real auxiliary call) takes the reported figure, and the rest fall
-    # back to the table. Resolved ONCE, here, so what gets booked and what
-    # ``cost_source`` claims can never disagree.
-    booked_cost = provider_cost if len(handler.usage_metadata) == 1 else None
+    # cannot attribute one price OR one generation to any single one of them;
+    # only the single-model case (every real auxiliary call) takes the reported
+    # figures, and the rest fall back to the table and to no id. Resolved ONCE,
+    # here, so what gets booked, what ``cost_source`` claims and what the ledger
+    # names as the serving generation can never disagree with each other.
+    attributable = len(handler.usage_metadata) == 1
+    booked_cost = provider_cost if attributable else None
+    booked_generation_id = generation_id if attributable else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1272,7 +1281,13 @@ async def _record_auxiliary_usage(
             # value on this route, not two. ``provider`` stays None: the raw
             # response never reaches here (the handler aggregates counts only),
             # so the upstream name is not recoverable and must not be guessed.
-            context=replace(context, model_served=model_name),
+            #
+            # ``generation_id`` has to be stamped HERE and not only on the log
+            # line below: the ledger is the durable record, and a row without it
+            # cannot be audited against OpenRouter's generation endpoint at all.
+            # Every auxiliary row shipped with a null id while its own log line
+            # carried one, because this was the seam that dropped it.
+            context=replace(context, model_served=model_name, generation_id=booked_generation_id),
         )
         log.info(
             "llm_call",
@@ -1285,7 +1300,9 @@ async def _record_auxiliary_usage(
             cost_source="provider" if booked_cost is not None else "table",
             agent_name=label,
             model=model_name,
-            generation_id=generation_id,
+            # The attributed id, not the merely-captured one, so the event and
+            # the ledger row for this call always name the same generation.
+            generation_id=booked_generation_id,
             user_id=user_id,
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
