@@ -86,20 +86,23 @@ class TestRequireActiveSubscription:
         checkout_mock.assert_not_called()
 
     async def test_free_user_gets_the_exact_402_wire_contract(self) -> None:
+        checkout_mock = AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc"))
         with (
             patch(
                 f"{ENT}.payment_service.get_cached_plan_type",
                 new=AsyncMock(return_value=PlanType.FREE),
             ),
-            patch(
-                f"{ENT}.payment_service.create_pro_checkout",
-                new=AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc")),
-            ),
+            patch(f"{ENT}.payment_service.create_pro_checkout", new=checkout_mock),
             patch(f"{ENT}.settings.PAYWALL_DISCOUNT_CODE", None),
             patch(f"{ENT}.log") as mock_log,
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
                 await require_active_subscription("u1")
+
+        # The blocked user's own id must reach the checkout minter — not a
+        # stale/None value. A caller mixup here would mint a checkout link
+        # for the wrong account (or no account at all).
+        checkout_mock.assert_awaited_once_with("u1")
 
         exc = exc_info.value
         assert exc.status_code == 402
@@ -186,6 +189,21 @@ class TestRequireSubscriptionDecorator:
             "require_subscription could not resolve a caller — paywall bypassed",
             payment={"operation": "paywall_gate_unresolved_user"},
         )
+
+    async def test_unauthenticated_request_forwards_positional_args_and_kwargs_unchanged(
+        self,
+    ) -> None:
+        """The fail-open path must call through with the caller's exact args —
+        dropping either positionals or kwargs here would silently corrupt the
+        wrapped handler's invocation for every unauthenticated caller."""
+        handler = AsyncMock(return_value="ok")
+        wrapped = require_subscription()(handler)
+
+        with patch(f"{RCX}.get_authenticated_user", return_value=None):
+            result = await wrapped("pos1", "pos2", keyword="value")
+
+        assert result == "ok"
+        handler.assert_called_once_with("pos1", "pos2", keyword="value")
 
     async def test_authenticated_user_with_no_user_id_is_a_401(self) -> None:
         """A truthy but user_id-less auth dict — distinct from no user at all
