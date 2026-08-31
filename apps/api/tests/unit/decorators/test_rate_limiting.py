@@ -534,6 +534,26 @@ class TestTieredRateLimitCallerResolution:
         assert result == {"user": {"user_id": "kwarg-user"}}
         mock_enforce.assert_awaited_once_with("kwarg-user", "chat_messages", origin=None)
 
+    async def test_unauthenticated_bypass_forwards_positional_and_keyword_args(self) -> None:
+        """The bypass calls the wrapped function with its ORIGINAL args and
+        kwargs — dropping either silently breaks any endpoint that takes
+        positional arguments or keyword arguments beyond ``user``."""
+
+        async def echo(*args: Any, **kwargs: Any) -> dict[str, Any]:
+            return {"args": args, "kwargs": kwargs}
+
+        decorated = rl.tiered_rate_limit("chat_messages")(echo)
+        with (
+            patch("app.core.request_context.get_authenticated_user", return_value=None),
+            patch(
+                "app.decorators.rate_limiting.enforce_tiered_limit", new_callable=AsyncMock
+            ) as mock_enforce,
+        ):
+            result = await decorated("pos1", "pos2", extra="value")
+
+        assert result == {"args": ("pos1", "pos2"), "kwargs": {"extra": "value"}}
+        mock_enforce.assert_not_awaited()
+
 
 @contextmanager
 def _budget_of(spent: float, plan: PlanType) -> Iterator[MagicMock]:

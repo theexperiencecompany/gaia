@@ -495,6 +495,138 @@ class TestResetSystemWorkflowToDefault:
         definition = mock_repo.reset_system_workflow.await_args.args[1]
         assert definition.prompt == "the factory prompt"
 
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_writes_the_factorys_title_description_steps_and_triggers(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """Every field ``SystemWorkflowDefinition`` is built from must be the
+        factory's/registration's actual value — swapping any one for ``None``,
+        or losing a non-empty value to a stale fallback, corrupts the reset
+        silently (the return value stays ``True``)."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Refreshed Title", description="Refreshed description")
+        req.steps = [{"action": "noop"}]
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.title == "Refreshed Title"
+        assert definition.description == "Refreshed description"
+        assert definition.steps == [{"action": "noop"}]
+        assert definition.trigger_config is trigger_config
+        # No integration trigger to re-register (MANUAL type) -> [], not None.
+        assert definition.composio_trigger_ids == []
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reset_preserves_a_genuinely_blank_description(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """``request.description or ""`` only exists to turn a falsy
+        ``None`` into ``""`` — a blank-but-not-None description must reach
+        the definition unchanged, not some other fallback string."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.MANUAL
+        trigger_config.trigger_name = None
+        trigger_config.model_dump.return_value = {"type": "manual"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request(title="Title", description="")
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"manual_wf": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.description == ""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_reregister_and_unregister_receive_this_workflow_and_user(
+        self,
+        mock_ensure: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        """The orchestrator's calls into the two trigger helpers must carry
+        THIS reset's workflow_id and user_id — swapping either for `None`
+        would register/unregister triggers under the wrong (or no) workflow
+        or user, silently."""
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                composio_trigger_ids=["old-t1"], trigger_name="gmail_new_email"
+            )
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.INTEGRATION
+        trigger_config.trigger_name = "gmail_new_email"
+        trigger_config.model_dump.return_value = {"type": "integration"}
+        mock_ensure.return_value = trigger_config
+
+        req = _make_workflow_request()
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        reregister = AsyncMock(return_value=["new-t1"])
+        unregister = AsyncMock()
+        with (
+            patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}),
+            patch(f"{MODULE}._reregister_triggers_for_reset", reregister),
+            patch(f"{MODULE}._unregister_old_triggers_for_reset", unregister),
+        ):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        reregister.assert_awaited_once_with(trigger_config, "wf-1", "user-1")
+        unregister.assert_awaited_once_with(["old-t1"], "gmail_new_email", "wf-1", "user-1")
+
     def _schedule_trigger_config(self) -> MagicMock:
         from datetime import datetime
 

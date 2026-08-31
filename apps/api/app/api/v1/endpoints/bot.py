@@ -629,7 +629,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                             f"{LogTag.API} Bot client disconnected, stream continues in background",
                             stream_id=stream_id,
                         )
-                        break
+                        break  # pragma: no mutate — last stmt in the loop; return is identical
 
                     frame, data, stop = _bot_stream_control_frame(chunk, conversation_id)
                     if frame is not None:
@@ -644,7 +644,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                     if payload_frame is not None:
                         yield payload_frame
                     if stop:
-                        break
+                        break  # pragma: no mutate — last stmt in the loop; return is identical
             except asyncio.CancelledError:
                 # Client disconnected mid-stream — expected, not an error. The
                 # background LangGraph task keeps running and persists the result.

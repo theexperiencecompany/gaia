@@ -1227,6 +1227,102 @@ class TestBotChatStreamBody:
         assert '"text": "partial"' in body
         assert '"error": "Stream error occurred"' in body
 
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_message_request_is_built_for_the_resolved_user(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        client: AsyncClient,
+    ):
+        """`_build_bot_message_request`'s third argument is whose conversation
+        history gets loaded — swapping it for `None` (or another user's id)
+        would load the wrong user's history, or none at all, silently."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_sm.start_stream = AsyncMock()
+
+        async def _empty_stream():
+            if False:  # pragma: no cover
+                yield
+
+        mock_sm.subscribe_stream.return_value = _empty_stream()
+
+        built = AsyncMock(return_value=MagicMock())
+        with patch("app.api.v1.endpoints.bot._build_bot_message_request", built):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+            assert response.status_code == 200
+            await response.aread()
+
+        built.assert_awaited_once()
+        _body_arg, conversation_id_arg, user_id_arg = built.await_args.args
+        assert conversation_id_arg == "conv-1"
+        assert user_id_arg == "uid1"
+
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=AsyncMock())
+    @patch(
+        "app.api.v1.endpoints.bot.create_bot_session_token",
+        new=MagicMock(return_value="tok"),
+    )
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_background_failure_logger_is_built_for_this_stream_and_conversation(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        client: AsyncClient,
+    ):
+        """`_bot_stream_failure_logger`'s two args identify WHICH stream and
+        conversation a background crash belongs to — swapping either for
+        `None` would make a real failure unattributable in the logs."""
+        mock_get_user.return_value = {"user_id": "uid1", "_id": "uid1"}
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+
+        async def _empty_stream():
+            if False:  # pragma: no cover
+                yield
+
+        mock_sm.subscribe_stream.return_value = _empty_stream()
+
+        logger_factory = MagicMock(return_value=MagicMock())
+        with patch("app.api.v1.endpoints.bot._bot_stream_failure_logger", logger_factory):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("discord"))
+            assert response.status_code == 200
+            await response.aread()
+
+        logger_factory.assert_called_once()
+        called_stream_id, called_conversation_id = logger_factory.call_args.args
+        assert called_conversation_id == "conv-1"
+        # stream_id is a fresh uuid4 per request — pin it to the id the stream
+        # was actually started under, not just "truthy", so a swap for None
+        # (or any other value) is caught.
+        started_stream_id = mock_sm.start_stream.await_args.args[0]
+        assert called_stream_id == started_stream_id
+        assert called_stream_id is not None
+
 
 # ---------------------------------------------------------------------------
 # POST /bot/transcribe — voice / audio transcription for bot adapters
