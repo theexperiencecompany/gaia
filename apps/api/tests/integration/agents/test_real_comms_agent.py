@@ -816,11 +816,13 @@ class TestRealCommsAgent:
             f"Expected ToolMessage for malformed_call_001; got IDs: {ids_seen}"
         )
 
-    async def test_comms_agent_timeout_handling(self, no_model_fallback):
+    async def test_comms_agent_timeout_handling(self, no_model_fallback, single_llm_attempt):
         """
         When the LLM call raises asyncio.TimeoutError, the exception must
         propagate to the caller with the original TimeoutError type intact —
         it must NOT be swallowed silently or converted to a different type.
+        ``single_llm_attempt`` skips the retry backoff: TimeoutError is
+        retryable, and the point here is propagation, not the retry count.
 
         This test will FAIL if:
         - The graph swallows the TimeoutError (returns normally instead of raising)

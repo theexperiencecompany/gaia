@@ -17,7 +17,7 @@ from typing import Any, Literal
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
@@ -40,9 +40,36 @@ ARGUMENT_GATED_TOOLS: dict[str, dict[str, object]] = {
 }
 
 
+async def _stamp_registry() -> ToolRegistry | None:
+    """The registry the forced-ask stamp is read from, or ``None`` when unreachable.
+
+    The stamp is an ESCALATION, like an MCP ``destructiveHint``: its presence adds a
+    reason to ask, its absence never clears a call. So an unreachable registry means
+    "no stamp read", and the rest of the policy — the user's override, then
+    ``is_tool_destructive``, which already fails closed to gated — still decides.
+
+    Raising instead took the whole gate down with it: ``decide_tool_call`` fails
+    closed on ANY exception by DENYING the call outright, so a process where the
+    ``tool_registry`` provider was never registered (a bare xdist worker, a worker
+    that never ran app startup) silently refused every gated tool instead of asking
+    the user — no approval card, no record, no way to say yes.
+    """
+    try:
+        return await get_tool_registry()
+    except Exception as e:
+        log.warning(
+            f"{LogTag.HIL} tool registry unavailable; reading no forced-ask stamp",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+
+
 async def _is_always_gated(tool_name: str) -> bool:
     """The registry's forced-ask stamp — checked before any preference lookup."""
-    registry = await get_tool_registry()
+    registry = await _stamp_registry()
+    if registry is None:
+        return False
     meta = registry.get_tool_meta(tool_name)
     return meta is not None and meta.always_gate
 
@@ -142,10 +169,10 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
     # Forced-ask siblings pause even when HIL is otherwise off — checked before
     # the always_allow fast path below, because that fast path exists to skip
     # preference-driven gating, and the stamp is not preference-driven.
-    registry = await get_tool_registry()
+    registry = await _stamp_registry()
     for call in siblings:
         name = str(call["name"])
-        meta = registry.get_tool_meta(name)
+        meta = registry.get_tool_meta(name) if registry else None
         if (meta is not None and meta.always_gate) or _argument_gate_hit(
             name, call.get("args") or None
         ):
@@ -162,7 +189,7 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
         name = str(call["name"])
         if name in HIL_EXEMPT_TOOLS:
             continue
-        meta = registry.get_tool_meta(name)
+        meta = registry.get_tool_meta(name) if registry else None
         if await is_gated(prefs, name, meta.tool if meta else None, args=call.get("args") or None):
             return True
     return False

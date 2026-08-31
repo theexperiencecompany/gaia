@@ -13,7 +13,8 @@ import pytest
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.base_subagent import SubAgentFactory, SubAgentToolConfig
 from app.agents.core.subagents.spawn_agent import _build_spawn_graph
-from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.factory import SubagentStackOptions
+from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core import retrieval as retrieval_module
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import (
@@ -212,10 +213,12 @@ async def _run_provider_subagent_factory(
         return _DummyBuilder(kwargs)
 
     mw = SubagentMiddleware(
-        llm=None,
-        tool_registry=full_tools,
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(initial_tool_names=["vfs_read"]),
+        SubagentMiddlewareConfig(
+            llm=None,
+            tool_registry=full_tools,
+            store=MagicMock(),
+            tool_runtime_config=ToolRuntimeConfig(initial_tool_names=["vfs_read"]),
+        )
     )
 
     with (
@@ -255,6 +258,75 @@ async def _run_provider_subagent_factory(
         )
 
     return captured_kwargs, mw
+
+
+@pytest.mark.asyncio
+async def test_the_subagent_stack_is_wired_with_the_parents_llm_registry_and_space():
+    """SubagentMiddleware is what a spawned sub-subagent inherits from. It gets
+    the parent's llm, the FULL tool dict (not the provider's scoped one — a
+    spawned child still needs read/bash/web_search) and the parent's tool space.
+    Losing any of the three leaves a child with no model, or reachable tools it
+    cannot see."""
+    llm = BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000})
+    full_tools = {
+        "normal_tool": normal_tool,
+        "vfs_read": vfs_read,
+        "search_memory": normal_tool,
+    }
+    dummy_registry = _DummyRegistry([normal_tool], full_tools)
+    captured: dict[str, Any] = {}
+
+    mw = SubagentMiddleware(
+        SubagentMiddlewareConfig(
+            llm=None,
+            tool_registry=full_tools,
+            store=MagicMock(),
+            tool_runtime_config=ToolRuntimeConfig(initial_tool_names=["vfs_read"]),
+        )
+    )
+
+    def _spy_create_subagent_middleware(
+        *, agent_name: str = "provider_subagent", subagent: SubagentStackOptions
+    ) -> list[Any]:
+        captured["agent_name"] = agent_name
+        captured["subagent"] = subagent
+        return [mw]
+
+    with (
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tools_store",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_tool_registry",
+            new=AsyncMock(return_value=dummy_registry),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_agent",
+            new=lambda **kwargs: _DummyBuilder(kwargs),
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.create_subagent_middleware",
+            new=_spy_create_subagent_middleware,
+        ),
+        patch(
+            "app.agents.core.subagents.base_subagent.get_checkpointer_manager",
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=object)),
+        ),
+    ):
+        await SubAgentFactory.create_provider_subagent(
+            provider="provider",
+            name="provider_agent",
+            llm=llm,
+            config=SubAgentToolConfig(tool_space="provider_space"),
+        )
+
+    options = captured["subagent"]
+    assert captured["agent_name"] == "provider_agent"
+    assert options.enabled is True
+    assert options.llm is llm
+    assert options.registry == full_tools
+    assert options.tool_space == "provider_space"
 
 
 @pytest.mark.asyncio
@@ -776,7 +848,7 @@ async def test_provider_subagent_defaults_tool_space_to_general():
             # tool_space intentionally omitted — must default to "general".
         )
 
-    assert captured_middleware_kwargs["subagent_tool_space"] == "general"
+    assert captured_middleware_kwargs["subagent"].tool_space == "general"
 
 
 @pytest.mark.asyncio
@@ -906,7 +978,7 @@ async def test_a_non_authoring_subagent_keeps_spawn_enabled():
     silently strips that ability from every integration agent."""
     captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
 
-    assert captured["middleware_kwargs"]["enable_subagent"] is True
+    assert captured["middleware_kwargs"]["subagent"].enabled is True
 
 
 @pytest.mark.asyncio

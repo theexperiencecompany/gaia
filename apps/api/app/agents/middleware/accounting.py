@@ -60,6 +60,7 @@ from app.services.cost_budget import (
 )
 from app.services.llm_metering import (
     extract_generation_id,
+    extract_message_cost,
     extract_message_usage,
     record_llm_call,
 )
@@ -305,15 +306,16 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         cached_tokens = usage["cached_tokens"]
         reasoning_tokens = usage["reasoning_tokens"]
         root_request_id = configurable.get("root_request_id")
+        # The provider's own price when it reported one; the pricing table only
+        # when it did not (direct Gemini, the sim lane).
+        provider_cost = extract_message_cost(ai_msg)
         total_cost = await record_llm_call(
             user_id=str(user_id) if user_id else None,
             model_name=str(model_name),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
+            usage=usage,
             root_request_id=str(root_request_id) if root_request_id else None,
             charge_to_budget=True,
+            provider_cost=provider_cost,
         )
 
         step_index = self._next_step(thread_id)
@@ -370,6 +372,10 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             output_tokens=output_tokens,
             reasoning_tokens=reasoning_tokens,
             cost_usd=total_cost,
+            # Whether this figure is what the provider charged or what our price
+            # table guessed — the two disagree by more than 10x per upstream, so
+            # coverage of the reported price is worth being able to measure.
+            cost_source="provider" if provider_cost is not None else "table",
             step_index=step_index,
             # Which UPSTREAM served this call. ``provider`` above is the lane's
             # configured provider (always "openrouter"), which cannot answer the

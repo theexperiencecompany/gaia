@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import call_agent_silent
+from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -560,14 +560,16 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     )
 
     try:
-        complete_message, _tool_data = await call_agent_silent(
+        run = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context={
-                "trigger_type": "maintenance_health_check",
-                "todo_id": todo_id,
-            },
+            options=AgentRunOptions(
+                trigger_context={
+                    "trigger_type": "maintenance_health_check",
+                    "todo_id": todo_id,
+                }
+            ),
         )
     except Exception as exc:
         log.warning(
@@ -577,7 +579,18 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         )
         return "NEEDS_ATTENTION: Health check failed"
 
-    return (complete_message or "").strip()
+    # A queued dispatch is an acknowledgement, not a verdict: the check did not
+    # run, and reading the acknowledgement as its result would mark the todo
+    # healthy on the strength of work that has not happened.
+    if run.queued_task_id:
+        log.warning(
+            "maintenance_sweep.health_check_queued",
+            todo_id=todo_id,
+            queued_task_id=run.queued_task_id,
+        )
+        return "NEEDS_ATTENTION: Health check queued behind an in-flight run; not run"
+
+    return (run.message or "").strip()
 
 
 async def _send_individual_notification(

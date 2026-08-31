@@ -381,9 +381,13 @@ class BaseSchedulerService(ABC):
         )
 
         job_name = self.get_job_name()
-        # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
-        # repeated enqueues can't stack duplicate jobs for the same occurrence.
-        job_id = f"{job_name}:{task_id}:{occurrence_stamp(scheduled_at)}"
+        # Deterministic job id: ARQ dedupes a task+occurrence so concurrent scans or
+        # repeated enqueues can't stack duplicate jobs for the same occurrence. Keyed
+        # on the ARMED time, not the deferred one: a past-due fire shifted 120 s out
+        # must not collide with the genuine next occurrence that lands on that same
+        # minute, or the real one is deduped away and the shifted job, carrying the
+        # stale stamp, is the only thing that fires and is rejected as stale.
+        job_id = f"{job_name}:{task_id}:{occurrence_stamp(armed_for)}"
         job = await enqueue_worker_job(
             self.arq_pool,
             job_name,

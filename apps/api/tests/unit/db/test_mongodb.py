@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.mongodb.indexes import create_playbook_indexes
 from app.db.mongodb.mongodb import MongoDB, init_mongodb
 
 # ---------------------------------------------------------------------------
@@ -392,7 +393,27 @@ _INDEX_CREATORS = [
     "create_e2b_sandbox_indexes",
     "create_hil_approvals_indexes",
     "create_pending_platform_registration_indexes",
+    "create_playbook_indexes",
 ]
+
+
+class TestCreatePlaybookIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_one_playbook_per_workflow_is_a_unique_index(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        """The repository's atomic upsert relies on the (workflow_id, user_id)
+        unique index to reject the loser of two concurrent first authorings."""
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await create_playbook_indexes()
+
+        mock_get_collection.assert_called_once_with("playbooks")
+        collection.create_index.assert_awaited_once_with(
+            [("workflow_id", 1), ("user_id", 1)], unique=True
+        )
 
 
 class TestCreateAllIndexes:

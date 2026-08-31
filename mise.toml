@@ -442,6 +442,18 @@ description = "Type-check only affected projects (parallel with caching)"
 run = "nx affected -t type-check --parallel=3"
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DEPENDENCY SECURITY
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tasks."audit:deps"]
+description = "pnpm audit (prod, >=high) with expiring allowlist in config/pnpm-audit-allowlist.json"
+run = "bash scripts/ci/audit.sh pnpm"
+
+[tasks."audit:deps:test"]
+description = "Unit tests for the CI shell gates (runner.sh, audit.sh, ...)"
+run = "uv run --no-project --with pytest pytest scripts/ci -q"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PRE-COMMIT HOOKS
 # ─────────────────────────────────────────────────────────────────────────────
 

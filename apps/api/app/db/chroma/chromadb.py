@@ -8,6 +8,8 @@ from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 
 from app.config.settings import settings
+from app.constants.chroma import CHROMA_CANVAS_COLLECTION, CHROMA_NOTES_COLLECTION
+from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.noop_telemetry import NOOP_PRODUCT_TELEMETRY_IMPL
@@ -116,20 +118,19 @@ class ChromaClient:
             if not constructor_client:
                 raise RuntimeError("ChromaDB constructor client not initialized")
 
-            # Ensure the collection exists using the synchronous constructor client
-            try:
-                collections = constructor_client.list_collections()
-                existing_names = [c.name for c in collections]
-            except Exception:
-                existing_names = []
-
-            if collection_name not in existing_names:
-                if not create_if_not_exists:
-                    raise RuntimeError(f"Collection '{collection_name}' not found")
-                constructor_client.create_collection(
+            # Ensure the collection exists using the synchronous constructor client.
+            # get_or_create, not list-then-create: two processes sharing one
+            # Chroma (xdist workers on a CI lane) both see "missing" and the
+            # second create fails with "Collection [...] already exists".
+            if create_if_not_exists:
+                constructor_client.get_or_create_collection(
                     name=collection_name,
                     metadata={"hnsw:space": "cosine"},
                 )
+            else:
+                existing_names = [c.name for c in constructor_client.list_collections()]
+                if collection_name not in existing_names:
+                    raise RuntimeError(f"Collection '{collection_name}' not found")
 
             return Chroma(
                 client=constructor_client,
@@ -196,19 +197,21 @@ async def init_chromadb_client() -> AsyncClientAPI:
     )
     log.info(f"{LogTag.CHROMA} Connected to ChromaDB at", host=host, port=port)
 
-    # Create default collections if they don't exist
-    existing_collections = await client.list_collections()
-    existing_collection_names = [col.name for col in existing_collections]
-    collection_names = ["notes", "documents", "gaia_canvas"]
-
-    # Create collections if they don't exist
-    for collection_name in collection_names:
-        if collection_name not in existing_collection_names:
-            log.debug(f"{LogTag.CHROMA} Creating collection", collection_name=collection_name)
-            await client.create_collection(name=collection_name, metadata={"hnsw:space": "cosine"})
-            log.debug(f"{LogTag.CHROMA} Collection created", collection_name=collection_name)
-        else:
-            log.debug(f"{LogTag.CHROMA} Collection exists", collection_name=collection_name)
+    # Named via the constants so the GAIA_CHROMA_COLLECTION_SUFFIX namespace
+    # applies here too: bootstrapping unsuffixed collections while the app
+    # reads suffixed ones would leave every lane querying an empty collection.
+    # get_or_create, not list-then-create: several processes may bootstrap the
+    # same Chroma at once (xdist workers on a CI lane) and the second create
+    # would fail with "Collection [...] already exists".
+    for collection_name in (
+        CHROMA_NOTES_COLLECTION,
+        CHROMA_DOCUMENTS_COLLECTION,
+        CHROMA_CANVAS_COLLECTION,
+    ):
+        await client.get_or_create_collection(
+            name=collection_name, metadata={"hnsw:space": "cosine"}
+        )
+        log.debug(f"{LogTag.CHROMA} Collection ready", collection_name=collection_name)
 
     return client
 

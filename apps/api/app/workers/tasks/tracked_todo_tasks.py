@@ -16,7 +16,7 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import call_agent_silent
+from app.agents.core.agent import AgentRunOptions, call_agent_silent
 from app.constants.todos import FAILED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
@@ -343,11 +343,11 @@ async def _execute_via_agent(
 
     complete_message: str = ""
     try:
-        complete_message, _tool_data = await call_agent_silent(
+        run = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context=trigger_context,
+            options=AgentRunOptions(trigger_context=trigger_context),
         )
     except Exception as exc:
         # End marker: failure
@@ -358,6 +358,27 @@ async def _execute_via_agent(
             entry=f"✗ {fail_iso} — scheduled run failed ({type(exc).__name__})",
         )
         raise
+
+    # The executor was busy, so the request was queued and answered with an
+    # acknowledgement, not a result. Nothing this run asked for has happened,
+    # so it gets no success marker; the queued task delivers on its own.
+    if run.queued_task_id:
+        queued_iso = datetime.now(UTC).isoformat()
+        log.warning(
+            "tracked_todo.agent_dispatch_queued",
+            todo_id=todo_id,
+            queued_task_id=run.queued_task_id,
+        )
+        await tracked_todo_service.append_canvas_timeline(
+            todo_id=todo_id,
+            user_id=user_id,
+            entry=(
+                f"⏸ {queued_iso} — scheduled run queued behind an in-flight run "
+                f"(task {run.queued_task_id}); not run"
+            ),
+        )
+        return ""
+    complete_message = run.message
 
     # End marker: success
     end_iso = datetime.now(UTC).isoformat()

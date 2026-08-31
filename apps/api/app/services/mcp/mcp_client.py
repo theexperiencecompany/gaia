@@ -1167,16 +1167,19 @@ class MCPClient:
                 if resolved_name:
                     # Local import to avoid circular dependency
                     from app.agents.core.subagents.handoff_tools import (  # noqa: PLC0415 -- breaks circular dependency with the agent handoff tools module
+                        CustomMcpIndexRequest,
                         index_custom_mcp_as_subagent,
                     )
 
                     await index_custom_mcp_as_subagent(
                         store=store,
-                        integration_id=integration_id,
-                        name=resolved_name,
-                        description=resolved_description or "",
-                        server_url=server_url,
-                        tools=tools,
+                        request=CustomMcpIndexRequest(
+                            integration_id=integration_id,
+                            name=resolved_name,
+                            description=resolved_description or "",
+                            server_url=server_url,
+                            tools=tools,
+                        ),
                     )
                     log.info(
                         f"{LogTag.MCP} Indexed custom MCP as subagent in namespace ('subagents',)",

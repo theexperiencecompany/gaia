@@ -8,6 +8,7 @@ bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 import time
 from typing import Annotated, Any, Protocol
 
@@ -32,6 +33,7 @@ from app.agents.context.tiers import AgentTier
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
+    ThreadSeed,
     build_initial_messages,
     execute_subagent_stream,
     recover_from_checkpoint,
@@ -47,10 +49,11 @@ from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.models.agent_models import AnyAgentMiddleware, agent_configurable
 from app.utils.agent_utils import (
     StreamWriterCallable,
+    SubagentStartDetails,
     format_subagent_end_event,
     format_subagent_start_event,
 )
@@ -78,6 +81,27 @@ class SpawnGraphProvider(Protocol):
     ) -> CompiledStateGraph: ...
 
 
+@dataclass(frozen=True)
+class SubagentMiddlewareConfig:
+    """Construction settings for :class:`SubagentMiddleware`.
+
+    One object rather than ten constructor arguments: these are all build-time
+    wiring for the same middleware, and every field keeps the default the
+    constructor used to carry.
+    """
+
+    llm: LanguageModelLike | None = None
+    available_tools: list[BaseTool] | None = None
+    tool_registry: Mapping[str, BaseTool] | None = None
+    max_turns: int = SUBAGENT_RECURSION_LIMIT
+    system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT
+    excluded_tool_names: set[str] | None = None
+    tool_space: str = "general"
+    store: BaseStore | None = None
+    tool_runtime_config: ToolRuntimeConfig | None = None
+    spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None
+
+
 class SubagentState(AgentState[Any]):
     """State schema for subagent middleware."""
 
@@ -89,35 +113,24 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
     state_schema = SubagentState
 
-    def __init__(
-        self,
-        llm: LanguageModelLike | None = None,
-        available_tools: list[BaseTool] | None = None,
-        tool_registry: Mapping[str, BaseTool] | None = None,
-        max_turns: int = SUBAGENT_RECURSION_LIMIT,
-        system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT,
-        excluded_tool_names: set[str] | None = None,
-        tool_space: str = "general",
-        store: BaseStore | None = None,
-        tool_runtime_config: ToolRuntimeConfig | None = None,
-        spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None,
-    ) -> None:
+    def __init__(self, config: SubagentMiddlewareConfig | None = None) -> None:
         super().__init__()
-        self._llm = llm
-        self._spawn_middleware_factory = spawn_middleware_factory
+        settings = config or SubagentMiddlewareConfig()
+        self._llm = settings.llm
+        self._spawn_middleware_factory = settings.spawn_middleware_factory
         # Injected by whoever builds the parent graph (see set_spawn_graph_provider):
         # the builder imports create_agent, which imports this package, so this
         # module cannot reach the graph builder itself.
         self._spawn_graph_provider: SpawnGraphProvider | None = None
-        self._available_tools = available_tools or []
-        self._tool_registry = tool_registry
-        self._max_turns = max_turns
-        self._system_prompt = system_prompt
-        self._excluded_tools = excluded_tool_names or set()
+        self._available_tools = settings.available_tools or []
+        self._tool_registry = settings.tool_registry
+        self._max_turns = settings.max_turns
+        self._system_prompt = settings.system_prompt
+        self._excluded_tools = settings.excluded_tool_names or set()
         self._excluded_tools.add("spawn_subagent")
-        self._tool_space = tool_space
-        self._store: BaseStore | None = store
-        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+        self._tool_space = settings.tool_space
+        self._store: BaseStore | None = settings.store
+        self._tool_runtime_config = settings.tool_runtime_config or ToolRuntimeConfig(
             initial_tool_names=["read", "bash"],
             enable_retrieve_tools=True,
             include_subagents_in_retrieve=False,
@@ -219,8 +232,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     subagent_name=spawn_name,
                     agent_type="spawned",
                     subagent_id=sa_id,
-                    tool_category="spawn_subagent",
-                    parent_subagent_id=configurable.get("subagent_id"),
+                    details=SubagentStartDetails(
+                        tool_category="spawn_subagent",
+                        parent_subagent_id=configurable.get("subagent_id"),
+                    ),
                 )
             }
         )
@@ -319,29 +334,35 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
         spawn_config = await build_agent_config(
-            conversation_id=conversation_id,
-            user={
-                "user_id": user_id,
-                "email": configurable.get("email"),
-                "name": configurable.get("user_name"),
-            },
-            agent_name=SPAWN_AGENT_NAME,
-            thread_id=thread_id,
-            base_configurable=configurable,
-            subagent_id=SPAWN_AGENT_NAME,
-            recursion_limit=self._max_turns,
+            identity=AgentIdentity(
+                conversation_id=conversation_id,
+                user={
+                    "user_id": user_id,
+                    "email": configurable.get("email"),
+                    "name": configurable.get("user_name"),
+                },
+                agent_name=SPAWN_AGENT_NAME,
+            ),
+            thread=AgentThread(
+                thread_id=thread_id,
+                base_configurable=configurable,
+                subagent_id=SPAWN_AGENT_NAME,
+                recursion_limit=self._max_turns,
+            ),
         )
         new_configurable = agent_configurable(spawn_config)
 
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages = await build_initial_messages(
             system_message=SystemMessage(content=self._system_prompt),
-            tier=AgentTier.SPAWN,
             agent_name=SPAWN_AGENT_NAME,
-            configurable=new_configurable,
             task=user_content,
-            user_id=user_id,
-            retrieval_query=task,
+            seed=ThreadSeed(
+                tier=AgentTier.SPAWN,
+                configurable=new_configurable,
+                user_id=user_id,
+                retrieval_query=task,
+            ),
         )
 
         return SubagentExecutionContext(

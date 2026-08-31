@@ -47,7 +47,9 @@ class RecordingSocket:
 def sockets(real_redis):
     """Two sockets for one user on this replica, torn off the singleton after."""
     a, b = RecordingSocket(), RecordingSocket()
-    websocket_manager.connections[USER] = {a, b}  # type: ignore[dict-item]
+    # RecordingSocket duck-types the only WebSocket method the manager calls
+    # (send_json); mypy can't see a fake as structurally sufficient here.
+    websocket_manager.connections[USER] = {a, b}  # type: ignore[dict-item]  # test double, not a real WebSocket
     yield a, b
     websocket_manager.connections.pop(USER, None)
 

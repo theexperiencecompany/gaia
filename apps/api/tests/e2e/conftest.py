@@ -44,7 +44,7 @@ from app.override.langgraph_bigtool.create_agent import (
     create_agent,
 )
 from app.override.langgraph_bigtool.hooks import HookType
-from tests.helpers import BindableToolsFakeModel, skip_items_without_real_services
+from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
@@ -153,7 +153,8 @@ async def memory_saver():
         )
         await pool.open(wait=True, timeout=30)
         checkpointer = AsyncPostgresSaver(conn=pool)
-        await checkpointer.setup()
+        async with pg_advisory_lock(_POSTGRES_URL):
+            await checkpointer.setup()
         yield checkpointer
         await pool.close()
     else:
@@ -171,7 +172,8 @@ async def in_memory_store():
         from langgraph.store.postgres import AsyncPostgresStore
 
         async with AsyncPostgresStore.from_conn_string(_POSTGRES_URL) as store:
-            await store.setup()
+            async with pg_advisory_lock(_POSTGRES_URL):
+                await store.setup()
             yield store
     else:
         yield InMemoryStore()

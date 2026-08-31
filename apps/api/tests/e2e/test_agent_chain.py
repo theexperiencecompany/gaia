@@ -55,6 +55,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.memory.ingestion import RetainedMemory
+from app.models.chat_models import ToolDataEntry
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
@@ -260,7 +261,14 @@ async def run_chain(
         run.attached.append(kwargs)
         return True
 
-    async def _deliver(_run: Any, text: str, result_type: str, _note: str) -> tuple[str, str]:
+    async def _deliver(
+        _run: Any,
+        text: str,
+        result_type: str,
+        _note: str,
+        *,
+        tool_data: list[ToolDataEntry] | None,
+    ) -> tuple[str, str]:
         run.delivered.append((text, result_type))
         return text, "executor-message-1"
 

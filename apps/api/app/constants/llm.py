@@ -21,6 +21,14 @@ OPENROUTER_PROVIDER = "openrouter"
 
 DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 
+# The ``response_metadata`` key carrying the name of the upstream that actually
+# served an OpenRouter call ("Baidu", "StreamLake", ...), as opposed to
+# ``model_provider``, which LangChain owns and which OpenRouter's integration
+# stamps with the aggregator's own name. Set by
+# ``openrouter_provider_name_patch`` and read by anything attributing a call to
+# the vendor that served it.
+PROVIDER_NAME_METADATA_KEY = "provider_name"
+
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
 # storage grows ~O(N) instead of the O(N²) of full-snapshot channels. Lower =
@@ -128,22 +136,9 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
-# Sticky-flip retry: when a large call's cache read is below this fraction of
-# its prompt (the request landed on a cold provider after the ~5-minute sticky
-# expiry — a known OpenRouter behavior), re-send it once — the first attempt
-# wrote the chain there and the re-send hits it (~99%, verified by byte-exact
-# shadow replays of captured requests: 99.2-99.7%). 0.92 catches the full
-# flips (0-5%), the partial static-only dips (65-75%) AND the small-
-# conversation steady state (83-90% — the provider under-reads the fresh
-# chain for a few turns after a big turn; measured live at 83.8% flat while
-# the exact bytes replay at 99.7%). The retry's second call reads ~99% cached,
-# so the turn's aggregate hit rises toward (cached + 0.99*input)/2*input while
-# the extra input bills at the cached-read rate.
-STICKY_FLIP_RETRY_MIN_HIT = 0.92
-STICKY_FLIP_RETRY_MIN_INPUT = 8_000
-# The replay's premise — sticky routing that re-reads the chain the first
-# attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
-# so a replay there is a second full-price call with no possible upside.
+# Sticky routing (the ``session_id`` hint that pins a chain to one upstream) is
+# OpenRouter-wire behaviour. Gemini has no sticky routing, so the key is an
+# unsupported argument there and must never be sent.
 STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).

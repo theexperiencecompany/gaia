@@ -12,6 +12,10 @@ from arq.typing import StartupShutdown
 
 from app.config.settings import settings
 
+#: The cap on one job. A workflow fire that reaches it is recorded as timed out
+#: (workflow_tasks) rather than left "running" forever.
+WORKER_JOB_TIMEOUT_SECONDS = 1800  # 30 minutes
+
 
 class WorkerSettings:
     """
@@ -48,7 +52,7 @@ class WorkerSettings:
     # without serving more load, so scaling out means lowering ARQ_MAX_JOBS —
     # see the setting for the Postgres connection ceiling that bounds it.
     max_jobs = settings.ARQ_MAX_JOBS
-    job_timeout = 1800  # 30 minutes
+    job_timeout = WORKER_JOB_TIMEOUT_SECONDS
     keep_result = 0  # Don't keep results in Redis
     log_results = True
     health_check_interval = 30  # seconds

@@ -3,11 +3,23 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 import pytest
 
-from app.agents.llm.lane import ModelLane
+from app.agents.llm.lane import AgentRole, ModelLane
+from app.agents.llm.types import LLMProviderName
+from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentThread,
+    AgentTracing,
+    AgentTurn,
+    _accumulate_silent_custom_event,
+    _collect_silent_tool_entries,
+    _hold_silent_chunk,
+    _record_interruption_quietly,
+    _stamp_langfuse,
     build_agent_config,
     build_initial_state,
     execute_graph_silent,
@@ -16,6 +28,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
+from app.models.payment_models import PlanType
 from app.models.subagent_models import Subagent
 
 
@@ -174,9 +187,11 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None  # no posthog
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
 
         from app.constants.llm import AGENT_RECURSION_LIMIT
@@ -194,9 +209,11 @@ class TestBuildAgentConfig:
 
         home_user = {**FAKE_USER, "timezone": "Asia/Kolkata"}
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=home_user,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=home_user,
+                agent_name="comms_agent",
+            ),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -207,10 +224,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,  # no timezone on the user dict
-            agent_name="executor",
-            base_configurable={"user_timezone": "Asia/Kolkata"},
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={"user_timezone": "Asia/Kolkata"},
+            ),
         )
         assert config["configurable"]["user_timezone"] == "Asia/Kolkata"
 
@@ -219,10 +240,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            thread_id="custom-thread",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            thread=AgentThread(
+                thread_id="custom-thread",
+            ),
         )
         assert config["configurable"]["thread_id"] == "custom-thread"
 
@@ -244,10 +269,14 @@ class TestBuildAgentConfig:
         }
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable=base,
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable=base,
+            ),
         )
         configurable = config["configurable"]
         # The lane is inherited WHOLE — one rule, no per-key table. The pin and the
@@ -287,10 +316,14 @@ class TestBuildAgentConfig:
 
         inherited = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable=base,
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable=base,
+                ),
             )
         )["configurable"]
         assert {key: inherited[key] for key in base} == base
@@ -302,25 +335,31 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "selected_tool": "parent-tool",
-                    "tool_category": "parent-category",
-                    "subagent_id": "parent-subagent",
-                    "vfs_session_id": "parent-vfs",
-                    "active_todo_id": "parent-todo",
-                    "execution_mode": "background",
-                    "conversation_source": "telegram",
-                },
-                selected_tool="child-tool",
-                tool_category="child-category",
-                subagent_id="child-subagent",
-                vfs_session_id="child-vfs",
-                active_todo_id="child-todo",
-                execution_mode="interactive",
-                source="web",
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "selected_tool": "parent-tool",
+                        "tool_category": "parent-category",
+                        "subagent_id": "parent-subagent",
+                        "vfs_session_id": "parent-vfs",
+                        "active_todo_id": "parent-todo",
+                        "execution_mode": "background",
+                        "conversation_source": "telegram",
+                    },
+                    subagent_id="child-subagent",
+                    vfs_session_id="child-vfs",
+                ),
+                turn=AgentTurn(
+                    selected_tool="child-tool",
+                    tool_category="child-category",
+                    active_todo_id="child-todo",
+                    execution_mode="interactive",
+                    source="web",
+                ),
             )
         )["configurable"]
 
@@ -344,14 +383,20 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_messages": ["delete the repo"],
-                },
-                user_messages=["the agent's paraphrase"],
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_messages": ["delete the repo"],
+                    },
+                ),
+                turn=AgentTurn(
+                    user_messages=["the agent's paraphrase"],
+                ),
             )
         )["configurable"]
 
@@ -371,14 +416,20 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_request": "delete the repo",
-                },
-                user_request="the agent's paraphrase",
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_request": "delete the repo",
+                    },
+                ),
+                turn=AgentTurn(
+                    user_request="the agent's paraphrase",
+                ),
             )
         )["configurable"]
 
@@ -392,10 +443,14 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1",
-                user=FAKE_USER,
-                agent_name="comms_agent",
-                user_request="pls archive the junk mail",
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
+                turn=AgentTurn(
+                    user_request="pls archive the junk mail",
+                ),
             )
         )["configurable"]
 
@@ -413,14 +468,18 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1",
-                user=FAKE_USER,
-                agent_name="gmail_agent",
-                base_configurable={
-                    "conversation_id": "conv-1",
-                    "user_preferences": {"profession": "engineer"},
-                    "writing_style": {"summary": "terse"},
-                },
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="gmail_agent",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "user_preferences": {"profession": "engineer"},
+                        "writing_style": {"summary": "terse"},
+                    },
+                ),
             )
         )["configurable"]
 
@@ -438,7 +497,11 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="conv-1", user=FAKE_USER, agent_name="executor_agent"
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor_agent",
+                ),
             )
         )["configurable"]
 
@@ -452,7 +515,11 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
             )
         )["configurable"]
 
@@ -469,10 +536,14 @@ class TestBuildAgentConfig:
 
         configurable = (
             await build_agent_config(
-                conversation_id="github_executor_conv-1",
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"session_id": "conv-1"},
+                identity=AgentIdentity(
+                    conversation_id="github_executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"session_id": "conv-1"},
+                ),
             )
         )["configurable"]
 
@@ -489,18 +560,26 @@ class TestBuildAgentConfig:
 
         with_none = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"session_id": None},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"session_id": None},
+                ),
             )
         )["configurable"]
         without_key = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"selected_tool": "web_search"},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"selected_tool": "web_search"},
+                ),
             )
         )["configurable"]
 
@@ -514,15 +593,23 @@ class TestBuildAgentConfig:
 
         with_parent = (
             await build_agent_config(
-                conversation_id=CONV_ID,
-                user=FAKE_USER,
-                agent_name="executor",
-                base_configurable={"stream_id": "stream-9"},
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={"stream_id": "stream-9"},
+                ),
             )
         )["configurable"]
         without_parent = (
             await build_agent_config(
-                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
             )
         )["configurable"]
 
@@ -530,13 +617,53 @@ class TestBuildAgentConfig:
         assert without_parent["stream_id"] is None
 
     @patch("app.helpers.agent_helpers.providers")
+    async def test_workflow_context_survives_into_a_child_agents_config(self, mock_providers):
+        """A workflow fire stamps its workflow on the comms configurable; the
+        executor and its handoff subagents must see the same workflow, or the
+        playbook tools inside the run refuse with "not in a workflow run"."""
+        mock_providers.get.return_value = None
+
+        child = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "workflow_id": "wf_123",
+                        "workflow_title": "Inbox Triage",
+                        "workflow_notify_on_completion": False,
+                    },
+                ),
+            )
+        )["configurable"]
+        top_level = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id=CONV_ID,
+                    user=FAKE_USER,
+                    agent_name="comms_agent",
+                ),
+            )
+        )["configurable"]
+
+        assert child["workflow_id"] == "wf_123"
+        assert child["workflow_title"] == "Inbox Triage"
+        assert child["workflow_notify_on_completion"] is False
+        assert "workflow_id" not in top_level
+
+    @patch("app.helpers.agent_helpers.providers")
     async def test_posthog_callback_added(self, mock_providers):
         mock_providers.get.return_value = MagicMock()  # posthog client present
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
         assert len(config["callbacks"]) >= 1
 
@@ -546,10 +673,14 @@ class TestBuildAgentConfig:
 
         usage_cb = MagicMock()
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            usage_metadata_callback=usage_cb,
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            tracing=AgentTracing(
+                usage_metadata_callback=usage_cb,
+            ),
         )
         assert usage_cb in config["callbacks"]
 
@@ -558,11 +689,15 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            selected_tool="search",
-            tool_category="web",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                selected_tool="search",
+                tool_category="web",
+            ),
         )
         assert config["configurable"]["selected_tool"] == "search"
         assert config["configurable"]["tool_category"] == "web"
@@ -572,10 +707,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            source="whatsapp",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                source="whatsapp",
+            ),
         )
         # raw channel preserved in configurable; generalized category derived
         assert config["configurable"]["conversation_source"] == "whatsapp"
@@ -589,10 +728,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
-            source="web",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            turn=AgentTurn(
+                source="web",
+            ),
         )
         assert config["configurable"]["source_category"] == "ui"
         assert config["metadata"]["source_category"] == "ui"
@@ -603,9 +746,11 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="comms_agent",
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
         )
         # no source -> BG category, channel labelled "background" in metadata
         assert config["configurable"]["conversation_source"] is None
@@ -620,10 +765,14 @@ class TestBuildAgentConfig:
         mock_providers.get.return_value = None
 
         config = await build_agent_config(
-            conversation_id=CONV_ID,
-            user=FAKE_USER,
-            agent_name="executor",
-            base_configurable={"conversation_source": "telegram"},
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={"conversation_source": "telegram"},
+            ),
         )
         assert config["configurable"]["conversation_source"] == "telegram"
         assert config["configurable"]["source_category"] == "bot"
@@ -1140,6 +1289,577 @@ class TestExecuteGraphStreaming:
             results.append(s)
 
         assert any("[DONE]" in r for r in results)
+
+
+# ---------------------------------------------------------------------------
+# _stamp_langfuse
+# ---------------------------------------------------------------------------
+
+
+class TestStampLangfuse:
+    """The exact keys the Langfuse SDK reads. Every one of them is a string
+    literal the SDK matches by name, so a renamed or blanked key does not fail
+    anywhere in GAIA — the trace just silently loses that dimension. Pinning the
+    WHOLE dict (not key-by-key membership) is what makes a rename visible."""
+
+    def test_a_traced_run_stamps_every_langfuse_key_by_name(self):
+        configurable = {}
+        metadata = {}
+
+        _stamp_langfuse(
+            configurable,
+            metadata,
+            "trace-abc",
+            ["tag-one"],
+            {"user_id": USER_ID},
+            CONV_ID,
+        )
+
+        assert configurable == {
+            "langfuse_trace_id": "trace-abc",
+            "langfuse_tags": ["tag-one"],
+        }
+        assert metadata == {
+            "langfuse_trace_id": "trace-abc",
+            # The session is the CONVERSATION, not the thread: Langfuse groups a
+            # whole chat under it.
+            "langfuse_session_id": CONV_ID,
+            "langfuse_user_id": USER_ID,
+            "langfuse_tags": ["tag-one"],
+        }
+
+    def test_an_untraced_run_stamps_nothing_at_all(self):
+        """No trace id means no Langfuse binding anywhere — not even the tags,
+        which are meaningless without a trace to hang them on."""
+        configurable = {}
+        metadata = {}
+
+        _stamp_langfuse(configurable, metadata, None, None, {"user_id": USER_ID}, CONV_ID)
+
+        assert configurable == {}
+        assert metadata == {}
+
+    def test_tags_reach_the_configurable_even_without_a_trace_id(self):
+        """The configurable's tags are stamped from their OWN guard, so a child
+        agent still inherits them when this run has no trace of its own."""
+        configurable = {}
+        metadata = {}
+
+        _stamp_langfuse(configurable, metadata, None, ["tag-one"], {"user_id": USER_ID}, CONV_ID)
+
+        assert configurable == {"langfuse_tags": ["tag-one"]}
+        assert metadata == {}
+
+    def test_an_anonymous_user_leaves_the_user_dimension_off(self):
+        """A background run has no user id; Langfuse must get no user key at all
+        rather than a null one."""
+        configurable = {}
+        metadata = {}
+
+        _stamp_langfuse(configurable, metadata, "trace-abc", None, {}, CONV_ID)
+
+        assert metadata == {
+            "langfuse_trace_id": "trace-abc",
+            "langfuse_session_id": CONV_ID,
+        }
+
+
+# ---------------------------------------------------------------------------
+# build_agent_config: callbacks, lane resolution, Langfuse and workflow wiring
+# ---------------------------------------------------------------------------
+
+
+DEV_LANE = ModelLane(
+    provider=LLMProviderName.OPENROUTER,
+    model="dev/model",
+    reasoning=None,
+    provider_pin=None,
+    max_input_tokens=64_000,
+)
+
+DEV_OPTION = {
+    "provider": LLMProviderName.OPENROUTER,
+    "model": "dev/model",
+    "model_kwargs": None,
+    "reasoning": False,
+}
+
+
+class TestBuildAgentConfigCallbackWiring:
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers._build_agent_callbacks")
+    async def test_the_callbacks_are_built_for_this_conversation_and_this_agent(
+        self, mock_build_callbacks, mock_resolve
+    ):
+        """PostHog attributes the run's LLM spans from these two values alone, so
+        a dropped conversation id or agent name lands every run in one anonymous
+        bucket — visible nowhere but the analytics."""
+        mock_resolve.return_value = (DEV_LANE, None)
+        mock_build_callbacks.return_value = []
+        usage_cb = MagicMock()
+
+        await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            tracing=AgentTracing(usage_metadata_callback=usage_cb),
+        )
+
+        assert mock_build_callbacks.call_args.args == (
+            CONV_ID,
+            FAKE_USER,
+            "comms_agent",
+            usage_cb,
+        )
+
+
+class TestBuildAgentConfigLaneResolution:
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    async def test_a_top_level_run_resolves_its_lane_from_user_role_and_dev_pick(
+        self, mock_resolve, mock_providers
+    ):
+        """resolve_lane is the single place a model is chosen; all three inputs
+        decide which one. A dropped user id resolves the wrong plan tier, a
+        dropped role the wrong reasoning budget, a dropped dev option ignores
+        the model switcher entirely."""
+        mock_providers.get.return_value = None
+        mock_resolve.return_value = (DEV_LANE, PlanType.PRO)
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            lane=AgentLane(role=AgentRole.COMMS, dev_option=DEV_OPTION),
+        )
+
+        mock_resolve.assert_awaited_once_with(USER_ID, AgentRole.COMMS, DEV_OPTION)
+        assert config["configurable"]["lane"] == DEV_LANE.to_configurable()
+        # The plan tier the lane was resolved from rides along for the budget wall.
+        assert config["configurable"]["plan_type"] == "pro"
+
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    async def test_a_child_run_inherits_the_parent_lane_without_resolving(
+        self, mock_resolve, mock_providers
+    ):
+        """Inheritance beats resolving fresh: a child that re-resolves can land
+        on a different model mid-conversation."""
+        mock_providers.get.return_value = None
+        mock_resolve.return_value = (DEV_LANE, None)
+        parent_lane = ModelLane(
+            provider=LLMProviderName.GEMINI,
+            model="parent-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(base_configurable={"lane": parent_lane.to_configurable()}),
+        )
+
+        mock_resolve.assert_not_awaited()
+        assert config["configurable"]["lane"] == parent_lane.to_configurable()
+
+    @patch("app.helpers.agent_helpers.providers")
+    @patch("app.helpers.agent_helpers.resolve_lane", new_callable=AsyncMock)
+    async def test_a_dev_model_pick_beats_an_inherited_lane(self, mock_resolve, mock_providers):
+        """The switcher's whole purpose: an explicit dev choice outranks the
+        parent's lane, so the run resolves rather than inherits."""
+        mock_providers.get.return_value = None
+        mock_resolve.return_value = (DEV_LANE, None)
+        parent_lane = ModelLane(
+            provider=LLMProviderName.GEMINI,
+            model="parent-model",
+            reasoning=None,
+            provider_pin=None,
+            max_input_tokens=128_000,
+        )
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            lane=AgentLane(role=AgentRole.SUBAGENT, dev_option=DEV_OPTION),
+            thread=AgentThread(base_configurable={"lane": parent_lane.to_configurable()}),
+        )
+
+        mock_resolve.assert_awaited_once_with(USER_ID, AgentRole.SUBAGENT, DEV_OPTION)
+        assert config["configurable"]["lane"] == DEV_LANE.to_configurable()
+
+
+class TestBuildAgentConfigLangfuseWiring:
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_the_stamp_names_this_conversation_and_this_user(self, mock_providers):
+        """Everything the trace is bound to comes from this one call: the trace,
+        the session (the conversation), the user and the tags."""
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="comms_agent",
+            ),
+            tracing=AgentTracing(langfuse_trace_id="trace-abc", langfuse_tags=["tag-one"]),
+        )
+
+        assert config["configurable"]["langfuse_trace_id"] == "trace-abc"
+        assert config["configurable"]["langfuse_tags"] == ["tag-one"]
+        assert config["metadata"]["langfuse_trace_id"] == "trace-abc"
+        assert config["metadata"]["langfuse_session_id"] == CONV_ID
+        assert config["metadata"]["langfuse_user_id"] == USER_ID
+        assert config["metadata"]["langfuse_tags"] == ["tag-one"]
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_child_lands_on_the_parents_trace_and_tags(self, mock_providers):
+        """A child agent passes no tracing of its own, so the executor's spans
+        have to join the comms trace rather than starting a second one."""
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={
+                    "langfuse_trace_id": "parent-trace",
+                    "langfuse_tags": ["parent-tag"],
+                }
+            ),
+        )
+
+        assert config["configurable"]["langfuse_trace_id"] == "parent-trace"
+        assert config["configurable"]["langfuse_tags"] == ["parent-tag"]
+        assert config["metadata"]["langfuse_trace_id"] == "parent-trace"
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_explicit_tracing_beats_what_the_parent_carried(self, mock_providers):
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={
+                    "langfuse_trace_id": "parent-trace",
+                    "langfuse_tags": ["parent-tag"],
+                }
+            ),
+            tracing=AgentTracing(langfuse_trace_id="own-trace", langfuse_tags=["own-tag"]),
+        )
+
+        assert config["configurable"]["langfuse_trace_id"] == "own-trace"
+        assert config["configurable"]["langfuse_tags"] == ["own-tag"]
+
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_an_empty_tag_list_clears_the_parents_tags(self, mock_providers):
+        """The precedence test is ``is not None``, not truthiness, precisely so a
+        caller can pass [] to mean "no tags" instead of "inherit"."""
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(
+                base_configurable={
+                    "langfuse_trace_id": "parent-trace",
+                    "langfuse_tags": ["parent-tag"],
+                }
+            ),
+            tracing=AgentTracing(langfuse_tags=[]),
+        )
+
+        assert "langfuse_tags" not in config["configurable"]
+        assert "langfuse_tags" not in config["metadata"]
+
+
+class TestBuildAgentConfigWorkflowInheritance:
+    @patch("app.helpers.agent_helpers.providers")
+    async def test_a_workflow_without_a_title_inherits_the_documented_defaults(
+        self, mock_providers
+    ):
+        """A workflow fire that carried no title and no notify preference must
+        still produce a titled-by-empty-string, notify-by-default config: the
+        playbook tools read both keys unconditionally."""
+        mock_providers.get.return_value = None
+
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID,
+                user=FAKE_USER,
+                agent_name="executor",
+            ),
+            thread=AgentThread(base_configurable={"workflow_id": "wf_123"}),
+        )
+
+        configurable = config["configurable"]
+        assert configurable["workflow_id"] == "wf_123"
+        assert configurable["workflow_title"] == ""
+        assert configurable["workflow_notify_on_completion"] is True
+
+
+# ---------------------------------------------------------------------------
+# _collect_silent_tool_entries
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestCollectSilentToolEntries:
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    async def test_a_message_without_tool_calls_never_stops_the_scan(self, mock_format):
+        """A node update carries the user's own turn alongside the model's, and
+        only the model's has ``tool_calls``. Skipping is per message: stopping at
+        the first one drops every tool card after it."""
+        mock_format.return_value = {"tool_name": "custom_tool"}
+        ai = AIMessage(
+            content="",
+            tool_calls=[{"id": "tc1", "name": "custom_tool", "args": {}, "type": "tool_call"}],
+        )
+        entries: list = []
+        emitted: set[str] = set()
+
+        await _collect_silent_tool_entries(
+            [HumanMessage(content="do the thing"), ai], emitted, entries, USER_ID
+        )
+
+        assert entries == [{"tool_name": "custom_tool"}]
+        assert emitted == {"tc1"}
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    async def test_an_unusable_tool_call_is_skipped_and_the_rest_still_emit(self, mock_format):
+        """An id-less call and an already-emitted one are both skipped, and the
+        scan continues: a break here loses every later call in the same message."""
+        mock_format.return_value = {"tool_name": "custom_tool"}
+        msg = MagicMock()
+        msg.tool_calls = [
+            {"id": "", "name": "nameless", "args": {}},
+            {"id": "tc_seen", "name": "already_sent", "args": {}},
+            {"id": "tc_new", "name": "custom_tool", "args": {}},
+        ]
+        entries: list = []
+        emitted = {"tc_seen"}
+
+        await _collect_silent_tool_entries([msg], emitted, entries, USER_ID)
+
+        assert entries == [{"tool_name": "custom_tool"}]
+        assert emitted == {"tc_seen", "tc_new"}
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    async def test_a_todo_tool_call_is_skipped_without_ending_the_scan(self, mock_format):
+        """Todo tools already stream todo_progress, so their cards are noise —
+        but the calls that follow them in the same message are not."""
+        mock_format.return_value = {"tool_name": "custom_tool"}
+        msg = MagicMock()
+        msg.tool_calls = [
+            {"id": "tc_plan", "name": "plan_tasks", "args": {}},
+            {"id": "tc_real", "name": "custom_tool", "args": {}},
+        ]
+        entries: list = []
+        emitted: set[str] = set()
+
+        await _collect_silent_tool_entries([msg], emitted, entries, USER_ID)
+
+        assert entries == [{"tool_name": "custom_tool"}]
+        assert emitted == {"tc_real"}
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
+    async def test_a_handoff_with_no_named_subagent_resolves_no_metadata(
+        self, mock_handoff, mock_format
+    ):
+        """A half-assembled handoff carries no args, or empty ones. Both mean
+        "no subagent named yet", and neither may reach the registry."""
+        mock_format.return_value = {"tool_name": "handoff"}
+        no_args = MagicMock()
+        no_args.tool_calls = [{"id": "tc_a", "name": "handoff"}]
+        empty_args = MagicMock()
+        empty_args.tool_calls = [{"id": "tc_b", "name": "handoff", "args": {}}]
+        entries: list = []
+
+        await _collect_silent_tool_entries([no_args, empty_args], set(), entries, USER_ID)
+
+        mock_handoff.assert_not_awaited()
+        assert len(entries) == 2
+
+    @patch("app.helpers.agent_helpers.format_tool_call_entry", new_callable=AsyncMock)
+    @patch("app.helpers.agent_helpers.get_handoff_metadata", new_callable=AsyncMock)
+    async def test_handoff_metadata_reaches_the_formatter_field_by_field(
+        self, mock_handoff, mock_format
+    ):
+        """Each display field is forwarded under its own name. A crossed or
+        dropped one type-checks fine (all three are ``str | None``) and shows up
+        only as a subagent card with the wrong icon or no integration."""
+        mock_handoff.return_value = {
+            "icon_url": "https://icon.png",
+            "integration_id": "github",
+            "integration_name": "GitHub",
+        }
+        mock_format.return_value = {"tool_name": "handoff"}
+        tool_call = {"id": "tc_h", "name": "handoff", "args": {"subagent_id": "github"}}
+        msg = MagicMock()
+        msg.tool_calls = [tool_call]
+
+        await _collect_silent_tool_entries([msg], set(), [], USER_ID)
+
+        mock_handoff.assert_awaited_once_with("github")
+        assert mock_format.await_args.args == (tool_call,)
+        assert mock_format.await_args.kwargs == {
+            "icon_url": "https://icon.png",
+            "integration_id": "github",
+            "integration_name": "GitHub",
+            "user_id": USER_ID,
+        }
+
+
+# ---------------------------------------------------------------------------
+# _accumulate_silent_custom_event
+# ---------------------------------------------------------------------------
+
+
+class TestAccumulateSilentCustomEvent:
+    @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
+    def test_a_todo_snapshot_is_filed_under_its_own_source(self, _mock_process):
+        """The accumulator is keyed by source so the planner's and the executor's
+        snapshots do not overwrite each other."""
+        accumulated: dict = {}
+
+        _accumulate_silent_custom_event(
+            {"todo_progress": {"source": "planner", "count": 1}},
+            {},
+            accumulated,
+            {"tool_data": []},
+        )
+
+        assert accumulated == {"planner": {"source": "planner", "count": 1}}
+
+    @patch("app.helpers.agent_helpers.process_custom_event_for_tools", return_value=None)
+    def test_a_sourceless_todo_snapshot_is_filed_under_the_executor(self, _mock_process):
+        """The executor is the emitter that predates the source field, so an
+        unlabelled snapshot is its."""
+        accumulated: dict = {}
+
+        _accumulate_silent_custom_event(
+            {"todo_progress": {"count": 1}}, {}, accumulated, {"tool_data": []}
+        )
+
+        assert accumulated == {"executor": {"count": 1}}
+
+    @patch("app.helpers.agent_helpers.process_custom_event_for_tools")
+    def test_the_event_payload_itself_is_handed_to_the_tool_parser(self, mock_process):
+        mock_process.return_value = {"tool_data": [{"tool_name": "t"}], "follow_up_actions": ["a"]}
+        payload = {"some": "custom event"}
+        tool_data: dict = {"tool_data": []}
+
+        _accumulate_silent_custom_event(payload, {}, {}, tool_data)
+
+        assert mock_process.call_args.args == (payload,)
+        assert tool_data == {"tool_data": [{"tool_name": "t"}], "follow_up_actions": ["a"]}
+
+
+# ---------------------------------------------------------------------------
+# _hold_silent_chunk
+# ---------------------------------------------------------------------------
+
+
+class TestHoldSilentChunk:
+    def test_only_the_models_own_chunks_are_held(self):
+        """The "messages" stream carries every message type; only an AI chunk is
+        a reply-in-progress. Both halves of the guard matter — a present chunk
+        that is not the model's must hold nothing."""
+        message_texts: dict[str, str] = {}
+
+        _hold_silent_chunk(
+            (HumanMessage(content="typed by the user", id="h1"), {}),
+            True,
+            set(),
+            message_texts,
+        )
+
+        assert message_texts == {}
+
+    def test_an_ai_chunk_is_held_under_its_message_id(self):
+        message_texts: dict[str, str] = {}
+
+        _hold_silent_chunk(
+            (AIMessageChunk(content="half ", id="m1"), {}), True, set(), message_texts
+        )
+        _hold_silent_chunk(
+            (AIMessageChunk(content="a reply", id="m1"), {}), True, set(), message_texts
+        )
+
+        assert message_texts == {"m1": "half a reply"}
+
+    def test_a_chunk_marked_silent_is_dropped(self):
+        """Follow-up-action generation rides the same stream and must never land
+        in the user-visible reply."""
+        message_texts: dict[str, str] = {}
+
+        _hold_silent_chunk(
+            (AIMessageChunk(content="internal", id="m1"), {"silent": True}),
+            True,
+            set(),
+            message_texts,
+        )
+
+        assert message_texts == {}
+
+
+# ---------------------------------------------------------------------------
+# _record_interruption_quietly
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestRecordInterruptionQuietly:
+    @patch("app.helpers.agent_helpers.record_interruption", new_callable=AsyncMock)
+    async def test_the_interruption_is_recorded_against_this_run(self, mock_record):
+        """Both the graph and its config identify WHICH run was interrupted; a
+        recording against the wrong one, or against nothing, is a lost cancel."""
+        graph, config = MagicMock(), {"configurable": {"thread_id": CONV_ID}}
+
+        await _record_interruption_quietly(graph, config)
+
+        mock_record.assert_awaited_once_with(graph, config)
+
+    @patch("app.helpers.agent_helpers.log")
+    @patch("app.helpers.agent_helpers.record_interruption", new_callable=AsyncMock)
+    async def test_a_failed_recording_is_swallowed_and_reported_in_full(
+        self, mock_record, mock_log
+    ):
+        """The cancel ack must still reach the client, so the failure is logged
+        rather than raised — which makes the log the ONLY evidence it happened.
+        The error text and its type both have to be the real ones."""
+        mock_record.side_effect = ValueError("checkpointer down")
+
+        await _record_interruption_quietly(MagicMock(), {})
+
+        mock_log.error.assert_called_once()
+        assert mock_log.error.call_args.args == (f"{LogTag.AGENT} Failed to record interruption",)
+        assert mock_log.error.call_args.kwargs == {
+            "error": "checkpointer down",
+            "error_type": "ValueError",
+        }
 
 
 # ---------------------------------------------------------------------------
