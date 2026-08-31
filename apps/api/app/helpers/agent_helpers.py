@@ -9,7 +9,6 @@ from uuid import uuid4
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
 from langsmith import traceable
-from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import CompiledAgentGraph
@@ -18,6 +17,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, ModelLane, resolve_lane
 from app.agents.llm.types import DevModelOption
 from app.config.langfuse import build_langfuse_callback
+from app.config.posthog import StreamCancellationSafeCallbackHandler
 from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
@@ -186,7 +186,7 @@ def _build_agent_callbacks(
     posthog_client = providers.get("posthog") if providers.is_available("posthog") else None
     if posthog_client is not None:
         callbacks.append(
-            PostHogCallbackHandler(
+            StreamCancellationSafeCallbackHandler(
                 client=posthog_client,
                 distinct_id=user.get("user_id"),
                 properties={
