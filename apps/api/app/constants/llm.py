@@ -128,29 +128,9 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
-# Sticky-flip retry: when a large call's cache read is below this fraction of
-# its prompt (the request landed on a cold provider after the ~5-minute sticky
-# expiry — a known OpenRouter behavior), re-send it once — the first attempt
-# wrote the chain there and the re-send hits it (~99%, verified by byte-exact
-# shadow replays of captured requests: 99.2-99.7%).
-#
-# 0.80 covers the two shapes that are actually a flip: the full flips (0-5%)
-# and the partial static-only dips (65-75%).
-#
-# It deliberately EXCLUDES the small-conversation steady state (83-90% — the
-# provider under-reads the fresh chain for a few turns after a big turn;
-# measured live at 83.8% flat while the exact bytes replay at 99.7%), which the
-# previous 0.92 included. That band is a provider under-REPORTING a chain it
-# already holds, not a request that landed cold: there is no cold upstream to
-# re-warm, so the re-send buys nothing but a second request. What it did buy was
-# a higher printed aggregate hit rate — (cached + 0.99*input)/2*input is
-# arithmetic on the average, not a saving — and that band is the bulk of the
-# 3,614 replays / $34.55 measured over 2026-08-16..29.
-STICKY_FLIP_RETRY_MIN_HIT = 0.80
-STICKY_FLIP_RETRY_MIN_INPUT = 8_000
-# The replay's premise — sticky routing that re-reads the chain the first
-# attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
-# so a replay there is a second full-price call with no possible upside.
+# Sticky routing (the ``session_id`` hint that pins a chain to one upstream) is
+# OpenRouter-wire behaviour. Gemini has no sticky routing, so the key is an
+# unsupported argument there and must never be sent.
 STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).

@@ -2,8 +2,7 @@
 seam both metering routes share.
 
 Covers ``extract_message_usage`` (the AIMessage -> token counts read, including
-every provider-shape fallback), ``extract_message_model`` (the model the
-provider says served the call), and ``record_llm_call`` itself (the funnel every
+every provider-shape fallback) and ``record_llm_call`` itself (the funnel every
 metering route prices through).
 """
 

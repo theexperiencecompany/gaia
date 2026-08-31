@@ -410,11 +410,13 @@ def extract_message_cost(message: AIMessage) -> float | None:
 def extract_message_model(message: AIMessage) -> str:
     """The model the provider says served this call, or ``UNKNOWN_MODEL_NAME``.
 
-    For the one seam that cannot reach the lane: ``lane`` imports ``client``, so
-    ``client`` cannot import ``ModelLane`` back. Everywhere else resolves the
-    lane at the call site, the way ``accounting`` does.
+    What the LANE asked for and what actually answered are different facts —
+    a provider substitution or a fallback makes them diverge — and the ledger
+    records both (``model_requested`` / ``model_served``), so the reply's own
+    account of itself has to be readable here rather than inferred from the
+    lane the caller configured.
     """
-    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_meta = message.response_metadata or {}
     return str(resp_meta.get("model_name") or "") or UNKNOWN_MODEL_NAME
 
 

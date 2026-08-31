@@ -45,6 +45,18 @@ CONTEXT = LLMCallContext(
 )
 
 
+@pytest.fixture(autouse=True)
+def _fresh_wide_event() -> None:
+    """Start every test from a clean wide-event boundary.
+
+    The ledger reads its worker/workflow attribution from that ContextVar, so a
+    stamp left behind by any earlier test in this process would be attributed to
+    a call that never ran inside it — which is exactly the mis-attribution these
+    tests exist to catch.
+    """
+    log.reset()
+
+
 async def _drain() -> None:
     """Let the spawned fire-and-forget insert run to completion."""
     for _ in range(3):
