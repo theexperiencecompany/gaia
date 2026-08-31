@@ -603,6 +603,9 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
+        # These tests are about the execution path, not the paid-only gate —
+        # default the owner to an active subscription so it stays out of the way.
+        monkeypatch.setattr(workflow_tasks, "is_subscription_active", AsyncMock(return_value=True))
 
         return {
             "records": records,

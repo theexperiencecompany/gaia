@@ -67,7 +67,6 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 from app.config.settings import settings
 from app.constants.cache import PLANS_CACHE_KEYS
-from app.constants.memory import FREE_MEMORY_FACT_LIMIT
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanDocument
 
@@ -94,26 +93,6 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
     ]
 
     return [
-        PlanDocument(
-            dodo_product_id="",  # Free plan doesn't need Dodo product ID
-            name="Free",
-            description="Start free. See what GAIA can do.",
-            amount=0,
-            currency="USD",
-            duration="monthly",
-            max_users=1,
-            features=[
-                "Chat on WhatsApp, Telegram, Discord & Slack",
-                "Standard models",
-                "Daily AI usage allowance",
-                f"{FREE_MEMORY_FACT_LIMIT} saved memories",
-                "Community support",
-                "All tools & 100s of integrations",
-            ],
-            is_active=True,
-            created_at=now,
-            updated_at=now,
-        ),
         PlanDocument(
             dodo_product_id=monthly_product_id,
             name="Pro",
@@ -162,6 +141,29 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
             updated_at=now,
         ),
     ]
+
+
+async def deactivate_free_plan(
+    collection: AsyncIOMotorCollection[dict[str, Any]], dry_run: bool
+) -> bool:
+    """GAIA is paid-only — the catalogue no longer seeds a Free row. A Free row
+    left over from before the paid-only cutover must not keep serving as an
+    active plan, so mark it inactive rather than deleting it (keeps the
+    historical record for anyone still on it). Idempotent: a no-op once the
+    row is already inactive or was never seeded."""
+    existing = await collection.find_one({"name": "Free", "is_active": True})
+    if existing is None:
+        return False
+
+    if dry_run:
+        print("   📝 Would mark existing Free plan inactive (paid-only cutover)")
+    else:
+        await collection.update_one(
+            {"_id": existing["_id"]},
+            {"$set": {"is_active": False, "updated_at": datetime.now(UTC)}},
+        )
+        print("   🚫 Marked existing Free plan inactive (paid-only cutover)")
+    return True
 
 
 async def cleanup_old_indexes(collection: AsyncIOMotorCollection[dict[str, Any]]) -> None:
@@ -312,6 +314,8 @@ async def setup_payment_plans(
         for plan in build_plan_catalogue(monthly_product_id, yearly_product_id):
             outcomes.append(await reconcile_plan(collection, plan, dry_run))
             print_plan_details(plan)
+
+        await deactivate_free_plan(collection, dry_run)
 
         # Before the report below, so a failure while reading it back can never
         # leave the API serving a cached catalogue the database has moved past.

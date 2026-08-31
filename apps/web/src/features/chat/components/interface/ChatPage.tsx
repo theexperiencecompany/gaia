@@ -22,6 +22,7 @@ import {
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -34,6 +35,7 @@ import {
   useComposerTextActions,
   usePendingPrompt,
 } from "@/stores/composerStore";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import {
   useDiscoveredConversationId,
@@ -64,6 +66,8 @@ const MainChat = React.memo(function MainChat() {
   const sendMessage = useSendMessage();
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
+  const { isPaid, isLoading: isSubscriptionStatusLoading } = useIsPaid();
+  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   // Exactly-once guard for the deferred auto-send below. Set inside the timer
   // callback (not at schedule time) so StrictMode's simulated remount and
   // dep-driven re-runs reschedule instead of assuming the send already fired.
@@ -88,6 +92,18 @@ const MainChat = React.memo(function MainChat() {
     const sendTimer = setTimeout(() => {
       autoSendFiredRef.current = true;
       useWorkflowSelectionStore.getState().clearSelectedWorkflow();
+
+      // GAIA is paid-only, and this is a real send: useComposerSubmit's own
+      // pre-check never runs for this path (handleFormSubmit returns early
+      // on `autoSend` before reaching it), so this is the one place that has
+      // to gate it. While the subscription-status query is still loading,
+      // let the send proceed — the backend's 402 is the backstop — rather
+      // than trap a paying user on a not-yet-resolved "false".
+      if (!isSubscriptionStatusLoading && !isPaid) {
+        openPaywallModal();
+        return;
+      }
+
       sendMessage("Run this workflow", {
         selectedWorkflow: workflow,
         selectedTool: null,
@@ -99,7 +115,14 @@ const MainChat = React.memo(function MainChat() {
     // Supersede semantics: a genuinely NEW selection replaces the pending
     // send; genuine unmount cancels it (master's own behavior).
     return () => clearTimeout(sendTimer);
-  }, [selectedWorkflow, autoSend, sendMessage]);
+  }, [
+    selectedWorkflow,
+    autoSend,
+    sendMessage,
+    isPaid,
+    isSubscriptionStatusLoading,
+    openPaywallModal,
+  ]);
 
   const {
     hasMessages,

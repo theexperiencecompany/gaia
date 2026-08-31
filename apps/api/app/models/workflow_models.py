@@ -46,6 +46,7 @@ class DeactivationReason(str, Enum):
 
     USER_DORMANT = "user_dormant"
     INTEGRATION_EXPIRED = "integration_expired"
+    SUBSCRIPTION_LAPSED = "subscription_lapsed"
 
 
 class IntegrationRef(BaseModel):

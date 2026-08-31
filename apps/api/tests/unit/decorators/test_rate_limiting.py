@@ -456,8 +456,11 @@ class TestTieredRateLimitMetersUnderItsOrigin:
             else rl.tiered_rate_limit("chat_messages")
         )(_endpoint)
         with (
+            # tiered_rate_limit resolves the caller via
+            # app.core.request_context.resolve_caller, which reads
+            # get_authenticated_user from its own module.
             patch(
-                "app.decorators.rate_limiting.get_authenticated_user",
+                "app.core.request_context.get_authenticated_user",
                 return_value={"user_id": "user-1"},
             ),
             patch(

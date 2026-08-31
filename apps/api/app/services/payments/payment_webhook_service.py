@@ -27,6 +27,10 @@ from app.services.analytics_service import (
 )
 from app.services.email import send_pro_subscription_email
 from app.services.payments.payment_service import payment_service
+from app.services.workflow.subscription_pause import (
+    deactivate_workflows_for_lapsed_subscription,
+    reactivate_workflows_for_restored_subscription,
+)
 from shared.py.wide_events import log
 
 
@@ -333,6 +337,7 @@ class PaymentWebhookService:
                 f"{LogTag.PAYMENT} Subscription already exists",
                 subscription_id=sub_data.subscription_id,
             )
+            await self._reactivate_workflows_for_restored_subscription(existing.user_id)
             return DodoWebhookProcessingResult(
                 event_type=event.type.value,
                 status="processed",
@@ -396,6 +401,8 @@ class PaymentWebhookService:
         # Send welcome email
         await self._send_welcome_email(user_id)
 
+        await self._reactivate_workflows_for_restored_subscription(user_id)
+
         log.info(
             f"{LogTag.PAYMENT} Subscription activated", subscription_id=sub_data.subscription_id
         )
@@ -443,6 +450,7 @@ class PaymentWebhookService:
                     subscription_id=sub_data.subscription_id,
                     currency=sub_data.currency,
                 )
+                await self._reactivate_workflows_for_restored_subscription(user_id)
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -507,6 +515,11 @@ class PaymentWebhookService:
                     "billing_interval": sub_data.payment_frequency_interval,
                 },
             )
+            # Only an immediate cancellation actually drops the user from Pro now —
+            # a cancel scheduled for period end (status left untouched above) keeps
+            # them paid until `subscription.expired` fires, so their workflows stay on.
+            if not sub_data.cancel_at_next_billing_date:
+                await self._deactivate_workflows_for_lapsed_subscription(user_id)
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -535,6 +548,7 @@ class PaymentWebhookService:
                 event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
                 subscription_id=sub_data.subscription_id,
             )
+            await self._deactivate_workflows_for_lapsed_subscription(user_id)
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -555,6 +569,10 @@ class PaymentWebhookService:
             sub_data.subscription_id, SubscriptionUpdate(status="failed")
         )
 
+        user_id = await subscription_repository.get_user_id_by_dodo_id(sub_data.subscription_id)
+        if user_id:
+            await self._deactivate_workflows_for_lapsed_subscription(user_id)
+
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -573,6 +591,10 @@ class PaymentWebhookService:
         await subscription_repository.apply_update_by_dodo_id(
             sub_data.subscription_id, SubscriptionUpdate(status="on_hold")
         )
+
+        user_id = await subscription_repository.get_user_id_by_dodo_id(sub_data.subscription_id)
+        if user_id:
+            await self._deactivate_workflows_for_lapsed_subscription(user_id)
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -604,6 +626,34 @@ class PaymentWebhookService:
             message="Subscription plan changed",
             subscription_id=sub_data.subscription_id,
         )
+
+    async def _deactivate_workflows_for_lapsed_subscription(self, user_id: str) -> None:
+        """Turn off this user's automation once they're no longer paid. Never raises —
+        a workflow-deactivation failure must not turn an otherwise-successful billing
+        webhook into a "failed" result that Dodo would retry."""
+        try:
+            await deactivate_workflows_for_lapsed_subscription(user_id)
+        except Exception as e:
+            log.error(
+                f"{LogTag.PAYMENT} Failed to deactivate workflows for lapsed subscription",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
+
+    async def _reactivate_workflows_for_restored_subscription(self, user_id: str) -> None:
+        """Turn a user's paused automation back on once they're paid again. Never
+        raises — a workflow-reactivation failure must not turn an otherwise-successful
+        billing webhook into a "failed" result that Dodo would retry."""
+        try:
+            await reactivate_workflows_for_restored_subscription(user_id)
+        except Exception as e:
+            log.error(
+                f"{LogTag.PAYMENT} Failed to reactivate workflows for restored subscription",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     async def _send_welcome_email(self, user_id: str) -> None:
         """Send welcome email for new subscription."""

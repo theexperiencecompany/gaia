@@ -345,6 +345,18 @@ class TestTaskErrorHandling:
 class TestWorkflowTaskExecution:
     """Verify workflow execution tracks success/failure and sends notifications."""
 
+    @pytest.fixture(autouse=True)
+    def _subscription_active_by_default(self):
+        """These tests are about the execution lifecycle, not the paid-only
+        gate — default the owner to an active subscription so it stays out of
+        the way."""
+        with patch(
+            "app.workers.tasks.workflow_tasks.is_subscription_active",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
     async def test_execute_workflow_not_found(self):
         """When workflow ID does not exist, return a not-found message."""
 

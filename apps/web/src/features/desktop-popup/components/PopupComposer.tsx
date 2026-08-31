@@ -55,6 +55,12 @@ export default function PopupComposer({
     if (!hasContent || isStreaming) return;
     const content = text;
     setText("");
+    // No client-side paid-only pre-check here: this popup window renders
+    // under the (desktop) route group, which never mounts
+    // GlobalPaywallModal (that's (main)/layout.tsx only) — opening it would
+    // be a no-op. A free user's send instead surfaces the paywall through
+    // chatApi's chat-stream 402 handling, same as any other client that
+    // doesn't have this modal in its tree.
     sendMessage(content);
   };
 

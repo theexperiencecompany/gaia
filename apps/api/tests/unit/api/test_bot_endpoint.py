@@ -16,6 +16,7 @@ import pytest
 
 from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
 from app.core.stream_manager import with_heartbeat
+from app.db.redis import redis_cache
 from app.models.bot_models import BotChatRequest
 from app.models.payment_models import (
     CreateSubscriptionResponse,
@@ -44,6 +45,37 @@ def _make_request(bot_api_key_valid: bool = True, **extra_state: object) -> Magi
     state.user = extra_state.get("user")
     state.authenticated = extra_state.get("authenticated", False)
     return state
+
+
+@pytest.fixture(autouse=True)
+def _no_real_redis_cost_budget():
+    """``bot_chat_stream`` calls ``enforce_daily_cost_budget`` -> ``get_cost``
+    directly (unmocked in the tests below), which reads the module-singleton
+    ``redis_cache.redis`` — a real client pointed at the test env's local Redis
+    (``tests/conftest.py``). Under randomized test order a connection opened by
+    an earlier test's event loop can outlive it, and a later ``.get()`` on the
+    same pooled connection raises ``RuntimeError: Event loop is closed`` instead
+    of the ``RedisError``/``OSError`` ``get_cost`` actually catches — an
+    unhandled 500, not a flaky assertion. Nulling the client forces the
+    documented fail-open (cost reads 0.0) with no network call at all.
+    """
+    original = redis_cache.redis
+    redis_cache.redis = None
+    yield
+    redis_cache.redis = original
+
+
+@pytest.fixture(autouse=True)
+def _pro_plan_by_default():
+    """GAIA is paid-only: default every test in this file to a paying user.
+
+    Most of these tests exercise chat mechanics, quota metering, or unrelated
+    bot endpoints — not the paywall itself (see TestBotChatStreamSubscriptionGate
+    for that). A test that needs FREE re-patches PLAN_PATCH inside its own
+    `with` block, which nests inside (and correctly overrides) this one.
+    """
+    with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.PRO):
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -638,7 +670,14 @@ class TestBotChatStream:
 
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
-        assert response.text == 'data: {"error": "not_authenticated"}\n\n'
+        # GAIA is paid-only: an unlinked user is told to link AND subscribe, via
+        # a `notice` frame ahead of the untouched not_authenticated error frame
+        # (the /auth-link flow it triggers is unchanged).
+        assert response.text == (
+            'data: {"notice": {"text": "GAIA is a paid product. Link your account '
+            'with /auth, then subscribe to Pro to chat."}}\n\n'
+            'data: {"error": "not_authenticated"}\n\n'
+        )
 
     @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
@@ -706,8 +745,12 @@ class TestBotChatStream:
         assert refusal.args[2] == {"platform": "imessage", "reason": "plan_required"}
 
     @pytest.mark.parametrize(
+        # Both PRO: paid-only means a FREE user never reaches quota on any
+        # platform now (see TestBotChatStreamSubscriptionGate) — this proves a
+        # PAYING user reaches it regardless of whether the platform is
+        # premium-gated (imessage) or not (telegram).
         ("platform", "plan"),
-        [("imessage", PlanType.PRO), ("telegram", PlanType.FREE)],
+        [("imessage", PlanType.PRO), ("telegram", PlanType.PRO)],
     )
     @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
@@ -1344,6 +1387,143 @@ class TestBotChatStreamMetering:
             )
 
         limiter.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/chat-stream — the paid-only gate
+# ---------------------------------------------------------------------------
+
+
+class TestBotChatStreamSubscriptionGate:
+    """GAIA is paid-only: a linked FREE user is refused before any LangGraph run.
+
+    Distinct from platform_requires_upgrade above, which only gates premium
+    platforms (iMessage) — this gates every platform. The refusal must reach
+    the bot as a real outbound message (a `notice` frame), not a bare error
+    code, because it carries a per-user checkout link.
+    """
+
+    @staticmethod
+    def _pro_checkout(payment_link: str | None) -> AsyncMock:
+        return AsyncMock(
+            return_value=ProCheckout(
+                plan=PlanResponse(
+                    id="plan_pro",
+                    dodo_product_id="prod_pro",
+                    name="Pro",
+                    amount=3000,
+                    currency="USD",
+                    duration=PlanDuration.MONTHLY,
+                    is_active=True,
+                    created_at=datetime(2026, 1, 1, tzinfo=UTC),
+                    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                ),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="cs_1", payment_link=payment_link, status="pending"
+                ),
+            )
+        )
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_linked_free_user_gets_a_notice_with_their_checkout_link(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout("https://checkout.dodopayments.com/s/cs_1"),
+            ),
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        assert response.status_code == 200
+        assert response.text == (
+            'data: {"notice": {"text": "GAIA is a paid product. Subscribe to Pro '
+            'to keep chatting: https://checkout.dodopayments.com/s/cs_1"}}\n\n'
+            'data: {"done": true, "conversation_id": ""}\n\n'
+        )
+        # No LangGraph run, and no plan quota charged for a turn that never happened.
+        mock_tiered.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_discount_code_is_appended_when_configured(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout(None),
+            ),
+            patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
+        ):
+            response = await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        assert "Use code SAVE20 for a discount." in response.text
+
+    @patch("app.api.v1.endpoints.bot.capture_event")
+    @patch("app.api.v1.endpoints.bot.enforce_tiered_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.BotService.enforce_rate_limit", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_refusal_is_captured_with_its_own_reason_not_as_submitted(
+        self,
+        mock_auth: AsyncMock,
+        mock_limit: AsyncMock,
+        mock_tiered: AsyncMock,
+        mock_capture: MagicMock,
+        client: AsyncClient,
+    ):
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "u1"},
+            ),
+            patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE),
+            patch(
+                "app.api.v1.endpoints.bot.payment_service.create_pro_checkout",
+                self._pro_checkout(None),
+            ),
+        ):
+            await client.post(f"{BOT_BASE}/chat-stream", json=_CHAT_BODY("telegram"))
+
+        captured = [call.args[1] for call in mock_capture.call_args_list]
+        assert AnalyticsEvents.CHAT_MESSAGE_SUBMITTED not in captured
+        assert AnalyticsEvents.CHAT_MESSAGE_REFUSED in captured
+        refusal = next(
+            call
+            for call in mock_capture.call_args_list
+            if call.args[1] == AnalyticsEvents.CHAT_MESSAGE_REFUSED
+        )
+        assert refusal.args[0] == "u1"
+        assert refusal.args[2] == {"platform": "telegram", "reason": "subscription_required"}
 
 
 class TestBotRateLimitNotice:

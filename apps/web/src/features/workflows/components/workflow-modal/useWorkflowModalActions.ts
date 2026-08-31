@@ -5,10 +5,12 @@ import { useCallback, useMemo, useState } from "react";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { useRouter } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
 
 import { type Workflow, workflowApi } from "../../api/workflowApi";
@@ -94,6 +96,8 @@ export function useWorkflowModalActions({
 
   const { integrations, connectIntegration } = useIntegrations();
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const { isPaid, isLoading: isSubscriptionStatusLoading } = useIsPaid();
+  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -447,6 +451,21 @@ export function useWorkflowModalActions({
   // Handle activation toggle
   const handleActivationToggle = async (newActivated: boolean) => {
     if (mode !== "edit" || !currentWorkflow) return;
+
+    // GAIA is paid-only: a free user can't enable a workflow. Show the
+    // upsell toast and open the paywall — never call activateWorkflow. While
+    // the subscription-status query is still in flight, let the toggle
+    // proceed (the backend is the backstop) rather than gating on a
+    // not-yet-resolved "false".
+    if (newActivated && !isSubscriptionStatusLoading && !isPaid) {
+      toast.info("Workflows require GAIA Pro", {
+        action: {
+          label: "Upgrade",
+          onClick: () => openPaywallModal(),
+        },
+      });
+      return;
+    }
 
     // Block enabling a workflow whose trigger/steps need unconnected
     // integrations — it could never actually run.

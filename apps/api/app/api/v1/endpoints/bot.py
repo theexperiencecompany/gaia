@@ -16,7 +16,12 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager, with_heartbeat
 from app.db.redis import redis_cache
-from app.decorators import enforce_daily_cost_budget, enforce_tiered_limit, tiered_rate_limit
+from app.decorators import (
+    enforce_daily_cost_budget,
+    enforce_tiered_limit,
+    is_subscription_active,
+    tiered_rate_limit,
+)
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
@@ -62,6 +67,13 @@ router = APIRouter()
 BOT_STREAM_ERROR_NOT_AUTHENTICATED = "not_authenticated"
 BOT_STREAM_ERROR_PLAN_REQUIRED = "plan_required"
 
+# A user who has never linked GAIA has no personal checkout link to offer, so
+# this stays generic — the /auth flow that follows resolves their identity
+# first, and the linked-but-free notice below picks up from there next turn.
+_UNLINKED_PAYWALL_NOTICE = (
+    "GAIA is a paid product. Link your account with /auth, then subscribe to Pro to chat."
+)
+
 
 def _refusal_stream(error_code: str) -> StreamingResponse:
     """A one-frame SSE reply refusing the turn before any work starts.
@@ -75,6 +87,47 @@ def _refusal_stream(error_code: str) -> StreamingResponse:
         yield f"data: {json.dumps({'error': error_code})}\n\n"
 
     return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _refusal_stream_with_notice(notice_text: str, error_code: str) -> StreamingResponse:
+    """`_refusal_stream`, preceded by a `notice` frame carrying free-form text.
+
+    Used for the unlinked-user paywall notice: the `notice` frame delivers it
+    as a real outbound message (`deliverOutOfBand` in the shared streamer),
+    and the trailing `error` frame is untouched so the existing /auth-link
+    flow (token minting, `buildAuthLinkMessage`) still fires — no adapter
+    change needed for either half.
+    """
+
+    async def frame() -> AsyncGenerator[str, None]:
+        yield f"data: {json.dumps({'notice': {'text': notice_text}})}\n\n"
+        yield f"data: {json.dumps({'error': error_code})}\n\n"
+
+    return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _paywall_notice_stream(notice_text: str) -> StreamingResponse:
+    """Refuse a linked free-plan user's turn with a `notice` + `done` pair.
+
+    No `text` frame is ever sent, so `onDone` receives an empty `fullText`
+    and delivers nothing further — the `notice` is the whole reply. Reuses
+    the same generic frames the rate-limit notice (`_bot_rate_limit_notice`)
+    already proves out for arbitrary, per-user text (a checkout link, a
+    discount code) with zero bot-adapter changes.
+    """
+
+    async def frame() -> AsyncGenerator[str, None]:
+        yield f"data: {json.dumps({'notice': {'text': notice_text}})}\n\n"
+        yield f"data: {json.dumps({'done': True, 'conversation_id': ''})}\n\n"
+
+    return StreamingResponse(frame(), media_type="text/event-stream")
+
+
+def _paywall_notice(checkout_url: str) -> str:
+    notice = f"GAIA is a paid product. Subscribe to Pro to keep chatting: {checkout_url}"
+    if settings.PAYWALL_DISCOUNT_CODE:
+        notice += f" Use code {settings.PAYWALL_DISCOUNT_CODE} for a discount."
+    return notice
 
 
 def _capture_bot_turn_refused(user_id: str, platform: str, reason: str) -> None:
@@ -312,7 +365,9 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         )
 
     if not user:
-        return _refusal_stream(BOT_STREAM_ERROR_NOT_AUTHENTICATED)
+        return _refusal_stream_with_notice(
+            _UNLINKED_PAYWALL_NOTICE, BOT_STREAM_ERROR_NOT_AUTHENTICATED
+        )
 
     user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
@@ -323,6 +378,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         log.set(outcome="plan_required")  # pragma: no mutate
         _capture_bot_turn_refused(user_id, body.platform, "plan_required")
         return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
+
+    # GAIA is paid-only: a linked FREE user is refused here, before any
+    # LangGraph run starts. Distinct from platform_requires_upgrade above,
+    # which only gates premium-platform linking — this gates every platform.
+    if not await is_subscription_active(user_id):
+        log.set(outcome="subscription_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, body.platform, "subscription_required")
+        return _paywall_notice_stream(_paywall_notice(await _bot_upgrade_url(user_id)))
 
     # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
     # be a decorator here: the caller is resolved from a platform link above, so

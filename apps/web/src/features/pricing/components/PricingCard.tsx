@@ -182,8 +182,10 @@ export function PricingCard({
     return `Get GAIA ${title}`;
   };
 
+  // GAIA is paid-only: the backend no longer serves a $0 plan (PricingCards
+  // filters any stray $0 row out before it reaches this component), so
+  // isFree is effectively always false. Kept as a defensive branch.
   const isFree = price === 0;
-  // A signed-in user with no active paid subscription is on the Free plan.
   const isOnFreePlan = !!user && !hasActiveSubscription;
 
   const renderCta = () => {

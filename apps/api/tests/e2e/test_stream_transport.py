@@ -29,6 +29,7 @@ import asyncio
 from collections.abc import AsyncIterator, Callable, Iterator
 import json
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import fakeredis.aioredis
@@ -42,6 +43,7 @@ from app.api.v1.endpoints import chat as chat_endpoint
 from app.constants.cache import STREAM_EVENTS_PREFIX, STREAM_TURN_DEDUP_PREFIX
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
+from app.models.payment_models import PlanType
 from app.utils.agent_utils import format_sse_data
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.transcript import DONE, Transcript
@@ -62,6 +64,24 @@ _ASGI_SPEC_VERSION = "2.3"  # what uvicorn advertises (uvicorn/protocols/http/h1
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _pro_subscription() -> Iterator[None]:
+    """These tests exercise SSE transport mechanics (ownership, replay, dedup,
+    disconnect) — not the paywall. ``POST /chat-stream`` now runs through
+    ``@require_subscription``, so the root conftest's global FREE-plan default
+    would 402 every POST before any of the transport machinery under test runs.
+    Same pattern as ``tests/integration/api/test_chat_endpoints.py`` post-gate.
+    """
+    subscription = MagicMock()
+    subscription.plan_type = PlanType.PRO
+    with patch(
+        "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+        new_callable=AsyncMock,
+        return_value=subscription,
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)

@@ -63,7 +63,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
               <Tab key="monthly" title="Monthly">
                 {/* Trust bar */}
                 <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
-                  Secure payment · Cancel anytime · No credit card for Free
+                  Secure payment · Cancel anytime
                 </p>
                 <PricingCards
                   durationIsMonth
@@ -84,7 +84,7 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
               >
                 {/* Trust bar */}
                 <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
-                  Secure payment · Cancel anytime · No credit card for Free
+                  Secure payment · Cancel anytime
                 </p>
                 <PricingCards initialPlans={plans} hideEnterprise />
               </Tab>

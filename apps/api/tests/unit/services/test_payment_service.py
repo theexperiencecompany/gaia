@@ -310,6 +310,16 @@ def mock_track_subscription():
 
 
 @pytest.fixture
+def mock_deactivate_workflows():
+    with patch(
+        "app.services.payments.payment_webhook_service.deactivate_workflows_for_lapsed_subscription",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        mock_fn.return_value = 0
+        yield mock_fn
+
+
+@pytest.fixture
 def mock_webhook_send_email():
     with patch(
         "app.services.payments.payment_webhook_service.send_pro_subscription_email",
@@ -488,6 +498,103 @@ class TestGetPlans:
         assert plans[0].description is None
         assert plans[0].max_users is None
         assert plans[0].features == []
+
+    async def test_free_plan_never_reaches_the_response(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_redis_cache,
+    ):
+        """GAIA is paid-only — a $0 'Free' row in the collection must never
+        render as a card, even though the repository still returns it (a
+        pre-cutover seed, or a manual DB edit)."""
+        free_plan = PlanDocument(
+            id=str(ObjectId()),
+            dodo_product_id="",
+            name="Free",
+            amount=0,
+            currency="USD",
+            duration="monthly",
+            is_active=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        mock_plan_repository.list_plans = AsyncMock(return_value=[free_plan, SAMPLE_PLAN])
+
+        plans = await payment_service.get_plans()
+
+        assert [p.name for p in plans] == ["Pro Monthly"]
+        assert all(p.amount > 0 for p in plans)
+
+    async def test_free_plan_filtered_even_when_served_from_cache(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_redis_cache,
+    ):
+        """The free row is cached too (the cache mirrors the DB) — filtering
+        must happen on every read path, not only the DB-miss path."""
+        cached_free = PlanResponse(
+            id="free-id",
+            dodo_product_id="",
+            name="Free",
+            description=None,
+            amount=0,
+            currency="USD",
+            duration="monthly",
+            max_users=1,
+            features=[],
+            is_active=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        cached_pro = PlanResponse(
+            id="pro-id",
+            dodo_product_id="prod_abc123",
+            name="Pro",
+            description=None,
+            amount=3000,
+            currency="USD",
+            duration="monthly",
+            max_users=1,
+            features=[],
+            is_active=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        mock_redis_cache.get = AsyncMock(
+            return_value=[cached_free.model_dump(), cached_pro.model_dump()]
+        )
+
+        plans = await payment_service.get_plans()
+
+        assert [p.name for p in plans] == ["Pro"]
+
+    async def test_zero_amount_enterprise_plan_is_not_mistaken_for_free(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_redis_cache,
+    ):
+        """Enterprise is also $0 (contact-sales) — amount alone must not be
+        the filter, or the Enterprise card would vanish too."""
+        enterprise_plan = PlanDocument(
+            id=str(ObjectId()),
+            dodo_product_id="",
+            name="Enterprise",
+            amount=0,
+            currency="USD",
+            duration="monthly",
+            max_users=0,
+            is_active=True,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        mock_plan_repository.list_plans = AsyncMock(return_value=[enterprise_plan])
+
+        plans = await payment_service.get_plans()
+
+        assert [p.name for p in plans] == ["Enterprise"]
 
 
 class TestCreateSubscription:
@@ -1778,6 +1885,29 @@ class TestProcessWebhookIdempotency:
         assert result.status == "ignored"
         assert "already processed" in result.message
 
+    async def test_a_replayed_cancellation_deactivates_workflows_only_once(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """Dodo can redeliver the same webhook id. The idempotency check must stop
+        the second delivery before it deactivates the user's workflows again."""
+        event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
+
+        first = await webhook_service.process_webhook(event_data, "wh_cancel_replay")
+        assert first.status == "processed"
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+
+        # Second delivery of the identical webhook id: it is now "processed".
+        mock_processed_webhook_repository.is_processed = AsyncMock(return_value=True)
+        second = await webhook_service.process_webhook(event_data, "wh_cancel_replay")
+
+        assert second.status == "ignored"
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+
     async def test_unknown_event_type_is_ignored_and_recorded(
         self,
         webhook_service,
@@ -2097,6 +2227,22 @@ class TestHandleSubscriptionActive:
         assert result.status == "failed"
         assert "Processing error" in result.message
 
+    async def test_does_not_deactivate_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_webhook_users_collection,
+        mock_webhook_send_email,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """A user going Pro must never have their automation turned off."""
+        event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_sub_008")
+
+        mock_deactivate_workflows.assert_not_awaited()
+
 
 class TestHandleSubscriptionRenewed:
     """Tests for _handle_subscription_renewed."""
@@ -2251,6 +2397,7 @@ class TestHandleSubscriptionCancelled:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
         mock_track_subscription,
+        mock_deactivate_workflows,
     ):
         event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_004")
@@ -2273,6 +2420,7 @@ class TestHandleSubscriptionCancelled:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
         mock_track_subscription,
+        mock_deactivate_workflows,
     ):
         """A cancel-at-next-billing-date keeps the subscription active and just
         records the flag — the user retains Pro access until the period ends."""
@@ -2298,6 +2446,7 @@ class TestHandleSubscriptionCancelled:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
         mock_track_subscription,
+        mock_deactivate_workflows,
     ):
         """Even if Dodo ever reported status "cancelled" in a scheduled-cancel
         payload, the user is not downgraded early — status stays untouched."""
@@ -2314,6 +2463,56 @@ class TestHandleSubscriptionCancelled:
         set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert "status" not in set_data
         assert set_data["cancel_at_next_billing_date"] is True
+
+    async def test_immediate_cancel_deactivates_this_users_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """An immediate cancellation (no cancel_at_next_billing_date) drops the
+        user from Pro right away, so their workflows must be turned off now."""
+        event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
+
+        await webhook_service.process_webhook(event_data, "wh_cancel_sub_007")
+
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_scheduled_cancel_does_not_deactivate_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """A cancel scheduled for period end keeps the user on Pro (and their
+        workflows running) until `subscription.expired` actually fires."""
+        payload = {**SUBSCRIPTION_DATA_PAYLOAD, "cancel_at_next_billing_date": True}
+        event_data = _make_webhook_event("subscription.cancelled", payload)
+
+        await webhook_service.process_webhook(event_data, "wh_cancel_sub_008")
+
+        mock_deactivate_workflows.assert_not_awaited()
+
+    async def test_deactivation_failure_does_not_fail_the_webhook(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """A broken workflow deactivation must not turn an otherwise-successful
+        billing webhook into a "failed" result that Dodo would retry forever."""
+        mock_deactivate_workflows.side_effect = RuntimeError("mongo down")
+        event_data = _make_webhook_event("subscription.cancelled", SUBSCRIPTION_DATA_PAYLOAD)
+
+        result = await webhook_service.process_webhook(event_data, "wh_cancel_sub_009")
+
+        assert result.status == "processed"
 
 
 class TestHandleSubscriptionExpired:
@@ -2341,6 +2540,7 @@ class TestHandleSubscriptionExpired:
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
         mock_track_subscription,
+        mock_deactivate_workflows,
     ):
         event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
         await webhook_service.process_webhook(event_data, "wh_expire_002")
@@ -2353,6 +2553,36 @@ class TestHandleSubscriptionExpired:
         assert call_kwargs["event_type"] == "subscription:expired"
         assert call_kwargs["user_id"] == FAKE_USER_ID
 
+    async def test_deactivates_this_users_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_expire_003")
+
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+
+    async def test_no_user_id_means_no_deactivation_call(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+        mock_deactivate_workflows,
+    ):
+        """No local subscription row matched the Dodo id: there is no user to
+        resolve, so nothing is deactivated instead of raising on a None id."""
+        mock_webhook_subscription_repository.get_user_id_by_dodo_id.return_value = None
+        event_data = _make_webhook_event("subscription.expired", SUBSCRIPTION_DATA_PAYLOAD)
+
+        await webhook_service.process_webhook(event_data, "wh_expire_004")
+
+        mock_deactivate_workflows.assert_not_awaited()
+
 
 class TestHandleSubscriptionFailed:
     """Tests for _handle_subscription_failed."""
@@ -2362,6 +2592,7 @@ class TestHandleSubscriptionFailed:
         webhook_service,
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
+        mock_deactivate_workflows,
     ):
         event_data = _make_webhook_event("subscription.failed", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_sfail_001")
@@ -2372,6 +2603,18 @@ class TestHandleSubscriptionFailed:
         set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "failed"
 
+    async def test_deactivates_this_users_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_deactivate_workflows,
+    ):
+        event_data = _make_webhook_event("subscription.failed", SUBSCRIPTION_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_sfail_002")
+
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
+
 
 class TestHandleSubscriptionOnHold:
     """Tests for _handle_subscription_on_hold."""
@@ -2381,6 +2624,7 @@ class TestHandleSubscriptionOnHold:
         webhook_service,
         mock_processed_webhook_repository,
         mock_webhook_subscription_repository,
+        mock_deactivate_workflows,
     ):
         event_data = _make_webhook_event("subscription.on_hold", SUBSCRIPTION_DATA_PAYLOAD)
         result = await webhook_service.process_webhook(event_data, "wh_hold_001")
@@ -2390,6 +2634,18 @@ class TestHandleSubscriptionOnHold:
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
         set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "on_hold"
+
+    async def test_deactivates_this_users_workflows(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_deactivate_workflows,
+    ):
+        event_data = _make_webhook_event("subscription.on_hold", SUBSCRIPTION_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_hold_002")
+
+        mock_deactivate_workflows.assert_awaited_once_with(FAKE_USER_ID)
 
 
 class TestHandleSubscriptionPlanChanged:

@@ -7,6 +7,7 @@ import type { Plan } from "../api/pricingApi";
 import { ANNUAL_PRICE_RETENTION } from "../constants";
 import { usePricing } from "../hooks/usePricing";
 import { convertToUSDCents } from "../utils/currencyConverter";
+import { isProPlan } from "../utils/planPredicates";
 import { EnterpriseBar } from "./EnterpriseBar";
 import { PricingCard } from "./PricingCard";
 
@@ -103,20 +104,20 @@ export function PricingCards({
   // Enterprise is shown as a full-width bar below the grid, not as a card.
   const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);
 
-  // Priced tiers in the grid (Free + the paid plans for the chosen billing period).
+  // Priced tiers in the grid for the chosen billing period. GAIA is paid-only,
+  // so any $0 row is filtered out client-side as a safety net even if one
+  // slips through from the backend.
   const cardPlans = plans.filter((plan: Plan) => {
     if (isEnterprise(plan)) return false;
-    if (plan.amount === 0) return true;
+    if (plan.amount === 0) return false;
     if (durationIsMonth) return plan.duration === "monthly";
     return plan.duration === "yearly";
   });
 
-  // Sort: Free first, then paid plans by amount.
-  const sortedPlans = cardPlans.toSorted((a: Plan, b: Plan) => {
-    if (a.amount === 0) return -1;
-    if (b.amount === 0) return 1;
-    return a.amount - b.amount;
-  });
+  // Sort paid plans by amount.
+  const sortedPlans = cardPlans.toSorted(
+    (a: Plan, b: Plan) => a.amount - b.amount,
+  );
 
   // Size the whole block (cards + Enterprise bar) so each tier keeps the width
   // it would have in a 3-column layout: a 2-tier lineup uses a 2-column grid in
@@ -137,9 +138,9 @@ export function PricingCards({
     <div className={`mx-auto flex w-full flex-col gap-3 ${blockWidthClass}`}>
       <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
         {sortedPlans.map((plan: Plan, index: number) => {
-          const isPro = plan.name.toLowerCase().includes("pro");
-          // Free leads its list with "Includes:"; each paid tier builds on the
-          // one before it ("Everything in Free, plus").
+          const isPro = isProPlan(plan);
+          // The first (cheapest) plan leads its list with "Includes:"; each
+          // subsequent tier builds on the one before it ("Everything in X, plus").
           const featuresHeading =
             index === 0
               ? "Includes:"

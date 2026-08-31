@@ -9,6 +9,10 @@ import {
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
+import {
+  type PaywallOffer,
+  usePaywallModalStore,
+} from "@/stores/paywallModalStore";
 
 interface ErrorHandlerDependencies {
   router: AppRouterInstance;
@@ -80,6 +84,14 @@ export const processAxiosError = (
       error.handled = true;
       break;
 
+    case 402:
+      // Only mark this handled — and suppress the fallback error toast —
+      // when the body actually is the subscription_required shape. A
+      // malformed or unrelated 402 must still reach the caller's default
+      // error handling (see service.ts) instead of vanishing silently.
+      error.handled = handleSubscriptionRequiredError(data);
+      break;
+
     case 429:
       if (!handleRateLimitError(data)) {
         toast.error("Too many Requests!");
@@ -144,6 +156,69 @@ const handleForbiddenError = (
         : "You don't have permission to access this resource.";
     toast.error(message);
   }
+};
+
+const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
+
+interface SubscriptionRequiredDetail {
+  code: string;
+  message: string;
+  checkout_url: string | null;
+  discount_code: string | null;
+}
+
+/**
+ * Extracts the `{ code: "subscription_required", message, checkout_url,
+ * discount_code }` payload a 402 response carries under `detail`, or
+ * `undefined` if the body isn't shaped that way.
+ */
+export const getSubscriptionRequiredDetail = (
+  data: unknown,
+): SubscriptionRequiredDetail | undefined => {
+  const detail =
+    data && typeof data === "object" && "detail" in data
+      ? (data as { detail: unknown }).detail
+      : undefined;
+  if (
+    detail &&
+    typeof detail === "object" &&
+    "code" in detail &&
+    (detail as { code?: unknown }).code === SUBSCRIPTION_REQUIRED_CODE
+  ) {
+    return detail as SubscriptionRequiredDetail;
+  }
+  return undefined;
+};
+
+/**
+ * Maps the `subscription_required` 402 payload onto the paywall store's
+ * offer shape. Shared by the axios interceptor (below) and the chat-stream
+ * client (`chatApi.ts`, whose 402s never pass through axios) so both open
+ * the paywall with the same fields.
+ */
+export const subscriptionRequiredOfferFromDetail = (
+  detail: SubscriptionRequiredDetail,
+): PaywallOffer => ({
+  checkoutUrl: detail.checkout_url,
+  discountCode: detail.discount_code,
+  message: detail.message,
+});
+
+/**
+ * A 402 gated endpoint means the user must subscribe before this action can
+ * proceed. Opens the non-dismissible paywall instead of a toast — this is a
+ * hard wall, not a transient error. Returns whether the body actually was
+ * the subscription_required shape, so the caller can fall back to default
+ * error handling for a malformed/unrelated 402 instead of swallowing it.
+ */
+const handleSubscriptionRequiredError = (errorData: unknown): boolean => {
+  const detail = getSubscriptionRequiredDetail(errorData);
+  if (!detail) return false;
+
+  usePaywallModalStore
+    .getState()
+    .openModal(subscriptionRequiredOfferFromDetail(detail));
+  return true;
 };
 
 /**

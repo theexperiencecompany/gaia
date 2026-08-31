@@ -12,8 +12,16 @@ from httpx import AsyncClient
 
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from tests.conftest import FAKE_USER
 
 API = "/api/v1"
+
+# The `client` fixture's dependency override (`get_current_user` -> FAKE_USER)
+# is FastAPI DI, not the WorkOSAuthMiddleware-set request context that
+# require_subscription's resolve_caller reads first — the test app strips
+# that middleware entirely. So a gate test has to set the context directly to
+# exercise the real resolution path, the same way production requests do.
+_GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
 
 
 def _image_data(**overrides) -> ImageData:
@@ -137,3 +145,27 @@ class TestImageStream:
     async def test_stream_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.post(f"{API}/image/generate/stream", json={"message": "a cat"})
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Paid-only gate — /image/generate and /image/generate/stream burn real LLM
+# spend and must 402 a FREE-plan user before generation ever runs.
+# ---------------------------------------------------------------------------
+
+
+class TestImagePaidOnlyGate:
+    @patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock)
+    async def test_generate_free_user_gets_402(self, mock_generate: AsyncMock, client: AsyncClient):
+        with patch(_GET_AUTHENTICATED_USER, return_value=FAKE_USER):
+            resp = await client.post(f"{API}/image/generate", json={"message": "a cat"})
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        mock_generate.assert_not_called()
+
+    async def test_generate_stream_free_user_gets_402(self, client: AsyncClient):
+        with patch(_GET_AUTHENTICATED_USER, return_value=FAKE_USER):
+            resp = await client.post(f"{API}/image/generate/stream", json={"message": "a cat"})
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"

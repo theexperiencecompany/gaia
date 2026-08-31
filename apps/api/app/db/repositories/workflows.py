@@ -647,5 +647,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             {"_id": {"$in": workflow_ids}, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
         )
 
+    async def distinct_users_with_activated_workflows(self) -> list[str]:
+        """Every user id that owns at least one activated workflow — the paid-only
+        migration's candidate pool, checked one by one against subscription status."""
+        return await self._distinct("user_id", {"activated": True})
+
 
 workflow_repository = WorkflowsRepository()

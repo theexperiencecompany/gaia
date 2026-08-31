@@ -42,6 +42,13 @@ from app.services.email import send_pro_subscription_email
 from shared.py.wide_events import log
 
 
+def _is_free_plan(name: str, amount: int) -> bool:
+    """GAIA is paid-only — the seeded Free row (``amount=0``, ``name="Free"``)
+    must never reach the frontend. ``amount`` alone would also catch Enterprise
+    ($0, contact-sales), so both must match."""
+    return amount == 0 and name.strip().lower() == PlanType.FREE.value
+
+
 class DodoPaymentService:
     """Streamlined Dodo Payments service."""
 
@@ -88,7 +95,9 @@ class DodoPaymentService:
                     if "dodo_product_id" not in plan_data:
                         plan_data["dodo_product_id"] = ""
                     plan_responses.append(PlanResponse(**plan_data))
-                return plan_responses
+                return [
+                    plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)
+                ]
             except Exception:
                 # If cached data is incompatible, clear cache and fetch fresh
                 await redis_cache.delete(cache_key)
@@ -114,9 +123,11 @@ class DodoPaymentService:
             for plan in plans
         ]
 
-        # Cache result
+        # Cache result — full catalogue, including the free row, so the cache
+        # stays a faithful mirror of the DB; the free row is filtered on every
+        # read path instead (see the cache-hit branch above).
         await redis_cache.set(cache_key, [plan.model_dump() for plan in plan_responses])
-        return plan_responses
+        return [plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)]
 
     async def create_subscription(
         self,
