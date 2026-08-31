@@ -20,6 +20,7 @@ import json
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.outputs import ChatGenerationChunk
 from openrouter.components.chatresult import ChatResult as SDKChatResult
 from openrouter.components.chatstreamchunk import ChatStreamChunk as SDKChatStreamChunk
 from openrouter.types import BaseModel as SDKBaseModel
@@ -305,6 +306,43 @@ class TestNonStreaming:
         assert PROVIDER_NAME_METADATA_KEY not in message.response_metadata
 
 
+def _gen_chunk(message: Any) -> ChatGenerationChunk:
+    return ChatGenerationChunk(message=message)
+
+
+class TestKeepFirstProviderName:
+    """The per-stream de-duplicator, exercised directly.
+
+    Its branches are unreachable through a scripted wire — every chunk a real
+    stream yields is an `AIMessageChunk` — so the contract is pinned here.
+    """
+
+    def test_the_first_stamped_chunk_keeps_the_name_and_counts(self) -> None:
+        chunk = _gen_chunk(
+            AIMessageChunk(content="", response_metadata={PROVIDER_NAME_METADATA_KEY: UPSTREAM})
+        )
+        assert _patch._keep_first_provider_name(chunk, 0) == 1
+        assert chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
+
+    def test_a_later_stamped_chunk_is_stripped_and_does_not_count(self) -> None:
+        chunk = _gen_chunk(
+            AIMessageChunk(content="", response_metadata={PROVIDER_NAME_METADATA_KEY: UPSTREAM})
+        )
+        assert _patch._keep_first_provider_name(chunk, 1) == 0
+        assert PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata
+
+    def test_an_unstamped_chunk_does_not_count(self) -> None:
+        """Counting it would strip the name off the first chunk that does carry it."""
+        chunk = _gen_chunk(AIMessageChunk(content="hi"))
+        assert _patch._keep_first_provider_name(chunk, 0) == 0
+
+    def test_a_non_ai_chunk_does_not_count(self) -> None:
+        from langchain_core.messages import ToolMessageChunk
+
+        chunk = _gen_chunk(ToolMessageChunk(content="x", tool_call_id="t1"))
+        assert _patch._keep_first_provider_name(chunk, 0) == 0
+
+
 class TestStreaming:
     def test_merged_message_reports_the_upstream_exactly_once(self) -> None:
         """The merge_dicts trap: `provider` arrives on every chunk, so an
@@ -359,9 +397,12 @@ class TestStreaming:
     async def test_the_async_path_behaves_the_same(self) -> None:
         with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
             merged = None
-            async for chunk in _client(wire.base_url).astream("hi", stop=["STOPHERE"]):
+            async for chunk in _client(wire.base_url).astream(
+                "hi", stop=["STOPHERE"], temperature=0.25
+            ):
                 merged = chunk if merged is None else merged + chunk
             assert wire.last_request["stop"] == ["STOPHERE"]
+            assert wire.last_request["temperature"] == 0.25
         assert merged is not None
         assert merged.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 

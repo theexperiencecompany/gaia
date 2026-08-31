@@ -185,7 +185,7 @@ def _keep_first_provider_name(chunk: ChatGenerationChunk, kept_so_far: int) -> i
         return 0
     if PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata:
         return 0
-    if kept_so_far:
+    if kept_so_far > 0:
         del chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY]
         return 0
     return 1
