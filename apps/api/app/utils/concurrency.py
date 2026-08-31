@@ -1,4 +1,8 @@
-"""Async concurrency helpers."""
+"""Async concurrency helpers.
+
+``loop_bound_semaphore`` bounds one event loop, by design — it exists to cap a
+single process's fan-out, not the fleet's.
+"""
 
 from __future__ import annotations
 

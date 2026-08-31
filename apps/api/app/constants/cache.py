@@ -51,6 +51,9 @@ COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
 SEARCH_CACHE_TTL = ONE_DAY_TTL
 STREAM_TTL = FIVE_MINUTES_TTL
+# A streaming turn refreshes its progress/resume keys once they drop below this,
+# so the refresh costs one TTL read per frame instead of a read-plus-two-writes.
+STREAM_LIVENESS_REFRESH_AFTER = STREAM_TTL // 2
 STATE_TOKEN_TTL = TEN_MINUTES_TTL
 MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 

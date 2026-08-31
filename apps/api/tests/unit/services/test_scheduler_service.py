@@ -1,6 +1,8 @@
 """Unit tests for BaseSchedulerService."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,7 +15,8 @@ from app.models.scheduler_models import (
     ScheduledTaskStatus,
     TaskExecutionResult,
 )
-from app.services.scheduler_service import BaseSchedulerService
+from app.services.scheduler_service import STALE_EXECUTING_THRESHOLD, BaseSchedulerService
+from app.utils.timezone import Timezone
 
 # ---------------------------------------------------------------------------
 # Concrete subclass for testing
@@ -31,6 +34,8 @@ class ConcreteSchedulerService(BaseSchedulerService):
         )
         self.mock_update_task_status = AsyncMock(return_value=True)
         self.mock_get_pending_task = AsyncMock(return_value=[])
+        self.mock_claim_task = AsyncMock(return_value=True)
+        self.mock_find_stale_executing = AsyncMock(return_value=[])
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         return await self.mock_get_task(task_id, user_id)
@@ -49,6 +54,14 @@ class ConcreteSchedulerService(BaseSchedulerService):
 
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         return await self.mock_get_pending_task(current_time)
+
+    async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
+        return await self.mock_find_stale_executing(cutoff)
+
+    async def claim_task_for_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> bool:
+        return await self.mock_claim_task(task_id, expected_occurrence)
 
     def get_job_name(self) -> str:
         return "test_job"
@@ -219,6 +232,50 @@ class TestRescheduleTask:
 # ---------------------------------------------------------------------------
 
 
+class TestReapStaleExecuting:
+    """A claim with no lease needs a reaper, or a dead worker wedges a task forever."""
+
+    async def test_a_wedged_recurring_task_is_returned_to_scheduled_and_rearmed(
+        self, service, recurring_task
+    ):
+        """The claim flips SCHEDULED -> EXECUTING and nothing releases it.
+
+        If the worker is SIGKILLed mid-run (an ordinary rolling deploy), or arq
+        cancels the job and the retry finds the row already claimed, the row
+        stays EXECUTING. The due-scan filters on ``status="scheduled"``, so
+        nothing can ever see it again and the task simply never fires.
+        """
+        recurring_task.status = ScheduledTaskStatus.EXECUTING
+        service.mock_find_stale_executing.return_value = [recurring_task]
+        mock_job = MagicMock(job_id="rearmed")
+        service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
+
+        with patch(
+            "app.services.scheduler_service.get_next_run_time",
+            return_value=datetime.now(UTC) + timedelta(days=1),
+        ):
+            reaped = await service.reap_stale_executing()
+
+        assert reaped == 1
+        statuses = [call[0][1] for call in service.mock_update_task_status.call_args_list]
+        assert ScheduledTaskStatus.SCHEDULED in statuses
+
+    async def test_a_wedged_one_shot_is_rearmed_at_its_original_time(self, service, sample_task):
+        """A one-shot has no next occurrence — it must go back to SCHEDULED at the
+        time it was armed for, not be dropped for want of a cron expression."""
+        sample_task.status = ScheduledTaskStatus.EXECUTING
+        service.mock_find_stale_executing.return_value = [sample_task]
+        service.arq_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+
+        assert await service.reap_stale_executing() == 1
+        statuses = [call[0][1] for call in service.mock_update_task_status.call_args_list]
+        assert ScheduledTaskStatus.SCHEDULED in statuses
+
+    async def test_nothing_stale_reaps_nothing(self, service):
+        assert await service.reap_stale_executing() == 0
+        service.mock_update_task_status.assert_not_awaited()
+
+
 class TestProcessTaskExecution:
     async def test_task_not_found(self, service):
         service.mock_get_task.return_value = None
@@ -228,14 +285,54 @@ class TestProcessTaskExecution:
         assert result.success is False
         assert "not found" in result.message
 
-    async def test_task_not_scheduled_status(self, service, sample_task):
+    async def test_task_no_longer_scheduled_is_not_executed(self, service, sample_task):
+        """A task that is not SCHEDULED any more fails the claim and must not run."""
         sample_task.status = ScheduledTaskStatus.COMPLETED
         service.mock_get_task.return_value = sample_task
+        service.mock_claim_task.return_value = False
 
         result = await service.process_task_execution("task123")
 
         assert result.success is False
         assert "not in scheduled status" in result.message
+        service.mock_execute_task.assert_not_awaited()
+
+    async def test_only_one_worker_executes_a_task_two_workers_picked_up(
+        self, service, sample_task
+    ):
+        """Two workers holding a job for the same task must not both execute it.
+
+        Two ARQ jobs for one reminder is the normal case, not a contrived race:
+        the startup scan runs in every replica and every worker, and its job id
+        is derived from each process's own ``now`` (past-due reminders get
+        shifted to ``now + 120s``), so the ids differ and ARQ does not dedup
+        them. Both jobs then read status=SCHEDULED and run — the user gets the
+        reminder twice and GAIA pays for two agent turns.
+
+        The claim has to be the atomic SCHEDULED -> EXECUTING transition itself,
+        the way ``workflow_repository.claim_for_execution`` already does it.
+        """
+        service.mock_get_task.return_value = sample_task
+        claimed: list[str] = []
+
+        async def claim_once(task_id: str, expected_occurrence=None) -> bool:
+            if task_id in claimed:
+                return False
+            claimed.append(task_id)
+            return True
+
+        service.mock_claim_task = AsyncMock(side_effect=claim_once)
+
+        first, second = await asyncio.gather(
+            service.process_task_execution("task123"),
+            service.process_task_execution("task123"),
+        )
+
+        assert service.mock_execute_task.await_count == 1, (
+            "both workers executed the same reminder — the user gets it twice "
+            "and both agent turns are billed"
+        )
+        assert [first.success, second.success].count(True) == 1
 
     async def test_one_time_task_executed_and_completed(self, service, sample_task):
         service.mock_get_task.return_value = sample_task
@@ -244,9 +341,9 @@ class TestProcessTaskExecution:
         result = await service.process_task_execution("task123")
 
         assert result.success is True
-        # Should be marked as EXECUTING then COMPLETED
+        # EXECUTING is the claim itself (one atomic transition), then COMPLETED.
+        service.mock_claim_task.assert_awaited_once_with("task123", None)
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.COMPLETED in status_calls
 
     async def test_recurring_task_rescheduled(self, service, recurring_task):
@@ -261,9 +358,9 @@ class TestProcessTaskExecution:
             result = await service.process_task_execution("task_recurring")
 
         assert result.success is True
-        # Should update status to SCHEDULED for next run
+        # EXECUTING is the claim itself; the re-arm puts it back to SCHEDULED.
+        service.mock_claim_task.assert_awaited_once_with("task_recurring", None)
         status_calls = [call[0][1] for call in service.mock_update_task_status.call_args_list]
-        assert ScheduledTaskStatus.EXECUTING in status_calls
         assert ScheduledTaskStatus.SCHEDULED in status_calls
 
     async def test_recurring_task_max_occurrences_reached(
@@ -551,3 +648,159 @@ class TestEnqueueTask:
         call_args = service.arq_pool.enqueue_job.call_args
         defer_until = call_args[1]["_defer_until"]
         assert defer_until.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# reap_stale_executing — exact recovery behaviour
+# ---------------------------------------------------------------------------
+
+_REAP_MSG = "Reaped task stuck in EXECUTING; reset to SCHEDULED"
+
+
+def _stale(**over) -> SimpleNamespace:
+    base = dict(
+        id="t-rec",
+        repeat="0 9 * * *",
+        scheduled_at=datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
+        trigger_config=SimpleNamespace(next_run=None, timezone=None),
+        updated_at=datetime.now(UTC) - timedelta(seconds=120),
+    )
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+class TestReapStaleExecutingExact:
+    async def test_recurring_reset_reschedule_and_log(self, service):
+        now_before = datetime.now(UTC)
+        task = _stale(trigger_config=SimpleNamespace(next_run=None, timezone="America/New_York"))
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        next_run = datetime(2099, 1, 2, 9, 0, tzinfo=UTC)
+        fake_log = MagicMock()
+        with (
+            patch(
+                "app.services.scheduler_service.get_next_run_time", return_value=next_run
+            ) as gnrt,
+            patch("app.services.scheduler_service.log", fake_log),
+        ):
+            reaped = await service.reap_stale_executing()
+        now_after = datetime.now(UTC)
+
+        assert reaped == 1
+        # cutoff is now - threshold (past, never future).
+        cutoff = service.mock_find_stale_executing.await_args.args[0]
+        assert (
+            now_before - STALE_EXECUTING_THRESHOLD - timedelta(seconds=5)
+            <= cutoff
+            <= now_after - STALE_EXECUTING_THRESHOLD + timedelta(seconds=5)
+        )
+        repeat_arg, now_arg, tz_arg = gnrt.call_args.args
+        assert repeat_arg == task.repeat
+        assert isinstance(now_arg, datetime)
+        assert tz_arg == Timezone.parse("America/New_York")
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-rec",
+            ScheduledTaskStatus.SCHEDULED,
+            {"scheduled_at": next_run, "trigger_config.next_run": next_run},
+            None,
+        )
+        service.reschedule_task.assert_awaited_once_with("t-rec", next_run)
+        fake_log.warning.assert_called_once()
+        msg = fake_log.warning.call_args.args[0]
+        kw = fake_log.warning.call_args.kwargs
+        assert msg == _REAP_MSG
+        assert kw["task_id"] == "t-rec"
+        assert kw["scheduler_class"] == "ConcreteSchedulerService"
+        assert kw["next_run"] == next_run
+        assert isinstance(kw["stuck_seconds"], int) and 100 <= kw["stuck_seconds"] <= 140
+
+    async def test_one_shot_reset_to_its_original_time_without_trigger_next_run(self, service):
+        task = _stale(id="t-one", repeat=None)
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+
+        assert await service.reap_stale_executing() == 1
+        # No next occurrence: scheduled_at stays, and trigger_config.next_run is NOT written.
+        service.mock_update_task_status.assert_awaited_once_with(
+            "t-one", ScheduledTaskStatus.SCHEDULED, {"scheduled_at": task.scheduled_at}, None
+        )
+        service.reschedule_task.assert_awaited_once_with("t-one", task.scheduled_at)
+
+    async def test_missing_updated_at_reports_minus_one(self, service):
+        task = SimpleNamespace(
+            id="t-miss",
+            repeat=None,
+            scheduled_at=datetime(2099, 1, 1, 9, 0, tzinfo=UTC),
+            trigger_config=None,
+        )
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            await service.reap_stale_executing()
+        assert fake_log.warning.call_args.kwargs["stuck_seconds"] == -1
+
+    async def test_naive_updated_at_is_normalized_not_crashed(self, service):
+        # A naive updated_at must be treated as UTC; otherwise now(aware) - naive
+        # raises and the reap dies before resetting the task.
+        naive_120s_ago = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=120)
+        task = _stale(repeat=None, trigger_config=None, updated_at=naive_120s_ago)
+        service.mock_find_stale_executing.return_value = [task]
+        service.reschedule_task = AsyncMock()
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            assert await service.reap_stale_executing() == 1
+        assert 100 <= fake_log.warning.call_args.kwargs["stuck_seconds"] <= 200
+
+    async def test_a_task_without_an_id_is_skipped_but_the_scan_continues(self, service):
+        no_id = _stale(id=None)
+        good = _stale(id="t-good", repeat=None, trigger_config=None)
+        service.mock_find_stale_executing.return_value = [no_id, good]
+        service.reschedule_task = AsyncMock()
+
+        # The id-less one is skipped (continue, not break), so the next is reaped.
+        assert await service.reap_stale_executing() == 1
+        service.reschedule_task.assert_awaited_once_with("t-good", good.scheduled_at)
+
+    async def test_the_count_accumulates_across_every_reaped_task(self, service):
+        service.mock_find_stale_executing.return_value = [
+            _stale(id="a", repeat=None, trigger_config=None),
+            _stale(id="b", repeat=None, trigger_config=None),
+        ]
+        service.reschedule_task = AsyncMock()
+        assert await service.reap_stale_executing() == 2
+
+
+# ---------------------------------------------------------------------------
+# _recurrence_timezone
+# ---------------------------------------------------------------------------
+
+
+class TestRecurrenceTimezone:
+    def test_trigger_config_timezone_wins(self):
+        task = SimpleNamespace(
+            trigger_config=SimpleNamespace(timezone="America/New_York"), timezone="UTC"
+        )
+        assert BaseSchedulerService._recurrence_timezone(task) == "America/New_York"
+
+    def test_falls_back_to_the_task_timezone(self):
+        task = SimpleNamespace(trigger_config=None, timezone="Europe/London")
+        assert BaseSchedulerService._recurrence_timezone(task) == "Europe/London"
+
+
+class TestProcessTaskClaim:
+    async def test_a_task_claimed_by_another_run_is_skipped_with_a_warning(
+        self, service, sample_task
+    ):
+        occurrence = datetime(2099, 1, 1, 12, 0, tzinfo=UTC)
+        service.mock_get_task.return_value = sample_task
+        service.mock_claim_task.return_value = False
+        fake_log = MagicMock()
+        with patch("app.services.scheduler_service.log", fake_log):
+            result = await service.process_task_execution("task123", expected_occurrence=occurrence)
+
+        service.mock_claim_task.assert_awaited_once_with("task123", occurrence)
+        fake_log.warning.assert_called_once_with(
+            "Task already claimed by another run", task_id="task123"
+        )
+        assert result.success is False

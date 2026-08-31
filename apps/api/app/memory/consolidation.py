@@ -89,6 +89,9 @@ _AGENDA_EMPTY_BODY = "- (nothing open)"
 # memory_node background-task set). A process restart during the sleep loses
 # the pending debounce — acceptable: the next ingestion reschedules it and
 # the documents converge.
+#
+# Across replicas each keeps its own waiter, but the pending set is in Redis and
+# claimed with an atomic GETDEL, so exactly one replica gets the payload.
 _waiters: dict[str, asyncio.Task] = {}
 
 

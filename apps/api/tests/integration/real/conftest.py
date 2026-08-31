@@ -126,7 +126,10 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
         await stop_up_listener()
         await stop_revoke_listener()
         await close_postgresql_db()
-        providers.reset("postgresql_engine")
+        # This teardown runs inside the app's own loop, where the sync reset()
+        # refuses to run — it cannot take the async lock and could be undone by
+        # an in-flight initialization.
+        await providers.areset("postgresql_engine")
 
 
 def _cors_only_middleware(app: FastAPI) -> None:

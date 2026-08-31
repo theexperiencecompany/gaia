@@ -17,6 +17,7 @@ from app.models.scheduler_models import (
     TaskExecutionResult,
 )
 from app.utils.cron_utils import get_next_run_time
+from app.utils.occurrence import occurrence_stamp
 from app.utils.timezone import Timezone
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
@@ -34,6 +35,12 @@ class TriggerConfigLike(Protocol):
 
     timezone: str | None
     next_run: datetime | None
+
+
+# How long a task may sit in EXECUTING before the reaper assumes its worker died.
+# Comfortably above the ARQ job timeout so a genuinely long run is never reaped
+# out from under itself.
+STALE_EXECUTING_THRESHOLD = timedelta(hours=1)
 
 
 class BaseSchedulerService(ABC):
@@ -83,7 +90,9 @@ class BaseSchedulerService(ABC):
         """Reschedule an existing task to a new time."""
         return await self._enqueue_task(task_id, new_scheduled_at)
 
-    async def process_task_execution(self, task_id: str) -> TaskExecutionResult:
+    async def process_task_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> TaskExecutionResult:
         """Process a scheduled task execution: validate, execute, then handle
         recurring logic or update final status."""
         log.set(scheduler_task_id=task_id, scheduler_class=self.__class__.__name__)
@@ -93,8 +102,16 @@ class BaseSchedulerService(ABC):
             log.error("Task not found", task_id=task_id)
             return TaskExecutionResult(success=False, message=f"Task {task_id} not found")
 
-        if task.status != ScheduledTaskStatus.SCHEDULED:
-            log.warning("Task is not scheduled", task_id=task_id, status=task.status)
+        # Claim before executing, never "read the status then write it". Two ARQ
+        # jobs for one task is the ordinary case: the startup scan runs in every
+        # replica and every worker, and past-due tasks are re-armed to that
+        # process's own ``now + 120s``, so the job ids differ and ARQ does not
+        # dedup them. Under a read-then-write both jobs saw SCHEDULED and both
+        # ran — the user got the reminder twice and both agent turns were
+        # billed. The claim IS the SCHEDULED -> EXECUTING transition, so exactly
+        # one job can win it.
+        if not await self.claim_task_for_execution(task_id, expected_occurrence):
+            log.warning("Task already claimed by another run", task_id=task_id)
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} is not in scheduled status"
             )
@@ -104,11 +121,6 @@ class BaseSchedulerService(ABC):
         occurrence_count = task.occurrence_count + 1
 
         try:
-            await self.update_task_status(
-                task_id,
-                ScheduledTaskStatus.EXECUTING,
-                {"updated_at": datetime.now(UTC)},
-            )
             execution_result = await self.execute_task(task)
         except Exception as e:
             log.error(
@@ -195,16 +207,8 @@ class BaseSchedulerService(ABC):
             log.error("Task ID is None, cannot handle recurring task")
             return
 
-        # Recurrence is computed in the task's own timezone. Reminders store it on
-        # the task itself; workflows store it on trigger_config (the zone the cron
-        # was authored against) which therefore wins. Neither set => UTC.
-        # Both are read off the BaseScheduledTask by name because only some
-        # subclasses declare them.
-        user_timezone: str | None = getattr(task, "timezone", None)
         trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
-        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
-        if trigger_timezone:
-            user_timezone = trigger_timezone
+        user_timezone = self._recurrence_timezone(task)
         log.set(scheduler_recurrence_timezone=user_timezone)
 
         # Advance from now, not from a (possibly stale) scheduled_at, so a dormant
@@ -220,6 +224,67 @@ class BaseSchedulerService(ABC):
                 {"occurrence_count": occurrence_count},
             )
             log.info("Completed recurring task", id=task.id)
+
+    @staticmethod
+    def _recurrence_timezone(task: BaseScheduledTask) -> str | None:
+        """The zone a task's cron is evaluated in; None means UTC.
+
+        Reminders store it on the task itself; workflows store it on
+        trigger_config (the zone the cron was authored against), which therefore
+        wins. Both are read by name because only some subclasses declare them.
+        """
+        trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
+        return trigger_timezone or getattr(task, "timezone", None)
+
+    async def reap_stale_executing(self) -> int:
+        """Recover tasks wedged in EXECUTING past the staleness threshold.
+
+        A fire claims a task (scheduled -> executing) with no lease on the claim.
+        If the worker dies before re-arming — a rolling deploy SIGKILLs it, or
+        arq cancels the job and the retry finds the row already claimed — the row
+        stays EXECUTING forever. Nothing can see it again: the due-scan filters
+        on ``status="scheduled"``, and the claim gate can never match it. The
+        reminder or workflow simply never fires, with no error and no retry.
+
+        Returns the number of tasks reaped.
+        """
+        now = datetime.now(UTC)
+        cutoff = now - STALE_EXECUTING_THRESHOLD
+        reaped = 0
+
+        for task in await self.find_stale_executing(cutoff):
+            if not task.id:
+                continue
+            schedule_tz = Timezone.parse(self._recurrence_timezone(task))
+            # A one-shot has no repeat: return it to SCHEDULED at its original
+            # time so the due-scan picks it up on the next pass, rather than
+            # dropping it for want of a next occurrence.
+            next_run = get_next_run_time(task.repeat, now, schedule_tz) if task.repeat else None
+
+            update_fields: dict[str, Any] = {"scheduled_at": next_run or task.scheduled_at}
+            trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+            if next_run is not None and trigger_config is not None:
+                update_fields["trigger_config.next_run"] = next_run
+
+            await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
+            rearm_at = next_run or task.scheduled_at
+            if rearm_at is not None:
+                await self.reschedule_task(task.id, rearm_at)
+
+            updated_at = getattr(task, "updated_at", None)
+            if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=UTC)
+            log.warning(
+                "Reaped task stuck in EXECUTING; reset to SCHEDULED",
+                task_id=task.id,
+                scheduler_class=self.__class__.__name__,
+                stuck_seconds=int((now - updated_at).total_seconds()) if updated_at else -1,
+                next_run=rearm_at,
+            )
+            reaped += 1
+
+        return reaped
 
     @staticmethod
     def _should_continue_recurring(
@@ -322,7 +387,7 @@ class BaseSchedulerService(ABC):
         # must not collide with the genuine next occurrence that lands on that same
         # minute, or the real one is deduped away and the shifted job, carrying the
         # stale stamp, is the only thing that fires and is rejected as stale.
-        job_id = f"{job_name}:{task_id}:{int(armed_for.timestamp())}"
+        job_id = f"{job_name}:{task_id}:{occurrence_stamp(armed_for)}"
         job = await enqueue_worker_job(
             self.arq_pool,
             job_name,
@@ -360,6 +425,23 @@ class BaseSchedulerService(ABC):
         """Execute the actual task logic."""
 
     @abstractmethod
+    async def claim_task_for_execution(
+        self, task_id: str, expected_occurrence: datetime | None = None
+    ) -> bool:
+        """Atomically move a scheduled task to EXECUTING; False if already claimed.
+
+        Must be a single conditional write predicated on the current status —
+        anything that reads the status and then writes it lets two workers both
+        pass the check and run the task twice.
+
+        ``expected_occurrence`` is the fire time the job was armed for. Status
+        alone is not sufficient for a recurring task: re-arming returns it to
+        SCHEDULED for the NEXT occurrence, at which point a sibling pod's stale
+        job would find it claimable again and run it early. Jobs enqueued before
+        the stamp existed pass ``None`` and claim on status alone.
+        """
+
+    @abstractmethod
     async def update_task_status(
         self,
         task_id: str,
@@ -368,6 +450,10 @@ class BaseSchedulerService(ABC):
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""
+
+    @abstractmethod
+    async def find_stale_executing(self, cutoff: datetime) -> list[BaseScheduledTask]:
+        """Tasks left in EXECUTING since before ``cutoff`` — the reaper's candidates."""
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:

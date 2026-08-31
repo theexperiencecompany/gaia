@@ -51,7 +51,7 @@ async def _run_task(
 ) -> _Run:
     scheduler = MagicMock()
     scheduler.get_task = AsyncMock(return_value=workflow)
-    scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+    scheduler.claim_task_for_execution = AsyncMock(return_value=True)
     scheduler.handle_recurring_task = AsyncMock(side_effect=rearm_error)
     user_get = AsyncMock(return_value=user)
     with (

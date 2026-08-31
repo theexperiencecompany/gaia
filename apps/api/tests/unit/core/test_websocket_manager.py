@@ -1,21 +1,49 @@
-"""Tests for WebSocketManager and WebSocketEventConsumer.
+"""Tests for WebSocketManager and the per-pod broadcast listener.
 
 Covers:
-- WebSocketManager: singleton pattern, add/remove connections, broadcast
-  to user, RabbitMQ fallback for non-main-app workers, disconnected socket
-  cleanup.
-- WebSocketEventConsumer: start/stop lifecycle, message handling for valid
-  broadcasts, unknown types, missing fields, JSON decode errors, disconnected
-  sockets during broadcast, and the module-level start/stop helpers.
+- WebSocketManager: singleton, add/remove connections, publish-only broadcast,
+  local delivery and dead-socket pruning.
+- websocket_broadcast_listener: dispatch of valid payloads, malformed JSON,
+  missing fields, users connected elsewhere, sockets that die mid-fan-out.
+- The two multi-instance regressions, end to end over a real pub/sub round trip
+  (fakeredis): exactly-once delivery on the publishing replica, and delivery of
+  a broadcast this replica did not originate.
 """
 
+import asyncio
+from contextlib import asynccontextmanager
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 import pytest
 
-from app.core.websocket_manager import WebSocketManager, get_websocket_manager
+from app.constants.log_tags import LogTag
+from app.constants.websocket import (
+    WEBSOCKET_BROADCAST_CHANNEL,
+    WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS,
+)
+from app.core import websocket_broadcast_listener as listener
+from app.core.websocket_manager import (
+    WebSocketBroadcastError,
+    WebSocketManager,
+    get_websocket_manager,
+    websocket_manager,
+)
+from app.db.redis import redis_cache
+
+
+@pytest.fixture
+async def fake_redis():
+    """Point redis_cache at an in-process Redis with real pub/sub semantics."""
+    client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    original = redis_cache.redis
+    redis_cache.redis = client
+    yield client
+    redis_cache.redis = original
+    await client.aclose()
+
 
 # ---------------------------------------------------------------------------
 # WebSocketManager — Singleton
@@ -43,8 +71,6 @@ class TestWebSocketManagerSingleton:
         assert "test" in mgr2.connections
 
     def test_get_websocket_manager_returns_singleton(self) -> None:
-        # get_websocket_manager uses the module-level instance, but after reset
-        # we need to verify the function itself works
         mgr = get_websocket_manager()
         assert isinstance(mgr, WebSocketManager)
 
@@ -109,7 +135,7 @@ class TestAddRemoveConnections:
 
 
 # ---------------------------------------------------------------------------
-# WebSocketManager — broadcast_to_user (main app path)
+# WebSocketManager — broadcast_to_user publishes, and only publishes
 # ---------------------------------------------------------------------------
 
 
@@ -121,68 +147,51 @@ class TestBroadcastToUser:
     def teardown_method(self) -> None:
         WebSocketManager._instance = None
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_broadcasts_to_all_user_connections(self, mock_is_main: MagicMock) -> None:
-        ws1 = AsyncMock()
-        ws2 = AsyncMock()
-        self.mgr.add_connection("user1", ws1)
-        self.mgr.add_connection("user1", ws2)
+    async def test_publishes_payload_to_the_broadcast_channel(self, fake_redis) -> None:
+        pubsub = fake_redis.pubsub()
+        await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
 
-        message = {"type": "notification", "text": "hello"}
+        message: dict[str, Any] = {"type": "notification", "text": "hello"}
         await self.mgr.broadcast_to_user("user1", message)
 
-        ws1.send_json.assert_awaited_once_with(message)
-        ws2.send_json.assert_awaited_once_with(message)
+        received = None
+        for _ in range(5):
+            frame = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if frame and frame.get("type") == "message":
+                received = json.loads(frame["data"])
+                break
+        await pubsub.aclose()
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_broadcast_to_user_with_no_connections(self, mock_is_main: MagicMock) -> None:
-        """Should silently return when user has no connections."""
-        await self.mgr.broadcast_to_user("nobody", {"type": "test"})
-        # No error raised
+        assert received == {"user_id": "user1", "message": message}
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_removes_disconnected_sockets_on_send_failure(
-        self, mock_is_main: MagicMock
-    ) -> None:
-        ws_good = AsyncMock()
-        ws_bad = AsyncMock()
-        ws_bad.send_json.side_effect = RuntimeError("connection closed")
-
-        self.mgr.add_connection("user1", ws_good)
-        self.mgr.add_connection("user1", ws_bad)
+    async def test_does_not_write_to_local_sockets(self, fake_redis) -> None:
+        """The listener owns delivery. A direct write here is the double-send bug."""
+        ws = AsyncMock()
+        self.mgr.add_connection("user1", ws)
 
         await self.mgr.broadcast_to_user("user1", {"type": "test"})
 
-        # Good socket received message
-        ws_good.send_json.assert_awaited_once()
-        # Bad socket removed
-        assert ws_bad not in self.mgr.connections.get("user1", set())
-        # Good socket still present
-        assert ws_good in self.mgr.connections["user1"]
+        ws.send_json.assert_not_awaited()
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_all_sockets_fail_leaves_empty_set(self, mock_is_main: MagicMock) -> None:
-        ws1 = AsyncMock()
-        ws1.send_json.side_effect = RuntimeError("closed")
-        ws2 = AsyncMock()
-        ws2.send_json.side_effect = RuntimeError("closed")
-
-        self.mgr.add_connection("user1", ws1)
-        self.mgr.add_connection("user1", ws2)
-
-        await self.mgr.broadcast_to_user("user1", {"type": "test"})
-
-        # Both removed; user key may still exist with empty set
-        remaining = self.mgr.connections.get("user1", set())
-        assert len(remaining) == 0
+    async def test_raises_when_redis_is_unavailable(self) -> None:
+        original = redis_cache.redis
+        redis_cache.redis = None
+        try:
+            with pytest.raises(WebSocketBroadcastError) as exc:
+                await self.mgr.broadcast_to_user("user1", {"type": "test"})
+            assert str(exc.value) == (
+                "Redis is not configured; WebSocket broadcasts cannot be delivered"
+            )
+        finally:
+            redis_cache.redis = original
 
 
 # ---------------------------------------------------------------------------
-# WebSocketManager — RabbitMQ fallback (non-main-app worker)
+# WebSocketManager — deliver_local
 # ---------------------------------------------------------------------------
 
 
-class TestBroadcastViaRabbitMQ:
+class TestDeliverLocal:
     def setup_method(self) -> None:
         WebSocketManager._instance = None
         self.mgr = WebSocketManager()
@@ -190,345 +199,389 @@ class TestBroadcastViaRabbitMQ:
     def teardown_method(self) -> None:
         WebSocketManager._instance = None
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=False)
-    @patch("app.core.websocket_manager.get_rabbitmq_publisher", new_callable=AsyncMock)
-    async def test_publishes_to_rabbitmq_when_not_main_app(
-        self,
-        mock_get_publisher: AsyncMock,
-        mock_is_main: MagicMock,
-    ) -> None:
-        mock_publisher = AsyncMock()
-        mock_get_publisher.return_value = mock_publisher
+    async def test_delivers_to_all_user_connections(self) -> None:
+        ws1, ws2 = AsyncMock(), AsyncMock()
+        self.mgr.add_connection("user1", ws1)
+        self.mgr.add_connection("user1", ws2)
 
-        message: dict[str, Any] = {"type": "notification", "text": "hello"}
-        await self.mgr.broadcast_to_user("user1", message)
+        message = {"type": "notification", "text": "hello"}
+        reached = await self.mgr.deliver_local("user1", message)
 
-        mock_publisher.publish.assert_awaited_once()
-        call_args = mock_publisher.publish.call_args
-        queue_name = call_args[0][0]
-        body = json.loads(call_args[0][1].decode("utf-8"))
+        ws1.send_json.assert_awaited_once_with(message)
+        ws2.send_json.assert_awaited_once_with(message)
+        assert reached == 2
 
-        assert queue_name == "websocket-events"
-        assert body["type"] == "websocket_broadcast"
-        assert body["user_id"] == "user1"
-        assert body["message"] == message
+    async def test_user_not_connected_here_reaches_nobody(self) -> None:
+        assert await self.mgr.deliver_local("nobody", {"type": "test"}) == 0
 
-    @patch("app.core.websocket_manager.is_main_app", return_value=False)
-    @patch("app.core.websocket_manager.get_rabbitmq_publisher", new_callable=AsyncMock)
-    async def test_rabbitmq_publish_failure_is_logged_not_raised(
-        self,
-        mock_get_publisher: AsyncMock,
-        mock_is_main: MagicMock,
-    ) -> None:
-        mock_get_publisher.side_effect = RuntimeError("RabbitMQ down")
+    async def test_removes_disconnected_sockets_on_send_failure(self) -> None:
+        ws_good = AsyncMock()
+        ws_bad = AsyncMock()
+        ws_bad.send_json.side_effect = RuntimeError("connection closed")
 
-        # Should not raise
-        await self.mgr.broadcast_to_user("user1", {"type": "test"})
+        self.mgr.add_connection("user1", ws_good)
+        self.mgr.add_connection("user1", ws_bad)
+
+        reached = await self.mgr.deliver_local("user1", {"type": "test"})
+
+        ws_good.send_json.assert_awaited_once()
+        assert ws_bad not in self.mgr.connections.get("user1", set())
+        assert ws_good in self.mgr.connections["user1"]
+        assert reached == 1
+
+    async def test_all_sockets_failing_drops_the_user_entry(self) -> None:
+        ws1, ws2 = AsyncMock(), AsyncMock()
+        ws1.send_json.side_effect = RuntimeError("closed")
+        ws2.send_json.side_effect = RuntimeError("closed")
+
+        self.mgr.add_connection("user1", ws1)
+        self.mgr.add_connection("user1", ws2)
+
+        assert await self.mgr.deliver_local("user1", {"type": "test"}) == 0
+        assert "user1" not in self.mgr.connections
 
 
 # ---------------------------------------------------------------------------
-# WebSocketEventConsumer
+# Broadcast listener — dispatch
 # ---------------------------------------------------------------------------
 
 
-class TestWebSocketEventConsumer:
-    """Tests for the RabbitMQ consumer that forwards messages to WebSocket."""
-
+class TestBroadcastDispatch:
     def setup_method(self) -> None:
-        WebSocketManager._instance = None
+        websocket_manager.connections.clear()
 
     def teardown_method(self) -> None:
-        WebSocketManager._instance = None
+        websocket_manager.connections.clear()
 
-    def _make_consumer(self):
-        from app.core.websocket_consumer import WebSocketEventConsumer
-
-        return WebSocketEventConsumer()
-
-    def _make_message(self, body: dict[str, Any]) -> MagicMock:
-        """Create a mock aio_pika message with an async context manager."""
-        msg = MagicMock()
-        msg.body = json.dumps(body).encode("utf-8")
-        # process() returns an async context manager
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=None)
-        ctx.__aexit__ = AsyncMock(return_value=None)
-        msg.process.return_value = ctx
-        return msg
-
-    async def test_handles_valid_websocket_broadcast(self) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
-        from app.core.websocket_manager import websocket_manager
-
-        consumer = WebSocketEventConsumer()
+    async def test_delivers_a_valid_payload(self) -> None:
         ws = AsyncMock()
-        websocket_manager.connections["user_x"] = {ws}
+        websocket_manager.add_connection("user_x", ws)
 
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": "user_x",
-            "message": {"event": "new_todo"},
-        }
-        msg = self._make_message(body)
-
-        await consumer._handle_websocket_message(msg)
+        await listener._dispatch(
+            json.dumps({"user_id": "user_x", "message": {"event": "new_todo"}})
+        )
 
         ws.send_json.assert_awaited_once_with({"event": "new_todo"})
-        # Cleanup
-        websocket_manager.connections.pop("user_x", None)
 
-    async def test_ignores_unknown_message_type(self) -> None:
-        consumer = self._make_consumer()
-
-        body = {"type": "unknown_type", "data": "something"}
-        msg = self._make_message(body)
-
-        # Should not raise
-        await consumer._handle_websocket_message(msg)
+    async def test_ignores_malformed_json(self) -> None:
+        await listener._dispatch("not-json{{")
 
     async def test_ignores_missing_user_id(self) -> None:
-        consumer = self._make_consumer()
-
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": None,
-            "message": {"event": "test"},
-        }
-        msg = self._make_message(body)
-
-        # Should not raise
-        await consumer._handle_websocket_message(msg)
+        await listener._dispatch(json.dumps({"message": {"event": "test"}}))
 
     async def test_ignores_missing_message(self) -> None:
-        consumer = self._make_consumer()
+        await listener._dispatch(json.dumps({"user_id": "user1"}))
 
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": "user1",
-            "message": None,
-        }
-        msg = self._make_message(body)
+    async def test_user_connected_elsewhere_is_not_an_error(self) -> None:
+        await listener._dispatch(
+            json.dumps({"user_id": "offline_user", "message": {"event": "test"}})
+        )
 
-        # Should not raise
-        await consumer._handle_websocket_message(msg)
-
-    async def test_no_connections_for_user_no_error(self) -> None:
-        consumer = self._make_consumer()
-
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": "offline_user",
-            "message": {"event": "test"},
-        }
-        msg = self._make_message(body)
-
-        # Should not raise
-        await consumer._handle_websocket_message(msg)
-
-    async def test_removes_disconnected_sockets_during_broadcast(self) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
-        from app.core.websocket_manager import websocket_manager
-
-        consumer = WebSocketEventConsumer()
+    async def test_removes_sockets_that_die_mid_fanout(self) -> None:
         ws_good = AsyncMock()
         ws_bad = AsyncMock()
         ws_bad.send_json.side_effect = RuntimeError("closed")
-        websocket_manager.connections["user_y"] = {ws_good, ws_bad}
+        websocket_manager.add_connection("user_y", ws_good)
+        websocket_manager.add_connection("user_y", ws_bad)
 
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": "user_y",
-            "message": {"event": "test"},
-        }
-        msg = self._make_message(body)
-
-        await consumer._handle_websocket_message(msg)
+        await listener._dispatch(json.dumps({"user_id": "user_y", "message": {"event": "test"}}))
 
         ws_good.send_json.assert_awaited_once()
         assert ws_bad not in websocket_manager.connections.get("user_y", set())
-        # Cleanup
-        websocket_manager.connections.pop("user_y", None)
 
-    async def test_handles_invalid_json(self) -> None:
-        consumer = self._make_consumer()
 
-        msg = MagicMock()
-        msg.body = b"not-json{{"
-        ctx = AsyncMock()
-        ctx.__aenter__ = AsyncMock(return_value=None)
-        ctx.__aexit__ = AsyncMock(return_value=None)
-        msg.process.return_value = ctx
+# ---------------------------------------------------------------------------
+# Broadcast listener — lifecycle
+# ---------------------------------------------------------------------------
 
-        # Should not raise
-        await consumer._handle_websocket_message(msg)
 
-    async def test_handles_generic_exception(self) -> None:
-        """An unexpected exception inside message processing should be caught."""
-        from app.core.websocket_consumer import WebSocketEventConsumer
-        from app.core.websocket_manager import websocket_manager
+class TestBroadcastListenerLifecycle:
+    async def test_start_is_idempotent_and_stop_cancels(self, fake_redis) -> None:
+        listener.start_websocket_broadcast_listener()
+        first = listener._listener_task
+        listener.start_websocket_broadcast_listener()
+        assert listener._listener_task is first
 
-        consumer = WebSocketEventConsumer()
+        await listener.stop_websocket_broadcast_listener()
+        assert listener._listener_task is None
+        assert first is not None and first.cancelled()
 
-        body = {
-            "type": "websocket_broadcast",
-            "user_id": "user_err",
-            "message": {"event": "test"},
-        }
-        msg = self._make_message(body)
+    async def test_stop_without_start_is_a_noop(self) -> None:
+        await listener.stop_websocket_broadcast_listener()
+        assert listener._listener_task is None
 
-        # Simulate an unexpected error by replacing connections with a dict-like
-        # object whose __contains__ raises.
-        original_connections = websocket_manager.connections
-        bad_connections = MagicMock()
-        bad_connections.__contains__ = MagicMock(side_effect=TypeError("boom"))
-        websocket_manager.connections = bad_connections
+    async def test_listener_exits_when_redis_is_unavailable(self) -> None:
+        original = redis_cache.redis
+        redis_cache.redis = None
         try:
-            # Should not raise — exception is caught and logged
-            await consumer._handle_websocket_message(msg)
+            await asyncio.wait_for(listener._listener_loop(), timeout=1.0)
         finally:
-            websocket_manager.connections = original_connections
+            redis_cache.redis = original
 
 
 # ---------------------------------------------------------------------------
-# WebSocketEventConsumer — start / stop lifecycle
+# Multi-instance regressions — real publish/subscribe round trip
 # ---------------------------------------------------------------------------
 
 
-class TestWebSocketEventConsumerLifecycle:
-    @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_creates_connection_and_queue(self, mock_connect: AsyncMock) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
+class TestMultiInstanceFanout:
+    """The two bugs that only a real pub/sub round trip can catch.
 
-        mock_channel = AsyncMock()
-        mock_queue = AsyncMock()
-        mock_connection = AsyncMock()
-        mock_connection.channel.return_value = mock_channel
-        mock_channel.declare_queue.return_value = mock_queue
-        mock_connect.return_value = mock_connection
+    These drive the actual listener against a real (in-process) Redis rather
+    than calling ``_dispatch`` directly — the double-send only exists in the
+    interaction between publishing and this pod's own subscription.
 
-        consumer = WebSocketEventConsumer()
-        await consumer.start()
+    Unmarked despite being true regressions: the CI regression lane replays a
+    marked test against base, and this module now imports
+    ``websocket_broadcast_listener``, which does not exist there — the replay
+    would error at collection rather than prove anything (tests/CLAUDE.md).
+    """
 
-        mock_connect.assert_awaited_once()
-        mock_channel.set_qos.assert_awaited_once_with(prefetch_count=10)
-        mock_channel.declare_queue.assert_awaited_once_with("websocket-events", durable=True)
-        mock_queue.consume.assert_awaited_once()
+    def setup_method(self) -> None:
+        websocket_manager.connections.clear()
 
-        assert consumer.connection is mock_connection
-        assert consumer.channel is mock_channel
-        assert consumer.queue is mock_queue
+    def teardown_method(self) -> None:
+        websocket_manager.connections.clear()
 
-    @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_raises_on_connection_failure(self, mock_connect: AsyncMock) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
+    async def _await_delivery(self, sock: AsyncMock, expected: int) -> None:
+        """Wait until ``expected`` frames have landed, then a beat longer for extras."""
+        for _ in range(40):
+            if sock.send_json.await_count >= expected:
+                break
+            await asyncio.sleep(0.05)
+        await asyncio.sleep(0.3)
 
-        mock_connect.side_effect = RuntimeError("connection refused")
+    async def test_publishing_replica_delivers_exactly_once(self, fake_redis) -> None:
+        """The publisher must not write locally AND redeliver off its own subscription."""
+        ws = AsyncMock()
+        websocket_manager.add_connection("u1", ws)
+        listener.start_websocket_broadcast_listener()
+        await asyncio.sleep(0.3)
+        try:
+            await websocket_manager.broadcast_to_user("u1", {"type": "ping"})
+            await self._await_delivery(ws, 1)
+        finally:
+            await listener.stop_websocket_broadcast_listener()
 
-        consumer = WebSocketEventConsumer()
-        with pytest.raises(RuntimeError, match="connection refused"):
-            await consumer.start()
+        assert ws.send_json.await_count == 1
 
-    async def test_stop_closes_channel_and_connection(self) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
+    async def test_delivers_a_broadcast_this_replica_did_not_originate(self, fake_redis) -> None:
+        """A worker (or another replica) publishes; this replica must still deliver.
 
-        consumer = WebSocketEventConsumer()
-        consumer.connection = AsyncMock()
-        consumer.channel = AsyncMock()
-        consumer.queue = AsyncMock()
-        consumer.consumer_tag = "tag-123"
+        The old RabbitMQ queue was competing-consumers, so exactly one replica
+        got each broadcast and every other replica's sockets were stranded.
+        """
+        ws = AsyncMock()
+        websocket_manager.add_connection("u2", ws)
+        listener.start_websocket_broadcast_listener()
+        await asyncio.sleep(0.3)
+        try:
+            await fake_redis.publish(
+                WEBSOCKET_BROADCAST_CHANNEL,
+                json.dumps({"user_id": "u2", "message": {"type": "from_worker"}}),
+            )
+            await self._await_delivery(ws, 1)
+        finally:
+            await listener.stop_websocket_broadcast_listener()
 
-        await consumer.stop()
+        ws.send_json.assert_awaited_once_with({"type": "from_worker"})
 
-        consumer.queue.cancel.assert_awaited_once_with("tag-123")
-        consumer.channel.close.assert_awaited_once()
-        consumer.connection.close.assert_awaited_once()
+    async def test_every_subscribed_replica_receives_the_same_broadcast(self, fake_redis) -> None:
+        """Fan-out, not hand-off: two subscribers both get one publish.
 
-    async def test_stop_handles_missing_resources_gracefully(self) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
+        Stands in for two pods; the real two-process proof is the live
+        two-replica run, not this.
+        """
+        subs = [fake_redis.pubsub() for _ in range(2)]
+        for ps in subs:
+            await ps.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
+        await asyncio.sleep(0.1)
 
-        consumer = WebSocketEventConsumer()
-        # All fields are None
-        await consumer.stop()  # Should not raise
+        await websocket_manager.broadcast_to_user("u3", {"type": "fan"})
 
-    async def test_stop_handles_close_errors(self) -> None:
-        from app.core.websocket_consumer import WebSocketEventConsumer
+        received = []
+        for ps in subs:
+            for _ in range(5):
+                frame = await ps.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if frame and frame.get("type") == "message":
+                    received.append(json.loads(frame["data"]))
+                    break
+            await ps.aclose()
 
-        consumer = WebSocketEventConsumer()
-        consumer.connection = AsyncMock()
-        consumer.connection.close.side_effect = RuntimeError("close failed")
-        consumer.channel = AsyncMock()
-
-        # Should not raise
-        await consumer.stop()
+        assert len(received) == 2
+        assert all(r["message"] == {"type": "fan"} for r in received)
 
 
 # ---------------------------------------------------------------------------
-# Module-level start/stop helpers
+# Every broadcast caller reaches the fan-out, regardless of process type
 # ---------------------------------------------------------------------------
 
 
-class TestModuleLevelHelpers:
-    @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_websocket_consumer_creates_and_starts(
-        self, mock_connect: AsyncMock
-    ) -> None:
-        import app.core.websocket_consumer as mod
+async def test_workers_publish_without_needing_to_be_the_main_app(fake_redis) -> None:
+    """An ARQ worker holds no sockets; it must still be able to broadcast.
 
-        # Reset module state
-        mod.websocket_consumer = None
+    Broadcasting used to branch on the process type and take a different
+    transport in a worker. There is one path now — publish to the Redis channel —
+    so a worker publishes exactly like a request handler does, no process-type
+    check involved.
+    """
+    pubsub = fake_redis.pubsub()
+    await pubsub.subscribe(WEBSOCKET_BROADCAST_CHANNEL)
 
-        mock_channel = AsyncMock()
-        mock_queue = AsyncMock()
-        mock_connection = AsyncMock()
-        mock_connection.channel.return_value = mock_channel
-        mock_channel.declare_queue.return_value = mock_queue
-        mock_connect.return_value = mock_connection
+    await websocket_manager.broadcast_to_user("u4", {"type": "from_arq"})
 
-        await mod.start_websocket_consumer()
+    received = None
+    for _ in range(5):
+        frame = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+        if frame and frame.get("type") == "message":
+            received = json.loads(frame["data"])
+            break
+    await pubsub.aclose()
 
-        assert mod.websocket_consumer is not None
-        mock_connect.assert_awaited_once()
+    assert received == {"user_id": "u4", "message": {"type": "from_arq"}}
 
-        # Cleanup
-        mod.websocket_consumer = None
 
-    async def test_stop_websocket_consumer_stops_and_clears(self) -> None:
-        import app.core.websocket_consumer as mod
+# ---------------------------------------------------------------------------
+# broadcast listener: _dispatch and _listener_loop
+# ---------------------------------------------------------------------------
 
-        mock_consumer = AsyncMock()
-        mod.websocket_consumer = mock_consumer
+_MOD = "app.core.websocket_broadcast_listener"
 
-        await mod.stop_websocket_consumer()
 
-        mock_consumer.stop.assert_awaited_once()
-        assert mod.websocket_consumer is None
+@asynccontextmanager
+async def _noop_log_context(*_a: Any, **_k: Any):
+    yield
 
-    async def test_stop_websocket_consumer_noop_when_none(self) -> None:
-        import app.core.websocket_consumer as mod
 
-        mod.websocket_consumer = None
-        await mod.stop_websocket_consumer()  # Should not raise
-        assert mod.websocket_consumer is None
+class TestBroadcastDispatchLogging:
+    @staticmethod
+    async def _run(raw: str, *, deliver_return: int = 0):
+        fake_log = MagicMock()
+        deliver = AsyncMock(return_value=deliver_return)
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.websocket_manager.deliver_local", deliver),
+        ):
+            await listener._dispatch(raw)
+        return fake_log, ctx, deliver
 
-    @patch("app.core.websocket_consumer.connect_robust", new_callable=AsyncMock)
-    async def test_start_is_idempotent(self, mock_connect: AsyncMock) -> None:
-        import app.core.websocket_consumer as mod
+    async def test_delivers_a_valid_broadcast_to_local_sockets(self):
+        raw = json.dumps({"user_id": "u1", "message": {"type": "x"}})
+        fake_log, ctx, deliver = await self._run(raw, deliver_return=3)
 
-        mock_channel = AsyncMock()
-        mock_queue = AsyncMock()
-        mock_connection = AsyncMock()
-        mock_connection.channel.return_value = mock_channel
-        mock_channel.declare_queue.return_value = mock_queue
-        mock_connect.return_value = mock_connection
+        deliver.assert_awaited_once_with("u1", {"type": "x"})
+        ctx.assert_called_once_with("websocket_broadcast")
+        fake_log.set.assert_any_call(user={"id": "u1"})
+        fake_log.set.assert_any_call(result_count=3)
 
-        mod.websocket_consumer = None
-        await mod.start_websocket_consumer()
-        first_consumer = mod.websocket_consumer
+    async def test_drops_malformed_json_with_a_reason(self):
+        try:
+            json.loads("not-json")
+        except json.JSONDecodeError as e:
+            expected_error = str(e)
 
-        # Calling again should not create a second consumer
-        await mod.start_websocket_consumer()
-        assert mod.websocket_consumer is first_consumer
-        assert mock_connect.await_count == 1
+        fake_log, _ctx, deliver = await self._run("not-json")
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped malformed WebSocket broadcast",
+            reason="json_decode",
+            error=expected_error,
+            error_type="JSONDecodeError",
+            raw_length=len("not-json"),
+        )
 
-        # Cleanup
-        mod.websocket_consumer = None
+    async def test_drops_payload_with_non_string_user_id(self):
+        fake_log, _ctx, deliver = await self._run(json.dumps({"user_id": 1, "message": {}}))
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped WebSocket broadcast missing user_id or message",
+            reason="invalid_payload",
+        )
+
+    async def test_drops_payload_with_non_dict_message(self):
+        # user_id is a valid str but message is not a dict — the `or` in the guard
+        # must still drop it (an `and` would let it through).
+        fake_log, _ctx, deliver = await self._run(json.dumps({"user_id": "u1", "message": "x"}))
+        deliver.assert_not_awaited()
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} Dropped WebSocket broadcast missing user_id or message",
+            reason="invalid_payload",
+        )
+
+
+class TestBroadcastListenerLoop:
+    async def test_logs_and_returns_when_redis_is_absent(self):
+        fake_log = MagicMock()
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.redis_cache") as rc,
+        ):
+            rc.redis = None
+            await listener._listener_loop()
+        fake_log.error.assert_called_once_with(
+            f"{LogTag.STARTUP} WebSocket broadcast listener disabled (no Redis)"
+        )
+        ctx.assert_called_once_with("websocket_broadcast_subscription")
+
+    async def test_resubscribes_and_logs_when_the_subscription_drops(self):
+        fake_log = MagicMock()
+        consume = AsyncMock(side_effect=RuntimeError("dropped"))
+        # Break the otherwise-infinite loop on the first resubscribe sleep.
+        sleep = AsyncMock(side_effect=asyncio.CancelledError)
+        with (
+            patch(f"{_MOD}.log", fake_log),
+            patch(f"{_MOD}.log_context", side_effect=_noop_log_context) as ctx,
+            patch(f"{_MOD}.redis_cache") as rc,
+            patch(f"{_MOD}._consume", consume),
+            patch(f"{_MOD}.asyncio.sleep", sleep),
+        ):
+            rc.redis = MagicMock()
+            with pytest.raises(asyncio.CancelledError):
+                await listener._listener_loop()
+
+        fake_log.warning.assert_called_once_with(
+            f"{LogTag.STARTUP} WebSocket broadcast listener dropped, resubscribing",
+            error="dropped",
+            error_type="RuntimeError",
+        )
+        sleep.assert_awaited_once_with(WEBSOCKET_LISTENER_RESUBSCRIBE_SECONDS)
+        ctx.assert_any_call("websocket_broadcast_subscription")
+
+
+class TestBroadcastConsume:
+    @staticmethod
+    def _client_with(pubsub):
+        client = MagicMock()
+        client.pubsub = MagicMock(return_value=pubsub)
+        return client
+
+    async def test_subscribes_decodes_dispatches_and_cleans_up(self):
+        pubsub = AsyncMock()
+        pubsub.get_message = AsyncMock(
+            side_effect=[{"type": "message", "data": b'{"x":1}'}, asyncio.CancelledError()]
+        )
+        dispatch = AsyncMock()
+        with (
+            patch(f"{_MOD}.redis_cache") as rc,
+            patch(f"{_MOD}._dispatch", dispatch),
+        ):
+            rc.redis = self._client_with(pubsub)
+            with pytest.raises(asyncio.CancelledError):
+                await listener._consume()
+
+        pubsub.subscribe.assert_awaited_once_with(WEBSOCKET_BROADCAST_CHANNEL)
+        pubsub.get_message.assert_awaited_with(ignore_subscribe_messages=True, timeout=1.0)
+        dispatch.assert_awaited_once_with('{"x":1}')  # bytes decoded to str
+        pubsub.unsubscribe.assert_awaited_once_with(WEBSOCKET_BROADCAST_CHANNEL)
+        pubsub.aclose.assert_awaited_once()
+
+    async def test_teardown_errors_do_not_mask_the_loop_exit(self):
+        pubsub = AsyncMock()
+        pubsub.get_message = AsyncMock(side_effect=asyncio.CancelledError())
+        pubsub.unsubscribe = AsyncMock(side_effect=RuntimeError("redis gone"))
+        with patch(f"{_MOD}.redis_cache") as rc:
+            rc.redis = self._client_with(pubsub)
+            with pytest.raises(asyncio.CancelledError):
+                await listener._consume()

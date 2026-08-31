@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Liveness probe for the ARQ worker, invoked by the Docker healthcheck.
 
-The worker refreshes arq's ``arq:health`` key from its poll loop every
+The worker refreshes its own ``arq:health:<hostname>`` key from its poll loop every
 ``health_check_interval`` seconds with a TTL of ``interval + 1`` (see arq's
 ``Worker.record_health``), so the key disappears within ~31s if the loop wedges
 or the process dies. Checking that key is exactly what ``arq --check`` does
@@ -15,6 +15,7 @@ and talks only to Redis — the worker's own job substrate.
 
 from __future__ import annotations
 
+import socket
 import sys
 
 import redis
@@ -26,8 +27,14 @@ REDIS_PORT = 6379
 REDIS_TIMEOUT_SECONDS = 5
 
 # Must match WorkerSettings.health_check_key in
-# app/workers/config/worker_settings.py.
-ARQ_HEALTH_KEY = "arq:health"
+# app/workers/config/worker_settings.py — pinned by
+# tests/unit/workers/test_worker_lifecycle.py, because this module deliberately
+# imports nothing from ``app`` and so cannot share the constant.
+#
+# Keyed by hostname because this probe runs inside the worker's OWN container.
+# A fleet-wide key answers "is any worker alive", which leaves a wedged worker
+# green forever behind its healthy siblings.
+ARQ_HEALTH_KEY = f"arq:health:{socket.gethostname()}"
 
 
 def main() -> int:

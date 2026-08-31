@@ -50,6 +50,7 @@ from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
     STREAM_EVENTS_MAXLEN,
     STREAM_EVENTS_PREFIX,
+    STREAM_LIVENESS_REFRESH_AFTER,
     STREAM_PROGRESS_PREFIX,
     STREAM_SIGNAL_PREFIX,
     STREAM_TTL,
@@ -250,6 +251,67 @@ class StreamManager:
             chunk: SSE-formatted chunk to publish
         """
         await cls._publish(stream_id, chunk)
+        await cls._touch_liveness(stream_id)
+
+    @classmethod
+    async def _touch_liveness(cls, stream_id: str) -> None:
+        """Keep the resume and cancel keys alive for as long as the turn emits frames.
+
+        A frame is the turn's proof of life, so every frame has to extend all
+        three of its keys. Hanging that off ``update_progress`` instead was the
+        bug: that is a comms-loop call, and once comms hands off to the executor
+        the turn parks in ``await_executor_done`` (30 minutes) while every later
+        frame arrives through ``publish_chunk``. Past STREAM_TTL the event log
+        was still being refreshed while progress and the resume index had
+        quietly lapsed — so a reloading client was told no turn was running (and
+        marked the user's own message failed), and Stop returned "Stream not
+        found" without ever setting the cancel signal.
+
+        EXPIRE, never SET: a finished turn deletes these deliberately, and
+        re-creating them here would resurrect a stream that already sent [DONE].
+        EXPIRE on a missing key is a no-op, so that stays final.
+
+        The TTL read is the throttle — it keeps the common path to one cheap
+        command per frame and only pays for the refresh once per half-life.
+        """
+        if not redis_cache.redis:
+            return
+        progress_key = f"{STREAM_PROGRESS_PREFIX}{stream_id}"
+        ttl = await redis_cache.redis.ttl(progress_key)
+        if ttl < 0 or ttl > STREAM_LIVENESS_REFRESH_AFTER:
+            return
+        await redis_cache.redis.expire(progress_key, STREAM_TTL)
+        progress_data = await redis_cache.get(progress_key)
+        if progress_data:
+            await cls._refresh_active_index(progress_data)
+
+    @classmethod
+    async def _control_signal_frame(cls, stream_id: str, data: str) -> tuple[bool, str | None]:
+        """Map a stream entry to ``(is_terminal, frame_to_yield)``.
+
+        DONE ends the stream with no frame; CANCELLED and ERROR end it with a
+        final SSE frame; a normal chunk returns ``(False, None)`` so the caller
+        yields it and keeps reading.
+        """
+        if data == STREAM_DONE_SIGNAL:
+            log.debug(f"{LogTag.STARTUP} Stream completed successfully", stream_id=stream_id)
+            return True, None
+
+        if data == STREAM_CANCELLED_SIGNAL:
+            log.info(f"{LogTag.STARTUP} Stream was cancelled by user", stream_id=stream_id)
+            return True, "data: [DONE]\n\n"
+
+        if data == STREAM_ERROR_SIGNAL:
+            log.error(f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id)
+            progress = await cls.get_progress(stream_id)
+            error_msg = (
+                progress.get("error", "An unexpected error occurred")
+                if progress
+                else "An unexpected error occurred"
+            )
+            return True, f"data: {json.dumps({'error': error_msg})}\n\n"
+
+        return False, None
 
     @classmethod
     async def subscribe_stream(
@@ -282,7 +344,9 @@ class StreamManager:
 
         events_key = f"{STREAM_EVENTS_PREFIX}{stream_id}"
         cursor = last_event_id or "0-0"
-        chunks_received = 0
+        # no mutate: the only read is `if not saw_chunk`, so any falsy init (False
+        # vs None) is behaviourally identical — an equivalent mutant no test can kill.
+        saw_chunk = False  # pragma: no mutate
         block_ms = int(keepalive_interval * 1000)
 
         try:
@@ -304,36 +368,13 @@ class StreamManager:
                         cursor = entry_id
                         data = fields.get("data", "")
 
-                        if data == STREAM_DONE_SIGNAL:
-                            log.debug(
-                                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
-                                stream_id=stream_id,
-                                chunks_received=chunks_received,
-                            )
+                        is_terminal, frame = await cls._control_signal_frame(stream_id, data)
+                        if is_terminal:
+                            if frame is not None:
+                                yield frame
                             return
 
-                        if data == STREAM_CANCELLED_SIGNAL:
-                            log.info(
-                                f"{LogTag.STARTUP} Stream was cancelled by user",
-                                stream_id=stream_id,
-                            )
-                            yield "data: [DONE]\n\n"
-                            return
-
-                        if data == STREAM_ERROR_SIGNAL:
-                            log.error(
-                                f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id
-                            )
-                            progress = await cls.get_progress(stream_id)
-                            error_msg = (
-                                progress.get("error", "An unexpected error occurred")
-                                if progress
-                                else "An unexpected error occurred"
-                            )
-                            yield f"data: {json.dumps({'error': error_msg})}\n\n"
-                            return
-
-                        chunks_received += 1
+                        saw_chunk = True
                         yield f"id: {entry_id}\n{data}"
 
         except Exception as e:
@@ -346,7 +387,7 @@ class StreamManager:
             )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
-            if chunks_received == 0:
+            if not saw_chunk:
                 log.warning(
                     f"{LogTag.STARTUP} Stream ended without receiving any chunks",
                     stream_id=stream_id,

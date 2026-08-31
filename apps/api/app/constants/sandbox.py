@@ -41,3 +41,25 @@ SANDBOX_CONNECT_TIMEOUT_SECONDS = 10
 # since the last refresh — avoids a set_timeout round-trip on every tool call in
 # a rapid turn. Half the lifetime leaves ample slack before the deadline.
 SANDBOX_TIMEOUT_REFRESH_SECONDS = SANDBOX_LIFETIME_SECONDS // 2
+
+# --- Cross-replica acquisition lock ---
+# Sandbox acquisition must be serialized per user across every replica, or two
+# pods create/resume the same user's sandbox at once (double E2B billing, an
+# orphaned sandbox, a lost pool entry).
+#
+# The lease is deliberately short and renewed by a watchdog rather than set long
+# enough to cover the work. The critical section has no useful upper bound — it
+# can include a cold create plus the JuiceFS mount script — so any fixed TTL is
+# either too short (it expires mid-flight and a second pod enters) or so long
+# that a crashed holder blocks the user for minutes. Renewing decouples
+# correctness from how long the work takes.
+SANDBOX_LOCK_LEASE_SECONDS = 30
+SANDBOX_LOCK_RENEW_SECONDS = 10
+# A waiter blocks this long before giving up; longer than the mount script's
+# 120s so a queue behind a genuinely slow create waits rather than failing.
+SANDBOX_LOCK_ACQUIRE_TIMEOUT_SECONDS = 180
+# Hard cap on how long the watchdog will keep renewing. Past this the lease is
+# allowed to expire so a hung-but-alive holder (stuck create/mount) can't block
+# the user forever; comfortably above the real critical section (cold create +
+# 120s mount) so a legitimate slow acquire is never evicted mid-flight.
+SANDBOX_LOCK_MAX_HOLD_SECONDS = 300

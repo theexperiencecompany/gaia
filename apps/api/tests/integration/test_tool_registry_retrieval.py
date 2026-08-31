@@ -34,6 +34,7 @@ from app.db.chroma.chroma_tools_store import (
     index_tools_to_store,
 )
 from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
+from app.utils.redis_lock import DistributedLock
 
 # ---------------------------------------------------------------------------
 # Deterministic embedding function for semantic retrieval tests
@@ -261,6 +262,25 @@ async def indexed_store(semantic_store, tool_set):
 @pytest.mark.integration
 class TestToolIndexing:
     """Register tools with known schemas and verify they are stored in ChromaDB."""
+
+    @pytest.fixture(autouse=True)
+    def _bypass_seed_lock(self):
+        """Run the seeding work directly instead of taking the real Redis lease.
+
+        ``index_tools_to_store`` serializes its read-diff-write under a
+        ``DistributedLock`` backed by the module-level ``redis_cache.redis``
+        singleton, whose connection binds to the event loop that first used it.
+        Under pytest's per-test loops that connection goes stale and the lock
+        raises ``RuntimeError: Event loop is closed``. These tests exercise the
+        indexing/diff logic the lock guards, not Redis — the lock itself is
+        proven in ``tests/integration/real/test_distributed_lock_real.py``.
+        """
+
+        async def _run(self, work):
+            await work()
+
+        with patch.object(DistributedLock, "run_idempotent", _run):
+            yield
 
     async def test_tools_stored_after_put(self, semantic_store, tool_set):
         """PutOp with tool descriptions should store tools retrievable by GetOp."""

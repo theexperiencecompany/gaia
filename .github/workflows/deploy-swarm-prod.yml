@@ -148,49 +148,10 @@ jobs:
           if [[ -n "${GRAFANA_IMAGE_TAG}" ]]; then
             SERVICES="${SERVICES} grafana"
           fi
-          echo "Waiting for ${SERVICES} to converge (up to 5 minutes)..."
-          DEADLINE=$(( $(date +%s) + 300 ))
-
-          while true; do
-            # Detect if Swarm auto-rolled back any app service
-            for svc in $SERVICES; do
-              state=$(docker --context prod service inspect "gaia-prod_${svc}" \
-                --format '{{.UpdateStatus.State}}' 2>/dev/null || echo "")
-              if echo "$state" | grep -qE "rollback_completed|rollback_started|rollback_paused"; then
-                echo "rolled_back=true" >> "$GITHUB_OUTPUT"
-                echo "::error::gaia-prod_${svc} was rolled back by Swarm (state: $state)"
-                exit 1
-              fi
-            done
-
-            # Check running replicas for every app service
-            pending=""
-            status=""
-            for svc in $SERVICES; do
-              running=$(docker --context prod service ps "gaia-prod_${svc}" \
-                --filter desired-state=running \
-                --format '{{.CurrentState}}' 2>/dev/null | grep -c "^Running" || true)
-              running=${running:-0}
-              status="${status}${svc}=${running} "
-              [ "$running" -lt 1 ] && pending="${pending}${svc} "
-            done
-
-            if [ -z "$pending" ]; then
-              echo "All app services are running (${status})"
-              break
-            fi
-
-            now=$(date +%s)
-            if [ "$now" -ge "$DEADLINE" ]; then
-              echo "timed_out=true" >> "$GITHUB_OUTPUT"
-              echo "::error::services did not converge within 5 minutes (${status})"
-              exit 1
-            fi
-
-            remaining=$(( DEADLINE - now ))
-            echo "  ... waiting (${status}${remaining}s remaining)"
-            sleep 15
-          done
+          # Timeout scales with the fleet: `parallelism: 1` rolls one task at a
+          # time and worker boot alone is ~130-160s, so N replicas need N x that.
+          # The old flat 5 minutes could not have held three API replicas.
+          DEPLOY_CONVERGE_TIMEOUT=900 bash scripts/ci/wait-swarm-convergence.sh $SERVICES
 
       # Only after convergence proved the deploy healthy does :latest move —
       # this is what makes :latest "what prod runs" instead of "what was last

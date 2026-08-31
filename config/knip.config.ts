@@ -238,6 +238,9 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Peer dependency of @testing-library/react v16 (it no longer bundles
+        // the DOM adapter); required at install time but never imported directly.
+        "@testing-library/dom",
         // Imported by scripts/ci/lib/bots-facts.mjs (the bots evlog-map AST
         // scanner). Declared in apps/mobile + apps/web; resolved here via
         // pnpm workspace hoisting, so knip reads them as unlisted at the root.

@@ -1428,7 +1428,7 @@ class TestReplayHoldsTheConversationLock:
         workflow = _workflow().model_copy(update={"repeat": "*/5 * * * *", "activated": True})
         harness = _LockedReplayHarness(workflow, lock_free=False, holder="stream_9:task_9")
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
-        harness.scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+        harness.scheduler.claim_task_for_execution = AsyncMock(return_value=True)
 
         with ExitStack() as stack:
             for patcher in harness.patches():
