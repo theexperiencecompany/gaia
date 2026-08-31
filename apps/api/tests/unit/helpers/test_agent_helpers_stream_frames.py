@@ -195,7 +195,7 @@ def test_buffer_mcp_app_falls_back_to_empty_values_for_absent_fields() -> None:
 def test_buffer_mcp_app_buffers_nothing_for(entry: dict[str, Any]) -> None:
     pending: dict[str, dict[str, Any]] = {}
 
-    _buffer_mcp_app(entry, pending)  # type: ignore[arg-type]
+    _buffer_mcp_app(entry, pending)  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
 
     assert pending == {}
 
@@ -923,7 +923,7 @@ async def test_streaming_run_threads_the_user_id_into_every_stream_mode() -> Non
         patch(f"{HELPERS}.format_tool_call_entry", formatter),
         patch(f"{HELPERS}.stream_manager.is_cancelled", AsyncMock(return_value=False)),
     ):
-        frames = [frame async for frame in execute_graph_streaming(graph, {}, config)]  # type: ignore[arg-type]
+        frames = [frame async for frame in execute_graph_streaming(graph, {}, config)]  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
 
     assert frames == [
         _sse({"tool_data": {"tool_name": "card"}}),
@@ -961,7 +961,7 @@ async def test_a_streaming_run_threads_the_user_id_into_every_mcp_resource_fetch
     ):
         frames = [
             frame
-            async for frame in execute_graph_streaming(graph, {}, _config("stream-1", "u-1"))  # type: ignore[arg-type]
+            async for frame in execute_graph_streaming(graph, {}, _config("stream-1", "u-1"))  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
         ]
 
     assert [call.kwargs["user_id"] for call in fetch.await_args_list] == ["u-1", "u-1"]
@@ -977,7 +977,7 @@ async def test_a_streaming_run_claims_tool_outputs_under_its_own_stream_id() -> 
         with patch(f"{HELPERS}.stream_manager.is_cancelled", AsyncMock(return_value=False)):
             frames = [
                 frame
-                async for frame in execute_graph_streaming(graph, {}, _config("stream-1", "u-1"))  # type: ignore[arg-type]
+                async for frame in execute_graph_streaming(graph, {}, _config("stream-1", "u-1"))  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
             ]
     finally:
         teardown_session("stream-1")
@@ -1005,7 +1005,7 @@ async def test_a_cancelled_run_emits_the_cancelled_nostream_frame() -> None:
         patch(f"{HELPERS}.stream_manager.is_cancelled", cancelled),
         patch(f"{HELPERS}.record_interruption", AsyncMock()) as record,
     ):
-        frames = [frame async for frame in execute_graph_streaming(graph, {}, config)]  # type: ignore[arg-type]
+        frames = [frame async for frame in execute_graph_streaming(graph, {}, config)]  # type: ignore[arg-type]  # a scripted fake stands in for the compiled graph
 
     assert frames == [
         _sse({"response": "partial answer"}),
