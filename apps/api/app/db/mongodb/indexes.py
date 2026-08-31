@@ -1124,10 +1124,13 @@ async def create_e2b_sandbox_indexes() -> None:
 async def create_llm_call_indexes() -> None:
     """Create indexes for the ``llm_calls`` ledger — one document per model call.
 
-    Five, and no more: this is the highest-write collection in the system, and
-    every extra index is paid on every insert. Each one below names the query it
-    exists for; a query without an index here is a query the ledger is not
-    claiming to answer.
+    Five query indexes and no more: this is the highest-write collection in the
+    system, and every extra index is paid on every insert. Each one below names
+    the query it exists for; a query without an index here is a query the ledger
+    is not claiming to answer.
+
+    The sixth is not a query index — it is the uniqueness constraint that makes
+    the history backfill re-runnable, and it is sparse, so no live row is in it.
     """
     llm_calls_collection = get_async_collection("llm_calls")
     try:
@@ -1155,6 +1158,14 @@ async def create_llm_call_indexes() -> None:
             # optimisation is worth making.
             llm_calls_collection.create_index(
                 [("agent_name", 1), ("created_at", -1)], name="agent_calls_recent"
+            ),
+            # Idempotency for scripts/backfill_llm_calls.py: the deterministic
+            # key each reconstructed row carries, so re-running --apply matches
+            # the existing document instead of duplicating history. Sparse and
+            # unique — only backfilled rows have the field, so the index costs
+            # the live write path nothing.
+            llm_calls_collection.create_index(
+                "backfill_key", unique=True, sparse=True, name="backfill_idempotency"
             ),
             # Retention. The ledger is unbounded by construction (one row per
             # call, forever), so its size has to be bounded in time — 90 days,

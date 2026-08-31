@@ -55,12 +55,14 @@ from app.models.stream_events import MessageBoundaryPayload
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.llm_metering import (
     LLMCallContext,
+    extract_finish_reason,
     extract_generation_id,
     extract_message_cost,
     extract_message_model,
     extract_message_provider,
     extract_message_usage,
     record_llm_call,
+    resolve_channel,
 )
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -234,6 +236,8 @@ class StyleGuardMiddleware(AgentMiddleware):
                 ),
                 thread_id=str(thread_id) if thread_id else None,
                 workflow_id=str(workflow_id) if workflow_id else None,
+                channel=resolve_channel(configurable),
+                finish_reason=extract_finish_reason(draft),
                 # ``duration_ms`` is left at its default: the draft was produced
                 # by the wrapped model call that accounting timed, and this seam
                 # only sees the finished message — there is no second latency to

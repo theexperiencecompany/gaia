@@ -23,15 +23,24 @@ what keeps the collection bounded — the durable per-day money history stays in
 ``usage_daily``, which this never replaces.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 import re
 from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict
+from pymongo import UpdateOne
 
 from app.db.repositories.base import MongoDocument, MongoRepository
 
 CostSource = Literal["provider", "table"]
+CallStatus = Literal["ok", "error"]
+#: Short, stable classification of WHY a provider call failed. Derived from the
+#: exception type, never from its message: messages carry model ids, prompts
+#: fragments and request ids, they change without warning, and grouping a
+#: dashboard by them produces a long tail of near-duplicates instead of the five
+#: buckets an operator actually acts on.
+ErrorFamily = Literal["rate_limit", "timeout", "provider_unavailable", "invalid_request", "other"]
 
 # A child agent runs on a WRAPPED checkpoint thread — ``executor_<conv>``, and
 # for integration-triggered runs ``<integration>_executor_<conv>`` (see
@@ -116,6 +125,20 @@ class LLMCallDocument(MongoDocument):
     cost_source: CostSource
     #: OpenRouter's generation id — the spot-audit handle back to the upstream.
     generation_id: str | None = None
+    #: Why the provider stopped generating ("stop", "length", "tool_calls",
+    #: "content_filter", …). A run of ``length`` across one lane is a truncation
+    #: bug that otherwise only shows up as users reporting cut-off answers.
+    finish_reason: str | None = None
+
+    # --- how it ended ---
+    #: ``"ok"`` for a call the provider answered, ``"error"`` for one that
+    #: raised after its retries were exhausted. Error rows exist because a
+    #: failed call is still a fact about the system — without them the ledger
+    #: describes only the calls that worked, and a provider outage looks like a
+    #: quiet drop in traffic rather than a spike in failures.
+    status: CallStatus = "ok"
+    #: Set only on ``status="error"``. See :data:`ErrorFamily`.
+    error_family: ErrorFamily | None = None
 
     # --- where it ran ---
     #: The TRUE conversation uuid, bare (see :func:`split_lane_thread`).
@@ -129,11 +152,30 @@ class LLMCallDocument(MongoDocument):
     #: ARQ job identity, for calls made inside a worker task.
     job_id: str | None = None
     task_name: str | None = None
+    #: The surface the call originated from — "web", "discord", "telegram",
+    #: "whatsapp", "slack", "voice", "workflow", "system". Threaded from the
+    #: request/adapter that started the run, never inferred from the agent name
+    #: (comms_agent serves every surface). ``None`` where the originating
+    #: surface genuinely never reached the seam.
+    channel: str | None = None
 
     # --- how long it took ---
     #: Wall time of the provider call. ``None`` where the seam cannot measure it
     #: (a message metered after the fact, not around its own invocation).
     duration_ms: float | None = None
+
+    #: Deterministic identity of a backfilled row, derived from the log event it
+    #: was rebuilt from. It is what makes ``--apply`` re-runnable: the same event
+    #: always hashes to the same key, and a unique index turns a second insert
+    #: into a no-op instead of a duplicate. Absent on live rows, which are
+    #: written once by definition.
+    backfill_key: str | None = None
+    #: True for rows reconstructed from log history by
+    #: ``scripts/backfill_llm_calls.py`` rather than written live. Their costs
+    #: are re-derived and their context ids are only as good as the log line
+    #: carried, so an analysis that needs first-party precision can exclude
+    #: them; absent (falsey) on every live row.
+    backfilled: bool = False
 
 
 class LLMCallUpdate(BaseModel):
@@ -154,6 +196,32 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
     # No cache: the ledger is write-heavy and append-only, and nothing reads a
     # call back by id — it is queried in ranges by the indexes below.
     cache_policy = None
+
+    async def insert_backfilled(self, docs: Sequence[LLMCallDocument]) -> int:
+        """Insert reconstructed rows, skipping any already present.
+
+        Idempotent by construction: each row carries a ``backfill_key`` derived
+        from the log event it was rebuilt from, and ``$setOnInsert`` under a
+        unique index means a re-run of ``--apply`` matches the existing document
+        and writes nothing. Re-running a half-finished backfill is therefore
+        safe and cheap, which matters because the run takes long enough to be
+        interrupted.
+
+        Returns the number of rows actually created. ``ordered=False`` so one
+        duplicate cannot abort the rest of the batch.
+        """
+        if not docs:
+            return 0
+        operations = [
+            UpdateOne(
+                {"backfill_key": doc.backfill_key},
+                {"$setOnInsert": doc.model_dump(exclude={"id"}, exclude_none=True)},
+                upsert=True,
+            )
+            for doc in docs
+        ]
+        result = await self._raw_collection().bulk_write(operations, ordered=False)
+        return int(result.upserted_count)
 
 
 llm_calls_repository = LLMCallsRepository()

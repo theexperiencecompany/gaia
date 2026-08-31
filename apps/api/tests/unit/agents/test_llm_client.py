@@ -2438,3 +2438,73 @@ class TestAuxiliaryGenerationIdAttribution:
             "memory:extraction": "gen-extraction",
             "follow_up_actions": "gen-followup",
         }
+
+
+class TestFailedCallsReachTheLedger:
+    """A provider call that never answered is still a fact about the system.
+
+    Without error rows the ledger describes only the calls that worked, so a
+    provider outage reads as a quiet dip in traffic instead of a spike in
+    failures — and the one question you actually want answered during an
+    incident ("what is failing, and how?") has no data behind it.
+    """
+
+    @staticmethod
+    def _runnable(side_effect: Any) -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=side_effect)
+        return runnable
+
+    async def test_a_failing_call_books_one_error_row_and_still_raises(self) -> None:
+        """One row per CALL, not per attempt: the retry wrapper has already
+        exhausted itself by the time this seam sees the exception, so counting
+        attempts here would multiply every outage by the retry budget. And the
+        caller must still see the error — a ledger row is not a recovery."""
+        primary = self._runnable(TimeoutError("provider never answered"))
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], label="memory:extraction")
+
+        failed.assert_awaited_once()
+        assert failed.await_args.kwargs["context"].agent_name == "memory:extraction"
+
+    async def test_the_error_row_classifies_the_failure_and_times_it(self) -> None:
+        """``error_family`` is what an operator groups by. It is derived from the
+        exception type, so it stays stable while provider message text does not."""
+        primary = self._runnable(TimeoutError("deadline exceeded"))
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        assert isinstance(failed.await_args.kwargs["error"], TimeoutError)
+        duration_ms = failed.await_args.kwargs["context"].duration_ms
+        assert duration_ms is not None and duration_ms >= 0.0
+
+    async def test_a_cancelled_turn_is_not_recorded_as_a_provider_failure(self) -> None:
+        """The user closing the tab is not the provider failing. Recording it
+        would inflate the error rate with our own callers' cancellations."""
+        primary = self._runnable(asyncio.CancelledError())
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(asyncio.CancelledError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        failed.assert_not_awaited()
+
+    async def test_a_call_the_fallback_rescued_books_no_error_row(self) -> None:
+        """The fallback answering IS the call succeeding. An error row here would
+        double-count a turn that the user received a reply for."""
+        primary = self._runnable(ConnectionError("provider down"))
+        fallback = NonCallableMagicMock()
+        fallback.with_retry = MagicMock(return_value=fallback)
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="rescued"))
+        fallback.bind = MagicMock(return_value=fallback)
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        assert result.content == "rescued"
+        failed.assert_not_awaited()

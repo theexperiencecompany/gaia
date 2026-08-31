@@ -61,6 +61,7 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
@@ -70,7 +71,9 @@ from app.services.llm_metering import (
     LLMCallContext,
     TokenUsage,
     extract_message_cost,
+    record_failed_llm_call,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import log
 
@@ -748,6 +751,53 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
     return f"{session_id}{AUX_SESSION_SUFFIX}" if auxiliary else str(session_id)
 
 
+def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shape
+    """The model id this runnable was going to ask for, or ``UNKNOWN_MODEL_NAME``.
+
+    A failed call has no reply to read the served model off, so the ledger's
+    ``model_requested`` is all there is. Read defensively: the bound runnable is
+    a chat model on the graph lane but a ``with_structured_output`` wrapper on
+    the auxiliary one, and neither shape is guaranteed to expose the name.
+    """
+    for attribute in ("model_name", "model"):
+        value = getattr(runnable, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return UNKNOWN_MODEL_NAME
+
+
+def _invoke_context(
+    config: RunnableConfig | None,
+    label: str,
+    *,
+    background: bool,
+    duration_ms: float | None,
+) -> LLMCallContext:
+    """The ledger identity of a call made through this seam.
+
+    Shared by the auxiliary success path and the failure path so a call that
+    fails is described the same way as one that succeeds — otherwise error rows
+    and ok rows could not be compared on the dimensions that matter (which
+    conversation, which surface, which workflow).
+    """
+    configurable = agent_configurable(config)
+    conversation_id = configurable.get("conversation_id")
+    thread_id = configurable.get("thread_id")
+    workflow_id = configurable.get("workflow_id")
+    return LLMCallContext(
+        agent_name=label,
+        background=background,
+        # Nothing reached the budget: the auxiliary route never charges, and a
+        # failed call has no spend to charge.
+        charge_to_budget=False,
+        conversation_id=str(conversation_id) if conversation_id else None,
+        thread_id=str(thread_id) if thread_id else None,
+        workflow_id=str(workflow_id) if workflow_id else None,
+        channel=resolve_channel(configurable),
+        duration_ms=duration_ms,
+    )
+
+
 @dataclass(frozen=True)
 class LLMInvokeOptions:
     """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
@@ -859,53 +909,66 @@ async def ainvoke_llm(
     # reports how long it burned rather than nothing at all.
     invoke_start = time.monotonic()
     try:
-        async with asyncio.timeout(opts.timeout):
-            try:
-                return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
-                    messages,
-                    config=_with_usage_handler(
-                        _with_usage_handler(config, usage_handler), generation_handler
-                    ),
-                )
-            except LLM_FALLBACK_EXCEPTIONS as primary_error:
-                # The fallback runs under ``fallback_config`` when given. Reusing
-                # ``config`` here is what made provider failover a no-op: LangChain
-                # merges a passed config OVER a ``with_config`` one, so the run's
-                # own configurable put the just-failed provider straight back.
-                return _stamp_fallback(
-                    await _resolve_fallback(
-                        fallback,
-                        label,
-                        primary_error,
-                        session_id=opts.sticky_session_id
-                        or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
-                    ).ainvoke(
+        try:
+            async with asyncio.timeout(opts.timeout):
+                try:
+                    return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                         messages,
                         config=_with_usage_handler(
-                            _with_usage_handler(opts.fallback_config or config, usage_handler),
-                            generation_handler,
+                            _with_usage_handler(config, usage_handler), generation_handler
                         ),
                     )
-                )
+                except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                    # The fallback runs under ``fallback_config`` when given. Reusing
+                    # ``config`` here is what made provider failover a no-op: LangChain
+                    # merges a passed config OVER a ``with_config`` one, so the run's
+                    # own configurable put the just-failed provider straight back.
+                    return _stamp_fallback(
+                        await _resolve_fallback(
+                            fallback,
+                            label,
+                            primary_error,
+                            session_id=opts.sticky_session_id
+                            or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
+                        ).ainvoke(
+                            messages,
+                            config=_with_usage_handler(
+                                _with_usage_handler(opts.fallback_config or config, usage_handler),
+                                generation_handler,
+                            ),
+                        )
+                    )
+        except Exception as call_error:
+            # One row per failed CALL: the retry wrapper and the fallback have both
+            # been spent by the time the exception reaches here, so this counts
+            # outages rather than attempts. ``except Exception`` deliberately does
+            # not catch ``CancelledError`` (a BaseException) — a caller hanging up
+            # is not the provider failing, and recording it would inflate the error
+            # rate with our own cancellations.
+            await record_failed_llm_call(
+                user_id=str(user_id) if user_id else None,
+                model_name=_requested_model(primary),
+                error=call_error,
+                context=_invoke_context(
+                    config,
+                    label,
+                    background=opts.meter_auxiliary,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
+            )
+            raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
         if usage_handler is not None:
-            aux_configurable = agent_configurable(config)
-            aux_thread_id = aux_configurable.get("thread_id")
-            aux_conversation_id = aux_configurable.get("conversation_id")
-            aux_workflow_id = aux_configurable.get("workflow_id")
             await _record_auxiliary_usage(
                 usage_handler,
                 label,
                 str(user_id) if user_id else None,
-                context=LLMCallContext(
-                    agent_name=label,
+                context=_invoke_context(
+                    config,
+                    label,
                     background=True,
-                    charge_to_budget=False,
-                    conversation_id=str(aux_conversation_id) if aux_conversation_id else None,
-                    thread_id=str(aux_thread_id) if aux_thread_id else None,
-                    workflow_id=str(aux_workflow_id) if aux_workflow_id else None,
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
                 generation_id=generation_handler.generation_id if generation_handler else None,
@@ -1063,11 +1126,11 @@ class _GenerationIdCallback(BaseCallbackHandler):
         if reported is not None:
             self._priced_attempts += 1
             self._cost_total += reported
-        llm_output = getattr(response, "llm_output", None) or {}
+        llm_output = response.llm_output or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
             return
-        for generations in getattr(response, "generations", None) or []:
+        for generations in response.generations or []:
             for generation in generations:
                 info = getattr(generation, "generation_info", None) or {}
                 if info.get("id"):
@@ -1094,7 +1157,9 @@ def _with_usage_handler(
         manager = existing.copy()
         manager.add_handler(handler, inherit=True)
         merged["callbacks"] = manager
-    return cast(RunnableConfig, merged)
+    # pragma: no mutate — `cast` is erased at runtime, so no test can
+    # observe its type argument; a mutant here is equivalent by construction.
+    return cast(RunnableConfig, merged)  # pragma: no mutate
 
 
 async def _record_auxiliary_usage(

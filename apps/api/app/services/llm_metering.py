@@ -21,12 +21,31 @@ because ``cost_budget`` cannot import ``config.model_pricing`` — that pulls in
 ``app.decorators``, which imports ``cost_budget`` right back.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import math
-from typing import TypedDict
+from typing import Any, TypedDict
 
+from google.genai.errors import ServerError as GeminiServerError
 from langchain_core.messages import AIMessage
+from openrouter.errors import (
+    BadGatewayResponseError,
+    BadRequestResponseError,
+    EdgeNetworkTimeoutResponseError,
+    ForbiddenResponseError,
+    InternalServerResponseError,
+    NoResponseError,
+    NotFoundResponseError,
+    PayloadTooLargeResponseError,
+    PaymentRequiredResponseError,
+    ProviderOverloadedResponseError,
+    RequestTimeoutResponseError,
+    ServiceUnavailableResponseError,
+    TooManyRequestsResponseError,
+    UnauthorizedResponseError,
+    UnprocessableEntityResponseError,
+)
 
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import (
@@ -36,7 +55,9 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import (
+    CallStatus,
     CostSource,
+    ErrorFamily,
     LLMCallDocument,
     llm_calls_repository,
     split_lane_thread,
@@ -45,6 +66,40 @@ from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
+
+# Exception types per :func:`classify_error_family`. Curated tuples rather than
+# message matching, and ordered most-specific-first at the call site.
+_RATE_LIMIT_ERRORS: tuple[type[BaseException], ...] = (TooManyRequestsResponseError,)
+_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (
+    RequestTimeoutResponseError,
+    EdgeNetworkTimeoutResponseError,
+    # asyncio.TimeoutError IS TimeoutError on 3.11+, so the invoke seam's own
+    # wall-clock ceiling lands here too.
+    TimeoutError,
+)
+_UNAVAILABLE_ERRORS: tuple[type[BaseException], ...] = (
+    InternalServerResponseError,
+    BadGatewayResponseError,
+    ServiceUnavailableResponseError,
+    ProviderOverloadedResponseError,
+    NoResponseError,
+    GeminiServerError,
+    ConnectionError,
+)
+_INVALID_REQUEST_ERRORS: tuple[type[BaseException], ...] = (
+    BadRequestResponseError,
+    UnprocessableEntityResponseError,
+    UnauthorizedResponseError,
+    ForbiddenResponseError,
+    NotFoundResponseError,
+    PayloadTooLargeResponseError,
+    # Out of credits is our account being wrong, not the upstream being down.
+    PaymentRequiredResponseError,
+)
+
+
+#: ``SourceCategory.BG`` — the category every non-interactive run falls into.
+_BACKGROUND_SOURCE_CATEGORY = "bg"
 
 
 class TokenUsage(TypedDict):
@@ -97,6 +152,12 @@ class LLMCallContext:
     workflow_id: str | None = None
     #: Wall time of the provider call, where the seam wraps the invocation.
     duration_ms: float | None = None
+    #: Why the provider stopped generating (``extract_finish_reason``).
+    finish_reason: str | None = None
+    #: The surface this call originated from. Threaded from the request or bot
+    #: adapter that started the run — never inferred from the agent name, which
+    #: is the same on every surface.
+    channel: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +175,11 @@ class _PricedCall:
     total_cost: float
     #: Whether ``total_cost`` came from the provider or from our price table.
     cost_source: CostSource
+    #: How the call ended. An error row books no money and no tokens; it exists
+    #: so a provider outage reads as a spike in failures rather than a silent
+    #: dip in traffic.
+    status: CallStatus = "ok"
+    error_family: ErrorFamily | None = None
 
 
 def _ambient_worker_context() -> dict[str, str | None]:
@@ -157,6 +223,8 @@ def _build_ledger_document(call: _PricedCall, context: LLMCallContext) -> LLMCal
         reasoning_tokens=usage["reasoning_tokens"],
         cost_usd=call.total_cost,
         cost_source=call.cost_source,
+        status=call.status,
+        error_family=call.error_family,
         generation_id=context.generation_id,
         conversation_id=context.conversation_id or lane.conversation_id,
         lane_thread=lane.lane_thread,
@@ -165,7 +233,9 @@ def _build_ledger_document(call: _PricedCall, context: LLMCallContext) -> LLMCal
         workflow_execution_id=ambient["workflow_execution_id"],
         job_id=ambient["job_id"],
         task_name=ambient["task_name"],
+        channel=context.channel,
         duration_ms=context.duration_ms,
+        finish_reason=context.finish_reason,
     )
 
 
@@ -290,6 +360,50 @@ async def record_llm_call(
     )
 
 
+async def record_failed_llm_call(
+    *,
+    user_id: str | None,
+    model_name: str,
+    error: BaseException,
+    context: LLMCallContext,
+) -> None:
+    """Record one provider call that never answered.
+
+    Called from the invoke seam AFTER the retry and fallback policy is spent, so
+    this is one row per failed CALL, not per attempt — counting attempts here
+    would multiply every outage by the retry budget and make the error rate a
+    function of our own configuration.
+
+    Books no money and no tokens. The attempts did burn tokens upstream, but
+    nothing reported them (there is no usage payload on a failed call), and
+    inventing a number would put fiction into the same column real spend is
+    summed from. The budget windows and ``usage_daily`` are deliberately NOT
+    touched: this writes to the ledger only.
+    """
+    spawn_background_task(
+        _insert_ledger_row(
+            _build_ledger_document(
+                _PricedCall(
+                    user_id=user_id,
+                    model_name=model_name,
+                    usage=TokenUsage(
+                        input_tokens=0, output_tokens=0, cached_tokens=0, reasoning_tokens=0
+                    ),
+                    root_request_id=None,
+                    total_cost=0.0,
+                    # Nothing was priced, so neither source is true. "table" is
+                    # the honest one: no provider figure was ever reported.
+                    cost_source="table",
+                    status="error",
+                    error_family=classify_error_family(error),
+                ),
+                context,
+            )
+        ),
+        name="llm_calls_ledger_error_insert",
+    )
+
+
 async def _record(call: _PricedCall, context: LLMCallContext) -> float:
     """Write one already-priced call to the budget windows, the durable rollup
     and the ``llm_calls`` ledger.
@@ -350,8 +464,10 @@ def extract_message_usage(message: AIMessage) -> TokenUsage:
     ``output_token_details.reasoning``; not every provider/model returns it.
     Missing fields default to 0.
     """
-    usage = getattr(message, "usage_metadata", None) or {}
-    resp_meta = getattr(message, "response_metadata", None) or {}
+    # Annotated as a plain mapping: the TypedDict cannot represent the empty
+    # fallback, and every read below already defaults each key.
+    usage: Mapping[str, Any] = message.usage_metadata or {}
+    resp_meta = message.response_metadata or {}
     resp_usage = resp_meta.get("usage_metadata") or {}
 
     input_tokens = int(usage.get("input_tokens") or 0)
@@ -445,8 +561,83 @@ def extract_generation_id(message: AIMessage) -> str | None:
     the prompt prefix may have genuinely broken. Those have opposite fixes, so
     the id is what keeps a cache regression from being diagnosed by guesswork.
     """
-    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_meta = message.response_metadata or {}
     return str(resp_meta.get("id") or "") or None
+
+
+def resolve_channel(configurable: Mapping[str, Any]) -> str | None:
+    """Which surface originated this call, from the run's own configurable.
+
+    ``conversation_source`` is the value the entry point set — ``"web"`` /
+    ``"desktop"`` from the chat endpoint's ``X-Client-Type`` header, or the bot
+    platform (``"discord"``, ``"slack"``, ``"telegram"``, ``"whatsapp"``,
+    ``"imessage"``) from the bot endpoint — and it is inherited by every child
+    agent, so an executor call reports the surface its root turn came from.
+    Never inferred from the agent name: ``comms_agent`` serves all of them.
+
+    Background runs carry no ``conversation_source`` (nobody typed anything), so
+    they are separated by what they DO carry: a run with a ``workflow_id`` is
+    ``"workflow"``, and any other background-category run is ``"system"``. That
+    mirrors the ``resolved_source or BACKGROUND`` normalisation the agent config
+    builder already does rather than inventing a second convention.
+
+    ``None`` when the bag has neither key — auxiliary one-shots built from a
+    bare ``{"user_id": ...}`` config genuinely have no surface to name.
+
+    KNOWN GAP: voice reports ``"web"``. The LiveKit agent posts to the same chat
+    endpoint without an ``X-Client-Type`` header, so the header-based resolution
+    cannot tell it apart; distinguishing it needs a change in the voice worker,
+    not here, and guessing would be worse than the honest "web".
+    """
+    source = configurable.get("conversation_source")
+    if source:
+        return str(source)
+    if configurable.get("workflow_id"):
+        return "workflow"
+    if configurable.get("source_category") == _BACKGROUND_SOURCE_CATEGORY:
+        return "system"
+    return None
+
+
+def extract_finish_reason(message: AIMessage) -> str | None:
+    """Why the provider stopped generating, when the reply says.
+
+    ``ChatOpenRouter`` merges ``generation_info`` into ``response_metadata`` on
+    the STREAMING path, so ``finish_reason`` is there for every graph call. On
+    the non-streaming path it stays in ``generation_info``, which never reaches
+    an ``AIMessage`` — only ``native_finish_reason`` is copied onto the message.
+    That upstream-specific value is the honest second-best here, so it is the
+    fallback; the auxiliary route does better by reading ``generation_info``
+    directly off the ``LLMResult`` (see ``_GenerationIdCallback``).
+
+    Worth recording because a run of ``length`` on one lane is a truncation bug,
+    and today it surfaces only as users reporting answers that stop mid-sentence.
+    """
+    resp_meta = message.response_metadata or {}
+    reason = resp_meta.get("finish_reason") or resp_meta.get("native_finish_reason")
+    return str(reason) or None if reason else None
+
+
+def classify_error_family(error: BaseException) -> ErrorFamily:
+    """Bucket a failed provider call by exception TYPE.
+
+    Never by message text. Provider messages embed model ids, request ids and
+    prompt fragments, they change without notice, and grouping on them yields a
+    long tail of near-duplicates instead of the handful of buckets an operator
+    can act on: throttled, timed out, upstream down, our request was wrong.
+
+    Order matters — the rate-limit and timeout types are also members of broader
+    unavailability sets, and the specific answer is the useful one.
+    """
+    if isinstance(error, _RATE_LIMIT_ERRORS):
+        return "rate_limit"
+    if isinstance(error, _TIMEOUT_ERRORS):
+        return "timeout"
+    if isinstance(error, _UNAVAILABLE_ERRORS):
+        return "provider_unavailable"
+    if isinstance(error, _INVALID_REQUEST_ERRORS):
+        return "invalid_request"
+    return "other"
 
 
 def extract_message_provider(message: AIMessage) -> str | None:

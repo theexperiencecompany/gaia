@@ -403,8 +403,10 @@ class TestStyleGuardRegeneration:
         draft.response_metadata = {
             "model_name": "served/model",
             "id": "gen-abc123",
+            "finish_reason": "stop",
             PROVIDER_NAME_METADATA_KEY: "StreamLake",
         }
+        interactive_run["configurable"]["conversation_source"] = "web"
         interactive_run["configurable"]["conversation_id"] = "conv-1"
         interactive_run["configurable"]["thread_id"] = "executor_conv-1"
         interactive_run["configurable"]["workflow_id"] = "wf-1"
@@ -423,6 +425,10 @@ class TestStyleGuardRegeneration:
         assert context.workflow_id == "wf-1"
         assert context.model_served == "served/model"
         assert context.generation_id == "gen-abc123"
+        # The surface the turn came from, and why the draft stopped — the
+        # retraction is a real call and its row has to answer both.
+        assert context.channel == "web"
+        assert context.finish_reason == "stop"
         assert context.provider == "StreamLake"
         # Nothing here timed the draft: it arrives already finished, so an
         # invented latency would be worse than no latency.

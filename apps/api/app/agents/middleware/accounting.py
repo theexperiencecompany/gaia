@@ -60,12 +60,14 @@ from app.services.cost_budget import (
 )
 from app.services.llm_metering import (
     LLMCallContext,
+    extract_finish_reason,
     extract_generation_id,
     extract_message_cost,
     extract_message_model,
     extract_message_provider,
     extract_message_usage,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import ModelContext, log
 
@@ -351,7 +353,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 ),
                 thread_id=thread_id,
                 workflow_id=str(workflow_id) if workflow_id else None,
+                # The surface the turn came from — inherited by executor and
+                # subagent runs, so a child call reports its root's channel.
+                channel=resolve_channel(configurable),
                 duration_ms=self._invoke_ms.pop(thread_id, None),
+                finish_reason=extract_finish_reason(ai_msg),
             ),
         )
 

@@ -24,8 +24,11 @@ from app.services import llm_metering
 from app.services.llm_metering import (
     LLMCallContext,
     TokenUsage,
+    classify_error_family,
+    extract_finish_reason,
     extract_message_provider,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import WorkflowContext, log
 
@@ -44,6 +47,8 @@ CONTEXT = LLMCallContext(
     thread_id=f"executor_{CONVERSATION}",
     workflow_id="wf-1",
     duration_ms=1843.5,
+    finish_reason="stop",
+    channel="web",
 )
 
 
@@ -126,7 +131,14 @@ async def test_the_row_carries_the_calls_whole_identity() -> None:
         "workflow_execution_id": None,
         "job_id": None,
         "task_name": None,
+        "channel": "web",
         "duration_ms": 1843.5,
+        "finish_reason": "stop",
+        "status": "ok",
+        "error_family": None,
+        # A live row is written once, so it carries no backfill identity.
+        "backfilled": False,
+        "backfill_key": None,
     }
 
 
@@ -369,3 +381,117 @@ async def test_a_child_lane_with_no_conversation_id_recovers_it_from_the_thread(
 
     assert doc.conversation_id == CONVERSATION
     assert doc.lane_thread == f"executor_{CONVERSATION}"
+
+
+# --- which surface the call came from ------------------------------------------ #
+
+
+@pytest.mark.parametrize(
+    "source", ["web", "desktop", "mobile", "discord", "slack", "telegram", "whatsapp", "imessage"]
+)
+def test_the_surface_the_turn_came_from_is_recorded_verbatim(source: str) -> None:
+    """``conversation_source`` is set by the entry point — the chat endpoint's
+    ``X-Client-Type`` header or the bot endpoint's platform — and inherited by
+    every child agent, so an executor call reports its root turn's surface."""
+    assert resolve_channel({"conversation_source": source}) == source
+
+
+def test_a_workflow_run_is_its_own_channel() -> None:
+    """Background runs have nobody to attribute a surface to, so they are told
+    apart by what they do carry. A workflow is the one background lane whose
+    cost anyone asks about by name."""
+    assert resolve_channel({"source_category": "bg", "workflow_id": "wf-1"}) == "workflow"
+
+
+def test_other_background_work_is_system() -> None:
+    assert resolve_channel({"source_category": "bg"}) == "system"
+
+
+def test_a_bag_with_no_surface_at_all_records_none() -> None:
+    """Auxiliary one-shots built from a bare ``{"user_id": ...}`` config have no
+    originating surface. None is the honest answer, not a default."""
+    assert resolve_channel({}) is None
+    assert resolve_channel({"user_id": "u1"}) is None
+
+
+def test_an_explicit_surface_wins_over_the_background_derivation() -> None:
+    """A workflow that was kicked off from a real surface keeps that surface —
+    the derivation is a fallback for runs nobody started interactively."""
+    assert resolve_channel({"conversation_source": "discord", "workflow_id": "wf-1"}) == "discord"
+
+
+# --- why the provider stopped -------------------------------------------------- #
+
+
+def test_the_finish_reason_is_read_from_the_streamed_reply() -> None:
+    """ChatOpenRouter merges generation_info into response_metadata on the
+    streaming path, which is every graph call."""
+    message = AIMessage(content="hi", response_metadata={"finish_reason": "length"})
+
+    assert extract_finish_reason(message) == "length"
+
+
+def test_the_native_finish_reason_is_the_fallback() -> None:
+    """The non-streaming path leaves ``finish_reason`` in generation_info, which
+    never reaches an AIMessage — only the upstream's own value is copied on."""
+    message = AIMessage(content="hi", response_metadata={"native_finish_reason": "STOP"})
+
+    assert extract_finish_reason(message) == "STOP"
+
+
+def test_a_reply_that_says_nothing_about_stopping_records_none() -> None:
+    assert extract_finish_reason(AIMessage(content="hi")) is None
+    assert extract_finish_reason(AIMessage(content="hi", response_metadata={})) is None
+
+
+# --- how a failed call is classified ------------------------------------------- #
+#
+# By exception TYPE, never message text: provider messages embed model ids,
+# request ids and prompt fragments, they change without notice, and grouping a
+# dashboard on them yields a long tail instead of the buckets an operator acts on.
+
+
+@pytest.mark.parametrize(
+    ("error", "family"),
+    [
+        (TimeoutError("deadline"), "timeout"),
+        (ConnectionError("refused"), "provider_unavailable"),
+        (ValueError("a bug in our own code"), "other"),
+    ],
+)
+def test_a_failure_is_bucketed_by_its_type(error: BaseException, family: str) -> None:
+    assert classify_error_family(error) == family
+
+
+def test_two_failures_of_one_family_with_different_messages_group_together() -> None:
+    """The property that makes the field usable: message text varies per call,
+    the bucket must not."""
+    assert classify_error_family(TimeoutError("model X timed out after 30s")) == (
+        classify_error_family(TimeoutError("request 9f2a exceeded deadline"))
+    )
+
+
+async def test_a_failed_call_books_no_money_and_no_tokens() -> None:
+    """The attempts did burn tokens upstream, but nothing reported them. A
+    guessed number would sit in the same column real spend is summed from."""
+    with (
+        patch("app.services.llm_metering.record_model_call_usage", new_callable=AsyncMock) as paid,
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock) as create,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1",
+            model_name="deepseek/deepseek-v4-flash",
+            error=TimeoutError("no answer"),
+            context=replace(CONTEXT, duration_ms=1200.0),
+        )
+        await _drain()
+
+    doc = create.await_args.args[0]
+    assert doc.status == "error"
+    assert doc.error_family == "timeout"
+    assert (doc.cost_usd, doc.input_tokens, doc.output_tokens) == (0.0, 0, 0)
+    # Latency to the failure is the whole point — a slow failure and a fast one
+    # are different incidents.
+    assert doc.duration_ms == 1200.0
+    # The budget and the durable rollup are untouched: nothing was spent.
+    paid.assert_not_awaited()

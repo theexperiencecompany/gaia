@@ -157,3 +157,58 @@ class TestRead:
 
         assert fetched is not None
         assert fetched.model_dump(exclude={"id"}) == created.model_dump(exclude={"id"})
+
+
+class TestBackfillIdempotency:
+    """``--apply`` must be safe to re-run.
+
+    The backfill takes long enough to be interrupted, and the natural response
+    to an interrupted run is to run it again. If that duplicated history, every
+    cost total the ledger feeds would silently double for the overlapping days.
+    """
+
+    async def test_re_running_the_same_batch_creates_nothing_the_second_time(
+        self, repo, raw_collection
+    ):
+        await raw_collection.create_index("backfill_key", unique=True, sparse=True)
+        batch = [
+            _doc(user_id="u1", cost_usd=0.01, backfilled=True, backfill_key="key-a"),
+            _doc(user_id="u1", cost_usd=0.02, backfilled=True, backfill_key="key-b"),
+        ]
+
+        first = await repo.insert_backfilled(batch)
+        second = await repo.insert_backfilled(batch)
+
+        assert (first, second) == (2, 0)
+        assert await raw_collection.count_documents({}) == 2
+
+    async def test_a_partial_re_run_fills_only_the_gap(self, repo, raw_collection):
+        """The interrupted-run case: some rows landed, the rest did not. The
+        second pass must add exactly what is missing."""
+        await raw_collection.create_index("backfill_key", unique=True, sparse=True)
+        await repo.insert_backfilled([_doc(user_id="u1", backfilled=True, backfill_key="key-a")])
+
+        created = await repo.insert_backfilled(
+            [
+                _doc(user_id="u1", backfilled=True, backfill_key="key-a"),
+                _doc(user_id="u1", backfilled=True, backfill_key="key-b"),
+            ]
+        )
+
+        assert created == 1
+        assert await raw_collection.count_documents({}) == 2
+
+    async def test_the_stored_backfilled_row_is_marked_as_such(self, repo, raw_collection):
+        """Backfilled rows carry only the context the log line held, so an
+        analysis that needs first-party precision has to be able to exclude
+        them."""
+        await raw_collection.create_index("backfill_key", unique=True, sparse=True)
+
+        await repo.insert_backfilled([_doc(user_id="u1", backfilled=True, backfill_key="key-a")])
+
+        raw = await raw_collection.find_one({})
+        assert raw["backfilled"] is True
+        assert raw["backfill_key"] == "key-a"
+
+    async def test_an_empty_batch_is_not_a_write(self, repo):
+        assert await repo.insert_backfilled([]) == 0
