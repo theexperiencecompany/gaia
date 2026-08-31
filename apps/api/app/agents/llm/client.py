@@ -1184,20 +1184,23 @@ class _GenerationIdCallback(BaseCallbackHandler):
         """
         for generations in response.generations or []:
             for generation in generations:
+                # A plain ``Generation`` (completion models) carries no message;
+                # only a ``ChatGeneration`` does, and only that can name an
+                # upstream. Keep scanning rather than stopping — a run can mix
+                # them, and the one that matters may not be first.
                 message = getattr(generation, "message", None)
-                if not isinstance(message, AIMessage):
-                    continue
-                provider = extract_message_provider(message)
-                if provider:
-                    self.provider = provider
-                finish_reason = extract_finish_reason(message)
-                if finish_reason:
-                    self.finish_reason = finish_reason
-            # ``generation_info`` is where the non-streaming path leaves the
-            # finish reason — it never reaches the message (see
-            # ``extract_finish_reason``), so it is read straight off the result.
-            for generation in generations:
-                info = getattr(generation, "generation_info", None) or {}
+                if isinstance(message, AIMessage):
+                    provider = extract_message_provider(message)
+                    if provider:
+                        self.provider = provider
+                    finish_reason = extract_finish_reason(message)
+                    if finish_reason:
+                        self.finish_reason = finish_reason
+                # ``generation_info`` is where the NON-streaming path leaves the
+                # finish reason — it never reaches the message (see
+                # ``extract_finish_reason``), so it is read straight off the
+                # result and wins, being the more specific source.
+                info = generation.generation_info or {}
                 if info.get("finish_reason"):
                     self.finish_reason = str(info["finish_reason"])
 

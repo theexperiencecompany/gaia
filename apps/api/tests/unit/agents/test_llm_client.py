@@ -2651,6 +2651,17 @@ class TestAuxiliaryResponseFacts:
         message = AIMessage(content="hi", response_metadata=dict(metadata))
         return LLMResult(generations=cast(Any, [[ChatGeneration(message=message)]]))
 
+    def test_a_callback_that_never_ran_reports_nothing_known(self) -> None:
+        """Every field must start as None, not empty string: the metering seam
+        distinguishes "the provider did not say" from a value, and an empty
+        string would be written to the ledger as a real-looking blank."""
+        facts = _GenerationIdCallback().facts
+
+        assert facts.generation_id is None
+        assert facts.provider is None
+        assert facts.finish_reason is None
+        assert facts.cost is None
+
     def test_the_upstream_name_is_read_off_the_reply(self) -> None:
         callback = _GenerationIdCallback()
 
@@ -2671,6 +2682,33 @@ class TestAuxiliaryResponseFacts:
         callback.on_llm_end(self._llm_result())
 
         assert callback.provider is None
+
+    def test_the_finish_reason_is_read_from_generation_info_alone(self) -> None:
+        """The NON-streaming path is the one that matters here: it leaves the
+        finish reason in ``generation_info`` and never copies it onto the
+        message, so reading only the message would report nothing for every
+        auxiliary one-shot — which is all of them on this route."""
+        message = AIMessage(content="hi")
+        generation = ChatGeneration(message=message, generation_info={"finish_reason": "length"})
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(LLMResult(generations=cast(Any, [[generation]])))
+
+        assert callback.finish_reason == "length"
+
+    def test_a_generation_carrying_no_message_does_not_stop_the_scan(self) -> None:
+        """Completion-model generations have no message. Stopping at the first
+        one would skip the chat generation behind it — the only one that can
+        name an upstream."""
+        plain = Generation(text="raw")
+        chat = ChatGeneration(
+            message=AIMessage(content="hi", response_metadata={PROVIDER_NAME_METADATA_KEY: "Baidu"})
+        )
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(LLMResult(generations=cast(Any, [[plain, chat]])))
+
+        assert callback.provider == "Baidu"
 
     def test_the_finish_reason_is_read_off_the_reply(self) -> None:
         """The non-streaming path leaves it in generation_info, which never

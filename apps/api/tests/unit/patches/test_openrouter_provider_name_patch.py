@@ -360,6 +360,18 @@ class TestFinishReasonIsNotDoubled:
         assert _patch._keep_first_response_key(chunk, "finish_reason", 1) == 0
         assert "finish_reason" not in chunk.message.response_metadata
 
+    def test_a_key_present_only_in_generation_info_is_stripped_safely(self) -> None:
+        """``finish_reason`` lives in generation_info and is only mirrored onto
+        response_metadata by the streaming builder — so a later chunk can carry
+        it in one place and not the other. Popping without a default would raise
+        on exactly that chunk and kill the stream."""
+        chunk = ChatGenerationChunk(
+            message=AIMessageChunk(content=""), generation_info={"finish_reason": "stop"}
+        )
+
+        assert _patch._keep_first_response_key(chunk, "finish_reason", 1) == 0
+        assert chunk.generation_info == {}
+
     def test_the_first_finish_chunk_is_kept(self) -> None:
         chunk = _gen_chunk(AIMessageChunk(content="", response_metadata={"finish_reason": "stop"}))
 
