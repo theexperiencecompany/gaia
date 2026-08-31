@@ -45,8 +45,6 @@ apps/api/app/agents/tools/tracked_todo_tools.py	PLR0911
 apps/api/app/agents/tools/tracked_todo_tools.py	PLR0912
 apps/api/app/agents/tools/tracked_todo_tools.py	PLR0913
 apps/api/app/agents/workspace/paths.py	PLR0911
-apps/api/app/api/v1/endpoints/bot.py	PLR0912
-apps/api/app/api/v1/endpoints/bot.py	PLR0915
 apps/api/app/api/v1/endpoints/integrations/config.py	PLR0912
 apps/api/app/api/v1/endpoints/mcp.py	PLR0912
 apps/api/app/api/v1/endpoints/mcp.py	PLR0915
@@ -68,7 +66,6 @@ apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
 apps/api/app/db/repositories/notifications.py	PLR0913
 apps/api/app/db/repositories/todos.py	PLR0912
 apps/api/app/db/repositories/users.py	PLR0913
-apps/api/app/db/repositories/workflows.py	PLR0913
 apps/api/app/memory/extraction.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0915

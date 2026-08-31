@@ -36,35 +36,40 @@ def _checkout(payment_link: str | None) -> MagicMock:
 
 class TestIsSubscriptionActive:
     async def test_pro_plan_is_active(self) -> None:
-        with patch(
-            f"{ENT}.payment_service.get_cached_plan_type",
-            new=AsyncMock(return_value=PlanType.PRO),
-        ):
+        plan_lookup = AsyncMock(return_value=PlanType.PRO)
+        with patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup):
             assert await is_subscription_active("u1") is True
+        plan_lookup.assert_awaited_once_with("u1")
 
     async def test_free_plan_is_not_active(self) -> None:
-        with patch(
-            f"{ENT}.payment_service.get_cached_plan_type",
-            new=AsyncMock(return_value=PlanType.FREE),
-        ):
+        plan_lookup = AsyncMock(return_value=PlanType.FREE)
+        with patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup):
             assert await is_subscription_active("u1") is False
+        plan_lookup.assert_awaited_once_with("u1")
 
 
 class TestGetCheckoutUrl:
     async def test_returns_the_minted_payment_link(self) -> None:
-        with patch(
-            f"{ENT}.payment_service.create_pro_checkout",
-            new=AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc")),
-        ):
+        checkout_mock = AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc"))
+        with patch(f"{ENT}.payment_service.create_pro_checkout", new=checkout_mock):
             assert await get_checkout_url("u1") == "https://checkout.dodo.test/abc"
+        checkout_mock.assert_awaited_once_with("u1")
 
     async def test_dodo_failure_degrades_to_none_instead_of_raising(self) -> None:
         """A paywall response must never itself fail because Dodo is down."""
-        with patch(
-            f"{ENT}.payment_service.create_pro_checkout",
-            new=AsyncMock(side_effect=RuntimeError("dodo unreachable")),
+        exc = RuntimeError("dodo unreachable")
+        with (
+            patch(f"{ENT}.payment_service.create_pro_checkout", new=AsyncMock(side_effect=exc)),
+            patch(f"{ENT}.log") as mock_log,
         ):
             assert await get_checkout_url("u1") is None
+
+        mock_log.warning.assert_called_once_with(
+            "Could not mint checkout link for paywall response",
+            user={"id": "u1"},
+            payment={"operation": "paywall_checkout_link"},
+            error_type="RuntimeError",
+        )
 
 
 class TestRequireActiveSubscription:
@@ -91,6 +96,7 @@ class TestRequireActiveSubscription:
                 new=AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc")),
             ),
             patch(f"{ENT}.settings.PAYWALL_DISCOUNT_CODE", None),
+            patch(f"{ENT}.log") as mock_log,
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
                 await require_active_subscription("u1")
@@ -103,6 +109,11 @@ class TestRequireActiveSubscription:
             "checkout_url": "https://checkout.dodo.test/abc",
             "discount_code": None,
         }
+        mock_log.warning.assert_called_once_with(
+            "Subscription required, blocking request",
+            user={"id": "u1"},
+            payment={"operation": "paywall_gate"},
+        )
 
     async def test_discount_code_travels_when_configured(self) -> None:
         with (
@@ -127,13 +138,11 @@ class TestRequireSubscriptionDecorator:
     async def test_free_user_never_reaches_the_handler(self) -> None:
         handler = AsyncMock(return_value="ok")
         wrapped = require_subscription()(handler)
+        plan_lookup = AsyncMock(return_value=PlanType.FREE)
 
         with (
             patch(f"{RCX}.get_authenticated_user", return_value={"user_id": "u1"}),
-            patch(
-                f"{ENT}.payment_service.get_cached_plan_type",
-                new=AsyncMock(return_value=PlanType.FREE),
-            ),
+            patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup),
             patch(
                 f"{ENT}.payment_service.create_pro_checkout",
                 new=AsyncMock(return_value=_checkout(None)),
@@ -142,34 +151,41 @@ class TestRequireSubscriptionDecorator:
             with pytest.raises(SubscriptionRequiredException):
                 await wrapped()
 
+        plan_lookup.assert_awaited_once_with("u1")
         handler.assert_not_called()
 
     async def test_pro_user_reaches_the_handler_with_its_result_unchanged(self) -> None:
         handler = AsyncMock(return_value="ok")
         wrapped = require_subscription()(handler)
+        plan_lookup = AsyncMock(return_value=PlanType.PRO)
 
         with (
             patch(f"{RCX}.get_authenticated_user", return_value={"user_id": "u1"}),
-            patch(
-                f"{ENT}.payment_service.get_cached_plan_type",
-                new=AsyncMock(return_value=PlanType.PRO),
-            ),
+            patch(f"{ENT}.payment_service.get_cached_plan_type", new=plan_lookup),
         ):
-            result = await wrapped()
+            result = await wrapped(1, 2, keyword="value")
 
         assert result == "ok"
-        handler.assert_called_once()
+        plan_lookup.assert_awaited_once_with("u1")
+        handler.assert_called_once_with(1, 2, keyword="value")
 
     async def test_unauthenticated_request_is_left_to_the_routes_own_auth(self) -> None:
         """No user to gate — same rule tiered_rate_limit follows for public routes."""
         handler = AsyncMock(return_value="ok")
         wrapped = require_subscription()(handler)
 
-        with patch(f"{RCX}.get_authenticated_user", return_value=None):
+        with (
+            patch(f"{RCX}.get_authenticated_user", return_value=None),
+            patch(f"{ENT}.log") as mock_log,
+        ):
             result = await wrapped()
 
         assert result == "ok"
         handler.assert_called_once()
+        mock_log.warning.assert_called_once_with(
+            "require_subscription could not resolve a caller — paywall bypassed",
+            payment={"operation": "paywall_gate_unresolved_user"},
+        )
 
     async def test_authenticated_user_with_no_user_id_is_a_401(self) -> None:
         """A truthy but user_id-less auth dict — distinct from no user at all

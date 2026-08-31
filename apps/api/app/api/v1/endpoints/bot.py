@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 import json
 import secrets
 from typing import Annotated, Any
@@ -224,6 +224,103 @@ def _bot_approval_payload(chunk: dict[str, Any]) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _bot_stream_control_frame(
+    chunk: str, conversation_id: str
+) -> tuple[str | None, dict[str, Any] | None, bool]:
+    """Peel Redis SSE framing off one raw chunk from ``stream_from_redis``.
+
+    Returns ``(frame, data, stop)``. A comment/``[DONE]``/malformed-JSON chunk
+    yields a ready-to-send ``frame`` (``data`` is ``None``); a content chunk
+    yields the parsed payload as ``data`` for ``_bot_stream_payload_frame``
+    (``frame`` is ``None``); a web-only non-``data:`` line yields both
+    ``None``. ``stop`` means the caller ends the stream after ``frame``.
+    """
+    if chunk.startswith(":"):
+        return chunk, None, False
+
+    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...") for
+    # Last-Event-ID resume — split the id line off before the data checks, or
+    # every content frame is silently dropped.
+    if chunk.startswith("id: "):
+        _, _, chunk = chunk.partition("\n")
+
+    if not chunk.startswith("data: "):
+        return None, None, False
+
+    raw = chunk[len("data: ") :].strip()
+    if raw == "[DONE]":
+        done = json.dumps({"done": True, "conversation_id": conversation_id})
+        return f"data: {done}\n\n", None, True
+
+    try:
+        return None, json.loads(raw), False
+    except json.JSONDecodeError as exc:
+        log.warning(
+            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
+            error_type=type(exc).__name__,
+        )
+        return None, None, False
+
+
+async def _bot_stream_payload_frame(data: dict[str, Any], user_id: str) -> tuple[str | None, bool]:
+    """Translate one parsed web SSE payload into a bot frame.
+
+    Returns ``(frame, stop)``. ``frame`` is ``None`` for a payload that
+    carries nothing bots need (a web-only field, an unrecognized shape).
+    ``stop`` marks the terminal ``error`` frame.
+    """
+    if data.get("keepalive"):
+        # Forward keepalives so bot clients reset inactivity timers.
+        return f"data: {json.dumps({'keepalive': True})}\n\n", False
+
+    # Surface rate-limit cards (web-only UI) to bots as a dedicated notice
+    # frame the client delivers out of band, before the web-only fields are
+    # dropped below.
+    #
+    # Its own frame, not a {"text"} one: text belongs to the assistant
+    # message in flight, so a notice sent that way was dropped whenever that
+    # message was discarded (a handoff preamble, a rewritten draft) — the
+    # user hit a limit and was told nothing.
+    if (rate_limit_notice := await _bot_rate_limit_notice(data, user_id)) is not None:
+        payload = json.dumps({"notice": {"text": rate_limit_notice}})
+        return f"data: {payload}\n\n", False
+
+    # Surface HIL approval cards to bots as a dedicated frame the client
+    # renders as an out-of-band prompt (before tool_data is dropped below).
+    if (approval_payload := _bot_approval_payload(data)) is not None:
+        return f"data: {json.dumps({'approval': approval_payload})}\n\n", False
+
+    # An assistant message just ended. Bots need this to know a bubble is
+    # finished — and, when `discarded`, to take back the handoff preamble
+    # they already showed.
+    if "message_boundary" in data:
+        payload = json.dumps({"message_boundary": data["message_boundary"]})
+        return f"data: {payload}\n\n", False
+
+    # Skip web-only fields.
+    if any(
+        key in data
+        for key in [
+            "conversation_description",
+            "user_message_id",
+            "bot_message_id",
+            "stream_id",
+            "tool_data",
+            "tool_output",
+            "follow_up_actions",
+        ]
+    ):
+        return None, False
+
+    # Translate {"response": "..."} → {"text": "..."}
+    if "response" in data:
+        return f"data: {json.dumps({'text': data['response']})}\n\n", False
+    if "error" in data:
+        return f"data: {json.dumps({'error': data['error']})}\n\n", True
+
+    return None, False
+
+
 @router.post(
     "/create-link-token",
     response_model=CreateLinkTokenResponse,
@@ -345,6 +442,100 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     )
 
 
+async def _bot_stream_entitlement_gate(user_id: str, platform: str) -> StreamingResponse | None:
+    """Refuse a bot chat turn the linked user isn't entitled to send, or clear it.
+
+    Two distinct gates, both re-checked on every turn so a user who downgrades
+    after linking is refused here, not silently served: Pro-gated platform
+    linking (premium platforms only), then GAIA's paid-only gate, which blocks
+    every platform regardless of which ones require Pro to link at all.
+    """
+    if await platform_requires_upgrade(user_id, platform):
+        log.set(outcome="plan_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, platform, "plan_required")
+        return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
+
+    if not await is_subscription_active(user_id):
+        log.set(outcome="subscription_required")  # pragma: no mutate
+        _capture_bot_turn_refused(user_id, platform, "subscription_required")
+        return _paywall_notice_stream(_paywall_notice(await _bot_upgrade_url(user_id)))
+
+    return None
+
+
+async def _build_bot_message_request(
+    body: BotChatRequest, conversation_id: str, user_id: str
+) -> MessageRequestWithHistory:
+    """Load conversation history and append the incoming turn, ready for the agent."""
+    raw_history = await BotService.load_conversation_history(conversation_id, user_id)
+    raw_history.append({"role": "user", "content": body.message})
+    history: list[MessageDict] = [
+        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
+    ]
+    return MessageRequestWithHistory(
+        message=body.message,
+        conversation_id=conversation_id,
+        messages=history,
+        fileIds=body.file_ids or [],
+        fileData=body.file_data or [],
+    )
+
+
+def _bot_stream_failure_logger(
+    stream_id: str, conversation_id: str
+) -> Callable[[asyncio.Task], None]:
+    """Build the ``on_done`` callback that logs an unhandled background stream failure."""
+
+    def _log_stream_failure(t: asyncio.Task) -> None:
+        if not t.cancelled() and (exc := t.exception()):
+            log.error(
+                f"{LogTag.API} Background stream task failed",
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+    return _log_stream_failure
+
+
+async def _charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
+    """Charge quota/budget for one bot turn and record its submission event.
+
+    Same quota the web chat endpoint charges via ``@tiered_rate_limit``. It cannot
+    be a decorator here: the caller is resolved from a platform link, so there is
+    no authenticated user when the decorator would run. Without this a free user
+    had no message limit through a bot, and bot turns never reached
+    `record_activity` — leaving them off the heatmap, streak and badge.
+    `BotService.enforce_rate_limit` (called before this) stays: it is flat
+    per-platform anti-spam (20/min, plan-blind), not the plan quota.
+
+    ``enforce_daily_cost_budget`` is the second half of what web chat charges:
+    the tiered limit caps how MANY messages, this caps how EXPENSIVE the day has
+    been. `LLMAccountingMiddleware` is an unbypassable mid-flight backstop, so
+    cost was always bounded — but without this a bot user over budget got a
+    stream that opened and then died partway instead of a clean refusal before
+    any work.
+
+    The submission event is captured HERE, past every gate, for the same reason
+    the web endpoint captures after its own: chat:message_submitted is the
+    ground-truth volume metric, and a turn refused for plan or quota never
+    reached the agent. Counting refusals as submissions inflates bot volume by
+    exactly the traffic of the users who hit walls most, and makes the two
+    surfaces incomparable. A refusal is its own event, with a reason.
+    """
+    await enforce_tiered_limit(user_id, "chat_messages")
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+    capture_event(
+        user_id,
+        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
+        {
+            "platform": body.platform,
+            "has_files": bool(body.file_ids or body.file_data),
+        },
+    )
+
+
 @router.post(
     "/chat-stream",
     status_code=200,
@@ -372,68 +563,17 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = _resolve_user_id(user)
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
     log.set(user={"id": user_id}, outcome="success")
-    # Linking is Pro-gated for premium platforms; re-check on every turn so a
-    # user who downgrades after linking is refused here, not silently served.
-    if await platform_requires_upgrade(user_id, body.platform):
-        log.set(outcome="plan_required")  # pragma: no mutate
-        _capture_bot_turn_refused(user_id, body.platform, "plan_required")
-        return _refusal_stream(BOT_STREAM_ERROR_PLAN_REQUIRED)
 
-    # GAIA is paid-only: a linked FREE user is refused here, before any
-    # LangGraph run starts. Distinct from platform_requires_upgrade above,
-    # which only gates premium-platform linking — this gates every platform.
-    if not await is_subscription_active(user_id):
-        log.set(outcome="subscription_required")  # pragma: no mutate
-        _capture_bot_turn_refused(user_id, body.platform, "subscription_required")
-        return _paywall_notice_stream(_paywall_notice(await _bot_upgrade_url(user_id)))
+    if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
+        return refusal
 
-    # Same quota the web chat endpoint charges via @tiered_rate_limit. It cannot
-    # be a decorator here: the caller is resolved from a platform link above, so
-    # there is no authenticated user when the decorator would run. Without this a
-    # free user had no message limit through a bot, and bot turns never reached
-    # `record_activity` — leaving them off the heatmap, streak and badge.
-    # `BotService.enforce_rate_limit` above stays: it is flat per-platform
-    # anti-spam (20/min, plan-blind), not the plan quota.
-    await enforce_tiered_limit(user_id, "chat_messages")
-    # The second half of what web chat charges: the tiered limit caps how MANY
-    # messages, this caps how EXPENSIVE the day has been. `LLMAccountingMiddleware`
-    # is an unbypassable mid-flight backstop, so cost was always bounded — but
-    # without this a bot user over budget got a stream that opened and then died
-    # partway instead of a clean refusal before any work.
-    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
-
-    # Captured HERE, past every gate, for the same reason the web endpoint
-    # captures after its own: chat:message_submitted is the ground-truth volume
-    # metric, and a turn refused for plan or quota never reached the agent.
-    # Counting refusals as submissions inflates bot volume by exactly the
-    # traffic of the users who hit walls most, and makes the two surfaces
-    # incomparable. A refusal is its own event, with a reason.
-    capture_event(
-        user_id,
-        AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,
-        {
-            "platform": body.platform,
-            "has_files": bool(body.file_ids or body.file_data),
-        },
-    )
+    await _charge_bot_turn(user_id, body)
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
 
-    raw_history = await BotService.load_conversation_history(conversation_id, user_id)
-    raw_history.append({"role": "user", "content": body.message})
-    history: list[MessageDict] = [
-        MessageDict(role=m["role"], content=m["content"]) for m in raw_history
-    ]
-
-    message_request = MessageRequestWithHistory(
-        message=body.message,
-        conversation_id=conversation_id,
-        messages=history,
-        fileIds=body.file_ids or [],
-        fileData=body.file_data or [],
-    )
+    message_request = await _build_bot_message_request(body, conversation_id, user_id)
 
     # Generate session token upfront so it can be sent in the stream
     session_token = create_bot_session_token(
@@ -448,16 +588,6 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
 
     # Launch background task
-    def _log_stream_failure(t: asyncio.Task) -> None:
-        if not t.cancelled() and (exc := t.exception()):
-            log.error(
-                f"{LogTag.API} Background stream task failed",
-                stream_id=stream_id,
-                conversation_id=conversation_id,
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-
     spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
@@ -466,7 +596,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
             conversation_id=conversation_id,
             source=body.platform,
         ),
-        on_done=_log_stream_failure,
+        on_done=_bot_stream_failure_logger(stream_id, conversation_id),
     )
 
     async def stream_from_redis() -> AsyncGenerator[str, None]:
@@ -502,91 +632,21 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                             stream_id=stream_id,
                         )
                         break
-                    # Forward keepalive comments directly
-                    if chunk.startswith(":"):
-                        yield chunk
+
+                    frame, data, stop = _bot_stream_control_frame(chunk, conversation_id)
+                    if frame is not None:
+                        yield frame
+                        if stop:
+                            return
+                        continue
+                    if data is None:
                         continue
 
-                    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
-                    # for Last-Event-ID resume — split the id line off before the data
-                    # checks, or every content frame is silently dropped.
-                    if chunk.startswith("id: "):
-                        _, _, chunk = chunk.partition("\n")
-
-                    if not chunk.startswith("data: "):
-                        continue
-
-                    raw = chunk[len("data: ") :].strip()
-                    if raw == "[DONE]":
-                        yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
-                        return
-
-                    try:
-                        data = json.loads(raw)
-
-                        # Forward keepalives so bot clients reset inactivity timers
-                        if data.get("keepalive"):
-                            yield f"data: {json.dumps({'keepalive': True})}\n\n"
-                            continue
-
-                        # Surface rate-limit cards (web-only UI) to bots as a
-                        # dedicated notice frame the client delivers out of band,
-                        # before the web-only fields are dropped below.
-                        #
-                        # Its own frame, not a {"text"} one: text belongs to the
-                        # assistant message in flight, so a notice sent that way
-                        # was dropped whenever that message was discarded (a
-                        # handoff preamble, a rewritten draft) — the user hit a
-                        # limit and was told nothing.
-                        rate_limit_notice = await _bot_rate_limit_notice(data, user_id)
-                        if rate_limit_notice is not None:
-                            payload = json.dumps({"notice": {"text": rate_limit_notice}})
-                            yield f"data: {payload}\n\n"
-                            continue
-
-                        # Surface HIL approval cards to bots as a dedicated frame the
-                        # client renders as an out-of-band prompt (before tool_data
-                        # is dropped below).
-                        approval_payload = _bot_approval_payload(data)
-                        if approval_payload is not None:
-                            yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
-                            continue
-
-                        # An assistant message just ended. Bots need this to
-                        # know a bubble is finished — and, when `discarded`, to
-                        # take back the handoff preamble they already showed.
-                        if "message_boundary" in data:
-                            payload = json.dumps({"message_boundary": data["message_boundary"]})
-                            yield f"data: {payload}\n\n"
-                            continue
-
-                        # Skip web-only fields
-                        if any(
-                            key in data
-                            for key in [
-                                "conversation_description",
-                                "user_message_id",
-                                "bot_message_id",
-                                "stream_id",
-                                "tool_data",
-                                "tool_output",
-                                "follow_up_actions",
-                            ]
-                        ):
-                            continue
-
-                        # Translate {"response": "..."} → {"text": "..."}
-                        if "response" in data:
-                            yield f"data: {json.dumps({'text': data['response']})}\n\n"
-                        elif "error" in data:
-                            yield f"data: {json.dumps({'error': data['error']})}\n\n"
-                            break
-                    except json.JSONDecodeError as exc:
-                        log.warning(
-                            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
-                            error_type=type(exc).__name__,
-                        )
-                        continue
+                    payload_frame, stop = await _bot_stream_payload_frame(data, user_id)
+                    if payload_frame is not None:
+                        yield payload_frame
+                    if stop:
+                        break
             except asyncio.CancelledError:
                 # Client disconnected mid-stream — expected, not an error. The
                 # background LangGraph task keeps running and persists the result.

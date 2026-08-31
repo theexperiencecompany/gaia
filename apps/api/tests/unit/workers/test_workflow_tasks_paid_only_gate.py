@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -67,15 +68,21 @@ class TestPaidOnlyGateBlocksFreeUsers:
             patch(f"{MODULE}.execute_workflow_as_chat", mock_execute_chat),
             patch(f"{MODULE}.create_execution", mock_create_execution),
             patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock),
+            patch(f"{MODULE}.log") as mock_log,
         ):
             result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "schedule"})
 
-        assert "subscription required" in result
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
         mock_deactivate.assert_awaited_once_with("user-free-1")
         # The run must never reach execution or record an execution — a skip
         # is not a failed run, and it must not touch billing-relevant state.
         mock_execute_chat.assert_not_called()
         mock_create_execution.assert_not_called()
+        mock_log.warning.assert_called_once_with(
+            f"{LogTag.WORKER} Workflow skipped — subscription required, deactivating",
+            workflow_id=workflow.id,
+            user_id="user-free-1",
+        )
 
     async def test_free_user_run_is_skipped_for_manual_trigger_too(self) -> None:
         """Not just scheduled fires — a manual "run now" from a lapsed user is
@@ -94,7 +101,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
         ):
             result = await execute_workflow_by_id({}, workflow.id, {"trigger_type": "manual"})
 
-        assert "subscription required" in result
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
         mock_deactivate.assert_awaited_once_with("user-free-2")
         mock_execute_chat.assert_not_called()
 
@@ -120,7 +127,7 @@ class TestPaidOnlyGateBlocksFreeUsers:
                 {"trigger_type": "integration", "trigger_batch_key": "trigger_batch:wf-1"},
             )
 
-        assert "subscription required" in result
+        assert result == f"Workflow {workflow.id} skipped — subscription required"
         mock_deactivate.assert_awaited_once_with("user-free-3")
         mock_drain.assert_not_called()
 

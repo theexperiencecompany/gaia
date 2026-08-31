@@ -2126,7 +2126,7 @@ class TestHandleSubscriptionActive:
     ):
         """If subscription already exists in DB, skip creation."""
         mock_webhook_subscription_repository.get_by_dodo_id = AsyncMock(
-            return_value=SAMPLE_SUBSCRIPTION_DOC
+            return_value=SAMPLE_SUBSCRIPTION
         )
 
         event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
@@ -2227,14 +2227,16 @@ class TestHandleSubscriptionActive:
         assert result.status == "failed"
         assert "Processing error" in result.message
 
+    @pytest.mark.usefixtures(
+        "mock_processed_webhook_repository",
+        "mock_webhook_subscription_repository",
+        "mock_webhook_users_collection",
+        "mock_webhook_send_email",
+        "mock_track_subscription",
+    )
     async def test_does_not_deactivate_workflows(
         self,
         webhook_service,
-        mock_processed_webhook_repository,
-        mock_webhook_subscription_repository,
-        mock_webhook_users_collection,
-        mock_webhook_send_email,
-        mock_track_subscription,
         mock_deactivate_workflows,
     ):
         """A user going Pro must never have their automation turned off."""

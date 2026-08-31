@@ -154,6 +154,35 @@ class TestDeactivateWorkflowsForLapsedSubscription:
             "error_type": "RuntimeError",
         }
 
+    async def test_the_summary_log_fires_only_when_something_was_deactivated(self) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            repo.find_activated_for_user = AsyncMock(return_value=[_workflow("wf-1")])
+            service.deactivate_workflow = AsyncMock()
+
+            await deactivate_workflows_for_lapsed_subscription(USER_ID)
+
+        mock_log.info.assert_called_once()
+        message, kwargs = mock_log.info.call_args.args[0], mock_log.info.call_args.kwargs
+        assert "Deactivated workflows" in message
+        assert kwargs == {"user_id": USER_ID, "deactivated": 1}
+
+    async def test_the_summary_log_is_silent_on_a_no_op_run(self) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            repo.find_activated_for_user = AsyncMock(return_value=[])
+            service.deactivate_workflow = AsyncMock()
+
+            await deactivate_workflows_for_lapsed_subscription(USER_ID)
+
+        mock_log.info.assert_not_called()
+
 
 class TestReactivateWorkflowsForRestoredSubscription:
     async def test_it_only_reactivates_workflows_this_feature_paused(self) -> None:
@@ -221,3 +250,101 @@ class TestReactivateWorkflowsForRestoredSubscription:
 
         service.activate_workflow.assert_awaited_once_with("wf-1", USER_ID)
         repo.activate.assert_not_called()
+
+    async def test_the_skip_warning_carries_the_workflow_user_and_cause(self) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            repo.find_paused_for_reason = AsyncMock(
+                return_value=[_workflow("wf-1", activated=False)]
+            )
+            service.activate_workflow = AsyncMock(
+                side_effect=RuntimeError("integration since expired")
+            )
+
+            await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        mock_log.warning.assert_called_once()
+        message, kwargs = mock_log.warning.call_args.args[0], mock_log.warning.call_args.kwargs
+        assert "Could not reactivate workflow" in message
+        assert kwargs == {
+            "workflow_id": "wf-1",
+            "user_id": USER_ID,
+            "error": "integration since expired",
+            "error_type": "RuntimeError",
+        }
+
+    async def test_the_summary_log_fires_only_when_something_was_reactivated(self) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            repo.find_paused_for_reason = AsyncMock(
+                return_value=[_workflow("wf-1", activated=False)]
+            )
+            service.activate_workflow = AsyncMock()
+
+            await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        mock_log.info.assert_called_once()
+        message, kwargs = mock_log.info.call_args.args[0], mock_log.info.call_args.kwargs
+        assert "Reactivated workflows" in message
+        assert kwargs == {"user_id": USER_ID, "reactivated": 1}
+
+    async def test_the_summary_log_is_silent_on_a_no_op_run(self) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            repo.find_paused_for_reason = AsyncMock(return_value=[])
+            service.activate_workflow = AsyncMock()
+
+            await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        mock_log.info.assert_not_called()
+
+    async def test_scopes_to_the_given_user_only(self) -> None:
+        """Reactivating another user's workflows would be a real data-safety bug."""
+
+        async def _paused(user_id: str, reason: DeactivationReason) -> list[MagicMock]:
+            assert reason == DeactivationReason.SUBSCRIPTION_LAPSED
+            return (
+                [_workflow("wf-mine", activated=False)]
+                if user_id == USER_ID
+                else [_workflow("wf-other", activated=False)]
+            )
+
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            repo.find_paused_for_reason = AsyncMock(side_effect=_paused)
+            service.activate_workflow = AsyncMock()
+
+            await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        service.activate_workflow.assert_awaited_once_with("wf-mine", USER_ID)
+
+    async def test_rerunning_after_success_reactivates_nothing_again(self) -> None:
+        """Idempotency: once resumed, the workflow no longer carries the lapsed
+        reason, so a second sweep for the same user finds nothing left."""
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            repo.find_paused_for_reason = AsyncMock(
+                return_value=[_workflow("wf-1", activated=False)]
+            )
+            service.activate_workflow = AsyncMock()
+            first_run = await reactivate_workflows_for_restored_subscription(USER_ID)
+
+            repo.find_paused_for_reason = AsyncMock(return_value=[])
+            second_run = await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        assert first_run == 1
+        assert second_run == 0
+        service.activate_workflow.assert_awaited_once()
