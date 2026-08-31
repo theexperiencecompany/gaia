@@ -24,7 +24,7 @@ what keeps the collection bounded — the durable per-day money history stays in
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 import re
 from typing import Literal, NamedTuple
 
@@ -34,7 +34,7 @@ from pymongo import UpdateOne
 from app.constants.general import EXECUTOR_THREAD_PREFIX, SPAWN_THREAD_PREFIX
 from app.db.repositories.base import MongoDocument, MongoRepository
 
-CostSource = Literal["provider", "table"]
+CostSource = Literal["provider", "table", "allocated"]
 CallStatus = Literal["ok", "error"]
 #: Short, stable classification of WHY a provider call failed. Derived from the
 #: exception type, never from its message: messages carry model ids, prompts
@@ -141,9 +141,10 @@ class LLMCallDocument(MongoDocument):
     output_tokens: int = 0
     reasoning_tokens: int = 0
     cost_usd: float = 0.0
-    #: Whether ``cost_usd`` is what the provider charged or what our price table
-    #: guessed. The two disagree by more than 10x per upstream, so coverage of
-    #: the reported price has to be measurable per call.
+    #: Whether ``cost_usd`` is what the provider charged, what our price table
+    #: guessed, or (backfilled rows only) the call's share of OpenRouter's own
+    #: per-day billing total. The three disagree by more than 10x per upstream,
+    #: so coverage of the reported price has to be measurable per call.
     cost_source: CostSource
     #: OpenRouter's generation id — the spot-audit handle back to the upstream.
     generation_id: str | None = None
@@ -244,6 +245,20 @@ class LLMCallsRepository(MongoRepository[LLMCallDocument, LLMCallUpdate]):
         ]
         result = await self._raw_collection().bulk_write(operations, ordered=False)
         return int(result.upserted_count)
+
+    async def first_live_call_at(self) -> datetime | None:
+        """When the live write path recorded its first row.
+
+        The backfill stops here: events at or after this instant already have
+        first-party rows, and reconstructing them too would double every sum.
+        """
+        doc = await self._raw_collection().find_one(
+            {"backfilled": {"$ne": True}}, sort=[("created_at", 1)], projection={"created_at": 1}
+        )
+        if doc is None:
+            return None
+        created_at: datetime = doc["created_at"]
+        return created_at.replace(tzinfo=UTC) if created_at.tzinfo is None else created_at
 
 
 llm_calls_repository = LLMCallsRepository()
