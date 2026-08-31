@@ -14,7 +14,7 @@ from collections.abc import Callable
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
-from app.db.repositories.workflows import workflow_repository
+from app.db.repositories.workflows import SystemWorkflowDefinition, workflow_repository
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -294,12 +294,14 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
 
     await workflow_repository.reset_system_workflow(
         workflow_id,
-        title=request.title,
-        description=request.description or "",
-        prompt=request.prompt,
-        steps=request.steps or [],
-        trigger_config=trigger_config,
-        composio_trigger_ids=new_trigger_ids,
+        SystemWorkflowDefinition(
+            title=request.title,
+            description=request.description or "",
+            prompt=request.prompt,
+            steps=request.steps or [],
+            trigger_config=trigger_config,
+            composio_trigger_ids=new_trigger_ids,
+        ),
     )
 
     # Reset preserves liveness — an activated schedule workflow needs a queued

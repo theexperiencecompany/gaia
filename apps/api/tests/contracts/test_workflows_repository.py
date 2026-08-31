@@ -16,7 +16,11 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.db.repositories.workflows import WorkflowsRepository
+from app.db.repositories.workflows import (
+    SystemWorkflowDefinition,
+    WorkflowReArm,
+    WorkflowsRepository,
+)
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     TriggerConfig,
@@ -231,7 +235,9 @@ class TestWorkflowsScheduler:
         # The reschedule itself: update_workflow persists the new cron's next_run.
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=new_fire, next_run=new_fire
+                wf.id,
+                ScheduledTaskStatus.SCHEDULED,
+                rearm=WorkflowReArm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -318,9 +324,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            scheduled_at=run_at,
-            occurrence_count=3,
-            next_run=run_at,
+            rearm=WorkflowReArm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -338,7 +342,10 @@ class TestWorkflowsScheduler:
         assert (await repo.get(wf.id)).scheduled_at == run_at
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
-            await repo.set_status(wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=None) is True
+            await repo.set_status(
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowReArm(scheduled_at=None)
+            )
+            is True
         )
         assert (await repo.get(wf.id)).scheduled_at is None
 
@@ -465,14 +472,16 @@ class TestWorkflowsTriggersAndSystem:
         )
         updated = await repo.reset_system_workflow(
             wf.id,
-            title="Fresh",
-            description="fresh desc",
-            prompt="fresh prompt",
-            steps=[WorkflowStep(title="s2", category="notion", description="d2")],
-            trigger_config=TriggerConfig(
-                type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
+            SystemWorkflowDefinition(
+                title="Fresh",
+                description="fresh desc",
+                prompt="fresh prompt",
+                steps=[WorkflowStep(title="s2", category="notion", description="d2")],
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
+                ),
+                composio_trigger_ids=["t1"],
             ),
-            composio_trigger_ids=["t1"],
         )
         assert updated is not None
         assert updated.title == "Fresh"

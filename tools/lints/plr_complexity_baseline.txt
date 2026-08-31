@@ -67,7 +67,6 @@ apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
 apps/api/app/db/repositories/notifications.py	PLR0913
 apps/api/app/db/repositories/todos.py	PLR0912
 apps/api/app/db/repositories/users.py	PLR0913
-apps/api/app/db/repositories/workflows.py	PLR0913
 apps/api/app/memory/extraction.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0915

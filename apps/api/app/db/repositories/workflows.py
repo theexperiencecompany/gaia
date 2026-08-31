@@ -20,6 +20,7 @@ scan/routing reads are not keyed by id. Matches the ``workflow_executions``
 repository. Revisit only with evidence of a hot by-id read path.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
 from typing import Any
@@ -70,6 +71,33 @@ class _Unset:
 
 
 UNSET = _Unset()
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowReArm:
+    """The scheduler's re-arm fields for ``set_status``, grouped into one argument.
+
+    ``scheduled_at``/``next_run`` keep the ``UNSET`` sentinel because ``None`` is a
+    meaningful clear the recovery scan writes; ``occurrence_count``/``repeat`` are
+    applied only when provided.
+    """
+
+    scheduled_at: datetime | _Unset | None = UNSET
+    occurrence_count: int | None = None
+    repeat: str | None = None
+    next_run: datetime | _Unset | None = UNSET
+
+
+@dataclass(frozen=True, slots=True)
+class SystemWorkflowDefinition:
+    """A system workflow's canonical definition, re-applied on ``reset_system_workflow``."""
+
+    title: str
+    description: str
+    prompt: str
+    steps: list[WorkflowStep]
+    trigger_config: TriggerConfig
+    composio_trigger_ids: list[str]
 
 
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
@@ -534,32 +562,26 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         status: ScheduledTaskStatus,
         *,
         user_id: str | None = None,
-        scheduled_at: datetime | _Unset | None = UNSET,
-        occurrence_count: int | None = None,
-        repeat: str | None = None,
-        next_run: datetime | _Unset | None = UNSET,
+        rearm: WorkflowReArm | None = None,
     ) -> bool:
         """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
         Returns whether a workflow matched. ``user_id`` adds the owner guard where
-        the caller has one; the worker paths update by id alone.
-
-        ``scheduled_at`` and ``next_run`` (written as ``trigger_config.next_run``)
-        take an ``UNSET`` sentinel because ``None`` is a meaningful value the recovery
-        scan writes — omitted fields are left untouched; an explicit ``None`` clears
-        them. ``occurrence_count``/``repeat`` are only set when provided (they never
-        need clearing to ``None``)."""
+        the caller has one; the worker paths update by id alone. The re-arm fields
+        (``scheduled_at``/``occurrence_count``/``repeat``/``next_run``) are grouped
+        in ``rearm`` — see ``WorkflowReArm`` for the per-field write semantics."""
+        rearm = rearm or WorkflowReArm()
         filter_: dict[str, Any] = {"_id": workflow_id}
         if user_id:
             filter_["user_id"] = user_id
         set_fields: dict[str, Any] = {"status": status.value}
-        if not isinstance(scheduled_at, _Unset):
-            set_fields["scheduled_at"] = scheduled_at
-        if occurrence_count is not None:
-            set_fields["occurrence_count"] = occurrence_count
-        if repeat is not None:
-            set_fields["repeat"] = repeat
-        if not isinstance(next_run, _Unset):
-            set_fields[NEXT_RUN_FIELD] = next_run
+        if not isinstance(rearm.scheduled_at, _Unset):
+            set_fields["scheduled_at"] = rearm.scheduled_at
+        if rearm.occurrence_count is not None:
+            set_fields["occurrence_count"] = rearm.occurrence_count
+        if rearm.repeat is not None:
+            set_fields["repeat"] = rearm.repeat
+        if not isinstance(rearm.next_run, _Unset):
+            set_fields[NEXT_RUN_FIELD] = rearm.next_run
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
@@ -607,29 +629,21 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
 
     async def reset_system_workflow(
-        self,
-        workflow_id: str,
-        *,
-        title: str,
-        description: str,
-        prompt: str,
-        steps: list[WorkflowStep],
-        trigger_config: TriggerConfig,
-        composio_trigger_ids: list[str],
+        self, workflow_id: str, definition: SystemWorkflowDefinition
     ) -> WorkflowDocument | None:
         """Re-apply a system workflow's original definition (title/description/prompt/
         steps/trigger_config), preserving liveness, stats and ``created_at``. ``next_run``
         stays a native datetime (python-mode dump), consistent with create/re-arm."""
-        trigger_doc = trigger_config.model_dump()
-        trigger_doc["composio_trigger_ids"] = composio_trigger_ids
+        trigger_doc = definition.trigger_config.model_dump()
+        trigger_doc["composio_trigger_ids"] = definition.composio_trigger_ids
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {
                 "$set": {
-                    "title": title,
-                    "description": description,
-                    "prompt": prompt,
-                    "steps": [s.model_dump() for s in steps],
+                    "title": definition.title,
+                    "description": definition.description,
+                    "prompt": definition.prompt,
+                    "steps": [s.model_dump() for s in definition.steps],
                     "trigger_config": trigger_doc,
                 }
             },
