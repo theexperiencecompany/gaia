@@ -229,12 +229,12 @@ def _bot_stream_control_frame(
 ) -> tuple[str | None, dict[str, Any] | None, bool]:
     """Peel Redis SSE framing off one raw chunk from ``stream_from_redis``.
 
-    Returns ``(frame, data, stop)``. A comment/``[DONE]``/malformed-JSON chunk
-    yields a ready-to-send ``frame`` (``data`` is ``None``); a content chunk
-    yields the parsed payload as ``data`` for ``_bot_stream_payload_frame``
-    (``frame`` is ``None``); a web-only non-``data:`` line yields both
-    ``None``. ``stop`` means the caller ends the stream after ``frame``.
+    Returns ``(frame, data, stop)`` — see the tri-state contract below.
     """
+    # A comment/[DONE]/malformed-JSON chunk yields a ready-to-send `frame`
+    # (`data` is None); a content chunk yields the parsed payload as `data`
+    # for `_bot_stream_payload_frame` (`frame` is None); a web-only
+    # non-`data:` line yields both None. `stop` ends the stream after `frame`.
     if chunk.startswith(":"):
         return chunk, None, False
 
@@ -265,10 +265,11 @@ def _bot_stream_control_frame(
 async def _bot_stream_payload_frame(data: dict[str, Any], user_id: str) -> tuple[str | None, bool]:
     """Translate one parsed web SSE payload into a bot frame.
 
-    Returns ``(frame, stop)``. ``frame`` is ``None`` for a payload that
-    carries nothing bots need (a web-only field, an unrecognized shape).
-    ``stop`` marks the terminal ``error`` frame.
+    Returns ``(frame, stop)`` — ``frame`` is ``None`` when nothing bots need.
     """
+    # `frame` is None for a payload that carries nothing bots need (a
+    # web-only field, an unrecognized shape). `stop` marks the terminal
+    # `error` frame.
     if data.get("keepalive"):
         # Forward keepalives so bot clients reset inactivity timers.
         return f"data: {json.dumps({'keepalive': True})}\n\n", False
@@ -445,11 +446,11 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
 async def _bot_stream_entitlement_gate(user_id: str, platform: str) -> StreamingResponse | None:
     """Refuse a bot chat turn the linked user isn't entitled to send, or clear it.
 
-    Two distinct gates, both re-checked on every turn so a user who downgrades
-    after linking is refused here, not silently served: Pro-gated platform
-    linking (premium platforms only), then GAIA's paid-only gate, which blocks
-    every platform regardless of which ones require Pro to link at all.
+    Re-checked every turn so a downgrade after linking is caught here.
     """
+    # Two distinct gates: Pro-gated platform linking (premium platforms
+    # only), then GAIA's paid-only gate, which blocks every platform
+    # regardless of which ones require Pro to link at all.
     if await platform_requires_upgrade(user_id, platform):
         log.set(outcome="plan_required")  # pragma: no mutate
         _capture_bot_turn_refused(user_id, platform, "plan_required")
@@ -483,10 +484,10 @@ async def _build_bot_message_request(
 
 def _bot_stream_failure_logger(
     stream_id: str, conversation_id: str
-) -> Callable[[asyncio.Task], None]:
+) -> Callable[[asyncio.Task[Any]], None]:
     """Build the ``on_done`` callback that logs an unhandled background stream failure."""
 
-    def _log_stream_failure(t: asyncio.Task) -> None:
+    def _log_stream_failure(t: asyncio.Task[Any]) -> None:
         if not t.cancelled() and (exc := t.exception()):
             log.error(
                 f"{LogTag.API} Background stream task failed",
@@ -502,30 +503,27 @@ def _bot_stream_failure_logger(
 async def _charge_bot_turn(user_id: str, body: BotChatRequest) -> None:
     """Charge quota/budget for one bot turn and record its submission event.
 
-    Same quota the web chat endpoint charges via ``@tiered_rate_limit``. It cannot
-    be a decorator here: the caller is resolved from a platform link, so there is
-    no authenticated user when the decorator would run. Without this a free user
-    had no message limit through a bot, and bot turns never reached
-    `record_activity` — leaving them off the heatmap, streak and badge.
-    `BotService.enforce_rate_limit` (called before this) stays: it is flat
-    per-platform anti-spam (20/min, plan-blind), not the plan quota.
-
-    ``enforce_daily_cost_budget`` is the second half of what web chat charges:
-    the tiered limit caps how MANY messages, this caps how EXPENSIVE the day has
-    been. `LLMAccountingMiddleware` is an unbypassable mid-flight backstop, so
-    cost was always bounded — but without this a bot user over budget got a
-    stream that opened and then died partway instead of a clean refusal before
-    any work.
-
-    The submission event is captured HERE, past every gate, for the same reason
-    the web endpoint captures after its own: chat:message_submitted is the
-    ground-truth volume metric, and a turn refused for plan or quota never
-    reached the agent. Counting refusals as submissions inflates bot volume by
-    exactly the traffic of the users who hit walls most, and makes the two
-    surfaces incomparable. A refusal is its own event, with a reason.
+    Mirrors what the web chat endpoint charges via ``@tiered_rate_limit``, done
+    manually since the caller here has no authenticated request to decorate.
     """
+    # Can't be a decorator: the caller is resolved from a platform link, so
+    # there is no authenticated user when the decorator would run. Without
+    # this a free user had no message limit through a bot, and bot turns
+    # never reached `record_activity` — leaving them off the heatmap, streak
+    # and badge. `BotService.enforce_rate_limit` (called before this) stays:
+    # it is flat per-platform anti-spam (20/min, plan-blind), not the quota.
     await enforce_tiered_limit(user_id, "chat_messages")
+    # Second half of what web chat charges: the tiered limit above caps how
+    # MANY messages, this caps how EXPENSIVE the day has been. Without it a
+    # bot user over budget got a stream that opened and died partway instead
+    # of a clean refusal before any work (`LLMAccountingMiddleware` still
+    # bounds cost mid-flight, but only after the work started).
     await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
+    # Captured HERE, past every gate — same reason the web endpoint captures
+    # after its own: chat:message_submitted is the ground-truth volume
+    # metric, and a turn refused for plan or quota never reached the agent.
+    # Counting refusals as submissions would inflate bot volume by exactly
+    # the traffic of users who hit walls most. A refusal is its own event.
     capture_event(
         user_id,
         AnalyticsEvents.CHAT_MESSAGE_SUBMITTED,

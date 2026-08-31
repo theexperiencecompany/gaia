@@ -29,7 +29,9 @@ from app.models.notification.notification_models import (
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     SystemWorkflowDefinition,
+    TriggerConfig,
     TriggerType,
+    WorkflowDocument,
 )
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
@@ -203,6 +205,104 @@ async def _notify_workflows_provisioned(
         )
 
 
+async def _stamp_reset_trigger_timezone(trigger_config: TriggerConfig, user_id: str) -> None:
+    """Stamp profile timezone and recompute next_run for a schedule trigger being reset."""
+    if trigger_config.type != TriggerType.SCHEDULE:
+        return
+    if not trigger_config.timezone:
+        user = await get_user_by_id(user_id) or {}
+        trigger_config.timezone = (user.get("timezone") or "").strip() or "UTC"
+    if trigger_config.cron_expression:
+        trigger_config.update_next_run(user_timezone=trigger_config.timezone)
+
+
+async def _reregister_triggers_for_reset(
+    trigger_config: TriggerConfig, workflow_id: str, user_id: str
+) -> list[str] | None:
+    """Register fresh triggers for a reset. Registers old still active if this fails.
+
+    Returns the new trigger ids, ``[]`` when no re-registration is needed, or ``None``
+    when registration failed and the caller must abort the reset.
+    """
+    if trigger_config.type != TriggerType.INTEGRATION or not trigger_config.trigger_name:
+        return []
+    try:
+        new_trigger_ids = await TriggerService.register_triggers(
+            user_id=user_id,
+            workflow_id=workflow_id,
+            trigger_name=trigger_config.trigger_name,
+            trigger_config=trigger_config,
+            raise_on_failure=False,
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.WORKFLOW} Failed to re-register triggers, aborting reset of",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+        return None
+
+    if not new_trigger_ids:
+        log.error(
+            f"{LogTag.WORKFLOW} New trigger registration returned an empty result, aborting reset to avoid leaving the workflow without triggers",
+            workflow_id=workflow_id,
+            user_id=user_id,
+        )
+        return None
+    return new_trigger_ids
+
+
+async def _unregister_old_triggers_for_reset(
+    old_trigger_ids: list[str], trigger_name: str | None, workflow_id: str, user_id: str
+) -> None:
+    """Unregister the pre-reset triggers. Non-fatal: only called after new ones are confirmed."""
+    if not (old_trigger_ids and trigger_name):
+        return
+    try:
+        await TriggerService.unregister_triggers(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            trigger_ids=old_trigger_ids,
+            workflow_id=workflow_id,
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} Failed to unregister old triggers during reset of (non-fatal)",
+            workflow_id=workflow_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+
+
+async def _rearm_reset_schedule(
+    existing: WorkflowDocument, trigger_config: TriggerConfig, workflow_id: str, user_id: str
+) -> bool:
+    """Re-arm the schedule after a reset preserves liveness. False only when arming was
+    required (an activated schedule workflow) but failed."""
+    if not (
+        existing.activated
+        and trigger_config.type == TriggerType.SCHEDULE
+        and trigger_config.next_run
+    ):
+        return True
+    armed = await workflow_scheduler.schedule_workflow_execution(
+        workflow_id,
+        trigger_config.next_run,
+        repeat=trigger_config.cron_expression,
+    )
+    if not armed:
+        log.error(
+            f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
+            workflow_id=workflow_id,
+            user_id=user_id,
+        )
+        return False
+    return True
+
+
 async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bool:
     """Re-apply the original definition to a system workflow document.
 
@@ -239,62 +339,18 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     # Factories can't know the user, so scheduled definitions carry no timezone —
     # stamp the profile timezone and recompute next_run from the cron, exactly as
     # the provisioning and activation paths do.
-    if trigger_config.type == TriggerType.SCHEDULE:
-        if not trigger_config.timezone:
-            user = await get_user_by_id(user_id) or {}
-            trigger_config.timezone = (user.get("timezone") or "").strip() or "UTC"
-        if trigger_config.cron_expression:
-            trigger_config.update_next_run(user_timezone=trigger_config.timezone)
+    await _stamp_reset_trigger_timezone(trigger_config, user_id)
 
     old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
     trigger_name: str | None = existing.trigger_config.trigger_name
 
     # Register fresh triggers FIRST (old still active if this fails)
-    new_trigger_ids: list[str] = []
-    if trigger_config.type == TriggerType.INTEGRATION and trigger_config.trigger_name:
-        try:
-            new_trigger_ids = await TriggerService.register_triggers(
-                user_id=user_id,
-                workflow_id=workflow_id,
-                trigger_name=trigger_config.trigger_name,
-                trigger_config=trigger_config,
-                raise_on_failure=False,
-            )
-        except Exception as e:
-            log.error(
-                f"{LogTag.WORKFLOW} Failed to re-register triggers, aborting reset of",
-                workflow_id=workflow_id,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
-            return False
-
-        if not new_trigger_ids:
-            log.error(
-                f"{LogTag.WORKFLOW} New trigger registration returned an empty result, aborting reset to avoid leaving the workflow without triggers",
-                workflow_id=workflow_id,
-                user_id=user_id,
-            )
-            return False
+    new_trigger_ids = await _reregister_triggers_for_reset(trigger_config, workflow_id, user_id)
+    if new_trigger_ids is None:
+        return False
 
     # Only unregister old triggers AFTER new ones are confirmed registered
-    if old_trigger_ids and trigger_name:
-        try:
-            await TriggerService.unregister_triggers(
-                user_id=user_id,
-                trigger_name=trigger_name,
-                trigger_ids=old_trigger_ids,
-                workflow_id=workflow_id,
-            )
-        except Exception as e:
-            log.warning(
-                f"{LogTag.WORKFLOW} Failed to unregister old triggers during reset of (non-fatal)",
-                workflow_id=workflow_id,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
+    await _unregister_old_triggers_for_reset(old_trigger_ids, trigger_name, workflow_id, user_id)
 
     await workflow_repository.reset_system_workflow(
         workflow_id,
@@ -312,23 +368,8 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     # fire for the recomputed next_run or it never runs again. A failed re-arm
     # must fail the reset: reporting success here would leave a workflow that
     # looks reset but never fires (retrying the reset re-arms it).
-    if (
-        existing.activated
-        and trigger_config.type == TriggerType.SCHEDULE
-        and trigger_config.next_run
-    ):
-        armed = await workflow_scheduler.schedule_workflow_execution(
-            workflow_id,
-            trigger_config.next_run,
-            repeat=trigger_config.cron_expression,
-        )
-        if not armed:
-            log.error(
-                f"{LogTag.WORKFLOW} Reset applied but re-arming the schedule failed",
-                workflow_id=workflow_id,
-                user_id=user_id,
-            )
-            return False
+    if not await _rearm_reset_schedule(existing, trigger_config, workflow_id, user_id):
+        return False
 
     log.info(
         f"{LogTag.WORKFLOW} Reset system workflow to default for user",

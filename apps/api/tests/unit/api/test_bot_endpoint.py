@@ -1137,6 +1137,37 @@ class TestBotChatStreamBody:
 
         assert body.index('"session_token": "tok"') < body.index('"done"')
 
+    async def test_a_disconnected_client_stops_forwarding_before_any_frame(
+        self, client: AsyncClient
+    ):
+        """`request.is_disconnected()` is checked before translating each chunk —
+        a client gone before the first one gets neither text nor `done`, and the
+        background task (already launched) is left to persist the result alone."""
+
+        async def answer() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "too late"}\n\n'
+            yield "data: [DONE]\n\n"
+
+        with patch("starlette.requests.Request.is_disconnected", new=AsyncMock(return_value=True)):
+            body = await self._collect(client, answer())
+
+        assert '"text"' not in body
+        assert '"done"' not in body
+        assert '"session_token": "tok"' in body
+
+    async def test_a_subscription_error_yields_a_generic_error_frame(self, client: AsyncClient):
+        """An exception from `subscribe_stream` must still end the turn with a
+        frame the bot can render, not a silently dead connection."""
+
+        async def broken() -> AsyncGenerator[str, None]:
+            yield 'data: {"response": "partial"}\n\n'
+            raise RuntimeError("redis blew up")
+
+        body = await self._collect(client, broken())
+
+        assert '"text": "partial"' in body
+        assert '"error": "Stream error occurred"' in body
+
 
 # ---------------------------------------------------------------------------
 # POST /bot/transcribe — voice / audio transcription for bot adapters
