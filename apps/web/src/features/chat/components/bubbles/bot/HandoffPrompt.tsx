@@ -183,6 +183,17 @@ export function HandoffPrompt({
         {handoff.reason}
       </p>
 
+      {/* On a sign-in handoff, reassure the user the login isn't wasted: the
+          session is saved encrypted and reused so the next task skips it. Only
+          for credentials — never payments/confirmations, which aren't stored. */}
+      {handoff.category === "credentials" && (
+        <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500">
+          Once you're signed in, I'll save this site's session — encrypted — so
+          I can skip the login next time. You can remove saved sites anytime in
+          your Browser settings.
+        </p>
+      )}
+
       {/* The canvas is the instruction — it says "you're in control" better than
           a label above it ever did, so the label is gone. */}
       {!inPanel && handoff.live_view_url && liveToken && (

@@ -405,6 +405,55 @@ class TestBotProgressDeliveryHandoff:
                 "\n\nOpen the live browser: https://live.example.com/link"
             )
 
+    async def test_credentials_handoff_reassures_the_login_is_saved(self, delivery):
+        """A sign-in handoff tells the user the session will be saved encrypted —
+        it is true (storage_persistence.py) and it is what makes a login worth
+        doing once."""
+        from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
+
+        snap = BrowserHandoffSnapshot(
+            handoff_id="h1",
+            reason="Enter your password and click Sign in.",
+            session_id="sess-1",
+            status=HandoffStatus.PENDING,
+            category=SensitiveCategory.CREDENTIALS,
+        )
+        with (
+            patch(
+                "app.services.browser.bot_delivery.create_live_view_link",
+                new=AsyncMock(return_value="https://live/x"),
+            ),
+            patch(
+                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
+            ) as mp,
+        ):
+            await delivery.handoff(snap)
+            assert BROWSER_CREDENTIALS_SAVED_NOTE in mp.call_args[0][2][0]
+
+    async def test_non_credentials_handoff_omits_the_saved_note(self, delivery):
+        """A payment handoff must NOT promise to store anything — nothing is saved
+        for a payment, so the note would be a false reassurance."""
+        from app.constants.browser import BROWSER_CREDENTIALS_SAVED_NOTE, SensitiveCategory
+
+        snap = BrowserHandoffSnapshot(
+            handoff_id="h1",
+            reason="Complete the payment.",
+            session_id="sess-1",
+            status=HandoffStatus.PENDING,
+            category=SensitiveCategory.PAYMENT,
+        )
+        with (
+            patch(
+                "app.services.browser.bot_delivery.create_live_view_link",
+                new=AsyncMock(return_value="https://live/x"),
+            ),
+            patch(
+                "app.services.browser.bot_delivery.publish_outbound_message", new=AsyncMock()
+            ) as mp,
+        ):
+            await delivery.handoff(snap)
+            assert BROWSER_CREDENTIALS_SAVED_NOTE not in mp.call_args[0][2][0]
+
     async def test_pending_without_session_no_link(self, delivery):
         snap = BrowserHandoffSnapshot(
             handoff_id="h1", reason="Need creds", session_id=None, status=HandoffStatus.PENDING

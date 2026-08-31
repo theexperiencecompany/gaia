@@ -57,6 +57,17 @@ class SensitiveCategory(str, Enum):
     IRREVERSIBLE = "irreversible"
 
 
+# Shown to the user on a CREDENTIALS handoff so they know the sign-in isn't wasted
+# effort: the resulting session is saved (Fernet-encrypted per user+site) and
+# reused so the next task skips the login. Kept truthful — this is exactly what
+# storage_persistence.py does, and the Browser settings list/remove saved sites.
+BROWSER_CREDENTIALS_SAVED_NOTE = (
+    "Once you're signed in, I'll save this site's session — encrypted — so I can "
+    "skip the login next time. You can remove saved sites anytime in "
+    "your Browser settings."
+)
+
+
 class HandoffStatus(str, Enum):
     """State of a live-view handoff: pending, completed, cancelled, expired."""
 

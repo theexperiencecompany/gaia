@@ -7,7 +7,11 @@ artifact the web card renders, sent through the platform's native image
 message instead of a pasted link.
 """
 
-from app.constants.browser import HandoffStatus
+from app.constants.browser import (
+    BROWSER_CREDENTIALS_SAVED_NOTE,
+    HandoffStatus,
+    SensitiveCategory,
+)
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
     BrowserAction,
@@ -91,6 +95,8 @@ class BotProgressDelivery:
             f"I need you to take over for this step:\n{snapshot.reason}\n\n"
             "Reply *done* when you've finished, or *stop* to cancel."
         )
+        if snapshot.category == SensitiveCategory.CREDENTIALS:
+            msg += f"\n\n{BROWSER_CREDENTIALS_SAVED_NOTE}"
         if snapshot.session_id:
             link = await create_live_view_link(snapshot.session_id, self._user_id)
             msg += f"\n\nOpen the live browser: {link}"
