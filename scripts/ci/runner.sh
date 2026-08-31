@@ -16,6 +16,10 @@
 #                       --env (default) --json.
 #   dep-marker <kind>   Print the marker path that decides whether a persisted
 #                       node|python install is stale.
+#   with-slots N -- cmd Acquire N host CPU tokens (lib/cpu-slots.sh), run cmd,
+#                       release them. For a lane whose heavy command is not its
+#                       own script — the nx build step passes NX_PARALLEL — so a
+#                       workflow step stays one command line.
 #
 # Env contract:
 #   select             GITHUB_TOKEN (repo scope), GITHUB_REPOSITORY,
@@ -36,6 +40,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/cpu-slots.sh
+source "$(dirname "$0")/lib/cpu-slots.sh"
 
 # ── select ────────────────────────────────────────────────────────────────
 # Elegant fallback contract:
@@ -675,8 +681,27 @@ _dep_marker_key() {
   done | sha256sum | cut -c1-16
 }
 
+# ── with-slots ──────────────────────────────────────────────────────────────
+# Take N host CPU tokens for the duration of a command, then give them back.
+# The scriptless heavy lane (the nx build) uses this so its workflow step is
+# still one command line; the token-owning lanes that DO have a script
+# (pytest.sh slice, mutation.sh shard) acquire inline instead. Fail-open and a
+# no-op off the self-hosted box — see lib/cpu-slots.sh. The command's exit code
+# is propagated; cpu_slots_acquire's EXIT trap releases even if it is killed.
+cmd_with_slots() {
+  local n="${1:?usage: runner.sh with-slots N -- <cmd...>}"
+  shift
+  [ "${1:-}" = "--" ] && shift
+  [ "$#" -gt 0 ] || { echo "runner.sh with-slots: no command after N" >&2; exit 2; }
+  cpu_slots_acquire "$n"
+  local rc=0
+  "$@" || rc=$?
+  cpu_slots_release "$n"
+  return "$rc"
+}
+
 usage() {
-  sed -n '2,32p' "$0" >&2
+  sed -n '2,36p' "$0" >&2
 }
 
 main() {
@@ -689,6 +714,7 @@ main() {
     prime-archive)     cmd_prime_archive "$@" ;;
     parallel)          cmd_parallel "$@" ;;
     dep-marker)        cmd_dep_marker "$@" ;;
+    with-slots)        cmd_with_slots "$@" ;;
     *)
       echo "runner.sh: unknown subcommand '${sub}'" >&2
       usage

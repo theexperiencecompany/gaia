@@ -11,7 +11,7 @@ lane without grepping the workflow first.
 
 | Concept | Script | Subcommands |
 | --- | --- | --- |
-| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker` |
+| Where and how hard a job runs | `runner.sh` | `select`, `watchdog`, `cancel-superseded`, `prime-archive`, `parallel`, `dep-marker`, `with-slots` |
 | The service containers a suite talks to | `test-services.sh` | `up`, `prepare`, `reset`, `down`, `janitor` |
 | The embedding sidecar | `embedding-sidecar.sh` | `start`, `stop` |
 | Running the Python suite | `pytest.sh` | `slice`, `flake-gate`, `regression-proof` |
@@ -29,7 +29,8 @@ Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 (image tags, `:latest`, the CLI on npm); `deploy.sh` puts them on the Swarm.
 
 `lib/` holds what the entrypoints share or delegate to: `log.sh` (the log
-convention), `service-images.sh` (the digest-pinned test-service images),
+convention), `cpu-slots.sh` (the host CPU governor, below),
+`service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
 `CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
 observability scanner behind `checks.mjs evlog-map-bots`) and
@@ -49,6 +50,51 @@ subcommand. `contract.json` is the cross-runtime contract data, and `run.py`
 drives two separate runtimes through `emit_python.py` and `emit_typescript.ts`
 to diff what they actually print. Folding an entry point into `checks.mjs` would
 leave the other three files behind and hide where the tool really lives.
+
+## The host CPU governor (`lib/cpu-slots.sh`)
+
+The box is 8 physical cores / 16 threads, but the heavy lanes size their own
+parallelism independently and land together: the four `test-python` slices alone
+budget ~16 threads (unit-a=5, unit-b=7, integration=4, bridge serial), and on the
+SAME cores at the same time run main.yml's `build` (nx `--parallel 6`),
+`test-typescript`, `docker-image`, and all of code-quality.yml — including
+`mutation.sh shard` four at a time, each wanting nproc-2. Two overlapping pushes
+double it. The 15-min load average was measured at ~18.5 (~2.3x oversubscription);
+the same PR ran 3.6 min on an idle box vs 11.3 min loaded.
+
+`cpu-slots.sh` is a weighted counting semaphore over a token pool in a
+HOST-SHARED dir (`/run/gaia-ci/cpu-slots`, or `$HOME/ci-cache/cpu-slots` — shared
+across every runner instance because they share `$HOME`; deliberately NOT
+`RUNNER_LOCAL_CACHE`, which is per-instance and would give each runner its own
+budget). A lane takes tokens equal to its real thread appetite and releases them
+at the end, so the concurrent heavy work is capped at the pool size and lanes
+queue instead of thrash. Pool size is `GAIA_CPU_TOKENS`, defaulting to the
+thread count (`nproc`, 16 on the box). That default is measured, not assumed:
+the test-python slices' static worker shares (5+7+4) sum to the 16 threads by
+design for a single run, so a smaller pool would serialise a lone run's own
+slices and regress the single-push case; at `nproc` a single run is unaffected
+while two overlapping runs still halve the oversubscription (measured: two
+concurrent `main.yml` dispatches drove the 1-min loadavg peak to 59 with the
+governor off vs 32 with the pool at 16, per-run wall 6.4/6.1 min -> 5.5/4.8 min).
+
+Two rules make it safe to have in the gate at all:
+
+- **It fails open, always.** It is a no-op off the box
+  (`RUNNER_ENVIRONMENT != self-hosted`), with no `flock`, with an uncreatable
+  dir, or for a non-positive N. Every acquire has a timeout
+  (`GAIA_CPU_SLOTS_TIMEOUT`, 600s); on expiry it logs `::warning::` and PROCEEDS
+  WITHOUT the tokens. The governor can never hang or fail a lane.
+- **Leaked tokens self-heal.** Available is computed under `flock` as
+  `TOTAL - sum(live holder files)`, so a counter cannot drift. A grant whose
+  holder pid is dead (a SIGKILL'd cancelled job that never ran its EXIT trap) or
+  that is older than `GAIA_CPU_SLOTS_TTL` (3600s) is reclaimed by the next
+  acquirer.
+
+Wiring: `pytest.sh slice` takes `XDIST_N` tokens, `mutation.sh shard` takes its
+`nproc-2` budget (and bounds `MUTMUT_MAX_CHILDREN` to match), and the nx `build`
+step takes `NX_PARALLEL` via `runner.sh with-slots N -- <cmd>` (the wrapper exists
+so a scriptless lane's step stays one command line). The lib lives in the repo
+checkout and is sourced like `log.sh`; no `setup.sh` re-run is needed on the box.
 
 ## Conventions every script here follows
 

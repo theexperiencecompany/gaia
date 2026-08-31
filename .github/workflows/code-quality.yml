@@ -30,6 +30,10 @@ on:
         description: Home runner label to probe (default gaia-home-lint; a new pool under a temporary label can be proven before it takes real traffic)
         type: string
         default: gaia-home-lint
+      cpu_tokens:
+        description: Override GAIA_CPU_TOKENS for the host CPU governor (empty = physical-core default; a large value like 999 effectively disables it for before/after measurement)
+        type: string
+        default: ""
 
 # Per-SHA group; superseded runs are cancelled by select-runner via the API
 # (scripts/ci/runner.sh cancel-superseded) so a new push never waits on the old
@@ -40,6 +44,12 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  # Host CPU governor pool size (scripts/ci/lib/cpu-slots.sh); shared across the
+  # box with main.yml. Empty on push/PR → physical-core default; a dispatch may
+  # override it. The mutation lane is the heavy consumer here.
+  GAIA_CPU_TOKENS: ${{ inputs.cpu_tokens || '' }}
 
 jobs:
   # ── Runner selection: home box when online, GitHub otherwise ──────────────

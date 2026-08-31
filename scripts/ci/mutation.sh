@@ -31,6 +31,8 @@ set -euo pipefail
 
 # shellcheck source=scripts/ci/lib/log.sh
 source "$(dirname "$0")/lib/log.sh"
+# shellcheck source=scripts/ci/lib/cpu-slots.sh
+source "$(dirname "$0")/lib/cpu-slots.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -198,6 +200,25 @@ for entry in entries:
     echo "NOTE: no timeout(1) — running unbounded (brew install coreutils for the CI-identical watchdog)" >&2
   fi
 
+  # This shard's CPU appetite: mutmut forks one mutant worker per child, and its
+  # own default is os.cpu_count() — 16 on the box, so four shards at max-parallel
+  # would spawn 64 workers on 16 threads. Bound each shard to nproc-2 (the same
+  # budget cmd_local uses; two cores left for the OS and docker) AND take that
+  # many host tokens for the run, so the mutation shards queue against the box's
+  # physical-core budget instead of thrashing it and the test-python/build lanes.
+  # Fail-open and a no-op off the self-hosted box; MUTMUT_MAX_CHILDREN honours an
+  # explicit override for the local runner.
+  local NPROC BUDGET SLOTS
+  NPROC="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+  BUDGET="$(( NPROC > 3 ? NPROC - 2 : 1 ))"
+  export MUTMUT_MAX_CHILDREN="${MUTMUT_MAX_CHILDREN:-$BUDGET}"
+  # Acquire tokens for the workers we will ACTUALLY spawn, not the default
+  # budget: an explicit MUTMUT_MAX_CHILDREN override (e.g. a local runner) can
+  # exceed BUDGET, and taking only BUDGET tokens would let the shard run more
+  # workers than it holds slots for, weakening the host cap.
+  SLOTS="$MUTMUT_MAX_CHILDREN"; [ "$SLOTS" -ge "$BUDGET" ] || SLOTS="$BUDGET"
+  cpu_slots_acquire "$SLOTS"
+
   rc=0
   failed_modules=()
   while IFS=$'\t' read -r module testfiles ranges; do
@@ -215,6 +236,7 @@ for entry in entries:
       failed_modules+=("$module")
     fi
   done < "$SHARD_TSV"
+  cpu_slots_release "$SLOTS"
 
   # tail, NEVER cat: with mutmut's debug output on, a busy module writes a 13MB
   # shard.log, and feeding that through the runner's live-log pipe is where this
