@@ -161,8 +161,12 @@ def _convert_chunk_to_message_chunk(
     )
 
 
-def _keep_first_provider_name(chunk: ChatGenerationChunk, already_seen: bool) -> bool:
-    """Drop the name from every chunk after the first, returning whether it is now seen.
+def _keep_first_provider_name(chunk: ChatGenerationChunk, kept_so_far: int) -> int:
+    """Drop the name from every chunk after the first; return 1 if this one kept it.
+
+    A running count rather than a bool so the caller's accumulator has to start
+    at a real number — the arithmetic is what makes a wrong initial value fail
+    loudly instead of silently behaving like "not seen yet".
 
     OpenRouter repeats ``provider`` on every chunk, and ``AIMessageChunk.__add__``
     merges ``response_metadata`` with ``merge_dicts``, which CONCATENATES equal
@@ -178,13 +182,13 @@ def _keep_first_provider_name(chunk: ChatGenerationChunk, already_seen: bool) ->
     inside this module instead of adding a key to another patch's set.
     """
     if not isinstance(chunk.message, AIMessageChunk):
-        return already_seen
+        return 0
     if PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata:
-        return already_seen
-    if already_seen:
+        return 0
+    if kept_so_far:
         del chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY]
-        return True
-    return True
+        return 0
+    return 1
 
 
 def _stream(
@@ -194,9 +198,9 @@ def _stream(
     **kwargs: object,
 ) -> Iterator[ChatGenerationChunk]:
     """``ChatOpenRouter._stream`` with the repeated provider name reduced to one."""
-    seen = False
+    kept = 0
     for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
-        seen = _keep_first_provider_name(chunk, seen)
+        kept += _keep_first_provider_name(chunk, kept)
         yield chunk
 
 
@@ -207,9 +211,9 @@ async def _astream(
     **kwargs: object,
 ) -> AsyncIterator[ChatGenerationChunk]:
     """``ChatOpenRouter._astream`` with the repeated provider name reduced to one."""
-    seen = False
+    kept = 0
     async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
-        seen = _keep_first_provider_name(chunk, seen)
+        kept += _keep_first_provider_name(chunk, kept)
         yield chunk
 
 

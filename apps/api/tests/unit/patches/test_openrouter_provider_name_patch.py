@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk
 from openrouter.components.chatresult import ChatResult as SDKChatResult
 from openrouter.components.chatstreamchunk import ChatStreamChunk as SDKChatStreamChunk
 from openrouter.types import BaseModel as SDKBaseModel
@@ -231,6 +231,17 @@ class TestWiring:
         assert _patch._ORIGINAL_CONVERT_CHUNK is not _patch._convert_chunk_to_message_chunk
 
 
+class _ResultWithoutProvider(SDKBaseModel):
+    """A chat-completion response model from before `provider` was declared."""
+
+    choices: list[dict[str, Any]]
+    created: int
+    id: str
+    model: str
+    object: str
+    system_fingerprint: str | None = None
+
+
 class TestNonStreaming:
     def test_provider_name_reaches_response_metadata(self) -> None:
         llm = _client("http://127.0.0.1:1/v1")
@@ -258,6 +269,28 @@ class TestNonStreaming:
         assert (
             result.generations[0].message.response_metadata[PROVIDER_NAME_METADATA_KEY] == "Baidu"
         )
+
+    def test_the_model_name_falls_back_to_the_client(self) -> None:
+        """A payload with no `model` makes the original read `self.model_name` —
+        so the wrapper has to forward the real instance, not drop it."""
+        llm = _client("http://127.0.0.1:1/v1")
+        payload = _sdk_result(provider="Baidu").model_dump(by_alias=True)
+        del payload["model"]
+
+        result = llm._create_chat_result(payload)
+
+        assert result.llm_output is not None
+        assert result.llm_output["model_name"] == MODEL
+
+    def test_an_object_without_the_field_is_treated_as_absent(self) -> None:
+        """A response model that never declared `provider` must read as "no name",
+        not raise."""
+        llm = _client("http://127.0.0.1:1/v1")
+        payload = _sdk_result(provider=None).model_dump(by_alias=True)
+
+        result = llm._create_chat_result(_ResultWithoutProvider(**payload))
+
+        assert PROVIDER_NAME_METADATA_KEY not in result.generations[0].message.response_metadata
 
     def test_a_non_ai_message_is_left_alone(self) -> None:
         """Only an AI message gets the stamp — response_metadata is its field."""
@@ -314,6 +347,33 @@ class TestStreaming:
                 merged = chunk if merged is None else merged + chunk
         assert merged is not None
         assert PROVIDER_NAME_METADATA_KEY not in merged.response_metadata
+
+    def test_the_stop_sequence_and_extra_kwargs_reach_the_provider(self) -> None:
+        """The wrapper is a pass-through: everything the caller sent must arrive."""
+        with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
+            list(_client(wire.base_url).stream("hi", stop=["STOPHERE"], temperature=0.25))
+        assert wire.last_request["stop"] == ["STOPHERE"]
+        assert wire.last_request["temperature"] == 0.25
+
+    @pytest.mark.asyncio
+    async def test_the_async_path_behaves_the_same(self) -> None:
+        with _ScriptedWire(_turn(provider=UPSTREAM)) as wire:
+            merged = None
+            async for chunk in _client(wire.base_url).astream("hi", stop=["STOPHERE"]):
+                merged = chunk if merged is None else merged + chunk
+            assert wire.last_request["stop"] == ["STOPHERE"]
+        assert merged is not None
+        assert merged.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
+
+    def test_a_delta_without_a_role_still_gets_the_name(self) -> None:
+        """Continuation deltas carry no `role`, so the chunk class comes from
+        `default_class` — which the wrapper must keep passing through."""
+        chunk = _chunk("x", provider=UPSTREAM, finish="stop")
+        del chunk["choices"][0]["delta"]["role"]
+
+        converted = _patch._convert_chunk_to_message_chunk(chunk, AIMessageChunk)
+
+        assert converted.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 
     def test_a_non_ai_chunk_is_left_alone(self) -> None:
         """Tool/system deltas have no response_metadata to carry the name."""
