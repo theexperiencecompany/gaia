@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.5.0...cli-v0.6.0) (2026-08-31)
+
+
+### Features
+
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+
 ## [0.5.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.4.0...cli-v0.5.0) (2026-08-25)
 
 

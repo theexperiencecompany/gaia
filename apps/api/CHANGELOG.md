@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.23.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.22.0...api-v0.23.0) (2026-08-31)
+
+
+### Features
+
+* **api:** add updatedAt index on conversations collection ([#1138](https://github.com/theexperiencecompany/gaia/issues/1138)) ([fdf432d](https://github.com/theexperiencecompany/gaia/commit/fdf432d5a9a5f231029e957acedadf02d84886fa))
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+* **workflows:** replay a workflow settled tool calls from a playbook ([#1129](https://github.com/theexperiencecompany/gaia/issues/1129)) ([ec8fc69](https://github.com/theexperiencecompany/gaia/commit/ec8fc6914728448f89e538a52590b585721a08a0))
+
+
+### Bug Fixes
+
+* **api:** attribute every OpenRouter client, with a distinct dev identity ([#1120](https://github.com/theexperiencecompany/gaia/issues/1120)) ([e10b4c6](https://github.com/theexperiencecompany/gaia/commit/e10b4c6804a6331aeca23c2b83bd11c073b90633))
+* **api:** book what OpenRouter charged, not what the price table guesses ([#1137](https://github.com/theexperiencecompany/gaia/issues/1137)) ([a9a5f7a](https://github.com/theexperiencecompany/gaia/commit/a9a5f7a92c2cedbdcc0425340b1243bb073b90f7))
+* **api:** keep OpenRouter's real provider name on the response ([#1159](https://github.com/theexperiencecompany/gaia/issues/1159)) ([291e7d9](https://github.com/theexperiencecompany/gaia/commit/291e7d916381420d116385087614e5a8d29c49fc))
+* **api:** stop charging users' budgets for the sticky-flip answer we discard ([#1145](https://github.com/theexperiencecompany/gaia/issues/1145)) ([2f6e0f4](https://github.com/theexperiencecompany/gaia/commit/2f6e0f41e3afedf875fee38d21a6cf7d3c1bc668))
+* **bots:** one DM, one session, on every platform ([#1128](https://github.com/theexperiencecompany/gaia/issues/1128)) ([9ff3b3d](https://github.com/theexperiencecompany/gaia/commit/9ff3b3dc80b20676c184b68cb63ffbf4167a7541))
+* **llm:** pin provider routing and delete the sticky-flip replay ([#1155](https://github.com/theexperiencecompany/gaia/issues/1155)) ([0494de6](https://github.com/theexperiencecompany/gaia/commit/0494de6410b3ca2c8ee4adbee2f041365036bcfb))
+* **memory:** refuse a verified document that shrank more than it struck ([#1121](https://github.com/theexperiencecompany/gaia/issues/1121)) ([79f5fa1](https://github.com/theexperiencecompany/gaia/commit/79f5fa1c4afe65f386bbc9d2a73c1b451a5b6ffc))
+
+
+### Performance Improvements
+
+* **memory:** skip empty-turn extraction, dedupe the journal, expire legacy agenda rows ([#1126](https://github.com/theexperiencecompany/gaia/issues/1126)) ([9328653](https://github.com/theexperiencecompany/gaia/commit/93286536ecaf07dfce73418727a44c3face0c76f))
+
 ## [0.22.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.21.0...api-v0.22.0) (2026-08-25)
 
 

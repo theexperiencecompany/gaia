@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.6.0...bots-v1.7.0) (2026-08-31)
+
+
+### Features
+
+* **ci:** run CI on the home server with GitHub fallback; move sensitive infra to a private repo ([#1131](https://github.com/theexperiencecompany/gaia/issues/1131)) ([f38a9e6](https://github.com/theexperiencecompany/gaia/commit/f38a9e6c06b3f5e1cd6555c4bea82531f5d2ddca))
+
+
+### Bug Fixes
+
+* **bots:** one DM, one session, on every platform ([#1128](https://github.com/theexperiencecompany/gaia/issues/1128)) ([9ff3b3d](https://github.com/theexperiencecompany/gaia/commit/9ff3b3dc80b20676c184b68cb63ffbf4167a7541))
+
 ## [1.6.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.5.0...bots-v1.6.0) (2026-08-25)
 
 

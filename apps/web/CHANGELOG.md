@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.24.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.23.0...web-v0.24.0) (2026-08-31)
+
+
+### Features
+
+* **workflows:** replay a workflow settled tool calls from a playbook ([#1129](https://github.com/theexperiencecompany/gaia/issues/1129)) ([ec8fc69](https://github.com/theexperiencecompany/gaia/commit/ec8fc6914728448f89e538a52590b585721a08a0))
+
+
+### Bug Fixes
+
+* **web:** COPY libs/wake-word/package.json in the Docker build ([#1158](https://github.com/theexperiencecompany/gaia/issues/1158)) ([17d2484](https://github.com/theexperiencecompany/gaia/commit/17d2484c1d5b86525cf06d23014e804f7156d7df))
+* **web:** drop .npmrc from the Dockerfile COPY — [#1132](https://github.com/theexperiencecompany/gaia/issues/1132) removed it ([6318b66](https://github.com/theexperiencecompany/gaia/commit/6318b66a7a185ac1c6b9345eb3105b4c5bc7d789))
+* **web:** drop .npmrc from the Dockerfile COPY ([#1132](https://github.com/theexperiencecompany/gaia/issues/1132) removed it) ([#1153](https://github.com/theexperiencecompany/gaia/issues/1153)) ([6318b66](https://github.com/theexperiencecompany/gaia/commit/6318b66a7a185ac1c6b9345eb3105b4c5bc7d789))
+* **web:** point Tailwind [@source](https://github.com/source) globs at the app's node_modules, not the root ([#1162](https://github.com/theexperiencecompany/gaia/issues/1162)) ([f1e7282](https://github.com/theexperiencecompany/gaia/commit/f1e72823b1139189c20278c902affee31f278b4f))
+* **web:** resolve all react-doctor warnings and gate CI on new findings ([#1075](https://github.com/theexperiencecompany/gaia/issues/1075)) ([4cd465f](https://github.com/theexperiencecompany/gaia/commit/4cd465f6558f46dff9569384185699f2f58b544d))
+
 ## [0.23.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.22.0...web-v0.23.0) (2026-08-25)
 
 
