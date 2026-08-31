@@ -216,6 +216,25 @@ class TestReactivateWorkflowsForRestoredSubscription:
             assert await reactivate_workflows_for_restored_subscription(USER_ID) == 0
             service.activate_workflow.assert_not_awaited()
 
+    async def test_the_count_accumulates_across_multiple_successes(self) -> None:
+        """Two workflows reactivated in one sweep must return 2, not a flag
+        reset to 1 on each success — the count feeds the summary log and is
+        exactly the kind of bug an increment-vs-assign typo introduces
+        silently (mirrors ``reactivated += 1`` vs ``reactivated = 1``)."""
+        first = _workflow("wf-1", activated=False)
+        second = _workflow("wf-2", activated=False)
+
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.WorkflowService") as service,
+        ):
+            repo.find_paused_for_reason = AsyncMock(return_value=[first, second])
+            service.activate_workflow = AsyncMock()
+
+            reactivated = await reactivate_workflows_for_restored_subscription(USER_ID)
+
+        assert reactivated == 2
+
     async def test_one_failure_does_not_abort_the_rest(self) -> None:
         first = _workflow("wf-1", activated=False)
         second = _workflow("wf-2", activated=False)
