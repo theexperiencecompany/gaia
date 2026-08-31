@@ -171,6 +171,7 @@ class TestSubscriptionFailedDeactivatesWorkflows:
         call_args = sub_repo.apply_update_by_dodo_id.call_args
         assert call_args.args[0] == "sub_failed"
         assert call_args.args[1].status == "failed"
+        sub_repo.get_user_id_by_dodo_id.assert_awaited_once_with("sub_failed")
         deactivate.assert_awaited_once_with(USER_ID)
         assert result.event_type == DodoWebhookEventType.SUBSCRIPTION_FAILED.value
         assert result.status == "processed"
@@ -224,6 +225,7 @@ class TestSubscriptionOnHoldDeactivatesWorkflows:
         call_args = sub_repo.apply_update_by_dodo_id.call_args
         assert call_args.args[0] == "sub_hold"
         assert call_args.args[1].status == "on_hold"
+        sub_repo.get_user_id_by_dodo_id.assert_awaited_once_with("sub_hold")
         deactivate.assert_awaited_once_with(USER_ID)
         assert result.event_type == DodoWebhookEventType.SUBSCRIPTION_ON_HOLD.value
         assert result.status == "processed"

@@ -198,6 +198,7 @@ class TestRequireSubscriptionDecorator:
                 await wrapped()
 
         assert getattr(exc_info.value, "status_code", None) == 401
+        assert getattr(exc_info.value, "detail", None) == "User ID not found"
         handler.assert_not_called()
 
     async def test_falls_back_to_an_explicit_user_kwarg_with_no_request_context(self) -> None:
