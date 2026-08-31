@@ -109,22 +109,24 @@ export function SubscriptionSettings() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-medium text-zinc-500">Current Plan</p>
-              <p className="mt-1 text-2xl font-semibold text-white">Free</p>
+              <p className="mt-1 text-2xl font-semibold text-white">
+                No subscription
+              </p>
             </div>
-            <Chip color="success" variant="flat" size="sm" className="text-xs">
-              Active
+            <Chip color="warning" variant="flat" size="sm" className="text-xs">
+              Inactive
             </Chip>
           </div>
           <p className="mt-1 text-sm text-zinc-500">
-            Forever free · No billing
+            GAIA is paid-only — subscribe to start using it
           </p>
         </div>
 
-        <SettingsSection title="Upgrade to Pro">
+        <SettingsSection title="Subscribe to GAIA Pro">
           <div className="px-4 py-4 space-y-3">
             <p className="text-sm text-zinc-400">
-              Unlock unlimited usage and all features. Get 25–250× higher
-              limits, priority support, and private Discord channels.
+              A subscription covers the server costs and unlocks chat,
+              workflows, priority support, and private Discord channels.
             </p>
             <Button
               color="primary"

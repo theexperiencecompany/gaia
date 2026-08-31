@@ -41,7 +41,7 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
       {!isCollapsed && (
         <>
           <div className="flex w-full justify-between items-center gap-1">
-            <div className="font-medium text-sm">You Deserve This!</div>
+            <div className="font-medium text-sm">Subscribe to use GAIA</div>
             <Button
               isIconOnly
               variant="light"
@@ -54,8 +54,7 @@ export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
             </Button>
           </div>
           <p className="text-xs text-zinc-400">
-            Unlock near-unlimited usage and priority support for ${price} a
-            month
+            GAIA is paid-only — subscribe for ${price} a month to keep using it
           </p>
         </>
       )}

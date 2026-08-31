@@ -21,7 +21,7 @@ import {
 } from "@/features/pricing/hooks/usePricing";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
 
@@ -74,7 +74,7 @@ export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const { plans } = usePricing();
-  const openPricingModal = usePricingModalStore((s) => s.openModal);
+  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   const { notifications } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 50,
@@ -100,7 +100,7 @@ export default function SidebarTopButtons() {
     <div className="flex flex-col">
       {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
       {!subscriptionStatus?.is_subscribed && (
-        <SidebarPromo price={price} onUpgrade={openPricingModal} />
+        <SidebarPromo price={price} onUpgrade={() => openPaywallModal()} />
       )}
 
       <div className="flex w-full flex-col gap-0.5">
