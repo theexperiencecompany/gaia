@@ -434,6 +434,23 @@ class TestStyleGuardRegeneration:
         # invented latency would be worse than no latency.
         assert context.duration_ms is None
 
+    async def test_a_retracted_draft_is_not_background_system_work(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The user asked for this turn — they just never saw this draft of it.
+        Recording it as ``system`` would move real user spend into the bucket
+        for work nobody requested."""
+        draft = _draft(DIRTY_DRAFT, "m1")
+        draft.usage_metadata = {"input_tokens": 900, "output_tokens": 40, "total_tokens": 940}
+        handler = _ScriptedHandler(draft, _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert record.call_args.kwargs["context"].channel is None
+
     async def test_the_retracted_draft_is_charged_what_the_provider_said_it_cost(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
     ) -> None:

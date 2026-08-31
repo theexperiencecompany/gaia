@@ -11,6 +11,7 @@ from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 from langchain_core.runnables import (
     Runnable,
@@ -70,7 +71,9 @@ from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
     LLMCallContext,
     TokenUsage,
+    extract_finish_reason,
     extract_message_cost,
+    extract_message_provider,
     record_failed_llm_call,
     record_llm_call,
     resolve_channel,
@@ -793,7 +796,7 @@ def _invoke_context(
         conversation_id=str(conversation_id) if conversation_id else None,
         thread_id=str(thread_id) if thread_id else None,
         workflow_id=str(workflow_id) if workflow_id else None,
-        channel=resolve_channel(configurable),
+        channel=resolve_channel(configurable, background=background),
         duration_ms=duration_ms,
     )
 
@@ -971,8 +974,7 @@ async def ainvoke_llm(
                     background=True,
                     duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
                 ),
-                generation_id=generation_handler.generation_id if generation_handler else None,
-                provider_cost=generation_handler.cost if generation_handler else None,
+                facts=(generation_handler.facts if generation_handler else ResponseFacts()),
             )
 
 
@@ -1078,6 +1080,21 @@ def _reported_cost(response: LLMResult) -> float | None:
     return None
 
 
+@dataclass(frozen=True)
+class ResponseFacts:
+    """What the provider's reply says about ITSELF, captured in one place.
+
+    Grouped rather than passed as four parallel keywords because they are read
+    from one object and describe one call — and because passing them separately
+    is precisely how three of them went missing one at a time.
+    """
+
+    generation_id: str | None = None
+    provider: str | None = None
+    finish_reason: str | None = None
+    cost: float | None = None
+
+
 class _GenerationIdCallback(BaseCallbackHandler):
     """Captures the upstream generation id for auxiliary calls.
 
@@ -1091,9 +1108,21 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
+        self.provider: str | None = None
+        self.finish_reason: str | None = None
         self._attempts = 0
         self._priced_attempts = 0
         self._cost_total = 0.0
+
+    @property
+    def facts(self) -> ResponseFacts:
+        """Everything captured off the reply, as one value for the metering seam."""
+        return ResponseFacts(
+            generation_id=self.generation_id,
+            provider=self.provider,
+            finish_reason=self.finish_reason,
+            cost=self.cost,
+        )
 
     @property
     def cost(self) -> float | None:
@@ -1126,6 +1155,7 @@ class _GenerationIdCallback(BaseCallbackHandler):
         if reported is not None:
             self._priced_attempts += 1
             self._cost_total += reported
+        self._read_response_facts(response)
         llm_output = response.llm_output or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
@@ -1136,6 +1166,40 @@ class _GenerationIdCallback(BaseCallbackHandler):
                 if info.get("id"):
                     self.generation_id = str(info["id"])
                     return
+
+    def _read_response_facts(self, response: LLMResult) -> None:
+        """Capture what the reply says about ITSELF: the upstream and the finish.
+
+        Read here rather than at the metering seam because this callback holds
+        the only thing that carries them on this route — the auxiliary lane
+        returns a parsed schema, not the ``AIMessage``, so
+        ``extract_message_provider`` has nothing to read and the fields arrived
+        empty. Three separate fields have now been lost at this seam for that
+        same reason (the cost, the generation id, and the upstream), so the
+        whole reply is read once instead of a field at a time.
+
+        Last non-empty attempt wins: on a retry or a fallback the LAST attempt
+        is the one that produced the answer the caller received, so it is the
+        one whose upstream and finish describe the result.
+        """
+        for generations in response.generations or []:
+            for generation in generations:
+                message = getattr(generation, "message", None)
+                if not isinstance(message, AIMessage):
+                    continue
+                provider = extract_message_provider(message)
+                if provider:
+                    self.provider = provider
+                finish_reason = extract_finish_reason(message)
+                if finish_reason:
+                    self.finish_reason = finish_reason
+            # ``generation_info`` is where the non-streaming path leaves the
+            # finish reason — it never reaches the message (see
+            # ``extract_finish_reason``), so it is read straight off the result.
+            for generation in generations:
+                info = getattr(generation, "generation_info", None) or {}
+                if info.get("finish_reason"):
+                    self.finish_reason = str(info["finish_reason"])
 
 
 def _with_usage_handler(
@@ -1157,9 +1221,7 @@ def _with_usage_handler(
         manager = existing.copy()
         manager.add_handler(handler, inherit=True)
         merged["callbacks"] = manager
-    # pragma: no mutate — `cast` is erased at runtime, so no test can
-    # observe its type argument; a mutant here is equivalent by construction.
-    return cast(RunnableConfig, merged)  # pragma: no mutate
+    return cast(RunnableConfig, merged)
 
 
 async def _record_auxiliary_usage(
@@ -1168,8 +1230,7 @@ async def _record_auxiliary_usage(
     user_id: str | None,
     *,
     context: LLMCallContext,
-    generation_id: str | None = None,
-    provider_cost: float | None = None,
+    facts: ResponseFacts,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1195,8 +1256,11 @@ async def _record_auxiliary_usage(
     # here, so what gets booked, what ``cost_source`` claims and what the ledger
     # names as the serving generation can never disagree with each other.
     attributable = len(handler.usage_metadata) == 1
-    booked_cost = provider_cost if attributable else None
-    booked_generation_id = generation_id if attributable else None
+    booked_cost = facts.cost if attributable else None
+    booked_generation_id = facts.generation_id if attributable else None
+    # Same rule for the upstream: a fan-out cannot say which model any one
+    # provider served, and naming the wrong one is worse than naming none.
+    booked_provider = facts.provider if attributable else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1235,7 +1299,13 @@ async def _record_auxiliary_usage(
             # cannot be audited against OpenRouter's generation endpoint at all.
             # Every auxiliary row shipped with a null id while its own log line
             # carried one, because this was the seam that dropped it.
-            context=replace(context, model_served=model_name, generation_id=booked_generation_id),
+            context=replace(
+                context,
+                model_served=model_name,
+                generation_id=booked_generation_id,
+                provider=booked_provider,
+                finish_reason=facts.finish_reason,
+            ),
         )
         log.info(
             "llm_call",

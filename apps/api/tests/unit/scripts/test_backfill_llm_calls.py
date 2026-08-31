@@ -15,6 +15,7 @@ import pytest
 from scripts._openrouter import GenerationRecord
 from scripts.backfill_llm_calls import (
     EARLIEST_DAY,
+    Anomalies,
     LedgerEvent,
     build_document,
     normalise_model,
@@ -81,6 +82,26 @@ class TestParsing:
 
 
 class TestModelNormalisation:
+    def test_a_model_id_doubled_with_no_separator_collapses(self) -> None:
+        """The shape that actually occurs. Verified on live Loki, 2026-08-14:
+        the alias was concatenated onto itself with NO separator, so a
+        slash-based rule never fires — and 9,209 rows fell through to the
+        unknown-model branch, preserving dead pre-Aug-24 table prices."""
+        doubled = "deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731"
+
+        assert normalise_model(doubled) == "deepseek/deepseek-v4-flash-0731"
+
+    def test_a_doubled_id_is_priced_from_the_table_not_kept_at_its_logged_cost(self) -> None:
+        """The consequence of the miss: an id the table cannot match falls to
+        "unknown model, keep logged cost", which silently preserves whatever the
+        table said back then. Normalising first is what makes the unknown-model
+        branch mean what it says."""
+        doubled = "deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731"
+        event = _event(model=doubled, cost_usd=0.99)
+
+        assert event.model == "deepseek/deepseek-v4-flash-0731"
+        assert price_event(event, None).source == "table"
+
     def test_a_doubled_model_id_collapses_to_one(self) -> None:
         """A lane that applied its alias on top of an already-aliased id logged
         the vendor/name twice. Left alone it is a second row in every group-by
@@ -252,3 +273,68 @@ class TestDryRunReport:
         )
 
         assert "0.0200" in capsys.readouterr().out
+
+
+class TestAnomalyReport:
+    """What the run discarded, and why.
+
+    An aggregate "2,784 dropped" tells an operator nothing about whether the
+    run is trustworthy. Each of these buckets is a different judgement the
+    script made on their behalf — and the doubled-id count in particular is the
+    one that, left invisible, hid 9,209 mis-priced rows behind a plausible
+    total.
+    """
+
+    def test_every_judgement_the_run_made_is_counted(self) -> None:
+        events = [
+            _event(generation_id="gen-1"),
+            _event(generation_id="gen-1"),  # exact duplicate
+            _event(input_tokens=0, output_tokens=0, cached_tokens=0, cost_usd=0),  # echo
+            _event(generation_id="gen-2", background=True),  # background lane
+            _event(generation_id="gen-3", model="a-model-nobody-priced"),  # unknown model
+            _event(
+                generation_id="gen-4",
+                model="deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731",
+            ),  # doubled id
+        ]
+
+        anomalies = Anomalies()
+        kept = select_events(events, anomalies)
+        for event in kept:
+            anomalies.observe(event, price_event(event, None))
+
+        assert anomalies.echoes_skipped == 1
+        assert anomalies.duplicates_skipped == 1
+        assert anomalies.doubled_ids_normalised == 1
+        assert anomalies.background_rows == 1
+        assert anomalies.unknown_model_rows == 1
+
+    def test_generation_lookups_are_split_into_resolved_and_missing(self) -> None:
+        """A 404 is OpenRouter having dropped an old generation — unverifiable,
+        not an error. The two must be countable apart or a run that resolved
+        nothing looks the same as one that resolved everything."""
+        anomalies = Anomalies()
+
+        anomalies.count_lookups({"gen-1": GenerationRecord(total_cost=0.01), "gen-2": None})
+
+        assert anomalies.generations_resolved == 1
+        assert anomalies.generations_missing == 1
+
+    def test_the_report_names_every_bucket(self, capsys: pytest.CaptureFixture) -> None:
+        anomalies = Anomalies()
+        anomalies.echoes_skipped = 3
+
+        anomalies.render()
+
+        printed = capsys.readouterr().out
+        for label in (
+            "zero-token echoes skipped",
+            "doubled model ids normalised",
+            "exact duplicates skipped",
+            "background rows (never charged)",
+            "generation lookups resolved",
+            "generation lookups missing",
+            "unknown-model rows",
+        ):
+            assert label in printed
+        assert "3" in printed

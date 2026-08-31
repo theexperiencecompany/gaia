@@ -214,6 +214,20 @@ async def test_the_surface_the_turn_came_from_reaches_the_ledger() -> None:
     assert (await _ledger_context(_ai(), config)).channel == "slack"
 
 
+async def test_a_graph_call_is_never_recorded_as_background_system_work() -> None:
+    """The graph lane IS the user's turn. Passing it as background would relabel
+    every chat call with no explicit source as ``system``, which is the bucket
+    that exists for work nobody asked for — and it is most of the spend."""
+    bare = {
+        "configurable": {
+            "user_id": "user-1",
+            "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        }
+    }
+
+    assert (await _ledger_context(_ai(), bare)).channel is None
+
+
 async def test_why_the_provider_stopped_reaches_the_ledger() -> None:
     """A run of ``length`` on one lane is a truncation bug that otherwise only
     surfaces as users reporting answers that stop mid-sentence."""

@@ -380,6 +380,35 @@ async def record_failed_llm_call(
     summed from. The budget windows and ``usage_daily`` are deliberately NOT
     touched: this writes to the ledger only.
     """
+    family = classify_error_family(error)
+    # Parity with every successful call. Without it a failure exists ONLY in the
+    # ledger: the backfill reads log lines, so failures could never be
+    # reconstructed from history, and an operator grepping ``llm_event=llm_call``
+    # during an incident would see traffic drop rather than errors appear. Two
+    # sources of truth that disagree about whether a call happened is worse than
+    # one extra line.
+    log.info(
+        "llm_call",
+        llm_event="llm_call",
+        status="error",
+        error_family=family,
+        error_type=type(error).__name__,
+        agent_name=context.agent_name,
+        background=context.background,
+        model=model_name,
+        user_id=user_id,
+        conversation_id=context.conversation_id,
+        channel=context.channel,
+        generation_id=context.generation_id,
+        duration_ms=context.duration_ms,
+        # Zeroes so a failure sums alongside the successes without inflating
+        # anything: nothing reported what the attempts burned.
+        input_tokens=0,
+        cached_tokens=0,
+        output_tokens=0,
+        reasoning_tokens=0,
+        cost_usd=0.0,
+    )
     spawn_background_task(
         _insert_ledger_row(
             _build_ledger_document(
@@ -395,7 +424,7 @@ async def record_failed_llm_call(
                     # the honest one: no provider figure was ever reported.
                     cost_source="table",
                     status="error",
-                    error_family=classify_error_family(error),
+                    error_family=family,
                 ),
                 context,
             )
@@ -565,8 +594,12 @@ def extract_generation_id(message: AIMessage) -> str | None:
     return str(resp_meta.get("id") or "") or None
 
 
-def resolve_channel(configurable: Mapping[str, Any]) -> str | None:
+def resolve_channel(configurable: Mapping[str, Any], *, background: bool = False) -> str | None:
     """Which surface originated this call, from the run's own configurable.
+
+    ``background`` defaults to False because the graph and style-guard seams are
+    the user's own turn by construction; only the auxiliary lane passes it, and
+    it passes the run's real value.
 
     ``conversation_source`` is the value the entry point set — ``"web"`` /
     ``"desktop"`` from the chat endpoint's ``X-Client-Type`` header, or the bot
@@ -577,12 +610,13 @@ def resolve_channel(configurable: Mapping[str, Any]) -> str | None:
 
     Background runs carry no ``conversation_source`` (nobody typed anything), so
     they are separated by what they DO carry: a run with a ``workflow_id`` is
-    ``"workflow"``, and any other background-category run is ``"system"``. That
-    mirrors the ``resolved_source or BACKGROUND`` normalisation the agent config
-    builder already does rather than inventing a second convention.
+    ``"workflow"``, and any other background work is ``"system"``. ``background``
+    is passed explicitly because the auxiliary lanes (memory, chatbot,
+    follow-ups) carry no ``source_category`` either — keying only on that field
+    left 11 of 27 rows null in a live session, which is neither of the two
+    answers the rule promises.
 
-    ``None`` when the bag has neither key — auxiliary one-shots built from a
-    bare ``{"user_id": ...}`` config genuinely have no surface to name.
+    ``None`` only for a foreground call that named no surface anywhere.
 
     KNOWN GAP: voice reports ``"web"``. The LiveKit agent posts to the same chat
     endpoint without an ``X-Client-Type`` header, so the header-based resolution
@@ -592,9 +626,17 @@ def resolve_channel(configurable: Mapping[str, Any]) -> str | None:
     source = configurable.get("conversation_source")
     if source:
         return str(source)
+    # The enclosing run's boundary, for calls whose own config carries nothing.
+    # An auxiliary one-shot made INSIDE an executor run gets a bare config, so
+    # without this a user's web turn is recorded as ``system`` — and it is the
+    # executor turns that cost the most, so the under-count lands exactly where
+    # COGS-by-channel matters. The run's own configurable still wins above.
+    ambient = log.get().get("conversation_source")
+    if ambient:
+        return str(ambient)
     if configurable.get("workflow_id"):
         return "workflow"
-    if configurable.get("source_category") == _BACKGROUND_SOURCE_CATEGORY:
+    if background or configurable.get("source_category") == _BACKGROUND_SOURCE_CATEGORY:
         return "system"
     return None
 

@@ -34,9 +34,23 @@ way the live path recorded them — ``background``, never charged.
 Floors at 2026-08-10: before that the events lack the cost fields this depends
 on, so older rows would be fiction.
 
-Reference run (validated against the real month, 2026-08-10..08-31)::
+Reference run, against real production Loki, 2026-08-10..08-31, no OpenRouter
+lookups (so every cost is the event's own provider figure or the table)::
 
-    25,012 docs, $51.40 total
+    30,364 raw -> 27,580 docs, $53.35
+
+    zero-token echoes skipped                       2784
+    doubled model ids normalised                    9209
+    exact duplicates skipped                           0
+    background rows (never charged)                18773
+    unknown-model rows (kept at logged cost)           0
+
+The doubled-id count is the whole story of this script's first version: those
+9,209 rows matched no pricing entry, fell to "unknown model, keep logged cost",
+and preserved dead pre-2026-08-24 table prices — reporting $136.27 for the same
+window. Normalising the id first drops it to $53.35 and empties the
+unknown-model bucket, which is how you can tell the fallback is now only used
+for models the table genuinely does not know.
 
 Run from the api directory (or /app inside the container)::
 
@@ -99,6 +113,9 @@ class LedgerEvent(BaseModel):
     background: bool = False
     finish_reason: str | None = None
     channel: str | None = None
+    #: Whether this event's model id arrived doubled and was collapsed. Counted
+    #: rather than inferred later: after normalisation the id looks ordinary.
+    model_was_doubled: bool = False
 
     @property
     def has_substance(self) -> bool:
@@ -137,15 +154,32 @@ class LedgerEvent(BaseModel):
 def normalise_model(model: str) -> str:
     """Collapse a model id that was stamped twice back to one.
 
-    A lane that applied its alias on top of an already-aliased id logged
-    ``vendor/name/vendor/name``. Left alone, the same model shows up as two rows
-    in every group-by and matches no pricing entry, so the table fallback
-    silently degrades for exactly those calls.
+    A lane that applied its alias on top of an already-aliased id logged the
+    name concatenated with itself. Verified on live Loki (2026-08-14):
+
+        deepseek/deepseek-v4-flash-0731deepseek/deepseek-v4-flash-0731
+
+    Note there is NO separator between the halves — the second copy runs
+    straight into the first. A rule that split on ``/`` and compared path
+    segments therefore never fired on the real data (the segment count is odd),
+    which is how 9,209 rows fell through to the unknown-model branch and kept
+    the dead pre-2026-08-24 table prices instead of being re-priced. So the
+    comparison is on the raw string's two halves.
+
+    Left un-normalised, the same model is two rows in every group-by AND matches
+    no pricing entry, so it silently keeps whatever the table said at the time.
     """
+    half, remainder = divmod(len(model), 2)
+    if remainder == 0 and half > 0 and model[:half] == model[half:]:
+        return model[:half]
+    # The separator-joined form too, for cheap: the same alias applied twice can
+    # land either way depending on which lane did the stamping, and a rule that
+    # covers only the shape we happened to observe is the rule that misses the
+    # next one.
     parts = model.split("/")
-    half = len(parts) // 2
-    if len(parts) % 2 == 0 and parts[:half] == parts[half:]:
-        return "/".join(parts[:half])
+    segments, odd = divmod(len(parts), 2)
+    if odd == 0 and segments > 0 and parts[:segments] == parts[segments:]:
+        return "/".join(parts[:segments])
     return model
 
 
@@ -163,7 +197,8 @@ def parse_event(line: str) -> LedgerEvent | None:
     cost = finite_cost(raw.get("cost_usd"))
     if cost is None:
         return None
-    model = normalise_model(str(raw.get("model") or "unknown"))
+    raw_model = str(raw.get("model") or "unknown")
+    model = normalise_model(raw_model)
     # A sticky-flip replay predates the ``background`` flag on this event, so the
     # older marker is the only signal those rows carry.
     background = bool(raw.get("background") or raw.get("sticky_flip_discarded"))
@@ -175,6 +210,7 @@ def parse_event(line: str) -> LedgerEvent | None:
         agent_name=str(raw.get("agent_name") or "unknown"),
         user_id=str(user_id) if user_id else None,
         model=model,
+        model_was_doubled=model != raw_model,
         generation_id=(str(raw["generation_id"]) if raw.get("generation_id") else None),
         conversation_id=None,
         thread_id=str(thread_id) if thread_id else None,
@@ -266,19 +302,82 @@ def build_document(event: LedgerEvent, record: GenerationRecord | None) -> LLMCa
     )
 
 
-def select_events(events: Iterable[LedgerEvent]) -> list[LedgerEvent]:
+class Anomalies(BaseModel):
+    """Every judgement the run made on the operator's behalf, counted.
+
+    A single "N dropped" total says nothing about whether a run is trustworthy:
+    dropping echoes is routine, dropping thousands of rows to an unknown model
+    is a mis-pricing hiding behind a plausible number. These are the buckets
+    that distinguish the two, so they are reported rather than summed away —
+    the doubled-id count is exactly the signal that would have surfaced 9,209
+    mis-priced rows before they were written.
+    """
+
+    echoes_skipped: int = 0
+    duplicates_skipped: int = 0
+    doubled_ids_normalised: int = 0
+    background_rows: int = 0
+    generations_resolved: int = 0
+    generations_missing: int = 0
+    unknown_model_rows: int = 0
+
+    def observe(self, event: LedgerEvent, priced: Priced) -> None:
+        """Count what this kept event tells us about the run."""
+        if event.model_was_doubled:
+            self.doubled_ids_normalised += 1
+        if event.background:
+            self.background_rows += 1
+        if priced.source == "logged":
+            self.unknown_model_rows += 1
+
+    def count_lookups(self, generations: Mapping[str, GenerationRecord | None]) -> None:
+        """Split the generation lookups into answered and dropped.
+
+        A 404 is OpenRouter having aged the generation out — unverifiable, not
+        an error — but a run where everything 404s is priced from the table
+        throughout, and that is worth seeing.
+        """
+        for record in generations.values():
+            if record is None:
+                self.generations_missing += 1
+            else:
+                self.generations_resolved += 1
+
+    def render(self) -> None:
+        rows = [
+            ("zero-token echoes skipped", self.echoes_skipped),
+            ("doubled model ids normalised", self.doubled_ids_normalised),
+            ("exact duplicates skipped", self.duplicates_skipped),
+            ("background rows (never charged)", self.background_rows),
+            ("generation lookups resolved", self.generations_resolved),
+            ("generation lookups missing", self.generations_missing),
+            ("unknown-model rows (kept at logged cost)", self.unknown_model_rows),
+        ]
+        print("\nanomalies")
+        print("-" * 52)
+        for label, count in rows:
+            print(f"{label:<44}{count:>8}")
+
+
+def select_events(
+    events: Iterable[LedgerEvent], anomalies: Anomalies | None = None
+) -> list[LedgerEvent]:
     """Drop the events that must not become rows, newest-safe and order-stable.
 
     Echoes (no tokens, no cost) and exact duplicates — the same call logged
-    twice, which the ledger would otherwise count twice.
+    twice, which the ledger would otherwise count twice. Both are counted into
+    ``anomalies`` rather than silently discarded.
     """
+    tally = anomalies if anomalies is not None else Anomalies()
     seen: set[str] = set()
     kept: list[LedgerEvent] = []
     for event in events:
         if not event.has_substance:
+            tally.echoes_skipped += 1
             continue
         key = event.backfill_key
         if key in seen:
+            tally.duplicates_skipped += 1
             continue
         seen.add(key)
         kept.append(event)
@@ -339,29 +438,45 @@ def wanted_days(days: int) -> list[str]:
 async def backfill(days: int, cache_dir: Path, apply: bool) -> None:
     loki_url = os.environ.get("LOKI_URL", "http://loki:3100")
     api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
+    if not api_key and apply:
         raise SystemExit("OPENROUTER_API_KEY is not set — run through `infisical run --`.")
+    if not api_key:
+        # A dry run is a read-only preview and must not require a paid-API
+        # credential to answer "how many rows, and roughly what do they cost".
+        # Without the key the generation lookups are skipped: rows the event
+        # already priced from the provider keep that figure, the rest are priced
+        # from the table, and NOTHING is verified against OpenRouter. Loud,
+        # because it changes what the dollar column means.
+        print("NO OPENROUTER_API_KEY — generation lookups skipped; costs are unverified\n")
 
     if apply:
         init_mongodb()
 
     summaries: list[DaySummary] = []
+    anomalies = Anomalies()
     written = 0
     async with httpx.AsyncClient(timeout=60.0) as client:
         for day in wanted_days(days):
             events = await fetch_day(client, loki_url, day, parse_event)
-            kept = select_events(events)
-            generations = await resolve_generations(
-                client,
-                api_key,
-                (event.generation_id for event in kept if event.generation_id),
-                cache_dir / f"{day}.json",
+            kept = select_events(events, anomalies)
+            generations = (
+                await resolve_generations(
+                    client,
+                    api_key,
+                    (event.generation_id for event in kept if event.generation_id),
+                    cache_dir / f"{day}.json",
+                )
+                if api_key
+                else {}
             )
+            anomalies.count_lookups(generations)
             sources: dict[str, int] = defaultdict(int)
             docs: list[LLMCallDocument] = []
             for event in kept:
                 record = generations.get(event.generation_id) if event.generation_id else None
-                sources[price_event(event, record).source] += 1
+                priced = price_event(event, record)
+                sources[priced.source] += 1
+                anomalies.observe(event, priced)
                 docs.append(build_document(event, record))
             summaries.append(summarise(day, len(events), docs, sources))
             print(f"{day}: {len(events)} raw -> {len(docs)} docs")
@@ -373,6 +488,7 @@ async def backfill(days: int, cache_dir: Path, apply: bool) -> None:
 
     print()
     render(summaries)
+    anomalies.render()
     if apply:
         print(f"\nAPPLIED — {written} rows created (re-runs insert nothing)")
     else:

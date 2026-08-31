@@ -413,6 +413,40 @@ def test_other_background_work_is_system() -> None:
     assert resolve_channel({"source_category": "bg"}) == "system"
 
 
+def test_background_work_with_no_surface_is_system() -> None:
+    """The documented rule. Live, 11 background rows (memory:*, chatbot) came
+    out ``null`` instead — their configurable carries neither a source nor a
+    source_category, so the rule never applied and COGS-by-channel could not
+    account for them at all."""
+    assert resolve_channel({}, background=True) == "system"
+    assert resolve_channel({"user_id": "u1"}, background=True) == "system"
+
+
+def test_a_call_inside_an_executor_run_keeps_the_turns_surface() -> None:
+    """Live defect: a comms/follow-up call made INSIDE an executor run was
+    labelled ``system`` though the turn came from web. The executor opens its
+    own wide-event boundary, and an auxiliary call there gets a bare config —
+    so the surface has to come from the boundary the run stamped, or
+    COGS-by-channel under-counts web on exactly the expensive turns."""
+    log.reset()
+    log.set(conversation_source="web")
+    try:
+        assert resolve_channel({}, background=False) == "web"
+    finally:
+        log.reset()
+
+
+def test_the_runs_own_configurable_still_wins_over_the_boundary() -> None:
+    """The boundary is a fallback, not an override: a nested call that DOES know
+    its own surface must not be relabelled with the enclosing run's."""
+    log.reset()
+    log.set(conversation_source="web")
+    try:
+        assert resolve_channel({"conversation_source": "discord"}) == "discord"
+    finally:
+        log.reset()
+
+
 def test_a_bag_with_no_surface_at_all_records_none() -> None:
     """Auxiliary one-shots built from a bare ``{"user_id": ...}`` config have no
     originating surface. None is the honest answer, not a default."""
@@ -623,3 +657,55 @@ async def test_the_error_row_is_booked_against_the_user_whose_call_failed() -> N
         await _drain()
 
     assert create.await_args.args[0].user_id == "u-42"
+
+
+# --- a failure is an event too --------------------------------------------------- #
+#
+# DECIDED: failed calls emit an ``llm_call`` wide event, same as successful ones.
+# Live evidence made the case: 4 failed POSTs produced 0 log lines and 2 ledger
+# rows, so the failures existed in exactly one place. That breaks two things —
+# the ledger stops being reconstructable from Loki (the backfill reads log
+# lines, so failures could never be recovered), and an operator grepping
+# ``llm_event=llm_call`` during an incident sees the traffic drop rather than
+# the errors. Parity is cheaper than two sources of truth that disagree.
+
+
+async def test_a_failed_call_emits_a_wide_event_like_any_other_call() -> None:
+    with (
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
+        patch.object(llm_metering.log, "info") as emitted,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1",
+            model_name="deepseek/deepseek-v4-flash",
+            error=TimeoutError("no answer"),
+            context=replace(CONTEXT, duration_ms=1200.0),
+        )
+        await _drain()
+
+    emitted.assert_called_once()
+    fields = emitted.call_args.kwargs
+    assert fields["llm_event"] == "llm_call"
+    assert fields["status"] == "error"
+    assert fields["error_family"] == "timeout"
+    assert fields["agent_name"] == "executor_agent"
+    assert fields["model"] == "deepseek/deepseek-v4-flash"
+    assert fields["user_id"] == "u1"
+    assert fields["duration_ms"] == 1200.0
+
+
+async def test_the_failure_event_books_no_spend() -> None:
+    """It has to be summable alongside the success events without inflating
+    anything — a failed call cost us nothing we can account for."""
+    with (
+        patch.object(llm_metering.llm_calls_repository, "create", new_callable=AsyncMock),
+        patch.object(llm_metering.log, "info") as emitted,
+    ):
+        await llm_metering.record_failed_llm_call(
+            user_id="u1", model_name="m", error=TimeoutError("x"), context=CONTEXT
+        )
+        await _drain()
+
+    fields = emitted.call_args.kwargs
+    assert fields["cost_usd"] == 0.0
+    assert (fields["input_tokens"], fields["output_tokens"]) == (0, 0)
