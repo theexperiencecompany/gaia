@@ -24,6 +24,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLAN_SCRIPT = REPO_ROOT / "scripts" / "ci" / "mutation.sh"
 LOG_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "log.sh"
+CPU_SLOTS_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "cpu-slots.sh"
 
 # Mirrors MAX_SHARDS in the script under test, which tracks the matrix's
 # max-parallel: a wider matrix cannot finish sooner, it only adds a check row
@@ -39,6 +40,7 @@ def _install(scripts: Path) -> None:
     lib = scripts / "lib"
     lib.mkdir(exist_ok=True)
     shutil.copy(LOG_LIB, lib / "log.sh")
+    shutil.copy(CPU_SLOTS_LIB, lib / "cpu-slots.sh")
 
 
 def _stub_changes(scripts: Path, changed: list[str]) -> None:

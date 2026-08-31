@@ -33,6 +33,7 @@ COPY apps/bots/slack/package.json  ./apps/bots/slack/
 COPY apps/bots/telegram/package.json ./apps/bots/telegram/
 COPY packages/cli/package.json     ./packages/cli/
 COPY libs/shared/ts/package.json   ./libs/shared/ts/
+COPY libs/wake-word/package.json   ./libs/wake-word/
 
 # Install BEFORE copying source. Consider the two layouts on a fresh
 # GitHub-hosted runner (BuildKit cache mounts start EMPTY every job):
