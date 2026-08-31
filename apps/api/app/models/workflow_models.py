@@ -3,6 +3,7 @@ Clean and lean workflow models for GAIA workflow system.
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any, TypedDict
@@ -801,3 +802,42 @@ class WorkflowUpdate(BaseModel):
     created_by: str | None = None
     playbook_declines: int | None = None
     playbook_declined_hash: str | None = None
+
+
+class _Unset:
+    """Sentinel for a ``WorkflowRearm`` field that was not provided — distinct
+    from an explicit ``None``, which the recovery scan legitimately writes (a
+    reaped non-recurring workflow clears its ``scheduled_at``)."""
+
+
+UNSET = _Unset()
+
+
+@dataclass(slots=True, frozen=True)
+class WorkflowRearm:
+    """Optional re-arm fields for ``WorkflowsRepository.set_status``.
+
+    ``scheduled_at``/``next_run`` (written as ``trigger_config.next_run``) default
+    to the ``UNSET`` sentinel because ``None`` is a meaningful value the recovery
+    scan writes — an omitted field is left untouched, an explicit ``None`` clears
+    it. ``occurrence_count``/``repeat`` are only set when provided (they never
+    need clearing to ``None``).
+    """
+
+    scheduled_at: datetime | _Unset | None = UNSET
+    occurrence_count: int | None = None
+    repeat: str | None = None
+    next_run: datetime | _Unset | None = UNSET
+
+
+@dataclass(slots=True, frozen=True)
+class SystemWorkflowDefinition:
+    """A system workflow's canonical definition, re-applied in full by
+    ``WorkflowsRepository.reset_system_workflow``."""
+
+    title: str
+    description: str
+    prompt: str
+    steps: list[WorkflowStep]
+    trigger_config: TriggerConfig
+    composio_trigger_ids: list[str]

@@ -22,7 +22,7 @@ repository. Revisit only with evidence of a hot by-id read path.
 
 from datetime import UTC, datetime
 import re
-from typing import Any, cast
+from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
@@ -30,11 +30,13 @@ from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     DeactivationReason,
     PublicWorkflowRow,
-    TriggerConfig,
+    SystemWorkflowDefinition,
     TriggerType,
     WorkflowDocument,
+    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
+    _Unset,
 )
 from app.utils.creator import creator_lookup_stage
 
@@ -60,15 +62,6 @@ _COMMUNITY_MATCH: dict[str, Any] = {
     "is_public": True,
     "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
 }
-
-
-class _Unset:
-    """Sentinel for a ``set_status`` field that was not provided — distinct from an
-    explicit ``None``, which the recovery scan legitimately writes (a reaped
-    non-recurring workflow clears its ``scheduled_at``)."""
-
-
-UNSET = _Unset()
 
 
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
@@ -526,27 +519,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         )
         return result is not None
 
-    _REARM_KEYS = frozenset({"scheduled_at", "occurrence_count", "repeat", "next_run"})
-
     @staticmethod
-    def _rearm_set_fields(rearm: dict[str, datetime | _Unset | None | int | str]) -> dict[str, Any]:
-        """Translate ``set_status``'s re-arm kwargs into a Mongo ``$set`` fragment.
-
-        ``scheduled_at``/``next_run`` (written as ``trigger_config.next_run``) take
-        an ``UNSET`` sentinel because ``None`` is a meaningful value the recovery
-        scan writes — an omitted key is left untouched, an explicit ``None`` clears
-        it. ``occurrence_count``/``repeat`` are only set when provided (they never
-        need clearing to ``None``).
-        """
+    def _rearm_set_fields(rearm: WorkflowRearm) -> dict[str, Any]:
+        """Translate a ``WorkflowRearm`` into a Mongo ``$set`` fragment — see
+        ``WorkflowRearm``'s docstring for the ``UNSET``-vs-``None`` semantics."""
         set_fields: dict[str, Any] = {}
-        if not isinstance(rearm.get("scheduled_at", UNSET), _Unset):
-            set_fields["scheduled_at"] = rearm["scheduled_at"]
-        if (occurrence_count := rearm.get("occurrence_count")) is not None:
-            set_fields["occurrence_count"] = occurrence_count
-        if (repeat := rearm.get("repeat")) is not None:
-            set_fields["repeat"] = repeat
-        if not isinstance(rearm.get("next_run", UNSET), _Unset):
-            set_fields[NEXT_RUN_FIELD] = rearm["next_run"]
+        if not isinstance(rearm.scheduled_at, _Unset):
+            set_fields["scheduled_at"] = rearm.scheduled_at
+        if rearm.occurrence_count is not None:
+            set_fields["occurrence_count"] = rearm.occurrence_count
+        if rearm.repeat is not None:
+            set_fields["repeat"] = rearm.repeat
+        if not isinstance(rearm.next_run, _Unset):
+            set_fields[NEXT_RUN_FIELD] = rearm.next_run
         return set_fields
 
     async def set_status(
@@ -555,23 +540,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         status: ScheduledTaskStatus,
         *,
         user_id: str | None = None,
-        **rearm: datetime | _Unset | None | int | str,
+        rearm: WorkflowRearm | None = None,
     ) -> bool:
         """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
         Returns whether a workflow matched. ``user_id`` adds the owner guard where
         the caller has one; the worker paths update by id alone.
-
-        ``rearm`` accepts ``scheduled_at``, ``occurrence_count``, ``repeat`` and
-        ``next_run`` — see ``_rearm_set_fields`` for how each is applied. Collected
-        as ``**rearm`` (rather than named keyword params) to keep this method under
-        the repo's max-args ratchet; any other key is a caller bug and raises.
         """
-        if unknown := rearm.keys() - self._REARM_KEYS:
-            raise TypeError(f"set_status() got unexpected keyword arguments: {sorted(unknown)}")
         filter_: dict[str, Any] = {"_id": workflow_id}
         if user_id:
             filter_["user_id"] = user_id
-        set_fields: dict[str, Any] = {"status": status.value, **self._rearm_set_fields(rearm)}
+        set_fields: dict[str, Any] = {
+            "status": status.value,
+            **self._rearm_set_fields(rearm or WorkflowRearm()),
+        }
         result = await self._apply_raw_update(
             filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
@@ -618,45 +599,23 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             scope=REPO_GLOBAL_SCOPE,
         )
 
-    _RESET_KEYS = frozenset(
-        {"title", "description", "prompt", "steps", "trigger_config", "composio_trigger_ids"}
-    )
-
     async def reset_system_workflow(
-        self, workflow_id: str, **definition: str | list[WorkflowStep] | TriggerConfig | list[str]
+        self, workflow_id: str, definition: SystemWorkflowDefinition
     ) -> WorkflowDocument | None:
         """Re-apply a system workflow's original definition, preserving liveness,
         stats and ``created_at``. ``next_run`` stays a native datetime (python-mode
         dump), consistent with create/re-arm.
-
-        ``definition`` accepts ``title``, ``description``, ``prompt``, ``steps``
-        (``list[WorkflowStep]``), ``trigger_config`` (``TriggerConfig``) and
-        ``composio_trigger_ids``, all required. Collected as ``**definition``
-        (rather than named keyword params) to keep this method under the repo's
-        max-args ratchet; any other key, or a missing one, is a caller bug.
         """
-        if unknown := definition.keys() - self._RESET_KEYS:
-            raise TypeError(
-                f"reset_system_workflow() got unexpected keyword arguments: {sorted(unknown)}"
-            )
-        if missing := self._RESET_KEYS - definition.keys():
-            raise TypeError(f"reset_system_workflow() missing keyword arguments: {sorted(missing)}")
-
-        # Presence and rough shape were already validated by the key-set checks
-        # above; the caller (reset_system_workflow_to_default) is the only
-        # production caller and always passes the documented types.
-        trigger_config = cast(TriggerConfig, definition["trigger_config"])
-        steps = cast("list[WorkflowStep]", definition["steps"])
-        trigger_doc = trigger_config.model_dump()
-        trigger_doc["composio_trigger_ids"] = definition["composio_trigger_ids"]
+        trigger_doc = definition.trigger_config.model_dump()
+        trigger_doc["composio_trigger_ids"] = definition.composio_trigger_ids
         return await self._apply_raw_update(
             {"_id": workflow_id},
             {
                 "$set": {
-                    "title": definition["title"],
-                    "description": definition["description"],
-                    "prompt": definition["prompt"],
-                    "steps": [s.model_dump() for s in steps],
+                    "title": definition.title,
+                    "description": definition.description,
+                    "prompt": definition.prompt,
+                    "steps": [s.model_dump() for s in definition.steps],
                     "trigger_config": trigger_doc,
                 }
             },

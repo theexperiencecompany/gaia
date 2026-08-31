@@ -1992,7 +1992,7 @@ class TestWorkflowScheduler:
             update_data={"occurrence_count": 5},
         )
 
-        assert mock_repo.set_status.call_args.kwargs["occurrence_count"] == 5
+        assert mock_repo.set_status.call_args.kwargs["rearm"].occurrence_count == 5
 
     async def test_schedule_workflow_execution_success(self):
         scheduler = WorkflowScheduler()

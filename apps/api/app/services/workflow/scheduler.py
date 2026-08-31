@@ -8,14 +8,14 @@ from typing import Any
 from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
-from app.db.repositories.workflows import UNSET, workflow_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import (
     BaseScheduledTask,
     ScheduleConfig,
     ScheduledTaskStatus,
     TaskExecutionResult,
 )
-from app.models.workflow_models import TriggerType, Workflow
+from app.models.workflow_models import UNSET, TriggerType, Workflow, WorkflowRearm
 from app.services.scheduler_service import BaseSchedulerService
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone
@@ -182,10 +182,12 @@ class WorkflowScheduler(BaseSchedulerService):
                 task_id,
                 status,
                 user_id=user_id,
-                scheduled_at=data.get("scheduled_at", UNSET),
-                occurrence_count=data.get("occurrence_count"),
-                repeat=data.get("repeat"),
-                next_run=data.get("trigger_config.next_run", UNSET),
+                rearm=WorkflowRearm(
+                    scheduled_at=data.get("scheduled_at", UNSET),
+                    occurrence_count=data.get("occurrence_count"),
+                    repeat=data.get("repeat"),
+                    next_run=data.get("trigger_config.next_run", UNSET),
+                ),
             )
 
             if matched:

@@ -26,7 +26,11 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.models.workflow_models import CreateWorkflowRequest, TriggerType
+from app.models.workflow_models import (
+    CreateWorkflowRequest,
+    SystemWorkflowDefinition,
+    TriggerType,
+)
 from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
@@ -294,12 +298,14 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
 
     await workflow_repository.reset_system_workflow(
         workflow_id,
-        title=request.title,
-        description=request.description or "",
-        prompt=request.prompt,
-        steps=request.steps or [],
-        trigger_config=trigger_config,
-        composio_trigger_ids=new_trigger_ids,
+        SystemWorkflowDefinition(
+            title=request.title,
+            description=request.description or "",
+            prompt=request.prompt,
+            steps=request.steps or [],
+            trigger_config=trigger_config,
+            composio_trigger_ids=new_trigger_ids,
+        ),
     )
 
     # Reset preserves liveness — an activated schedule workflow needs a queued
