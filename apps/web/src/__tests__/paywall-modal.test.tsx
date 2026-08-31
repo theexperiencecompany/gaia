@@ -6,7 +6,7 @@ const createSubscriptionAndRedirect = vi.fn();
 const logout = vi.fn();
 
 let isPaid = false;
-let isSubscriptionStatusLoading = false;
+let isSubscriptionStatusUnknown = false;
 
 vi.mock("@/lib/analytics", () => ({
   ANALYTICS_EVENTS: {
@@ -31,7 +31,7 @@ vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({
     isPaid,
-    isLoading: isSubscriptionStatusLoading,
+    isUnknown: isSubscriptionStatusUnknown,
   }),
 }));
 
@@ -63,7 +63,7 @@ describe("PaywallModal", () => {
       dismissible: false,
     });
     isPaid = false;
-    isSubscriptionStatusLoading = false;
+    isSubscriptionStatusUnknown = false;
     vi.clearAllMocks();
   });
 
@@ -173,13 +173,13 @@ describe("PaywallModal", () => {
     });
   });
 
-  it("does not auto-close while the subscription-status query is still loading", async () => {
-    isSubscriptionStatusLoading = true;
+  it("does not auto-close while the subscription status is still unknown", async () => {
+    isSubscriptionStatusUnknown = true;
     usePaywallModalStore.getState().openModal();
     const { rerender } = render(<PaywallModal />);
     await screen.findByRole("dialog");
 
-    // isPaid flips true, but isLoading is still true this render — the
+    // isPaid flips true, but isUnknown is still true this render — the
     // resolution isn't trustworthy yet, so the modal must not close.
     isPaid = true;
     rerender(<PaywallModal />);

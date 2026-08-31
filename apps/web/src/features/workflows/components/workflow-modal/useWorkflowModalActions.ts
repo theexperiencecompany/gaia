@@ -96,7 +96,7 @@ export function useWorkflowModalActions({
 
   const { integrations, connectIntegration } = useIntegrations();
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const { isPaid, isLoading: isSubscriptionStatusLoading } = useIsPaid();
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -454,10 +454,10 @@ export function useWorkflowModalActions({
 
     // GAIA is paid-only: a free user can't enable a workflow. Show the
     // upsell toast and open the paywall — never call activateWorkflow. While
-    // the subscription-status query is still in flight, let the toggle
-    // proceed (the backend is the backstop) rather than gating on a
-    // not-yet-resolved "false".
-    if (newActivated && !isSubscriptionStatusLoading && !isPaid) {
+    // the subscription-status is still unknown, let the toggle proceed (the
+    // backend is the backstop) rather than gating on a not-yet-resolved
+    // "false".
+    if (newActivated && !isSubscriptionStatusUnknown && !isPaid) {
       toast.info("Workflows require GAIA Pro", {
         action: {
           label: "Upgrade",

@@ -15,10 +15,8 @@ import React from "react";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
-import {
-  usePricing,
-  useUserSubscriptionStatus,
-} from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
@@ -72,7 +70,7 @@ const buttonData = [
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown } = useIsPaid();
   const { plans } = usePricing();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   const { notifications } = useNotifications({
@@ -98,8 +96,10 @@ export default function SidebarTopButtons() {
 
   return (
     <div className="flex flex-col">
-      {/* Only show Upgrade to Pro button when user doesn't have an active subscription */}
-      {!subscriptionStatus?.is_subscribed && (
+      {/* Only show Upgrade to Pro button when the plan is known and the user
+          doesn't have an active subscription — never while unknown, or a
+          paying user on a cold cache briefly sees the free-tier promo. */}
+      {!isUnknown && !isPaid && (
         <SidebarPromo
           price={price}
           onUpgrade={() => openPaywallModal(undefined, { dismissible: true })}

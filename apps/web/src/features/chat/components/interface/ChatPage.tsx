@@ -66,7 +66,7 @@ const MainChat = React.memo(function MainChat() {
   const sendMessage = useSendMessage();
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
-  const { isPaid, isLoading: isSubscriptionStatusLoading } = useIsPaid();
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   // Exactly-once guard for the deferred auto-send below. Set inside the timer
   // callback (not at schedule time) so StrictMode's simulated remount and
@@ -96,10 +96,10 @@ const MainChat = React.memo(function MainChat() {
       // GAIA is paid-only, and this is a real send: useComposerSubmit's own
       // pre-check never runs for this path (handleFormSubmit returns early
       // on `autoSend` before reaching it), so this is the one place that has
-      // to gate it. While the subscription-status query is still loading,
-      // let the send proceed — the backend's 402 is the backstop — rather
-      // than trap a paying user on a not-yet-resolved "false".
-      if (!isSubscriptionStatusLoading && !isPaid) {
+      // to gate it. While the subscription-status is still unknown, let the
+      // send proceed — the backend's 402 is the backstop — rather than trap
+      // a paying user on a not-yet-resolved "false".
+      if (!isSubscriptionStatusUnknown && !isPaid) {
         openPaywallModal();
         return;
       }
@@ -120,7 +120,7 @@ const MainChat = React.memo(function MainChat() {
     autoSend,
     sendMessage,
     isPaid,
-    isSubscriptionStatusLoading,
+    isSubscriptionStatusUnknown,
     openPaywallModal,
   ]);
 

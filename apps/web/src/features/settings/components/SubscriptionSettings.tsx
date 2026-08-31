@@ -3,7 +3,10 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import {
+  useIsSubscriptionStatusUnknown,
+  useUserSubscriptionStatus,
+} from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
   formatUSDFromCents,
@@ -81,17 +84,19 @@ function getStatusText(status: string): string {
 }
 
 export function SubscriptionSettings() {
-  const {
-    data: status,
-    isLoading,
-    refetch: refetchStatus,
-  } = useUserSubscriptionStatus();
+  const { data: status, refetch: refetchStatus } = useUserSubscriptionStatus();
+  // True while the plan is not yet definitively known — a cold cache right
+  // after a hard refresh, or the user store still rehydrating. Gates the
+  // skeleton below instead of TanStack's own `isLoading`, which reports
+  // false for a disabled-and-never-fetched query and would otherwise flash
+  // "No subscription" at a paying user. See useIsPaid for the invariant.
+  const isUnknown = useIsSubscriptionStatusUnknown();
   // Managing an existing Pro plan (monthly <-> yearly) is a different job
   // than subscribing for the first time — see the branches below.
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
-  if (isLoading) {
+  if (isUnknown) {
     return (
       <SettingsPage>
         <SettingsSection title="Plan">

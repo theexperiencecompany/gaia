@@ -11,10 +11,10 @@ const clearSelectedCalendarEvent = vi.fn();
 const clearReplyToMessage = vi.fn();
 
 let isPaid = false;
-let isSubscriptionStatusLoading = false;
+let isSubscriptionStatusUnknown = false;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
-  useIsPaid: () => ({ isPaid, isLoading: isSubscriptionStatusLoading }),
+  useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
 vi.mock("@/hooks/useSendMessage", () => ({
@@ -71,7 +71,7 @@ import { usePaywallModalStore } from "@/stores/paywallModalStore";
 describe("useComposerSubmit paywall pre-check", () => {
   beforeEach(() => {
     isPaid = false;
-    isSubscriptionStatusLoading = false;
+    isSubscriptionStatusUnknown = false;
     usePaywallModalStore.setState({ open: false, offer: null });
     vi.clearAllMocks();
   });
@@ -112,9 +112,9 @@ describe("useComposerSubmit paywall pre-check", () => {
     expect(clearInputText).toHaveBeenCalledTimes(1);
   });
 
-  it("lets the send proceed while the subscription-status query is still loading, instead of opening the paywall (cold-cache race)", () => {
+  it("lets the send proceed while the subscription status is still unknown, instead of opening the paywall (cold-cache race)", () => {
     isPaid = false;
-    isSubscriptionStatusLoading = true;
+    isSubscriptionStatusUnknown = true;
     const { result } = renderHook(() =>
       useComposerSubmit({
         inputRef: { current: null },
@@ -125,8 +125,8 @@ describe("useComposerSubmit paywall pre-check", () => {
     result.current.handleFormSubmit();
 
     // The backend's 402 on chat-stream is the backstop for a genuinely free
-    // user — a not-yet-resolved query must never trap a paying user behind
-    // the non-dismissible paywall.
+    // user — a not-yet-resolved plan status must never trap a paying user
+    // behind the non-dismissible paywall.
     expect(sendMessage).toHaveBeenCalledTimes(1);
     expect(usePaywallModalStore.getState().open).toBe(false);
   });

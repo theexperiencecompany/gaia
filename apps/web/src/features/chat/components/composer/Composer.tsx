@@ -176,14 +176,14 @@ const Composer: React.FC<MainSearchbarProps> = ({
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
       <PaywallNotice />
+      <IntegrationsBanner
+        integrations={integrations}
+        isLoading={integrationsLoading}
+        hasMessages={hasMessages}
+        onToggleSlashCommand={handleToggleSlashCommandDropdown}
+      />
       <div className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
-        <IntegrationsBanner
-          integrations={integrations}
-          isLoading={integrationsLoading}
-          hasMessages={hasMessages}
-          onToggleSlashCommand={handleToggleSlashCommandDropdown}
-        />
-        {/* relative z-10 ensures indicators always paint above the absolute banner */}
+        {/* relative z-10 ensures indicators always paint above the banner's tucked-under overlap */}
         <div className="relative z-10">
           <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
           <SelectedToolIndicator

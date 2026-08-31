@@ -9,7 +9,7 @@ const selectWorkflow = vi.fn();
 const connectIntegration = vi.fn();
 
 let isPaid = false;
-let isSubscriptionStatusLoading = false;
+let isSubscriptionStatusUnknown = false;
 
 const WORKFLOW = {
   id: "wf_1",
@@ -20,7 +20,7 @@ const WORKFLOW = {
 } as unknown as import("@/features/workflows/api/workflowApi").Workflow;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
-  useIsPaid: () => ({ isPaid, isLoading: isSubscriptionStatusLoading }),
+  useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
 vi.mock("@/lib/toast", () => ({
@@ -102,7 +102,7 @@ import { useWorkflowModalActions } from "@/features/workflows/components/workflo
 describe("workflow activation toggle paywall gate", () => {
   beforeEach(() => {
     isPaid = false;
-    isSubscriptionStatusLoading = false;
+    isSubscriptionStatusUnknown = false;
     vi.clearAllMocks();
   });
 
@@ -152,15 +152,15 @@ describe("workflow activation toggle paywall gate", () => {
     expect(toastInfo).not.toHaveBeenCalled();
   });
 
-  it("lets activation proceed while the subscription-status query is still loading (cold-cache race)", async () => {
+  it("lets activation proceed while the subscription status is still unknown (cold-cache race)", async () => {
     isPaid = false;
-    isSubscriptionStatusLoading = true;
+    isSubscriptionStatusUnknown = true;
     const { result } = setup();
 
     await result.current.handleActivationToggle(true);
 
     // The backend is the backstop for a genuinely free user — a
-    // not-yet-resolved query must never block a paying user's toggle.
+    // not-yet-resolved plan status must never block a paying user's toggle.
     expect(activateWorkflow).toHaveBeenCalledWith("wf_1");
     expect(toastInfo).not.toHaveBeenCalled();
   });

@@ -21,19 +21,19 @@ export function PaywallModal() {
   const { logout } = useLogout();
   const { createSubscriptionAndRedirect, isLoading: isCreatingSubscription } =
     useDodoPayments();
-  const { isPaid, isLoading: isSubscriptionStatusLoading } = useIsPaid();
+  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
 
-  // A cold-cache render can open this modal while the subscription-status
-  // query is still resolving (see useComposerSubmit / useWorkflowModalActions
-  // — they let the action proceed while loading rather than trap the user).
-  // Once it resolves paid, close the modal immediately: nothing else in the
-  // app ever calls closeModal, so a Pro user who hit this race would
-  // otherwise be stuck behind a non-dismissible modal forever.
+  // A cold-cache render can open this modal while the subscription-status is
+  // still unknown (see useComposerSubmit / useWorkflowModalActions — they let
+  // the action proceed while unknown rather than trap the user). Once it
+  // resolves paid, close the modal immediately: nothing else in the app ever
+  // calls closeModal, so a Pro user who hit this race would otherwise be
+  // stuck behind a non-dismissible modal forever.
   useEffect(() => {
-    if (open && !isSubscriptionStatusLoading && isPaid) {
+    if (open && !isSubscriptionStatusUnknown && isPaid) {
       closeModal();
     }
-  }, [open, isSubscriptionStatusLoading, isPaid, closeModal]);
+  }, [open, isSubscriptionStatusUnknown, isPaid, closeModal]);
 
   // Monthly Pro is the default paywall offer — same tier PricingCards leads
   // with, just without the billing-period tabs (this modal has one job).

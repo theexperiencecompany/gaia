@@ -6,17 +6,17 @@ import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
 /**
  * Quiet notice shown directly above the composer for a non-subscribed user.
- * Renders in neither the loading state (avoids a flash for paying users on a
+ * Renders in neither the unknown state (avoids a flash for paying users on a
  * cold subscription-status cache) nor for a paid user. Mounted once in
  * `Composer`, which is the single render path shared by `NewChatLayout` and
  * `ChatWithMessages`, so it covers both the empty and active-conversation
  * states.
  */
 export function PaywallNotice() {
-  const { isPaid, isLoading } = useIsPaid();
+  const { isPaid, isUnknown } = useIsPaid();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
-  if (isLoading || isPaid) return null;
+  if (isUnknown || isPaid) return null;
 
   return (
     <div className="mb-2 flex w-full items-center justify-between gap-3 rounded-2xl bg-zinc-800 px-4 py-2.5">

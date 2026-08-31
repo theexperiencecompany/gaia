@@ -34,7 +34,7 @@ import {
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
-import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
 import { useReleases } from "@/features/whats-new/hooks/useReleases";
@@ -250,7 +250,7 @@ export default function SettingsMenu({
     string | undefined
   >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const { isPaid, isUnknown } = useIsPaid();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   const { unseen: unseenReleases } = useReleases();
 
@@ -292,7 +292,9 @@ export default function SettingsMenu({
   };
 
   const menuSections = [
-    ...(subscriptionStatus?.is_subscribed
+    // Never show the upgrade item while the plan is unknown — a cold-cache
+    // paying user would otherwise see an "Upgrade to Pro" entry on reload.
+    ...(isUnknown || isPaid
       ? []
       : [
           {

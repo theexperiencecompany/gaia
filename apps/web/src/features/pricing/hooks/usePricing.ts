@@ -35,7 +35,7 @@ export const usePricing = (initialPlans: Plan[] = []) => {
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 
@@ -101,7 +101,24 @@ export const useUserSubscriptionStatus = () => {
     queryKey: ["subscription-status"],
     queryFn: () => pricingApi.getSubscriptionStatus(),
     staleTime: 1 * 60 * 1000, // 1 minute
-    enabled: !!user, // Only fetch when user is logged in
+    enabled: !!user.userId, // Only fetch once the persisted user store has a real id
     retry: false, // Don't retry on auth failures
   });
 };
+
+/**
+ * Whether the subscription plan is not yet definitively known: the persisted
+ * user store hasn't rehydrated with a real id yet, or the (consequently
+ * disabled, or still-pending) `["subscription-status"]` query hasn't
+ * produced data yet. Deliberately keyed off `data === undefined`, never off
+ * `isLoading` — in TanStack Query v5 a disabled query reports
+ * `isLoading === false` even though it has never fetched, which would
+ * otherwise read as "answered" when it is really "unasked". See
+ * `useIsPaid` for the invariant this backs: never treat "unknown" as
+ * "free"/"not paid".
+ */
+export function useIsSubscriptionStatusUnknown(): boolean {
+  const user = useUser();
+  const { data } = useUserSubscriptionStatus();
+  return !user.userId || data === undefined;
+}

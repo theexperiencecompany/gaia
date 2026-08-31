@@ -3,10 +3,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let isPaid = false;
-let isLoading = false;
+let isUnknown = false;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
-  useIsPaid: () => ({ isPaid, isLoading }),
+  useIsPaid: () => ({ isPaid, isUnknown }),
 }));
 
 import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
@@ -15,7 +15,7 @@ import { usePaywallModalStore } from "@/stores/paywallModalStore";
 describe("PaywallNotice", () => {
   beforeEach(() => {
     isPaid = false;
-    isLoading = false;
+    isUnknown = false;
     usePaywallModalStore.setState({ open: false, offer: null });
   });
 
@@ -28,8 +28,8 @@ describe("PaywallNotice", () => {
     ).not.toBeNull();
   });
 
-  it("does not render while the subscription-status query is still loading", () => {
-    isLoading = true;
+  it("does not render while the subscription status is still unknown", () => {
+    isUnknown = true;
     const { container } = render(<PaywallNotice />);
 
     expect(container.firstChild).toBeNull();
