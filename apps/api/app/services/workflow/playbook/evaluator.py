@@ -118,14 +118,32 @@ def resolve_args(args: Mapping[str, Any], context: RunContext) -> dict[str, Any]
         item = resolve_value(value, context)
         if item is None and isinstance(value, str) and PLACEHOLDER_TOKEN.fullmatch(value):
             continue
-        if isinstance(item, str) and item.endswith(RECORD_CUT_MARKER):
+        if _carries_cut_value(item):
             # A recorded string cut to fit the record (a page token, a long id)
-            # is not the value; sending the stub would page from nowhere.
+            # is not the value; sending the stub would page from nowhere. The
+            # stub is just as wrong nested in a list or a dict, or interpolated
+            # into a longer string, so the whole argument is scanned.
             raise PlaceholderError(
                 f"{key}: the recorded value was cut when it was stored and cannot be replayed"
             )
         resolved[key] = item
     return resolved
+
+
+def _carries_cut_value(value: object) -> bool:
+    """Whether a resolved argument holds a string that was cut when recorded.
+
+    The marker is searched for rather than matched at the end, because a cut
+    value interpolated into a longer string (``page=<cut>&limit=50``) carries the
+    stub in the middle and is no more replayable there than on its own.
+    """
+    if isinstance(value, str):
+        return RECORD_CUT_MARKER in value
+    if isinstance(value, Mapping):
+        return any(_carries_cut_value(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_carries_cut_value(item) for item in value)
+    return False
 
 
 def resolve_value(value: object, context: RunContext) -> object:

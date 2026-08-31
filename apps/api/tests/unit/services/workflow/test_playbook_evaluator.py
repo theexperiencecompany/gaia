@@ -7,12 +7,12 @@ path the tool's recorded result lacks, an unresolvable ``$steps`` / ``$trigger``
 / ``$user`` — means the playbook is stale and must stop the run by name.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.models.workflow_execution_models import RecordedCall
+from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
 from app.services.workflow.playbook.evaluator import (
     PlaceholderError,
     PlaybookUser,
@@ -412,21 +412,7 @@ def test_embedded_value_that_is_not_json_serialisable_still_renders() -> None:
 
 class TestACutRecordedValueIsNotReplayed:
     def test_a_last_run_string_cut_when_stored_raises_instead_of_paging_from_nowhere(self) -> None:
-        from app.models.workflow_execution_models import RECORD_CUT_MARKER
-        from app.services.workflow.playbook.evaluator import (
-            PlaceholderError,
-            RunContext,
-            resolve_args,
-        )
-
-        context = RunContext(
-            now=datetime(2026, 1, 1, tzinfo=UTC),
-            user={},
-            trigger={},
-            steps={},
-            last_run={"list_events": {"next_page_token": "abc" + RECORD_CUT_MARKER}},
-            asks={},
-        )
+        context = _context(last_run={"list_events": {"next_page_token": "abc" + RECORD_CUT_MARKER}})
 
         with pytest.raises(PlaceholderError) as caught:
             resolve_args({"page_token": "$last_run.list_events.next_page_token"}, context)
@@ -435,4 +421,39 @@ class TestACutRecordedValueIsNotReplayed:
         # than being told only that "something" was cut.
         assert caught.value.message == (
             "page_token: the recorded value was cut when it was stored and cannot be replayed"
+        )
+
+    def test_a_cut_value_nested_in_a_dict_argument_raises_too(self) -> None:
+        """The stub is no more replayable one level down: a cursor nested inside a
+        filter object still pages from nowhere, so the top-level-only guard that
+        let it through was a hole."""
+        context = _context(last_run={"list_events": {"page": "abc" + RECORD_CUT_MARKER}})
+
+        with pytest.raises(PlaceholderError) as caught:
+            resolve_args({"query": {"cursor": "$last_run.list_events.page"}}, context)
+
+        assert caught.value.message == (
+            "query: the recorded value was cut when it was stored and cannot be replayed"
+        )
+
+    def test_a_cut_value_nested_in_a_list_argument_raises_too(self) -> None:
+        context = _context(last_run={"list_events": {"page": "abc" + RECORD_CUT_MARKER}})
+
+        with pytest.raises(PlaceholderError) as caught:
+            resolve_args({"cursors": ["$last_run.list_events.page"]}, context)
+
+        assert caught.value.message == (
+            "cursors: the recorded value was cut when it was stored and cannot be replayed"
+        )
+
+    def test_a_cut_value_interpolated_into_a_longer_string_raises_too(self) -> None:
+        """Interpolation moves the marker off the end of the string; the value is
+        still a stub, so ``endswith`` was the wrong test."""
+        context = _context(last_run={"list_events": {"page": "abc" + RECORD_CUT_MARKER}})
+
+        with pytest.raises(PlaceholderError) as caught:
+            resolve_args({"url": "?page=$last_run.list_events.page&limit=50"}, context)
+
+        assert caught.value.message == (
+            "url: the recorded value was cut when it was stored and cannot be replayed"
         )
