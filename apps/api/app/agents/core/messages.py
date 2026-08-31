@@ -161,11 +161,10 @@ async def construct_langchain_messages(
     # a single batched query, then surfaced inline so comms knows each file's
     # content without a tool round-trip.
     if currently_uploaded_file_ids and files_data and user_id:
-        stored = await FileService.get_server_owned_metadata(currently_uploaded_file_ids, user_id)
+        descriptions = await FileService.get_descriptions(currently_uploaded_file_ids, user_id)
         for file in files_data:
-            if (document := stored.get(file.fileId)) is not None:
-                file.description = document.description
-                file.sandbox_path = document.sandbox_path
+            if file.fileId in descriptions:
+                file.description = descriptions[file.fileId]
 
     if currently_uploaded_file_ids and (
         files_str := format_files_list(

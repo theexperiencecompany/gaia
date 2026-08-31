@@ -11,7 +11,7 @@ The flow, end to end:
               download each blob → mirror into the now-created session + write its
               sidecar + stamp ``conversation_id`` so search can scope to it.
 
-  Context   each chat turn → FileService.get_server_owned_metadata
+  Context   each chat turn → FileService.get_descriptions
               one batched Mongo read → the inline summary in the agent's context.
 
   Search    ``search_uploaded_files`` tool (executor) → vector search scoped to the

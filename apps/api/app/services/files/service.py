@@ -236,24 +236,19 @@ class FileService:
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}") from e
 
     @staticmethod
-    async def get_server_owned_metadata(
-        file_ids: list[str], user_id: str
-    ) -> dict[str, FileDocument]:
-        """Return `{file_id: document}` for the user's files, in one batched query.
+    async def get_descriptions(file_ids: list[str], user_id: str) -> dict[str, str]:
+        """Return `{file_id: description}` for the user's files, in one batched query.
 
-        Authoritative source for every field the agent's file context is built
-        from — never trust the client request for these. The summary and the
-        workspace path travel together because they come from the same row and
-        are both server-owned: hydrating only the summary left ``sandbox_path``
-        at whatever the request carried, which is always ``None``, so a file
-        sitting on the JuiceFS mount was advertised to the agent as "not on
-        disk".
+        Authoritative source for the agent's file context — never trust the
+        client request for this. Files without a stored summary are omitted.
         """
         if not file_ids:
             return {}
 
         documents = await file_repository.find_by_ids_for_user(file_ids, user_id)
-        return {document.file_id: document for document in documents}
+        return {
+            document.file_id: document.description for document in documents if document.description
+        }
 
     @staticmethod
     async def list_conversation_files(conversation_id: str, user_id: str) -> list[MessageFileData]:

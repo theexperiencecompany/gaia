@@ -80,7 +80,6 @@ async def upload_file_endpoint(
             message="File uploaded successfully",
             type=uploaded.type,
             description=uploaded.description,
-            sandbox_path=uploaded.sandbox_path,
         )
     except HTTPException:
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).

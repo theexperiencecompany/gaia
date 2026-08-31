@@ -14,7 +14,6 @@ orchestration — they patch ``create_system_message`` and ``assemble_context``
 and verify the assembled message list.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -25,7 +24,6 @@ from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import ONBOARDING_MARKER
 from app.agents.context.tiers import AgentTier
 from app.agents.core.messages import construct_langchain_messages
-from app.models.files_models import FileDocument
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -440,60 +438,6 @@ class TestFileContext:
         mock_files.assert_called_once_with(files_data, ["f1"], None, include_processing_guide=False)
         assert "Uploaded Files" in result[-2].content
         assert result[-2].content.startswith("check this")
-
-    @pytest.mark.asyncio
-    @pytest.mark.regression
-    async def test_workspace_path_is_hydrated_from_the_server_not_the_request(self) -> None:
-        """An uploaded file that reached JuiceFS must be advertised at its path.
-
-        ``sandbox_path`` is server-owned: the client echoes back whatever the
-        upload response gave it, and the upload response does not carry the
-        field, so every inbound ``FileData`` arrives with ``sandbox_path=None``.
-        Hydrating only ``description`` left ``format_files_list`` computing
-        ``on_disk_available=False`` for files that are sitting on the mount, so
-        the agent was told "not on disk" and steered into
-        ``search_uploaded_files`` instead of reading the file it could read.
-
-        ``format_files_list`` is deliberately NOT patched here — the block it
-        renders is the behaviour under test. The repository is the seam.
-        """
-        conversation_id = "conv_abc"
-        stored = FileDocument(
-            file_id="f1",
-            filename="report.txt",
-            type="text/plain",
-            size=12,
-            url="https://example.com/f1",
-            description="a report",
-            sandbox_path=f"/workspace/sessions/{conversation_id}/user-uploaded/report.txt",
-            conversation_id=conversation_id,
-            user_id="u1",
-            created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        )
-        # Exactly what the browser sends back: no server-owned fields.
-        from_request = [FileData(fileId="f1", url="https://example.com/f1", filename="report.txt")]
-
-        p = _patches()
-        with (
-            p["create_system"],
-            p["build_dynamic"],
-            patch(
-                "app.services.files.service.file_repository.find_by_ids_for_user",
-                new_callable=AsyncMock,
-                return_value=[stored],
-            ),
-        ):
-            result = await construct_langchain_messages(
-                messages=[{"role": "user", "content": "summarise it"}],
-                files_data=from_request,
-                currently_uploaded_file_ids=["f1"],
-                conversation_id=conversation_id,
-                user_id="u1",
-            )
-
-        block = result[-2].content
-        assert stored.sandbox_path in block
-        assert "not on disk" not in block
 
     @pytest.mark.asyncio
     async def test_no_files_when_ids_empty(self) -> None:
