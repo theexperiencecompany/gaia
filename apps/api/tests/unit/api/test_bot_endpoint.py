@@ -959,6 +959,65 @@ class TestBotChatStream:
         assert response.status_code == 200
         mock_get_user.assert_awaited_once_with("discord", "disc_1")
 
+    @patch("app.api.v1.endpoints.bot.spawn_background_task")
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background")
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token")
+    @patch(
+        "app.api.v1.endpoints.bot.PlatformLinkService.get_user_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture_event", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    async def test_the_background_stream_is_wired_with_the_exact_session_and_body(
+        self,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+        mock_session_token: MagicMock,
+        mock_run_background: MagicMock,
+        mock_spawn: MagicMock,
+    ):
+        """Every argument that reaches the background stream and the session
+        token — a wrong platform, user, or conversation id here silently
+        streams to (or authenticates) the wrong session."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(return_value="conv-77")
+        mock_bot_svc.load_conversation_history = AsyncMock(return_value=[])
+        mock_sm.start_stream = AsyncMock()
+        mock_get_user.return_value = {"user_id": "uid-1", "_id": "uid-1"}
+        mock_session_token.return_value = "tok-77"
+
+        body = BotChatRequest(message="hello", platform="telegram", platform_user_id="tg_1")
+        request = MagicMock()
+        request.state = _make_request()
+
+        response = await bot_chat_stream(request, body)
+
+        assert response.status_code == 200
+        mock_session_token.assert_called_once_with(
+            user_id="uid-1",
+            platform="telegram",
+            platform_user_id="tg_1",
+            expires_minutes=15,
+        )
+        mock_sm.start_stream.assert_awaited_once()
+        start_stream_call = mock_sm.start_stream.call_args
+        stream_id = start_stream_call.args[0]
+        assert start_stream_call.args[1:] == ("conv-77", "uid-1")
+
+        run_call = mock_run_background.call_args
+        assert run_call.kwargs["stream_id"] == stream_id
+        assert run_call.kwargs["conversation_id"] == "conv-77"
+        assert run_call.kwargs["source"] == "telegram"
+        assert run_call.kwargs["user"] == {"user_id": "uid-1", "_id": "uid-1"}
+        message_request = run_call.kwargs["body"]
+        assert message_request.message == "hello"
+        assert message_request.conversation_id == "conv-77"
+        spawn_call = mock_spawn.call_args
+        assert spawn_call.kwargs["on_done"].__name__ == "_log_stream_failure"
+
 
 # ---------------------------------------------------------------------------
 # The streamed body of POST /bot/chat-stream — translation + keepalive

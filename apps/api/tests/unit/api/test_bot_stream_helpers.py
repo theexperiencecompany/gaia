@@ -50,6 +50,14 @@ class TestBotStreamControlFrame:
         assert data == {"response": "hi"}
         assert stop is False
 
+    def test_id_prefix_with_no_newline_at_all_yields_nothing(self):
+        """An id-tagged chunk with no trailing data line at all — the
+        partition leaves nothing that starts with `data: `."""
+        frame, data, stop = _bot_stream_control_frame("id: 42", "conv-1")
+        assert frame is None
+        assert data is None
+        assert stop is False
+
     def test_id_tagged_done_chunk_still_produces_the_done_frame(self):
         chunk = "id: 7\ndata: [DONE]\n\n"
         frame, data, stop = _bot_stream_control_frame(chunk, "conv-99")
@@ -77,8 +85,10 @@ class TestBotStreamControlFrame:
         assert frame is None
         assert data is None
         assert stop is False
-        mock_log.warning.assert_called_once()
-        assert mock_log.warning.call_args.kwargs["error_type"] == "JSONDecodeError"
+        mock_log.warning.assert_called_once_with(
+            "[API] Bot stream: dropped a malformed SSE chunk",
+            error_type="JSONDecodeError",
+        )
 
 
 class TestBotStreamPayloadFrame:
@@ -275,13 +285,13 @@ class TestBotStreamFailureLogger:
         with patch("app.api.v1.endpoints.bot.log") as mock_log:
             _bot_stream_failure_logger("stream-1", "conv-1")(task)
 
-        mock_log.error.assert_called_once()
-        assert mock_log.error.call_args.kwargs == {
-            "stream_id": "stream-1",
-            "conversation_id": "conv-1",
-            "error_type": "ValueError",
-            "error": "kaboom",
-        }
+        mock_log.error.assert_called_once_with(
+            "[API] Background stream task failed",
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            error_type="ValueError",
+            error="kaboom",
+        )
 
     async def test_does_not_log_when_the_task_succeeded(self):
         async def _ok():
@@ -350,7 +360,7 @@ class TestBotStreamEntitlementGate:
                 "app.api.v1.endpoints.bot.platform_requires_upgrade",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as mock_requires_upgrade,
             patch(
                 "app.api.v1.endpoints.bot.is_subscription_active", new_callable=AsyncMock
             ) as mock_sub_active,
@@ -362,6 +372,7 @@ class TestBotStreamEntitlementGate:
         chunks = [chunk async for chunk in result.body_iterator]
         payload = json.loads(chunks[0][len("data: ") : -2])
         assert payload == {"error": BOT_STREAM_ERROR_PLAN_REQUIRED}
+        mock_requires_upgrade.assert_awaited_once_with("user-1", "imessage")
         mock_capture.assert_called_once_with("user-1", "imessage", "plan_required")
         mock_sub_active.assert_not_called()
 
@@ -376,12 +387,12 @@ class TestBotStreamEntitlementGate:
                 "app.api.v1.endpoints.bot.is_subscription_active",
                 new_callable=AsyncMock,
                 return_value=False,
-            ),
+            ) as mock_sub_active,
             patch(
                 "app.api.v1.endpoints.bot._bot_upgrade_url",
                 new_callable=AsyncMock,
                 return_value="https://pay.example/checkout",
-            ),
+            ) as mock_upgrade_url,
             patch("app.api.v1.endpoints.bot._capture_bot_turn_refused") as mock_capture,
             patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", None),
         ):
@@ -394,6 +405,8 @@ class TestBotStreamEntitlementGate:
             "GAIA is a paid product. Subscribe to Pro to keep chatting: "
             "https://pay.example/checkout"
         )
+        mock_sub_active.assert_awaited_once_with("user-1")
+        mock_upgrade_url.assert_awaited_once_with("user-1")
         mock_capture.assert_called_once_with("user-1", "discord", "subscription_required")
 
     async def test_entitled_user_passes_through_with_no_refusal(self):
