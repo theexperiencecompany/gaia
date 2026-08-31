@@ -20,6 +20,11 @@ def _custom_lane_off_by_default(monkeypatch):
     monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_BASE_URL", None)
     monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_API_KEY", None)
     monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_MODEL", None)
+    # Pin an explicit browser key so provider/model tests exercise the explicit
+    # lane; inheritance/propagation tests set this back to None.
+    monkeypatch.setattr(
+        "app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", "explicit-test-key"
+    )
 
 
 pytestmark = pytest.mark.unit
@@ -51,50 +56,6 @@ def _fake_browser_use_modules(monkeypatch: pytest.MonkeyPatch) -> dict[str, Magi
     mocks["ChatDeepSeek"] = deepseek_chat.ChatDeepSeek
 
     return mocks
-
-
-class TestProviderFallbackKeys:
-    def test_returns_settings_values(self, monkeypatch):
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENAI_API_KEY", "openai-key")
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENROUTER_API_KEY", "or-key")
-        monkeypatch.setattr("app.services.browser.llm.settings.GOOGLE_API_KEY", "google-key")
-        from app.services.browser.llm import _provider_fallback_keys
-
-        result = _provider_fallback_keys()
-        assert result["openai"] == "openai-key"
-        assert result["openrouter"] == "or-key"
-        assert result["google"] == "google-key"
-        assert "deepseek" not in result
-
-
-class TestResolveApiKey:
-    def test_override_wins(self, monkeypatch):
-        monkeypatch.setattr(
-            "app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", "override-key"
-        )
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENAI_API_KEY", "openai-key")
-        from app.services.browser.llm import _resolve_api_key
-
-        assert _resolve_api_key("openai") == "override-key"
-        assert _resolve_api_key("google") == "override-key"
-
-    def test_falls_back_to_provider_key(self, monkeypatch):
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENAI_API_KEY", "openai-key")
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENROUTER_API_KEY", "or-key")
-        monkeypatch.setattr("app.services.browser.llm.settings.GOOGLE_API_KEY", "google-key")
-        from app.services.browser.llm import _resolve_api_key
-
-        assert _resolve_api_key("openai") == "openai-key"
-        assert _resolve_api_key("openrouter") == "or-key"
-        assert _resolve_api_key("google") == "google-key"
-
-    def test_unknown_provider_returns_none(self, monkeypatch):
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
-        from app.services.browser.llm import _resolve_api_key
-
-        assert _resolve_api_key("deepseek") is None
-        assert _resolve_api_key("unknown") is None
 
 
 class TestBuildBrowserLlm:
@@ -275,7 +236,7 @@ class TestBuildBrowserLlm:
         monkeypatch.setattr("app.services.browser.llm.settings.OPENROUTER_API_KEY", None)
         monkeypatch.setattr("app.services.browser.llm.settings.GOOGLE_API_KEY", None)
         monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", None)
-        # anthropic has no fallback key mapping, so _resolve_api_key returns None
+        # no browser key, no custom lane, no OPENROUTER key → nothing to inherit
         from app.services.browser.llm import build_browser_llm
 
         with pytest.raises(BrowserUnavailableError, match="API key"):
@@ -288,31 +249,6 @@ class TestBuildBrowserLlm:
 
         with pytest.raises(BrowserUnavailableError, match="Unknown browser LLM provider"):
             build_browser_llm()
-
-    def test_fallback_key_used_when_no_override(self, monkeypatch):
-        mocks = _fake_browser_use_modules(monkeypatch)
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_PROVIDER", "openai")
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_MODEL", "m")
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
-        monkeypatch.setattr("app.services.browser.llm.settings.OPENAI_API_KEY", "fallback-openai")
-        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_BASE_URL", None)
-        monkeypatch.setattr(
-            "app.services.browser.llm.settings.BROWSER_USE_LLM_SCHEMA_IN_PROMPT", False
-        )
-        monkeypatch.setattr(
-            "app.services.browser.llm.settings.BROWSER_USE_LLM_REASONING_EFFORT", None
-        )
-        from app.services.browser.llm import build_browser_llm
-
-        build_browser_llm()
-        mocks["ChatOpenAI"].assert_called_once_with(
-            model="m",
-            api_key="fallback-openai",
-            base_url=None,
-            add_schema_to_system_prompt=False,
-            dont_force_structured_output=False,
-        )
-
 
 class TestResolveUseVision:
     async def test_vision_disabled_returns_false(self, monkeypatch):
@@ -446,3 +382,78 @@ class TestBrowserInheritsCustomLane:
         )
         provider, model, api_key, _ = _resolve_browser_lane()
         assert (provider, model, api_key) == ("google", "gemini-x", "browser-only")
+
+
+@pytest.mark.unit
+class TestBrowserPropagatesCommsLaneEverywhere:
+    def _set(self, monkeypatch, **kw):
+        for k, v in kw.items():
+            monkeypatch.setattr(f"app.services.browser.llm.settings.{k}", v)
+
+    def test_prod_inherits_openrouter_and_default_model(self, monkeypatch):
+        """No custom lane, no browser key → browser rides comms' prod lane:
+        OpenRouter + the default chat model + OPENROUTER_API_KEY."""
+        from app.constants.llm import DEFAULT_MODEL_NAME
+        from app.services.browser.llm import _resolve_browser_lane
+
+        self._set(
+            monkeypatch,
+            BROWSER_USE_LLM_API_KEY=None,
+            DEV_LLM_BASE_URL=None,
+            DEV_LLM_API_KEY=None,
+            DEV_LLM_MODEL=None,
+            OPENROUTER_API_KEY="or-key",
+        )
+        provider, model, api_key, base_url = _resolve_browser_lane()
+        assert (provider, model, api_key, base_url) == (
+            "openrouter",
+            DEFAULT_MODEL_NAME,
+            "or-key",
+            None,
+        )
+
+
+@pytest.mark.unit
+class TestVisionFollowsResolvedModel:
+    async def test_text_only_inherited_model_disables_vision(self, monkeypatch):
+        """A text-only model inherited from comms (deepseek via the custom lane,
+        routed as provider 'openai') must turn vision OFF by itself, not error."""
+        import sys
+        import types
+
+        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_VISION", True)
+        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
+        monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_BASE_URL", "https://gw/v1")
+        monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_API_KEY", "k")
+        monkeypatch.setattr(
+            "app.services.browser.llm.settings.DEV_LLM_MODEL", "deepseek/deepseek-v4-flash-0731"
+        )
+        cat = AsyncMock()
+        cat.accepts_images = AsyncMock(return_value=False)
+        mod = types.ModuleType("app.agents.llm.model_catalog")
+        mod.get_openrouter_catalog = AsyncMock(return_value=cat)
+        monkeypatch.setitem(sys.modules, "app.agents.llm.model_catalog", mod)
+
+        from app.services.browser.llm import resolve_use_vision
+
+        assert await resolve_use_vision() is False
+        cat.accepts_images.assert_awaited_once_with("deepseek/deepseek-v4-flash-0731")
+
+    async def test_vision_model_inherited_keeps_vision_on(self, monkeypatch):
+        import sys
+        import types
+
+        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_VISION", True)
+        monkeypatch.setattr("app.services.browser.llm.settings.BROWSER_USE_LLM_API_KEY", None)
+        monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_BASE_URL", "https://gw/v1")
+        monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_API_KEY", "k")
+        monkeypatch.setattr("app.services.browser.llm.settings.DEV_LLM_MODEL", "zai/glm-5.3-flash")
+        cat = AsyncMock()
+        cat.accepts_images = AsyncMock(return_value=True)
+        mod = types.ModuleType("app.agents.llm.model_catalog")
+        mod.get_openrouter_catalog = AsyncMock(return_value=cat)
+        monkeypatch.setitem(sys.modules, "app.agents.llm.model_catalog", mod)
+
+        from app.services.browser.llm import resolve_use_vision
+
+        assert await resolve_use_vision() is True

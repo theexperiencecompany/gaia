@@ -13,28 +13,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from app.config.settings import settings
+from app.constants.llm import DEFAULT_MODEL_NAME
 from app.services.browser.exceptions import BrowserUnavailableError
 
 if TYPE_CHECKING:
     from browser_use.llm.base import BaseChatModel
-
-
-def _provider_fallback_keys() -> dict[str, str | None]:
-    """The GAIA API key each provider falls back to when no browser-specific key is set.
-
-    ``deepseek`` has no entry: GAIA holds no native DeepSeek key (see
-    ``.env.example`` — only a Nous Research dev override exists for it), so
-    that provider must either get ``BROWSER_USE_LLM_API_KEY`` explicitly, or
-    the deployer should pick ``openrouter`` with a ``deepseek/...`` model,
-    which already reaches DeepSeek through ``OPENROUTER_API_KEY`` (GAIA's own
-    default chat model, ``DEFAULT_MODEL_NAME`` in ``app/constants/llm.py``, is
-    exactly that: ``deepseek/deepseek-v4-flash-0731`` over OpenRouter).
-    """
-    return {
-        "openai": settings.OPENAI_API_KEY,
-        "openrouter": settings.OPENROUTER_API_KEY,
-        "google": settings.GOOGLE_API_KEY,
-    }
 
 
 # OpenRouter is OpenAI-wire-compatible; Browser-Use talks to it via ChatOpenAI.
@@ -46,11 +29,6 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # against api.deepseek.com) is text-only; an OpenRouter-routed DeepSeek model
 # is judged by the live catalog instead (see resolve_use_vision).
 _TEXT_ONLY_PROVIDERS = frozenset({"deepseek"})
-
-
-def _resolve_api_key(provider: str) -> str | None:
-    override: str | None = settings.BROWSER_USE_LLM_API_KEY
-    return override or _provider_fallback_keys().get(provider)
 
 
 def _custom_lane_configured() -> bool:
@@ -71,15 +49,21 @@ def _resolve_browser_lane() -> tuple[str, str, str | None, str | None]:
     is exactly how a dead shared key surfaced as a fake "site blocked us"). An
     explicit BROWSER_USE_LLM_API_KEY still wins, for a deliberately different lane.
     """
-    if not settings.BROWSER_USE_LLM_API_KEY and _custom_lane_configured():
+    # An explicit browser-specific key opts into a deliberately separate lane.
+    if settings.BROWSER_USE_LLM_API_KEY:
+        provider = settings.BROWSER_USE_LLM_PROVIDER.lower()
+        return (
+            provider,
+            settings.BROWSER_USE_LLM_MODEL,
+            settings.BROWSER_USE_LLM_API_KEY,
+            settings.BROWSER_USE_LLM_BASE_URL,
+        )
+    # Otherwise inherit exactly what comms runs on, so one key powers both:
+    #   dev  → the custom endpoint (DEV_LLM_*)
+    #   prod → OpenRouter + the default chat model (get_default_llm's fallback)
+    if _custom_lane_configured():
         return "openai", settings.DEV_LLM_MODEL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_BASE_URL
-    provider = settings.BROWSER_USE_LLM_PROVIDER.lower()
-    return (
-        provider,
-        settings.BROWSER_USE_LLM_MODEL,
-        _resolve_api_key(provider),
-        settings.BROWSER_USE_LLM_BASE_URL,
-    )
+    return "openrouter", DEFAULT_MODEL_NAME, settings.OPENROUTER_API_KEY, None
 
 
 def build_browser_llm() -> BaseChatModel:
@@ -164,7 +148,13 @@ async def resolve_use_vision() -> bool:
     if provider in _TEXT_ONLY_PROVIDERS:
         return False
 
-    if provider == "openrouter":
+    # Judge the ACTUAL model's image support, however it is routed. An
+    # openrouter-style id ("vendor/model") is looked up in the live catalog — so
+    # a text-only model inherited from comms (e.g. deepseek-v4-flash) turns vision
+    # off by itself instead of erroring on every screenshot, while a vision model
+    # (e.g. a GLM flash) keeps it on. A bare id (an OpenAI model like gpt-4o) is
+    # assumed vision-capable, as those lanes are.
+    if provider == "openrouter" or "/" in model:
         from app.agents.llm.model_catalog import get_openrouter_catalog  # noqa: PLC0415
 
         catalog = await get_openrouter_catalog()
