@@ -27,7 +27,6 @@ from typing import TypedDict
 from langchain_core.messages import AIMessage
 
 from app.config.model_pricing import calculate_token_cost
-from app.constants.llm import UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
@@ -236,17 +235,6 @@ def extract_message_cost(message: AIMessage) -> float | None:
     except (TypeError, ValueError):
         return None
     return cost if math.isfinite(cost) and cost >= 0.0 else None
-
-
-def extract_message_model(message: AIMessage) -> str:
-    """The model the provider says served this call, or ``UNKNOWN_MODEL_NAME``.
-
-    For the one seam that cannot reach the lane: ``lane`` imports ``client``, so
-    ``client`` cannot import ``ModelLane`` back. Everywhere else resolves the
-    lane at the call site, the way ``accounting`` does.
-    """
-    resp_meta = getattr(message, "response_metadata", None) or {}
-    return str(resp_meta.get("model_name") or "") or UNKNOWN_MODEL_NAME
 
 
 def extract_generation_id(message: AIMessage) -> str | None:

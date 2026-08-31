@@ -10,7 +10,6 @@ from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
-from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 from langchain_core.runnables import (
     Runnable,
@@ -61,9 +60,6 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
-    STICKY_FLIP_RETRY_MIN_HIT,
-    STICKY_FLIP_RETRY_MIN_INPUT,
-    STICKY_ROUTING_PROVIDERS,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
@@ -72,8 +68,6 @@ from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
     TokenUsage,
     extract_message_cost,
-    extract_message_model,
-    extract_message_usage,
     record_llm_call,
 )
 from shared.py.wide_events import log
@@ -495,21 +489,36 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
 def _provider_order_kwargs() -> dict[str, Any]:
     """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
 
-    The model's pool has ~30 upstreams and only some cache tool-carrying
-    requests; which one a request draws decides its cache fate. Measured in one
-    window: pinned ``coreweave/fp8`` read [1792x5,128]/[1792x4,0,128] while
-    unpinned read [0,0,0]. ``order`` with fallbacks (never ``only``) so an
-    upstream outage degrades to the rotation instead of failing the call.
+    This is what keeps a conversation's prompt cache ON THE LISTED providers —
+    not, as live-tested, on exactly one of them: concurrent calls in one
+    conversation can still land on different list members (measured on a real
+    6-turn session: comms split 6/4 across the first two slugs, and the calls
+    interleave within seconds, so it is in-turn concurrency, not expiry). Each
+    provider then warms its own chain, so the cost of a split is one cold read
+    per list member, once — bounded, because every slug on the list is chosen
+    for a real, working cache. The model's pool has ~30 upstreams that each
+    hold their own cache; a turn served by an UNLISTED upstream reads cold no
+    matter how warm the chain is. Measured: a thread that stays on one provider
+    reads 90-99% cached, and 49 of 114 production threads were split across
+    providers — nearly every cold read came from that scattering.
 
-    Opt-in and empty by default, deliberately: an earlier hard pin measured
-    worse and was reverted, so the preference is set from the per-provider
-    hit table (generation_id + the metadata endpoint), not baked in from one
-    night's probes."""
+    ``allow_fallbacks: False`` is what makes ``order`` binding rather than a
+    preference: OpenRouter still walks down the listed slugs on error, but it
+    can no longer silently hand the turn to an unlisted upstream and strand the
+    chain. If every listed provider is down the call raises, and the existing
+    ``with_llm_retry``/fallback-model path takes it from there — a failure we
+    can see, instead of a cache miss and a surprise bill we cannot.
+
+    Opt-in and empty by default, deliberately: the preference is set from the
+    per-provider hit table (generation_id + the metadata endpoint), not baked
+    in from one night's probes."""
     raw = settings.OPENROUTER_PROVIDER_ORDER
     if not raw:
         return {}
     order = [slug.strip() for slug in raw.split(",") if slug.strip()]
-    return {"model_kwargs": {"provider": {"order": order}}} if order else {}
+    if not order:
+        return {}
+    return {"model_kwargs": {"provider": {"order": order, "allow_fallbacks": False}}}
 
 
 @cache
@@ -727,65 +736,6 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
     return f"{session_id}{AUX_SESSION_SUFFIX}" if auxiliary else str(session_id)
 
 
-async def _meter_discarded_replay(
-    discarded: Any,  # noqa: ANN401 -- framework contract
-    config: RunnableConfig | None,
-    label: str,
-) -> None:
-    """Meter the sticky-flip replay whose answer was thrown away — otherwise its
-    tokens miss COGS entirely.
-
-    Recorded exactly like auxiliary spend, and for the same reason: this is a
-    cache-warming re-send GAIA chose to make, and the user never received its
-    answer. So it is booked durably (``usage_daily.aux_cost``) with
-    ``background=True`` on the ``llm_call`` event, and:
-
-    - ``charge_to_budget=False`` — charging it made the user's daily allowance
-      pay for a reply that was discarded. Measured over 2026-08-16..29: 3,614
-      of these, $34.55, ~20% of all LLM spend, all of it billed to users.
-    - no ``root_request_id`` — that counter is the per-request token ceiling
-      that bounds one agent tree against runaway loops. Our own re-send is not
-      the model looping, and letting it count means a turn can be truncated by
-      the optimisation meant to make it cheaper.
-
-    Graph-lane only by construction: the replay itself is gated on
-    ``not meter_auxiliary``, and the graph lane meters from the AIMessage that
-    lands in state — which is the FIRST answer's, never this discard's."""
-    if not isinstance(discarded, AIMessage):
-        return
-    configurable = agent_configurable(config)
-    usage = extract_message_usage(discarded)
-    # The provider's own account of what it served. This seam cannot resolve the
-    # lane the way accounting does — ``lane`` imports this module, so importing
-    # ModelLane back would close the cycle.
-    model_name = extract_message_model(discarded)
-    user_id = configurable.get("user_id")
-    provider_cost = extract_message_cost(discarded)
-    cost = await record_llm_call(
-        user_id=str(user_id) if user_id else None,
-        model_name=model_name,
-        usage=usage,
-        root_request_id=None,
-        charge_to_budget=False,
-        provider_cost=provider_cost,
-    )
-    log.info(
-        "llm_call",
-        llm_event="llm_call",
-        sticky_flip_discarded=True,
-        background=True,
-        cost_source="provider" if provider_cost is not None else "table",
-        agent_name=label,
-        model=model_name,
-        user_id=user_id,
-        input_tokens=usage["input_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        output_tokens=usage["output_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
-        cost_usd=cost,
-    )
-
-
 @dataclass(frozen=True)
 class LLMInvokeOptions:
     """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
@@ -882,63 +832,12 @@ async def ainvoke_llm(
     try:
         async with asyncio.timeout(opts.timeout):
             try:
-                result = await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
+                return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                     messages,
                     config=_with_usage_handler(
                         _with_usage_handler(config, usage_handler), generation_handler
                     ),
                 )
-                # OpenRouter's sticky routing expires after ~5 minutes and the
-                # next request lands on a cold provider (a known OpenRouter
-                # behavior) — the conversation's chain reads static-only or
-                # nothing. The first attempt just WROTE the chain onto that
-                # provider, so one immediate re-send hits it (~90%). Cheap: the
-                # re-send is almost fully cached and only fires on the flipped
-                # turns.
-                usage = getattr(result, "usage_metadata", None) or {}
-                details = usage.get("input_token_details") or {}
-                # pragma: no mutate ×2 — a truthy stand-in for either 0 is
-                # equivalent: 0 and 1 sit on the same side of the 8_000 input
-                # floor, and cached is only compared once prompt >= 8_000, so
-                # a 7_360 threshold treats 0 and 1 alike. Line-local proof is
-                # threshold arithmetic the classifier does not do.
-                cached = details.get("cache_read") or 0  # pragma: no mutate
-                prompt = usage.get("input_tokens") or 0  # pragma: no mutate
-                if (
-                    # Graph lane on a sticky-routing provider only: auxiliary
-                    # one-shots have no prior chain (cold IS their steady
-                    # state), and Gemini has no stickiness to re-hit — for
-                    # both, a replay is pure double billing.
-                    not opts.meter_auxiliary
-                    and agent_configurable(config).get("provider") in STICKY_ROUTING_PROVIDERS
-                    and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
-                    and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
-                ):
-                    try:
-                        # silent: graph providers stream, and without it both
-                        # invocations' tokens land in the same SSE stream —
-                        # the user watches a second answer append to the first.
-                        discarded = await with_llm_retry(primary, max_attempts=1).ainvoke(
-                            messages,
-                            # No usage handler to attach: this branch is gated
-                            # on the graph lane, where usage_handler is None.
-                            config=_silenced(config or {}),
-                        )
-                    except Exception as replay_error:
-                        # The first answer is complete and in hand; a failed
-                        # re-send (429, deadline) must never cost the turn.
-                        log.warning(
-                            f"{LogTag.AGENT} sticky-flip replay failed; keeping the first response",
-                            agent_name=label,
-                            error=str(replay_error),
-                        )
-                        return result
-                    # The replay exists to write the chain onto the provider for
-                    # the NEXT turn, so its answer is thrown away: the first one
-                    # already streamed to the user, and returning the replay's
-                    # would persist text that differs from what they watched.
-                    await _meter_discarded_replay(discarded, config, label)
-                return result
             except LLM_FALLBACK_EXCEPTIONS as primary_error:
                 # The fallback runs under ``fallback_config`` when given. Reusing
                 # ``config`` here is what made provider failover a no-op: LangChain
@@ -1040,14 +939,6 @@ def silent_metered_config(user_id: str) -> RunnableConfig:
         RunnableConfig,
         {**SILENT_LLM_CONFIG, **metered_config(user_id)},
     )
-
-
-def _silenced(config: RunnableConfig) -> RunnableConfig:
-    """Copy of ``config`` whose metadata carries ``silent`` — the SSE consumer
-    skips message chunks stamped with it (agent_helpers, stream_mode="messages")."""
-    merged = dict(config)
-    merged["metadata"] = {**(config.get("metadata") or {}), "silent": True}
-    return cast(RunnableConfig, merged)
 
 
 def _reported_cost(response: LLMResult) -> float | None:
