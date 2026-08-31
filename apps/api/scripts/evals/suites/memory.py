@@ -239,8 +239,12 @@ def _patch_structured_output_for_pinned_lane() -> None:
     from langchain_core.messages import SystemMessage
     from langchain_core.output_parsers import JsonOutputParser
 
-    from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, get_default_llm
-    from app.constants.llm import DEFAULT_LLM_TEMPERATURE, LLM_INVOKE_TIMEOUT_SECONDS
+    from app.agents.llm.client import (
+        LLMInvokeOptions,
+        StructuredCallOptions,
+        ainvoke_llm,
+        get_default_llm,
+    )
     import app.memory.extraction as extraction_mod
 
     async def json_object_ainvoke_structured(
@@ -248,10 +252,11 @@ def _patch_structured_output_for_pinned_lane() -> None:
         prompt: BaseMessage | list[BaseMessage],
         *,
         label: str,
-        temperature: float = DEFAULT_LLM_TEMPERATURE,
         config: RunnableConfig | None = None,
-        timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+        options: StructuredCallOptions = StructuredCallOptions(),
     ) -> SchemaT:
+        temperature = options.temperature
+        timeout = options.timeout
         schema_hint = SystemMessage(
             content=(
                 "Reply with a single JSON object that conforms exactly to this JSON "

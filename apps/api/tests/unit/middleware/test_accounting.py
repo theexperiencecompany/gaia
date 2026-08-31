@@ -30,6 +30,7 @@ from app.config.rate_limits import (
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
+    PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
 from app.constants.log_tags import LogTag
@@ -207,12 +208,17 @@ async def test_the_metered_call_records_what_the_provider_actually_served() -> N
     """The lane says what we asked for; only the reply says what answered. On a
     fallback or a provider substitution those differ, and the ledger has to be
     able to show it."""
-    message = _ai(response_metadata={"model_name": "served/model", "provider": "fireworks"})
+    message = _ai(
+        response_metadata={
+            "model_name": "served/model",
+            PROVIDER_NAME_METADATA_KEY: "StreamLake",
+        }
+    )
 
     context = await _ledger_context(message)
 
     assert context.model_served == "served/model"
-    assert context.provider == "fireworks"
+    assert context.provider == "StreamLake"
 
 
 async def test_a_reply_that_names_no_upstream_records_none_rather_than_a_guess() -> None:

@@ -9,6 +9,7 @@ turn.
 """
 
 import asyncio
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -16,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
+from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.services import llm_metering
@@ -55,6 +57,11 @@ def _fresh_wide_event() -> None:
     tests exist to catch.
     """
     log.reset()
+
+
+def _served_by(upstream: str) -> AIMessage:
+    """A reply carrying the upstream name the provider-name patch restores."""
+    return AIMessage(content="hi", response_metadata={PROVIDER_NAME_METADATA_KEY: upstream})
 
 
 async def _drain() -> None:
@@ -212,15 +219,38 @@ def test_the_aggregators_own_name_is_not_recorded_as_the_upstream(reported: str 
     """OpenRouter routes one model id across upstreams whose rates differ by more
     than 10x, so ``provider`` exists to tell them apart. Recording the aggregator
     would make every row claim the same provider and answer the question wrong."""
-    message = AIMessage(content="hi", response_metadata={"provider": reported})
+    message = AIMessage(content="hi", response_metadata={PROVIDER_NAME_METADATA_KEY: reported})
 
     assert extract_message_provider(message) is None
 
 
-def test_a_real_upstream_name_is_recorded_verbatim() -> None:
-    message = AIMessage(content="hi", response_metadata={"provider": "Fireworks"})
+@pytest.mark.parametrize("upstream", ["Baidu", "StreamLake", "Fireworks"])
+def test_the_upstream_the_patch_restored_is_recorded_verbatim(upstream: str) -> None:
+    """``openrouter_provider_name_patch`` puts the real serving upstream on the
+    reply under ``PROVIDER_NAME_METADATA_KEY``; ChatOpenRouter itself drops it.
+    Reading that key is what turns ``provider`` from a column that was always
+    null into the one that makes the >10x per-upstream rate spread queryable."""
+    message = AIMessage(content="hi", response_metadata={PROVIDER_NAME_METADATA_KEY: upstream})
 
-    assert extract_message_provider(message) == "Fireworks"
+    assert extract_message_provider(message) == upstream
+
+
+def test_a_reply_the_patch_never_stamped_records_no_upstream() -> None:
+    """Non-OpenRouter lanes (direct Gemini, the sim lane) never carry the key.
+    Absent is recorded as absent, never guessed from the model id."""
+    assert extract_message_provider(AIMessage(content="hi")) is None
+    assert extract_message_provider(AIMessage(content="hi", response_metadata={})) is None
+
+
+async def test_the_ledger_row_records_the_upstream_that_served_the_call() -> None:
+    """End to end through the metering seam: the name the patch stamped is what
+    lands in the row, so ``group by provider`` over the ledger answers which
+    upstream the money actually went to."""
+    doc = await _record(
+        context=replace(CONTEXT, provider=extract_message_provider(_served_by("StreamLake")))
+    )
+
+    assert doc.provider == "StreamLake"
 
 
 # --- worker / workflow attribution --------------------------------------------- #

@@ -30,10 +30,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.tools import tool as lc_tool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core import agent as agent_module
+from app.agents.core.graph_builder.build_graph import build_comms_graph, build_executor_graph
+from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+from app.api.v1.middleware import tiered_rate_limiter
+from app.db.repositories.playbooks import playbook_repository
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.agent_models import SilentRunResult
 from app.models.workflow_execution_models import (
     WorkflowExecutionDocument,
     WorkflowExecutionUpdate,
@@ -45,6 +55,9 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
+from app.services.workflow.scheduler import WorkflowScheduler
+from app.workers.tasks import workflow_tasks
+from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
 
@@ -268,8 +281,6 @@ class TestWorkflowExecution:
         middleware list with ``[]`` (or dropping the MiddlewareExecutor wiring in
         ``create_agent``) makes this test fail.
         """
-        from app.agents.core.graph_builder.build_graph import build_comms_graph
-        from app.agents.middleware.accounting import LLMAccountingMiddleware
 
         fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="Comms agent response.")])
 
@@ -326,7 +337,6 @@ class TestWorkflowExecution:
         ``reject_unbound_tools`` node would answer the call with an "is not bound"
         error instead of running it — which is what this asserts against.
         """
-        from app.agents.core.graph_builder.build_graph import build_comms_graph
 
         fake_llm = BindableToolsFakeModel(
             responses=[
@@ -394,11 +404,6 @@ class TestWorkflowExecution:
         """
         import ast
         import inspect
-
-        from langchain_core.tools import tool as lc_tool
-
-        from app.agents.core.graph_builder.build_graph import build_executor_graph
-        from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
         fake_llm = BindableToolsFakeModel(
             responses=[
@@ -518,7 +523,12 @@ class _InMemoryExecutionRecords:
         existing = self.records.get(execution_id)
         if existing is None:
             return None
-        updated = existing.model_copy(update=update.model_dump(exclude_unset=True))
+        # Re-validate rather than model_copy: Mongo stores the $set dicts and the
+        # repository validates them back into the document model on read, so a
+        # copy that skips validation would hand tests shapes production never sees.
+        updated = WorkflowExecutionDocument.model_validate(
+            {**existing.model_dump(), **update.model_dump(exclude_unset=True)}
+        )
         self.records[execution_id] = updated
         return updated
 
@@ -559,11 +569,12 @@ class TestWorkflowExecutionFailurePropagation:
     @pytest.fixture
     def workflow_execution_env(self, monkeypatch):
         """Patch every I/O edge of the execution path and expose the observable ones."""
-        from app.api.v1.middleware import tiered_rate_limiter
-        from app.db.repositories.workflow_executions import workflow_executions_repository
-        from app.db.repositories.workflows import workflow_repository
-        from app.services.workflow.scheduler import WorkflowScheduler
-        from app.workers.tasks import workflow_tasks
+
+        # These workflows have no playbook, so every run here takes the agentic
+        # path. Stubbed explicitly rather than left to the mocked Mongo client so
+        # the tests exercise the real "no playbook" branch instead of the
+        # lookup-failure fallback, which would hide a broken agentic path.
+        monkeypatch.setattr(playbook_repository, "get_for_workflow", AsyncMock(return_value=None))
 
         records = _InMemoryExecutionRecords()
         monkeypatch.setattr(workflow_executions_repository, "create", records.create)
@@ -600,6 +611,9 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(
             workflow_tasks, "get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})
         )
+        # The checkpoint reset is Postgres; its own behaviour is proven in
+        # tests/unit/services/workflow/test_thread_reset.py.
+        monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
@@ -617,17 +631,28 @@ class TestWorkflowExecutionFailurePropagation:
         Returns the list the stand-in appends each completed step title to, so a
         test can prove the run stopped *partway* rather than after every step.
         """
-        from app.agents.core import agent as agent_module
 
         completed: list[str] = []
 
-        async def _run_steps(request, conversation_id, user, trigger_context):
+        async def _run_steps(request, conversation_id, user, options=None):
+            tool_data: list[dict[str, object]] = []
             for step in request.selectedWorkflow.steps:
                 if step["title"] == failing_step_title:
                     raise RuntimeError(
                         f"Step '{step['title']}' failed: Gmail API returned 503 Service Unavailable"
                     )
                 completed.append(step["title"])
+                tool_data.append(
+                    {
+                        "tool_name": "tool_calls_data",
+                        "data": {
+                            "tool_name": step["title"],
+                            "inputs": {"step_id": step["id"]},
+                            "output": "ok",
+                        },
+                    }
+                )
+            return SilentRunResult(message="", tool_data={"tool_data": tool_data})
 
         monkeypatch.setattr(agent_module, "call_agent_silent", _run_steps)
         return completed
@@ -642,14 +667,11 @@ class TestWorkflowExecutionFailurePropagation:
         failing step's identity — a swallowed step error (``execute_workflow_as_chat``
         returning instead of re-raising) would silently record 'success'.
         """
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         completed = self._install_stepwise_agent(
             monkeypatch, failing_step_title="Summarize the thread"
         )
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
 
@@ -700,12 +722,9 @@ class TestWorkflowExecutionFailurePropagation:
         Without this, a mutation that hard-codes 'failed' everywhere would still
         leave the failure test green.
         """
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         completed = self._install_stepwise_agent(monkeypatch, failing_step_title=None)
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
 
@@ -723,6 +742,11 @@ class TestWorkflowExecutionFailurePropagation:
         assert execution.conversation_id == "conv-workflow-1", (
             "A successful run must link the conversation holding its messages"
         )
+        assert [call.tool_name for call in execution.trace] == completed, (
+            "A successful run must record what it did — the next run reads this "
+            "instead of replaying the conversation's checkpoints"
+        )
+        assert execution.trace[0].args == {"step_id": "s1"}
         assert workflow_execution_env["recorded_stats"] == [True]
         assert workflow_execution_env["notifications"] == [], (
             "A successful run must not raise a failure notification"
@@ -737,13 +761,9 @@ class TestWorkflowExecutionFailurePropagation:
         If the notification service is down, the user still needs the execution
         history to show the run failed.
         """
-        from app.workers.tasks import workflow_tasks
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
         workflow = _make_multi_step_workflow(user_id=str(uuid4()))
         self._install_stepwise_agent(monkeypatch, failing_step_title="Post to Slack")
-
-        from app.services.workflow.scheduler import WorkflowScheduler
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=workflow))
         monkeypatch.setattr(
@@ -764,8 +784,6 @@ class TestWorkflowExecutionFailurePropagation:
         self, monkeypatch, workflow_execution_env
     ):
         """A fire for a deleted workflow must not leave a dangling 'running' record."""
-        from app.services.workflow.scheduler import WorkflowScheduler
-        from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 
         monkeypatch.setattr(WorkflowScheduler, "get_task", AsyncMock(return_value=None))
 

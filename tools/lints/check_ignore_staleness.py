@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import shutil
@@ -86,6 +87,17 @@ def concrete_entries() -> list[Entry]:
 
 _FINDING_RE = re.compile(r"^\S+:\d+:\d+: [A-Z]+\d+")
 
+# Ruff colourizes even into a pipe when FORCE_COLOR/CLICOLOR_FORCE is set, and
+# agent runners and terminal wrappers set it globally. The ANSI codes land
+# mid-token ("\x1b[1mpath\x1b[0m\x1b[36m:\x1b[0m618"), so _FINDING_RE stops
+# matching and EVERY entry reads as "masks nothing" — a guardrail that tells you
+# to delete live suppressions. Colour must be REMOVED from the environment, not
+# set to "0": ruff treats the variable's presence as the switch, so FORCE_COLOR=0
+# still colours. NO_COLOR alone does not win against it either.
+_RUFF_ENV = {k: v for k, v in os.environ.items() if k not in {"FORCE_COLOR", "CLICOLOR_FORCE"}} | {
+    "NO_COLOR": "1"
+}
+
 
 def fires(entry: Entry) -> bool:
     """True when the rule still fires somewhere in the file WITHOUT the exemption.
@@ -118,6 +130,7 @@ def fires(entry: Entry) -> bool:
             capture_output=True,
             text=True,
             check=False,
+            env=_RUFF_ENV,
         )  # nosec B603 -- argv is a constant list plus our own resolved paths; nothing user-controlled
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)

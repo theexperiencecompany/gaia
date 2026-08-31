@@ -734,6 +734,12 @@ class WorkflowDocument(Workflow, MongoDocument):
     # ``wf_…`` id, so the stored document is non-optional. The repository keys on
     # ``_id`` directly, so no alias is needed here.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+    #: How many runs declined to write a playbook for the workflow as it stands,
+    #: and the workflow hash those declines were about. Past
+    #: ``PLAYBOOK_DECLINE_LIMIT`` on the same hash the check brief stops asking;
+    #: an edit to the workflow changes the hash and asks again.
+    playbook_declines: int = 0
+    playbook_declined_hash: str | None = None
 
 
 class WorkflowCreatorInfo(BaseModel):
@@ -792,3 +798,5 @@ class WorkflowUpdate(BaseModel):
     is_public: bool | None = None
     slug: str | None = None
     created_by: str | None = None
+    playbook_declines: int | None = None
+    playbook_declined_hash: str | None = None

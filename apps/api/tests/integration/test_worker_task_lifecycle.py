@@ -392,7 +392,7 @@ class TestWorkflowTaskExecution:
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 new_callable=AsyncMock,
-                return_value="conv-789",
+                return_value=("conv-789", []),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
         ):

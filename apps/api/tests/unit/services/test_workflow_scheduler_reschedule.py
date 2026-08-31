@@ -266,7 +266,15 @@ class TestWorkerRejectsStaleFire:
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
+                AsyncMock(return_value=("conv_1", [])),
+            ),
+            # These workflows have no playbook, so the fire takes the agent path.
+            # Stubbed rather than left to the mocked Mongo client, whose lookup
+            # raises and logs — which would put an unrelated warning in front of
+            # the scheduling warnings these tests assert on.
+            patch(
+                "app.workers.tasks.workflow_tasks.playbook_repository.get_for_workflow",
+                AsyncMock(return_value=None),
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()

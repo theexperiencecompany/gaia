@@ -13,7 +13,13 @@ from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE, PLATFORM_DELIVERY_NOTE
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
-from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentTurn,
+    build_agent_config,
+    execute_graph_silent,
+)
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -67,12 +73,16 @@ async def narrate_executor_result(
         # build_agent_config resolves its own comms lane and stamps plan_type —
         # matching the interactive comms path and keeping the budget wall enforced.
         config = await build_agent_config(
-            conversation_id=conversation_id,
-            user=user,
-            agent_name="comms_agent",
-            role=AgentRole.COMMS,
-            user_preferences=user_preferences,
-            writing_style=writing_style,
+            identity=AgentIdentity(
+                conversation_id=conversation_id,
+                user=user,
+                agent_name="comms_agent",
+            ),
+            lane=AgentLane(role=AgentRole.COMMS),
+            turn=AgentTurn(
+                user_preferences=user_preferences,
+                writing_style=writing_style,
+            ),
         )
         initial_state = {
             "messages": [

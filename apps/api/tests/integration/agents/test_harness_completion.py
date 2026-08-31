@@ -21,6 +21,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.constants.agents import (
+    MAX_PLAYBOOK_DECISION_NUDGES,
+    PLAYBOOK_CHECK_TAG,
+    PLAYBOOK_DECISION_NUDGE_MESSAGE,
+)
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
@@ -174,3 +179,94 @@ class TestHarnessCompletion:
 
         assert _nudges(result["messages"]) == []
         assert result["messages"][-1].content == "hey, what's up?"
+
+
+@tool
+def decline_playbook(reason: str) -> dict:
+    """Decline to freeze this run as a playbook."""
+    return {"success": True, "data": {"declined": True, "reason": reason}}
+
+
+def _compile_with_playbook_tools(llm):
+    builder = create_agent(
+        llm=llm,
+        tool_registry={"lookup": lookup, "decline_playbook": decline_playbook},
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=["lookup", "decline_playbook"],
+        ),
+        hooks_config=HookConfig(require_finish_to_end=True),
+        agent_config=AgentConfig(agent_name="executor_agent"),
+    )
+    return builder.compile(checkpointer=MemorySaver(), store=InMemoryStore())
+
+
+def _decision_nudges(messages) -> list:
+    return [
+        m
+        for m in messages
+        if isinstance(m, HumanMessage) and m.content == PLAYBOOK_DECISION_NUDGE_MESSAGE
+    ]
+
+
+@pytest.mark.integration
+class TestHarnessPlaybookDecision:
+    """A workflow run whose brief asks for a playbook decision cannot end in
+    plain text without one. Seen live in 2 of 6 heal runs on the PR branch."""
+
+    async def test_a_plain_text_stop_without_a_decision_is_nudged_until_it_decides(self):
+        c1 = {"name": "lookup", "args": {"query": "inbox"}, "id": "c1", "type": "tool_call"}
+        d1 = {
+            "name": "decline_playbook",
+            "args": {"reason": "order varies"},
+            "id": "d1",
+            "type": "tool_call",
+        }
+        llm = create_fake_llm_with_tool_calls([c1, "Triaged 3 emails.", d1, "Triaged 3 emails."])
+        graph = _compile_with_playbook_tools(llm)
+
+        result = await graph.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(content=f"triage\n\n{PLAYBOOK_CHECK_TAG}\n</playbook_check>")
+                ]
+            },
+            config={"configurable": {"thread_id": str(uuid4())}},
+        )
+
+        assert len(_decision_nudges(result["messages"])) == 1
+        assert [m.name for m in result["messages"] if isinstance(m, ToolMessage)] == [
+            "lookup",
+            "decline_playbook",
+        ]
+        assert result["messages"][-1].content == "Triaged 3 emails."
+
+    async def test_the_decision_nudge_is_bounded(self):
+        c1 = {"name": "lookup", "args": {"query": "inbox"}, "id": "c1", "type": "tool_call"}
+        llm = create_fake_llm_with_tool_calls([c1, "Done.", "Still done.", "Really done."])
+        graph = _compile_with_playbook_tools(llm)
+
+        result = await graph.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(content=f"triage\n\n{PLAYBOOK_CHECK_TAG}\n</playbook_check>")
+                ]
+            },
+            config={"configurable": {"thread_id": str(uuid4())}},
+        )
+
+        assert len(_decision_nudges(result["messages"])) == MAX_PLAYBOOK_DECISION_NUDGES
+        assert result["messages"][-1].content == "Still done."
+
+    async def test_a_run_that_was_not_asked_is_not_nudged_for_a_decision(self):
+        c1 = {"name": "lookup", "args": {"query": "inbox"}, "id": "c1", "type": "tool_call"}
+        llm = create_fake_llm_with_tool_calls([c1, "Triaged 3 emails."])
+        graph = _compile_with_playbook_tools(llm)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage")]},
+            config={"configurable": {"thread_id": str(uuid4())}},
+        )
+
+        assert _decision_nudges(result["messages"]) == []
+        assert result["messages"][-1].content == "Triaged 3 emails."

@@ -13,6 +13,8 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 import pytest
 
+from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECISION_NUDGE_MESSAGE
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import COMPLETION_NUDGE_MESSAGE, MAX_COMPLETION_NUDGES
 from app.override.langgraph_bigtool.create_agent import (
     AgentConfig,
@@ -428,6 +430,58 @@ class TestCompletionNudgeWiring:
 
         assert self._nudges(result) == []
         assert result["messages"][-1].content == "Here you go."
+
+    @staticmethod
+    def _finish() -> AIMessage:
+        return AIMessage(
+            content="",
+            tool_calls=[{"name": FINISH_TASK_NAME, "args": {"result": "ok"}, "id": "f1"}],
+        )
+
+    @pytest.mark.asyncio
+    async def test_finishing_a_briefed_run_without_deciding_is_nudged_once(self):
+        """Seen live: a briefed workflow run ended through finish_task with no
+        playbook decision and the gate, which only watched plain-text stops, let
+        it end. The finish node must route to the same nudge, once, and then let
+        a second finish_task end the run."""
+        graph = self._compile_executor(
+            BindableToolsFakeModel(responses=[self._finish(), self._finish()])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content=f"run the workflow\n\n{PLAYBOOK_CHECK_TAG}\n...")]},
+            config={"configurable": {"thread_id": "nudge-finish-1"}},
+        )
+
+        nudges = [
+            m.content
+            for m in result["messages"]
+            if isinstance(m, HumanMessage) and m.content == PLAYBOOK_DECISION_NUDGE_MESSAGE
+        ]
+        finishes = [
+            m
+            for m in result["messages"]
+            if isinstance(m, ToolMessage) and m.name == FINISH_TASK_NAME
+        ]
+        assert nudges == [PLAYBOOK_DECISION_NUDGE_MESSAGE]
+        assert len(finishes) == 2
+        assert isinstance(result["messages"][-1], ToolMessage)
+
+    @pytest.mark.asyncio
+    async def test_finishing_an_unbriefed_run_ends_at_once(self):
+        """No brief, no debt: finish_task ends the run on the first call, as it
+        always did. Every completed executor run would otherwise pay a nudge."""
+        graph = self._compile_executor(BindableToolsFakeModel(responses=[self._finish()]))
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="triage my inbox")]},
+            config={"configurable": {"thread_id": "nudge-finish-2"}},
+        )
+
+        assert [m for m in result["messages"] if isinstance(m, HumanMessage)] == [
+            result["messages"][0]
+        ]
+        assert result["messages"][-1].name == FINISH_TASK_NAME
 
     @pytest.mark.asyncio
     async def test_a_finished_run_is_not_taxed_with_a_nudge(self):

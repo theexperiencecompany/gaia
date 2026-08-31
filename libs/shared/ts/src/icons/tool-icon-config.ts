@@ -608,6 +608,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#facc15",
     isImage: false,
   },
+  playbooks: {
+    icon: "BookBookmark02Icon",
+    bgColor: "bg-violet-500/20 backdrop-blur",
+    iconColor: "text-violet-400",
+    bgColorRaw: "rgba(139, 92, 246, 0.2)",
+    iconColorRaw: "#a78bfa",
+    isImage: false,
+  },
   unknown: {
     icon: "ToolsIcon",
     bgColor: "bg-zinc-500/20 backdrop-blur",

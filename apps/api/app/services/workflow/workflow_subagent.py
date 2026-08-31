@@ -36,7 +36,7 @@ from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
@@ -97,7 +97,7 @@ async def get_workflow_subagent() -> CompiledStateGraph:
     log.info(f"{LogTag.WORKFLOW} Creating workflow subagent graph")
 
     # Register workflow tools in the registry under 'workflow_subagent' space
-    from app.agents.tools.core.registry import get_tool_registry
+    from app.agents.tools.core.registry import CategoryOptions, get_tool_registry
 
     tool_registry = await get_tool_registry()
 
@@ -106,7 +106,7 @@ async def get_workflow_subagent() -> CompiledStateGraph:
         tool_registry._add_category(
             name="workflow_subagent",
             tools=SUBAGENT_WORKFLOW_TOOLS,
-            space="workflow_subagent",
+            options=CategoryOptions(space="workflow_subagent"),
         )
 
     llm = init_llm()
@@ -182,12 +182,16 @@ class WorkflowSubagentRunner:
         }
 
         config = await build_agent_config(
-            conversation_id=thread_id,
-            user=user,
-            thread_id=subagent_thread_id,
-            agent_name="workflow_agent",
-            subagent_id="workflow_agent",
-            base_configurable=ctx.base_configurable,
+            identity=AgentIdentity(
+                conversation_id=thread_id,
+                user=user,
+                agent_name="workflow_agent",
+            ),
+            thread=AgentThread(
+                thread_id=subagent_thread_id,
+                subagent_id="workflow_agent",
+                base_configurable=ctx.base_configurable,
+            ),
         )
         configurable = agent_configurable(config)
 

@@ -25,7 +25,9 @@ from app.agents.core.background.executor_queue import (
 from app.agents.core.background.executor_runner import run_executor_background
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
+    mark_executor_queued,
     mark_executor_spawned,
 )
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
@@ -42,6 +44,8 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.hil.resolution import cancel_conversation_approvals
+from app.services.workflow.execution_service import get_last_run_brief
+from app.services.workflow.playbook.check import playbook_check_brief
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -146,10 +150,32 @@ async def call_executor(
     # failed exactly when it was needed: on a pasted billing table it corrupted 3 of
     # 4 recipient addresses AND omitted the verbatim copy entirely, leaving the
     # executor to hunt Gmail for addresses the server had all along.
+
+    # A workflow run's threads are reset before it starts, so its previous run
+    # reaches the executor here — as one recorded trace instead of the whole
+    # replayed transcript. Empty for interactive chat and for a first run.
+    workflow_id = base_configurable.get("workflow_id")
+    user_id = base_configurable.get("user_id")
+    is_workflow_run = bool(workflow_id and user_id)
+    last_run = await get_last_run_brief(workflow_id, user_id) if is_workflow_run else ""
+    # Asked here rather than at narration time: write_playbook is an executor
+    # tool, and comms — which narrates the finished result — cannot reach it.
+    # A stopped replay's record rides along verbatim, off the configurable, for
+    # the same reason the verbatim request does: comms paraphrases.
+    playbook_check = (
+        await playbook_check_brief(
+            workflow_id, user_id, fallback_note=base_configurable.get("playbook_fallback")
+        )
+        if is_workflow_run
+        else ""
+    )
+
     composed_task = compose_executor_brief(
         task,
         acceptance_criteria,
         verbatim_request=base_configurable.get("user_request"),
+        last_run=last_run,
+        playbook_check=playbook_check,
     )
 
     try:
@@ -235,6 +261,12 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
                 user_message_id=user_message_id,
             )
+            # The only record that this dispatch deferred rather than ran. The
+            # returned prose below is written for the comms model, so a caller
+            # that has to know whether work started cannot be left to parse it —
+            # a silent/workflow turn reads this instead (see queued_without_run).
+            if stream_id:
+                mark_executor_queued(stream_id, task_id)
             log.info(
                 f"{LogTag.TOOL} Executor busy — task queued",
                 task_id=task_id,
@@ -255,12 +287,14 @@ async def _dispatch_executor(
 
     run = ExecutorRun.from_configurable(
         configurable,
-        stream_id=stream_id or "",
-        conversation_id=conversation_id,
-        kind=RunKind.LIVE,
-        task_id=task_id,
-        user_message_id=user_message_id,
-        bot_message_id=bot_message_id,
+        identity=RunIdentity(
+            stream_id=stream_id or "",
+            conversation_id=conversation_id,
+            kind=RunKind.LIVE,
+            task_id=task_id,
+            user_message_id=user_message_id,
+            bot_message_id=bot_message_id,
+        ),
     )
     spawn_background_task(
         run_executor_background(

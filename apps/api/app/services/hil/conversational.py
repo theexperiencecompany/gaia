@@ -40,7 +40,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured, silent_metered_config
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import (
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
@@ -193,8 +193,8 @@ async def interpret_batch_decision_message(
             BatchDecisionResult,
             _batch_prompt(message, action_details, history),
             label="hil_conversational_resolve_batch",
-            timeout=HIL_LLM_TIMEOUT_SECONDS,
             config=silent_metered_config(user_id),
+            options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
     except Exception as e:
         log.warning(
@@ -222,8 +222,8 @@ async def interpret_decision_message(
             DecisionResult,
             _prompt(message, action_details, history),
             label="hil_conversational_resolve",
-            timeout=HIL_LLM_TIMEOUT_SECONDS,
             config=silent_metered_config(user_id),
+            options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
         )
     except Exception as e:
         log.warning(

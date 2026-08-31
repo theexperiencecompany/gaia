@@ -19,7 +19,7 @@ import pytest
 
 from app.agents.core.background.executor_queue import build_run_item
 from app.agents.llm.lane import ModelLane
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.models.agent_models import AgentConfigurable, agent_configurable
 
 #: A paid user's resolved lane: the paid model on the pinned first-party route.
@@ -79,11 +79,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 
@@ -98,11 +102,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 
@@ -116,11 +124,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 

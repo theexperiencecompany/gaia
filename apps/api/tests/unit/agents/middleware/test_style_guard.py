@@ -24,7 +24,7 @@ import pytest
 
 from app.agents.middleware.style_guard import StyleGuardMiddleware, build_correction_note
 from app.constants.agents import AgentTag
-from app.constants.llm import LANE_FIELD_ID, UNKNOWN_MODEL_NAME
+from app.constants.llm import LANE_FIELD_ID, PROVIDER_NAME_METADATA_KEY, UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
 
 #: Every detector at once, in the register the production replies used. The
@@ -403,7 +403,7 @@ class TestStyleGuardRegeneration:
         draft.response_metadata = {
             "model_name": "served/model",
             "id": "gen-abc123",
-            "provider": "fireworks",
+            PROVIDER_NAME_METADATA_KEY: "StreamLake",
         }
         interactive_run["configurable"]["conversation_id"] = "conv-1"
         interactive_run["configurable"]["thread_id"] = "executor_conv-1"
@@ -423,7 +423,7 @@ class TestStyleGuardRegeneration:
         assert context.workflow_id == "wf-1"
         assert context.model_served == "served/model"
         assert context.generation_id == "gen-abc123"
-        assert context.provider == "fireworks"
+        assert context.provider == "StreamLake"
         # Nothing here timed the draft: it arrives already finished, so an
         # invented latency would be worse than no latency.
         assert context.duration_ms is None

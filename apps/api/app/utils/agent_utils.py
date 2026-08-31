@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from typing import Any, TypedDict, cast
@@ -6,7 +7,7 @@ from typing import Any, TypedDict, cast
 from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
@@ -99,23 +100,31 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     return clean_id.replace("_", " ").title()
 
 
+@dataclass(frozen=True)
+class SubagentStartDetails:
+    """The optional parts of a subagent_start payload."""
+
+    icon_url: str | None = None
+    tool_category: str | None = None
+    parent_subagent_id: str | None = None
+
+
 def format_subagent_start_event(
     subagent_name: str,
     agent_type: str,
     subagent_id: str,
-    icon_url: str | None = None,
-    tool_category: str | None = None,
-    parent_subagent_id: str | None = None,
+    details: SubagentStartDetails | None = None,
 ) -> dict[str, Any]:
     """Format a subagent_start SSE payload."""
+    details = details or SubagentStartDetails()
     return SubagentStartPayload(
         subagent_id=subagent_id,
         subagent_name=subagent_name,
         agent_type=agent_type,
         started_at=datetime.now(UTC).isoformat(),
-        icon_url=icon_url,
-        tool_category=tool_category,
-        parent_subagent_id=parent_subagent_id,
+        icon_url=details.icon_url,
+        tool_category=details.tool_category,
+        parent_subagent_id=details.parent_subagent_id,
     ).model_dump(exclude_none=True)
 
 
@@ -162,54 +171,14 @@ async def format_tool_call_entry(
 
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
-    # Special tools with custom display names and categories
-    # Format: (category, display_name, show_category)
-    special_tools = {
-        "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
-        "call_executor": ("executor", "Delegating to executor", False),
-        "cancel_executor": ("cancel_executor", "Cancelling the task", False),
-        "handoff": ("handoff", None, False),  # message will be set from args
-        "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
-        "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
-        "plan_tasks": ("plan_tasks", "Plan tasks", False),
-        "update_tasks": ("plan_tasks", "Update tasks", False),
-        "finish_task": ("finish_task", "Finish task", False),
-    }
-
-    if tool_name_raw in special_tools:
-        tool_category, tool_display_name, show_category = special_tools[tool_name_raw]
-
-        if tool_name_raw == "handoff":
-            args = tool_call.get("args", {})
-            subagent_id = args.get("subagent_id", "subagent")
-            display_name = await _resolve_handoff_display_name(subagent_id)
-            tool_display_name = f"Handing off to {display_name}"
-    else:
-        # General tools (vfs_cmd, web_search_tool, tracked_todo helpers, etc.)
-        # called inside an MCP subagent should keep their own category so the
-        # frontend renders the right icon — not the subagent's integration
-        # logo. Only fall back to integration_id when the tool has no known
-        # core category (i.e. it's an MCP tool).
-        registry_category = tool_registry.get_category_of_tool(tool_name_raw)
-        is_core_tool = bool(
-            registry_category
-            and registry_category != "unknown"
-            and not registry_category.startswith("mcp_")
+    if tool_name_raw in _SPECIAL_TOOLS:
+        tool_category, tool_display_name, show_category = await _special_tool_display(
+            tool_name_raw, tool_call
         )
-
-        # MCP tools no longer live in the global registry — resolve provenance
-        # via the user's MCPClient when the caller didn't pre-supply it.
-        if not integration_id and not is_core_tool and user_id:
-            integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
-
-        if integration_id and not is_core_tool:
-            tool_category = integration_id
-        else:
-            tool_category = registry_category
-            # Strip mcp_ prefix from MCP-namespaced categories.
-            if tool_category and tool_category.startswith("mcp_"):
-                tool_category = tool_category[4:]
-
+    else:
+        tool_category, integration_id, is_core_tool = await _general_tool_category(
+            tool_registry, tool_name_raw, integration_id, user_id
+        )
         tool_display_name = humanize_tool_name(tool_name_raw, tool_category)
         # show_category=False marks "the primary is a custom/curated label" (the
         # tool name isn't already in the primary text). The frontend uses this as
@@ -229,28 +198,7 @@ async def format_tool_call_entry(
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
     # tools); fall back to MCPClient._tools for per-user MCP tools.
-    mcp_ui: dict[str, Any] | None = None
-    mcp_server_url: str | None = None
-    try:
-        registry_tools = tool_registry.get_all_tools_for_search()
-        for registry_tool in registry_tools:
-            if registry_tool.name == tool_name_raw:
-                base_tool = registry_tool.tool
-                tool_meta = getattr(base_tool, "metadata", None)
-                if tool_meta and isinstance(tool_meta, dict):
-                    mcp_ui = tool_meta.get("mcp_ui")
-                    mcp_server_url = tool_meta.get("mcp_server_url")
-                break
-    except Exception as registry_error:
-        # A registry miss is recoverable — the per-user MCPClient lookup below is
-        # the fallback — but it must not be silent: an outage here strips the UI
-        # metadata from every platform tool at once, and the card just renders
-        # plain with nothing to explain why.
-        log.debug(
-            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
-            error=str(registry_error),
-            error_type=type(registry_error).__name__,
-        )
+    mcp_ui, mcp_server_url = _registry_mcp_ui_metadata(tool_registry, tool_name_raw)
 
     if mcp_ui is None and user_id:
         mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)
@@ -282,6 +230,101 @@ async def format_tool_call_entry(
             mcp_server_url=mcp_server_url,
         ).model_dump(),
     )
+
+
+# Special tools with custom display names and categories
+# Format: (category, display_name, show_category)
+_SPECIAL_TOOLS: dict[str, tuple[str, str | None, bool]] = {
+    "retrieve_tools": ("retrieve_tools", "Retrieve tools", False),
+    "call_executor": ("executor", "Delegating to executor", False),
+    "cancel_executor": ("cancel_executor", "Cancelling the task", False),
+    "handoff": ("handoff", None, False),  # message will be set from args
+    "spawn_subagent": ("spawn_subagent", "Spawn subagent", False),
+    "wait_for_subagents": ("wait_for_subagents", "Wait for subagents", False),
+    "plan_tasks": ("plan_tasks", "Plan tasks", False),
+    # Synthetic card a replayed workflow run leads with — never a callable
+    # tool. The playbooks category carries the icon the authoring tools use.
+    "run_playbook": ("playbooks", "Run playbook", True),
+    "update_tasks": ("plan_tasks", "Update tasks", False),
+    "finish_task": ("finish_task", "Finish task", False),
+}
+
+
+async def _special_tool_display(
+    tool_name_raw: str, tool_call: ToolCall
+) -> tuple[str, str | None, bool]:
+    """Category, display name and show_category for a tool in ``_SPECIAL_TOOLS``."""
+    tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
+
+    if tool_name_raw == "handoff":
+        args = tool_call.get("args", {})
+        subagent_id = args.get("subagent_id", "subagent")
+        display_name = await _resolve_handoff_display_name(subagent_id)
+        tool_display_name = f"Handing off to {display_name}"
+    return tool_category, tool_display_name, show_category
+
+
+async def _general_tool_category(
+    tool_registry: ToolRegistry,
+    tool_name_raw: str,
+    integration_id: str | None,
+    user_id: str | None,
+) -> tuple[str | None, str | None, bool]:
+    """Category for a general tool, the integration it resolved to, and whether
+    it is a core tool. General tools (vfs_cmd, web_search_tool, tracked_todo
+    helpers, etc.) called inside an MCP subagent keep their own category so the
+    frontend renders the right icon, not the subagent's integration logo. Only
+    fall back to integration_id when the tool has no known core category (i.e.
+    it's an MCP tool)."""
+    registry_category = tool_registry.get_category_of_tool(tool_name_raw)
+    is_core_tool = bool(
+        registry_category
+        and registry_category != "unknown"
+        and not registry_category.startswith("mcp_")
+    )
+
+    # MCP tools no longer live in the global registry — resolve provenance
+    # via the user's MCPClient when the caller didn't pre-supply it.
+    if not integration_id and not is_core_tool and user_id:
+        integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
+
+    if integration_id and not is_core_tool:
+        tool_category = integration_id
+    else:
+        tool_category = registry_category
+        # Strip mcp_ prefix from MCP-namespaced categories.
+        if tool_category and tool_category.startswith("mcp_"):
+            tool_category = tool_category[4:]
+    return tool_category, integration_id, is_core_tool
+
+
+def _registry_mcp_ui_metadata(
+    tool_registry: ToolRegistry, tool_name_raw: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """The mcp_ui metadata the global registry holds for a tool, if any."""
+    mcp_ui: dict[str, Any] | None = None
+    mcp_server_url: str | None = None
+    try:
+        registry_tools = tool_registry.get_all_tools_for_search()
+        for registry_tool in registry_tools:
+            if registry_tool.name == tool_name_raw:
+                base_tool = registry_tool.tool
+                tool_meta = getattr(base_tool, "metadata", None)
+                if tool_meta and isinstance(tool_meta, dict):
+                    mcp_ui = tool_meta.get("mcp_ui")
+                    mcp_server_url = tool_meta.get("mcp_server_url")
+                break
+    except Exception as registry_error:
+        # A registry miss is recoverable — the per-user MCPClient lookup below is
+        # the fallback — but it must not be silent: an outage here strips the UI
+        # metadata from every platform tool at once, and the card just renders
+        # plain with nothing to explain why.
+        log.debug(
+            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
+            error=str(registry_error),
+            error_type=type(registry_error).__name__,
+        )
+    return mcp_ui, mcp_server_url
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:

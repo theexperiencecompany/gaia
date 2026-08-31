@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.background.subagent_runner import BackgroundHandoff, run_subagent_background
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.tools.wait_for_subagents_tool import _resolve_parked_batch
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
@@ -232,7 +232,9 @@ class TestBackgroundParking:
             patch(f"{RUNNER}.release_bg_integration", MagicMock()) as release,
             patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()) as decrement,
         ):
-            await run_subagent_background(self._ctx(), STREAM, integration_id="gmail")
+            await run_subagent_background(
+                self._ctx(), STREAM, handoff=BackgroundHandoff(integration_id="gmail")
+            )
 
         stamp.assert_awaited_once_with(
             "a1",
@@ -285,6 +287,83 @@ class TestBackgroundParking:
             await run_subagent_background(self._ctx(), STREAM)
 
         assert self.enqueue.await_count == 0
+
+    async def test_the_start_card_carries_the_handoffs_whole_presentation(self) -> None:
+        """The card the UI renders for a background handoff. Its fields come off
+        the BackgroundHandoff, and the payload drops None values, so a lost
+        icon_url or tool_category is a card rendered with neither."""
+        writer = MagicMock()
+        done = SubagentOutcome(text="done")
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock(return_value=writer)),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+        ):
+            await run_subagent_background(
+                self._ctx(),
+                STREAM,
+                handoff=BackgroundHandoff(
+                    subagent_id="sa-1",
+                    display_name="Gmail",
+                    tool_category="comms",
+                    icon_url="https://cdn.example/gmail.png",
+                ),
+            )
+
+        start = writer.call_args_list[0].args[0]["subagent_start"]
+        assert {k: v for k, v in start.items() if k != "started_at"} == {
+            "subagent_id": "sa-1",
+            "subagent_name": "Gmail",
+            "agent_type": "handoff",
+            "icon_url": "https://cdn.example/gmail.png",
+            "tool_category": "comms",
+        }
+
+    async def test_a_recording_handoff_stores_its_result_with_the_call_record(self) -> None:
+        """A workflow handoff's stored result is the subagent's text PLUS the
+        record of the calls it actually made — that record is what the executor
+        transcribes playbook steps from. Recording the wrong text, the wrong
+        messages, or neither leaves the executor with nothing to transcribe."""
+        messages = ("ai-message", "tool-message")
+        done = SubagentOutcome(text="done", run_messages=messages)
+        seen: list[tuple[Any, Any]] = []
+
+        def _append_call_record(text: str, run_messages: Any) -> str:
+            seen.append((text, run_messages))
+            return f"{text}\n\n<call-record>"
+
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_call_record", _append_call_record),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()) as append,
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+        ):
+            await run_subagent_background(
+                self._ctx(), STREAM, handoff=BackgroundHandoff(record_calls=True)
+            )
+
+        assert seen == [("done", messages)]
+        append.assert_awaited_once_with(CONV, "gmail", "done\n\n<call-record>")
+
+    async def test_a_handoff_that_records_nothing_stores_the_text_untouched(self) -> None:
+        """The other side: a chat handoff has no playbook to feed, so its result
+        is the subagent's own text and the recorder is never reached."""
+        done = SubagentOutcome(text="done", run_messages=("ai-message",))
+        recorder = MagicMock(side_effect=AssertionError("must not record"))
+
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_call_record", recorder),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()) as append,
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+        ):
+            await run_subagent_background(self._ctx(), STREAM)
+
+        recorder.assert_not_called()
+        append.assert_awaited_once_with(CONV, "gmail", "done")
 
     async def test_the_counter_decrements_even_when_everything_fails(self) -> None:
         with (

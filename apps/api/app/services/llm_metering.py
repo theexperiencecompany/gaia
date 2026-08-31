@@ -29,7 +29,11 @@ from typing import TypedDict
 from langchain_core.messages import AIMessage
 
 from app.config.model_pricing import calculate_token_cost
-from app.constants.llm import OPENROUTER_PROVIDER, UNKNOWN_MODEL_NAME
+from app.constants.llm import (
+    OPENROUTER_PROVIDER,
+    PROVIDER_NAME_METADATA_KEY,
+    UNKNOWN_MODEL_NAME,
+)
 from app.constants.log_tags import LogTag
 from app.db.repositories.llm_calls import (
     CostSource,
@@ -423,12 +427,14 @@ def extract_message_model(message: AIMessage) -> str:
 def extract_generation_id(message: AIMessage) -> str | None:
     """The upstream generation id for this call, when the provider returned one.
 
-    This is the ONLY handle we have on *which upstream served the request*.
-    OpenRouter names the serving upstream in a ``provider`` response field, but
-    ``ChatOpenRouter`` keeps only ``id`` / ``cost`` / ``system_fingerprint`` /
-    ``native_finish_reason`` and stamps ``model_provider`` as the literal
-    ``"openrouter"`` — so the aggregator's own name reaches us and the upstream's
-    never does. ``id`` does survive both paths (``_create_chat_result`` puts it in
+    A second handle on *which upstream served the request*, alongside the name
+    itself. OpenRouter names the serving upstream in a ``provider`` response
+    field; ``ChatOpenRouter`` drops it and stamps ``model_provider`` as the
+    literal ``"openrouter"``, so the aggregator's own name is all that reaches
+    us out of the box — ``openrouter_provider_name_patch`` is what restores the
+    real one, under ``response_metadata[PROVIDER_NAME_METADATA_KEY]``. The id
+    stays worth carrying because it also resolves cost and routing detail the
+    name alone does not. ``id`` survives both paths (``_create_chat_result`` puts it in
     ``llm_output``, which ``langchain_core`` merges into ``response_metadata``;
     ``_astream``/``_stream`` set ``generation_info["id"]`` directly), and it
     resolves to the serving upstream through OpenRouter's generation-metadata
@@ -444,21 +450,28 @@ def extract_generation_id(message: AIMessage) -> str | None:
 
 
 def extract_message_provider(message: AIMessage) -> str | None:
-    """The UPSTREAM that served this call, when the response actually names one.
+    """The UPSTREAM that served this call — "Baidu", "StreamLake", "Fireworks".
 
-    Returns ``None`` far more often than not, and that is the honest answer, not
-    a gap to paper over: ``ChatOpenRouter`` drops OpenRouter's ``provider``
-    response field and stamps ``model_provider`` with the literal
-    ``"openrouter"`` (see :func:`extract_generation_id`). The aggregator's own
-    name is not the upstream, so it is rejected explicitly — recording it would
-    make every row claim a provider we never learned, and a ``group by
-    provider`` over the ledger would read as one homogeneous pool when the whole
-    point of the field is that the pool's rates differ by more than 10x.
-    ``generation_id`` is the handle that resolves the real upstream after the
-    fact; this field only ever carries a name the response volunteered.
+    Read from ``response_metadata[PROVIDER_NAME_METADATA_KEY]``, which
+    ``openrouter_provider_name_patch`` restores on both the streaming and
+    non-streaming paths. Out of the box ``ChatOpenRouter`` drops OpenRouter's
+    ``provider`` response field and stamps ``model_provider`` with the literal
+    ``"openrouter"``, so without that patch the aggregator's own name was all
+    that reached us and this column was always null.
+
+    That name is still rejected explicitly if it ever arrives: the aggregator is
+    not an upstream, and recording it would make every row claim a provider we
+    never learned — a ``group by provider`` over the ledger would read as one
+    homogeneous pool, when the entire point of the field is that the pool's
+    rates differ by more than 10x for the same model id.
+
+    ``None`` on the lanes the patch does not cover (direct Gemini, the sim
+    lane), which genuinely have no upstream to name. Never guessed from the
+    model id; :func:`extract_generation_id` remains the second handle, resolving
+    routing detail the name alone does not carry.
     """
     resp_meta = message.response_metadata or {}
-    reported = str(resp_meta.get("provider") or "").strip()
+    reported = str(resp_meta.get(PROVIDER_NAME_METADATA_KEY) or "").strip()
     if not reported or reported.lower() == OPENROUTER_PROVIDER:
         return None
     return reported

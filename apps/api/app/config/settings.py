@@ -193,6 +193,16 @@ class CommonSettings(BaseAppSettings):
     DEV_DEFAULT_MODEL: str | None = None
 
     # ----------------------------------------------
+    # Workflows
+    # ----------------------------------------------
+    # Delete a workflow conversation's LangGraph checkpoint threads before every
+    # run, so run N stops replaying runs 1..N-1 out of Postgres (one production
+    # workflow held 1.39 MB of message state across three threads). The previous
+    # run reaches the next one as a recorded trace instead. Kill switch: set to
+    # false to fall back to the replaying behaviour without a deploy.
+    WORKFLOW_THREAD_RESET_ENABLED: bool = True
+
+    # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)
     # ----------------------------------------------
     # Optional: Get a token at https://github.com/settings/tokens

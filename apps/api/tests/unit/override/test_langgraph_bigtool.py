@@ -2050,6 +2050,44 @@ class TestWireEdgesPinning:
         path_map = builder.add_conditional_edges.call_args.kwargs["path_map"]
         assert "end_graph_hooks" in path_map
 
+    def test_the_finish_branch_declares_both_destinations_it_can_return(self) -> None:
+        """``_after_finish_task`` returns either the nudge or the exit node, and
+        a conditional edge can only reach a node its ``path_map`` names. Blanked
+        or dropped, LangGraph falls back to "any node in the graph" — the
+        finish-task branch stops being a declared two-way and the nudge loop it
+        guards is no longer pinned by the graph at all.
+        """
+        deps = replace(_make_deps(), require_finish_to_end=True)
+        builder = MagicMock()
+
+        _wire_edges(builder, deps)
+
+        finish_branches = [
+            call
+            for call in builder.add_conditional_edges.call_args_list
+            if call.args[0] == FINISH_TASK_NAME
+        ]
+        assert len(finish_branches) == 1
+        assert finish_branches[0].kwargs["path_map"] == ["nudge_continue", END]
+
+    def test_the_finish_branch_exits_through_the_hooks_node_when_there_is_one(self) -> None:
+        """The exit half of that path_map is the hooks node, not END, whenever
+        end-graph hooks are configured — the run's last writes happen there."""
+        deps = replace(
+            _make_deps(), require_finish_to_end=True, end_graph_hooks=[MagicMock(name="end_hook")]
+        )
+        builder = MagicMock()
+
+        _wire_edges(builder, deps)
+
+        finish_branches = [
+            call
+            for call in builder.add_conditional_edges.call_args_list
+            if call.args[0] == FINISH_TASK_NAME
+        ]
+        assert len(finish_branches) == 1
+        assert finish_branches[0].kwargs["path_map"] == ["nudge_continue", "end_graph_hooks"]
+
     def test_without_hooks_the_finish_edge_goes_straight_to_end(self) -> None:
         builder = MagicMock()
 
@@ -2138,3 +2176,149 @@ class TestCreateAgentWiring:
         # Retrieval retries are deliberate (pure reads); dropping the policy
         # turns one transient Chroma hiccup into a failed run.
         assert builder.nodes["select_tools"].retry_policy is retry_sentinel
+
+
+# ---------------------------------------------------------------------------
+# the failover the model node actually hands the client
+# ---------------------------------------------------------------------------
+
+
+def _dead_openrouter_lane() -> ModelLane:
+    return ModelLane(
+        provider=LLMProviderName.OPENROUTER,
+        model="vendor/dead-model",
+        reasoning={"effort": "low"},
+        provider_pin={"provider": {"only": ["dead-vendor"]}},
+        max_input_tokens=DEFAULT_MAX_TOKENS,
+    )
+
+
+def _lane_carrying_config() -> RunnableConfig:
+    """A run whose lane HAS a next provider — the only shape in which the model
+    node has a fallback to hand down."""
+    return _make_config(
+        **{
+            LANE_FIELD_ID: _dead_openrouter_lane().to_configurable(),
+            **_dead_openrouter_lane().binding_keys(),
+            "session_id": "conv-1",
+        }
+    )
+
+
+#: What ``_fallback_config`` must produce for :func:`_lane_carrying_config`: the
+#: run's own keys, with EVERY key the dead OpenRouter lane owned replaced by the
+#: Gemini lane's. A leftover ``model_kwargs``/``reasoning`` is the failed
+#: provider's routing riding onto the new one.
+_EXPECTED_FALLBACK_CONFIG = {
+    "configurable": {
+        LANE_FIELD_ID: _dead_openrouter_lane().to_configurable(),
+        "session_id": "conv-1",
+        "provider": LLMProviderName.GEMINI,
+        "model": "gemini-x",
+    }
+}
+
+
+class TestTheFallbackTheModelNodeHandsTheClient:
+    """Both model call sites build the failover options themselves, and neither
+    one is exercised by a run whose lane has no next provider — which is every
+    other test here. What ``invoke_llm``/``ainvoke_llm`` receive is the whole
+    contract: a factory that re-binds the SAME tools on the next provider, and a
+    config with the dead lane's keys cleared. A blank, a swapped tuple slot or a
+    dropped argument leaves the turn with no failover at all, and the primary's
+    402 is still the turn's only outcome.
+    """
+
+    def _next_is_gemini(self) -> Any:
+        return patch.object(
+            lane_module,
+            "next_fallback_provider",
+            lambda _current: (LLMProviderName.GEMINI, "gemini-x"),
+        )
+
+    def _builder(self, llm: MagicMock) -> StateGraph:
+        return create_agent(
+            llm,
+            _make_tool_registry(dummy_tool_a),
+            tools_config=ToolRetrievalConfig(disable_retrieve_tools=True),
+            agent_config=AgentConfig(agent_name="comms_agent"),
+        )
+
+    def _assert_failover_is_whole(self, kwargs: Any, llm: MagicMock) -> None:
+        # The tools the PRIMARY bound this turn — the fallback must re-bind that
+        # same list, not a stale or empty one.
+        primary_tools = llm.with_config.return_value.bind_tools.call_args.args[0]
+
+        fallback = kwargs["fallback"]
+        assert fallback is not None
+        # Zero-arg factory: the tool-list-sized re-binding must not have happened
+        # yet, since the primary has not failed.
+        llm.bind_tools.assert_not_called()
+        assert fallback() is llm.bind_tools.return_value
+        llm.bind_tools.assert_called_once_with(primary_tools)
+
+        assert kwargs["options"].fallback_config == _EXPECTED_FALLBACK_CONFIG
+
+    @pytest.mark.asyncio
+    async def test_the_async_node_hands_over_the_factory_and_the_rebound_config(self) -> None:
+        llm = _make_llm()
+        builder = self._builder(llm)
+
+        with (
+            self._next_is_gemini(),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
+                new=AsyncMock(return_value=AIMessage(content="ok")),
+            ) as invoked,
+        ):
+            await _agent_runnable(builder).afunc(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                _lane_carrying_config(),
+                store=MagicMock(),
+            )
+
+        self._assert_failover_is_whole(invoked.await_args.kwargs, llm)
+
+    def test_the_sync_node_hands_over_the_factory_and_the_rebound_config(self) -> None:
+        """The two call sites drift independently: a run that falls back on
+        whichever path lost its options has no second provider to reach."""
+        llm = _make_llm()
+        builder = self._builder(llm)
+
+        with (
+            self._next_is_gemini(),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.invoke_llm",
+                return_value=AIMessage(content="ok"),
+            ) as invoked,
+        ):
+            _agent_runnable(builder).func(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                _lane_carrying_config(),
+                store=MagicMock(),
+            )
+
+        self._assert_failover_is_whole(invoked.call_args.kwargs, llm)
+
+    @pytest.mark.asyncio
+    async def test_a_run_with_no_next_provider_hands_over_no_failover_at_all(self) -> None:
+        """The other side of the same branch: ``None``, not a half-built
+        failover that resolves back onto the provider that just failed."""
+        llm = _make_llm()
+        builder = self._builder(llm)
+
+        with (
+            patch.object(lane_module, "next_fallback_provider", lambda _current: None),
+            patch(
+                "app.override.langgraph_bigtool.create_agent.ainvoke_llm",
+                new=AsyncMock(return_value=AIMessage(content="ok")),
+            ) as invoked,
+        ):
+            await _agent_runnable(builder).afunc(
+                _make_state(messages=[HumanMessage(content="hi")]),
+                _lane_carrying_config(),
+                store=MagicMock(),
+            )
+
+        assert invoked.await_args.kwargs["fallback"] is None
+        assert invoked.await_args.kwargs["options"].fallback_config is None
