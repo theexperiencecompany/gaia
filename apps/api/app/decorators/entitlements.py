@@ -8,7 +8,7 @@ split so callers that resolve their own user (bots) can still gate.
 
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import ParamSpec, TypeVar
+from typing import ParamSpec, TypedDict, TypeVar
 
 from fastapi import HTTPException
 
@@ -24,6 +24,15 @@ R = TypeVar("R")
 PAYWALL_MESSAGE = "GAIA is a paid product. Subscribe to Pro to keep chatting."
 
 
+class SubscriptionRequiredDetail(TypedDict):
+    """The 402 body the web app and bots parse. Changing a key breaks them."""
+
+    code: str
+    message: str
+    checkout_url: str | None
+    discount_code: str | None
+
+
 class SubscriptionRequiredException(HTTPException):
     """402 raised when a non-PRO user hits a paid-only surface.
 
@@ -35,7 +44,7 @@ class SubscriptionRequiredException(HTTPException):
     """
 
     def __init__(self, checkout_url: str | None) -> None:
-        detail = {
+        detail: SubscriptionRequiredDetail = {
             "code": "subscription_required",
             "message": PAYWALL_MESSAGE,
             "checkout_url": checkout_url,
