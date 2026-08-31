@@ -177,7 +177,11 @@ cpu_slots_acquire() {
   local lock="$dir/lock" holders="$dir/holders"
   local ttl="${GAIA_CPU_SLOTS_TTL:-3600}"
   local timeout="${GAIA_CPU_SLOTS_TIMEOUT:-600}"
-  local deadline=$(( $(date +%s) + timeout ))
+  # +1 because `date +%s` truncates to whole seconds: a start at X.9 reads X, so a
+  # bare `X + timeout` deadline is crossed after only `timeout - 0.9`s of real
+  # time and fails open BEFORE the timeout it promised. The extra second absorbs
+  # that sub-second truncation so the wait always covers at least `timeout`.
+  local deadline=$(( $(date +%s) + timeout + 1 ))
   local nonce="${RANDOM}${RANDOM}"
   local holderfile="$holders/$$.$nonce"
 
