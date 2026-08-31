@@ -492,8 +492,8 @@ class TestResetSystemWorkflowToDefault:
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is True
-        kwargs = mock_repo.reset_system_workflow.await_args.kwargs
-        assert kwargs["prompt"] == "the factory prompt"
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.prompt == "the factory prompt"
 
     def _schedule_trigger_config(self) -> MagicMock:
         from datetime import datetime

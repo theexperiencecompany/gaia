@@ -365,8 +365,8 @@ class TestASuccessfulFiresBookkeepingIsAddressedCorrectly:
 
         await _fire_at_a_fixed_occurrence(harness)
 
-        assert harness.scheduler.claim_scheduled_for_execution.await_args_list == [
-            call(harness.workflow.id, expected_next_run=SCHEDULED_FOR)
+        assert harness.scheduler.claim_task_for_execution.await_args_list == [
+            call(harness.workflow.id, expected_occurrence=SCHEDULED_FOR)
         ]
 
     async def test_a_background_completion_is_captured_under_its_real_trigger_type(
