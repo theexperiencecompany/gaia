@@ -25,7 +25,7 @@ from langgraph.store.base import GetOp, PutOp, SearchOp
 import numpy as np
 import pytest
 
-from app.agents.tools.core.registry import ToolCategory, ToolRegistry
+from app.agents.tools.core.registry import CategoryOptions, ToolCategory, ToolRegistry
 from app.db.chroma.chroma_store import ChromaStore
 from app.db.chroma.chroma_tools_store import (
     _build_put_operations,
@@ -983,7 +983,7 @@ class TestToolRegistryCategories:
 
     def test_tool_category_add_and_retrieve(self):
         """ToolCategory should store tools and return them via get_tool_objects."""
-        category = ToolCategory(name="test_cat", space="general")
+        category = ToolCategory(name="test_cat", options=CategoryOptions(space="general"))
         t1 = _make_tool("tool_a", "Tool A")
         t2 = _make_tool("tool_b", "Tool B")
         category.add_tools([t1, t2])
@@ -995,7 +995,7 @@ class TestToolRegistryCategories:
 
     def test_tool_category_core_tools_filtering(self):
         """ToolCategory.get_core_tools should return only core-flagged tools."""
-        category = ToolCategory(name="mixed", space="general")
+        category = ToolCategory(name="mixed", options=CategoryOptions(space="general"))
         core_tool = _make_tool("core_tool", "Core tool")
         regular_tool = _make_tool("regular_tool", "Regular tool")
         category.add_tool(core_tool, is_core=True)
@@ -1012,7 +1012,7 @@ class TestToolRegistryCategories:
         registry._add_category(
             name="custom",
             tools=[t1],
-            space="custom_space",
+            options=CategoryOptions(space="custom_space"),
         )
 
         category = registry.get_category("custom")
@@ -1023,8 +1023,8 @@ class TestToolRegistryCategories:
     def test_registry_get_category_by_space(self):
         """get_category_by_space should return the category matching the space."""
         registry = ToolRegistry()
-        registry._add_category(name="cat_a", tools=[], space="space_a")
-        registry._add_category(name="cat_b", tools=[], space="space_b")
+        registry._add_category(name="cat_a", tools=[], options=CategoryOptions(space="space_a"))
+        registry._add_category(name="cat_b", tools=[], options=CategoryOptions(space="space_b"))
 
         result = registry.get_category_by_space("space_b")
         assert result is not None
@@ -1038,8 +1038,10 @@ class TestToolRegistryCategories:
         t1 = _make_tool("alpha", "Alpha tool")
         t2 = _make_tool("beta", "Beta tool")
         t3 = _make_tool("gamma", "Gamma tool")
-        registry._add_category(name="cat1", tools=[t1, t2], space="general")
-        registry._add_category(name="cat2", tools=[t3], space="other")
+        registry._add_category(
+            name="cat1", tools=[t1, t2], options=CategoryOptions(space="general")
+        )
+        registry._add_category(name="cat2", tools=[t3], options=CategoryOptions(space="other"))
 
         names = registry.get_tool_names()
         assert set(names) == {"alpha", "beta", "gamma"}
@@ -1048,7 +1050,9 @@ class TestToolRegistryCategories:
         """get_category_of_tool should return the category name for a known tool."""
         registry = ToolRegistry()
         t1 = _make_tool("special_tool", "Special")
-        registry._add_category(name="special_cat", tools=[t1], space="general")
+        registry._add_category(
+            name="special_cat", tools=[t1], options=CategoryOptions(space="general")
+        )
 
         assert registry.get_category_of_tool("special_tool") == "special_cat"
         assert registry.get_category_of_tool("unknown_tool") == "unknown"
@@ -1058,12 +1062,16 @@ class TestToolRegistryCategories:
         registry = ToolRegistry()
         t_regular = _make_tool("regular", "Regular tool")
         t_delegated = _make_tool("delegated", "Delegated tool")
-        registry._add_category(name="reg_cat", tools=[t_regular], space="general")
+        registry._add_category(
+            name="reg_cat", tools=[t_regular], options=CategoryOptions(space="general")
+        )
         registry._add_category(
             name="del_cat",
             tools=[t_delegated],
-            space="delegated_space",
-            is_delegated=True,
+            options=CategoryOptions(
+                space="delegated_space",
+                is_delegated=True,
+            ),
         )
 
         all_tools = registry.get_all_tools_for_search(include_delegated=True)

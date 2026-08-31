@@ -166,7 +166,7 @@ class TestPaidOnlyGateLetsProUsersThrough:
             patch(
                 f"{MODULE}.execute_workflow_as_chat",
                 new_callable=AsyncMock,
-                return_value="conv-pro-1",
+                return_value=("conv-pro-1", MagicMock()),
             ) as mock_execute_chat,
             patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
         ):

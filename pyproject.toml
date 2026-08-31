@@ -83,6 +83,8 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "_llm_type",      # LangChain BaseChatModel abstract member: required to subclass,
+  "_generate",      # dispatched by the framework, never called by our code
   "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
                         # chroma's registered-embedding-function map when a
                         # collection config is reconstructed (see chroma_store.py)
@@ -579,6 +581,7 @@ module = [
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",
+  "app.models.playbook_models",
   "app.models.conversation_models",
   "app.models.payment_models",
   "app.models.usage_models",

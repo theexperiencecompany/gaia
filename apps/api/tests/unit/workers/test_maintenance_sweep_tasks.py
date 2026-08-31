@@ -15,11 +15,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.agent import AgentRunOptions
+from app.models.agent_models import SilentRunResult
+from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
 )
 from app.models.todo_models import TodoDocument
+from app.models.user_models import AuthenticatedUser
 from app.workers.tasks.maintenance_sweep_tasks import (
     DORMANT_DAYS,
     NOTIFICATION_BACKOFF_DAYS,
@@ -27,6 +31,7 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     SECONDS_PER_DAY,
     STRIKE_TTL_DAYS,
     WAITING_LABEL_MAX_DAYS,
+    _call_health_check_agent,
     _classify_tracked_todos,
     _has_upcoming_schedule,
     _health_check_dormant,
@@ -643,3 +648,101 @@ class TestMaintenanceSweep:
             summary == "archived:3 notified_expired:2 notified_overdue:4 requeued:1 digest_items:1"
         )
         digest.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestHealthCheckAgentCall:
+    async def test_a_queued_dispatch_is_not_a_health_check_result(self) -> None:
+        # The executor was busy, so the request was queued and answered with an
+        # acknowledgement; returning that text as the check's verdict marked a
+        # todo healthy on the strength of work that had not happened.
+        agent = AsyncMock(
+            return_value=SilentRunResult(
+                message="That task is queued behind the one already running.",
+                tool_data={},
+                queued_task_id="task-9",
+            )
+        )
+        with (
+            patch(f"{MODULE}.call_agent_silent", agent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
+
+        assert result.startswith("NEEDS_ATTENTION")
+        assert "queued" in result
+        assert "already running" not in result
+
+    async def test_the_run_is_tagged_as_a_maintenance_health_check(self) -> None:
+        # The trigger context is the only thing that tells the agent stack this
+        # turn is a background health check rather than a chat message, and it
+        # carries the todo the verdict belongs to. A dropped ``options=``, a
+        # renamed key or a renamed trigger type all make the run anonymous, and
+        # nothing downstream complains — it just stops being attributable.
+        captured: dict[str, object] = {}
+
+        async def fake_call_agent_silent(
+            request: MessageRequestWithHistory,
+            conversation_id: str,
+            user: AuthenticatedUser,
+            options: AgentRunOptions | None = None,
+        ) -> SilentRunResult:
+            captured["request"] = request
+            captured["conversation_id"] = conversation_id
+            captured["user"] = user
+            captured["options"] = options
+            return SilentRunResult(message="  Still on track  ", tool_data={})
+
+        with (
+            patch(f"{MODULE}.call_agent_silent", fake_call_agent_silent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            result = await _call_health_check_agent("todo-7", "user-3", "is this todo alive?")
+
+        # A non-empty verdict is returned stripped, not blanked.
+        assert result == "Still on track"
+
+        options = captured["options"]
+        assert isinstance(options, AgentRunOptions)
+        assert options.trigger_context == {
+            "trigger_type": "maintenance_health_check",
+            "todo_id": "todo-7",
+        }
+
+    async def test_a_queued_dispatch_is_logged_with_the_todo_and_task_ids(self) -> None:
+        # The queued verdict is deliberately vague ("not run"), so the log line is
+        # the only place the operator learns WHICH todo was skipped and WHICH
+        # in-flight task blocked it. Losing either id makes the warning unactionable.
+        agent = AsyncMock(
+            return_value=SilentRunResult(
+                message="That task is queued behind the one already running.",
+                tool_data={},
+                queued_task_id="task-9",
+            )
+        )
+        with (
+            patch(f"{MODULE}.call_agent_silent", agent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+            patch(f"{MODULE}.log") as log,
+        ):
+            result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
+
+        assert result == "NEEDS_ATTENTION: Health check queued behind an in-flight run; not run"
+        log.warning.assert_called_once_with(
+            "maintenance_sweep.health_check_queued",
+            todo_id="todo-1",
+            queued_task_id="task-9",
+        )
+
+    async def test_an_empty_agent_message_is_an_empty_verdict(self) -> None:
+        # The sweep classifies the verdict by reading its text; substituting any
+        # placeholder for a missing message would make an empty answer look like
+        # a real one to every caller downstream.
+        agent = AsyncMock(return_value=SilentRunResult(message="", tool_data={}))
+        with (
+            patch(f"{MODULE}.call_agent_silent", agent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
+
+        assert result == ""

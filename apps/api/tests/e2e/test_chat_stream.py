@@ -19,7 +19,7 @@ from uuid import uuid4
 from langchain_core.messages import HumanMessage
 import pytest
 
-from app.helpers.agent_helpers import build_agent_config, execute_graph_streaming
+from app.helpers.agent_helpers import AgentIdentity, build_agent_config, execute_graph_streaming
 from tests.e2e._harness import Transcript
 from tests.e2e._harness.graph_run import comms_graph
 
@@ -40,9 +40,11 @@ async def stream_turn(graph: Any, prompt: str, thread_id: str, user_id: str) -> 
     populates both.
     """
     config = await build_agent_config(
-        conversation_id=thread_id,
-        user={"user_id": user_id, "email": f"{user_id}@test.local", "name": "Test User"},
-        agent_name="comms_agent",
+        identity=AgentIdentity(
+            conversation_id=thread_id,
+            user={"user_id": user_id, "email": f"{user_id}@test.local", "name": "Test User"},
+            agent_name="comms_agent",
+        ),
     )
     state = {"messages": [HumanMessage(content=prompt)]}
     chunks = [chunk async for chunk in execute_graph_streaming(graph, state, config)]

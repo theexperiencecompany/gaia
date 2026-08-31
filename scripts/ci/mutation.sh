@@ -611,7 +611,12 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts", "pytest.ini"]\n'
-    f'max_stack_depth = 8\n'
+    # 20, not 8: the trampoline drops a test from a mutant's stats when the
+    # mutated module has more frames than this on the stack, so a depth-8 cap
+    # silently unlinked every test that reaches a worker entry point through
+    # its own call chain (execute_workflow_by_id -> _run_workflow -> ...) and
+    # those mutants survived with green tests pointing right at them.
+    f'max_stack_depth = 20\n'
     # The pragma stamping below appends `# pragma: no mutate` to every
     # unchanged line. mutmut's AST visitor only honors that comment on
     # simple statement lines, so interior lines of multi-line statements
@@ -841,9 +846,25 @@ sys.exit(proc.returncode)
   NO_TESTS="$(printf '%s\n' "$NO_TESTS_LIST" | grep -c . || true)"
   NOT_CHECKED="$(printf '%s\n' "$RESULTS" | grep -c ": not checked$" || true)"
   TIMEOUT="$(printf '%s\n' "$RESULTS" | grep -c ": timeout$" || true)"
+  SEGFAULT="$(printf '%s\n' "$RESULTS" | grep -c ": segfault$" || true)"
+  SKIPPED="$(printf '%s\n' "$RESULTS" | grep -c ": skipped$" || true)"
+  TYPECHECK="$(printf '%s\n' "$RESULTS" | grep -c ": caught by type check$" || true)"
   if [ "${NOT_CHECKED:-0}" -gt 0 ]; then
     echo "MUTATION RUN INCOMPLETE — $NOT_CHECKED mutant(s) were never checked;" >&2
     echo "the run was interrupted. See mutmut's output above." >&2
+    exit 1
+  fi
+  # A crashed child proves nothing, and a status outside every counted bucket
+  # is the same silence-read-as-success this gate exists to stop. Seen live:
+  # 371 mutants segfaulted in a fork-unsafe macOS proxy lookup, mutmut's
+  # progress line has no slot for the segfault status, and the verdict below
+  # then read "no survivors" off a run that graded barely half the mutants.
+  ACCOUNTED=$((KILLED + SURVIVED + SUSPICIOUS + NO_TESTS + NOT_CHECKED + TIMEOUT + SEGFAULT + SKIPPED + TYPECHECK))
+  if [ "${SEGFAULT:-0}" -gt 0 ] || [ "$((TOTAL - ACCOUNTED))" -ne 0 ]; then
+    echo "MUTATION RUN INCOMPLETE — $SEGFAULT segfault(s) and $((TOTAL - ACCOUNTED)) unbucketed" >&2
+    echo "mutant(s) of $TOTAL reached NO verdict. A crashed or uncounted child" >&2
+    echo "proves nothing; fix the crash (on macOS see the NO_PROXY note in" >&2
+    echo "tests/conftest.py) and re-run." >&2
     exit 1
   fi
   if [ "${SUSPICIOUS:-0}" -gt 0 ]; then

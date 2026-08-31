@@ -36,6 +36,7 @@ from app.agents.llm.client import (
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
     LLMInvokeOptions,
+    StructuredCallOptions,
     _build_default_llm,
     _create_configurable_llm,
     _GenerationIdCallback,
@@ -48,6 +49,7 @@ from app.agents.llm.client import (
     ainvoke_llm,
     ainvoke_structured,
     ainvoke_structured_gemini,
+    background_structured_runnable,
     get_default_llm,
     init_llm,
     register_llm_providers,
@@ -58,6 +60,7 @@ from app.constants.llm import (
     AUX_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    HELPER_MAX_OUTPUT_TOKENS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_DEV_APP_TITLE,
@@ -620,6 +623,102 @@ class TestGetDefaultLlm:
         assert get_default_llm() is mock_sim_llm.return_value
 
 
+class TestBackgroundStructuredRunnable:
+    class _Shape(BaseModel):
+        text: str
+
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client._sim_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_sim_mode_wins_over_the_custom_endpoint(
+        self, mock_settings: MagicMock, mock_sim_llm: MagicMock, mock_build_custom: MagicMock
+    ) -> None:
+        """A sim run with DEV_LLM_* set must land on the scripted stub, like every
+        other factory — not on the real custom endpoint."""
+        mock_settings.GAIA_SIM_MODE = True
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_build_custom.assert_not_called()
+        mock_sim_llm.assert_called_once_with(0.3)
+        mock_sim_llm.return_value.with_structured_output.assert_called_once_with(self._Shape)
+        assert runnable is mock_sim_llm.return_value.with_structured_output.return_value
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_outside_sim_mode_the_custom_endpoint_is_used_when_configured(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_aux.assert_not_called()
+        mock_build_custom.assert_called_once_with(0.3)
+        # Bounded like the helper lane. Seen live: a replay's narration on the
+        # custom endpoint ran to the endpoint's 64k output cap, took 257 seconds,
+        # and delivered a result cut mid-sentence.
+        bounded = mock_build_custom.return_value.model_copy
+        bounded.assert_called_once_with(update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS})
+        # The caller's schema is what the endpoint is asked to fill; a runnable
+        # bound to anything else parses the one model call of the whole replay.
+        bounded.return_value.with_structured_output.assert_called_once_with(self._Shape)
+        assert runnable is bounded.return_value.with_structured_output.return_value
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_a_base_url_alone_does_not_make_this_a_custom_deployment(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        """BOTH halves have to hold. A deployment that merely has a DEV base URL
+        configured still runs on OpenRouter, and sending its one-shot to the
+        custom endpoint asks an endpoint it does not run on for a result.
+
+        The aux runnable takes ``(schema, temperature, config)`` positionally, so
+        the fake carries the real signature: a dropped argument is a TypeError
+        here rather than a silently mis-modelled one-shot in production.
+        """
+
+        def _aux(schema: Any, temperature: float, config: RunnableConfig | None) -> str:
+            return "aux-runnable"
+
+        mock_aux.side_effect = _aux
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.OPENROUTER
+        mock_settings.DEV_LLM_BASE_URL = "https://custom.example/v1"
+        run_config: RunnableConfig = {"configurable": {"session_id": "sess-1"}}
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3, config=run_config)
+
+        mock_build_custom.assert_not_called()
+        mock_aux.assert_called_once_with(self._Shape, 0.3, run_config)
+        assert runnable == "aux-runnable"
+
+    @patch("app.agents.llm.client._aux_structured_runnable")
+    @patch("app.agents.llm.client._build_custom_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_a_custom_model_with_no_base_url_falls_back_to_the_aux_lane(
+        self, mock_settings: MagicMock, mock_build_custom: MagicMock, mock_aux: MagicMock
+    ) -> None:
+        """The other half: naming the custom provider without an endpoint to send
+        it to leaves nowhere to build the client from."""
+        mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_DEFAULT_MODEL = LLMProviderName.CUSTOM
+        mock_settings.DEV_LLM_BASE_URL = None
+
+        runnable = background_structured_runnable(self._Shape, temperature=0.3)
+
+        mock_build_custom.assert_not_called()
+        mock_aux.assert_called_once_with(self._Shape, 0.3, None)
+        assert runnable is mock_aux.return_value
+
+
 # ---------------------------------------------------------------------------
 # ainvoke_llm — the single LLM invocation primitive (retry + fallback)
 # ---------------------------------------------------------------------------
@@ -813,7 +912,7 @@ class TestFallbackHandover:
         config = RunnableConfig(configurable={"user_id": "u1", "session_id": "conv-1"})
         messages = [HumanMessage(content="hi")]
 
-        result = await ainvoke_llm(primary, messages, fallback=fallback, config=config)
+        result = await ainvoke_llm(primary, messages, config=config, fallback=fallback)
 
         assert result.content == "fallback-ok"
         # Suffixed: this call is auxiliary (meter_auxiliary defaults True), and an
@@ -839,7 +938,10 @@ class TestFallbackHandover:
         fallback = self._bindable_runnable(AIMessage(content="fallback-ok"))
 
         await ainvoke_llm(
-            primary, [HumanMessage(content="hi")], fallback=fallback, label="the_judge"
+            primary,
+            [HumanMessage(content="hi")],
+            label="the_judge",
+            fallback=fallback,
         )
 
         assert mock_log.warning.call_args.kwargs["llm"] == {
@@ -932,9 +1034,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "from-aux"
@@ -993,9 +1094,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "from-gemini"
@@ -1030,9 +1130,8 @@ class TestMemoryLaneProviderSelection:
             _Extracted,
             "transcript",
             label="memory:extract",
-            temperature=0.4,
             config=config,
-            timeout=9.0,
+            options=StructuredCallOptions(temperature=0.4, timeout=9.0),
         )
 
         assert result.fact == "delegated"
@@ -1042,9 +1141,8 @@ class TestMemoryLaneProviderSelection:
         assert mock_structured.await_args.args == (_Extracted, "transcript")
         assert mock_structured.await_args.kwargs == {
             "label": "memory:extract",
-            "temperature": 0.4,
             "config": config,
-            "timeout": 9.0,
+            "options": StructuredCallOptions(temperature=0.4, timeout=9.0),
         }
 
     @patch("app.agents.llm.client.get_memory_llm")
@@ -1330,7 +1428,10 @@ class TestRecordAuxiliaryUsage:
             ) as attach,
         ):
             await ainvoke_llm(
-                failing, "hi", fallback=create_fake_llm(["ok"]), label="follow_up_actions"
+                failing,
+                "hi",
+                label="follow_up_actions",
+                fallback=create_fake_llm(["ok"]),
             )
 
         attached = [call.args[1] for call in attach.call_args_list]
@@ -1564,7 +1665,10 @@ class TestAinvokeStructured:
             ) as mock_invoke,
         ):
             result = await ainvoke_structured(
-                self._Schema, "what is the answer?", label="the_judge", temperature=0.3
+                self._Schema,
+                "what is the answer?",
+                label="the_judge",
+                options=StructuredCallOptions(temperature=0.3),
             )
 
         assert mock_helper.call_args.kwargs["temperature"] == 0.3
@@ -1611,7 +1715,12 @@ class TestAinvokeStructured:
                 new=AsyncMock(return_value=self._Schema(answer="ok")),
             ) as mock_invoke,
         ):
-            await ainvoke_structured(self._Schema, prompt, label="classifier", timeout=12.0)
+            await ainvoke_structured(
+                self._Schema,
+                prompt,
+                label="classifier",
+                options=StructuredCallOptions(timeout=12.0),
+            )
 
         assert mock_invoke.call_args.args[1] is prompt
         assert mock_invoke.call_args.kwargs["options"].timeout == 12.0
@@ -1929,8 +2038,8 @@ class TestTheStickyKeyNeverReachesANonOpenRouterFallback:
         await ainvoke_llm(
             primary,
             [HumanMessage(content="hi")],
-            fallback=fallback,
             config=RunnableConfig(configurable={"user_id": "u1", "session_id": "memory-u1"}),
+            fallback=fallback,
         )
 
         fallback.ainvoke.assert_awaited()

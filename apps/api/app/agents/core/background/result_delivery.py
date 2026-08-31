@@ -11,9 +11,15 @@ Exactly two entry points, both taking the run's ``ExecutorRun`` context:
   frontend sync reconciles by ``message_id == task_id``).
 
 Every executor terminal path goes through one of these.
+
+Neither reads the run's session: both take the cards their caller snapshotted
+before signalling the run done. By the time delivery runs, the comms consumer
+(chat stream or silent workflow path) has already drained that session and torn
+it down — see ``executor_runner._finalize_executor_run``.
 """
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -22,7 +28,6 @@ from fastapi import HTTPException
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_workflow_result_to_platforms,
@@ -47,12 +52,41 @@ from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
 
+@dataclass(frozen=True)
+class _DeliveryTarget:
+    """Who one run's result is delivered to, and how the client keys it.
+
+    The same cluster — owner, conversation, the task_id-keyed placeholder to
+    replace (if any) and the reply-quote the message carries — is threaded
+    through every delivery helper, so it travels as one value.
+    """
+
+    user_id: str
+    conversation_id: str
+    task_id: str | None
+    emit_task_id: bool
+    show_reply_quote: bool
+    user_message_id: str | None
+    user_msg_content: str
+
+
+@dataclass(frozen=True)
+class _WorkflowRef:
+    """The workflow whose completion/failure notification is being dispatched."""
+
+    workflow_id: str
+    workflow_title: str
+    notify_on_completion: bool = True
+
+
 @traceable(name="bg_notification_delivery", run_type="chain")
 async def deliver_result(
     run: ExecutorRun,
     result_text: str,
     result_type: str,
     returned_note: str = "",
+    *,
+    tool_data: list[ToolDataEntry] | None,
 ) -> tuple[str | None, str | None]:
     """Narrate, persist, and deliver a finished executor run's result.
 
@@ -72,25 +106,21 @@ async def deliver_result(
     Routing keys on the conversation, not the run that produced the message, so a
     background/scheduled run posting into a bot conversation still reaches it.
 
-    Tool cards: live runs have their tool_data attached to the comms ack by the
-    chat stream (the comms path owns it); queued and workflow runs self-attach
-    here (``run.executor_owns_tool_data``). Queued runs key the saved message on
+    Tool cards: ``tool_data`` is the caller's pre-signal snapshot, already gated
+    on ``run.executor_owns_tool_data`` — ``None`` for a live run, whose cards the
+    chat stream attaches to the comms ack instead (attaching them here too would
+    render every card twice). Queued runs key the saved message on
     ``message_id == task_id`` so the frontend sync reconciles it with the live
     placeholder by id — the WebSocket push is immediacy only.
     """
-    attach_tool_data = (
-        drain_executor_tool_data(run.stream_id) if run.executor_owns_tool_data else None
-    )
     try:
-        return await _narrate_and_deliver(
-            run, result_text, result_type, attach_tool_data, returned_note
-        )
+        return await _narrate_and_deliver(run, result_text, result_type, tool_data, returned_note)
     except Exception as e:  # delivery is best-effort, never propagates
         log.error(f"{LogTag.AGENT} Background notification delivery failed", error=str(e))
         return None, None
 
 
-async def persist_cancelled_run(run: ExecutorRun) -> None:
+async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]) -> None:
     """Durably persist the tool cards a cancelled self-owning run already streamed.
 
     The cards were streamed live and the frontend already rendered + persisted
@@ -102,7 +132,6 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
       - no comms re-narration (the run was stopped) and no result text, mirroring
         the cards-only placeholder the user saw.
     """
-    tool_data = drain_executor_tool_data(run.stream_id)
     if not tool_data:
         log.info(
             f"{LogTag.AGENT} Cancelled executor produced no cards to persist",
@@ -163,6 +192,133 @@ async def _narrate_and_deliver(
     """
     user_id = run.user.get("user_id", "")
 
+    notification_text = await _narrate_result(run, result_text, result_type, returned_note)
+
+    # A HIL-resumed run reconciles onto the ORIGINAL live turn's message
+    # (``run.bot_message_id``, see ``_record_pause``) instead of minting a
+    # rival one. Otherwise queued runs share an id with the live placeholder
+    # useExecutorStream rendered, so the frontend's existing conversation sync
+    # reconciles by id. Other runs have no placeholder, so a fresh id is fine.
+    #
+    # QUEUED is load-bearing: every LIVE run also carries ``bot_message_id``
+    # (threaded for a possible pause), but only ``_record_pause`` writes it
+    # into a queue item. On presence alone every live run would take the
+    # merge path and race the comms stream's own save.
+    is_hil_resume = run.is_queued and bool(run.bot_message_id)
+    bot_message = _build_bot_message(run, notification_text, tool_data, is_hil_resume=is_hil_resume)
+
+    show_reply_quote, user_msg_content = await _attach_reply_quote(
+        run, bot_message, is_hil_resume=is_hil_resume
+    )
+    target = _DeliveryTarget(
+        user_id=user_id,
+        conversation_id=run.conversation_id,
+        task_id=run.task_id,
+        emit_task_id=run.is_queued,
+        show_reply_quote=show_reply_quote,
+        user_message_id=run.user_message_id,
+        user_msg_content=user_msg_content,
+    )
+
+    # Follow-up actions are a second LLM call. The interactive web/mobile path
+    # delivers the answer first and generates them in the background (see the
+    # WebSocket branch) so the user-visible result is never gated behind them.
+    # Workflow + bot-platform paths deliver via a single send with no spinner to
+    # unblock, so they attach follow-ups inline.
+    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
+    is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
+
+    if not is_ws_path:
+        follow_up_actions = await _safe_inline_follow_ups(
+            result_type=result_type,
+            notification_text=notification_text,
+            target=target,
+            message_id=bot_message.message_id,
+        )
+        if follow_up_actions:
+            bot_message.follow_up_actions = follow_up_actions
+
+    fresh_append, tool_data = await _resolve_append_mode(
+        run, bot_message, tool_data, is_hil_resume=is_hil_resume
+    )
+    if fresh_append and not await _save_bot_message(run, bot_message):
+        return None, None
+
+    # Workflow run: the result was produced with no human watching, so deliver it
+    # as the proactive completion notification (multi-channel, "Done with X")
+    # carrying the real voiced result, instead of pushing to one conversation
+    # transport. The bot message is already saved above for "View Results".
+    if run.workflow_id:
+        # Successful, non-silent runs are delivered into the user's real
+        # messaging-platform conversations as normal bot messages (GAIA's voice,
+        # no notification chrome). The in-app badge below is a web-only heads-up.
+        if result_type != "error" and run.workflow_notify_on_completion:
+            await deliver_workflow_result_to_platforms(
+                user=run.user,
+                user_id=user_id,
+                notification_text=notification_text,
+                origin=_delivery_origin(run),
+            )
+        await _dispatch_workflow_notification(
+            msg_type=result_type,
+            workflow=_WorkflowRef(
+                workflow_id=run.workflow_id,
+                workflow_title=run.workflow_title,
+                notify_on_completion=run.workflow_notify_on_completion,
+            ),
+            target=target,
+            message_id=bot_message.message_id,
+        )
+        return notification_text, bot_message.message_id
+
+    # Deliver over exactly one transport, decided by the conversation's source.
+    # Bot conversations go to their platform's API; web/mobile/system go to the
+    # WebSocket push. (The web conversation list excludes bot sources, so a
+    # WebSocket push for a bot conversation would be dropped anyway.)
+    if is_bot_platform(conversation_source):
+        delivered = await deliver_message_to_platform(
+            conversation_source,
+            user_id,
+            notification_text,
+        )
+        transport = "platform"
+    else:
+        # Broadcast the answer NOW so the spinner clears, then generate follow-up
+        # actions in the background and push them as a second update on the same
+        # message (reuses conversation.new_message — the client upserts by id).
+        await _broadcast_bot_message(
+            target=target,
+            bot_message=bot_message,
+            notification_text=notification_text,
+            tool_data=tool_data,
+            follow_up_actions=[],
+        )
+        _spawn_deferred_follow_ups(
+            bot_message=bot_message,
+            result_type=result_type,
+            tool_data=tool_data,
+            target=target,
+        )
+        delivered = True
+        transport = "websocket"
+
+    _log_delivery_verdict(
+        target=target,
+        message_id=bot_message.message_id,
+        conversation_source=conversation_source,
+        transport=transport,
+        delivered=delivered,
+    )
+    return notification_text, bot_message.message_id
+
+
+async def _narrate_result(
+    run: ExecutorRun,
+    result_text: str,
+    result_type: str,
+    returned_note: str,
+) -> str:
+    """Re-voice the executor's terminal text through comms, falling back to it."""
     # A resumed run's report can still describe its gate as pending (the task
     # spec often DEFINED done that way), so the decided statuses are injected
     # mechanically: comms must never re-offer a decision the user already made.
@@ -186,23 +342,22 @@ async def _narrate_and_deliver(
         narrated=narrated,
         text_length=len(notification_text),
     )
+    return notification_text
 
+
+def _build_bot_message(
+    run: ExecutorRun,
+    notification_text: str,
+    tool_data: list[ToolDataEntry] | None,
+    *,
+    is_hil_resume: bool,
+) -> MessageModel:
+    """The bot message this run's result is saved and delivered as."""
     bot_message = MessageModel(
         type="bot",
         response=notification_text,
         date=datetime.now(UTC).isoformat(),
     )
-    # A HIL-resumed run reconciles onto the ORIGINAL live turn's message
-    # (``run.bot_message_id``, see ``_record_pause``) instead of minting a
-    # rival one. Otherwise queued runs share an id with the live placeholder
-    # useExecutorStream rendered, so the frontend's existing conversation sync
-    # reconciles by id. Other runs have no placeholder, so a fresh id is fine.
-    #
-    # QUEUED is load-bearing: every LIVE run also carries ``bot_message_id``
-    # (threaded for a possible pause), but only ``_record_pause`` writes it
-    # into a queue item. On presence alone every live run would take the
-    # merge path and race the comms stream's own save.
-    is_hil_resume = run.is_queued and bool(run.bot_message_id)
     bot_message.message_id = (
         (run.bot_message_id if is_hil_resume else None)
         or (run.task_id if run.is_queued else None)
@@ -210,7 +365,16 @@ async def _narrate_and_deliver(
     )
     if tool_data:
         bot_message.tool_data = tool_data
+    return bot_message
 
+
+async def _attach_reply_quote(
+    run: ExecutorRun,
+    bot_message: MessageModel,
+    *,
+    is_hil_resume: bool,
+) -> tuple[bool, str]:
+    """Quote the user's message on the bot message; returns ``(shown, content)``."""
     # Reply-quote only for genuinely queued tasks — live tasks land directly
     # after the user's last message so quoting it is visual noise; a
     # HIL-resumed run merges onto that same live message, so it never had
@@ -219,138 +383,80 @@ async def _narrate_and_deliver(
     show_reply_quote = run.is_queued and not is_hil_resume and bool(run.user_message_id)
     if show_reply_quote:
         user_msg_content = await _lookup_user_message_content(
-            run.conversation_id, run.user_message_id, user_id
+            run.conversation_id, run.user_message_id, run.user.get("user_id", "")
         )
         bot_message.replyToMessage = ReplyToMessageData(
             id=run.user_message_id,
             content=user_msg_content,
             role="user",
         )
+    return show_reply_quote, user_msg_content
 
-    # Follow-up actions are a second LLM call. The interactive web/mobile path
-    # delivers the answer first and generates them in the background (see the
-    # WebSocket branch) so the user-visible result is never gated behind them.
-    # Workflow + bot-platform paths deliver via a single send with no spinner to
-    # unblock, so they attach follow-ups inline.
-    conversation_source = await _get_conversation_source(run.conversation_id, user_id)
-    is_ws_path = not run.workflow_id and not is_bot_platform(conversation_source)
 
-    if not is_ws_path:
-        follow_up_actions = await _safe_inline_follow_ups(
-            result_type=result_type,
-            notification_text=notification_text,
-            user_msg_content=user_msg_content,
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            message_id=bot_message.message_id,
-        )
-        if follow_up_actions:
-            bot_message.follow_up_actions = follow_up_actions
+async def _resolve_append_mode(
+    run: ExecutorRun,
+    bot_message: MessageModel,
+    tool_data: list[ToolDataEntry] | None,
+    *,
+    is_hil_resume: bool,
+) -> tuple[bool, list[ToolDataEntry] | None]:
+    """Merge a HIL-resumed result onto the original message where possible.
 
-    fresh_append = not is_hil_resume
-    if is_hil_resume:
-        merged_tool_data = await _merge_resumed_result(run, bot_message, tool_data)
-        if merged_tool_data is not None:
-            tool_data = merged_tool_data
-        else:
-            # Original bubble gone or update matched nothing. The approved
-            # action already RAN — append a fresh message rather than discard
-            # its report. A deleted conversation still 404s cleanly below.
-            log.warning(
-                f"{LogTag.AGENT} HIL-resumed delivery: original message unavailable,"
-                " appending a fresh one instead",
+    Returns ``(fresh_append, tool_data)`` — ``fresh_append`` False only when the
+    merge landed, in which case ``tool_data`` is the FULL merged card set.
+    """
+    if not is_hil_resume:
+        return True, tool_data
+    merged_tool_data = await _merge_resumed_result(run, bot_message, tool_data)
+    if merged_tool_data is not None:
+        return False, merged_tool_data
+    # Original bubble gone or update matched nothing. The approved action
+    # already RAN — append a fresh message rather than discard its report. A
+    # deleted conversation still 404s cleanly in the save.
+    log.warning(
+        f"{LogTag.AGENT} HIL-resumed delivery: original message unavailable,"
+        " appending a fresh one instead",
+        conversation_id=run.conversation_id,
+        original_message_id=bot_message.message_id,
+    )
+    bot_message.message_id = str(uuid4())
+    return True, tool_data
+
+
+async def _save_bot_message(run: ExecutorRun, bot_message: MessageModel) -> bool:
+    """Append the bot message to the conversation; False when it wasn't saved."""
+    try:
+        await update_messages(
+            UpdateMessagesRequest(
                 conversation_id=run.conversation_id,
-                original_message_id=bot_message.message_id,
+                messages=[bot_message],
+            ),
+            user=run.user,
+        )
+    except HTTPException as e:
+        if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping message save",
+                conversation_id=run.conversation_id,
             )
-            bot_message.message_id = str(uuid4())
-            fresh_append = True
-    if fresh_append:
-        try:
-            await update_messages(
-                UpdateMessagesRequest(
-                    conversation_id=run.conversation_id,
-                    messages=[bot_message],
-                ),
-                user=run.user,
-            )
-        except HTTPException as e:
-            if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
-                log.info(
-                    f"{LogTag.AGENT} conversation deleted, skipping message save",
-                    conversation_id=run.conversation_id,
-                )
-                return None, None
-            log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
-            return None, None
-        except Exception as e:
-            log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
-            return None, None
+            return False
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
+        return False
+    except Exception as e:
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
+        return False
+    return True
 
-    # Workflow run: the result was produced with no human watching, so deliver it
-    # as the proactive completion notification (multi-channel, "Done with X")
-    # carrying the real voiced result, instead of pushing to one conversation
-    # transport. The bot message is already saved above for "View Results".
-    if run.workflow_id:
-        # Successful, non-silent runs are delivered into the user's real
-        # messaging-platform conversations as normal bot messages (GAIA's voice,
-        # no notification chrome). The in-app badge below is a web-only heads-up.
-        if result_type != "error" and run.workflow_notify_on_completion:
-            await deliver_workflow_result_to_platforms(
-                user=run.user,
-                user_id=user_id,
-                notification_text=notification_text,
-                origin=_delivery_origin(run),
-            )
-        await _dispatch_workflow_notification(
-            msg_type=result_type,
-            workflow_id=run.workflow_id,
-            workflow_title=run.workflow_title,
-            conversation_id=run.conversation_id,
-            user_id=user_id,
-            message_id=bot_message.message_id,
-            notify_on_completion=run.workflow_notify_on_completion,
-        )
-        return notification_text, bot_message.message_id
 
-    # Deliver over exactly one transport, decided by the conversation's source.
-    # Bot conversations go to their platform's API; web/mobile/system go to the
-    # WebSocket push. (The web conversation list excludes bot sources, so a
-    # WebSocket push for a bot conversation would be dropped anyway.)
-    if is_bot_platform(conversation_source):
-        delivered = await deliver_message_to_platform(
-            conversation_source,
-            user_id,
-            notification_text,
-        )
-        transport = "platform"
-    else:
-        # Broadcast the answer NOW so the spinner clears, then generate follow-up
-        # actions in the background and push them as a second update on the same
-        # message (reuses conversation.new_message — the client upserts by id).
-        await _broadcast_bot_message(
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            bot_message=bot_message,
-            notification_text=notification_text,
-            tool_data=tool_data,
-            follow_up_actions=[],
-            task_id=run.task_id,
-            emit_task_id=run.is_queued,
-            show_reply_quote=show_reply_quote,
-            user_message_id=run.user_message_id,
-            user_msg_content=user_msg_content,
-        )
-        _spawn_deferred_follow_ups(
-            run=run,
-            bot_message=bot_message,
-            result_type=result_type,
-            tool_data=tool_data,
-            show_reply_quote=show_reply_quote,
-            user_msg_content=user_msg_content,
-        )
-        delivered = True
-        transport = "websocket"
-
+def _log_delivery_verdict(
+    *,
+    target: _DeliveryTarget,
+    message_id: str | None,
+    conversation_source: ConversationSource | None,
+    transport: str,
+    delivered: bool,
+) -> None:
+    """Record whether the saved result actually reached the user."""
     # Delivery is the last step that can silently lose a finished run: the answer
     # is saved to the conversation either way, so a failed send leaves a run whose
     # outcome is "success" and whose user got nothing. Put the verdict ON the
@@ -364,22 +470,21 @@ async def _narrate_and_deliver(
     if delivered:
         log.info(
             f"{LogTag.AGENT} deliver_result: delivered message",
-            message_id=bot_message.message_id,
-            task_id=run.task_id,
-            conversation_id=run.conversation_id,
+            message_id=message_id,
+            task_id=target.task_id,
+            conversation_id=target.conversation_id,
             conversation_source=conversation_source.value if conversation_source else None,
             transport=transport,
         )
     else:
         log.error(
             f"{LogTag.AGENT} deliver_result: result saved but NOT delivered to the user",
-            message_id=bot_message.message_id,
-            task_id=run.task_id,
-            conversation_id=run.conversation_id,
+            message_id=message_id,
+            task_id=target.task_id,
+            conversation_id=target.conversation_id,
             conversation_source=conversation_source.value if conversation_source else None,
             transport=transport,
         )
-    return notification_text, bot_message.message_id
 
 
 async def _merge_resumed_result(
@@ -572,10 +677,8 @@ async def _safe_inline_follow_ups(
     *,
     result_type: str,
     notification_text: str,
-    user_msg_content: str,
-    user_id: str,
-    conversation_id: str,
-    message_id: str,
+    target: _DeliveryTarget,
+    message_id: str | None,
 ) -> list[str]:
     """Build follow-up actions for the single-send path, swallowing failures.
 
@@ -588,15 +691,15 @@ async def _safe_inline_follow_ups(
         return await _build_follow_up_actions(
             msg_type=result_type,
             notification_text=notification_text,
-            user_msg_content=user_msg_content,
-            user_id=user_id,
-            conversation_id=conversation_id,
+            user_msg_content=target.user_msg_content,
+            user_id=target.user_id,
+            conversation_id=target.conversation_id,
         )
     except Exception as e:  # follow-ups are best-effort
         log.error(
             f"{LogTag.AGENT} deliver_result: failed to generate follow-up actions",
             error=str(e),
-            conversation_id=conversation_id,
+            conversation_id=target.conversation_id,
             message_id=message_id,
         )
         return []
@@ -637,36 +740,30 @@ async def _build_follow_up_actions(
 
 def _spawn_deferred_follow_ups(
     *,
-    run: ExecutorRun,
     bot_message: MessageModel,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
-    show_reply_quote: bool,
-    user_msg_content: str,
+    target: _DeliveryTarget,
 ) -> None:
     """Generate follow-up actions off the critical path and push them as a second
     update on the already-delivered message, so the answer isn't gated behind the
     extra LLM call."""
     spawn_background_task(
         _generate_and_push_follow_ups(
-            run=run,
             bot_message=bot_message,
             result_type=result_type,
             tool_data=tool_data,
-            show_reply_quote=show_reply_quote,
-            user_msg_content=user_msg_content,
+            target=target,
         )
     )
 
 
 async def _generate_and_push_follow_ups(
     *,
-    run: ExecutorRun,
     bot_message: MessageModel,
     result_type: str,
     tool_data: list[ToolDataEntry] | None,
-    show_reply_quote: bool,
-    user_msg_content: str,
+    target: _DeliveryTarget,
 ) -> None:
     # Runs detached from the executor's boundary and typically finishes after
     # that event has emitted — without its own boundary, the follow-up LLM
@@ -674,25 +771,24 @@ async def _generate_and_push_follow_ups(
     async with log_context(
         "follow_up_generation",
         trace_id=get_trace_id() or None,
-        conversation_id=run.conversation_id,
-        task_id=run.task_id,
+        conversation_id=target.conversation_id,
+        task_id=target.task_id,
     ):
-        user_id = run.user.get("user_id", "")
         try:
             follow_up_actions = await _build_follow_up_actions(
                 msg_type=result_type,
                 notification_text=bot_message.response,
-                user_msg_content=user_msg_content,
-                user_id=user_id,
-                conversation_id=run.conversation_id,
+                user_msg_content=target.user_msg_content,
+                user_id=target.user_id,
+                conversation_id=target.conversation_id,
             )
             if not follow_up_actions:
                 return
 
             bot_message.follow_up_actions = follow_up_actions
             persisted = await _persist_follow_up_actions(
-                user_id=user_id,
-                conversation_id=run.conversation_id,
+                user_id=target.user_id,
+                conversation_id=target.conversation_id,
                 message_id=bot_message.message_id,
                 follow_up_actions=follow_up_actions,
             )
@@ -701,17 +797,11 @@ async def _generate_and_push_follow_ups(
                 # only to vanish on reload — drop them instead.
                 return
             await _broadcast_bot_message(
-                user_id=user_id,
-                conversation_id=run.conversation_id,
+                target=target,
                 bot_message=bot_message,
                 notification_text=bot_message.response,
                 tool_data=tool_data,
                 follow_up_actions=follow_up_actions,
-                task_id=run.task_id,
-                emit_task_id=run.is_queued,
-                show_reply_quote=show_reply_quote,
-                user_message_id=run.user_message_id,
-                user_msg_content=user_msg_content,
             )
         except Exception as e:
             # Non-critical enhancement — the answer is already delivered. Log loudly
@@ -760,12 +850,9 @@ async def _persist_follow_up_actions(
 async def _dispatch_workflow_notification(
     *,
     msg_type: str,
-    workflow_id: str,
-    workflow_title: str,
-    conversation_id: str,
-    user_id: str,
-    message_id: str,
-    notify_on_completion: bool = True,
+    workflow: _WorkflowRef,
+    target: _DeliveryTarget,
+    message_id: str | None,
 ) -> None:
     """Send the proactive workflow completion/failure notification.
 
@@ -783,44 +870,38 @@ async def _dispatch_workflow_notification(
 
     if msg_type == "error":
         await send_workflow_failure_notification(
-            workflow_id=workflow_id,
-            workflow_title=workflow_title,
-            user_id=user_id,
+            workflow_id=workflow.workflow_id,
+            workflow_title=workflow.workflow_title,
+            user_id=target.user_id,
         )
-    elif not notify_on_completion:
+    elif not workflow.notify_on_completion:
         log.info(
             f"{LogTag.AGENT} deliver_result: completion notification skipped (workflow is silent)",
-            workflow_id=workflow_id,
+            workflow_id=workflow.workflow_id,
             message_id=message_id,
         )
         return
     else:
         await send_workflow_completion_notification(
-            workflow_id=workflow_id,
-            workflow_title=workflow_title,
-            conversation_id=conversation_id,
-            user_id=user_id,
+            workflow_id=workflow.workflow_id,
+            workflow_title=workflow.workflow_title,
+            conversation_id=target.conversation_id,
+            user_id=target.user_id,
         )
     log.info(
         f"{LogTag.AGENT} deliver_result: workflow notification dispatched",
-        workflow_id=workflow_id,
+        workflow_id=workflow.workflow_id,
         message_id=message_id,
     )
 
 
 async def _broadcast_bot_message(
     *,
-    user_id: str,
-    conversation_id: str,
+    target: _DeliveryTarget,
     bot_message: MessageModel,
     notification_text: str,
     tool_data: list[ToolDataEntry] | None,
     follow_up_actions: list[str],
-    task_id: str | None,
-    emit_task_id: bool,
-    show_reply_quote: bool,
-    user_message_id: str | None,
-    user_msg_content: str,
 ) -> None:
     """Push the bot message to web/mobile/system clients over the WebSocket."""
     ws_payload: dict[str, Any] = {
@@ -839,19 +920,19 @@ async def _broadcast_bot_message(
     # ``prepare_run_from_item``). A plain live run's task_id never had a
     # placeholder, so emitting it would make the client's replaceMessage(task_id)
     # target a key that doesn't match the persisted message — a wrong-key delete.
-    if task_id and emit_task_id:
-        ws_payload["task_id"] = task_id
-    if show_reply_quote:
+    if target.task_id and target.emit_task_id:
+        ws_payload["task_id"] = target.task_id
+    if target.show_reply_quote:
         ws_payload["replyToMessage"] = {
-            "id": user_message_id,
-            "content": user_msg_content,
+            "id": target.user_message_id,
+            "content": target.user_msg_content,
             "role": "user",
         }
     await _broadcast_message(
-        user_id,
+        target.user_id,
         {
             "type": "conversation.new_message",
-            "conversation_id": conversation_id,
+            "conversation_id": target.conversation_id,
             "message": ws_payload,
         },
     )

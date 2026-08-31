@@ -21,6 +21,14 @@ OPENROUTER_PROVIDER = "openrouter"
 
 DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 
+# The ``response_metadata`` key carrying the name of the upstream that actually
+# served an OpenRouter call ("Baidu", "StreamLake", ...), as opposed to
+# ``model_provider``, which LangChain owns and which OpenRouter's integration
+# stamps with the aggregator's own name. Set by
+# ``openrouter_provider_name_patch`` and read by anything attributing a call to
+# the vendor that served it.
+PROVIDER_NAME_METADATA_KEY = "provider_name"
+
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
 # storage grows ~O(N) instead of the O(N²) of full-snapshot channels. Lower =

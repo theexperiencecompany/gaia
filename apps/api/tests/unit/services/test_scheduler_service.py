@@ -522,6 +522,24 @@ class TestEnqueueTask:
         # Should be in the future (now + 120s buffer)
         assert defer_until > datetime.now(UTC)
 
+    async def test_a_past_due_fire_keeps_its_own_job_key(self, service):
+        """Seen live: a workflow created on a cron boundary had next_run == now.
+        The enqueue shifted the fire 120 s out but keyed the ARQ job on the
+        SHIFTED time while stamping the context with the armed time. Activation
+        then armed the real next occurrence at that same shifted minute, and
+        ARQ deduped it against the past-due job. The one job that fired carried
+        the stale stamp, the claim rejected it, and the workflow never fired
+        again. The job key must name the occurrence the job was armed for."""
+        past = datetime.now(UTC) - timedelta(seconds=30)
+        mock_job = MagicMock(job_id="job1")
+        service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
+
+        await service._enqueue_task("task1", past)
+
+        call_args = service.arq_pool.enqueue_job.call_args
+        assert call_args[1]["_job_id"] == f"test_job:task1:{int(past.timestamp())}"
+        assert call_args[1]["_defer_until"] > datetime.now(UTC)
+
     async def test_enqueue_naive_datetime_gets_utc(self, service):
         naive_future = datetime(2099, 1, 1, 12, 0, 0)  # no tzinfo
         mock_job = MagicMock(job_id="job1")

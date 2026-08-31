@@ -240,12 +240,14 @@ def extract_message_cost(message: AIMessage) -> float | None:
 def extract_generation_id(message: AIMessage) -> str | None:
     """The upstream generation id for this call, when the provider returned one.
 
-    This is the ONLY handle we have on *which upstream served the request*.
-    OpenRouter names the serving upstream in a ``provider`` response field, but
-    ``ChatOpenRouter`` keeps only ``id`` / ``cost`` / ``system_fingerprint`` /
-    ``native_finish_reason`` and stamps ``model_provider`` as the literal
-    ``"openrouter"`` — so the aggregator's own name reaches us and the upstream's
-    never does. ``id`` does survive both paths (``_create_chat_result`` puts it in
+    A second handle on *which upstream served the request*, alongside the name
+    itself. OpenRouter names the serving upstream in a ``provider`` response
+    field; ``ChatOpenRouter`` drops it and stamps ``model_provider`` as the
+    literal ``"openrouter"``, so the aggregator's own name is all that reaches
+    us out of the box — ``openrouter_provider_name_patch`` is what restores the
+    real one, under ``response_metadata[PROVIDER_NAME_METADATA_KEY]``. The id
+    stays worth carrying because it also resolves cost and routing detail the
+    name alone does not. ``id`` survives both paths (``_create_chat_result`` puts it in
     ``llm_output``, which ``langchain_core`` merges into ``response_metadata``;
     ``_astream``/``_stream`` set ``generation_info["id"]`` directly), and it
     resolves to the serving upstream through OpenRouter's generation-metadata

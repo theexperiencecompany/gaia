@@ -60,6 +60,7 @@ async def create_all_indexes() -> None:
             create_e2b_sandbox_indexes(),
             create_hil_approvals_indexes(),
             create_pending_platform_registration_indexes(),
+            create_playbook_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -91,6 +92,7 @@ async def create_all_indexes() -> None:
             "e2b_sandboxes",
             "hil_approvals",
             "pending_platform_registrations",
+            "playbooks",
         ]
 
         index_results = {}
@@ -659,6 +661,26 @@ async def create_pending_platform_registration_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating pending platform registration indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_playbook_indexes() -> None:
+    """Create indexes for the playbooks collection.
+
+    Unique on (workflow_id, user_id): "one active playbook per workflow" is the
+    invariant the replay path rests on, and the repository's upsert relies on
+    the index to reject the loser of two concurrent first authorings. The same
+    index serves the per-run lookup.
+    """
+    playbooks_collection = get_async_collection("playbooks")
+    try:
+        await playbooks_collection.create_index([("workflow_id", 1), ("user_id", 1)], unique=True)
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating playbook indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

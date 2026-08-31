@@ -20,6 +20,13 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 
+from app.agents.core.subagents.call_record import is_error_envelope, parsed_result
+from app.constants.agents import (
+    PLAYBOOK_CHECK_TAG,
+    PLAYBOOK_DECISION_NUDGE_MESSAGE,
+    PLAYBOOK_DECISION_TOOL_NAMES,
+)
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NON_WORK_TOOLS,
     COMPLETION_NUDGE_MESSAGE,
@@ -35,6 +42,12 @@ def _is_completion_nudge(message: AnyMessage) -> bool:
     )
 
 
+def _is_playbook_nudge(message: AnyMessage) -> bool:
+    return isinstance(message, HumanMessage) and (
+        extract_text_content(message.content) == PLAYBOOK_DECISION_NUDGE_MESSAGE
+    )
+
+
 def current_delegation(state: State) -> list[AnyMessage]:
     """The messages belonging to the delegation that is running right now.
 
@@ -43,14 +56,18 @@ def current_delegation(state: State) -> list[AnyMessage]:
     nudges — and the guard switches itself off for every delegation after the
     first. The boundary is the newest genuine task turn: the ``HumanMessage``
     ``build_initial_messages`` appends per delegation. The clock message and
-    the nudge itself arrive as ``HumanMessage`` too, so both are skipped over.
+    the nudges themselves arrive as ``HumanMessage`` too, so all are skipped over.
     """
     messages = state.get("messages", [])
     for index in range(len(messages) - 1, -1, -1):
         message = messages[index]
         if not isinstance(message, HumanMessage):
             continue
-        if message.additional_kwargs.get("time_context") or _is_completion_nudge(message):
+        if (
+            message.additional_kwargs.get("time_context")
+            or _is_completion_nudge(message)
+            or _is_playbook_nudge(message)
+        ):
             continue
         return list(messages[index:])
     return list(messages)
@@ -88,3 +105,50 @@ def work_looks_unfinished(state: State) -> bool:
         for m in current_delegation(state)
     )
     return not completed_work
+
+
+def _briefed(task_text: str) -> bool:
+    """The brief opens a paragraph with the tag; the same string quoted inside a
+    user's own request does not."""
+    return any(line.strip() == PLAYBOOK_CHECK_TAG for line in task_text.splitlines())
+
+
+def playbook_nudges_spent(state: State) -> int:
+    """Decision nudges already injected into the CURRENT delegation."""
+    return sum(1 for message in current_delegation(state) if _is_playbook_nudge(message))
+
+
+def _is_stop(message: AnyMessage) -> bool:
+    """A plain-text reply or a ``finish_task`` result: the executor's two ways
+    to end a run. A tool-calling turn is not a stop; the run is still going."""
+    if isinstance(message, AIMessage):
+        return not message.tool_calls
+    return isinstance(message, ToolMessage) and message.name == FINISH_TASK_NAME
+
+
+def playbook_decision_pending(state: State) -> bool:
+    """True when this delegation was briefed for a playbook decision and is
+    stopping, in plain text or through ``finish_task``, without having made one.
+
+    The brief is recognised by its tag on the task turn. A decision is a call
+    to one of the decision tools whose result is not an error envelope: a
+    refused ``write_playbook`` leaves the run exactly where it was, and the
+    brief says so. Seen live: a briefed run that ended with ``finish_task`` and
+    no decision was never nudged, so no decline was counted and the same brief
+    came back on every later fire.
+    """
+    delegation = current_delegation(state)
+    if not delegation:
+        return False
+    task, last = delegation[0], delegation[-1]
+    if not isinstance(task, HumanMessage) or not _briefed(extract_text_content(task.content)):
+        return False
+    if not _is_stop(last):
+        return False
+    return not any(
+        isinstance(m, ToolMessage)
+        and m.name in PLAYBOOK_DECISION_TOOL_NAMES
+        and m.status != "error"
+        and not is_error_envelope(parsed_result(m))
+        for m in delegation
+    )

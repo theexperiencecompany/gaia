@@ -19,7 +19,13 @@ import pytest
 from app.agents.core.background import (
     executor_queue as eq,
     executor_runner as er,
+    result_delivery as rd,
     session as sess,
+)
+from app.agents.core.background.executor_capture import (
+    await_executor_done,
+    drain_executor_tool_data,
+    teardown_executor_capture,
 )
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
@@ -28,9 +34,11 @@ from app.agents.core.background.executor_queue import (
 )
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
     create_session,
     get_session,
+    mark_executor_spawned,
 )
 from app.agents.core.nodes import executor_status
 from app.constants.agents import AgentTag, wrap_agent_payload
@@ -113,7 +121,7 @@ class TestCancelledRouting:
 
         # Comms' context must record the cancellation regardless of card ownership.
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
-        boundaries.persist_cancelled.assert_awaited_once_with(run)
+        boundaries.persist_cancelled.assert_awaited_once_with(run, [])
         boundaries.deliver.assert_not_awaited()
         # Queued stream is closed silently: no [DONE], no complete_stream.
         boundaries.stream_manager.publish_chunk.assert_not_awaited()
@@ -150,7 +158,7 @@ class TestCancelledRouting:
         await er._finalize_executor_run(run, TASK, "", "final")
 
         boundaries.record_cancel.assert_awaited_once_with(run.conversation_id, run.task_id, TASK)
-        boundaries.persist_cancelled.assert_awaited_once_with(run)
+        boundaries.persist_cancelled.assert_awaited_once_with(run, [])
         boundaries.deliver.assert_not_awaited()
 
     async def test_cancelled_run_skips_returned_note(self, boundaries) -> None:
@@ -172,7 +180,7 @@ class TestCompletedRouting:
 
         await er._finalize_executor_run(run, TASK, "result", "final")
 
-        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE)
+        boundaries.deliver.assert_awaited_once_with(run, "result", "final", CARD_NOTE, tool_data=[])
         # A completed run narrates and delivers — it never records a cancellation.
         boundaries.record_cancel.assert_not_awaited()
         boundaries.persist_cancelled.assert_not_awaited()
@@ -227,6 +235,71 @@ class TestDoneSignalAndOrdering:
         await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "txt", "final")
 
         assert done_state_at_note_time == [False]
+
+
+class TestBackgroundRunCardsSurviveTheCommsDrain:
+    """A scheduled workflow's tool cards must reach the bot message it saves.
+
+    The comms silent path and the executor's delivery read the run's cards off
+    the SAME session. ``call_agent_silent`` waits on ``done_event``, drains, and
+    tears the session down in its ``finally`` — so a delivery that reads the
+    session AFTER signalling done finds nothing left. The symptom: a workflow
+    run whose execution record listed every tool call saved a bot message with
+    an empty ``tool_data``, and the chat showed no "Used N tools" thread.
+    """
+
+    @staticmethod
+    def _delivery_seams(stack: ExitStack) -> AsyncMock:
+        """Patch delivery's I/O only; the real card-attaching logic runs."""
+        stack.enter_context(patch.object(er, "StreamManager")).is_cancelled = AsyncMock(
+            return_value=False
+        )
+        stack.enter_context(patch.object(er, "release_lock_if_owned", new_callable=AsyncMock))
+        stack.enter_context(
+            patch.object(er, "reclaim_stranded_task", new_callable=AsyncMock, return_value=None)
+        )
+        stack.enter_context(
+            patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done")
+        )
+        stack.enter_context(
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[])
+        )
+        stack.enter_context(
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
+        )
+        stack.enter_context(
+            patch.object(rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock)
+        )
+        stack.enter_context(
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
+        )
+        return stack.enter_context(patch.object(rd, "update_messages", new_callable=AsyncMock))
+
+    async def test_a_workflow_run_saves_the_cards_it_produced(self) -> None:
+        session = create_session("s1", RunKind.LIVE)
+        mark_executor_spawned("s1")
+        session.tool_events.append(
+            {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
+        )
+        run = _run(RunKind.LIVE, workflow_id="wf-1", source_category=SourceCategory.BG)
+
+        async def comms_silent_path() -> None:
+            """What ``call_agent_silent`` does around a workflow's graph run."""
+            await await_executor_done("s1")
+            drain_executor_tool_data("s1")
+            teardown_executor_capture("s1")
+
+        with ExitStack() as stack:
+            save = self._delivery_seams(stack)
+            # The comms consumer is already waiting when the run finalizes, exactly
+            # as it is in a workflow fire.
+            await asyncio.gather(
+                comms_silent_path(),
+                er._finalize_executor_run(run, TASK, "the digest", "final"),
+            )
+
+        saved = save.await_args.args[0].messages[0]
+        assert [entry["tool_name"] for entry in (saved.tool_data or [])] == ["tool_calls_data"]
 
 
 class TestQueueLockBugs:
@@ -544,11 +617,13 @@ class TestExecutorRunSource:
     def test_the_source_category_comes_from_the_configurable(self) -> None:
         run = ExecutorRun.from_configurable(
             {"user_id": "u1", "source_category": "bot"},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="task-1",
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
         )
 
         assert run.source_category is SourceCategory.BOT
@@ -557,11 +632,13 @@ class TestExecutorRunSource:
     def test_a_configurable_with_no_source_is_background_work(self) -> None:
         run = ExecutorRun.from_configurable(
             {"user_id": "u1"},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="task-1",
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
         )
 
         assert run.source_category is SourceCategory.BG

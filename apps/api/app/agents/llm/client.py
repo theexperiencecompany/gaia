@@ -290,10 +290,20 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    return _openrouter_wire_configurables(_build_custom_llm())
+
+
+def _build_custom_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
+    """The bare custom-endpoint chat model, before the configurable wiring.
+
+    Split out because a structured one-shot needs the model itself:
+    ``with_structured_output`` lives on the chat model, not on the configurable
+    wrapper ``init_custom_llm`` hands back.
+    """
     llm = without_sdk_retry(
         ChatOpenRouter(
             model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-            temperature=DEFAULT_LLM_TEMPERATURE,
+            temperature=temperature,
             streaming=True,
             stream_usage=True,
             max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
@@ -307,7 +317,7 @@ def init_custom_llm() -> LanguageModelLike:
     # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
     # and has no curated registry entry, so pin the shared default window here.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return _openrouter_wire_configurables(llm)
+    return llm
 
 
 def init_llm(
@@ -779,6 +789,18 @@ class LLMInvokeOptions:
     sticky_session_id: str | None = None
 
 
+@dataclass(frozen=True)
+class StructuredCallOptions:
+    """The optional settings of :func:`ainvoke_structured` and
+    :func:`ainvoke_structured_gemini`."""
+
+    temperature: float = DEFAULT_LLM_TEMPERATURE
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
+
+
+_DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
+
+
 async def ainvoke_llm(
     primary: Runnable,
     messages: LanguageModelInput,
@@ -1166,14 +1188,50 @@ def _aux_structured_runnable(
     return structured
 
 
+def background_structured_runnable(
+    schema: type[_StructuredT],
+    *,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    config: RunnableConfig | None = None,
+) -> Runnable:
+    """A structured one-shot on the provider THIS deployment actually runs on.
+
+    ``_aux_structured_runnable`` is hardwired to OpenRouter, which is right when
+    that is the deployment's lane and wrong when it is not. A deployment pointed
+    at another endpoint replays a playbook's tool calls perfectly and then cannot
+    write the run's result, because the one model call in the whole replay goes
+    somewhere it has no key for.
+
+    So when the custom endpoint is what this deployment runs on, the one-shot
+    runs there too. The aux alias is deliberately NOT applied in that case: it
+    names a model id only the OpenRouter catalogue serves, and re-pointing a
+    custom endpoint at it asks for a model that endpoint does not have.
+
+    Sim mode wins over the custom endpoint, as in every other factory here
+    (``init_custom_llm``, ``get_default_llm``): a sim run with DEV_LLM_* set
+    must land on the scripted stub, not on a real endpoint.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature).with_structured_output(schema)
+    if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
+        # Bounded like the helper lane, and by model_copy for the reason
+        # get_helper_llm gives. Unbounded, a replay's narration ran to the
+        # endpoint's 64k output cap, took 257 seconds, and delivered a result
+        # cut mid-sentence; a one-shot that writes a brief never needs that.
+        bounded = _build_custom_llm(temperature).model_copy(
+            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
+        )
+        return bounded.with_structured_output(schema)
+    return _aux_structured_runnable(schema, temperature, config)
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
     *,
     label: str,
-    temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
@@ -1196,11 +1254,11 @@ async def ainvoke_structured(
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(schema, temperature, config),
+            _aux_structured_runnable(schema, options.temperature, config),
             prompt,
             config=config,
             label=label,
-            options=LLMInvokeOptions(timeout=timeout),
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )
 
@@ -1216,9 +1274,8 @@ async def ainvoke_structured_gemini(
     prompt: LanguageModelInput,
     *,
     label: str,
-    temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
     """The structured one-shot call for the memory pipeline: aux lane primary,
     direct Gemini as the fallback.
@@ -1253,35 +1310,34 @@ async def ainvoke_structured_gemini(
                 schema,
                 prompt,
                 label=label,
-                temperature=temperature,
                 config=config,
-                timeout=timeout,
+                options=options,
             )
         return cast(
             _StructuredT,
             await ainvoke_llm(
-                _memory_structured_runnable(schema, temperature),
+                _memory_structured_runnable(schema, options.temperature),
                 prompt,
                 config=config,
                 label=label,
-                options=LLMInvokeOptions(timeout=timeout),
+                options=LLMInvokeOptions(timeout=options.timeout),
             ),
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     fallback: LLMFallback = (
-        (lambda: _memory_structured_runnable(schema, temperature))
+        (lambda: _memory_structured_runnable(schema, options.temperature))
         if memory_lane_available()
         else None
     )
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(schema, temperature, config),
+            _aux_structured_runnable(schema, options.temperature, config),
             prompt,
             fallback=fallback,
             config=config,
             label=label,
-            options=LLMInvokeOptions(timeout=timeout),
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )

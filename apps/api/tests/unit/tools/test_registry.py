@@ -1,17 +1,21 @@
 """Unit tests for the tool registry (DynamicToolDict, ToolCategory, ToolRegistry)."""
 
 from collections.abc import Mapping
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.tools.core.registry import (
+    CategoryOptions,
+    CategoryRisk,
     DynamicToolDict,
     Tool,
     ToolCategory,
     ToolRegistry,
 )
+from shared.py.wide_events import log
 
 
 def _make_mock_tool(name: str) -> BaseTool:
@@ -19,6 +23,27 @@ def _make_mock_tool(name: str) -> BaseTool:
     tool = MagicMock(spec=BaseTool)
     tool.name = name
     return tool
+
+
+def _placement(category: ToolCategory) -> dict[str, object]:
+    """Every placement/visibility flag a category carries, as one comparable dict."""
+    return {
+        "space": category.space,
+        "require_integration": category.require_integration,
+        "integration_name": category.integration_name,
+        "is_delegated": category.is_delegated,
+        "internal": category.internal,
+    }
+
+
+#: What a category gets when it passes no CategoryOptions at all.
+_DEFAULT_PLACEMENT: dict[str, object] = {
+    "space": "general",
+    "require_integration": False,
+    "integration_name": None,
+    "is_delegated": False,
+    "internal": False,
+}
 
 
 class TestToolCategory:
@@ -96,10 +121,12 @@ class TestToolCategory:
     def test_category_metadata(self):
         category = ToolCategory(
             name="gmail",
-            space="email",
-            require_integration=True,
-            integration_name="gmail",
-            is_delegated=True,
+            options=CategoryOptions(
+                space="email",
+                require_integration=True,
+                integration_name="gmail",
+                is_delegated=True,
+            ),
         )
         assert category.name == "gmail"
         assert category.space == "email"
@@ -208,7 +235,7 @@ class TestToolRegistry:
     def test_add_category(self):
         registry = ToolRegistry()
         tools = [_make_mock_tool("tool_a"), _make_mock_tool("tool_b")]
-        registry._add_category("my_cat", tools=tools, space="custom_space")
+        registry._add_category("my_cat", tools=tools, options=CategoryOptions(space="custom_space"))
 
         cat = registry.get_category("my_cat")
         assert cat is not None
@@ -241,8 +268,10 @@ class TestToolRegistry:
             "mixed",
             core_tools=[_make_mock_tool("core_gated"), _make_mock_tool("core_plain")],
             tools=[_make_mock_tool("reg_dangerous")],
-            destructive_tools={"reg_dangerous", "core_gated"},
-            always_gate_tools={"core_gated"},
+            risk=CategoryRisk(
+                destructive_tools={"reg_dangerous", "core_gated"},
+                always_gate_tools={"core_gated"},
+            ),
         )
 
         stamps = {t.name: t for t in registry.get_category("mixed").tools}
@@ -269,8 +298,12 @@ class TestToolRegistry:
 
     def test_get_category_by_space(self):
         registry = ToolRegistry()
-        registry._add_category("cat1", tools=[_make_mock_tool("t1")], space="email")
-        registry._add_category("cat2", tools=[_make_mock_tool("t2")], space="todos")
+        registry._add_category(
+            "cat1", tools=[_make_mock_tool("t1")], options=CategoryOptions(space="email")
+        )
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("t2")], options=CategoryOptions(space="todos")
+        )
 
         result = registry.get_category_by_space("email")
         assert result is not None
@@ -308,7 +341,9 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_includes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("b")], options=CategoryOptions(is_delegated=True)
+        )
 
         all_tools = registry.get_all_tools_for_search(include_delegated=True)
         names = [t.name for t in all_tools]
@@ -318,7 +353,9 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_excludes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
+        registry._add_category(
+            "cat2", tools=[_make_mock_tool("b")], options=CategoryOptions(is_delegated=True)
+        )
 
         non_delegated = registry.get_all_tools_for_search(include_delegated=False)
         names = [t.name for t in non_delegated]
@@ -329,7 +366,9 @@ class TestToolRegistry:
         registry = ToolRegistry()
         registry._add_category("builtin", tools=[_make_mock_tool("a")])
         registry._add_category(
-            "integration", tools=[_make_mock_tool("b")], require_integration=True
+            "integration",
+            tools=[_make_mock_tool("b")],
+            options=CategoryOptions(require_integration=True),
         )
 
         core_cats = registry.get_core_categories()
@@ -579,6 +618,50 @@ class TestToolRegistryAsync:
             tool_kit="GMAIL", exclude_tools=None
         )
 
+    async def test_register_provider_tools_pins_placement_and_curated_risk(self):
+        """A provider category is integration-gated, delegated to its subagent,
+        parked in the caller's space and named after its toolkit — retrieval,
+        the /tools listing and subagent binding all key on those four flags.
+
+        Its HIL risk comes from the curated set for that toolkit, so an
+        uncurated ``None`` would hand every reviewed provider tool back to the
+        LLM classifier at gate time.
+        """
+        fake_tools = [
+            _make_mock_tool("GMAIL_SEND_EMAIL"),
+            _make_mock_tool("GMAIL_FETCH_EMAILS"),
+        ]
+        mock_composio_service = MagicMock()
+        mock_composio_service.get_tools = AsyncMock(return_value=fake_tools)
+
+        registry = ToolRegistry()
+
+        with (
+            patch(
+                "app.agents.tools.core.registry.get_composio_service",
+                return_value=mock_composio_service,
+            ),
+            patch.object(registry, "_index_category_tools", new=AsyncMock(return_value=None)),
+        ):
+            category = await registry.register_provider_tools(
+                toolkit_name="GMAIL",
+                space_name="email",
+            )
+
+        assert _placement(category) == {
+            "space": "email",
+            "require_integration": True,
+            "integration_name": "GMAIL",
+            "is_delegated": True,
+            "internal": False,
+        }
+        # GMAIL_SEND_EMAIL is in the curated destructive set for the toolkit and
+        # GMAIL_FETCH_EMAILS is not; None for either means "ask the classifier".
+        assert {tool.name: tool.destructive for tool in category.tools} == {
+            "GMAIL_SEND_EMAIL": True,
+            "GMAIL_FETCH_EMAILS": False,
+        }
+
     async def test_register_provider_tools_skips_existing_category(self):
         """register_provider_tools() must not re-register an already-loaded toolkit."""
         registry = ToolRegistry()
@@ -604,6 +687,229 @@ class TestToolRegistryAsync:
     # path lives in tests/integration/agents/test_subagent_handoff.py.
 
 
+@pytest.mark.unit
+class TestInitializeCategories:
+    """The category map itself, which nothing asserted before.
+
+    ``_initialize_categories`` is the single place every in-repo tool is bound
+    to a category, and the category is what retrieval, the HIL risk gate and the
+    frontend icon all key on. A registration silently dropped or renamed here
+    makes a tool unreachable rather than broken, so nothing fails loudly.
+    """
+
+    @pytest.fixture
+    def registry(self) -> ToolRegistry:
+        registry = ToolRegistry()
+        registry._initialize_categories()
+        return registry
+
+    #: One tool per category, so a dropped or renamed registration is caught.
+    EXPECTED: ClassVar[dict[str, str]] = {
+        "write_playbook": "playbooks",
+        "read_playbook": "playbooks",
+        "decline_playbook": "playbooks",
+        "disable_playbook": "playbooks",
+        "create_tracked_todo": "tracked_todos",
+        "finish_task": "control",
+    }
+
+    def test_every_named_tool_lands_in_its_category(self, registry: ToolRegistry) -> None:
+        for tool_name, category in self.EXPECTED.items():
+            assert registry.get_category_of_tool(tool_name) == category, (
+                f"{tool_name} must stay in the {category!r} category"
+            )
+
+    def test_the_playbook_category_holds_exactly_its_four_tools(
+        self, registry: ToolRegistry
+    ) -> None:
+        names = {tool.name for tool in registry._categories["playbooks"].tools}
+
+        assert names == {"write_playbook", "read_playbook", "decline_playbook", "disable_playbook"}
+
+    def test_playbook_tools_are_curated_as_non_destructive(self, registry: ToolRegistry) -> None:
+        """An empty set and ``None`` mean different things at the HIL gate.
+
+        ``None`` sends a tool to the LLM risk classifier; an explicit empty set
+        says "curated, none of these are destructive". Writing a playbook has no
+        side effect on the user's data, so it must be the latter — passing None
+        would put an in-repo tool back in front of the classifier on every call.
+        """
+        for tool in registry._categories["playbooks"].tools:
+            assert tool.destructive is False, (
+                f"{tool.name} must be curated non-destructive, not left to the classifier"
+            )
+
+
+@pytest.mark.unit
+class TestInitializedCategoryContract:
+    """Every literal ``_initialize_categories`` hands to a category, pinned.
+
+    The registry is built once at startup and nothing else re-derives these
+    values, so a nulled ``space``, a dropped ``is_delegated``, a case-mangled
+    ``integration_name`` or a lost tool list makes a tool land in the wrong
+    space or vanish rather than break — no caller fails loudly.
+    """
+
+    @pytest.fixture
+    def registry(self) -> ToolRegistry:
+        registry = ToolRegistry()
+        registry._initialize_categories()
+        return registry
+
+    #: category name -> the placement fields that differ from _DEFAULT_PLACEMENT.
+    PLACEMENT_OVERRIDES: ClassVar[dict[str, dict[str, object]]] = {
+        "search": {},
+        "documents": {},
+        "notifications": {},
+        "account": {},
+        "tracked_todos": {"space": "tasks"},
+        "todos": {"space": "todos", "integration_name": "todos", "is_delegated": True},
+        "reminders": {
+            "space": "reminders",
+            "integration_name": "reminders",
+            "is_delegated": True,
+        },
+        "skills": {"space": "skills", "integration_name": "skills", "is_delegated": True},
+        "workflows": {},
+        "playbooks": {},
+        "control": {"internal": True},
+        "support": {},
+        "billing": {},
+        "manual": {},
+        "memory": {},
+        "integrations": {},
+        "integration_instructions": {"internal": True},
+        "development": {"internal": True},
+        "creative": {},
+        "weather": {},
+        "context": {},
+        "desktop": {"space": "desktop"},
+    }
+
+    def test_the_whole_category_placement_map_is_pinned(self, registry: ToolRegistry) -> None:
+        expected = {
+            name: {**_DEFAULT_PLACEMENT, **overrides}
+            for name, overrides in self.PLACEMENT_OVERRIDES.items()
+        }
+        actual = {
+            name: _placement(category)
+            for name, category in registry.get_all_category_objects().items()
+        }
+
+        assert actual == expected
+
+    def test_single_purpose_categories_hold_exactly_their_tools(
+        self, registry: ToolRegistry
+    ) -> None:
+        """These four categories are registered on one line each, so a dropped
+        ``tools=`` argument leaves a silently empty category behind."""
+        names = {
+            name: {tool.name for tool in registry._categories[name].tools}
+            for name in ("manual", "memory", "weather", "context")
+        }
+
+        assert names == {
+            "manual": {"read_manual"},
+            "memory": {
+                "add_memory",
+                "search_memory",
+                "update_memory",
+                "forget_memory",
+                "search_journal",
+                "search_conversations",
+                "get_journal",
+                "read_memory_document",
+                "update_memory_document",
+            },
+            "weather": {"get_weather"},
+            "context": {"gather_context"},
+        }
+
+    def test_the_two_destructive_built_ins_are_stamped_alone(self, registry: ToolRegistry) -> None:
+        """``execute_workflow`` starts an autonomous run and
+        ``connect_integration`` connects an external account; every sibling is
+        reversible or read-only. A mangled member name in either curated set
+        downgrades the one tool that must stop at the HIL gate to safe.
+        """
+        workflows = {
+            tool.name: tool.destructive for tool in registry._categories["workflows"].tools
+        }
+        integrations = {
+            tool.name: tool.destructive for tool in registry._categories["integrations"].tools
+        }
+
+        assert workflows == {
+            "search_triggers": False,
+            "create_workflow": False,
+            "list_workflows": False,
+            "get_workflow": False,
+            "execute_workflow": True,
+            "pause_workflow": False,
+            "resume_workflow": False,
+            "edit_workflow": False,
+        }
+        assert integrations == {
+            "list_integrations": False,
+            "suggest_integrations": False,
+            "connect_integration": True,
+            "check_integrations_status": False,
+        }
+
+
+@pytest.mark.unit
+class TestAddCategoryWideEvent:
+    """``_add_category`` reports the category it just built on the wide event.
+
+    The registry is assembled once at startup, so this is the only record of
+    which space a category landed in and whether it replaced an earlier
+    registration — the fields are read from production events, not from code.
+    """
+
+    def test_the_reported_category_matches_what_was_registered(self):
+        registry = ToolRegistry()
+        events: list[dict[str, object]] = []
+        emitted: list[tuple[str, dict[str, object]]] = []
+
+        with (
+            patch.object(log, "set", lambda **kwargs: events.append(kwargs)),
+            patch.object(log, "info", lambda message, **kwargs: emitted.append((message, kwargs))),
+        ):
+            registry._add_category(
+                "logged",
+                tools=[_make_mock_tool("regular")],
+                core_tools=[_make_mock_tool("core")],
+                options=CategoryOptions(space="custom_space"),
+            )
+            registry._add_category(
+                "logged",
+                tools=[_make_mock_tool("replacement")],
+                options=CategoryOptions(space="custom_space"),
+            )
+
+        assert [event["tool_category"] for event in events] == [
+            {
+                "name": "logged",
+                "space": "custom_space",
+                "tools_in": 1,
+                "core_tools_in": 1,
+                "final_count": 2,
+                "replacing": False,
+                "prior_tools_count": 0,
+            },
+            {
+                "name": "logged",
+                "space": "custom_space",
+                "tools_in": 1,
+                "core_tools_in": 0,
+                "final_count": 1,
+                "replacing": True,
+                "prior_tools_count": 2,
+            },
+        ]
+        assert [kwargs["space"] for _, kwargs in emitted] == ["custom_space", "custom_space"]
+
+
+@pytest.mark.unit
 class TestAddCategoryOptions:
     """``_add_category`` forwards its keyword options to ``ToolCategory`` and
     nothing else decides their defaults (mutation survivors 2026-08-28: the
@@ -623,11 +929,13 @@ class TestAddCategoryOptions:
         registry = ToolRegistry()
         registry._add_category(
             "full",
-            space="productivity",
-            require_integration=True,
-            integration_name="gmail",
-            is_delegated=True,
-            internal=True,
+            options=CategoryOptions(
+                space="productivity",
+                require_integration=True,
+                integration_name="gmail",
+                is_delegated=True,
+                internal=True,
+            ),
         )
         category = registry._categories["full"]
         assert category.space == "productivity"

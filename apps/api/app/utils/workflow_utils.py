@@ -157,6 +157,16 @@ def get_user_id(config: RunnableConfig) -> str:
     return user_id
 
 
+def get_workflow_id(config: RunnableConfig) -> str:
+    """Extract workflow_id from config. Raises error if missing."""
+    workflow_id: str | None = agent_configurable(config).get("workflow_id")
+    if not workflow_id:
+        raise WorkflowConfigError(
+            "No workflow in this run's config: this tool only works inside a workflow run."
+        )
+    return workflow_id
+
+
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
     thread_id: str | None = agent_configurable(config).get("thread_id")
@@ -310,33 +320,15 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
-async def apply_workflow_edit(
-    draft: FinalizedOutput,
-    workflow: Workflow,
-    user_id: str,
-    writer: StreamWriter,
-    user_timezone: str = "UTC",
-) -> dict[str, Any]:
-    """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
+async def _edited_fields(
+    draft: FinalizedOutput, workflow: Workflow
+) -> dict[str, str | list[str] | TriggerConfig]:
+    """The fields an edit draft actually changes.
 
-    Applies title/description/prompt and manual/scheduled trigger changes directly.
-    Integration-trigger changes are NOT applied here (their config — channels,
-    repos, calendars — must be set in the app's workflow editor); the caller is
-    told so the user can adjust it there.
+    The assistant re-emits the FULL workflow on every edit, so only persist
+    fields that actually changed. This keeps a rename/schedule-only edit from
+    rewriting the prompt and triggering an unnecessary step regeneration.
     """
-    from app.services.workflow.service import WorkflowService
-
-    new_type = draft.backend_trigger_type
-    current = workflow.trigger_config
-    trigger_changed = (
-        new_type != current.type
-        or (draft.trigger_slug or None) != (current.trigger_name or None)
-        or (draft.cron_expression or None) != (current.cron_expression or None)
-    )
-
-    # The assistant re-emits the FULL workflow on every edit, so only persist
-    # fields that actually changed. This keeps a rename/schedule-only edit from
-    # rewriting the prompt and triggering an unnecessary step regeneration below.
     update_fields: dict[str, str | list[str] | TriggerConfig] = {}
     if draft.title and draft.title != workflow.title:
         update_fields["title"] = draft.title
@@ -355,23 +347,88 @@ async def apply_workflow_edit(
         filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
         if filtered_integration_ids != (workflow.integration_ids or []):
             update_fields["integration_ids"] = filtered_integration_ids
+    return update_fields
 
-    needs_editor = False
-    if trigger_changed:
-        if new_type == TriggerType.INTEGRATION:
-            # Integration triggers carry config_fields we can't set from here.
-            needs_editor = True
-        else:
-            update_fields["trigger_config"] = TriggerConfig(
-                type=new_type,
-                enabled=workflow.activated,
-                cron_expression=draft.cron_expression,
-                trigger_name=draft.trigger_slug,
-                # Keep the zone the schedule was authored in. "Move it to 8am"
-                # means 8am where the workflow already runs, not 8am wherever the
-                # user happens to be asking from.
-                timezone=current.timezone or user_timezone,
-            )
+
+def _edited_trigger(
+    draft: FinalizedOutput, workflow: Workflow, user_timezone: str
+) -> tuple[TriggerConfig | None, bool]:
+    """The trigger config an edit applies, and whether the change needs the editor.
+
+    Integration triggers carry config_fields we can't set from here, so a
+    change to one is reported as needing the editor instead of applied.
+    """
+    new_type = draft.backend_trigger_type
+    current = workflow.trigger_config
+    trigger_changed = (
+        new_type != current.type
+        or (draft.trigger_slug or None) != (current.trigger_name or None)
+        or (draft.cron_expression or None) != (current.cron_expression or None)
+    )
+    if not trigger_changed:
+        return None, False
+    if new_type == TriggerType.INTEGRATION:
+        return None, True
+    return (
+        TriggerConfig(
+            type=new_type,
+            enabled=workflow.activated,
+            cron_expression=draft.cron_expression,
+            trigger_name=draft.trigger_slug,
+            # Keep the zone the schedule was authored in. "Move it to 8am"
+            # means 8am where the workflow already runs, not 8am wherever the
+            # user happens to be asking from.
+            timezone=current.timezone or user_timezone,
+        ),
+        False,
+    )
+
+
+async def _regenerated_after_prompt_edit(
+    workflow: Workflow, user_id: str, updated: Workflow
+) -> Workflow:
+    """The workflow with its steps regenerated for the new prompt; the update
+    already committed, so a regeneration failure is logged and ``updated``
+    stands."""
+    from app.services.workflow.service import WorkflowService
+
+    try:
+        regenerated = await WorkflowService.regenerate_workflow_steps(
+            workflow.id or "", user_id, regeneration_reason="prompt edited via assistant"
+        )
+        if regenerated:
+            updated = regenerated
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKFLOW} Step regeneration after edit failed for",
+            id=workflow.id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
+    return updated
+
+
+async def apply_workflow_edit(
+    draft: FinalizedOutput,
+    workflow: Workflow,
+    user_id: str,
+    writer: StreamWriter,
+    user_timezone: str = "UTC",
+) -> dict[str, Any]:
+    """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
+
+    Applies title/description/prompt and manual/scheduled trigger changes directly.
+    Integration-trigger changes are NOT applied here (their config — channels,
+    repos, calendars — must be set in the app's workflow editor); the caller is
+    told so the user can adjust it there.
+    """
+    from app.services.workflow.service import WorkflowService
+
+    update_fields = await _edited_fields(draft, workflow)
+    trigger_config, needs_editor = _edited_trigger(draft, workflow, user_timezone)
+    if trigger_config is not None:
+        update_fields["trigger_config"] = trigger_config
 
     if not update_fields:
         if needs_editor:
@@ -405,20 +462,7 @@ async def apply_workflow_edit(
     # secondary enhancement — the field update already committed, so a regen
     # failure is logged loudly but does not fail the edit.
     if "prompt" in update_fields:
-        try:
-            regenerated = await WorkflowService.regenerate_workflow_steps(
-                workflow.id or "", user_id, regeneration_reason="prompt edited via assistant"
-            )
-            if regenerated:
-                updated = regenerated
-        except Exception as e:
-            log.warning(
-                f"{LogTag.WORKFLOW} Step regeneration after edit failed for",
-                id=workflow.id,
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
+        updated = await _regenerated_after_prompt_edit(workflow, user_id, updated)
 
     # mode="json" — the frame is json.dumps'd by the stream writer; a native
     # datetime would raise inside the edit tool and loop the agent on retries.

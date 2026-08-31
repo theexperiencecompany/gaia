@@ -9,8 +9,11 @@ import pytest
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.models.integration_models import Integration
 from app.utils.agent_utils import (
+    _general_tool_category,
     _lookup_custom_integration_name,
+    _registry_mcp_ui_metadata,
     _resolve_handoff_display_name,
+    _special_tool_display,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -350,6 +353,250 @@ class TestResolveMcpIconName:
         assert result["data"]["icon_url"] == "cached.png"
         assert result["data"]["integration_name"] == "Cached"
         mock_repo_get.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# _special_tool_display
+# ---------------------------------------------------------------------------
+
+
+def _no_known_handoff_target() -> Any:
+    """Neither a platform subagent nor a custom integration answers to the id, so
+    the display name falls through to the title-cased id itself."""
+    return patch("app.utils.agent_utils.get_subagent_by_id", return_value=None)
+
+
+class TestSpecialToolDisplay:
+    """A ``handoff`` card names the target agent. The args it reads come straight
+    off the model's tool call, so both the missing-``args`` and the
+    missing-``subagent_id`` shapes are routine, not malformed input."""
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_with_no_args_at_all_still_renders(self) -> None:
+        with (
+            _no_known_handoff_target(),
+            patch(
+                "app.utils.agent_utils._lookup_custom_integration_name",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await _special_tool_display("handoff", {"name": "handoff", "id": "tc"})  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result == ("handoff", "Handing off to Subagent", False)
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_naming_no_subagent_looks_up_the_literal_default(self) -> None:
+        with (
+            _no_known_handoff_target(),
+            patch(
+                "app.utils.agent_utils._lookup_custom_integration_name",
+                new_callable=AsyncMock,
+                return_value=None,
+            ) as mock_lookup,
+        ):
+            result = await _special_tool_display(
+                "handoff",  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                {"name": "handoff", "args": {}, "id": "tc"},
+            )
+
+        assert result == ("handoff", "Handing off to Subagent", False)
+        mock_lookup.assert_awaited_once_with("subagent")
+
+    @pytest.mark.asyncio
+    async def test_a_non_handoff_special_tool_uses_its_table_row_verbatim(self) -> None:
+        result = await _special_tool_display("run_playbook", {"name": "run_playbook", "args": {}})  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result == ("playbooks", "Run playbook", True)
+
+
+# ---------------------------------------------------------------------------
+# _general_tool_category
+# ---------------------------------------------------------------------------
+
+
+class _FakeRegistry:
+    """Answers by tool name, so a call that loses the name shows up as a miss."""
+
+    def __init__(self, categories: dict[str, str]) -> None:
+        self._categories = categories
+
+    def get_category_of_tool(self, tool_name: str) -> str | None:
+        return self._categories.get(tool_name)
+
+    def get_all_tools_for_search(self) -> list[Any]:
+        return []
+
+
+def _mcp_lookup(integration_id: str = "notion_int") -> Any:
+    return patch(
+        "app.utils.agent_utils._resolve_mcp_integration_id",
+        new_callable=AsyncMock,
+        return_value=integration_id,
+    )
+
+
+class TestGeneralToolCategory:
+    """A core tool running inside an MCP subagent keeps its own category, so the
+    card shows the tool's icon rather than the subagent's logo. Everything here
+    turns on whether the registry category counts as core."""
+
+    @pytest.mark.asyncio
+    async def test_a_core_tool_keeps_its_category_and_never_consults_the_mcp_client(self) -> None:
+        with _mcp_lookup() as mock_resolve:
+            result = await _general_tool_category(
+                _FakeRegistry({"vfs_cmd": "files"}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+                "vfs_cmd",
+                None,
+                "u1",
+            )
+
+        assert result == ("files", None, True)
+        mock_resolve.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_registry_category_is_not_a_core_tool(self) -> None:
+        result = await _general_tool_category(
+            _FakeRegistry({"mystery": "unknown"}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+            "mystery",
+            None,
+            None,
+        )
+
+        assert result == ("unknown", None, False)
+
+    @pytest.mark.asyncio
+    async def test_an_mcp_namespaced_category_is_stripped_and_is_not_core(self) -> None:
+        result = await _general_tool_category(
+            _FakeRegistry({"notion_page": "mcp_notion"}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+            "notion_page",
+            None,
+            None,
+        )
+
+        assert result == ("notion", None, False)
+
+    @pytest.mark.asyncio
+    async def test_a_tool_the_registry_does_not_know_resolves_via_the_users_mcp_client(
+        self,
+    ) -> None:
+        with _mcp_lookup() as mock_resolve:
+            result = await _general_tool_category(
+                _FakeRegistry({}),  # type: ignore[arg-type]  # name-keyed stand-in for ToolRegistry
+                "notion_tool",
+                None,
+                "u1",
+            )
+
+        assert result == ("notion_int", "notion_int", False)
+        mock_resolve.assert_awaited_once_with("notion_tool", "u1")
+
+
+# ---------------------------------------------------------------------------
+# _registry_mcp_ui_metadata
+# ---------------------------------------------------------------------------
+
+
+def _registry_tool(name: str, tool: Any) -> Any:
+    registry_tool = MagicMock()
+    registry_tool.name = name
+    registry_tool.tool = tool
+    return registry_tool
+
+
+class TestRegistryMcpUiMetadata:
+    """The global registry is the first of two mcp_ui sources; a miss here has to
+    read as "nothing found" so the per-user MCPClient fallback still runs."""
+
+    def test_a_tool_the_registry_does_not_hold_yields_two_nones(self) -> None:
+        registry = MagicMock()
+        registry.get_all_tools_for_search.return_value = [_registry_tool("other_tool", MagicMock())]
+
+        assert _registry_mcp_ui_metadata(registry, "ui_tool") == (None, None)
+
+    def test_a_tool_carrying_no_metadata_is_normal_and_not_logged_as_a_failure(self) -> None:
+        """A plain platform tool simply has no ``metadata``. Reading that as a
+        registry outage buries the real outages in noise."""
+
+        class _PlainTool:
+            pass
+
+        registry = MagicMock()
+        registry.get_all_tools_for_search.return_value = [_registry_tool("ui_tool", _PlainTool())]
+
+        with patch("app.utils.agent_utils.log") as mock_log:
+            result = _registry_mcp_ui_metadata(registry, "ui_tool")
+
+        assert result == (None, None)
+        mock_log.debug.assert_not_called()
+
+    def test_metadata_that_is_not_a_dict_is_ignored_rather_than_duck_typed(self) -> None:
+        """Only a real dict is metadata. Anything else that happens to expose
+        ``.get`` would otherwise hand the frontend an arbitrary object as mcp_ui."""
+
+        class _LooksLikeAMapping:
+            def get(self, key: str) -> str:
+                return f"value-for-{key}"
+
+        tool = MagicMock()
+        tool.metadata = _LooksLikeAMapping()
+        registry = MagicMock()
+        registry.get_all_tools_for_search.return_value = [_registry_tool("ui_tool", tool)]
+
+        assert _registry_mcp_ui_metadata(registry, "ui_tool") == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# format_tool_call_entry -> _general_tool_category wiring
+# ---------------------------------------------------------------------------
+
+
+class TestFormatToolCallEntryCategoryWiring:
+    @staticmethod
+    def _patches(registry: Any) -> Any:
+        return (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=registry,
+            ),
+            patch(
+                "app.utils.agent_utils._resolve_mcp_ui_metadata",
+                new_callable=AsyncMock,
+                return_value=(None, None),
+            ),
+            patch(
+                "app.utils.agent_utils._resolve_mcp_icon_name",
+                new_callable=AsyncMock,
+                return_value=(None, None),
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_category_is_looked_up_under_the_tool_being_called(self) -> None:
+        registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({"vfs_cmd": "files"}))
+        with registry_patch, ui_patch, icon_patch, _mcp_lookup("wrong_integration"):
+            result = await format_tool_call_entry(
+                {"name": "vfs_cmd", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                user_id="u1",
+            )
+
+        assert result is not None
+        assert result["data"]["tool_category"] == "files"
+
+    @pytest.mark.asyncio
+    async def test_the_calling_user_is_carried_into_the_mcp_provenance_lookup(self) -> None:
+        """Without the user there is no MCPClient to ask, and every MCP tool would
+        fall back to an empty category — the frontend's "no icon" state."""
+        registry_patch, ui_patch, icon_patch = self._patches(_FakeRegistry({}))
+        with registry_patch, ui_patch, icon_patch, _mcp_lookup():
+            result = await format_tool_call_entry(
+                {"name": "notion_tool", "args": {}, "id": "tc"},  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+                user_id="u1",
+            )
+
+        assert result is not None
+        assert result["data"]["tool_category"] == "notion_int"
 
 
 # ---------------------------------------------------------------------------

@@ -3133,6 +3133,86 @@ class TestMCPClientHandleCustomIntegrationConnect:
             # Should not raise
             await client._handle_custom_integration_connect(INTEGRATION_ID, SERVER_URL, tools)
 
+    async def test_the_indexed_request_carries_the_integrations_identity_verbatim(self):
+        """The subagent entry is what a handoff later resolves the integration by,
+        so every field of the request is pinned: a dropped server_url or tool list
+        indexes a subagent that ranks for nothing and routes nowhere."""
+        from app.agents.core.subagents.handoff_tools import (
+            CustomMcpIndexRequest,
+        )
+
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool()]
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.derive_integration_namespace",
+                return_value="ns::custom",
+            ),
+            patch("app.services.mcp.mcp_client.index_tools_to_store", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.providers") as mock_providers,
+        ):
+            mock_store = MagicMock()
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+
+            with patch(
+                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                new_callable=AsyncMock,
+            ) as mock_subagent:
+                await client._handle_custom_integration_connect(
+                    INTEGRATION_ID,
+                    SERVER_URL,
+                    tools,
+                    name="My Tool",
+                    description="A custom tool",
+                )
+
+        mock_subagent.assert_awaited_once()
+        assert mock_subagent.await_args.kwargs["store"] is mock_store
+        assert mock_subagent.await_args.kwargs["request"] == CustomMcpIndexRequest(
+            integration_id=INTEGRATION_ID,
+            name="My Tool",
+            description="A custom tool",
+            server_url=SERVER_URL,
+            tools=tools,
+        )
+
+    async def test_an_integration_with_no_description_indexes_an_empty_one(self):
+        """The request's description is a plain ``str``; a missing one becomes the
+        empty string rather than travelling as None into the embedded text."""
+        from app.agents.core.subagents.handoff_tools import (
+            CustomMcpIndexRequest,
+        )
+
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool()]
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.derive_integration_namespace",
+                return_value="ns::custom",
+            ),
+            patch("app.services.mcp.mcp_client.index_tools_to_store", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.providers") as mock_providers,
+        ):
+            mock_providers.aget = AsyncMock(return_value=MagicMock())
+
+            with patch(
+                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                new_callable=AsyncMock,
+            ) as mock_subagent:
+                await client._handle_custom_integration_connect(
+                    INTEGRATION_ID, SERVER_URL, tools, name="My Tool", description=None
+                )
+
+        assert mock_subagent.await_args.kwargs["request"] == CustomMcpIndexRequest(
+            integration_id=INTEGRATION_ID,
+            name="My Tool",
+            description="",
+            server_url=SERVER_URL,
+            tools=tools,
+        )
+
     async def test_resolves_name_from_integration_when_not_provided(self):
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
@@ -3166,7 +3246,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
-            assert call_kwargs["name"] == "Resolved Name"
+            assert call_kwargs["request"].name == "Resolved Name"
 
 
 # ===========================================================================

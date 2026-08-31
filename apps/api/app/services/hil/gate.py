@@ -59,7 +59,7 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
-from app.services.hil.intent import IntentDecision, judge_intent
+from app.services.hil.intent import IntentDecision, JudgedCall, judge_intent
 from app.services.hil.policy import GatingPolicy, has_pausing_sibling, resolve_policy
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.prompts import (
@@ -332,10 +332,12 @@ async def _judge(
     return await judge_intent(
         user_id=context.user_id,
         user_messages=context.user_messages,
-        tool_name=call.name,
-        description=tool_description(tool_of(request)),
-        args=call.args,
-        summary=summary,
+        call=JudgedCall(
+            tool_name=call.name,
+            description=tool_description(tool_of(request)),
+            args=call.args,
+            summary=summary,
+        ),
         # Actions only — the agent's own prose is never handed to its gate.
         prior_calls=prior_tool_calls(request.state, call.id),
     )
