@@ -31,6 +31,7 @@ from typing import Literal, NamedTuple
 from pydantic import BaseModel, ConfigDict
 from pymongo import UpdateOne
 
+from app.constants.general import EXECUTOR_THREAD_PREFIX, SPAWN_THREAD_PREFIX
 from app.db.repositories.base import MongoDocument, MongoRepository
 
 CostSource = Literal["provider", "table"]
@@ -42,13 +43,29 @@ CallStatus = Literal["ok", "error"]
 #: buckets an operator actually acts on.
 ErrorFamily = Literal["rate_limit", "timeout", "provider_unavailable", "invalid_request", "other"]
 
-# A child agent runs on a WRAPPED checkpoint thread — ``executor_<conv>``, and
-# for integration-triggered runs ``<integration>_executor_<conv>`` (see
-# ``AgentConfigurable.thread_id``). The bare conversation uuid is the tail; the
-# wrapper is what says which lane produced the call. Anchored at the end so the
-# LAST ``executor_`` wins: a conversation id can never contain one, but a
-# multi-part integration prefix can.
-_LANE_THREAD_RE = re.compile(r"^(?:[^\s]*_)?executor_(?P<conversation_id>[^_\s]+)$")
+# A child agent runs on a WRAPPED checkpoint thread, and there are exactly two
+# wrapping constructors in the codebase. Both anchor on a shared constant, so a
+# drift in either is caught here rather than silently fragmenting the ledger:
+#
+#   ``executor_<conv>``                 subagent_runner.py, EXECUTOR_THREAD_PREFIX
+#   ``<integration>_executor_<conv>``   handoff_tools.py wraps the above
+#   ``spawn_<conv>_<tool_call_id>``     subagent.py, SPAWN_THREAD_PREFIX
+#
+# The conversation uuid is the TAIL of an executor thread but the MIDDLE of a
+# spawn thread (a spawn appends its tool-call id, one thread per call), which is
+# why they cannot share one pattern.
+#
+# The executor form is anchored at the end so the LAST ``executor_`` wins: a
+# conversation id can never contain one, but a multi-part integration prefix
+# can. Both rely on the conversation id itself holding no underscore — it is a
+# uuid, and the same assumption the wrapping constructors already make when
+# they join with one.
+_EXECUTOR_THREAD_RE = re.compile(
+    rf"^(?:[^\s]*_)?{re.escape(EXECUTOR_THREAD_PREFIX)}(?P<conversation_id>[^_\s]+)$"
+)
+_SPAWN_THREAD_RE = re.compile(
+    rf"^{re.escape(SPAWN_THREAD_PREFIX)}(?P<conversation_id>[^_\s]+)_\S+$"
+)
 
 
 class LaneThread(NamedTuple):
@@ -61,19 +78,24 @@ class LaneThread(NamedTuple):
 def split_lane_thread(thread_id: str | None) -> LaneThread:
     """Split a checkpoint thread id into the bare conversation id and its lane wrapper.
 
-    ``executor_<conv>`` / ``<integration>_executor_<conv>`` return the bare
-    ``<conv>`` plus the full wrapped id as ``lane_thread``, so a ledger query can
-    ask both "everything in this conversation" (across comms and executor) and
-    "only the executor lane". A plain conversation thread has no wrapper and
-    returns ``lane_thread=None``. An empty/absent thread returns both as ``None``
-    rather than inventing an id.
+    Every wrapped shape returns the bare ``<conv>`` plus the full wrapped id as
+    ``lane_thread``, so a ledger query can ask both "everything in this
+    conversation" (across comms, executor and every spawn) and "only this lane".
+    A plain conversation thread has no wrapper and returns ``lane_thread=None``.
+    An empty/absent thread returns both as ``None`` rather than inventing an id.
+
+    Spawned-subagent threads matter more than their ~1% share suggests: there is
+    one per tool call, so a conversation that spawns work fragments into as many
+    ids as it made calls, and each joins to nothing. That is the silent kind of
+    wrong this collection exists to remove.
     """
     if not thread_id:
         return LaneThread(None, None)
-    match = _LANE_THREAD_RE.match(thread_id)
-    if match is None:
-        return LaneThread(thread_id, None)
-    return LaneThread(match.group("conversation_id"), thread_id)
+    for pattern in (_EXECUTOR_THREAD_RE, _SPAWN_THREAD_RE):
+        match = pattern.match(thread_id)
+        if match is not None:
+            return LaneThread(match.group("conversation_id"), thread_id)
+    return LaneThread(thread_id, None)
 
 
 class LLMCallDocument(MongoDocument):

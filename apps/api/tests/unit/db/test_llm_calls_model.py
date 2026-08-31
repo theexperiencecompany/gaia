@@ -54,6 +54,60 @@ def test_an_integration_executor_thread_strips_its_whole_prefix() -> None:
     assert split_lane_thread(thread) == (CONVERSATION, thread)
 
 
+# The thread-id shapes that actually occur, measured over 24h of production
+# traffic. Every one is minted by a named constructor:
+#   executor_<conv>                  subagent_runner.py:773  (EXECUTOR_THREAD_PREFIX)
+#   <integration>_executor_<conv>    handoff_tools.py:507    (wraps the above)
+#   spawn_<conv>_<tool_call_id>      subagent.py:334         (SPAWN_THREAD_PREFIX)
+#   <conv>                           the conversation itself
+_SPAWNED = f"spawn_{CONVERSATION}_call_08eb2a516389452cab3e68d9"
+
+
+def test_a_spawned_subagent_thread_resolves_to_its_conversation() -> None:
+    """Real prod value, verbatim. A spawn thread carries no ``executor_``, so it
+    used to fall through as a plain conversation id — the ledger then recorded
+    ``conversation_id = "spawn_<uuid>_call_<hex>"``, which joins to nothing and
+    fragments that conversation's cost, with the lane invisible."""
+    assert split_lane_thread(_SPAWNED) == (CONVERSATION, _SPAWNED)
+
+
+def test_two_spawns_in_one_conversation_share_its_conversation_id() -> None:
+    """The point of the fix: each spawn has its own thread (one per tool call)
+    but they are all spend on the SAME turn, so a per-conversation cost query
+    has to gather them."""
+    first = f"spawn_{CONVERSATION}_call_08eb2a516389452cab3e68d9"
+    second = f"spawn_{CONVERSATION}_call_f4e93cb7f6674ddba76a3de2"
+
+    assert split_lane_thread(first).conversation_id == CONVERSATION
+    assert split_lane_thread(second).conversation_id == CONVERSATION
+    # ...and remain distinguishable as lanes.
+    assert split_lane_thread(first).lane_thread != split_lane_thread(second).lane_thread
+
+
+@pytest.mark.parametrize("integration", ["gmail", "todos", "googlecalendar", "todoist"])
+def test_every_integration_executor_shape_seen_in_production(integration: str) -> None:
+    """Regression guard on 99% of traffic: these are the wrapped shapes actually
+    measured, and they must keep resolving exactly as before."""
+    thread = f"{integration}_executor_{CONVERSATION}"
+
+    assert split_lane_thread(thread) == (CONVERSATION, thread)
+
+
+def test_a_thread_that_merely_starts_with_spawn_is_not_treated_as_wrapped() -> None:
+    """The prefix alone is not the shape. A spawn thread always appends a tool
+    call id, so a bare ``spawn_x`` is some other thread and splitting it would
+    invent a conversation that does not exist."""
+    assert split_lane_thread("spawn_abc") == ("spawn_abc", None)
+
+
+def test_an_executor_thread_with_an_underscored_tail_is_left_whole() -> None:
+    """The shape a reviewer proposed — ``<integration>_executor_<conv>_<hex>``
+    — is not minted anywhere: the executor constructors append nothing after the
+    conversation. Pinned so that if such a thread ever DOES appear it shows up
+    as an unsplit id rather than a silently wrong one."""
+    assert split_lane_thread(f"gmail_executor_{CONVERSATION}_deadbeef").lane_thread is None
+
+
 def test_a_missing_thread_invents_no_conversation() -> None:
     assert split_lane_thread(None) == (None, None)
     assert split_lane_thread("") == (None, None)
