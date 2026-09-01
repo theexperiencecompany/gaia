@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.messages import construct_langchain_messages
+from app.models.agent_models import SilentRunResult
+from app.models.message_models import MessageRequestWithHistory
 from app.models.todo_models import TodoDocument
 from app.workers.tasks.tracked_todo_tasks import _execute_via_agent
 
@@ -37,9 +39,9 @@ def _todo() -> TodoDocument:
     )
 
 
-async def _captured_request() -> object:
+async def _captured_request() -> MessageRequestWithHistory:
     """Run the real agent path far enough to capture the request it builds."""
-    silent = AsyncMock(return_value=("done", {}))
+    silent = AsyncMock(return_value=SilentRunResult(message="done", tool_data={}))
     with (
         patch(f"{_MOD}.call_agent_silent", silent),
         patch(f"{_MOD}.read_canvas", new_callable=AsyncMock, return_value=None),
