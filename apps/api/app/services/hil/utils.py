@@ -16,6 +16,7 @@ from typing import Any, cast
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import (
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
@@ -47,24 +48,40 @@ class PriorCall:
 # --- reading the request ---------------------------------------------------------------
 
 
+def unwrap_execute_call(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The REAL (name, args) of a call, seen through the execute proxy.
+
+    An execute call carries its actual tool in ``args["tool_name"]``/``args["data"]``.
+    Every gate decision keys off the name, so without this unwrap a destructive
+    integration tool classifies as the (harmless) proxy and runs unapproved.
+    """
+    if name != EXECUTE_TOOL_NAME:
+        return name, args
+    real_name = args.get("tool_name")
+    if not isinstance(real_name, str) or not real_name:
+        # Malformed proxy call — gate it under its own name; dispatch will
+        # reject it with a structured unknown_tool error anyway.
+        return name, args
+    data = args.get("data")
+    return real_name, data if isinstance(data, dict) else {}
+
+
 def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
-    """The pending call, whether the framework handed it over as a dict or an object."""
+    """The pending call, whether the framework handed it over as a dict or an object.
+
+    Execute-proxied calls are unwrapped to their real tool; ``id`` stays the
+    proxy call's id, since that is the tool_call a refusal must answer.
+    """
     # ToolCallRequest.tool_call is typed ToolCall (a dict), but dataclass fields
     # aren't runtime-validated — some framework versions/call paths have handed
     # this over as an object with .name/.id/.args instead. Widen to object so
     # that branch stays a real, reachable fallback rather than dead code.
     call = cast(object, request.tool_call)
     if isinstance(call, dict):
-        return GatedCall(
-            name=call.get("name", ""),
-            id=call.get("id", ""),
-            args=call.get("args", {}) or {},
-        )
-    return GatedCall(
-        name=getattr(call, "name", ""),
-        id=getattr(call, "id", ""),
-        args=getattr(call, "args", None) or {},
-    )
+        name, args = unwrap_execute_call(call.get("name", ""), call.get("args", {}) or {})
+        return GatedCall(name=name, id=call.get("id", ""), args=args)
+    name, args = unwrap_execute_call(getattr(call, "name", ""), getattr(call, "args", None) or {})
+    return GatedCall(name=name, id=getattr(call, "id", ""), args=args)
 
 
 def tool_of(request: ToolCallRequest) -> BaseTool | None:

@@ -23,7 +23,12 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
-from app.services.hil.utils import current_tool_calls, tool_of, unpack_tool_call
+from app.services.hil.utils import (
+    current_tool_calls,
+    tool_of,
+    unpack_tool_call,
+    unwrap_execute_call,
+)
 from shared.py.wide_events import log
 
 # What the gate does with one call:
@@ -54,6 +59,25 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, Any] | None) -> bool:
     return all(args.get(key) == value for key, value in required.items())
 
 
+async def gated_tool_object(request: ToolCallRequest, tool_name: str) -> BaseTool | None:
+    """The BaseTool classification should read — the REAL tool, not the proxy.
+
+    For a direct call, ``request.tool`` is the tool. For an execute-proxied call
+    the request carries the proxy's object, so the real one is resolved from the
+    registry by the unwrapped name (same source the sibling scan uses; MCP tools
+    resolve to None here and classify by name, matching the sibling path).
+    """
+    raw_call = request.tool_call
+    raw_name = (
+        raw_call.get("name", "") if isinstance(raw_call, dict) else getattr(raw_call, "name", "")
+    )
+    if raw_name == tool_name:
+        return tool_of(request)
+    registry = await get_tool_registry()
+    meta = registry.get_tool_meta(tool_name)
+    return meta.tool if meta else None
+
+
 async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str) -> GatingPolicy:
     """The user's mode plus the gated set, resolved into one decision.
 
@@ -67,7 +91,8 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
         return "allow"
-    if not await is_gated(prefs, tool_name, tool_of(request)):  # args resolved above
+    tool = await gated_tool_object(request, tool_name)
+    if not await is_gated(prefs, tool_name, tool):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
 
@@ -129,26 +154,26 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
     double-run this guard exists to prevent. Checked first, and by name alone, so the
     common case costs no preference or registry lookup.
     """
+    # Execute-proxied siblings are unwrapped to their real (name, args) here for
+    # the same reason unpack_tool_call unwraps the pending call: the guard must
+    # detect the DESTRUCTIVE sibling, not the harmless proxy wrapping it.
     siblings = [
-        call
+        unwrap_execute_call(str(call["name"]), call.get("args") or {})
         for call in current_tool_calls(request.state)
         if call.get("name") and call.get("id") != tool_call_id
     ]
     if not siblings:
         return False
-    if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
+    if any(name in HIL_PAUSING_TOOLS for name, _ in siblings):
         return True
 
     # Forced-ask siblings pause even when HIL is otherwise off — checked before
     # the always_allow fast path below, because that fast path exists to skip
     # preference-driven gating, and the stamp is not preference-driven.
     registry = await get_tool_registry()
-    for call in siblings:
-        name = str(call["name"])
+    for name, args in siblings:
         meta = registry.get_tool_meta(name)
-        if (meta is not None and meta.always_gate) or _argument_gate_hit(
-            name, call.get("args") or None
-        ):
+        if (meta is not None and meta.always_gate) or _argument_gate_hit(name, args or None):
             return True
 
     prefs = await get_hil_preferences(user_id)
@@ -158,12 +183,11 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
         # mode (and before the per-sibling classification below because every ungated
         # call now asks this — see gate._run_once_across_replays).
         return False
-    for call in siblings:
-        name = str(call["name"])
+    for name, args in siblings:
         if name in HIL_EXEMPT_TOOLS:
             continue
         meta = registry.get_tool_meta(name)
-        if await is_gated(prefs, name, meta.tool if meta else None, args=call.get("args") or None):
+        if await is_gated(prefs, name, meta.tool if meta else None, args=args or None):
             return True
     return False
 
