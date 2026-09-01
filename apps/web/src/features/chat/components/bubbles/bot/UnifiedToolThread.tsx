@@ -185,8 +185,11 @@ export default function UnifiedToolThread({
               <span
                 className={`text-xs font-medium transition-colors duration-200 ${totalToolCount > 1 ? "ml-2" : ""}`}
               >
-                Used {totalToolCount} tool
-                {totalToolCount === 1 ? "" : "s"}
+                {/* A turn can be thinking-only (comms reasoning with no tool
+                    call), and "Used 0 tools" is a nonsense label for it. */}
+                {totalToolCount === 0
+                  ? "Thinking"
+                  : `Used ${totalToolCount} tool${totalToolCount === 1 ? "" : "s"}`}
               </span>
               <ChevronDown
                 className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-transform duration-200`}
