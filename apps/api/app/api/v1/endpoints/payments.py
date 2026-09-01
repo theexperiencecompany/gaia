@@ -77,7 +77,11 @@ async def create_subscription_endpoint(
         )
         capture_context_event(
             AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": subscription_data.quantity},
+            {
+                "quantity": subscription_data.quantity,
+                "source": subscription_data.source,
+                "surface": "redirect",
+            },
         )
         return result
     except Exception as e:
@@ -105,7 +109,11 @@ async def create_checkout_session_endpoint(
     """
     log.set(
         user={"id": user_id},
-        payment={"operation": "create_checkout_session", "billing_cycle": payload.billing_cycle},
+        payment={
+            "operation": "create_checkout_session",
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+        },
     )
     pro_checkout = await payment_service.create_pro_checkout(user_id, payload.billing_cycle)
     log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
@@ -117,7 +125,11 @@ async def create_checkout_session_endpoint(
     )
     capture_context_event(
         AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-        {"billing_cycle": payload.billing_cycle, "surface": "overlay"},
+        {
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+            "surface": "overlay",
+        },
     )
     return pro_checkout.checkout
 

@@ -53,10 +53,15 @@ describe("checkout overlay state machine", () => {
   });
 
   it("mints a session for the requested cycle and opens the overlay", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("yearly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("yearly", "pricing_card");
 
+    // The source rides on the request because the server is now the only
+    // emitter of payment:checkout_started — the client fires nothing.
     expect(createCheckoutSession).toHaveBeenCalledWith({
       billing_cycle: "yearly",
+      source: "pricing_card",
     });
     expect(openDodoOverlay).toHaveBeenCalledWith(
       SESSION.payment_link,
@@ -66,7 +71,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("confirms against the server, not the overlay's own close event", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.closed" });
@@ -83,7 +90,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("treats a redirect the same as a close — it is not proof of payment", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.redirect" });
@@ -92,7 +101,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("admits the delay past the visible budget but keeps polling", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.closed" });
@@ -109,7 +120,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("keeps polling through a failed status read", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.closed" });
@@ -122,7 +135,9 @@ describe("checkout overlay state machine", () => {
   });
 
   it("surfaces an expired link instead of silently sitting open", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.link_expired" });
@@ -136,7 +151,9 @@ describe("checkout overlay state machine", () => {
     createCheckoutSession.mockResolvedValue({ ...SESSION, payment_link: null });
 
     await expect(
-      useCheckoutOverlayStore.getState().startCheckout("monthly"),
+      useCheckoutOverlayStore
+        .getState()
+        .startCheckout("monthly", "paywall_modal"),
     ).rejects.toThrow();
     expect(openDodoOverlay).not.toHaveBeenCalled();
     expect(useCheckoutOverlayStore.getState().phase).toBe("idle");
@@ -144,12 +161,16 @@ describe("checkout overlay state machine", () => {
   });
 
   it("stops a stale confirmation loop when a new checkout starts", async () => {
-    await useCheckoutOverlayStore.getState().startCheckout("monthly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("monthly", "paywall_modal");
     useCheckoutOverlayStore
       .getState()
       .handleCheckoutEvent({ event_type: "checkout.closed" });
 
-    await useCheckoutOverlayStore.getState().startCheckout("yearly");
+    await useCheckoutOverlayStore
+      .getState()
+      .startCheckout("yearly", "pricing_card");
     getSubscriptionStatus.mockResolvedValue(PRO);
     await advancePolls(2);
 

@@ -30,6 +30,22 @@ class PlanDuration(StrEnum):
     YEARLY = "yearly"
 
 
+class CheckoutSource(StrEnum):
+    """Where in the product a checkout was started.
+
+    The server is the single emitter of ``payment:checkout_started``, so the
+    attribution the funnel reads has to arrive on the request. Closed and
+    repository-owned: it mirrors ``CheckoutSource`` in
+    ``apps/web/src/features/pricing/hooks/useDodoPayments.ts``, and a new
+    surface adds a member on both sides in the same change.
+    """
+
+    PAYWALL_MODAL = "paywall_modal"
+    PRICING_CARD = "pricing_card"
+    PAYMENT_RETRY = "payment_retry"
+    CHECKOUT_RESUME = "checkout_resume"
+
+
 class SubscriptionStatus(str, Enum):
     """Subscription status with clear definitions."""
 
@@ -50,6 +66,12 @@ class CreateSubscriptionRequest(BaseModel):
     discount_code: str | None = Field(
         None, description="Discount code pre-applied on the hosted checkout page"
     )
+    # Optional here, required on /checkout-session: this endpoint has bundles
+    # already deployed against it, and 422-ing a stale one would cost a real
+    # checkout. A null source is honest in the funnel; a rejected sale is not.
+    source: CheckoutSource | None = Field(
+        None, description="Where in the product this checkout was started"
+    )
 
 
 class CreateCheckoutSessionRequest(BaseModel):
@@ -62,6 +84,11 @@ class CreateCheckoutSessionRequest(BaseModel):
 
     billing_cycle: PlanDuration = Field(
         PlanDuration.MONTHLY, description="Billing cycle of the Pro plan to check out"
+    )
+    # Required: this path replaced the client-side emitter, so an unattributed
+    # checkout would vanish from the funnel entirely rather than land unsplit.
+    source: CheckoutSource = Field(
+        ..., description="Where in the product this checkout was started"
     )
 
 

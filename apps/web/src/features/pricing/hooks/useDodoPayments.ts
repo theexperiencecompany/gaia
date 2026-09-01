@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
-import { pricingApi } from "../api/pricingApi";
+import { type CheckoutSource, pricingApi } from "../api/pricingApi";
 import { LAST_CHECKOUT_PRODUCT_KEY } from "../constants";
 import {
   type CheckoutBillingCycle,
@@ -12,16 +12,10 @@ import {
 } from "../stores/checkoutOverlayStore";
 import { useUserSubscriptionStatus } from "./usePricing";
 
-/** Where a checkout was started from — the paid-only gate, or a place the
- *  user chose to upgrade on their own. Required at every call site so the
- *  funnel can separate gate-driven revenue from pricing-page revenue. */
-export type CheckoutSource =
-  | "paywall_modal"
-  | "pricing_card"
-  | "payment_retry"
-  | "checkout_resume";
-
 interface CheckoutOptions {
+  /** Where this checkout was started from. Required at every call site: it
+   *  rides to the server, which is what splits gate-driven revenue from
+   *  pricing-page revenue on `payment:checkout_started`. */
   source: CheckoutSource;
   discountCode?: string;
 }
@@ -47,17 +41,12 @@ export const useDodoPayments = () => {
       setError(null);
 
       try {
-        // Every checkout funnels through here, so this is the single emitter
-        // for the event — a second capture at a call site would double-count
-        // that path against the ones that only fire here.
-        trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED, {
-          planId: productId,
-          source,
-        });
-
-        // Create subscription via API - backend handles user authentication via JWT
+        // `source` goes to the server rather than into a capture here: the API
+        // owns payment:checkout_started on both the redirect and overlay paths,
+        // so the funnel reads one event name split by source/surface.
         const result = await pricingApi.createSubscription({
           product_id: productId,
+          source,
           ...(discountCode ? { discount_code: discountCode } : {}),
         });
 
@@ -93,13 +82,8 @@ export const useDodoPayments = () => {
    *  where it is. */
   const openCheckoutOverlay = useCallback(
     async (billingCycle: CheckoutBillingCycle, { source }: CheckoutOptions) => {
-      trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED, {
-        billingCycle,
-        source,
-        surface: "overlay",
-      });
       try {
-        await startOverlayCheckout(billingCycle);
+        await startOverlayCheckout(billingCycle, source);
       } catch (err) {
         const reason =
           err instanceof Error ? err.message : "Failed to start checkout";

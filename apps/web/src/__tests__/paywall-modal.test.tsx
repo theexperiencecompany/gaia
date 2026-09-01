@@ -224,10 +224,10 @@ describe("PaywallModal", () => {
     expect(screen.getByText(/taking longer than expected/i)).not.toBeNull();
   });
 
-  it("attributes the checkout to the paywall without emitting a second checkout event", () => {
-    // The hook is the single emitter for subscription:checkout_started; a
-    // capture here too would double-count every gate-driven checkout against
-    // the pricing-page ones that only fire inside the hook.
+  it("attributes the checkout to the paywall without emitting a client checkout event", () => {
+    // The API owns payment:checkout_started now — it fires after the session
+    // actually exists and carries the same `source` this click passes down.
+    // Any client capture here would be a rival event for one user action.
     usePaywallModalStore.getState().openModal({
       checkoutUrl: null,
       discountCode: null,

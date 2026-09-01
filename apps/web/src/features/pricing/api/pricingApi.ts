@@ -18,13 +18,24 @@ export interface Plan {
   updated_at: string;
 }
 
+/** Where in the product a checkout was started. Mirrors `CheckoutSource` in
+ *  `app/models/payment_models.py`; the server emits it as a property on
+ *  `payment:checkout_started`, so a new surface adds a member on both sides. */
+export type CheckoutSource =
+  | "paywall_modal"
+  | "pricing_card"
+  | "payment_retry"
+  | "checkout_resume";
+
 export interface CreateSubscriptionRequest {
   product_id: string;
   discount_code?: string;
+  source?: CheckoutSource;
 }
 
 export interface CreateCheckoutSessionRequest {
   billing_cycle: "monthly" | "yearly";
+  source: CheckoutSource;
 }
 
 export interface CreateSubscriptionResponse {

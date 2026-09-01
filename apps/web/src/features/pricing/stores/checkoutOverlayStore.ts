@@ -2,7 +2,7 @@ import type { CheckoutEvent } from "dodopayments-checkout";
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
-import { pricingApi } from "../api/pricingApi";
+import { type CheckoutSource, pricingApi } from "../api/pricingApi";
 import {
   CHECKOUT_CONFIRM_BACKOFF_FACTOR,
   CHECKOUT_CONFIRM_INITIAL_DELAY_MS,
@@ -34,7 +34,10 @@ export type CheckoutBillingCycle = "monthly" | "yearly";
 interface CheckoutOverlayStore {
   phase: CheckoutPhase;
   error: string | null;
-  startCheckout: (billingCycle: CheckoutBillingCycle) => Promise<void>;
+  startCheckout: (
+    billingCycle: CheckoutBillingCycle,
+    source: CheckoutSource,
+  ) => Promise<void>;
   handleCheckoutEvent: (event: CheckoutEvent) => void;
   reset: () => void;
 }
@@ -92,12 +95,15 @@ export const useCheckoutOverlayStore = create<CheckoutOverlayStore>()(
         phase: "idle",
         error: null,
 
-        startCheckout: async (billingCycle) => {
+        startCheckout: async (billingCycle, source) => {
           confirmationRun += 1;
           set({ phase: "creating", error: null }, false, "startCheckout");
           try {
+            // `source` is what the server stamps onto
+            // `payment:checkout_started` — the single emitter for this action.
             const session = await pricingApi.createCheckoutSession({
               billing_cycle: billingCycle,
+              source,
             });
             if (!session.payment_link)
               throw new Error("Checkout session has no URL");

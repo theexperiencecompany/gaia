@@ -26,12 +26,16 @@ export const ANALYTICS_EVENTS = {
   // Subscription events
   SUBSCRIPTION_PAGE_VIEWED: "subscription:page_viewed",
   SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-  SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
-  // No SUBSCRIPTION_COMPLETED here on purpose: the API owns a completed
-  // subscription as `subscription:activated`, captured on the Dodo webhook
-  // (`_handle_subscription_active`). The client copy fired on the payment
-  // success page, so it double-counted the same action and missed every
-  // overlay checkout that never lands on that page.
+  // Two subscription events deliberately have no entry here, because the API
+  // owns them and a client copy would be a rival event for one user action:
+  //   - starting a checkout -> `payment:checkout_started`, captured by
+  //     POST /payments/checkout-session and POST /payments/subscriptions with
+  //     the `source` the caller passes down (see `useDodoPayments`).
+  //   - completing one -> `subscription:activated`, captured on the Dodo
+  //     webhook (`_handle_subscription_active`), the only place a subscription
+  //     actually becomes real.
+  // SUBSCRIPTION_FAILED stays client-side: a checkout that fails before the
+  // request lands is something the server never sees.
   SUBSCRIPTION_FAILED: "subscription:failed",
 
   // The paid-only wall appeared on screen. Client-only by necessity: the
