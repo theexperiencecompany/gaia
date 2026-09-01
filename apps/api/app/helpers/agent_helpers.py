@@ -41,9 +41,14 @@ from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.models_models import DevModelOption
 from app.models.payment_models import PlanType
-from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
+from app.models.stream_events import (
+    ModelFallbackFrame,
+    ReasoningPayload,
+    ToolOutputPayload,
+)
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
+    extract_reasoning_delta,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -772,8 +777,25 @@ async def execute_graph_streaming(
 
             # Stream AI response content (only from comms_agent to avoid duplication)
             if chunk and isinstance(chunk, (AIMessage, AIMessageChunk)):
+                is_comms = config.get("agent_name") == "comms_agent"
+                # Comms thinking, streamed like the executor's. Without this the
+                # user watches a frozen UI whenever comms reasons before replying
+                # — a reasoning model can spend seconds and hundreds of tokens
+                # composing one sentence, and none of it was visible. No
+                # subagent_id: this is the root turn, which the client renders as
+                # a top-level thinking block.
+                if is_comms:
+                    reasoning_delta = extract_reasoning_delta(chunk)
+                    if reasoning_delta:
+                        yield format_sse_data(
+                            {
+                                "reasoning": ReasoningPayload(
+                                    content=reasoning_delta
+                                ).model_dump(exclude_none=True)
+                            }
+                        )
                 content = chunk.text
-                if content and config.get("agent_name") == "comms_agent":
+                if content and is_comms:
                     yield format_sse_response(content)
                     complete_message += content
 

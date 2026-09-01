@@ -55,7 +55,7 @@ from app.models.agent_models import (
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
-from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
+from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable, extract_reasoning_delta
 from app.utils.multimodal import extract_text_content
 from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
@@ -73,32 +73,6 @@ def _capture_finish_task_content(chunk: ToolMessage, current_message: str) -> st
     if chunk.name == FINISH_TASK_NAME and isinstance(chunk.content, str):
         return chunk.content
     return current_message
-
-
-def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
-    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
-
-    ChatOpenRouter surfaces reasoning as standard ``reasoning`` content blocks;
-    other providers (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
-    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
-    the caller emits nothing for them.
-    """
-    parts: list[str] = []
-    for block in getattr(chunk, "content_blocks", None) or []:
-        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
-        if block_type == "reasoning":
-            text = (
-                block.get("reasoning")
-                if isinstance(block, dict)
-                else getattr(block, "reasoning", "")
-            )
-            if text:
-                parts.append(text)
-    if not parts:
-        fallback = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
-        if fallback:
-            parts.append(fallback if isinstance(fallback, str) else str(fallback))
-    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -309,7 +283,7 @@ def _process_messages_payload(
         # subagent_id so the client nests it in the right step (same routing
         # as tool_data/tool_output). Empty for non-reasoning models.
         if stream_writer:
-            reasoning_delta = _extract_reasoning_delta(chunk)
+            reasoning_delta = extract_reasoning_delta(chunk)
             if reasoning_delta:
                 reasoning_payload = ReasoningPayload(
                     content=reasoning_delta, subagent_id=subagent_id
