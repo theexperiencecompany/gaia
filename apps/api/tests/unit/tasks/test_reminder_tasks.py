@@ -8,6 +8,7 @@ which records it into the conversation's langgraph thread.
 
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 import pytest
 
 from app.constants.notifications import CHANNEL_TYPE_INAPP
@@ -161,3 +162,32 @@ class TestReminderReachesChatPlatforms:
         # No user resolved -> get_or_create_session would key the wrong owner, so
         # the platform delivery must be skipped rather than guessed.
         deliver.assert_not_awaited()
+
+    async def test_platform_delivery_failure_never_fails_the_reminder(self) -> None:
+        """The platform delivery is a side channel — the in-app badge is the
+        primary delivery. A transient user-lookup failure (get_user_by_id raises
+        HTTPException) must be swallowed, not propagated: the reminder still
+        completes and is captured, and a recurring one is not skipped."""
+        reminder = _reminder()
+
+        with (
+            patch(
+                "app.tasks.reminder_tasks.notification_service.create_notification",
+                new_callable=AsyncMock,
+            ) as create,
+            patch(
+                f"{MODULE}.get_user_by_id",
+                new_callable=AsyncMock,
+                side_effect=HTTPException(status_code=404, detail="User not found"),
+            ),
+            patch(f"{MODULE}.capture_event") as mock_capture,
+            patch("app.tasks.reminder_tasks.log.info"),
+        ):
+            # Must not raise despite the lookup blowing up.
+            await execute_reminder_by_agent(reminder)
+
+        create.assert_awaited_once()
+        # The reminder is treated as successfully executed — the side channel's
+        # failure did not mark it failed or skip the completion capture.
+        mock_capture.assert_called_once()
+        assert mock_capture.call_args.args[1] == AnalyticsEvents.REMINDER_COMPLETED

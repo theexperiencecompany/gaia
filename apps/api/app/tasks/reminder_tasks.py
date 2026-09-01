@@ -59,30 +59,48 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
     """Push a fired reminder into the user's linked chat platforms and record it
-    into the conversation thread. Best-effort — never fails the reminder."""
+    into the conversation thread. Best-effort — never fails the reminder.
+
+    This is a supplementary side channel; the in-app badge is the primary
+    delivery and has already succeeded by the time we get here. So every failure
+    is swallowed and logged, never propagated — in particular get_user_by_id
+    raises HTTPException on a transient user-repo error, which must not mark the
+    reminder failed (and skip the recurring re-arm) over a side channel.
+    """
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
         return
-    user_data = await get_user_by_id(reminder.user_id)
-    if not user_data:
-        log.warning(
-            "Reminder platform delivery skipped: user not found",
+    try:
+        user_data = await get_user_by_id(reminder.user_id)
+        if not user_data:
+            log.warning(
+                "Reminder platform delivery skipped: user not found",
+                reminder_id=reminder.id,
+                user_id=reminder.user_id,
+            )
+            return
+        # get_user_by_id returns the raw Mongo doc keyed by _id; downstream
+        # delivery (update_messages ownership, session keying) reads user_id, so
+        # stamp it — the same normalization the tracked-todo worker does.
+        user_data["user_id"] = reminder.user_id
+        user = cast(AuthenticatedUser, user_data)
+        title = reminder.payload.title
+        origin = (
+            f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
+        )
+        await deliver_result_to_platforms(
+            user=user,
+            user_id=reminder.user_id,
+            notification_text=_reminder_result_text(reminder.payload),
+            origin=origin,
+        )
+    except Exception as e:  # side channel; the in-app badge already delivered
+        log.error(
+            "Reminder platform delivery failed",
             reminder_id=reminder.id,
             user_id=reminder.user_id,
+            error=str(e),
+            error_type=type(e).__name__,
         )
-        return
-    # get_user_by_id returns the raw Mongo doc keyed by _id; downstream delivery
-    # (update_messages ownership, session keying) reads user_id, so stamp it —
-    # the same normalization the tracked-todo worker does.
-    user_data["user_id"] = reminder.user_id
-    user = cast(AuthenticatedUser, user_data)
-    title = reminder.payload.title
-    origin = f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
-    await deliver_result_to_platforms(
-        user=user,
-        user_id=reminder.user_id,
-        notification_text=_reminder_result_text(reminder.payload),
-        origin=origin,
-    )
 
 
 async def execute_reminder_by_agent(
