@@ -20,7 +20,11 @@ from langgraph.graph.state import CompiledStateGraph
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
-from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
+from app.agents.middleware import (
+    SubagentMiddleware,
+    SubagentStackOptions,
+    create_subagent_middleware,
+)
 from app.agents.tools.coding import bash, grep, query_json, read
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
@@ -77,7 +81,7 @@ def resolve_declared_tools(
     return resolved
 
 
-def _build_scoped_tool_dict(
+def build_scoped_tool_dict(
     tool_registry: ToolRegistry,
     tool_space: str,
     mcp_tools: list[BaseTool] | None,
@@ -203,7 +207,7 @@ class SubAgentFactory:
 
         store, tool_registry = await asyncio.gather(get_tools_store(), get_tool_registry())
 
-        scoped_tool_dict, initial_tool_ids = _build_scoped_tool_dict(
+        scoped_tool_dict, initial_tool_ids = build_scoped_tool_dict(
             tool_registry=tool_registry,
             tool_space=tool_space,
             mcp_tools=cfg.mcp_tools,
@@ -224,10 +228,12 @@ class SubAgentFactory:
         # cannot drift into executing the workflow it is supposed to describe.
         middleware = create_subagent_middleware(
             agent_name=name,
-            subagent_llm=llm,
-            subagent_registry=full_tool_dict,
-            subagent_tool_space=tool_space,
-            enable_subagent=not cfg.authoring_only,
+            subagent=SubagentStackOptions(
+                enabled=not cfg.authoring_only,
+                llm=llm,
+                registry=full_tool_dict,
+                tool_space=tool_space,
+            ),
         )
 
         subagent_mw = next(

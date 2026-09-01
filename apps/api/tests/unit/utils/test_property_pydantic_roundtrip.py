@@ -68,7 +68,7 @@ def valid_envelope(draw: st.DrawFn) -> OutboundMessageEnvelope:
 
 
 class TestOutboundEnvelopeRoundTrip:
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(envelope=valid_envelope())
     def test_python_dump_round_trips_losslessly(self, envelope: OutboundMessageEnvelope) -> None:
         restored = OutboundMessageEnvelope.model_validate(envelope.model_dump())
@@ -78,7 +78,7 @@ class TestOutboundEnvelopeRoundTrip:
         # not singleton identity.
         assert _is_aware_utc(restored.enqueued_at)
 
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(envelope=valid_envelope())
     def test_json_round_trip_preserves_wire_shape(self, envelope: OutboundMessageEnvelope) -> None:
         restored = OutboundMessageEnvelope.model_validate_json(envelope.model_dump_json())
@@ -87,7 +87,7 @@ class TestOutboundEnvelopeRoundTrip:
         # equivalent, not the UTC singleton.
         assert _is_aware_utc(restored.enqueued_at)
 
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(envelope=valid_envelope())
     def test_json_has_exactly_the_declared_keys(self, envelope: OutboundMessageEnvelope) -> None:
         import json
@@ -111,7 +111,7 @@ class TestOutboundEnvelopeRoundTrip:
         # The default_factory itself constructs the UTC singleton.
         assert envelope.enqueued_at.tzinfo is UTC
 
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     @given(
         platform=st.text(min_size=1, max_size=50),
         destination_id=st.text(min_size=1, max_size=50),
@@ -152,7 +152,7 @@ CAMEL_SCHEMA_FIELDS = {
 
 
 class TestCamelCaseAliasRoundTrip:
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(
         integration_id=st.text(min_size=1, max_size=50),
         content=st.text(max_size=8000),

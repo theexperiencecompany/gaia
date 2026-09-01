@@ -26,6 +26,7 @@ from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 import redis.asyncio as redis
 from redis.asyncio.client import Pipeline, PubSub
+from redis.asyncio.lock import Lock
 
 from app.config.settings import settings
 from app.constants.cache import (
@@ -172,6 +173,10 @@ class AsyncRedisCommands(Protocol):
         """Set a TTL in seconds on an existing key."""
         ...
 
+    async def ttl(self, name: str) -> int:
+        """Seconds left on a key — -1 when it has no TTL, -2 when it is gone."""
+        ...
+
     async def keys(self, pattern: str = "*") -> list[str]:
         """KEYS — full scan; only for small, bounded keyspaces."""
         ...
@@ -241,6 +246,19 @@ class AsyncRedisCommands(Protocol):
 
     def pubsub(self) -> PubSub:
         """A pub/sub interface bound to this client."""
+        ...
+
+    def lock(
+        self,
+        name: str,
+        *,
+        timeout: float | None = None,
+        sleep: float = 0.1,
+        blocking: bool = True,
+        blocking_timeout: float | None = None,
+        thread_local: bool = True,
+    ) -> Lock:
+        """A distributed mutex — SET NX lease with a token-checked Lua release."""
         ...
 
     def pipeline(self, transaction: bool = True) -> Pipeline:

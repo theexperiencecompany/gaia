@@ -78,7 +78,7 @@ export interface WideEventEntry {
  * Canonical wide-event field schema for the bots — the TS analogue of
  * `WideEventFields` in `libs/shared/py/wide_events.py`. Using consistent
  * names keeps LogQL queries uniform across every bot platform; the
- * observability scanner (`scripts/ci/evlog-map-bots.mjs`) parses this
+ * observability scanner (`scripts/ci/checks.mjs evlog-map-bots`) parses this
  * interface live, so a new field is recognized the moment it lands here.
  */
 export interface BotWideEventFields {

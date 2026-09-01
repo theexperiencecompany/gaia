@@ -105,4 +105,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-please.outputs.cli_tag_name }}
           VERSION: ${{ needs.release-please.outputs.cli_version }}
-        run: bash scripts/ci/dispatch-cli-publish.sh
+        run: bash scripts/ci/release.sh dispatch-cli-publish

@@ -105,7 +105,7 @@ async def _build_spawn_graph(
 
     # ``excluded_tool_names`` always contains spawn_subagent (SubagentMiddleware
     # adds it), so a spawned subagent cannot spawn again — the middleware stack
-    # below is built with enable_subagent=False for the same reason.
+    # below is built with SubagentStackOptions(enabled=False) for the same reason.
     scoped_tools: dict[str, BaseTool] = {
         name: tool for name, tool in registry.items() if name not in excluded_tool_names
     }

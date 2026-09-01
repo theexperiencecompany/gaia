@@ -13,7 +13,7 @@ import pytest
 
 from app.agents.core.background.workflow_platform_delivery import (
     _preferred_bot_platforms,
-    deliver_workflow_result_to_platforms,
+    deliver_result_to_platforms,
 )
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -94,7 +94,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock()) as linked,
             patch(f"{MODULE}.fetch_channel_preferences", AsyncMock()),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text="   ", origin=self.ORIGIN
             )
 
@@ -106,7 +106,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value={})),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -128,7 +128,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -167,7 +167,7 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
         ):
             async with captured_wide_event() as event:
-                await deliver_workflow_result_to_platforms(
+                await deliver_result_to_platforms(
                     user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
                 )
 
@@ -195,7 +195,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -228,7 +228,7 @@ class TestDeliveredResultsReachTheSessionThread:
             patch(f"{MODULE}.publish_outbound_message", AsyncMock(return_value=publish_result)),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text=TEXT,
@@ -279,7 +279,7 @@ class TestDeliveredResultsReachTheSessionThread:
             ),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text="hello",
@@ -305,7 +305,7 @@ class TestDeliveredResultsReachTheSessionThread:
             ),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text="hello",
@@ -341,7 +341,7 @@ class TestVariantBreakTokens:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text=text,

@@ -42,6 +42,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.exceptions import OutputParserException
 import pytest
 
+from app.db.repositories.workflows import UNSET
+from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedPromptOutput,
@@ -1943,7 +1945,6 @@ class TestWorkflowScheduler:
     @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_success(self, mock_repo):
         mock_repo.set_status = AsyncMock(return_value=True)
-        from app.models.scheduler_models import ScheduledTaskStatus
 
         result = await WorkflowScheduler().update_task_status(
             WORKFLOW_ID, ScheduledTaskStatus.EXECUTING
@@ -1953,7 +1954,6 @@ class TestWorkflowScheduler:
     @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_not_found(self, mock_repo):
         mock_repo.set_status = AsyncMock(return_value=False)
-        from app.models.scheduler_models import ScheduledTaskStatus
 
         result = await WorkflowScheduler().update_task_status(
             "nonexistent", ScheduledTaskStatus.EXECUTING
@@ -1963,7 +1963,6 @@ class TestWorkflowScheduler:
     @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_with_user_id(self, mock_repo):
         mock_repo.set_status = AsyncMock(return_value=True)
-        from app.models.scheduler_models import ScheduledTaskStatus
 
         await WorkflowScheduler().update_task_status(
             WORKFLOW_ID, ScheduledTaskStatus.SCHEDULED, user_id=USER_ID
@@ -1974,7 +1973,6 @@ class TestWorkflowScheduler:
     @patch("app.services.workflow.scheduler.workflow_repository")
     async def test_update_task_status_db_error_returns_false(self, mock_repo):
         mock_repo.set_status = AsyncMock(side_effect=Exception("DB error"))
-        from app.models.scheduler_models import ScheduledTaskStatus
 
         result = await WorkflowScheduler().update_task_status(
             WORKFLOW_ID, ScheduledTaskStatus.EXECUTING
@@ -1982,17 +1980,54 @@ class TestWorkflowScheduler:
         assert result is False
 
     @patch("app.services.workflow.scheduler.workflow_repository")
-    async def test_update_task_status_with_extra_data(self, mock_repo):
+    async def test_update_task_status_threads_all_rearm_fields(self, mock_repo):
         mock_repo.set_status = AsyncMock(return_value=True)
-        from app.models.scheduler_models import ScheduledTaskStatus
+        scheduled_at = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
+        next_run = datetime(2026, 1, 2, 4, 4, tzinfo=UTC)
 
         await WorkflowScheduler().update_task_status(
             WORKFLOW_ID,
             ScheduledTaskStatus.COMPLETED,
-            update_data={"occurrence_count": 5},
+            update_data={
+                "scheduled_at": scheduled_at,
+                "occurrence_count": 5,
+                "repeat": "0 9 * * *",
+                "trigger_config.next_run": next_run,
+            },
         )
 
-        assert mock_repo.set_status.call_args.kwargs["occurrence_count"] == 5
+        rearm = mock_repo.set_status.call_args.kwargs["rearm"]
+        assert rearm.scheduled_at == scheduled_at
+        assert rearm.occurrence_count == 5
+        assert rearm.repeat == "0 9 * * *"
+        assert rearm.next_run == next_run
+
+    @patch("app.services.workflow.scheduler.workflow_repository")
+    async def test_update_task_status_omits_absent_rearm_fields_with_unset(self, mock_repo):
+        mock_repo.set_status = AsyncMock(return_value=True)
+
+        await WorkflowScheduler().update_task_status(WORKFLOW_ID, ScheduledTaskStatus.EXECUTING)
+
+        rearm = mock_repo.set_status.call_args.kwargs["rearm"]
+        # scheduled_at / next_run default to the UNSET sentinel (leave untouched),
+        # NOT None — None is a meaningful clear used by the reap path.
+        assert rearm.scheduled_at is UNSET
+        assert rearm.next_run is UNSET
+        assert rearm.occurrence_count is None
+        assert rearm.repeat is None
+
+    @patch("app.services.workflow.scheduler.workflow_repository")
+    async def test_find_stale_executing_materializes_and_passes_cutoff(self, mock_repo):
+        stale = _make_workflow()
+        # A lazy iterator, not a list: proves the method materializes the
+        # repository's result with list(...) rather than returning it raw.
+        mock_repo.find_stale_executing = AsyncMock(return_value=iter([stale]))
+        cutoff = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
+
+        result = await WorkflowScheduler().find_stale_executing(cutoff)
+
+        assert result == [stale]
+        mock_repo.find_stale_executing.assert_awaited_once_with(cutoff)
 
     async def test_schedule_workflow_execution_success(self):
         scheduler = WorkflowScheduler()

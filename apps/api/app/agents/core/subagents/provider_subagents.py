@@ -16,6 +16,9 @@ from langgraph.graph.state import CompiledStateGraph
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import (
+    CategoryOptions,
+    CategoryRisk,
+    ToolRegistry,
     get_tool_registry,
     integration_destructive_tools,
 )
@@ -42,6 +45,37 @@ class SubagentUnavailableError(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> None:
+    """Put a Composio subagent's toolkit in the registry, once per process.
+
+    Both the live handoff and a playbook's validator and replay resolve the
+    subagent's tool space from the registry, and the toolkit is only there once
+    something has loaded it. A worker that has never handed off to this
+    subagent has an empty category for it until this runs, which is how a
+    replay three minutes after a worker restart found no GMAIL tool at all.
+
+    ``Subagent`` does not carry composio_config; the OAuth integration does
+    (composio is OAuth-only). The OAuthIntegration validator enforces
+    composio_config when managed_by="composio", so landing here without one
+    means a builtin Subagent declared managed_by="composio" and would silently
+    produce a tool-less agent. Fail loudly instead.
+    """
+    integration = get_integration_by_id(subagent.id)
+    if integration is None or integration.composio_config is None:
+        raise ValueError(
+            f"Composio subagent {subagent.id!r} has no matching OAuth "
+            f"integration with composio_config. managed_by='composio' "
+            f"must correspond to an OAUTH_INTEGRATIONS entry."
+        )
+    config = subagent.config
+    await tool_registry.register_provider_tools(
+        toolkit_name=integration.composio_config.toolkit,
+        space_name=config.tool_space,
+        specific_tools=config.specific_tools,
+        exclude_tools=config.exclude_tools,
+    )
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -87,9 +121,11 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                 tool_registry._add_category(
                     name=category_name,
                     tools=tools,
-                    space=config.tool_space,
-                    integration_name=subagent.id,
-                    destructive_tools=integration_destructive_tools(subagent.id),
+                    options=CategoryOptions(
+                        space=config.tool_space,
+                        integration_name=subagent.id,
+                    ),
+                    risk=CategoryRisk(destructive_tools=integration_destructive_tools(subagent.id)),
                 )
                 await tool_registry._index_category_tools(category_name)
                 log.info(
@@ -98,28 +134,8 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                     integration_id=subagent.id,
                 )
 
-    # Handle Composio-managed integrations
-    # `Subagent` does not carry composio_config; look up the OAuth integration
-    # for this branch (composio is OAuth-only). The OAuthIntegration model
-    # validator enforces composio_config when managed_by="composio", so the
-    # only way to land here without one is a builtin Subagent declaring
-    # managed_by="composio" — which would silently produce a tool-less agent.
-    # Fail loudly instead.
     elif subagent.managed_by == "composio":
-        integration = get_integration_by_id(subagent.id)
-        if integration is None or integration.composio_config is None:
-            raise ValueError(
-                f"Composio subagent {subagent.id!r} has no matching OAuth "
-                f"integration with composio_config. managed_by='composio' "
-                f"must correspond to an OAUTH_INTEGRATIONS entry."
-            )
-        toolkit_name = integration.composio_config.toolkit
-        await tool_registry.register_provider_tools(
-            toolkit_name=toolkit_name,
-            space_name=config.tool_space,
-            specific_tools=config.specific_tools,
-            exclude_tools=config.exclude_tools,
-        )
+        await register_composio_subagent_tools(subagent, tool_registry)
 
     llm = init_llm()
 

@@ -12,6 +12,7 @@ on completion, even if the client disconnects mid-stream.
 
 import asyncio
 import contextlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from typing import Any
@@ -20,7 +21,7 @@ from uuid import uuid4
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langgraph.errors import GraphRecursionError
 
-from app.agents.core.agent import call_agent
+from app.agents.core.agent import AgentRunOptions, StreamMessageIds, call_agent
 from app.agents.core.background.executor_capture import (
     await_executor_done,
     drain_executor_tool_data,
@@ -96,6 +97,20 @@ async def run_chat_stream_background(
             conversation_id=conversation_id,
             source=source,
         )
+
+
+@dataclass(frozen=True)
+class _TurnContext:
+    """What identifies the turn being streamed, plus the collector for its usage.
+
+    Fixed for the whole turn and read by every branch of the consume loop, so it
+    travels as one value rather than four parallel arguments.
+    """
+
+    conversation_id: str
+    stream_id: str
+    source: str | None
+    usage_callback: UsageMetadataCallbackHandler
 
 
 class _StreamState:
@@ -228,10 +243,12 @@ async def _run_chat_stream(
         description_task = await _consume_agent_stream(
             body,
             user,
-            conversation_id,
-            stream_id,
-            source,
-            usage_callback,
+            _TurnContext(
+                conversation_id=conversation_id,
+                stream_id=stream_id,
+                source=source,
+                usage_callback=usage_callback,
+            ),
             description_task,
             state,
         )
@@ -508,10 +525,7 @@ async def _publish_init_chunk(
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
     user: AuthenticatedUser,
-    conversation_id: str,
-    stream_id: str,
-    source: str | None,
-    usage_callback: UsageMetadataCallbackHandler,
+    turn: _TurnContext,
     description_task: asyncio.Task[str] | None,
     state: _StreamState,
 ) -> asyncio.Task[str] | None:
@@ -520,15 +534,17 @@ async def _consume_agent_stream(
     Returns the (possibly-cleared) ``description_task`` so the orchestrator can
     await whatever's left.
     """
+    stream_id = turn.stream_id
     async for chunk in await call_agent(
         request=body,
         user=user,
-        conversation_id=conversation_id,
-        usage_metadata_callback=usage_callback,
-        stream_id=stream_id,
-        user_message_id=state.user_message_id,
-        bot_message_id=state.bot_message_id,
-        source=source,
+        conversation_id=turn.conversation_id,
+        options=AgentRunOptions(usage_metadata_callback=turn.usage_callback, source=turn.source),
+        ids=StreamMessageIds(
+            stream_id=stream_id,
+            user_message_id=state.user_message_id,
+            bot_message_id=state.bot_message_id,
+        ),
     ):
         # Cancellation is detected and terminated by the inner graph driver
         # (execute_graph_streaming), which owns the checkpoint write that
@@ -576,7 +592,7 @@ async def _consume_agent_stream(
                     f"{LogTag.CHAT} Error processing chunk",
                     error=str(e),
                     error_type=type(e).__name__,
-                    conversation_id=conversation_id,
+                    conversation_id=turn.conversation_id,
                 )
                 await stream_manager.publish_chunk(stream_id, chunk)
         else:

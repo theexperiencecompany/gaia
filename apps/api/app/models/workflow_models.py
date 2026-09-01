@@ -145,13 +145,7 @@ class TriggerConfig(BaseModel):
 
         try:
             schedule_tz = Timezone.parse(user_timezone or self.timezone)
-            next_run = get_next_run_time(self.cron_expression, base_time, schedule_tz)
-            # Whole seconds only. The scheduler stamps each ARQ job with
-            # ``int(armed_time.timestamp())`` and the stale-fire claim gate pins
-            # ``next_run`` by equality against the reconstructed stamp, so a
-            # sub-second component anywhere would make fresh fires read as
-            # stale. Cron granularity is minutes; drop any stray sub-second.
-            return next_run.replace(microsecond=0) if next_run else None
+            return get_next_run_time(self.cron_expression, base_time, schedule_tz)
         except Exception as e:
             log.error("Error calculating next run time", error=str(e), error_type=type(e).__name__)
             return None
@@ -741,6 +735,12 @@ class WorkflowDocument(Workflow, MongoDocument):
     # ``wf_…`` id, so the stored document is non-optional. The repository keys on
     # ``_id`` directly, so no alias is needed here.
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+    #: How many runs declined to write a playbook for the workflow as it stands,
+    #: and the workflow hash those declines were about. Past
+    #: ``PLAYBOOK_DECLINE_LIMIT`` on the same hash the check brief stops asking;
+    #: an edit to the workflow changes the hash and asks again.
+    playbook_declines: int = 0
+    playbook_declined_hash: str | None = None
 
 
 class WorkflowCreatorInfo(BaseModel):
@@ -799,3 +799,5 @@ class WorkflowUpdate(BaseModel):
     is_public: bool | None = None
     slug: str | None = None
     created_by: str | None = None
+    playbook_declines: int | None = None
+    playbook_declined_hash: str | None = None

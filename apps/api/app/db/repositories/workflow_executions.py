@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from app.db.repositories.base import MongoRepository
 from app.models.workflow_execution_models import (
+    RecordedCall,
     WorkflowExecutionDocument,
     WorkflowExecutionStatus,
     WorkflowExecutionUpdate,
@@ -33,6 +34,7 @@ class WorkflowExecutionsRepository(
         summary: str | None = None,
         error_message: str | None = None,
         conversation_id: str | None = None,
+        trace: list[RecordedCall] | None = None,
     ) -> WorkflowExecutionDocument | None:
         """Mark an execution finished, computing its duration from ``started_at``.
         Returns the updated document, or ``None`` if the execution was not found."""
@@ -52,8 +54,35 @@ class WorkflowExecutionsRepository(
             fields["error_message"] = error_message
         if conversation_id:
             fields["conversation_id"] = conversation_id
+        if trace:
+            fields["trace"] = trace
 
         return await self.update(execution_id, WorkflowExecutionUpdate.model_validate(fields))
+
+    async def find_latest_with_trace(
+        self, workflow_id: str, user_id: str
+    ) -> WorkflowExecutionDocument | None:
+        """The workflow's most recent finished run that recorded a trace.
+
+        What the next run reads to learn what the previous one did, now that its
+        checkpoint threads are reset before every fire. Runs that recorded
+        nothing are skipped: an empty trace would tell the next run nothing while
+        hiding the last one that had something to say. A FAILED run counts: it
+        ran steps with side effects before it stopped, and hiding it would show
+        the next run the fire before, which then repeats them. The brief and
+        ``$last_run`` both carry the status, so a reader can tell.
+        """
+        rows = await self._find(
+            {
+                "workflow_id": workflow_id,
+                "user_id": user_id,
+                "status": {"$in": ["success", "failed"]},
+                "trace.0": {"$exists": True},
+            },
+            sort=[("started_at", -1)],
+            limit=1,
+        )
+        return rows[0] if rows else None
 
     async def list_for_workflow(
         self, workflow_id: str, user_id: str, *, limit: int, offset: int

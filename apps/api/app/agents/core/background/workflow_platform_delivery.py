@@ -1,12 +1,13 @@
-"""Deliver a finished workflow's result into the user's linked messaging platforms.
+"""Deliver a proactively-produced result into the user's linked messaging platforms.
 
-When a workflow run completes, ``deliver_result`` saves the bot message and then
-(for non-silent, successful runs) calls :func:`deliver_workflow_result_to_platforms`
-to push that same result into the user's real Telegram/WhatsApp/Discord/Slack chats
-as natural GAIA messages — GAIA's voice, no notification chrome — so the thread can
-be continued there. This is deliberately separate from the in-app completion badge
-(``app.services.workflow.notifications``): the badge is a web heads-up, this is the
-actual conversational delivery, and they target different surfaces.
+A result GAIA produces with no user watching — a finished workflow run, a fired
+reminder — is pushed by :func:`deliver_result_to_platforms` into the user's real
+Telegram/WhatsApp/Discord/Slack chats as natural GAIA messages (GAIA's voice, no
+notification chrome) so the thread can be continued there, AND recorded into that
+conversation's langgraph thread so a later turn remembers it. This is deliberately
+separate from the in-app badge each producer also raises: the badge is a web
+heads-up, this is the actual conversational delivery, and they target different
+surfaces.
 
 Everything here is best-effort: a single platform failing never blocks the others
 or propagates to the caller — the result is already persisted to the conversation.
@@ -37,22 +38,22 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 
-async def deliver_workflow_result_to_platforms(
+async def deliver_result_to_platforms(
     *,
     user: AuthenticatedUser,
     user_id: str,
     notification_text: str,
     origin: str,
 ) -> None:
-    """Deliver a finished workflow's result into the user's preferred messaging
-    platforms as real, persisted bot messages, split into natural bubbles.
+    """Deliver a proactive result into the user's preferred messaging platforms as
+    real, persisted bot messages, split into natural bubbles, and record each into
+    the platform conversation's langgraph thread.
 
     Only platforms the user has linked AND left enabled in their notification
-    channel preferences receive it. This is what makes a workflow result appear
-    inline in the user's actual Telegram/WhatsApp/etc. chat (GAIA's voice, no
-    notification chrome) so the thread can be continued there, alongside the
-    workflow's own conversation. Best-effort: a single platform failing never
-    blocks the others or propagates to the caller.
+    channel preferences receive it. ``origin`` names what produced the result
+    (workflow, reminder, …) so the langgraph record can backtrack to the source.
+    Best-effort: a single platform failing never blocks the others or propagates
+    to the caller.
     """
     if not notification_text.strip():
         return
@@ -61,18 +62,12 @@ async def deliver_workflow_result_to_platforms(
     if not targets:
         return
 
-    # Comms splits its reply into bubbles with the break sentinel. The bubbles
-    # are needed here too — the langgraph provenance record below has to say what
-    # was actually delivered, not the raw text with its control tokens.
-    bubbles = split_message_bubbles(notification_text)
-    for source, platform_user_id in targets:
+    for target in targets:
         await _post_workflow_message(
             user=user,
             user_id=user_id,
-            source=source,
-            platform_user_id=platform_user_id,
+            target=target,
             response=notification_text,
-            bubbles=bubbles,
             origin=origin,
         )
 
@@ -108,16 +103,19 @@ async def _post_workflow_message(
     *,
     user: AuthenticatedUser,
     user_id: str,
-    source: ConversationSource,
-    platform_user_id: str,
+    target: tuple[ConversationSource, str],
     response: str,
-    bubbles: list[str],
     origin: str,
 ) -> None:
     """Persist the result into the platform's session conversation and deliver it
     as ordered bubbles, then record it in that conversation's langgraph thread —
     framed with the platform and origin so a later turn can backtrack to the
     source. Best-effort: logs and swallows any single-platform failure."""
+    source, platform_user_id = target
+    # Comms splits its reply into bubbles with the break sentinel; the outbound
+    # publish and the provenance record below both need the split, not the raw
+    # text with its control tokens.
+    bubbles = split_message_bubbles(response)
     try:
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,

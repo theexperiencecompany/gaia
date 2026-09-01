@@ -10,3 +10,4 @@ apps/web/.env
 apps/web/.env.local
 apps/mobile/.env
 apps/bots/.env
+.claude/settings.local.json

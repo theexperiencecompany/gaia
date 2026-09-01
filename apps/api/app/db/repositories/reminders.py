@@ -10,12 +10,13 @@ occurrence-count advance, re-arm), and the hot read is the due-scan across users
 neither benefits from an id-keyed entity cache. Matches the workflows repository.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.reminder_models import ReminderDocument, ReminderStatus, ReminderUpdate
+from app.utils.occurrence import occurrence_window
 
 
 class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
@@ -61,7 +62,53 @@ class RemindersRepository(MongoRepository[ReminderDocument, ReminderUpdate]):
             }
         )
 
+    async def find_stale_executing(self, cutoff: datetime) -> list[ReminderDocument]:
+        """Reminders wedged in EXECUTING since before ``cutoff`` — the recovery
+        sweep's re-arm candidates (a worker died mid-fire)."""
+        return await self._find(
+            {
+                "status": ReminderStatus.EXECUTING.value,
+                "updated_at": {"$lt": cutoff},
+            }
+        )
+
     # ----------------------------------------------------------------- writes
+
+    async def claim_for_execution(
+        self, reminder_id: str, *, expected_scheduled_at: datetime | None = None
+    ) -> bool:
+        """Atomically claim a scheduled reminder for a fire (SCHEDULED -> EXECUTING).
+
+        Returns ``False`` — and the caller skips the fire — when the reminder is
+        no longer ``scheduled``, i.e. another worker already claimed it. Two ARQ
+        jobs for one reminder is routine (the startup scan runs in every replica
+        and every worker, and re-arms past-due reminders to that process's own
+        clock, so the job ids differ and ARQ does not dedup them). The status
+        predicate living inside the update is what makes it exactly-once.
+
+        ``expected_scheduled_at`` pins the occurrence the job was armed for, and
+        status alone is not enough without it: a RECURRING reminder goes back to
+        ``scheduled`` for its NEXT occurrence as soon as the first run re-arms,
+        so a sibling pod's late job would find it claimable again and deliver
+        the same reminder twice. Jobs enqueued before the stamp existed pass
+        ``None`` and claim on status alone, so a deploy never strands them.
+        Matched at second resolution (``occurrence_window``) because the stamp
+        the job carries is a unix int — see that helper for why equality here
+        silently matched nothing.
+        Mirrors ``WorkflowsRepository.claim_for_execution``.
+        """
+        filter_: dict[str, Any] = {
+            "_id": self._id_value(reminder_id),
+            "status": ReminderStatus.SCHEDULED.value,
+        }
+        if expected_scheduled_at is not None:
+            filter_["scheduled_at"] = occurrence_window(expected_scheduled_at)
+        result = await self._apply_raw_update(
+            filter_,
+            {"$set": {"status": ReminderStatus.EXECUTING.value, "updated_at": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        return result is not None
 
     async def update_for_user(
         self, reminder_id: str, user_id: str, update: ReminderUpdate

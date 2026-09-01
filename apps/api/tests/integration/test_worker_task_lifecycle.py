@@ -72,7 +72,9 @@ class TestReminderTaskExecution:
 
             result = await process_reminder(ARQ_CTX, FAKE_REMINDER_ID)
 
-            mock_scheduler.process_task_execution.assert_awaited_once_with(FAKE_REMINDER_ID)
+            # Unstamped: a job enqueued before the occurrence pin existed claims
+            # on status alone, so a deploy never strands in-flight reminders.
+            mock_scheduler.process_task_execution.assert_awaited_once_with(FAKE_REMINDER_ID, None)
             assert FAKE_REMINDER_ID in result
             assert "Successfully" in result
 
@@ -392,7 +394,7 @@ class TestWorkflowTaskExecution:
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 new_callable=AsyncMock,
-                return_value="conv-789",
+                return_value=("conv-789", []),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
         ):

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.tools.core.registry import integration_destructive_tools
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
@@ -223,6 +224,59 @@ class TestCreateSubagent:
         assert result is mock_graph
         mock_mcp_client.connect.assert_called_once_with("test_int")
         mock_registry._add_category.assert_called_once()
+
+    async def test_mcp_category_carries_the_space_owner_and_risk_set(self):
+        """The category the MCP tools land in is only reachable and only gated
+        correctly because of these three. A default `space` hides the toolkit
+        from the subagent that just loaded it, a missing `integration_name`
+        drops the connected-integration filter, and a `None` risk set sends
+        every curated destructive tool back to the HIL LLM classifier.
+        """
+        from app.agents.core.subagents.provider_subagents import create_subagent
+
+        subagent = _make_subagent(
+            integration_id="gmail",
+            managed_by="mcp",
+            mcp_config=MCPConfig(server_url="https://example.com", requires_auth=False),
+            subagent_config=_make_subagent_config(tool_space="mail_space"),
+        )
+        mock_registry = AsyncMock()
+        mock_registry._categories = {}
+        mock_registry._add_category = MagicMock()
+        mock_registry._index_category_tools = AsyncMock()
+
+        mock_mcp_client = AsyncMock()
+        mock_mcp_client.connect = AsyncMock(return_value=[MagicMock()])
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=mock_registry,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_mcp_client",
+                new_callable=AsyncMock,
+                return_value=mock_mcp_client,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.init_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            await create_subagent(subagent)
+
+        kwargs = mock_registry._add_category.call_args.kwargs
+        assert kwargs["options"].space == "mail_space"
+        assert kwargs["options"].integration_name == "gmail"
+        curated = integration_destructive_tools("gmail")
+        assert curated, "the fixture integration must have a curated risk set to pin"
+        assert kwargs["risk"].destructive_tools == curated
 
     async def test_mcp_requires_auth_raises(self):
         from app.agents.core.subagents.provider_subagents import create_subagent

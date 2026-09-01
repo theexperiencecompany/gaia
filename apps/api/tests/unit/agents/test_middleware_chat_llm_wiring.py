@@ -14,22 +14,38 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import BaseTool, tool
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.factory import (
+    CODING_TOOL_NAMES,
+    SELF_OFFLOADING_TOOL_NAMES,
+    SPAWN_SUBAGENT_TOOL,
+    AccountingOptions,
+    ContextOptions,
+    LoopGuardOptions,
+    SubagentStackOptions,
     create_comms_middleware,
     create_executor_middleware,
     create_middleware_stack,
     create_subagent_middleware,
 )
+from app.agents.middleware.hil_approval import HILApprovalMiddleware
+from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.style_guard import StyleGuardMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.subagent_join import SubagentJoinMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
+from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.services.storage import JuiceFSUnavailable
 from tests.helpers import BindableToolsFakeModel
+
+COMPACTION_EXCLUSIONS = CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
 
 
 def _fake_llm() -> BaseChatModel:
@@ -38,6 +54,16 @@ def _fake_llm() -> BaseChatModel:
     # does for the real chat LLM (init_*_llm pin it there).
     llm.profile = {"max_input_tokens": 100_000}
     return llm
+
+
+@tool
+def _spawnable_tool(query: str) -> str:
+    """A stand-in for a real tool handed to spawned subagents."""
+    return query
+
+
+def _types(stack: list) -> list[type]:
+    return [type(mw) for mw in stack]
 
 
 class TestChatLlmWiring:
@@ -100,7 +126,7 @@ class TestChatLlmWiring:
 
     def test_subagent_stack_rides_its_own_llm(self) -> None:
         llm = _fake_llm()
-        stack = create_subagent_middleware(subagent_llm=llm, enable_subagent=False)
+        stack = create_subagent_middleware(subagent=SubagentStackOptions(enabled=False, llm=llm))
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.summary_llm is llm
 
@@ -212,9 +238,11 @@ class TestStackConfigurationPropagation:
     def test_thresholds_and_exclusions_reach_compaction(self) -> None:
         _, _, compactor, _ = self._stack(
             chat_llm=_fake_llm(),
-            compaction_threshold=0.77,
-            max_output_chars=4321,
-            compaction_excluded_tools={"tool_a"},
+            context=ContextOptions(
+                compaction_threshold=0.77,
+                max_output_chars=4321,
+                compaction_excluded_tools={"tool_a"},
+            ),
         )
         assert compactor.compaction_threshold == 0.77
         assert compactor.max_output_chars == 4321
@@ -223,10 +251,12 @@ class TestStackConfigurationPropagation:
     def test_summarization_knobs_reach_summarization(self) -> None:
         _, summarizer, _, _ = self._stack(
             chat_llm=_fake_llm(),
-            summarization_trigger=("fraction", 0.42),
-            summarization_keep=("tokens", 123),
-            enable_archive=False,
-            summarization_excluded_tools={"tool_b"},
+            context=ContextOptions(
+                summarization_trigger=("fraction", 0.42),
+                summarization_keep=("tokens", 123),
+                archive=False,
+                summarization_excluded_tools={"tool_b"},
+            ),
         )
         assert summarizer.trigger == ("fraction", 0.42)
         assert summarizer.keep == ("tokens", 123)
@@ -250,7 +280,8 @@ class TestStackConfigurationPropagation:
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
         stack = create_subagent_middleware(
-            agent_name="gmail_agent", subagent_llm=_fake_llm(), enable_subagent=False
+            agent_name="gmail_agent",
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm()),
         )
         accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
         assert accounting.agent_name == "gmail_agent"
@@ -260,7 +291,9 @@ class TestStackConfigurationPropagation:
         they keep the generic bucket rather than crashing or going unattributed."""
         from app.agents.middleware.accounting import LLMAccountingMiddleware
 
-        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        stack = create_subagent_middleware(
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
+        )
         accounting = next(mw for mw in stack if isinstance(mw, LLMAccountingMiddleware))
         assert accounting.agent_name == "provider_subagent"
 
@@ -271,7 +304,9 @@ class TestStackConfigurationPropagation:
             SPAWN_SUBAGENT_TOOL,
         )
 
-        stack = create_subagent_middleware(subagent_llm=_fake_llm(), enable_subagent=False)
+        stack = create_subagent_middleware(
+            subagent=SubagentStackOptions(enabled=False, llm=_fake_llm())
+        )
         compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
         assert compactor.excluded_tools == (
             CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL | SELF_OFFLOADING_TOOL_NAMES
@@ -286,7 +321,7 @@ class TestStackConfigurationPropagation:
 
     def test_disabled_flags_leave_no_middleware(self) -> None:
         _, summarizer, compactor, _ = self._stack(
-            chat_llm=_fake_llm(), enable_summarization=False, enable_compaction=False
+            chat_llm=_fake_llm(), context=ContextOptions(summarize=False, compact=False)
         )
         assert summarizer is None and compactor is None
 
@@ -330,3 +365,272 @@ class TestBuildGraphChatLlmPassThrough:
                 pass
 
         assert captured["chat_llm"] is llm
+
+
+class TestSpawnWiring:
+    """Every SubagentStackOptions field must land on SubagentMiddlewareConfig.
+
+    A field that silently falls back to the config's default is not a cosmetic
+    slip: the spawned subagent then runs on the wrong model, with the wrong
+    registry, or with a tool the parent deliberately excluded.
+    """
+
+    @staticmethod
+    def _wired() -> tuple[
+        SubagentMiddleware, BaseChatModel, ToolRuntimeConfig, dict[str, BaseTool]
+    ]:
+        subagent_llm = _fake_llm()
+        runtime = ToolRuntimeConfig(initial_tool_names=["read"], enable_retrieve_tools=False)
+        registry = {"spawnable": _spawnable_tool}
+        stack = create_middleware_stack(
+            chat_llm=_fake_llm(),
+            subagent=SubagentStackOptions(
+                enabled=True,
+                llm=subagent_llm,
+                tools=[_spawnable_tool],
+                registry=registry,
+                excluded_tools={"handoff"},
+                tool_space="gmail",
+                tool_runtime_config=runtime,
+                join=True,
+            ),
+        )
+        spawner = next((mw for mw in stack if isinstance(mw, SubagentMiddleware)), None)
+        assert isinstance(spawner, SubagentMiddleware)
+        return spawner, subagent_llm, runtime, registry
+
+    def test_every_spawn_field_reaches_the_middleware(self) -> None:
+        spawner, subagent_llm, runtime, registry = self._wired()
+
+        assert spawner._llm is subagent_llm
+        assert spawner._available_tools == [_spawnable_tool]
+        assert spawner._tool_registry == registry
+        # SubagentMiddleware adds spawn_subagent itself; the caller's exclusion
+        # must survive alongside it rather than replace or be replaced by it.
+        assert spawner._excluded_tools == {"handoff", "spawn_subagent"}
+        assert spawner._tool_space == "gmail"
+        assert spawner._tool_runtime_config is runtime
+        assert callable(spawner._spawn_middleware_factory)
+
+    def test_the_full_stack_is_this_exact_sequence(self) -> None:
+        """Order is the contract: accounting observes every model call from the
+        outside, the HIL gate wraps every tool call before any side effect, and
+        the loop guard sits innermost where it sees raw tool results."""
+        stack = create_middleware_stack(
+            chat_llm=_fake_llm(),
+            subagent=SubagentStackOptions(enabled=True, join=True),
+        )
+
+        assert _types(stack) == [
+            LLMAccountingMiddleware,
+            HILApprovalMiddleware,
+            SubagentMiddleware,
+            WorkspaceArchivingSummarizationMiddleware,
+            WorkspaceCompactionMiddleware,
+            MediaDescriptionMiddleware,
+            LoopGuardMiddleware,
+            SubagentJoinMiddleware,
+        ]
+
+    def test_the_spawn_factory_builds_a_child_that_cannot_spawn_again(self) -> None:
+        """A sub-subagent must not get spawn rights of its own — otherwise a
+        spawn tree can recurse without bound."""
+        spawner, *_ = self._wired()
+
+        child = spawner._spawn_middleware_factory("gmail")
+
+        assert _types(child) == [
+            LLMAccountingMiddleware,
+            HILApprovalMiddleware,
+            WorkspaceCompactionMiddleware,
+            MediaDescriptionMiddleware,
+            LoopGuardMiddleware,
+        ]
+
+    def test_the_spawn_factory_hands_the_child_its_space(self, monkeypatch) -> None:
+        """The child stack is built for the space the spawn runs in; a default
+        space would scope its retrieval to the wrong tool set."""
+        from app.agents.middleware import factory as factory_mod
+
+        captured: dict[str, Any] = {}
+
+        def spy(**kwargs: Any) -> list:
+            captured.update(kwargs)
+            return []
+
+        spawner, *_ = self._wired()
+        monkeypatch.setattr(factory_mod, "create_subagent_middleware", spy)
+
+        assert spawner._spawn_middleware_factory("gmail") == []
+        assert captured == {"subagent": SubagentStackOptions(enabled=False, tool_space="gmail")}
+
+
+class TestLoopGuardWiring:
+    @staticmethod
+    def _guard(**kwargs: Any) -> LoopGuardMiddleware:
+        stack = create_middleware_stack(chat_llm=_fake_llm(), **kwargs)
+        guard = next((mw for mw in stack if isinstance(mw, LoopGuardMiddleware)), None)
+        assert isinstance(guard, LoopGuardMiddleware)
+        return guard
+
+    def test_hard_stop_is_off_unless_asked_for(self) -> None:
+        """Warn-only is the default: a hard stop abandons a tool call, which is
+        only safe on an unattended run."""
+        assert self._guard().hard_stop is False
+        assert self._guard(loop_guard=LoopGuardOptions(hard_stop=True)).hard_stop is True
+
+    def test_disabling_the_loop_guard_leaves_it_out(self) -> None:
+        stack = create_middleware_stack(
+            chat_llm=_fake_llm(), loop_guard=LoopGuardOptions(enabled=False)
+        )
+        assert not any(isinstance(mw, LoopGuardMiddleware) for mw in stack)
+
+
+def _spy_on_stack(monkeypatch) -> dict[str, Any]:
+    """Capture the arguments a tier factory hands to create_middleware_stack."""
+    from app.agents.middleware import factory as factory_mod
+
+    captured: dict[str, Any] = {}
+
+    def spy(**kwargs: Any) -> list:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(factory_mod, "create_middleware_stack", spy)
+    return captured
+
+
+class TestExecutorStackComposition:
+    """The executor is the only tier that both spawns subagents and must collect
+    them, so its stack composition is the contract other tiers are defined against."""
+
+    @staticmethod
+    def _executor(chat_llm: BaseChatModel, subagent_llm: BaseChatModel, runtime, registry) -> list:
+        return create_executor_middleware(
+            chat_llm=chat_llm,
+            subagent_llm=subagent_llm,
+            subagent_tools=[_spawnable_tool],
+            subagent_registry=registry,
+            subagent_excluded_tools={"handoff"},
+            subagent_tool_runtime_config=runtime,
+        )
+
+    def test_the_executor_stack_is_this_exact_sequence(self) -> None:
+        stack = self._executor(_fake_llm(), _fake_llm(), ToolRuntimeConfig(), {})
+
+        assert _types(stack) == [
+            LLMAccountingMiddleware,
+            HILApprovalMiddleware,
+            SubagentMiddleware,
+            WorkspaceArchivingSummarizationMiddleware,
+            WorkspaceCompactionMiddleware,
+            MediaDescriptionMiddleware,
+            LoopGuardMiddleware,
+            SubagentJoinMiddleware,
+        ]
+
+    def test_the_executor_spawn_wiring_reaches_the_middleware(self) -> None:
+        subagent_llm = _fake_llm()
+        runtime = ToolRuntimeConfig(initial_tool_names=["bash"])
+        registry = {"spawnable": _spawnable_tool}
+
+        stack = self._executor(_fake_llm(), subagent_llm, runtime, registry)
+        spawner = next(mw for mw in stack if isinstance(mw, SubagentMiddleware))
+
+        assert spawner._llm is subagent_llm
+        assert spawner._available_tools == [_spawnable_tool]
+        assert spawner._tool_registry == registry
+        assert spawner._excluded_tools == {"handoff", "spawn_subagent"}
+        assert spawner._tool_runtime_config is runtime
+
+    def test_the_executor_compacts_everything_but_the_self_bounded_tools(self) -> None:
+        """The exclusion set is a union, not any one of its three parts: coding
+        tools are already capped, spawn_subagent returns a digest, and the
+        self-offloading fetchers write their own file format compaction would
+        clobber."""
+        stack = self._executor(_fake_llm(), _fake_llm(), ToolRuntimeConfig(), {})
+        compactor = next(mw for mw in stack if isinstance(mw, WorkspaceCompactionMiddleware))
+
+        assert compactor.excluded_tools == COMPACTION_EXCLUSIONS
+
+    def test_the_executor_delegates_the_exact_options(self, monkeypatch) -> None:
+        captured = _spy_on_stack(monkeypatch)
+        chat_llm = _fake_llm()
+        subagent_llm = _fake_llm()
+        runtime = ToolRuntimeConfig(initial_tool_names=["bash"])
+        registry = {"spawnable": _spawnable_tool}
+
+        self._executor(chat_llm, subagent_llm, runtime, registry)
+
+        assert captured == {
+            "agent_name": "executor_agent",
+            "chat_llm": chat_llm,
+            "accounting": AccountingOptions(recursion_limit=EXECUTOR_RECURSION_LIMIT),
+            "subagent": SubagentStackOptions(
+                enabled=True,
+                llm=subagent_llm,
+                tools=[_spawnable_tool],
+                registry=registry,
+                excluded_tools={"handoff"},
+                tool_runtime_config=runtime,
+                join=True,
+            ),
+            "context": ContextOptions(compaction_excluded_tools=COMPACTION_EXCLUSIONS),
+        }
+
+
+class TestCommsAndSubagentDelegation:
+    def test_comms_delegates_the_exact_options(self, monkeypatch) -> None:
+        """Comms never spawns and never compacts — both are off by explicit
+        value, not by accident of a default."""
+        captured = _spy_on_stack(monkeypatch)
+        llm = _fake_llm()
+
+        create_comms_middleware(chat_llm=llm)
+
+        assert captured == {
+            "agent_name": "comms_agent",
+            "chat_llm": llm,
+            "subagent": SubagentStackOptions(enabled=False),
+            "context": ContextOptions(compact=False),
+        }
+
+    def test_the_comms_stack_is_this_exact_sequence(self) -> None:
+        assert _types(create_comms_middleware(chat_llm=_fake_llm())) == [
+            LLMAccountingMiddleware,
+            HILApprovalMiddleware,
+            WorkspaceArchivingSummarizationMiddleware,
+            MediaDescriptionMiddleware,
+            LoopGuardMiddleware,
+            StyleGuardMiddleware,
+        ]
+
+    def test_a_subagent_summarizes_its_own_history(self) -> None:
+        """Compaction bounds one tool output, not the accumulated history. Without
+        summarization a subagent run grows unbounded to the recursion limit — in
+        production that averaged 91k input tokens per call against 43k elsewhere."""
+        llm = _fake_llm()
+
+        stack = create_subagent_middleware(subagent=SubagentStackOptions(enabled=False, llm=llm))
+        summarizer = next(
+            (mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)), None
+        )
+
+        assert isinstance(summarizer, WorkspaceArchivingSummarizationMiddleware)
+        assert summarizer.model is llm
+
+    def test_a_subagent_delegates_the_exact_options(self, monkeypatch) -> None:
+        captured = _spy_on_stack(monkeypatch)
+        llm = _fake_llm()
+        options = SubagentStackOptions(enabled=True, llm=llm, tool_space="gmail")
+
+        create_subagent_middleware(agent_name="gmail_agent", subagent=options)
+
+        assert captured == {
+            "agent_name": "gmail_agent",
+            "chat_llm": llm,
+            "subagent": options,
+            "context": ContextOptions(
+                summarize=True, compact=True, compaction_excluded_tools=COMPACTION_EXCLUSIONS
+            ),
+        }

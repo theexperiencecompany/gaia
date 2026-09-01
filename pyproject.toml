@@ -2,6 +2,15 @@
 # This file defines the Python workspace members for the monorepo
 
 [tool.uv]
+# Supply-chain cooldown: never resolve a distribution uploaded to PyPI in the
+# last 3 days. Poisoned releases are usually reported and yanked within days,
+# so a fresh `uv add`/`uv lock -U` cannot pick one up before the ecosystem has
+# had a look at it. uv >=0.8 accepts a relative span here and records it in
+# uv.lock as `exclude-newer-span = "P3D"` (not a timestamp), so `uv lock
+# --check` stays stable from day to day. `--frozen`/`--locked` installs are
+# unaffected: they only read uv.lock. Escape hatch for a single package:
+# `exclude-newer-package = { name = "..." }` or `uv lock --exclude-newer ...`.
+exclude-newer = "3 days"
 constraint-dependencies = [
   "aiohttp>=3.14.3",
   "pyjwt>=2.12.0",
@@ -74,6 +83,8 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "_llm_type",      # LangChain BaseChatModel abstract member: required to subclass,
+  "_generate",      # dispatched by the framework, never called by our code
   "build_from_config",  # chroma EmbeddingFunction contract: called dynamically via
                         # chroma's registered-embedding-function map when a
                         # collection config is reconstructed (see chroma_store.py)
@@ -570,6 +581,7 @@ module = [
   "app.models.todo_models",
   "app.models.mail_models",
   "app.models.workflow_execution_models",
+  "app.models.playbook_models",
   "app.models.conversation_models",
   "app.models.payment_models",
   "app.models.usage_models",

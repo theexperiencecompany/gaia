@@ -896,7 +896,9 @@ class TestErrorDuringInvocation:
             "First turn's AI response must survive the failed second invocation"
         )
 
-    async def test_state_recoverable_after_error(self, pg_checkpointer, no_model_fallback):
+    async def test_state_recoverable_after_error(
+        self, pg_checkpointer, no_model_fallback, single_llm_attempt
+    ):
         """After an LLM error, a subsequent successful invocation on the
         same thread must work correctly, accumulating onto the pre-error state."""
         from langgraph.store.memory import InMemoryStore

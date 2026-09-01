@@ -158,6 +158,22 @@ class CommonSettings(BaseAppSettings):
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
     # ----------------------------------------------
+    # ARQ worker
+    # ----------------------------------------------
+    # Concurrent jobs PER WORKER. The 10 is sized for a single worker (mean task
+    # 10.9s at 0.72 tasks/s needs ~8 concurrent by Little's Law); being a
+    # per-process cap, M workers give a fleet ceiling of 10 x M — which is not
+    # more throughput, just more simultaneous load on shared limits. Scaling the
+    # worker out therefore means scaling this DOWN (~ceil(8/M)), which is why it
+    # is configurable rather than a literal.
+    #
+    # Postgres is the wall: each worker opens SQLAlchemy's pool (pool_size=5 +
+    # max_overflow=10) PLUS the LangGraph checkpointer pool (max_size=20) = 35
+    # connections, against a default max_connections of 100. Raise
+    # max_connections before adding the third worker, or connections get refused.
+    ARQ_MAX_JOBS: int = 10
+
+    # ----------------------------------------------
     # Crawl4AI (headless-browser scraping)
     # ----------------------------------------------
     # Process-wide cap on concurrent Chromium instances (see constants/search.py
@@ -191,6 +207,16 @@ class CommonSettings(BaseAppSettings):
     # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
     # the endpoint above). An explicit selector choice still wins.
     DEV_DEFAULT_MODEL: str | None = None
+
+    # ----------------------------------------------
+    # Workflows
+    # ----------------------------------------------
+    # Delete a workflow conversation's LangGraph checkpoint threads before every
+    # run, so run N stops replaying runs 1..N-1 out of Postgres (one production
+    # workflow held 1.39 MB of message state across three threads). The previous
+    # run reaches the next one as a recorded trace instead. Kill switch: set to
+    # false to fall back to the replaying behaviour without a deploy.
+    WORKFLOW_THREAD_RESET_ENABLED: bool = True
 
     # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)

@@ -35,7 +35,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
       "@icons": path.resolve(
         __dirname,
-        "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
+        "node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded",
       ),
       "@shared": path.resolve(__dirname, "../../libs/shared/ts/src"),
     },

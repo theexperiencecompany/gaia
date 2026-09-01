@@ -16,7 +16,11 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.db.repositories.workflows import WorkflowsRepository
+from app.db.repositories.workflows import (
+    SystemWorkflowDefinition,
+    WorkflowReArm,
+    WorkflowsRepository,
+)
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     TriggerConfig,
@@ -25,6 +29,8 @@ from app.models.workflow_models import (
     WorkflowStep,
     WorkflowUpdate,
 )
+from app.services.workflow.scheduler import WorkflowScheduler
+from app.utils.occurrence import parse_occurrence_stamp
 
 
 def _uid(prefix: str) -> str:
@@ -229,7 +235,9 @@ class TestWorkflowsScheduler:
         # The reschedule itself: update_workflow persists the new cron's next_run.
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=new_fire, next_run=new_fire
+                wf.id,
+                ScheduledTaskStatus.SCHEDULED,
+                rearm=WorkflowReArm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -243,6 +251,38 @@ class TestWorkflowsScheduler:
         # New job fires: matches the current occurrence -> claims cleanly.
         assert await repo.claim_for_execution(wf.id, expected_next_run=new_fire) is True
         assert (await repo.get(wf.id)).status == ScheduledTaskStatus.EXECUTING
+
+    async def test_claim_pin_survives_the_real_stamp_round_trip(self, repo):
+        """The pin must match the armed occurrence through ARQ's serialized args.
+
+        The stamp travels as a unix int and comes back floored to the second,
+        while Mongo holds ``next_run`` at BSON's millisecond precision. Cron
+        fires land on whole seconds, so only a sub-second ``next_run`` — a
+        one-shot re-armed by the stale-executing reaper at its original time —
+        exposes it; the gate must not depend on that luck. Driven through the
+        real producer and parser so the encoding itself is under test.
+        """
+        armed = datetime.now(UTC) + timedelta(hours=5)
+        assert armed.microsecond, "fixture must carry a sub-second component"
+        wf = await repo.create(
+            _workflow(
+                activated=True,
+                status=ScheduledTaskStatus.SCHEDULED,
+                scheduled_at=armed,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE,
+                    enabled=True,
+                    cron_expression="0 16 * * *",
+                    timezone="UTC",
+                    next_run=armed,
+                ),
+            )
+        )
+
+        _, context = WorkflowScheduler()._build_job_args(wf.id, armed)
+        expected = parse_occurrence_stamp(context["scheduled_for"], wf.id)
+
+        assert await repo.claim_for_execution(wf.id, expected_next_run=expected) is True
 
     async def test_claim_without_pin_stays_ungated(self, repo):
         """Jobs enqueued before the stamp existed carry no expected time; they
@@ -284,9 +324,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            scheduled_at=run_at,
-            occurrence_count=3,
-            next_run=run_at,
+            rearm=WorkflowReArm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -304,7 +342,10 @@ class TestWorkflowsScheduler:
         assert (await repo.get(wf.id)).scheduled_at == run_at
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
-            await repo.set_status(wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=None) is True
+            await repo.set_status(
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowReArm(scheduled_at=None)
+            )
+            is True
         )
         assert (await repo.get(wf.id)).scheduled_at is None
 
@@ -431,14 +472,16 @@ class TestWorkflowsTriggersAndSystem:
         )
         updated = await repo.reset_system_workflow(
             wf.id,
-            title="Fresh",
-            description="fresh desc",
-            prompt="fresh prompt",
-            steps=[WorkflowStep(title="s2", category="notion", description="d2")],
-            trigger_config=TriggerConfig(
-                type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
+            SystemWorkflowDefinition(
+                title="Fresh",
+                description="fresh desc",
+                prompt="fresh prompt",
+                steps=[WorkflowStep(title="s2", category="notion", description="d2")],
+                trigger_config=TriggerConfig(
+                    type=TriggerType.SCHEDULE, enabled=True, cron_expression="0 9 * * *"
+                ),
+                composio_trigger_ids=["t1"],
             ),
-            composio_trigger_ids=["t1"],
         )
         assert updated is not None
         assert updated.title == "Fresh"

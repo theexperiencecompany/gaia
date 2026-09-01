@@ -288,7 +288,7 @@ class TestResetSystemWorkflowToDefault:
         mock_trigger_svc.unregister_triggers = AsyncMock()
 
         req = _make_workflow_request()
-        req.steps = []
+        req.steps = ["step-1"]
         factory = MagicMock(return_value=req)
 
         with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
@@ -299,9 +299,24 @@ class TestResetSystemWorkflowToDefault:
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is True
-        mock_trigger_svc.register_triggers.assert_awaited_once()
-        mock_trigger_svc.unregister_triggers.assert_awaited_once()
+
+        # The workflow id and user id must flow through to both trigger calls.
+        assert mock_trigger_svc.register_triggers.await_args.kwargs["user_id"] == "user-1"
+        assert mock_trigger_svc.register_triggers.await_args.kwargs["workflow_id"] == "wf-1"
+        assert mock_trigger_svc.unregister_triggers.await_args.kwargs["user_id"] == "user-1"
+        assert mock_trigger_svc.unregister_triggers.await_args.kwargs["workflow_id"] == "wf-1"
+        assert mock_trigger_svc.unregister_triggers.await_args.kwargs["trigger_ids"] == ["old-t1"]
+
+        # The definition re-applied to the document is assembled from the factory
+        # request plus the freshly registered trigger ids.
         mock_repo.reset_system_workflow.assert_awaited_once()
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.title == req.title
+        assert definition.description == req.description
+        assert definition.prompt == req.prompt
+        assert definition.steps == ["step-1"]
+        assert definition.trigger_config is trigger_config
+        assert definition.composio_trigger_ids == ["new-t1"]
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.workflow_repository")
@@ -492,8 +507,8 @@ class TestResetSystemWorkflowToDefault:
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is True
-        kwargs = mock_repo.reset_system_workflow.await_args.kwargs
-        assert kwargs["prompt"] == "the factory prompt"
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.prompt == "the factory prompt"
 
     def _schedule_trigger_config(self) -> MagicMock:
         from datetime import datetime
@@ -701,3 +716,198 @@ class TestResetSystemWorkflowToDefault:
 
         assert result is True
         mock_scheduler.schedule_workflow_execution.assert_not_awaited()
+
+
+class TestReregisterIntegrationTriggers:
+    """The extracted helper that re-registers a reset's fresh integration triggers."""
+
+    @staticmethod
+    def _integration_config(trigger_name: str | None = "gmail_new_email") -> MagicMock:
+        from app.models.workflow_models import TriggerType
+
+        cfg = MagicMock()
+        cfg.type = TriggerType.INTEGRATION
+        cfg.trigger_name = trigger_name
+        return cfg
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_registers_with_exact_arguments(self, mock_trigger_svc: MagicMock) -> None:
+        mock_trigger_svc.register_triggers = AsyncMock(return_value=["new-t1"])
+        cfg = self._integration_config()
+
+        from app.services.system_workflows.provisioner import (
+            _reregister_integration_triggers,
+        )
+
+        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+
+        assert result == ["new-t1"]
+        mock_trigger_svc.register_triggers.assert_awaited_once_with(
+            user_id="user-1",
+            workflow_id="wf-1",
+            trigger_name="gmail_new_email",
+            trigger_config=cfg,
+            raise_on_failure=False,
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_non_integration_returns_empty_without_registering(
+        self, mock_trigger_svc: MagicMock
+    ) -> None:
+        mock_trigger_svc.register_triggers = AsyncMock()
+        # INTEGRATION type but no trigger_name — the `and` in the guard means this
+        # is NOT a registerable integration, so it must short-circuit to [].
+        cfg = self._integration_config(trigger_name=None)
+
+        from app.services.system_workflows.provisioner import (
+            _reregister_integration_triggers,
+        )
+
+        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+
+        assert result == []
+        mock_trigger_svc.register_triggers.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_registration_error_aborts_with_none_and_logs(
+        self, mock_trigger_svc: MagicMock, _patch_log: MagicMock
+    ) -> None:
+        mock_trigger_svc.register_triggers = AsyncMock(side_effect=RuntimeError("boom"))
+        cfg = self._integration_config()
+
+        from app.services.system_workflows.provisioner import (
+            _reregister_integration_triggers,
+        )
+
+        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+
+        assert result is None
+        _patch_log.error.assert_called_once_with(
+            "[WORKFLOW] Failed to re-register triggers, aborting reset of",
+            workflow_id="wf-1",
+            error="boom",
+            error_type="RuntimeError",
+            user_id="user-1",
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_empty_registration_aborts_with_none_and_logs(
+        self, mock_trigger_svc: MagicMock, _patch_log: MagicMock
+    ) -> None:
+        mock_trigger_svc.register_triggers = AsyncMock(return_value=[])
+        cfg = self._integration_config()
+
+        from app.services.system_workflows.provisioner import (
+            _reregister_integration_triggers,
+        )
+
+        result = await _reregister_integration_triggers("user-1", "wf-1", cfg)
+
+        assert result is None
+        _patch_log.error.assert_called_once_with(
+            "[WORKFLOW] New trigger registration returned an empty result, aborting reset "
+            "to avoid leaving the workflow without triggers",
+            workflow_id="wf-1",
+            user_id="user-1",
+        )
+
+
+class TestUnregisterOldTriggers:
+    """The extracted best-effort teardown of a reset's pre-existing triggers."""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_unregisters_with_exact_arguments(self, mock_trigger_svc: MagicMock) -> None:
+        mock_trigger_svc.unregister_triggers = AsyncMock()
+
+        from app.services.system_workflows.provisioner import _unregister_old_triggers
+
+        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+
+        mock_trigger_svc.unregister_triggers.assert_awaited_once_with(
+            user_id="user-1",
+            trigger_name="gmail_new_email",
+            trigger_ids=["old-1"],
+            workflow_id="wf-1",
+        )
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_skips_when_no_old_triggers(self, mock_trigger_svc: MagicMock) -> None:
+        mock_trigger_svc.unregister_triggers = AsyncMock()
+
+        from app.services.system_workflows.provisioner import _unregister_old_triggers
+
+        # No old ids but a trigger_name — the `and` guard means nothing to tear down.
+        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", [])
+
+        mock_trigger_svc.unregister_triggers.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.TriggerService")
+    async def test_unregister_error_is_nonfatal_and_logged(
+        self, mock_trigger_svc: MagicMock, _patch_log: MagicMock
+    ) -> None:
+        mock_trigger_svc.unregister_triggers = AsyncMock(side_effect=RuntimeError("nope"))
+
+        from app.services.system_workflows.provisioner import _unregister_old_triggers
+
+        # Must NOT raise — teardown failure is best-effort.
+        await _unregister_old_triggers("user-1", "wf-1", "gmail_new_email", ["old-1"])
+
+        _patch_log.warning.assert_called_once_with(
+            "[WORKFLOW] Failed to unregister old triggers during reset of (non-fatal)",
+            workflow_id="wf-1",
+            error="nope",
+            error_type="RuntimeError",
+            user_id="user-1",
+        )
+
+
+class TestResetDefinitionAssembly:
+    """The definition re-applied on reset falls back correctly on empty fields."""
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.workflow_repository")
+    @patch(f"{MODULE}.TriggerService")
+    @patch(f"{MODULE}.ensure_trigger_config_object")
+    async def test_empty_description_falls_back_to_empty_string(
+        self,
+        mock_ensure: MagicMock,
+        mock_trigger_svc: MagicMock,
+        mock_repo: MagicMock,
+    ) -> None:
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(composio_trigger_ids=["old-t1"])
+        )
+        mock_repo.reset_system_workflow = AsyncMock()
+
+        from app.models.workflow_models import TriggerType
+
+        trigger_config = MagicMock()
+        trigger_config.type = TriggerType.INTEGRATION
+        trigger_config.trigger_name = "gmail_new_email"
+        mock_ensure.return_value = trigger_config
+
+        mock_trigger_svc.register_triggers = AsyncMock(return_value=["new-t1"])
+        mock_trigger_svc.unregister_triggers = AsyncMock()
+
+        req = _make_workflow_request(description="")
+        req.steps = []
+        factory = MagicMock(return_value=req)
+
+        with patch.dict(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {"gmail_digest": factory}):
+            from app.services.system_workflows.provisioner import (
+                reset_system_workflow_to_default,
+            )
+
+            result = await reset_system_workflow_to_default("wf-1", "user-1")
+
+        assert result is True
+        definition = mock_repo.reset_system_workflow.await_args.args[1]
+        assert definition.description == ""
+        assert definition.steps == []

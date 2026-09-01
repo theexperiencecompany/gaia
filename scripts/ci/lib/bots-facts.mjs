@@ -2,7 +2,8 @@
  * AST facts for the bots evlog map — same-file function indexing and the
  * control-flow analysis that decides whether an entry point records the
  * caught error on its wide event. Pure AST helpers (Babel parser/traverse),
- * no knowledge of where entry points live (that is evlog-map-bots.mjs's job).
+ * no knowledge of where entry points live (that is evlog-map-bots.mjs's
+ * job, dispatched as `checks.mjs evlog-map-bots`).
  *
  * The repo's TypeScript compiler is the native port (tsgo, TS 7), which ships
  * no JS compiler API, so the AST comes from @babel/parser + @babel/traverse —
