@@ -217,12 +217,13 @@ async def create_workflow_directly(
             timezone=user_timezone,
         )
 
-        workflow_description = draft.prompt or draft.description
-
+        # The two fields are not interchangeable: description is the one-line card
+        # copy, prompt is what the executor reads as the run's goal. Collapsing
+        # them put the whole numbered instruction blob on the card.
         request = CreateWorkflowRequest(
             title=draft.title,
-            description=workflow_description,
-            prompt=workflow_description or draft.title,
+            description=draft.description or draft.title,
+            prompt=draft.prompt or draft.description or draft.title,
             trigger_config=trigger_config,
             steps=None,
             generate_immediately=True,
