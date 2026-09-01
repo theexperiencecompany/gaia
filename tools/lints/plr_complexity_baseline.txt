@@ -7,7 +7,6 @@
 #
 # One line per (file, rule), tab-separated, sorted. Regenerate with:
 #   python3 tools/lints/check_plr_complexity.py --update
-apps/api/app/agents/core/background/workflow_platform_delivery.py	PLR0913
 apps/api/app/agents/core/messages.py	PLR0913
 apps/api/app/agents/core/nodes/memory_node.py	PLR0912
 apps/api/app/agents/core/nodes/memory_node.py	PLR0913
