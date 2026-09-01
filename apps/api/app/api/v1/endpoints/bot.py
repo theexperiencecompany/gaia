@@ -20,6 +20,7 @@ from app.decorators import (
     enforce_daily_cost_budget,
     enforce_tiered_limit,
     is_subscription_active,
+    require_active_subscription,
     tiered_rate_limit,
 )
 from app.models.bot_models import (
@@ -903,6 +904,7 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
     ),
     responses={
         401: {"description": "Account not linked."},
+        402: {"description": "Subscription required."},
         413: {"description": "Audio exceeds the maximum allowed size."},
         415: {"description": "Unsupported audio format."},
         502: {"description": "Transcription provider failed."},
@@ -922,6 +924,16 @@ async def transcribe_bot_audio(
     """Convert audio bytes into a transcript for bot adapters."""
     await require_bot_api_key(request)
     log.set(operation="bot_transcribe_audio", user={"id": user.get("user_id")})
+
+    # Paid-only gate, imperative rather than `@require_subscription()`: the bot
+    # API key is checked in the body, so a decorator would 402 a caller whose
+    # key was never verified. An unlinked caller never reaches here —
+    # `get_current_user` 401s first — so unlinked behavior is unchanged.
+    # Ordering wart: `@tiered_rate_limit` already charged one transcription
+    # against the caller's quota by this point. Harmless for a blocked user
+    # (they cannot spend it) and not worth moving the key check to a
+    # dependency for, which would fork this route from `bot_chat_stream`.
+    await require_active_subscription(str(user["user_id"]), feature="bot_transcribe")
 
     if content_length is not None and content_length > MAX_AUDIO_BYTES:
         raise HTTPException(

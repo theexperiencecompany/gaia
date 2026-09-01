@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from app.config.settings import settings
 from app.core.request_context import resolve_caller
 from app.models.payment_models import PlanType
+from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -78,15 +79,27 @@ async def get_checkout_url(user_id: str) -> str | None:
     return pro.checkout.payment_link
 
 
-async def require_active_subscription(user_id: str) -> None:
-    """Raise ``SubscriptionRequiredException`` unless ``user_id`` is on PRO."""
+async def require_active_subscription(user_id: str, feature: str) -> None:
+    """Raise ``SubscriptionRequiredException`` unless ``user_id`` is on PRO.
+
+    ``feature`` names the surface that turned the caller away; it is required
+    so every block is attributable in the funnel rather than anonymous.
+    """
     if await is_subscription_active(user_id):
         return
     checkout_url = await get_checkout_url(user_id)
     log.warning(
         "Subscription required, blocking request",
         user={"id": user_id},
-        payment={"operation": "paywall_gate"},
+        payment={"operation": "paywall_gate", "feature": feature},
+    )
+    # capture_event, not capture_context_event: bot routes and worker paths
+    # reach this with no authenticated request context to attribute to, and an
+    # anonymous paywall block never joins the user's funnel.
+    capture_event(
+        user_id,
+        AnalyticsEvents.PAYWALL_BLOCKED,
+        {"feature": feature, "has_checkout_url": checkout_url is not None},
     )
     raise SubscriptionRequiredException(checkout_url=checkout_url)
 
@@ -120,7 +133,7 @@ def require_subscription() -> Callable[[Callable[P, Awaitable[R]]], Callable[P, 
             if not user_id:
                 raise HTTPException(status_code=401, detail="User ID not found")
 
-            await require_active_subscription(user_id)
+            await require_active_subscription(user_id, feature=func.__name__)
             return await func(*args, **kwargs)
 
         return wrapper

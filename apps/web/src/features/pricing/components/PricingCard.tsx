@@ -187,7 +187,10 @@ export function PricingCard({
       return;
     }
 
-    await createSubscriptionAndRedirect(planId, offer?.discountCode);
+    await createSubscriptionAndRedirect(planId, {
+      source: "pricing_card",
+      discountCode: offer?.discountCode,
+    });
   };
 
   const getButtonText = () => {

@@ -9,6 +9,7 @@ import type {
 } from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
+import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
@@ -23,7 +24,6 @@ import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 import {
   getErrorMessage,
-  getSubscriptionRequiredDetail,
   handleRateLimitError,
   subscriptionRequiredOfferFromDetail,
 } from "@/utils/interceptorUtils";

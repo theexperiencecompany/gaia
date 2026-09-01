@@ -156,6 +156,18 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
         info=FeatureInfo(title="Document Generation", description="Generate documents and reports"),
     ),
+    # ONBOARDING (LLM calls made while setting the account up)
+    "onboarding_generation": TieredRateLimits(
+        free=RateLimitConfig(day=0, month=0),  # Paid-only: onboarding is gated too
+        # A "regenerate" button the user taps a handful of times at most; the
+        # cap is an abuse backstop, not a wall a real setup can reach.
+        pro=RateLimitConfig(day=20, month=200),
+        info=FeatureInfo(
+            title="Onboarding Generation",
+            description="Generate onboarding questions and writing-style examples",
+        ),
+        counts_as_activity=False,  # setup, not day-to-day product use
+    ),
     # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
         # Search itself is cheap (Exa free tier + self-hosted fallback), but

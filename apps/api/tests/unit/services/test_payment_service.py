@@ -1344,7 +1344,44 @@ class TestCreateProCheckout:
         ]
         assert len(upgrade_gets) == 1
         # The checkout session must be created for THIS user, tied by metadata.
-        mint.assert_awaited_once_with(FAKE_USER_ID, "prod_y")
+        mint.assert_awaited_once_with(FAKE_USER_ID, "prod_y", discount_code=None)
+
+    async def test_configured_paywall_discount_is_pre_applied_to_the_minted_session(
+        self,
+        payment_service,
+        mock_plan_repository,
+        mock_subscription_repository,
+        mock_users_collection,
+        mock_redis_cache,
+        mock_dodo_client,
+    ):
+        """Every surface that hands out this link also advertises
+        PAYWALL_DISCOUNT_CODE, so the code must actually reach Dodo — otherwise
+        the 402 body and the bot notice promise a discount the page never applies.
+        """
+        mock_plan_repository.list_plans = AsyncMock(return_value=CATALOGUE)
+        session = MagicMock()
+        session.session_id = "cs_d"
+        session.checkout_url = "https://checkout.dodopayments.com/s/cs_d"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=session)
+
+        mint = AsyncMock(
+            return_value=CreateSubscriptionResponse(
+                subscription_id="cs_d",
+                payment_link="https://checkout.dodopayments.com/s/cs_d",
+                status="payment_link_created",
+            )
+        )
+        with (
+            patch.object(payment_service, "create_subscription", mint),
+            patch(
+                "app.services.payments.payment_service.settings.PAYWALL_DISCOUNT_CODE",
+                "SAVE20",
+            ),
+        ):
+            await payment_service.create_pro_checkout(FAKE_USER_ID)
+
+        assert mint.await_args.kwargs["discount_code"] == "SAVE20"
 
     async def test_caches_the_session_under_the_one_hour_ttl(
         self,

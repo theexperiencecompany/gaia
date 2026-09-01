@@ -35,6 +35,18 @@ export function PaywallModal() {
     }
   }, [open, isSubscriptionStatusUnknown, isPaid, closeModal]);
 
+  // The impression, fired once per open rather than on every render. The
+  // server already captures the 402 that opened it; what it cannot see is
+  // whether the wall reached the screen, so this is the one client-only half.
+  useEffect(() => {
+    if (!open) return;
+    trackEvent(ANALYTICS_EVENTS.PAYWALL_MODAL_VIEWED, {
+      dismissible,
+      has_checkout_url: Boolean(offer?.checkoutUrl),
+      has_discount_code: Boolean(offer?.discountCode),
+    });
+  }, [open, dismissible, offer?.checkoutUrl, offer?.discountCode]);
+
   // Monthly Pro is the default paywall offer — same tier PricingCards leads
   // with, just without the billing-period tabs (this modal has one job).
   const proPlan = plans.find(
@@ -43,14 +55,10 @@ export function PaywallModal() {
 
   const handleSubscribe = () => {
     if (!proPlan) return;
-    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED, {
-      planId: proPlan.dodo_product_id,
+    createSubscriptionAndRedirect(proPlan.dodo_product_id, {
       source: "paywall_modal",
+      discountCode: offer?.discountCode ?? undefined,
     });
-    createSubscriptionAndRedirect(
-      proPlan.dodo_product_id,
-      offer?.discountCode ?? undefined,
-    );
   };
 
   return (

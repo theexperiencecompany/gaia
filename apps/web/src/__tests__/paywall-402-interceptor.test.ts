@@ -19,12 +19,10 @@ vi.mock("@/stores/loginModalStore", () => ({
   useLoginModalStore: { getState: () => ({ openModal: vi.fn() }) },
 }));
 
+import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { toast } from "@/lib/toast";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
-import {
-  getSubscriptionRequiredDetail,
-  processAxiosError,
-} from "@/utils/interceptorUtils";
+import { processAxiosError } from "@/utils/interceptorUtils";
 
 describe("402 subscription_required handling", () => {
   beforeEach(() => {

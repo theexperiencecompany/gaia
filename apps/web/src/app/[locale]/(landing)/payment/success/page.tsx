@@ -85,7 +85,8 @@ export default function PaymentSuccessPage() {
   // Restart checkout for the plan the user last tried, falling back to pricing.
   const handleTryAgain = () => {
     const productId = localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY);
-    if (productId) createSubscriptionAndRedirect(productId);
+    if (productId)
+      createSubscriptionAndRedirect(productId, { source: "payment_retry" });
     else router.push("/pricing");
   };
 

@@ -11,6 +11,7 @@ let isSubscriptionStatusUnknown = false;
 vi.mock("@/lib/analytics", () => ({
   ANALYTICS_EVENTS: {
     SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
+    PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
   },
   trackEvent: vi.fn(),
 }));
@@ -53,6 +54,7 @@ vi.mock("@/features/pricing/hooks/usePricing", () => ({
 }));
 
 import { PaywallModal } from "@/features/pricing/components/PaywallModal";
+import { trackEvent } from "@/lib/analytics";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
 describe("PaywallModal", () => {
@@ -143,7 +145,60 @@ describe("PaywallModal", () => {
 
     expect(createSubscriptionAndRedirect).toHaveBeenCalledWith(
       "dodo_pro_monthly",
-      "LAUNCH20",
+      { source: "paywall_modal", discountCode: "LAUNCH20" },
+    );
+  });
+
+  it("attributes the checkout to the paywall without emitting a second checkout event", () => {
+    // The hook is the single emitter for subscription:checkout_started; a
+    // capture here too would double-count every gate-driven checkout against
+    // the pricing-page ones that only fire inside the hook.
+    usePaywallModalStore.getState().openModal({
+      checkoutUrl: null,
+      discountCode: null,
+    });
+    render(<PaywallModal />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /subscribe to gaia pro/i }),
+    );
+
+    expect(trackEvent).not.toHaveBeenCalledWith(
+      "subscription:checkout_started",
+      expect.anything(),
+    );
+    expect(createSubscriptionAndRedirect).toHaveBeenCalledWith(
+      "dodo_pro_monthly",
+      expect.objectContaining({ source: "paywall_modal" }),
+    );
+  });
+
+  it("captures one paywall impression per open, with the offer's shape", () => {
+    usePaywallModalStore.getState().openModal({
+      checkoutUrl: "https://checkout.dodo.test/abc",
+      discountCode: "LAUNCH20",
+    });
+    const { rerender } = render(<PaywallModal />);
+    rerender(<PaywallModal />);
+
+    const impressions = vi
+      .mocked(trackEvent)
+      .mock.calls.filter(([event]) => event === "paywall:modal_viewed");
+
+    expect(impressions).toHaveLength(1);
+    expect(impressions[0][1]).toEqual({
+      dismissible: false,
+      has_checkout_url: true,
+      has_discount_code: true,
+    });
+  });
+
+  it("captures no impression while the paywall is closed", () => {
+    render(<PaywallModal />);
+
+    expect(trackEvent).not.toHaveBeenCalledWith(
+      "paywall:modal_viewed",
+      expect.anything(),
     );
   });
 

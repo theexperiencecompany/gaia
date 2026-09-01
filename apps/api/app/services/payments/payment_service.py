@@ -401,6 +401,12 @@ class DodoPaymentService:
         wall repeatedly — reuses one session instead of stranding a new one in Dodo
         each time. The plan is cached alongside the session so a cached hit quotes
         the price the session was minted under, never a newer catalogue read.
+
+        ``settings.PAYWALL_DISCOUNT_CODE`` is pre-applied here rather than passed
+        in by callers: every caller (the 402 paywall body, the bot notice, the
+        subscription tool) advertises that same code, so applying it at the one
+        place the session is minted keeps the link and the pitch from drifting —
+        and keeps one cached session per user and cycle.
         """
         cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}"
         cached = await redis_cache.get(cache_key)
@@ -411,7 +417,11 @@ class DodoPaymentService:
             )
 
         plan = await self.get_pro_plan(billing_cycle)
-        checkout = await self.create_subscription(user_id, plan.dodo_product_id)
+        checkout = await self.create_subscription(
+            user_id,
+            plan.dodo_product_id,
+            discount_code=settings.PAYWALL_DISCOUNT_CODE,
+        )
         await redis_cache.set(
             cache_key,
             {"plan": plan.model_dump(), "checkout": checkout.model_dump()},

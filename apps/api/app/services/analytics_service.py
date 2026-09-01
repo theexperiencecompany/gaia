@@ -54,6 +54,9 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
     RATE_LIMIT_HIT = "rate_limit_hit"
+    # A non-PRO caller was turned away from a paid-only surface with a 402.
+    # Carries which surface blocked them, never what they were trying to do.
+    PAYWALL_BLOCKED = "paywall:blocked"
 
     # Conversations
     CONVERSATION_CREATED = "chat:conversation_created"

@@ -30,6 +30,11 @@ export const ANALYTICS_EVENTS = {
   SUBSCRIPTION_COMPLETED: "subscription:completed",
   SUBSCRIPTION_FAILED: "subscription:failed",
 
+  // The paid-only wall appeared on screen. Client-only by necessity: the
+  // server captures the 402 that caused it (`paywall:blocked`), but only the
+  // browser knows whether the modal actually rendered for the user.
+  PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
+
   // Chat events
   CHAT_STARTED: "chat:started",
   CHAT_FIRST_MESSAGE_SENT: "chat:first_message_sent",

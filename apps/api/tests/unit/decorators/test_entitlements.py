@@ -18,6 +18,7 @@ from app.decorators.entitlements import (
     require_subscription,
 )
 from app.models.payment_models import PlanType
+from app.services.analytics_service import AnalyticsEvents
 
 pytestmark = pytest.mark.unit
 
@@ -82,7 +83,7 @@ class TestRequireActiveSubscription:
             ),
             patch(f"{ENT}.payment_service.create_pro_checkout", new=checkout_mock),
         ):
-            await require_active_subscription("u1")  # must not raise
+            await require_active_subscription("u1", feature="chat")  # must not raise
         checkout_mock.assert_not_called()
 
     async def test_free_user_gets_the_exact_402_wire_contract(self) -> None:
@@ -97,7 +98,7 @@ class TestRequireActiveSubscription:
             patch(f"{ENT}.log") as mock_log,
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
-                await require_active_subscription("u1")
+                await require_active_subscription("u1", feature="chat_stream_endpoint")
 
         # The blocked user's own id must reach the checkout minter — not a
         # stale/None value. A caller mixup here would mint a checkout link
@@ -115,7 +116,7 @@ class TestRequireActiveSubscription:
         mock_log.warning.assert_called_once_with(
             "Subscription required, blocking request",
             user={"id": "u1"},
-            payment={"operation": "paywall_gate"},
+            payment={"operation": "paywall_gate", "feature": "chat_stream_endpoint"},
         )
 
     async def test_discount_code_travels_when_configured(self) -> None:
@@ -131,10 +132,46 @@ class TestRequireActiveSubscription:
             patch(f"{ENT}.settings.PAYWALL_DISCOUNT_CODE", "SAVE20"),
         ):
             with pytest.raises(SubscriptionRequiredException) as exc_info:
-                await require_active_subscription("u1")
+                await require_active_subscription("u1", feature="chat")
 
         assert exc_info.value.detail["discount_code"] == "SAVE20"
         assert exc_info.value.detail["checkout_url"] is None
+
+    async def test_block_is_captured_against_the_blocked_users_own_profile(self) -> None:
+        """The paywall event must carry the blocked user's id, not an anonymous
+        one — bot and worker paths reach this with no request context, so an
+        implicit distinct_id would strand the block on a ghost profile."""
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                f"{ENT}.payment_service.create_pro_checkout",
+                new=AsyncMock(return_value=_checkout("https://checkout.dodo.test/abc")),
+            ),
+            patch(f"{ENT}.capture_event") as mock_capture,
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await require_active_subscription("u1", feature="get_token")
+
+        mock_capture.assert_called_once_with(
+            "u1",
+            AnalyticsEvents.PAYWALL_BLOCKED,
+            {"feature": "get_token", "has_checkout_url": True},
+        )
+
+    async def test_pro_user_is_never_captured_as_blocked(self) -> None:
+        with (
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.PRO),
+            ),
+            patch(f"{ENT}.capture_event") as mock_capture,
+        ):
+            await require_active_subscription("u1", feature="get_token")
+
+        mock_capture.assert_not_called()
 
 
 class TestRequireSubscriptionDecorator:
@@ -156,6 +193,33 @@ class TestRequireSubscriptionDecorator:
 
         plan_lookup.assert_awaited_once_with("u1")
         handler.assert_not_called()
+
+    async def test_block_is_attributed_to_the_handler_it_blocked(self) -> None:
+        """`feature` is the decorated handler's name, so a funnel can tell a
+        voice-token block from a chat one without a per-route argument."""
+
+        async def get_token() -> str:
+            return "ok"
+
+        wrapped = require_subscription()(get_token)
+
+        with (
+            patch(f"{RCX}.get_authenticated_user", return_value={"user_id": "u1"}),
+            patch(
+                f"{ENT}.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.FREE),
+            ),
+            patch(
+                f"{ENT}.payment_service.create_pro_checkout",
+                new=AsyncMock(return_value=_checkout(None)),
+            ),
+            patch(f"{ENT}.capture_event") as mock_capture,
+        ):
+            with pytest.raises(SubscriptionRequiredException):
+                await wrapped()
+
+        assert mock_capture.call_args.args[0] == "u1"
+        assert mock_capture.call_args.args[2]["feature"] == "get_token"
 
     async def test_pro_user_reaches_the_handler_with_its_result_unchanged(self) -> None:
         handler = AsyncMock(return_value="ok")

@@ -1393,6 +1393,31 @@ class TestBotTranscribe:
         }
         assert "hello there" not in str(args[2])
 
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="hello there",
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_transcribe_free_user_gets_402_and_never_transcribes(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Transcription is Whisper spend, so a linked-but-unsubscribed user is
+        turned away. Gated imperatively rather than by decorator so the bot API
+        key is verified first — see the comment on the handler."""
+        with patch(PLAN_PATCH, new_callable=AsyncMock, return_value=PlanType.FREE):
+            response = await client.post(
+                f"{BOT_BASE}/transcribe",
+                files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["detail"]["code"] == "subscription_required"
+        mock_transcribe.assert_not_called()
+
     @patch("app.api.v1.endpoints.bot.capture_event")
     @patch(
         "app.api.v1.endpoints.bot.transcribe_audio",

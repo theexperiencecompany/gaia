@@ -12,6 +12,7 @@ from httpx import AsyncClient
 
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from app.models.payment_models import PlanType
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
@@ -169,3 +170,40 @@ class TestImagePaidOnlyGate:
 
         assert resp.status_code == 402
         assert resp.json()["detail"]["code"] == "subscription_required"
+
+    @patch("app.api.v1.endpoints.image.image_to_text_endpoint", new_callable=AsyncMock)
+    async def test_image_to_text_free_user_gets_402(
+        self, mock_convert: AsyncMock, client: AsyncClient
+    ):
+        """OCR is a vision-model call — the same spend the generate routes gate."""
+        with patch(_GET_AUTHENTICATED_USER, return_value=FAKE_USER):
+            resp = await client.post(
+                f"{API}/image/text",
+                data={"message": "what is this"},
+                files={"file": ("photo.png", b"fake-png-bytes", "image/png")},
+            )
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        mock_convert.assert_not_called()
+
+    @patch("app.api.v1.endpoints.image.image_to_text_endpoint", new_callable=AsyncMock)
+    async def test_image_to_text_pro_user_reaches_the_handler(
+        self, mock_convert: AsyncMock, client: AsyncClient
+    ):
+        mock_convert.return_value = ImageToTextResponse(response="A cat on a sofa")
+        with (
+            patch(_GET_AUTHENTICATED_USER, return_value=FAKE_USER),
+            patch(
+                "app.decorators.entitlements.payment_service.get_cached_plan_type",
+                new=AsyncMock(return_value=PlanType.PRO),
+            ),
+        ):
+            resp = await client.post(
+                f"{API}/image/text",
+                data={"message": "what is this"},
+                files={"file": ("photo.png", b"fake-png-bytes", "image/png")},
+            )
+
+        assert resp.status_code == 200
+        mock_convert.assert_awaited_once()

@@ -1,3 +1,5 @@
+import type { SubscriptionRequiredDetail } from "@shared/types/subscription";
+import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import type { AxiosError } from "axios";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
@@ -156,38 +158,6 @@ const handleForbiddenError = (
         : "You don't have permission to access this resource.";
     toast.error(message);
   }
-};
-
-const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
-
-interface SubscriptionRequiredDetail {
-  code: string;
-  message: string;
-  checkout_url: string | null;
-  discount_code: string | null;
-}
-
-/**
- * Extracts the `{ code: "subscription_required", message, checkout_url,
- * discount_code }` payload a 402 response carries under `detail`, or
- * `undefined` if the body isn't shaped that way.
- */
-export const getSubscriptionRequiredDetail = (
-  data: unknown,
-): SubscriptionRequiredDetail | undefined => {
-  const detail =
-    data && typeof data === "object" && "detail" in data
-      ? (data as { detail: unknown }).detail
-      : undefined;
-  if (
-    detail &&
-    typeof detail === "object" &&
-    "code" in detail &&
-    (detail as { code?: unknown }).code === SUBSCRIPTION_REQUIRED_CODE
-  ) {
-    return detail as SubscriptionRequiredDetail;
-  }
-  return undefined;
 };
 
 /**

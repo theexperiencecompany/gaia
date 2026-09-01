@@ -159,6 +159,7 @@ class TestFeatureLimits:
         "generate_image",
         "deep_research",
         "document_generation",
+        "onboarding_generation",
         "web_search",
         "webpage_fetch",
         "download",
@@ -232,7 +233,11 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode", "imessage_registration"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {
+        "voice_mode",
+        "imessage_registration",
+        "onboarding_generation",
+    }
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count

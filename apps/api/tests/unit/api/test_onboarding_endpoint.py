@@ -20,6 +20,8 @@ import pytest
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
+from app.models.onboarding_models import ClarifyQuestion
+from app.models.payment_models import PlanType
 from app.models.user_models import (
     AuthenticatedUser,
     OnboardingPreferences,
@@ -823,3 +825,75 @@ class TestGetPersonalizationFullShape:
             user={"id": "507f1f77bcf86cd799439011"},
             onboarding={"operation": "get_personalization"},
         )
+
+
+# ---------------------------------------------------------------------------
+# Paid-only gate — the two onboarding routes that make LLM calls. Onboarding
+# moves behind payment entirely in a later phase; these are the spend-incurring
+# routes that must not be free before then.
+# ---------------------------------------------------------------------------
+
+CLARIFY_URL = f"{BASE_URL}/clarify-questions"
+REGENERATE_URL = f"{BASE_URL}/writing-style/regenerate-example"
+_CLARIFY_SERVICE = "app.api.v1.endpoints.onboarding.generate_clarify_questions"
+_REGENERATE_SERVICE = "app.api.v1.endpoints.onboarding.regenerate_example_for_style"
+# The gate reads the plan through this seam; patching it directly keeps the
+# test off the shared local Redis the plan cache would otherwise consult.
+_CACHED_PLAN = "app.decorators.entitlements.payment_service.get_cached_plan_type"
+
+_CLARIFY_PAYLOAD = {"name": "Ada", "profession": "engineer", "focus": "inbox"}
+_REGENERATE_PAYLOAD = {"edited_summary": "Warm and brief", "profession": "engineer"}
+
+
+class TestOnboardingGenerationPaidOnlyGate:
+    """402 contract on the onboarding routes that burn LLM spend."""
+
+    async def test_clarify_questions_free_user_gets_402(self, client: AsyncClient):
+        with (
+            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.FREE)),
+            patch(_CLARIFY_SERVICE, new_callable=AsyncMock) as mock_generate,
+        ):
+            resp = await client.post(CLARIFY_URL, json=_CLARIFY_PAYLOAD)
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        mock_generate.assert_not_called()
+
+    async def test_clarify_questions_pro_user_reaches_the_handler(self, client: AsyncClient):
+        question = ClarifyQuestion(
+            id="scope", kind="scope", question="What is in scope?", options=["a", "b"]
+        )
+        with (
+            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.PRO)),
+            patch(
+                _CLARIFY_SERVICE, new_callable=AsyncMock, return_value=[question]
+            ) as mock_generate,
+        ):
+            resp = await client.post(CLARIFY_URL, json=_CLARIFY_PAYLOAD)
+
+        assert resp.status_code == 200
+        assert resp.json()["questions"][0]["question"] == "What is in scope?"
+        mock_generate.assert_awaited_once()
+
+    async def test_regenerate_example_free_user_gets_402(self, client: AsyncClient):
+        with (
+            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.FREE)),
+            patch(_REGENERATE_SERVICE, new_callable=AsyncMock) as mock_regenerate,
+        ):
+            resp = await client.post(REGENERATE_URL, json=_REGENERATE_PAYLOAD)
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        mock_regenerate.assert_not_called()
+
+    async def test_regenerate_example_pro_user_reaches_the_handler(self, client: AsyncClient):
+        with (
+            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.PRO)),
+            patch(
+                _REGENERATE_SERVICE, new_callable=AsyncMock, return_value=None
+            ) as mock_regenerate,
+        ):
+            resp = await client.post(REGENERATE_URL, json=_REGENERATE_PAYLOAD)
+
+        assert resp.status_code == 200
+        mock_regenerate.assert_awaited_once()

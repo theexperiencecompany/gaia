@@ -35,6 +35,7 @@ async def image(
 
 
 @router.post("/image/text")
+@require_subscription()
 @tiered_rate_limit("file_analysis")
 async def image_to_text(
     message: str = Form(...),

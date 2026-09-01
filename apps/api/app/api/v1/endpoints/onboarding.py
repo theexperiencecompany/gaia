@@ -15,6 +15,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
+from app.decorators import require_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
     ClarifyQuestionsResponse,
     OnboardingPhaseUpdateResponse,
@@ -171,7 +172,9 @@ class ClarifyQuestionsRequest(BaseModel):
     focus: str
 
 
-@router.post("/clarify-questions")
+@router.post("/clarify-questions", responses={402: {"description": "Subscription required"}})
+@require_subscription()
+@tiered_rate_limit("onboarding_generation")
 async def get_clarify_questions(
     payload: ClarifyQuestionsRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -584,8 +587,13 @@ async def save_writing_style(
 
 @router.post(
     "/writing-style/regenerate-example",
-    responses={500: {"description": "Failed to regenerate writing style example"}},
+    responses={
+        402: {"description": "Subscription required"},
+        500: {"description": "Failed to regenerate writing style example"},
+    },
 )
+@require_subscription()
+@tiered_rate_limit("onboarding_generation")
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],

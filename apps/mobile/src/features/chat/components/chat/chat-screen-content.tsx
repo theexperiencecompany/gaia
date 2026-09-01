@@ -44,6 +44,7 @@ import type {
   MessageActionSheetRef,
 } from "./message-action-sheet";
 import { MessageActionSheet } from "./message-action-sheet";
+import { PaywallNotice } from "./paywall-notice";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 
 // ---------------------------------------------------------------------------
@@ -612,6 +613,7 @@ export function ChatScreenContent({
             paddingBottom: insets.bottom,
           }}
         >
+          <PaywallNotice />
           <Composer
             onSend={handleSend}
             value={inputValue}

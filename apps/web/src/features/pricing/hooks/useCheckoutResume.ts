@@ -26,7 +26,9 @@ export const useCheckoutResume = () => {
     const planId = readPendingCheckout();
     if (!planId) return;
     hasFired.current = true;
-    void createSubscriptionAndRedirect(planId).finally(() => {
+    void createSubscriptionAndRedirect(planId, {
+      source: "checkout_resume",
+    }).finally(() => {
       clearPendingCheckout();
     });
   }, [user.userId, createSubscriptionAndRedirect]);
