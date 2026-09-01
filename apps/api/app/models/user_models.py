@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 import re
 from typing import Annotated, Any, TypedDict
 
@@ -55,10 +55,27 @@ class UpdateTimezoneResponse(BaseModel):
     timezone: str = Field(..., description="The timezone that was set")
 
 
+class OnboardingNeed(StrEnum):
+    """What the user asked GAIA for during onboarding (Q2, multi-select)."""
+
+    INBOX = "inbox"
+    CALENDAR = "calendar"
+    BRIEFINGS = "briefings"
+    TODOS = "todos"
+    MEMORY = "memory"
+    RESEARCH = "research"
+    AUTOMATION = "automation"
+    REACH = "reach"
+
+
 class OnboardingPreferences(BaseModel):
     profession: str | None = Field(
         None,
         description="User's profession or main area of focus",
+    )
+    needs: list[OnboardingNeed] | None = Field(
+        None,
+        description="What the user wants GAIA to help with (onboarding Q2)",
     )
     response_style: str | None = Field(
         None,

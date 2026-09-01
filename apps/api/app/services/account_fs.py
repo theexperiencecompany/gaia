@@ -192,6 +192,8 @@ async def _preferences_body(user_id: str) -> str:
         {
             "response_style": preferences.get("response_style"),
             "timezone": user.timezone if user else None,
+            "profession": preferences.get("profession"),
+            "needs": preferences.get("needs"),
         }
     )
     return projection.model_dump_json(indent=2) + "\n"

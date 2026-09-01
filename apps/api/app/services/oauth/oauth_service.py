@@ -38,6 +38,7 @@ from app.services.workflow.integration_pause import (
 )
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
+from app.utils.email_utils import derive_name_from_email
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import OAuthContext, log, spawn_logged_task
@@ -78,7 +79,15 @@ async def store_user_info(
     existing_user = await user_repository.get_by_email(email)
 
     if existing_user:
-        update_fields: dict[str, str] = {"name": name}
+        update_fields: dict[str, str] = {}
+
+        # The stored name wins on every login. WorkOS re-sends its own guess each
+        # time, and unconditionally writing it clobbered whatever the user had
+        # corrected in settings. Only fill a name that isn't there yet.
+        stored_name = (existing_user.name or "").strip()
+        if name and not stored_name:
+            update_fields["name"] = name
+            stored_name = name
 
         # Update picture URL if provided, otherwise keep existing or set empty
         if picture_url:
@@ -86,7 +95,8 @@ async def store_user_info(
         elif not existing_user.picture:
             update_fields["picture"] = ""
 
-        await user_repository.update(existing_user.id, UserUpdate(**update_fields))
+        if update_fields:
+            await user_repository.update(existing_user.id, UserUpdate(**update_fields))
         if external_side_effects:
             # A returning user gets back only the workflows the dormancy sweep
             # paused — never one they switched off themselves (that records no
@@ -100,7 +110,7 @@ async def store_user_info(
                 track_login(
                     user_id=existing_user.id,
                     email=email,
-                    name=name,
+                    name=stored_name,
                     login_method=LOGIN_METHOD_WORKOS,
                 )
             except Exception as e:
@@ -113,8 +123,12 @@ async def store_user_info(
 
         return existing_user.id, False
 
+    # WorkOS often has no first/last name (email-code signups), which used to
+    # store an empty name forever. The email's local part is the fallback; the
+    # user can correct it in settings and no later login overwrites it.
+    signup_name = name or derive_name_from_email(email)
     created = await user_repository.create(
-        UserDocument(name=name, email=email, picture=picture_url or "")
+        UserDocument(name=signup_name, email=email, picture=picture_url or "")
     )
 
     if not external_side_effects:
@@ -125,7 +139,7 @@ async def store_user_info(
         track_signup(
             user_id=created.id,
             email=email,
-            name=name,
+            name=signup_name,
             signup_method=LOGIN_METHOD_WORKOS,
         )
         log.info(f"{LogTag.OAUTH} Signup tracked in PostHog for new user", email=email)
@@ -139,7 +153,7 @@ async def store_user_info(
 
     # Send welcome email to new user
     try:
-        await send_welcome_email(email, name)
+        await send_welcome_email(email, signup_name)
         log.info(f"{LogTag.OAUTH} Welcome email sent to new user", email=email)
     except Exception as e:
         log.error(
@@ -152,7 +166,7 @@ async def store_user_info(
 
     # Add contact to marketing audience
     try:
-        await add_marketing_contact(email, name)
+        await add_marketing_contact(email, signup_name)
         log.info(f"{LogTag.OAUTH} Contact added to marketing audience for new user", email=email)
     except Exception as e:
         log.error(

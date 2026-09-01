@@ -26,6 +26,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
+    OnboardingNeed,
     OnboardingPreferences,
     OnboardingRequest,
     UserUpdateResponse,
@@ -317,6 +318,22 @@ class TestOnboardingPreferences:
     def test_custom_instructions_too_long(self):
         with pytest.raises(ValidationError):
             OnboardingPreferences(custom_instructions="x" * 501)
+
+    def test_needs_default_to_none(self):
+        assert OnboardingPreferences(profession="Developer").needs is None
+
+    def test_needs_accept_the_allowed_keys(self):
+        p = OnboardingPreferences(needs=["inbox", "calendar", "reach"])
+        assert p.needs == [
+            OnboardingNeed.INBOX,
+            OnboardingNeed.CALENDAR,
+            OnboardingNeed.REACH,
+        ]
+        assert p.model_dump()["needs"] == ["inbox", "calendar", "reach"]
+
+    def test_needs_reject_an_unknown_key(self):
+        with pytest.raises(ValidationError):
+            OnboardingPreferences(needs=["inbox", "telepathy"])
 
 
 class TestUserUpdateResponse:

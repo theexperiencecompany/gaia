@@ -205,8 +205,40 @@ class TestStoreUserInfo:
         doc_id, update = mock_user_repo.update.call_args.args
         assert doc_id == uid
         fields = update.model_dump(exclude_unset=True)
-        assert fields["name"] == "Alice Updated"
         assert fields["picture"] == "https://new-pic.example.com/new.jpg"
+
+    @pytest.mark.regression
+    async def test_login_never_overwrites_a_stored_name(self, mock_user_repo, mock_track_login):
+        """The user corrected their name in settings; WorkOS still sends its own
+        guess on every login and used to clobber the correction."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="Alice Wonderland",
+            picture="https://existing.example.com/pic.jpg",
+        )
+
+        await store_user_info("alice", "alice@test.com", "https://new-pic.example.com/new.jpg")
+
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert "name" not in fields
+        assert mock_track_login.call_args.kwargs["name"] == "Alice Wonderland"
+
+    async def test_login_fills_an_empty_stored_name(self, mock_user_repo, mock_track_login):
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = UserDocument(
+            id=uid,
+            email="alice@test.com",
+            name="   ",
+            picture="https://existing.example.com/pic.jpg",
+        )
+
+        await store_user_info("Alice Wonderland", "alice@test.com", None)
+
+        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
+        assert fields["name"] == "Alice Wonderland"
+        assert mock_track_login.call_args.kwargs["name"] == "Alice Wonderland"
 
     async def test_updates_existing_user_without_picture_keeps_existing(
         self, mock_user_repo, mock_track_login
@@ -222,9 +254,9 @@ class TestStoreUserInfo:
         result = await store_user_info("Alice Updated", "alice@test.com", None)
 
         assert result == (uid, False)
-        fields = mock_user_repo.update.call_args.args[1].model_dump(exclude_unset=True)
-        # Should NOT set picture when no new URL provided and user has existing pic
-        assert "picture" not in fields
+        # Nothing to write: no new picture URL and the stored name wins, so the
+        # login must not touch the document at all.
+        mock_user_repo.update.assert_not_awaited()
 
     async def test_updates_existing_user_without_picture_sets_empty_when_no_existing(
         self, mock_user_repo, mock_track_login
@@ -278,6 +310,45 @@ class TestStoreUserInfo:
 
         assert result == (uid, True)
         assert mock_user_repo.create.call_args.args[0].picture == ""
+
+    @pytest.mark.regression
+    async def test_new_user_without_a_workos_name_gets_one_derived_from_the_email(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_send_welcome_email,
+        mock_add_marketing_contact,
+    ):
+        """WorkOS has no first/last name for email-code signups; storing "" left
+        the user (and every greeting, email and prompt) nameless forever."""
+        uid = str(ObjectId())
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=uid)
+
+        await store_user_info("", "aryan.randeriya@test.com", None)
+
+        assert mock_user_repo.create.call_args.args[0].name == "Aryan Randeriya"
+        assert mock_track_signup.call_args.kwargs["name"] == "Aryan Randeriya"
+        mock_send_welcome_email.assert_awaited_once_with(
+            "aryan.randeriya@test.com", "Aryan Randeriya"
+        )
+        mock_add_marketing_contact.assert_awaited_once_with(
+            "aryan.randeriya@test.com", "Aryan Randeriya"
+        )
+
+    async def test_new_user_keeps_the_workos_name_when_there_is_one(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_send_welcome_email,
+        mock_add_marketing_contact,
+    ):
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
+
+        await store_user_info("Bob Vance", "bob.vance@test.com", None)
+
+        assert mock_user_repo.create.call_args.args[0].name == "Bob Vance"
 
     async def test_new_user_tracks_signup(
         self,
