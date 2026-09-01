@@ -7,6 +7,7 @@ from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.agents import INTERNAL_AGENT_TAG_PATTERN
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
@@ -160,6 +161,19 @@ async def format_tool_call_entry(
     if not tool_name_raw:
         return None
 
+    # An execute-proxied call renders as its REAL tool — name, category, icon
+    # and inputs all come from the unwrapped identity, or every card in the
+    # "Used N tools" thread collapses to a generic "Execute" row. The proxy's
+    # task_description becomes the card's display label.
+    call_args: dict[str, Any] = tool_call.get("args", {}) or {}
+    task_description: str | None = None
+    unwrapped_name, unwrapped_args = unwrap_execute_call(tool_name_raw, call_args)
+    if unwrapped_name != tool_name_raw:
+        raw_description = call_args.get("task_description")
+        task_description = raw_description if isinstance(raw_description, str) else None
+        tool_name_raw = unwrapped_name
+        call_args = unwrapped_args
+
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     # Special tools with custom display names and categories
@@ -225,6 +239,12 @@ async def format_tool_call_entry(
             icon_url = None
             integration_name = None
 
+    if task_description:
+        # A curated, user-facing primary label — the thread shows the raw tool
+        # name as the secondary line (same contract as TOOL_DISPLAY_NAMES).
+        tool_display_name = task_description
+        show_category = False
+
     timestamp = datetime.now(UTC).isoformat()
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
@@ -273,7 +293,7 @@ async def format_tool_call_entry(
                 message=tool_display_name,
                 show_category=show_category,
                 tool_call_id=tool_call.get("id"),
-                inputs=tool_call.get("args", {}),
+                inputs=call_args,
                 icon_url=icon_url,
                 integration_name=integration_name,
             ),

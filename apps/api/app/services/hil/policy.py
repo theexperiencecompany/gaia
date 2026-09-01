@@ -23,12 +23,8 @@ from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
-from app.services.hil.utils import (
-    current_tool_calls,
-    tool_of,
-    unpack_tool_call,
-    unwrap_execute_call,
-)
+from app.agents.tools.execute.unwrap import unwrap_execute_call
+from app.services.hil.utils import current_tool_calls, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 
 # What the gate does with one call:

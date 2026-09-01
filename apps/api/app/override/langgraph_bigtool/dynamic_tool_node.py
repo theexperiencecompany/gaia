@@ -30,6 +30,7 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
@@ -67,7 +68,9 @@ async def timeout_guarded_tool_call(
     orchestration tools manage their own lifecycles and are exempt.
     """
     tool_call = request.tool_call
-    tool_name = tool_call.get("name", "")
+    # Unwrapped so an execute-proxied call is exempted (and reported on timeout)
+    # as its real tool, not as the proxy.
+    tool_name, _ = unwrap_execute_call(tool_call.get("name", ""), tool_call.get("args", {}) or {})
     if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
         return await execute(request)
     try:
@@ -77,7 +80,7 @@ async def timeout_guarded_tool_call(
         return ToolMessage(
             content=_timeout_error_text(tool_name),
             tool_call_id=tool_call.get("id", ""),
-            name=tool_name,
+            name=tool_call.get("name", ""),
             status="error",
         )
 
@@ -348,7 +351,9 @@ class DynamicToolNode(ToolNode):
 
             tool_input = dict(tc)
             tool_input["type"] = "tool_call"
-            tool_name = tc.get("name", "")
+            # Unwrapped for the exemption check / timeout text only — the tool
+            # actually invoked is still the proxy itself.
+            tool_name, _ = unwrap_execute_call(tc.get("name", ""), tc.get("args", {}) or {})
             try:
                 if tool_name in TOOL_TIMEOUT_EXEMPT_TOOLS:
                     result = await resolved_tool.ainvoke(tool_input, config=config)
@@ -366,14 +371,14 @@ class DynamicToolNode(ToolNode):
                 return ToolMessage(
                     content=_timeout_error_text(tool_name),
                     tool_call_id=tc.get("id", ""),
-                    name=tool_name,
+                    name=tc.get("name", ""),
                     status="error",
                 )
             except Exception as exc:
                 return ToolMessage(
                     content=format_tool_error(exc),
                     tool_call_id=tc.get("id", ""),
-                    name=tool_name,
+                    name=tc.get("name", ""),
                     status="error",
                 )
 

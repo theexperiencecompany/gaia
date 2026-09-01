@@ -16,7 +16,7 @@ from typing import Any, cast
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
-from app.constants.execute import EXECUTE_TOOL_NAME
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import (
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_JUDGE_MAX_ARGS_CHARS,
@@ -46,24 +46,6 @@ class PriorCall:
 
 
 # --- reading the request ---------------------------------------------------------------
-
-
-def unwrap_execute_call(name: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    """The REAL (name, args) of a call, seen through the execute proxy.
-
-    An execute call carries its actual tool in ``args["tool_name"]``/``args["data"]``.
-    Every gate decision keys off the name, so without this unwrap a destructive
-    integration tool classifies as the (harmless) proxy and runs unapproved.
-    """
-    if name != EXECUTE_TOOL_NAME:
-        return name, args
-    real_name = args.get("tool_name")
-    if not isinstance(real_name, str) or not real_name:
-        # Malformed proxy call — gate it under its own name; dispatch will
-        # reject it with a structured unknown_tool error anyway.
-        return name, args
-    data = args.get("data")
-    return real_name, data if isinstance(data, dict) else {}
 
 
 def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
