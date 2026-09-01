@@ -1,17 +1,21 @@
 """Unit tests for the static reminder task handlers (app.tasks.reminder_tasks).
 
-Pins the payload validation and the notification wiring: a static reminder
-must produce exactly one AIProactiveNotificationSource notification through
-notification_service, and reject invalid payloads loudly.
+Pins the payload validation, the in-app notification wiring, and — the fix for
+reminders being invisible to later turns — the delivery of a fired reminder into
+the user's chat platforms via the shared ``deliver_result_to_platforms`` path,
+which records it into the conversation's langgraph thread.
 """
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.reminder_models import ReminderModel, StaticReminderPayload
 from app.services.analytics_service import AnalyticsEvents
 from app.tasks.reminder_tasks import _execute_static_reminder, execute_reminder_by_agent
+
+MODULE = "app.tasks.reminder_tasks"
 
 
 def _reminder(**overrides) -> ReminderModel:
@@ -48,6 +52,7 @@ async def test_static_reminder_sends_notification() -> None:
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ) as create,
+        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
         patch("app.tasks.reminder_tasks.log.info") as log_info,
     ):
         await _execute_static_reminder(reminder)
@@ -56,6 +61,9 @@ async def test_static_reminder_sends_notification() -> None:
     notification = create.await_args.args[0]
     assert notification.user_id == "user-1"
     assert notification.content.title == "Water the plants"
+    # The in-app badge must NOT auto-inject the external platforms: the chat-platform
+    # copy is delivered (and recorded) by _deliver_reminder_to_platforms instead.
+    assert [c.channel_type for c in notification.channels] == [CHANNEL_TYPE_INAPP]
     log_info.assert_called_once()
 
 
@@ -67,6 +75,7 @@ async def test_reminder_execution_captures_completed() -> None:
             "app.tasks.reminder_tasks.notification_service.create_notification",
             new_callable=AsyncMock,
         ),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
         patch("app.tasks.reminder_tasks.capture_event") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
@@ -87,6 +96,7 @@ async def test_reminder_failure_does_not_capture() -> None:
             new_callable=AsyncMock,
             side_effect=RuntimeError("notify down"),
         ),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
         patch("app.tasks.reminder_tasks.capture_event") as mock_capture,
         patch("app.tasks.reminder_tasks.log.info"),
     ):
@@ -94,3 +104,60 @@ async def test_reminder_failure_does_not_capture() -> None:
             await execute_reminder_by_agent(reminder)
 
     mock_capture.assert_not_called()
+
+
+class TestReminderReachesChatPlatforms:
+    """A fired reminder must be delivered into the user's chat platforms through
+    the SAME path a finished workflow uses (``deliver_result_to_platforms``), which
+    records the delivery into the conversation's langgraph thread. Before this fix
+    the reminder was sent only as a notification and left no trace in the thread,
+    so a later turn had no memory it fired and could not backtrack to it."""
+
+    @pytest.mark.regression
+    async def test_fired_reminder_is_delivered_to_platforms_with_backtrackable_origin(
+        self,
+    ) -> None:
+        reminder = _reminder()
+
+        with (
+            patch(
+                "app.tasks.reminder_tasks.notification_service.create_notification",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                f"{MODULE}.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": "user-1", "email": "u@gaia.local"},
+            ),
+            patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch("app.tasks.reminder_tasks.log.info"),
+        ):
+            await _execute_static_reminder(reminder)
+
+        deliver.assert_awaited_once()
+        kwargs = deliver.await_args.kwargs
+        assert kwargs["user_id"] == "user-1"
+        # The origin names the reminder (title + machine id) so the langgraph
+        # record it produces can be backtracked to this reminder.
+        assert kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
+        # The delivered text carries the reminder content GAIA would voice.
+        assert "Water the plants" in kwargs["notification_text"]
+        assert "Now" in kwargs["notification_text"]
+
+    async def test_platform_delivery_skipped_when_user_missing(self) -> None:
+        reminder = _reminder()
+
+        with (
+            patch(
+                "app.tasks.reminder_tasks.notification_service.create_notification",
+                new_callable=AsyncMock,
+            ),
+            patch(f"{MODULE}.get_user_by_id", new_callable=AsyncMock, return_value=None),
+            patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+            patch("app.tasks.reminder_tasks.log.info"),
+        ):
+            await _execute_static_reminder(reminder)
+
+        # No user resolved -> get_or_create_session would key the wrong owner, so
+        # the platform delivery must be skipped rather than guessed.
+        deliver.assert_not_awaited()

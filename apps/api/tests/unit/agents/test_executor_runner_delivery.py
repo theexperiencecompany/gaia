@@ -259,7 +259,7 @@ class TestWorkflowResultReachesThePlatformDelivery:
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(
-                rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock
+                rd, "deliver_result_to_platforms", new_callable=AsyncMock
             ) as deliver,
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
@@ -2009,7 +2009,7 @@ class TestWorkflowNotificationRef:
             patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(rd, "deliver_workflow_result_to_platforms", new_callable=AsyncMock),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
             patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
         ):
             await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)

@@ -1,15 +1,19 @@
-"""Deliver a finished workflow's result into the user's linked messaging platforms.
+"""Deliver a proactively-produced result into the user's linked messaging platforms.
 
-When a workflow run completes, ``deliver_result`` saves the bot message and then
-(for non-silent, successful runs) calls :func:`deliver_workflow_result_to_platforms`
-to push that same result into the user's real Telegram/WhatsApp/Discord/Slack chats
-as natural GAIA messages — GAIA's voice, no notification chrome — so the thread can
-be continued there. This is deliberately separate from the in-app completion badge
-(``app.services.workflow.notifications``): the badge is a web heads-up, this is the
-actual conversational delivery, and they target different surfaces.
+A result GAIA produces with no user watching — a finished workflow run, a fired
+reminder — is pushed into the user's real Telegram/WhatsApp/Discord/Slack chats as
+a natural GAIA message (GAIA's voice, no notification chrome) so the thread can be
+continued there. Crucially, the same delivery is also recorded into that
+conversation's langgraph checkpoint thread (:func:`record_platform_delivery`),
+framed with the platform and origin, so a later bot turn remembers the result and
+can backtrack to its source.
+
+This is deliberately separate from the in-app badge each producer also raises
+through the notification system: the badge is a web heads-up, this is the actual
+conversational delivery, and they target different surfaces.
 
 Everything here is best-effort: a single platform failing never blocks the others
-or propagates to the caller — the result is already persisted to the conversation.
+or propagates to the caller — the result has already been delivered elsewhere.
 """
 
 from datetime import UTC, datetime
@@ -37,22 +41,22 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
 
-async def deliver_workflow_result_to_platforms(
+async def deliver_result_to_platforms(
     *,
     user: AuthenticatedUser,
     user_id: str,
     notification_text: str,
     origin: str,
 ) -> None:
-    """Deliver a finished workflow's result into the user's preferred messaging
-    platforms as real, persisted bot messages, split into natural bubbles.
+    """Deliver a proactive result into the user's preferred messaging platforms as
+    real, persisted bot messages, split into natural bubbles, and record each into
+    the platform conversation's langgraph thread.
 
     Only platforms the user has linked AND left enabled in their notification
-    channel preferences receive it. This is what makes a workflow result appear
-    inline in the user's actual Telegram/WhatsApp/etc. chat (GAIA's voice, no
-    notification chrome) so the thread can be continued there, alongside the
-    workflow's own conversation. Best-effort: a single platform failing never
-    blocks the others or propagates to the caller.
+    channel preferences receive it. ``origin`` names what produced the result
+    (workflow, reminder, …) so the langgraph record can backtrack to the source.
+    Best-effort: a single platform failing never blocks the others or propagates
+    to the caller.
     """
     if not notification_text.strip():
         return
@@ -66,7 +70,7 @@ async def deliver_workflow_result_to_platforms(
     # was actually delivered, not the raw text with its control tokens.
     bubbles = split_message_bubbles(notification_text)
     for source, platform_user_id in targets:
-        await _post_workflow_message(
+        await _post_platform_result_message(
             user=user,
             user_id=user_id,
             source=source,
@@ -78,13 +82,13 @@ async def deliver_workflow_result_to_platforms(
 
 
 async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSource, str]]:
-    """Resolve which messaging platforms a workflow result should reach: those the
+    """Resolve which messaging platforms a proactive result should reach: those the
     user has linked AND left enabled in their notification channel preferences."""
     try:
         linked = await PlatformLinkService.get_linked_platforms(user_id)
         prefs = await fetch_channel_preferences(user_id)
     except Exception as e:  # proactive side channel, never fatal
-        log.error(f"{LogTag.AGENT} workflow platform delivery: target lookup failed", error=str(e))
+        log.error(f"{LogTag.AGENT} platform result delivery: target lookup failed", error=str(e))
         return []
 
     # Keep only linked platforms that are a known bot source, left enabled in the
@@ -104,7 +108,7 @@ async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSourc
     return targets
 
 
-async def _post_workflow_message(
+async def _post_platform_result_message(
     *,
     user: AuthenticatedUser,
     user_id: str,
@@ -141,7 +145,7 @@ async def _post_workflow_message(
         result = await publish_outbound_message(source, user_id, bubbles)
         if result is OutboundResult.FAILED:
             log.error(
-                f"{LogTag.AGENT} workflow platform publish failed",
+                f"{LogTag.AGENT} platform result publish failed",
                 platform=source.value,
                 conversation_id=conversation_id,
                 message_id=bot_message.message_id,
@@ -161,7 +165,7 @@ async def _post_workflow_message(
                 f"[Delivered to the user on {display} — result of {origin}]: {delivered_text}",
             )
         log.info(
-            f"{LogTag.AGENT} workflow result delivered to platform",
+            f"{LogTag.AGENT} platform result delivered",
             platform=source.value,
             conversation_id=conversation_id,
             message_id=bot_message.message_id,
@@ -170,7 +174,7 @@ async def _post_workflow_message(
         )
     except Exception as e:  # best-effort per platform
         log.error(
-            f"{LogTag.AGENT} workflow platform delivery failed",
+            f"{LogTag.AGENT} platform result delivery failed",
             platform=source.value,
             error=str(e),
         )
