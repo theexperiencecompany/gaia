@@ -2,16 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
-  CursorInWindowIcon,
   SquareArrowUpRight02Icon,
   SquareLock02Icon,
-  StopCircleIcon,
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
@@ -335,7 +332,6 @@ function HandoffBar({
   reason: string;
   onClosePanel: () => void;
 }) {
-  const [note, setNote] = useState("");
   const { decide, decided, pending, settled } = useHandoffDecision(
     handoffId,
     // A stop/timeout ends the session — nothing left to watch, so the panel
@@ -344,62 +340,37 @@ function HandoffBar({
       if (settledStatus !== "completed") onClosePanel();
     },
   );
-  const hasNote = note.trim().length > 0;
 
   return (
     <div className="bg-zinc-800 px-4 pb-4 pt-3">
-      <div className="mb-2.5 flex items-start gap-2">
-        <CursorInWindowIcon className="mt-0.5 size-4 shrink-0 text-[#00bbff]" />
-        <p className="line-clamp-2 text-[13px] leading-snug text-zinc-200">
-          {reason}
-        </p>
-      </div>
+      <p className="mb-2.5 line-clamp-2 text-[13px] leading-snug text-zinc-200">
+        {reason}
+      </p>
       {settled ? (
         <p className="text-xs text-zinc-400">
           {settled === "completed" ? "Done, resuming the task." : "Stopped."}
         </p>
       ) : (
+        // Same two choices as the chat card, same order and weight — the two
+        // surfaces are one component to the user, so they must not diverge.
         <div className="flex items-center gap-2">
-          <Input
-            size="sm"
-            radius="sm"
-            value={note}
-            onValueChange={setNote}
-            isDisabled={pending || !!decided}
-            aria-label="Note for the assistant"
-            placeholder="Tell me what to do instead…"
-            classNames={{
-              inputWrapper:
-                "bg-zinc-900 data-[hover=true]:bg-zinc-900/80 group-data-[focus=true]:bg-zinc-900/80",
-              input: "text-zinc-100 placeholder:text-zinc-500",
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                decide("continue", note.trim() || undefined);
-              }
-            }}
-          />
           <Button
-            size="sm"
-            variant="light"
             radius="sm"
-            color="danger"
-            className="shrink-0"
-            isDisabled={pending || !!decided}
-            startContent={<StopCircleIcon className="size-4" />}
-            onPress={() => decide("cancel")}
+            variant="flat"
+            className="flex-1 font-semibold text-zinc-100"
+            isLoading={pending || !!decided}
+            onPress={() => decide("continue")}
           >
-            Stop
+            I&rsquo;m done
           </Button>
           <Button
-            size="sm"
+            variant="light"
             radius="sm"
-            className="shrink-0 bg-[#00bbff] font-semibold text-zinc-900"
-            isLoading={pending || !!decided}
-            onPress={() => decide("continue", note.trim() || undefined)}
+            className="shrink-0 px-3 text-zinc-500"
+            isDisabled={pending || !!decided}
+            onPress={() => decide("cancel")}
           >
-            {hasNote ? "Send note & continue" : "I'm done, continue"}
+            Skip
           </Button>
         </div>
       )}

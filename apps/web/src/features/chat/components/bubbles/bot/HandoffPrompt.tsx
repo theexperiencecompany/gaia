@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
 import { Spinner } from "@heroui/spinner";
 import {
   Alert01Icon,
@@ -9,10 +8,8 @@ import {
   CreditCardIcon,
   CursorInWindowIcon,
   ShieldUserIcon,
-  SquareArrowUpRight02Icon,
   StopCircleIcon,
 } from "@icons";
-import { useState } from "react";
 import {
   liveViewPageUrl,
   liveViewSocketUrl,
@@ -92,7 +89,6 @@ export function HandoffPrompt({
     handoff.handoff_id,
     onSettled,
   );
-  const [note, setNote] = useState("");
   const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
   const Icon = meta.icon;
   const liveToken = useLiveViewToken(handoff.session_id);
@@ -150,7 +146,7 @@ export function HandoffPrompt({
           {decided === "continue" ? "Continuing…" : "Stopping…"}
         </div>
       ) : (
-        <div className="mt-3 space-y-2.5 pt-1">
+        <div className="mt-3 pt-1">
           {/* Three clear choices, in order of intent: take over (do it live),
               I'm done (resume), skip (give up on this step). "Take over" hides
               once you're already inside the panel — nothing left to open. */}
@@ -167,7 +163,7 @@ export function HandoffPrompt({
               radius="sm"
               className="flex-1 font-semibold text-zinc-100"
               isLoading={pending}
-              onPress={() => decide("continue", note.trim() || undefined)}
+              onPress={() => decide("continue")}
             >
               I&rsquo;m done
             </Button>
@@ -181,28 +177,6 @@ export function HandoffPrompt({
               Skip
             </Button>
           </div>
-
-          <Input
-            size="sm"
-            value={note}
-            onValueChange={setNote}
-            isDisabled={pending}
-            aria-label="Note for the assistant"
-            placeholder={
-              'Optional: tell me what to do instead, e.g. "skip the login"'
-            }
-            classNames={{
-              inputWrapper:
-                "bg-zinc-800 data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
-              input: "text-zinc-100 placeholder:text-zinc-500",
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                decide("continue", note.trim() || undefined);
-              }
-            }}
-          />
         </div>
       )}
     </div>
@@ -225,7 +199,6 @@ function TakeOverButton({
       <Button
         radius="sm"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
-        endContent={<CursorInWindowIcon className="size-4" />}
         onPress={onOpenPanel}
       >
         {cta}
@@ -241,7 +214,6 @@ function TakeOverButton({
         rel="noopener noreferrer"
         radius="sm"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
-        endContent={<SquareArrowUpRight02Icon className="size-4" />}
       >
         {cta}
       </Button>
