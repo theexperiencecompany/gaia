@@ -33,7 +33,7 @@ async def execute(
     Integration tools are not called directly: discover them and read their args
     schema with retrieve_tools, then run them through execute. On an
     unknown_tool or invalid_args error, correct tool_name/data per the error
-    detail and retry — do not retry the identical call.
+    detail and retry once. Never retry the identical call.
     """
     result = await dispatch_tool(
         user_id=agent_configurable(config).get("user_id"),

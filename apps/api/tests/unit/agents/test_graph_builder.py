@@ -475,6 +475,7 @@ class TestBuildExecutorGraph:
             # typo through as long as one asserted name survives.
             assert kwargs["tools_config"].initial_tool_ids == [
                 "handoff",
+                "execute",
                 "plan_tasks",
                 "update_tasks",
                 "read",

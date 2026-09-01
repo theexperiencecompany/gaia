@@ -177,8 +177,8 @@ class _RetrieveRegistry:
 
     def get_category(self, name: str):
         if name == "delegated_cat":
-            return SimpleNamespace(is_delegated=True)
-        return SimpleNamespace(is_delegated=False)
+            return SimpleNamespace(is_delegated=True, require_integration=False)
+        return SimpleNamespace(is_delegated=False, require_integration=False)
 
     def get_tool_meta(self, tool_name: str):
         """Read by the JSON-bucketed discovery response for a tool's description.
