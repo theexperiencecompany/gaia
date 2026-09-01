@@ -195,11 +195,29 @@ class TestPlatformBanner:
             "tables or rich cards."
         )
 
-    @pytest.mark.parametrize("source", ["web", "mobile", "desktop", "workflow_system"])
+    @pytest.mark.parametrize("source", ["web", "mobile", "workflow_system"])
     async def test_the_rich_clients_get_no_banner(self, source: str) -> None:
         """Telling the web app to write plain short text would be actively wrong —
         its whole point is the cards the bots cannot render."""
         assert await section("platform_banner").fetch(ctx(source=source)) == ""
+
+    async def test_desktop_is_told_about_its_own_tools(self) -> None:
+        """Desktop tools are retrievable only on desktop, so the capability is
+        stated only on desktop — it used to sit in the STATIC prompt, where every
+        web/bot turn read it and reasoned about whether it applied."""
+        rendered = await section("platform_banner").fetch(ctx(source="desktop"))
+
+        assert "take_screenshot" in rendered
+        # Not the messaging-voice banner: desktop renders rich UI like the web app.
+        assert "plain text, short" not in rendered
+
+    @pytest.mark.parametrize("source", ["web", "mobile", "telegram", "workflow_system"])
+    async def test_non_desktop_never_hears_about_desktop_tools(self, source: str) -> None:
+        """The bug this fixes: naming desktop tools off-desktop made the model
+        stop and reason about a capability it cannot use."""
+        assert "take_screenshot" not in await section("platform_banner").fetch(
+            ctx(source=source)
+        )
 
     @pytest.mark.parametrize("source", [None, "", "not_a_real_channel"])
     async def test_an_unknown_channel_is_silent_rather_than_guessed(

@@ -439,7 +439,7 @@ async def test_register_nav_handler_top_level_triggers_refresh() -> None:
     meta = _PageMeta()
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()):
-        _register_nav_handler(fake_cdp, "target-1", meta, background)
+        _register_nav_handler(fake_cdp, "target-1", meta, background, "page-session")
         handler = registry.register.call_args[0][1]
         handler({"frame": {"parentId": None}}, None)
         await asyncio.sleep(0)
@@ -458,7 +458,7 @@ def test_register_nav_handler_child_frame_not_refreshed() -> None:
     meta = _PageMeta()
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()) as mock_refresh:
-        _register_nav_handler(fake_cdp, "target-1", meta, background)
+        _register_nav_handler(fake_cdp, "target-1", meta, background, "page-session")
         handler = registry.register.call_args[0][1]
         handler({"frame": {"parentId": "parent-123"}}, None)
         assert len(background) == 0
@@ -472,7 +472,7 @@ async def test_register_nav_handler_missing_frame_triggers_refresh() -> None:
     fake_cdp._event_registry = registry
     background: set[asyncio.Task] = set()
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()):
-        _register_nav_handler(fake_cdp, "target-1", _PageMeta(), background)
+        _register_nav_handler(fake_cdp, "target-1", _PageMeta(), background, "page-session")
         handler = registry.register.call_args[0][1]
         # no frame key => frame defaults to {}, parentId None => triggers refresh
         handler({}, None)
@@ -488,7 +488,7 @@ def test_register_nav_handler_registers_correct_event() -> None:
     fake_cdp = MagicMock()
     registry = MagicMock()
     fake_cdp._event_registry = registry
-    _register_nav_handler(fake_cdp, "t", _PageMeta(), set())
+    _register_nav_handler(fake_cdp, "t", _PageMeta(), set(), "page-session")
     assert registry.register.call_args[0][0] == "Page.frameNavigated"
 
 
@@ -519,6 +519,7 @@ async def test_run_live_view_cleans_up_background_and_removes_viewer_on_success(
                     {"sessionId": "page-sess"},
                     {},
                     {"targetInfo": {"url": "https://example.com", "title": "Example"}},
+                    {"result": {"value": None}},
                     {},
                 ]
             ),
@@ -553,6 +554,7 @@ async def test_run_live_view_teardown_suppresses_cdp_stop_error() -> None:
                     {"sessionId": "page-sess"},
                     {},
                     {"targetInfo": {"url": "https://example.com", "title": "Example"}},
+                    {"result": {"value": None}},
                     {},
                 ]
             ),
@@ -588,7 +590,7 @@ async def test_run_live_view_cancels_background_tasks() -> None:
     def fake_register_frame(cdp, page_sess, frames, background):
         background.add(bg_task)
 
-    def fake_register_nav(cdp, target_id, meta, background):
+    def fake_register_nav(cdp, target_id, meta, background, page_session):
         background.add(bg_task)
 
     with (
@@ -601,6 +603,7 @@ async def test_run_live_view_cancels_background_tasks() -> None:
                     {"sessionId": "page-sess"},
                     {},
                     {"targetInfo": {"url": "https://example.com", "title": "Example"}},
+                    {"result": {"value": None}},
                     {},
                 ]
             ),
@@ -657,6 +660,14 @@ async def test_run_live_view_cdp_call_sequence_and_exact_args() -> None:
         (mock_cdp, "Target.attachToTarget", {"targetId": "target-1", "flatten": True}, None),
         (mock_cdp, "Page.enable", {}, "page-sess"),
         (mock_cdp, "Target.getTargetInfo", {"targetId": "target-1"}, None),
+        # The page's declared favicon, read once per navigation so the tab shows
+        # the same icon the user's own browser would.
+        (
+            mock_cdp,
+            "Runtime.evaluate",
+            {"expression": screencast._FAVICON_JS, "returnByValue": True},
+            "page-sess",
+        ),
         (
             mock_cdp,
             "Page.startScreencast",
@@ -675,7 +686,7 @@ async def test_run_live_view_registers_handlers_with_expected_args() -> None:
         patch.object(
             screencast,
             "cdp_call",
-            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {"result": {"value": None}}, {}]),
         ),
         patch.object(screencast, "_register_frame_handler") as mock_frame,
         patch.object(screencast, "_register_nav_handler") as mock_nav,
@@ -715,7 +726,7 @@ async def test_run_live_view_pump_uses_send_frames_and_apply_input_with_correct_
         patch.object(
             screencast,
             "cdp_call",
-            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {"result": {"value": None}}, {}]),
         ),
         patch.object(screencast, "_send_frames", new=AsyncMock()) as mock_send,
         patch.object(screencast, "_apply_input", new=AsyncMock()) as mock_apply,
@@ -763,7 +774,7 @@ async def test_run_live_view_logs_closed_event_with_session_id() -> None:
         patch.object(
             screencast,
             "cdp_call",
-            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {"result": {"value": None}}, {}]),
         ),
         patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
         patch.object(screencast, "log") as mock_log,
@@ -788,7 +799,7 @@ async def test_run_live_view_teardown_warning_has_exact_error_type() -> None:
         patch.object(
             screencast,
             "cdp_call",
-            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {}]),
+            new=AsyncMock(side_effect=[{"sessionId": "page-sess"}, {}, {"targetInfo": {}}, {"result": {"value": None}}, {}]),
         ),
         patch.object(screencast, "pump_until_first_close", new=AsyncMock()),
         patch.object(screencast, "log") as mock_log,
@@ -843,13 +854,13 @@ async def test_register_nav_handler_refresh_uses_exact_args() -> None:
     background: set[asyncio.Task] = set()
 
     with patch.object(screencast, "_refresh_meta", new=AsyncMock()) as mock_refresh:
-        _register_nav_handler(fake_cdp, "target-1", meta, background)
+        _register_nav_handler(fake_cdp, "target-1", meta, background, "page-session")
         handler = registry.register.call_args[0][1]
         handler({"frame": {"parentId": None}}, None)
         await asyncio.sleep(0)
         await asyncio.sleep(0)
 
-        mock_refresh.assert_awaited_once_with(fake_cdp, "target-1", meta)
+        mock_refresh.assert_awaited_once_with(fake_cdp, "target-1", meta, "page-session")
         # the done callback discards the finished refresh task from `background`
         assert background == set()
 

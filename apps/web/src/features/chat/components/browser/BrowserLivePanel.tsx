@@ -129,12 +129,14 @@ export function BrowserLivePanel() {
 function TabStrip({
   title,
   host,
+  favicon,
   statusMeta,
   working,
   onClose,
 }: {
   title: string | null;
   host: string | null;
+  favicon: string | null;
   statusMeta: { label: string; color: ChipColor } | null;
   working: boolean;
   onClose: () => void;
@@ -144,9 +146,14 @@ function TabStrip({
     <div className="flex items-end px-4 pt-2">
       <div className="relative flex h-9 min-w-0 max-w-[60%] items-center gap-2 rounded-t-[14px] bg-zinc-800 px-4">
         <TabCove side="left" />
-        {host && !faviconFailed ? (
+        {(favicon || host) && !faviconFailed ? (
           <Image
-            src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+            // The icon the PAGE declares (what the user's own browser tab shows).
+            // The icon service is only the fallback for a page that declares none.
+            src={
+              favicon ??
+              `https://www.google.com/s2/favicons?domain=${host}&sz=64`
+            }
             alt=""
             width={14}
             height={14}
@@ -232,6 +239,7 @@ function BrowserChrome({
       <TabStrip
         title={page.title}
         host={host}
+        favicon={page.favicon}
         statusMeta={statusMeta}
         working={working}
         onClose={onClose}

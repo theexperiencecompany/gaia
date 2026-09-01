@@ -65,11 +65,12 @@ _KEY_FIELDS = (
 
 
 class _PageMeta:
-    """Latest url/title of the streamed page, refreshed on navigation."""
+    """Latest url/title/favicon of the streamed page, refreshed on navigation."""
 
     def __init__(self) -> None:
         self.url: str | None = None
         self.title: str | None = None
+        self.favicon: str | None = None
 
 
 class _Frame:
@@ -104,11 +105,11 @@ async def run_live_view(host: ChromiumHost, session: HostSession, client_ws: Web
         await cdp_call(cdp, "Page.enable", {}, session_id=page_session)
 
         meta = _PageMeta()
-        await _refresh_meta(cdp, target_id, meta)
+        await _refresh_meta(cdp, target_id, meta, page_session)
         frames: asyncio.Queue[_Frame] = asyncio.Queue(maxsize=_FRAME_QUEUE_SIZE)
 
         _register_frame_handler(cdp, page_session, frames, background)
-        _register_nav_handler(cdp, target_id, meta, background)
+        _register_nav_handler(cdp, target_id, meta, background, page_session)
 
         await _start_screencast(cdp, page_session, _DEFAULT_MAX_WIDTH, _DEFAULT_MAX_HEIGHT)
 
@@ -170,22 +171,67 @@ def _register_nav_handler(
     target_id: str,
     meta: _PageMeta,
     background: set[asyncio.Task[Any]],
+    page_session: str,
 ) -> None:
     def on_nav(params: dict[str, Any], _session_id: str | None) -> None:
         frame = params.get("frame", {})
         if frame.get("parentId") is None:
-            refresh = asyncio.ensure_future(_refresh_meta(cdp, target_id, meta))
+            refresh = asyncio.ensure_future(
+                _refresh_meta(cdp, target_id, meta, page_session)
+            )
             background.add(refresh)
             refresh.add_done_callback(background.discard)
 
     cdp._event_registry.register("Page.frameNavigated", on_nav)
 
 
-async def _refresh_meta(cdp: CDPClient, target_id: str, meta: _PageMeta) -> None:
+# The icon the PAGE declares, resolved absolute, preferring the largest declared
+# size — this is what the user's own browser shows in its tab. Falls back to
+# /favicon.ico, which is what a browser does when nothing is declared.
+_FAVICON_JS = """(() => {
+  const links = [...document.querySelectorAll('link[rel~="icon" i]')];
+  const score = (l) => {
+    const s = (l.getAttribute('sizes') || '').match(/\\d+/);
+    return s ? parseInt(s[0], 10) : 0;
+  };
+  const best = links.sort((a, b) => score(b) - score(a))[0];
+  const href = best && best.getAttribute('href');
+  try {
+    return new URL(href || '/favicon.ico', document.baseURI).href;
+  } catch (e) {
+    return null;
+  }
+})()"""
+
+
+async def _read_favicon(cdp: CDPClient, page_session: str) -> str | None:
+    """The page's own favicon URL, or ``None`` when it cannot be read.
+
+    Best-effort: a favicon is decoration, so a page that blocks evaluation (or
+    is mid-navigation) must not break the metadata the tab actually needs.
+    """
+    try:
+        result = await cdp_call(
+            cdp,
+            "Runtime.evaluate",
+            {"expression": _FAVICON_JS, "returnByValue": True},
+            session_id=page_session,
+        )
+    except Exception:
+        return None
+    value = result.get("result", {}).get("value")
+    return value if isinstance(value, str) else None
+
+
+async def _refresh_meta(
+    cdp: CDPClient, target_id: str, meta: _PageMeta, page_session: str | None = None
+) -> None:
     info = await cdp_call(cdp, "Target.getTargetInfo", {"targetId": target_id})
     target_info = info.get("targetInfo", {})
     meta.url = target_info.get("url")
     meta.title = target_info.get("title")
+    if page_session:
+        meta.favicon = await _read_favicon(cdp, page_session)
 
 
 async def _start_screencast(
@@ -214,6 +260,7 @@ async def _send_frames(
                     "format": _SCREENCAST_FORMAT,
                     "url": meta.url,
                     "title": meta.title,
+                    "favicon": meta.favicon,
                     "cssWidth": frame.css_width,
                     "cssHeight": frame.css_height,
                 }

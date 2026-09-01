@@ -83,6 +83,18 @@ async def _platform_banner(ctx: SectionContext) -> str:
     those clients to write plain short text would be actively wrong.
     """
     source = ConversationSource.coerce(ctx.source)
+    # Desktop-only capability, stated only on desktop. Naming these tools in the
+    # STATIC prompt made every web/mobile/bot turn read them and reason about
+    # whether they applied — retrieval already gates them by source, so the
+    # sentence bought nothing off-desktop and cost tokens and confusion.
+    if source is ConversationSource.DESKTOP:
+        return (
+            "You are on the user's desktop app, so desktop tools are available "
+            "(discover them with retrieve_tools): take_screenshot, "
+            "read_clipboard/write_clipboard, open_app, open_url, list_windows. "
+            "Use take_screenshot whenever the user references what they are "
+            "currently looking at."
+        )
     if source is None or source not in BOT_CONVERSATION_SOURCES:
         return ""
     name = source.display_name

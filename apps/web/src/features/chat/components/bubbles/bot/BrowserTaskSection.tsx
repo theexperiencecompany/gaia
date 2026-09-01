@@ -190,7 +190,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       </div>
 
       {session?.task && (
-        <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-zinc-400">
+        <p className="mt-1 line-clamp-1 text-[13px] leading-snug text-zinc-500">
           {session.task}
         </p>
       )}

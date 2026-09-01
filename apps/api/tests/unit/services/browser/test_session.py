@@ -343,9 +343,25 @@ def _info(url: str | None) -> MagicMock:
 
 @pytest.mark.unit
 class TestNavigatedAway:
-    def test_true_when_path_or_host_differs(self) -> None:
+    def test_true_when_it_lands_on_a_non_auth_page(self) -> None:
         assert session_mod._navigated_away("https://x.com/login", "https://x.com/home")
-        assert session_mod._navigated_away("https://x.com/login", "https://y.com/login")
+        assert session_mod._navigated_away("https://x.com/login", "https://x.com/")
+
+    @pytest.mark.parametrize(
+        "current",
+        [
+            "https://x.com/sessions/two-factor",
+            "https://x.com/login/otp",
+            "https://x.com/verify",
+            "https://x.com/challenge/mfa",
+            "https://y.com/signin",
+        ],
+    )
+    def test_false_while_still_inside_the_auth_flow(self, current: str) -> None:
+        """A login walks /login -> /two-factor -> /verify. Treating each hop as
+        'signed in' woke the agent mid-2FA, which then handed off again — the user
+        got interrupted twice and a model call was burned each time."""
+        assert not session_mod._navigated_away("https://x.com/login", current)
 
     def test_false_for_same_page_ignoring_query(self) -> None:
         # A login flow adding ?return_to= on the same page is not a navigation.

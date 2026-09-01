@@ -471,12 +471,19 @@ class TestGetDefaultLlm:
         yield
         _build_default_llm.cache_clear()
 
+
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
     def test_returns_the_openrouter_default_model(
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.return_value = MagicMock()
 
@@ -499,6 +506,12 @@ class TestGetDefaultLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.side_effect = lambda **_: MagicMock()
 
@@ -509,6 +522,12 @@ class TestGetDefaultLlm:
     @patch("app.agents.llm.client.settings")
     def test_no_openrouter_key_raises(self, mock_settings: MagicMock) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        # get_default_llm prefers the custom endpoint when DEV_LLM_* is fully
+        # set, and a MagicMock's attributes are all truthy — pin them off so
+        # these tests exercise the OpenRouter lane they assert on.
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = None
 
         with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):

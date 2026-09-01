@@ -15,7 +15,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.agents.llm.client import _build_default_llm, get_helper_llm
+from app.agents.llm.client import (
+    _build_custom_default_llm,
+    _build_default_llm,
+    get_helper_llm,
+)
 from app.constants.llm import HELPER_MAX_OUTPUT_TOKENS, OPENROUTER_MAX_OUTPUT_TOKENS
 
 pytestmark = pytest.mark.unit
@@ -26,8 +30,14 @@ class TestGetHelperLlm:
     def _fresh_cache(self):
         # get_helper_llm is built on the same cached get_default_llm instance.
         _build_default_llm.cache_clear()
+        # get_default_llm prefers the custom endpoint, whose builder caches too —
+        # a warm entry means ChatOpenRouter is never constructed here.
+        _build_custom_default_llm.cache_clear()
         yield
         _build_default_llm.cache_clear()
+        # get_default_llm prefers the custom endpoint, whose builder caches too —
+        # a warm entry means ChatOpenRouter is never constructed here.
+        _build_custom_default_llm.cache_clear()
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")
@@ -35,6 +45,9 @@ class TestGetHelperLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.return_value = MagicMock()
 
@@ -59,6 +72,9 @@ class TestGetHelperLlm:
         self, mock_settings: MagicMock, mock_chat_openrouter: MagicMock
     ) -> None:
         mock_settings.GAIA_SIM_MODE = False
+        mock_settings.DEV_LLM_BASE_URL = None
+        mock_settings.DEV_LLM_API_KEY = None
+        mock_settings.DEV_LLM_MODEL = None
         mock_settings.OPENROUTER_API_KEY = "or-key"  # pragma: allowlist secret
         mock_chat_openrouter.return_value = MagicMock()
 

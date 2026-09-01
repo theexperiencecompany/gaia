@@ -68,14 +68,53 @@ async def keep_session_alive(session_id: str) -> None:
             )
 
 
+# Path fragments that mean "still inside the auth flow". A login commonly walks
+# /login -> /sessions/two-factor -> /verify before it is actually done, and each
+# hop is a real navigation — so navigation alone must not end the handoff, or the
+# agent wakes up mid-2FA, sees another auth screen, and hands off again (burning
+# a step and interrupting the user twice).
+_AUTH_PATH_MARKERS = (
+    "login",
+    "signin",
+    "sign-in",
+    "auth",
+    "session",
+    "two-factor",
+    "two_factor",
+    "2fa",
+    "mfa",
+    "otp",
+    "verify",
+    "verification",
+    "challenge",
+    "password",
+    "consent",
+    "oauth",
+)
+
+
+def _is_auth_url(url: str | None) -> bool:
+    """Whether the URL still looks like part of a sign-in flow."""
+    if not url:
+        return False
+    path = urlsplit(url).path.lower()
+    return any(marker in path for marker in _AUTH_PATH_MARKERS)
+
+
 def _navigated_away(start: str | None, current: str | None) -> bool:
-    """Whether ``current`` is a different page than ``start`` — a sign-in that
-    left the login URL. Compared by scheme+host+path (query/fragment ignored, so
-    a login flow adding ``?return_to=`` on the same page is not a navigation)."""
+    """Whether the sign-in is visibly finished: the page moved to a different
+    page AND that page is no longer part of the auth flow.
+
+    Compared by scheme+host+path (query/fragment ignored, so a login adding
+    ``?return_to=`` is not a navigation). Staying inside auth (2FA, OTP,
+    verification) is NOT done — see ``_AUTH_PATH_MARKERS``.
+    """
     if not start or not current:
         return False
     a, b = urlsplit(start), urlsplit(current)
-    return (a.scheme, a.netloc, a.path) != (b.scheme, b.netloc, b.path)
+    if (a.scheme, a.netloc, a.path) == (b.scheme, b.netloc, b.path):
+        return False
+    return not _is_auth_url(current)
 
 
 async def auto_resolve_handoff_on_navigation(

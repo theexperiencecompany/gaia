@@ -121,6 +121,7 @@ async def test_send_frames_serializes_css_width_and_height() -> None:
         "format": screencast._SCREENCAST_FORMAT,
         "url": "https://example.com",
         "title": "Example",
+        "favicon": None,
         "cssWidth": 1024,
         "cssHeight": 768,
     }

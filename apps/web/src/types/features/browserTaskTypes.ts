@@ -89,6 +89,8 @@ export type BrowserHandoffDecision = "continue" | "cancel";
  */
 
 export interface BrowserFrameMessage {
+  /** The icon the page itself declares — what the user's own browser tab shows. */
+  favicon?: string | null;
   type: "frame";
   data: string; // base64-encoded JPEG
   url?: string | null;

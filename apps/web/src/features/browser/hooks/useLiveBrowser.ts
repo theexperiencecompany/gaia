@@ -27,7 +27,8 @@ export function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
   const [page, setPage] = useState<{
     url: string | null;
     title: string | null;
-  }>({ url: null, title: null });
+    favicon: string | null;
+  }>({ url: null, title: null, favicon: null });
 
   const send = useCallback((msg: BrowserLiveInputMessage) => {
     const ws = wsRef.current;
@@ -90,9 +91,15 @@ export function useLiveBrowser(socketUrl: string | null, interactive: boolean) {
           cssSizeRef.current = { w: msg.cssWidth, h: msg.cssHeight };
         }
         setPage((prev) =>
-          prev.url === (msg.url ?? null) && prev.title === (msg.title ?? null)
+          prev.url === (msg.url ?? null) &&
+          prev.title === (msg.title ?? null) &&
+          prev.favicon === (msg.favicon ?? null)
             ? prev
-            : { url: msg.url ?? null, title: msg.title ?? null },
+            : {
+                url: msg.url ?? null,
+                title: msg.title ?? null,
+                favicon: msg.favicon ?? null,
+              },
         );
         img.src = `data:image/jpeg;base64,${msg.data}`;
       };

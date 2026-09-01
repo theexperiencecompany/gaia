@@ -15,8 +15,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.browser_host.stealth import STEALTH_INIT_SCRIPT
+from app.browser_host.stealth import build_stealth_script
 import app.patches.browser_use_stealth_patch as patch_module
+from app.services.browser.fingerprint import current_fingerprint_seed
 
 
 def _fake_cdp_session(target_id: str) -> SimpleNamespace:
@@ -47,7 +48,10 @@ async def test_injects_the_stealth_script_on_first_use(monkeypatch):
     await patch_module._get_or_create_cdp_session(self, target_id="t1")
 
     _add_script(cdp).assert_awaited_once_with(
-        params={"source": STEALTH_INIT_SCRIPT, "runImmediately": True},
+        params={
+            "source": build_stealth_script(current_fingerprint_seed()),
+            "runImmediately": True,
+        },
         session_id="sess-t1",
     )
 
