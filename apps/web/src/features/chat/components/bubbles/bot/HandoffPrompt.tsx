@@ -107,7 +107,7 @@ export function HandoffPrompt({
         <Icon className="size-4 shrink-0 text-[#00bbff]" />
         <p className="text-sm font-semibold text-zinc-100">{meta.title}</p>
       </div>
-      <p className="mt-1 text-[13px] leading-relaxed text-zinc-400">
+      <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-zinc-400">
         {handoff.reason}
       </p>
 
@@ -115,10 +115,8 @@ export function HandoffPrompt({
           session is saved encrypted and reused so the next task skips it. Only
           for credentials — never payments/confirmations, which aren't stored. */}
       {handoff.category === "credentials" && (
-        <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500">
-          Once you're signed in, I'll save this site's session — encrypted — so
-          I can skip the login next time. You can remove saved sites anytime in
-          your Browser settings.
+        <p className="mt-1 text-[12px] text-zinc-500">
+          Saved encrypted so next time skips the login.
         </p>
       )}
 
@@ -166,19 +164,16 @@ export function HandoffPrompt({
             )}
             <Button
               variant="flat"
+              radius="sm"
               className="flex-1 font-semibold text-zinc-100"
               isLoading={pending}
-              startContent={
-                !pending ? (
-                  <CheckmarkCircle02Icon className="size-4" />
-                ) : undefined
-              }
               onPress={() => decide("continue", note.trim() || undefined)}
             >
               I&rsquo;m done
             </Button>
             <Button
               variant="light"
+              radius="sm"
               className="shrink-0 px-3 text-zinc-500"
               isDisabled={pending}
               onPress={() => decide("cancel")}
@@ -228,6 +223,7 @@ function TakeOverButton({
   if (onOpenPanel) {
     return (
       <Button
+        radius="sm"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<CursorInWindowIcon className="size-4" />}
         onPress={onOpenPanel}
@@ -243,6 +239,7 @@ function TakeOverButton({
         href={pageUrl}
         target="_blank"
         rel="noopener noreferrer"
+        radius="sm"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<SquareArrowUpRight02Icon className="size-4" />}
       >

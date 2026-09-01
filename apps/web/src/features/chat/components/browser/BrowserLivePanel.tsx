@@ -8,7 +8,6 @@ import { Tooltip } from "@heroui/tooltip";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
-  CheckmarkCircle02Icon,
   CursorInWindowIcon,
   SquareArrowUpRight02Icon,
   SquareLock02Icon,
@@ -351,7 +350,9 @@ function HandoffBar({
     <div className="bg-zinc-800 px-4 pb-4 pt-3">
       <div className="mb-2.5 flex items-start gap-2">
         <CursorInWindowIcon className="mt-0.5 size-4 shrink-0 text-[#00bbff]" />
-        <p className="text-[13px] leading-snug text-zinc-200">{reason}</p>
+        <p className="line-clamp-2 text-[13px] leading-snug text-zinc-200">
+          {reason}
+        </p>
       </div>
       {settled ? (
         <p className="text-xs text-zinc-400">
@@ -361,7 +362,7 @@ function HandoffBar({
         <div className="flex items-center gap-2">
           <Input
             size="sm"
-            radius="full"
+            radius="sm"
             value={note}
             onValueChange={setNote}
             isDisabled={pending || !!decided}
@@ -382,7 +383,7 @@ function HandoffBar({
           <Button
             size="sm"
             variant="light"
-            radius="full"
+            radius="sm"
             color="danger"
             className="shrink-0"
             isDisabled={pending || !!decided}
@@ -393,14 +394,9 @@ function HandoffBar({
           </Button>
           <Button
             size="sm"
-            radius="full"
+            radius="sm"
             className="shrink-0 bg-[#00bbff] font-semibold text-zinc-900"
             isLoading={pending || !!decided}
-            startContent={
-              !pending && !decided ? (
-                <CheckmarkCircle02Icon className="size-4" />
-              ) : undefined
-            }
             onPress={() => decide("continue", note.trim() || undefined)}
           >
             {hasNote ? "Send note & continue" : "I'm done, continue"}

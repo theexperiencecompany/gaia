@@ -46,9 +46,9 @@ def build_browser_tools(
             "entering a payment, a password / OTP / 2FA, or confirming an "
             "irreversible action. Call this BEFORE such a step. The user completes "
             "it in the live browser; you then continue. `reason` is shown to the "
-            "user verbatim as their instruction, so write it as a short second-person "
-            "directive telling them exactly what to do (e.g. 'Enter your password and "
-            "click Login'), NOT a third-person explanation about the user. `category` "
+            "user verbatim as their instruction, so write ONE short second-person "
+            "directive — 10 words or fewer, no restating what the field is for "
+            "(e.g. 'Enter your password and sign in'), NOT a third-person explanation. `category` "
             "is one of payment | credentials | irreversible."
         )
     )

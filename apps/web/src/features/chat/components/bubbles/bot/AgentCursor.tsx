@@ -79,22 +79,25 @@ function Dot({ delay }: { delay: string }) {
 /** The agent's pointer — a Figma-style arrow in the browser accent. Shared by
  * the live overlay and the recap so both read as the same cursor, not a dot. */
 export function CursorArrow({ className = "" }: { className?: string }) {
+  // The source art (Figma Cursors.svg) has its tip ~(7.3, 6.5) inside a 28x29
+  // box; the viewBox is reframed to start at the tip so the SVG's top-left IS
+  // the pointer tip — callers place that at the action point and it lands right.
   return (
     <svg
-      width="20"
-      height="20"
-      viewBox="0 0 16 16"
+      width="22"
+      height="23"
+      viewBox="7.3 6.5 17 18"
       fill="none"
-      className={`drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)] ${className}`}
+      className={`drop-shadow-[0_1px_2px_rgba(0,0,0,0.35)] ${className}`}
       role="img"
       aria-label="Agent cursor"
     >
       <title>Agent cursor</title>
       <path
-        d="M1 1L6.5 15L8.6 9.1L14.5 7L1 1Z"
+        d="M11.8924 23.7113L7.33378 7.71982C7.0984 6.89409 7.95602 6.18106 8.73584 6.55413L23.8385 13.7792C24.6416 14.1634 24.5812 15.3159 23.7425 15.6131L17.5312 17.8139C17.3056 17.8938 17.1164 18.0511 16.9978 18.2574L13.7318 23.9361C13.2908 24.7029 12.1347 24.5616 11.8924 23.7113Z"
         fill="#00bbff"
-        stroke="white"
-        strokeWidth="1.1"
+        stroke="black"
+        strokeWidth="1.5"
         strokeLinejoin="round"
       />
     </svg>
