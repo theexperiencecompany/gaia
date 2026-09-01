@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.agents.prompts.todo_prompts import TRIGGERED_RELEVANCE_GUIDANCE
 from app.constants.todos import FAILED_LABEL
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -176,7 +177,9 @@ class TestTriggeredExecutionLock:
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", enqueue),
         ):
-            result = await execute_tracked_todo({}, "todo-1", self._origin(defer_attempts=exhausted))
+            result = await execute_tracked_todo(
+                {}, "todo-1", self._origin(defer_attempts=exhausted)
+            )
 
         assert result.startswith("dropped:todo-1")
         enqueue.assert_not_awaited()
@@ -244,6 +247,9 @@ class TestTriggeredExecutionPrompt:
 
         assert prompt.startswith("Execute the following scheduled task: Chase Acme")
         assert "Triggering event" not in prompt
+        # A scheduled run was not woken by a watch, so the tighten-on-noise
+        # guidance is irrelevant and would only add tokens.
+        assert TRIGGERED_RELEVANCE_GUIDANCE not in prompt
 
     def test_a_triggered_prompt_carries_the_payload(self):
         origin = TriggerOrigin(
@@ -263,6 +269,26 @@ class TestTriggeredExecutionPrompt:
         assert "gmail_new_message" in prompt
         assert "alice@acme.com" in prompt
         assert "t-1" in prompt
+
+    def test_a_triggered_prompt_carries_the_tighten_on_noise_guidance(self):
+        # A watch fire is a candidate, not proof: the woken run must be told to
+        # verify relevance and tighten a watch that keeps firing on noise, or a
+        # loose watch pays for an agent run on every false positive.
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="gmail_new_message",
+            payload={"thread_id": "t-1"},
+        )
+
+        prompt = _build_execution_prompt(
+            title="Chase Acme",
+            description="",
+            canvas_content=None,
+            reference_context="",
+            origin=origin,
+        )
+
+        assert TRIGGERED_RELEVANCE_GUIDANCE in prompt
 
 
 class TestTriggeredExecutionGating:

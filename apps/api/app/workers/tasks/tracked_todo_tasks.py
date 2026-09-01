@@ -18,6 +18,7 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
+from app.agents.prompts.todo_prompts import TRIGGERED_RELEVANCE_GUIDANCE
 from app.constants.todos import FAILED_LABEL
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_daily_cost_budget
@@ -375,6 +376,7 @@ def _build_execution_prompt(
             f"An event you were watching just fired. Execute this task: {title}",
             f"Triggering event ({origin.trigger_name}):\n"
             + json.dumps(origin.payload, indent=2, default=str),
+            TRIGGERED_RELEVANCE_GUIDANCE,
         ]
     if description:
         prompt_parts.append(f"Details: {description}")
