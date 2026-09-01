@@ -14,11 +14,18 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
-from app.constants.browser import BROWSER_HANDOFF_KEEPALIVE_SECONDS
+from app.constants.browser import (
+    BROWSER_HANDOFF_KEEPALIVE_SECONDS,
+    HANDOFF_AUTORESOLVE_POLL_SECONDS,
+    HANDOFF_AUTORESOLVE_STABLE_POLLS,
+    HandoffDecision,
+)
 from app.constants.log_tags import LogTag
 from app.services.browser import host_client
 from app.services.browser.exceptions import BrowserUnavailableError
+from app.services.browser.handoff import resolve_handoff
 from app.services.browser.live_view import live_view_url
 from app.services.browser.registry import register_session, unregister_session
 from app.services.browser.storage_persistence import (
@@ -59,6 +66,53 @@ async def keep_session_alive(session_id: str) -> None:
                 error_type=type(exc).__name__,
                 browser={"session_id": session_id, "operation": "handoff_keepalive"},
             )
+
+
+def _navigated_away(start: str | None, current: str | None) -> bool:
+    """Whether ``current`` is a different page than ``start`` — a sign-in that
+    left the login URL. Compared by scheme+host+path (query/fragment ignored, so
+    a login flow adding ``?return_to=`` on the same page is not a navigation)."""
+    if not start or not current:
+        return False
+    a, b = urlsplit(start), urlsplit(current)
+    return (a.scheme, a.netloc, a.path) != (b.scheme, b.netloc, b.path)
+
+
+async def auto_resolve_handoff_on_navigation(
+    handoff_id: str, session_id: str, user_id: str
+) -> None:
+    """Auto-complete a login handoff once the page navigates off the sign-in URL.
+
+    Best-effort convenience only: the manual "I'm done" always races this through
+    the same ``resolve_handoff`` (first write wins), so a missed detection just
+    means the user taps the button. Debounced so a transient mid-login redirect
+    doesn't resolve it early; if the login lands on a further step (2FA), the
+    agent re-evaluates on resume and hands off again. Run under
+    ``spawn_background_task`` and cancel when the handoff resolves.
+    """
+    try:
+        start = (await host_client.get_session(session_id)).url
+    except BrowserUnavailableError:
+        return
+    stable = 0
+    while True:
+        await asyncio.sleep(HANDOFF_AUTORESOLVE_POLL_SECONDS)
+        try:
+            current = (await host_client.get_session(session_id)).url
+        except BrowserUnavailableError:
+            return
+        if not _navigated_away(start, current):
+            stable = 0
+            continue
+        stable += 1
+        if stable >= HANDOFF_AUTORESOLVE_STABLE_POLLS:
+            await resolve_handoff(
+                handoff_id,
+                HandoffDecision.CONTINUE,
+                user_id,
+                "Signed in — resuming automatically.",
+            )
+            return
 
 
 @asynccontextmanager

@@ -335,3 +335,97 @@ async def test_keep_session_alive_logs_a_failed_touch_and_keeps_looping(
     assert message == "[BROWSER] Browser handoff keepalive failed"
     assert kwargs["error_type"] == "BrowserUnavailableError"
     assert kwargs["browser"] == {"session_id": "sess-1", "operation": "handoff_keepalive"}
+
+
+def _info(url: str | None) -> MagicMock:
+    return MagicMock(url=url)
+
+
+@pytest.mark.unit
+class TestNavigatedAway:
+    def test_true_when_path_or_host_differs(self) -> None:
+        assert session_mod._navigated_away("https://x.com/login", "https://x.com/home")
+        assert session_mod._navigated_away("https://x.com/login", "https://y.com/login")
+
+    def test_false_for_same_page_ignoring_query(self) -> None:
+        # A login flow adding ?return_to= on the same page is not a navigation.
+        assert not session_mod._navigated_away(
+            "https://x.com/login", "https://x.com/login?return_to=%2Fhome"
+        )
+
+    def test_false_when_either_url_missing(self) -> None:
+        assert not session_mod._navigated_away(None, "https://x.com/home")
+        assert not session_mod._navigated_away("https://x.com/login", None)
+
+
+@pytest.mark.unit
+class TestAutoResolveHandoffOnNavigation:
+    async def test_resolves_after_navigating_away_and_staying(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A visible sign-in (URL leaves the login page for 2 stable polls) auto
+        -completes the handoff via the same resolve_handoff the button uses."""
+        monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+        # start=login, then post-login twice (debounce needs 2 stable polls).
+        monkeypatch.setattr(
+            session_mod.host_client,
+            "get_session",
+            AsyncMock(side_effect=[_info("https://x/login"), _info("https://x/"), _info("https://x/")]),
+        )
+        resolve = AsyncMock()
+        monkeypatch.setattr(session_mod, "resolve_handoff", resolve)
+
+        await session_mod.auto_resolve_handoff_on_navigation("h1", "sess-1", "user-1")
+
+        resolve.assert_awaited_once()
+        args = resolve.await_args[0]
+        assert args[0] == "h1"
+        assert args[1] == session_mod.HandoffDecision.CONTINUE
+        assert args[2] == "user-1"
+
+    async def test_does_not_resolve_while_still_on_login(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+        # never leaves the login page, then the session drops → loop exits.
+        monkeypatch.setattr(
+            session_mod.host_client,
+            "get_session",
+            AsyncMock(
+                side_effect=[
+                    _info("https://x/login"),
+                    _info("https://x/login"),
+                    BrowserUnavailableError("gone"),
+                ]
+            ),
+        )
+        resolve = AsyncMock()
+        monkeypatch.setattr(session_mod, "resolve_handoff", resolve)
+
+        await session_mod.auto_resolve_handoff_on_navigation("h1", "sess-1", "user-1")
+        resolve.assert_not_awaited()
+
+    async def test_transient_redirect_is_debounced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A single off-login blip that snaps back must NOT resolve — the stable
+        counter resets, so a mid-login redirect can't complete the handoff early."""
+        monkeypatch.setattr(session_mod.asyncio, "sleep", AsyncMock())
+        monkeypatch.setattr(
+            session_mod.host_client,
+            "get_session",
+            AsyncMock(
+                side_effect=[
+                    _info("https://x/login"),
+                    _info("https://x/interstitial"),  # blip (stable=1)
+                    _info("https://x/login"),  # back → reset
+                    _info("https://x/login"),
+                    BrowserUnavailableError("gone"),
+                ]
+            ),
+        )
+        resolve = AsyncMock()
+        monkeypatch.setattr(session_mod, "resolve_handoff", resolve)
+
+        await session_mod.auto_resolve_handoff_on_navigation("h1", "sess-1", "user-1")
+        resolve.assert_not_awaited()

@@ -68,6 +68,8 @@ def _patch_runner(monkeypatch: pytest.MonkeyPatch, result: BrowserResultSnapshot
 
     monkeypatch.setattr(tool_mod, "browser_session", _fake_session)
     monkeypatch.setattr(tool_mod, "build_browser_llm", lambda: object())
+    # Vision resolution hits a live model catalog; unit tests pin it.
+    monkeypatch.setattr(tool_mod, "resolve_use_vision", AsyncMock(return_value=True))
     runner = MagicMock()
     runner.run = AsyncMock(return_value=result)
     monkeypatch.setattr(tool_mod, "BrowserTaskRunner", MagicMock(return_value=runner))
@@ -107,6 +109,7 @@ async def test_happy_path_runs_and_returns_summary(
 
 async def test_capacity_limit_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tool_mod, "build_browser_llm", lambda: object())
+    monkeypatch.setattr(tool_mod, "resolve_use_vision", AsyncMock(return_value=True))
 
     @asynccontextmanager
     async def _at_capacity(**kwargs: object) -> AsyncIterator[MagicMock]:
@@ -164,6 +167,7 @@ async def test_bot_delivery_outage_does_not_abort_run(
     monkeypatch.setattr(tool_mod, "BotProgressDelivery", _FailingDelivery)
     monkeypatch.setattr(tool_mod, "BrowserTaskRunner", _Runner)
     monkeypatch.setattr(tool_mod, "build_browser_llm", lambda: object())
+    monkeypatch.setattr(tool_mod, "resolve_use_vision", AsyncMock(return_value=True))
 
     fake_session = MagicMock(
         session_id="s1",

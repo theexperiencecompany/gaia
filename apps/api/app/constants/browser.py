@@ -96,6 +96,13 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 # card's Continue/Cancel buttons. Both surfaces converge on ``resolve_handoff``.
 BROWSER_HANDOFF_CONV_KEY_PREFIX = "browser:handoff:conv:"
 HANDOFF_POLL_INTERVAL_SECONDS = 1.0
+
+# Auto-resolve a login handoff when the page navigates off the sign-in URL, so a
+# visible sign-in success spares the user the extra "I'm done" tap. Best-effort —
+# the manual resolution always races it. Debounced across a couple of polls so a
+# transient mid-login redirect doesn't fire it early.
+HANDOFF_AUTORESOLVE_POLL_SECONDS = 2.0
+HANDOFF_AUTORESOLVE_STABLE_POLLS = 2
 HANDOFF_KEY_TTL_SECONDS = 3600
 # How often the paused run touches the host session so the idle reaper (default
 # 300s TTL) never disposes a browser the user was asked to come back to.
@@ -139,6 +146,11 @@ BROWSER_TAKEOVER_PREAMBLE = (
     "image-grid challenge, do NOT attempt to solve it yourself — call the "
     "`solve_captcha_with_help` action immediately on the FIRST challenge so the user "
     "solves it in the live browser, then continue. Never keep clicking challenge tiles.\n"
+    # The human's part of a login should be only the secret part. Filling the
+    # username yourself first means they open the live view to just a password.
+    "Before you hand off a login, first fill every NON-secret field you can "
+    "yourself — username, email, the account identifier — so the takeover leaves "
+    "the user only the secret step (password, OTP, 2FA). Then hand off.\n"
     # Measured on a real investor-application form: given a name and an email and
     # nothing else, the agent typed a phone number it made up and a country it
     # made up, and reported the form as correctly filled. On a form that submits,

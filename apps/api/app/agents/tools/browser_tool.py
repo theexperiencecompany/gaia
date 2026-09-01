@@ -24,6 +24,7 @@ from app.constants.browser import (
     BROWSER_TOOL_CATEGORY,
     BrowserSessionStatus,
     HandoffStatus,
+    SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -47,7 +48,11 @@ from app.services.browser.fingerprint import reset_fingerprint_seed, set_fingerp
 from app.services.browser.handoff import await_handoff, create_pending_handoff
 from app.services.browser.llm import build_browser_llm, resolve_use_vision
 from app.services.browser.runner import BrowserTaskRunner
-from app.services.browser.session import browser_session, keep_session_alive
+from app.services.browser.session import (
+    auto_resolve_handoff_on_navigation,
+    browser_session,
+    keep_session_alive,
+)
 from app.services.browser.tasks import record_browser_task
 from app.templates.docstrings.browser_tool_docs import BROWSER_TASK
 from app.utils.agent_utils import (
@@ -327,16 +332,31 @@ async def browser_task(
                 # The paused session produces no CDP/live-view traffic, so keep
                 # its idle clock fresh until the user decides — otherwise the
                 # host reaps the browser they were asked to come back to.
-                keepalive = spawn_background_task(
-                    keep_session_alive(session.session_id),
-                    name="browser_handoff_keepalive",
-                )
+                watchers = [
+                    spawn_background_task(
+                        keep_session_alive(session.session_id),
+                        name="browser_handoff_keepalive",
+                    )
+                ]
+                # A login handoff can auto-complete when the page navigates off
+                # the sign-in URL — the user just signs in, no extra tap. Only
+                # for credentials; a payment/confirmation has no such signal.
+                if req.category == SensitiveCategory.CREDENTIALS:
+                    watchers.append(
+                        spawn_background_task(
+                            auto_resolve_handoff_on_navigation(
+                                handoff_id, session.session_id, user_id
+                            ),
+                            name="browser_handoff_autoresolve",
+                        )
+                    )
                 try:
                     outcome = await await_handoff(
                         handoff_id, settings.BROWSER_USE_HANDOFF_TIMEOUT_SECONDS
                     )
                 finally:
-                    keepalive.cancel()
+                    for watcher in watchers:
+                        watcher.cancel()
                 await emit(
                     BrowserHandoffSnapshot(
                         handoff_id=handoff_id,
