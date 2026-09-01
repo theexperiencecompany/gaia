@@ -85,7 +85,6 @@ class TestGetSignalMatchingContext:
         assert context.startswith("ACTIVE TRACKED TODOS")
         assert "thread: abc123" not in context
 
-    @pytest.mark.regression
     async def test_stored_user_scoped_vfs_path_never_leaks_into_agent_context(self, deps) -> None:
         """Old docs store vfs_path as /users/<uid>/todos/<id> — that host-side
         path must never reach the LLM, which only knows /workspace-scoped paths."""

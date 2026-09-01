@@ -359,7 +359,6 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
         assert [t.title for t in found] == ["gmail"]
 
-    @pytest.mark.regression
     async def test_a_subscription_written_by_update_is_findable(self, repo, make_doc):
         """Registration writes through ``update``, not ``create``.
 
@@ -385,7 +384,6 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert written.status is SubscriptionStatus.ACTIVE
         assert written.created_at is not None
 
-    @pytest.mark.regression
     async def test_a_trigger_id_subscription_written_by_update_is_findable(self, repo, make_doc):
         doc = await repo.create(make_doc(user_id="u"))
         subscription = _subscription(
