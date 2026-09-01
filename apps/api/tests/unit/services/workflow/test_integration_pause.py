@@ -361,9 +361,7 @@ class TestSubscriptions:
 
         subscription_side.resync.assert_awaited_once_with(USER_ID, {"gmail_new_message"})
 
-    async def test_an_unknown_integration_touches_no_subscriptions(
-        self, subscription_side
-    ) -> None:
+    async def test_an_unknown_integration_touches_no_subscriptions(self, subscription_side) -> None:
         with (
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.compute_required_integrations", return_value=set()),

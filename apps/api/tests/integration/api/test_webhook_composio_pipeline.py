@@ -253,9 +253,7 @@ class TestTriggerDeliveryToQueuedExecution:
 
         # No workflow matched, and the event still reached the todo side.
         enqueue.assert_awaited_once()
-        _pool, task_name, trigger_names, trigger_id, user_id, payload = (
-            enqueue.await_args.args
-        )
+        _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
         assert task_name == "dispatch_todo_subscriptions"
         assert "gmail_new_message" in trigger_names
         assert user_id == USER_ID

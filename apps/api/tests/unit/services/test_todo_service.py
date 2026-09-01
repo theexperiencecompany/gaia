@@ -533,7 +533,6 @@ class TestDeleteTodo:
         teardown.assert_not_awaited()
 
 
-
 class TestBulkOps:
     async def test_bulk_update_delegates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync

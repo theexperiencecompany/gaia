@@ -397,7 +397,7 @@ class TestTriggerHandlerBase:
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_signal_context.return_value = ("")
+        mock_signal_context.return_value = ""
         payload = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
@@ -421,7 +421,7 @@ class TestTriggerHandlerBase:
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=workflows)
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_signal_context.return_value = ("todo: buy milk")
+        mock_signal_context.return_value = "todo: buy milk"
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {"id": "evt_1"})
 
@@ -452,7 +452,7 @@ class TestTriggerHandlerBase:
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_signal_context.side_effect = (Exception("mongo down"))
+        mock_signal_context.side_effect = Exception("mongo down")
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
 

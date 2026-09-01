@@ -476,9 +476,9 @@ class TriggerHandler(ABC):
             context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if workflow.user_id not in signal_context_by_user:
                 try:
-                    signal_context_by_user[
+                    signal_context_by_user[workflow.user_id] = await get_signal_matching_context(
                         workflow.user_id
-                    ] = await get_signal_matching_context(workflow.user_id)
+                    )
                 except Exception as e:
                     log.warning(
                         "trigger.signal_context_fetch_failed",
