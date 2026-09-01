@@ -19,9 +19,6 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
   const [hasError, setHasError] = useState(false);
 
   const handleOpen = async () => {
-    // Fetch on every open: the sidebar reuses this instance across todo
-    // selections, so re-reading the current todo's canvas keeps a previously
-    // opened todo's content from leaking through and lets a failed read retry.
     setIsOpen(true);
     setIsLoading(true);
     setHasError(false);
