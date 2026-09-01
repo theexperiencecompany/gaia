@@ -1,5 +1,6 @@
 """Unit tests for OAuth service operations."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -18,6 +19,13 @@ from app.services.oauth.oauth_service import (
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
+from shared.py import wide_events
+
+
+async def _drain_background_tasks() -> None:
+    """Await every spawned fire-and-forget task so its effects are observable."""
+    while pending := set(wide_events._spawned_tasks):
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
@@ -311,6 +319,10 @@ class TestStoreUserInfo:
 
         await store_user_info("Bob", "bob@test.com", None)
 
+        # Welcome email goes out on a background task so a slow ESP can't block
+        # signup; drain it before asserting.
+        await _drain_background_tasks()
+
         mock_send_welcome_email.assert_awaited_once_with("bob@test.com", "Bob")
 
     async def test_new_user_adds_contact_to_resend(
@@ -325,7 +337,44 @@ class TestStoreUserInfo:
 
         await store_user_info("Bob", "bob@test.com", None)
 
+        # Marketing contact is added concurrently with the welcome email on the
+        # signup background task; drain it before asserting.
+        await _drain_background_tasks()
+
         mock_add_marketing_contact.assert_awaited_once_with("bob@test.com", "Bob")
+
+    async def test_new_user_esp_calls_run_concurrently(
+        self,
+        mock_user_repo,
+        mock_track_signup,
+        mock_send_welcome_email,
+        mock_add_marketing_contact,
+    ):
+        """Both ESP round-trips are in flight at once — neither waits on the other."""
+        mock_user_repo.get_by_email.return_value = None
+        mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
+
+        # A two-party barrier only opens if both calls are running at the same
+        # time; if they are awaited one after the other the first party waits
+        # for a partner that has not started and the rendezvous times out.
+        barrier = asyncio.Barrier(2)
+        rendezvous: set[str] = set()
+
+        async def _welcome(*_args: str) -> None:
+            await asyncio.wait_for(barrier.wait(), timeout=1)
+            rendezvous.add("welcome_email")
+
+        async def _contact(*_args: str) -> None:
+            await asyncio.wait_for(barrier.wait(), timeout=1)
+            rendezvous.add("marketing_contact")
+
+        mock_send_welcome_email.side_effect = _welcome
+        mock_add_marketing_contact.side_effect = _contact
+
+        await store_user_info("Bob", "bob@test.com", None)
+        await _drain_background_tasks()
+
+        assert rendezvous == {"welcome_email", "marketing_contact"}
 
     async def test_new_user_signup_tracking_failure_does_not_raise(
         self,

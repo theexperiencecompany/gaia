@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import BackgroundTasks, HTTPException
 
 from app.config.oauth_config import (
@@ -41,6 +43,10 @@ from app.services.workspace_sync import schedule_user_provision
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import OAuthContext, log, spawn_logged_task
+
+# Signup's ESP calls are fire-and-forget; this bounds each one so a hung provider
+# can't leak a task that never finishes.
+SIGNUP_EMAIL_TIMEOUT_SECONDS = 10
 
 
 async def store_user_info(
@@ -137,31 +143,43 @@ async def store_user_info(
             error_type=type(e).__name__,
         )
 
-    # Send welcome email to new user
-    try:
-        await send_welcome_email(email, name)
-        log.info(f"{LogTag.OAUTH} Welcome email sent to new user", email=email)
-    except Exception as e:
-        log.error(
-            f"{LogTag.OAUTH} Failed to send welcome email to",
-            email=email,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        # Don't raise exception - user creation should still succeed
+    # Welcome email + marketing contact are ESP round-trips that signup must not
+    # wait on: a slow or unreachable provider used to hang user creation for as
+    # long as the HTTP client allowed (observed: 90s+ with no timeout anywhere in
+    # the path). Bounded, and failures only log — the account is already created.
+    async def _send_welcome() -> None:
+        try:
+            async with asyncio.timeout(SIGNUP_EMAIL_TIMEOUT_SECONDS):
+                await send_welcome_email(email, name)
+            log.info(f"{LogTag.OAUTH} Welcome email sent to new user", user_id=created.id)
+        except Exception as e:
+            log.error(
+                f"{LogTag.OAUTH} Failed to send welcome email",
+                user_id=created.id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
-    # Add contact to marketing audience
-    try:
-        await add_marketing_contact(email, name)
-        log.info(f"{LogTag.OAUTH} Contact added to marketing audience for new user", email=email)
-    except Exception as e:
-        log.error(
-            f"{LogTag.OAUTH} Failed to add marketing contact for",
-            email=email,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        # Don't raise exception - user creation should still succeed
+    async def _add_contact() -> None:
+        try:
+            async with asyncio.timeout(SIGNUP_EMAIL_TIMEOUT_SECONDS):
+                await add_marketing_contact(email, name)
+            log.info(
+                f"{LogTag.OAUTH} Contact added to marketing audience for new user",
+                user_id=created.id,
+            )
+        except Exception as e:
+            log.error(
+                f"{LogTag.OAUTH} Failed to add marketing contact",
+                user_id=created.id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+
+    async def _deliver_signup_emails() -> None:
+        await asyncio.gather(_send_welcome(), _add_contact(), return_exceptions=True)
+
+    spawn_logged_task("deliver_signup_emails", _deliver_signup_emails())
 
     # Provision the user's workspace (system files + skills catalog) now, instead
     # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.
