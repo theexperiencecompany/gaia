@@ -28,10 +28,10 @@ from fastapi import HTTPException
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
-from app.agents.core.background.platform_result_delivery import (
+from app.agents.core.background.session import ExecutorRun
+from app.agents.core.background.workflow_platform_delivery import (
     deliver_result_to_platforms,
 )
-from app.agents.core.background.session import ExecutorRun
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag

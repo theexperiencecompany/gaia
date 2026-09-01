@@ -15,7 +15,7 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     try_acquire_lock,
 )
-from app.agents.core.background.platform_result_delivery import (
+from app.agents.core.background.workflow_platform_delivery import (
     deliver_result_to_platforms,
 )
 from app.agents.prompts.playbook_prompts import (

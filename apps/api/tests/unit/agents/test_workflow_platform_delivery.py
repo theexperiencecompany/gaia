@@ -1,7 +1,6 @@
-"""Behavior tests for app.agents.core.background.platform_result_delivery.
+"""Behavior tests for app.agents.core.background.workflow_platform_delivery.
 
-Reused by every proactive producer (finished workflow, fired reminder). Locks:
-delivery only happens for linked, enabled bot platforms carrying a
+Locks: delivery only happens for linked, enabled bot platforms carrying a
 platform user id; the notification text is split into bubbles on the break
 sentinel; each platform gets a persisted bot message and one outbound publish;
 and every failure path stays best-effort (logs, never raises, never blocks
@@ -10,7 +9,9 @@ sibling platforms).
 
 from unittest.mock import AsyncMock, patch
 
-from app.agents.core.background.platform_result_delivery import (
+import pytest
+
+from app.agents.core.background.workflow_platform_delivery import (
     _preferred_bot_platforms,
     deliver_result_to_platforms,
 )
@@ -20,7 +21,7 @@ from app.models.chat_models import ConversationSource
 from app.services.outbound_delivery import OutboundResult
 from tests.helpers import captured_wide_event
 
-MODULE = "app.agents.core.background.platform_result_delivery"
+MODULE = "app.agents.core.background.workflow_platform_delivery"
 
 USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
 USER_ID = "user-1"
@@ -85,7 +86,7 @@ class TestPreferredBotPlatforms:
             assert await _preferred_bot_platforms(USER_ID) == []
 
 
-class TestDeliverResultToPlatforms:
+class TestDeliverWorkflowResultToPlatforms:
     ORIGIN = 'workflow "Morning digest" (id wf-1)'
 
     async def test_blank_text_is_a_no_op(self) -> None:
@@ -173,7 +174,7 @@ class TestDeliverResultToPlatforms:
         errors = [
             e
             for e in event["errors"]
-            if e["msg"] == f"{LogTag.AGENT} platform result publish failed"
+            if e["msg"] == f"{LogTag.AGENT} workflow platform publish failed"
         ]
         assert {e["platform"] for e in errors} == {"telegram", "slack"}
         assert errors[0]["conversation_id"] == "tg-conv"
@@ -235,9 +236,7 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         return recorder
 
-    # Not @regression: these were proven on base as test_workflow_platform_delivery.py
-    # before this PR renamed the module; the regression-proof lane can't re-run them
-    # against a base where this path (and the source module it imports) don't exist.
+    @pytest.mark.regression
     async def test_published_result_is_recorded_in_each_session_thread(self) -> None:
         record = await self._deliver(OutboundResult.PUBLISHED)
 
@@ -314,7 +313,7 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         assert recorder.await_args.args[1].startswith("[Delivered to the user on Imessage —")
 
-    # Not @regression — carried over from the pre-rename file (see above).
+    @pytest.mark.regression
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:
         record = await self._deliver(OutboundResult.FAILED)
 

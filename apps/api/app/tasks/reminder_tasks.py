@@ -4,7 +4,7 @@ Reminder task handlers for static reminders only.
 
 from typing import cast
 
-from app.agents.core.background.platform_result_delivery import deliver_result_to_platforms
+from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
