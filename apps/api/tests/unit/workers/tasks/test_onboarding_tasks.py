@@ -1,209 +1,123 @@
 """Unit tests for app.workers.tasks.onboarding_tasks.
 
-The two ARQ tasks run the onboarding intelligence pipeline (full mode) and the
-split pipeline's completing phase. Each captures ``onboarding:completed`` only
-when the persisted phase actually reached PERSONALIZATION_COMPLETE — a task
-returning success is not completion (aborted runs and split-mode early jobs
-succeed without finishing onboarding).
+One task remains: the Gmail personalization pipeline, enqueued when a user
+connects Gmail. It owns exactly two things beyond calling the pipeline —
+releasing the job slot, and reporting the outcome. It deliberately owns neither
+the onboarding phase (completion is written when the form is submitted) nor the
+``onboarding:completed`` analytics event (captured by ``complete_onboarding``).
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from app.models.user_models import OnboardingPhase
-from app.services.analytics_service import AnalyticsEvents
-from app.workers.tasks.onboarding_tasks import (
-    process_onboarding_intelligence_task,
-    process_onboarding_workflows_task,
-)
+import pytest
+
+from app.constants.onboarding import INTELLIGENCE_JOB_FIELD
+from app.workers.tasks.onboarding_tasks import process_onboarding_intelligence_task
 
 MODULE = "app.workers.tasks.onboarding_tasks"
 PIPELINE = "app.services.onboarding.intelligence_service"
 
-
-def _doc(phase: OnboardingPhase, pipeline_mode: str = "full") -> MagicMock:
-    doc = MagicMock()
-    doc.onboarding = {"phase": phase, "pipeline_mode": pipeline_mode}
-    return doc
+USER = "user-1"
 
 
-class TestIntelligenceTaskAnalytics:
-    async def test_captures_when_pipeline_completed(self) -> None:
+@pytest.fixture
+def pipeline() -> AsyncMock:
+    with patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock) as mock:
+        yield mock
+
+
+class TestTheTaskRunsThePipeline:
+    async def test_success_calls_the_pipeline_and_reports_the_user(
+        self, pipeline: AsyncMock
+    ) -> None:
+        result = await process_onboarding_intelligence_task({}, USER)
+
+        pipeline.assert_awaited_once_with(USER)
+        assert result == f"Gmail personalization completed for user {USER}"
+
+    async def test_a_pipeline_failure_is_reported_not_raised(self, pipeline: AsyncMock) -> None:
+        """ARQ retries on an exception; this pipeline is not idempotent enough to
+        be retried blindly, so the failure comes back as a job result string."""
+        pipeline.side_effect = RuntimeError("LLM timeout")
+
+        result = await process_onboarding_intelligence_task({}, USER)
+
+        assert result == f"Gmail personalization failed for user {USER}: LLM timeout"
+
+
+class TestTheJobSlotIsReleased:
+    async def test_the_slot_is_cleared_with_this_jobs_id(self, pipeline: AsyncMock) -> None:
+        """Compare-and-clear on our own id — a stale id makes the next reset try
+        to abort a job that finished long ago."""
+        repo = AsyncMock()
+        with patch("app.services.onboarding.intelligence_job.user_repository", repo):
+            await process_onboarding_intelligence_task({"job_id": "job-7"}, USER)
+
+        repo.clear_active_job_if_matches.assert_awaited_once_with(
+            USER, INTELLIGENCE_JOB_FIELD, "job-7"
+        )
+
+    async def test_the_slot_is_cleared_after_a_failed_pipeline_too(
+        self, pipeline: AsyncMock
+    ) -> None:
+        """Left set, a crashed run blocks every later reconnect from enqueueing."""
+        pipeline.side_effect = RuntimeError("boom")
+        repo = AsyncMock()
+
+        with patch("app.services.onboarding.intelligence_job.user_repository", repo):
+            result = await process_onboarding_intelligence_task({"job_id": "job-7"}, USER)
+
+        repo.clear_active_job_if_matches.assert_awaited_once_with(
+            USER, INTELLIGENCE_JOB_FIELD, "job-7"
+        )
+        assert "failed" in result
+
+    async def test_nothing_is_cleared_when_arq_supplied_no_job_id(
+        self, pipeline: AsyncMock
+    ) -> None:
+        with patch(f"{MODULE}.clear_active_intelligence_job", new_callable=AsyncMock) as clear:
+            await process_onboarding_intelligence_task({}, USER)
+
+        clear.assert_not_awaited()
+
+    async def test_a_failed_clear_does_not_lose_the_success_result(
+        self, pipeline: AsyncMock
+    ) -> None:
         with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "full")
-            result = await process_onboarding_intelligence_task({}, "user-1")
-
-        assert "completed" in result
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[0] == "user-1"
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.ONBOARDING_COMPLETED
-        assert mock_capture.call_args.args[2] == {"pipeline_mode": "full"}
-        get.assert_awaited_once_with("user-1")
-
-    async def test_skips_when_pipeline_not_completed(self) -> None:
-        """Split-mode early jobs (and aborts) succeed without completing."""
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_PENDING, "split")
-            result = await process_onboarding_intelligence_task({}, "user-1")
-
-        assert "completed" in result
-        mock_capture.assert_not_called()
-
-    async def test_doc_read_failure_skips_event_and_keeps_success(self) -> None:
-        """A DB read failure for analytics must not break the task result."""
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
             patch(
-                f"{MODULE}.user_repository.get",
+                f"{MODULE}.clear_active_intelligence_job",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mongo down"),
             ),
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log") as mock_log,
+            patch(f"{MODULE}.log") as log,
         ):
-            result = await process_onboarding_intelligence_task({}, "user-1")
+            result = await process_onboarding_intelligence_task({"job_id": "job-7"}, USER)
 
-        assert "completed" in result
-        mock_capture.assert_not_called()
-        mock_log.warning.assert_called_once()
-        assert "Could not verify onboarding completion" in mock_log.warning.call_args.args[0]
-        assert mock_log.warning.call_args.kwargs["user_id"] == "user-1"
-        assert mock_log.warning.call_args.kwargs["error_type"] == "RuntimeError"
-        assert mock_log.warning.call_args.kwargs["error"] == "mongo down"
-
-    async def test_missing_pipeline_mode_defaults_to_full(self) -> None:
-        """A completed doc without pipeline_mode captures the "full" default."""
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            doc = MagicMock()
-            doc.onboarding = {"phase": OnboardingPhase.PERSONALIZATION_COMPLETE}
-            get.return_value = doc
-            result = await process_onboarding_intelligence_task({}, "user-1")
-
-        assert "completed" in result
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[2] == {"pipeline_mode": "full"}
-
-    async def test_a_retry_of_the_task_re_emits_the_same_deduped_event(self) -> None:
-        """ARQ re-runs the whole task body on retry, and the phase stays
-        PERSONALIZATION_COMPLETE — so without a dedupe key the once-per-user
-        milestone is counted again on every retry. capture_event is left real
-        here: the point is the uuid PostHog actually receives.
-        """
-        posthog = MagicMock()
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(
-                "app.services.analytics_service._get_posthog_client",
-                return_value=posthog,
-            ),
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "full")
-            await process_onboarding_intelligence_task({}, "user-1")
-            await process_onboarding_intelligence_task({}, "user-1")
-
-        assert posthog.capture.call_count == 2
-        first, second = posthog.capture.call_args_list
-        assert first.kwargs["distinct_id"] == "user-1"
-        assert first.kwargs["event"] == AnalyticsEvents.ONBOARDING_COMPLETED
-        assert first.kwargs["uuid"] == second.kwargs["uuid"]
-
-    async def test_the_dedupe_key_is_the_user_so_it_differs_per_user(self) -> None:
-        """A constant key would collapse every user's completion into one
-        event — the milestone would be recorded once, globally."""
-        posthog = MagicMock()
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(
-                "app.services.analytics_service._get_posthog_client",
-                return_value=posthog,
-            ),
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "full")
-            await process_onboarding_intelligence_task({}, "user-1")
-            await process_onboarding_intelligence_task({}, "user-2")
-
-        uuids = {call.kwargs["uuid"] for call in posthog.capture.call_args_list}
-        assert len(uuids) == 2
-
-    async def test_missing_doc_skips_event_silently(self) -> None:
-        """A None document (user not found) skips the event with no noise —
-        the phase read must not crash into a spurious warning."""
-        with (
-            patch(f"{PIPELINE}.process_onboarding_intelligence", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log") as mock_log,
-        ):
-            get.return_value = None
-            result = await process_onboarding_intelligence_task({}, "user-1")
-
-        assert "completed" in result
-        mock_capture.assert_not_called()
-        mock_log.warning.assert_not_called()
+        assert result == f"Gmail personalization completed for user {USER}"
+        assert log.warning.call_args.kwargs["job_id"] == "job-7"
+        assert log.warning.call_args.kwargs["error"] == "mongo down"
 
 
-class TestWorkflowsTaskAnalytics:
-    async def test_captures_when_pipeline_completed(self) -> None:
-        with (
-            patch(f"{PIPELINE}.process_onboarding_workflows_phase", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_COMPLETE, "split")
-            result = await process_onboarding_workflows_task({}, "user-1")
+class TestTheTaskOwnsNeitherThePhaseNorTheEvent:
+    async def test_a_crashed_pipeline_does_not_rescue_the_onboarding_phase(
+        self, pipeline: AsyncMock
+    ) -> None:
+        """Onboarding is already complete before this job ever runs, so a rescue
+        write here would silently overwrite whatever phase the user is really in."""
+        pipeline.side_effect = RuntimeError("boom")
+        repo = AsyncMock()
 
-        assert "completed" in result
-        mock_capture.assert_called_once()
-        assert mock_capture.call_args.args[0] == "user-1"
-        assert mock_capture.call_args.args[1] == AnalyticsEvents.ONBOARDING_COMPLETED
-        assert mock_capture.call_args.args[2] == {"pipeline_mode": "split"}
+        with patch("app.db.repositories.users.user_repository", repo):
+            await process_onboarding_intelligence_task({}, USER)
 
-    async def test_skips_when_pipeline_not_completed(self) -> None:
-        with (
-            patch(f"{PIPELINE}.process_onboarding_workflows_phase", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock) as get,
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            get.return_value = _doc(OnboardingPhase.PERSONALIZATION_PENDING, "split")
-            result = await process_onboarding_workflows_task({}, "user-1")
+        repo.set_onboarding_phase.assert_not_awaited()
+        repo.set_pipeline_completion.assert_not_awaited()
+        repo.complete_onboarding.assert_not_awaited()
 
-        assert "completed" in result
-        mock_capture.assert_not_called()
+    async def test_no_completion_event_is_captured_here(self, pipeline: AsyncMock) -> None:
+        """``complete_onboarding`` emits the milestone. A second emitter would
+        count every Gmail connect as another onboarding completion."""
+        with patch("app.services.analytics_service.capture_event") as capture:
+            await process_onboarding_intelligence_task({}, USER)
 
-    async def test_pipeline_failure_never_captures(self) -> None:
-        """The failure path returns early — no completion read, no event."""
-        with (
-            patch(
-                f"{PIPELINE}.process_onboarding_workflows_phase",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("pipeline down"),
-            ),
-            patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock),
-            patch(f"{MODULE}.user_repository.set_pipeline_completion", new_callable=AsyncMock),
-            patch(f"{MODULE}.capture_event") as mock_capture,
-            patch(f"{MODULE}.log"),
-        ):
-            result = await process_onboarding_workflows_task({}, "user-1")
-
-        assert "failed" in result
-        mock_capture.assert_not_called()
+        capture.assert_not_called()

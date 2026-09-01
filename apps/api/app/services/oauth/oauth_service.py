@@ -28,6 +28,7 @@ from app.services.email import add_marketing_contact, send_welcome_email
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
+from app.services.onboarding.intelligence_job import enqueue_gmail_personalization
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
@@ -445,9 +446,14 @@ async def handle_oauth_connection(
                     exc_info=True,
                 )
 
-        # During onboarding the pipeline enqueues this job itself; queuing here
-        # too would contend for Composio Gmail capacity with the visible scan.
-        if onboarding_completed:
+        # Connecting Gmail is what earns the personalization pipeline: inbox scan,
+        # memory ingestion, writing style, triage, social profiles, holo card. It
+        # runs once per user, so a reconnect after an unlink does not redo it.
+        personalization_job_id = await enqueue_gmail_personalization(user_id)
+        if personalization_job_id is None:
+            # No pipeline this time, so nothing else will queue ingestion. Queue it
+            # directly; when the pipeline does run it queues ingestion itself, after
+            # its scan, so the two never contend for Composio Gmail capacity.
             try:
                 pool = await RedisPoolManager.get_pool()
                 await enqueue_worker_job(pool, "process_gmail_emails_to_memory", user_id)
@@ -460,11 +466,6 @@ async def handle_oauth_connection(
                     user_id=user_id,
                     exc_info=True,
                 )
-        else:
-            log.info(
-                f"{LogTag.OAUTH} Deferring Gmail->memory ingestion until onboarding pipeline completes for user",
-                user_id=user_id,
-            )
 
     # Update user_integrations status in MongoDB. The @CacheInvalidator on
     # update_user_integration_status busts the full USER_INTEGRATION_CACHE_PATTERNS

@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Literal, TypedDict
 from pydantic import BaseModel, Field
 
 from app.models.user_models import OnboardingPhase
-from app.models.workflow_models import IntegrationRef, TriggerType, WorkflowStep
+from app.models.workflow_models import WorkflowStep
 
 # The four holo-card houses. The frontend types the same closed set.
 House = Literal["frostpeak", "greenvale", "mistgrove", "bluehaven"]
@@ -207,45 +207,6 @@ class ClarifyAnswerRecord(TypedDict, total=False):
 # ------------------------------------------------------- pipeline output shapes
 
 
-class OnboardingTodoSource(BaseModel):
-    """The email a generated onboarding todo was drafted from."""
-
-    sender: str
-    subject: str
-
-
-class OnboardingTodoSummary(BaseModel):
-    """A todo the onboarding pipeline created, as sent on ``todos_ready`` and fed
-    to the first-message prompt."""
-
-    id: str
-    title: str
-    source_email: OnboardingTodoSource | None = None
-
-
-class OnboardingTriggerPayload(BaseModel):
-    """A created workflow's trigger, shaped like the workflow API's own ``trigger``
-    field so the onboarding cards and the app render it identically."""
-
-    type: TriggerType
-    cron_expression: str | None = None
-    timezone: str | None = None
-    trigger_name: str | None = None
-
-
-class OnboardingWorkflowSummary(BaseModel):
-    """A workflow the onboarding pipeline created, as sent on ``workflows_ready``."""
-
-    id: str
-    title: str
-    description: str
-    categories: list[str]
-    trigger: OnboardingTriggerPayload
-    # Omitted from the wire (not null) on the fallback workflow, which is built
-    # without the connected-integration check.
-    missing_integrations: list[IntegrationRef] | None = None
-
-
 class UserProfileMetadata(BaseModel):
     """Holo-card metadata derived from the user's account age."""
 
@@ -298,22 +259,6 @@ class TriageReadyPayload(StagePayload):
     summary: str | None
     patterns: list[str]
     important_emails: list[TriageEmailSummary]
-
-
-class TodosReadyPayload(StatusTextPayload):
-    omit_none_on_wire: ClassVar[bool] = True
-
-    todos: list[OnboardingTodoSummary]
-
-
-class WorkflowsReadyPayload(StatusTextPayload):
-    omit_none_on_wire: ClassVar[bool] = True
-
-    workflows: list[OnboardingWorkflowSummary]
-
-
-class CompletePayload(StagePayload):
-    conversation_id: str | None
 
 
 # ----------------------------------------------------------- endpoint responses

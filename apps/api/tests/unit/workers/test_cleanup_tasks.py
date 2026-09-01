@@ -42,11 +42,11 @@ class TestCleanupStuckPersonalization:
         assert "No stuck users found" in result
 
     async def test_zero_stuck_users_never_enqueues_job(self, ctx):
-        """When there are 0 stuck users, enqueue_intelligence_job must never be called."""
+        """When there are 0 stuck users, enqueue_gmail_personalization must never be called."""
         with (
             patch(_FIND, new_callable=AsyncMock, return_value=[]),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -59,7 +59,7 @@ class TestCleanupStuckPersonalization:
     # ------------------------------------------------------------------
 
     async def test_one_stuck_user_is_requeued_with_correct_id(self, ctx):
-        """Exactly the one user's ID must be passed to enqueue_intelligence_job."""
+        """Exactly the one user's ID must be passed to enqueue_gmail_personalization."""
         with (
             patch(_FIND, new_callable=AsyncMock, return_value=[_make_stuck_user("only_user_id")]),
             patch(
@@ -68,7 +68,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="job_solo",
             ) as mock_enqueue,
@@ -103,7 +103,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="j",
             ) as mock_enqueue,
@@ -120,7 +120,7 @@ class TestCleanupStuckPersonalization:
     # ------------------------------------------------------------------
 
     async def test_stuck_users_are_requeued_with_correct_ids(self, ctx):
-        """Both user IDs must appear as arguments to enqueue_intelligence_job."""
+        """Both user IDs must appear as arguments to enqueue_gmail_personalization."""
         users = [_make_stuck_user("id_1"), _make_stuck_user("id_2")]
         with (
             patch(_FIND, new_callable=AsyncMock, return_value=users),
@@ -130,7 +130,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="job_abc",
             ) as mock_enqueue,
@@ -154,7 +154,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="job_123",
             ) as mock_enqueue,
@@ -176,7 +176,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value=None,  # enqueue failure
             ),
@@ -195,7 +195,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("Redis down"),
             ),
@@ -222,7 +222,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 side_effect=selective_enqueue,
             ) as mock_enqueue,
@@ -279,7 +279,7 @@ class TestCleanupStuckPersonalization:
                 return_value=False,
             ),
             patch(
-                "app.workers.tasks.cleanup_tasks.enqueue_intelligence_job",
+                "app.workers.tasks.cleanup_tasks.enqueue_gmail_personalization",
                 new_callable=AsyncMock,
                 return_value="j1",
             ) as mock_enqueue,

@@ -130,6 +130,17 @@ def mock_fetch_and_store_provider_metadata():
 
 
 @pytest.fixture
+def mock_enqueue_personalization():
+    """Gmail connect enqueues the personalization pipeline; a job id means it ran."""
+    with patch(
+        "app.services.oauth.oauth_service.enqueue_gmail_personalization",
+        new_callable=AsyncMock,
+        return_value="personalization-job-1",
+    ) as mock_fn:
+        yield mock_fn
+
+
+@pytest.fixture
 def mock_provision_system_workflows():
     with patch(
         "app.services.oauth.oauth_service.provision_system_workflows",
@@ -937,14 +948,40 @@ class TestHandleOAuthConnection:
             if func and hasattr(func, "__name__"):
                 assert func.__name__ != "handle_subscribe_trigger"
 
-    async def test_gmail_connection_queues_email_processing(
+    async def test_gmail_connection_enqueues_personalization(
         self,
         mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
-        """Gmail integration should queue email processing via ARQ."""
+        """Connecting Gmail is what triggers the personalization pipeline."""
         user_id = "507f1f77bcf86cd799439011"
+        mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
+        config = _make_integration_config(integration_id="gmail")
+        background_tasks = MagicMock()
+
+        await handle_oauth_connection(
+            user_id=user_id,
+            integration_config=config,
+            background_tasks=background_tasks,
+        )
+
+        mock_enqueue_personalization.assert_awaited_once_with(user_id)
+        # The pipeline queues memory ingestion itself, after its own inbox scan,
+        # so queuing it here too would contend for Gmail capacity.
+        mock_redis_pool_manager.enqueue_job.assert_not_awaited()
+
+    async def test_gmail_connection_queues_memory_ingestion_when_pipeline_skipped(
+        self,
+        mock_user_repo,
+        mock_update_user_integration_status,
+        mock_redis_pool_manager,
+        mock_enqueue_personalization,
+    ):
+        """A reconnect whose pipeline already ran still refreshes memory."""
+        user_id = "507f1f77bcf86cd799439011"
+        mock_enqueue_personalization.return_value = None
         mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
@@ -965,6 +1002,7 @@ class TestHandleOAuthConnection:
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """Gmail connection should update bio_status from no_gmail to processing."""
         user_id = "507f1f77bcf86cd799439011"
@@ -988,6 +1026,7 @@ class TestHandleOAuthConnection:
         mock_update_user_integration_status,
         mock_websocket_manager,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """Gmail with no_gmail bio_status should broadcast WebSocket update."""
         user_id = "507f1f77bcf86cd799439011"
@@ -1013,6 +1052,7 @@ class TestHandleOAuthConnection:
         mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """If bio_status is 'completed', don't update to processing."""
         mock_user_repo.get.return_value = UserDocument(
@@ -1034,6 +1074,7 @@ class TestHandleOAuthConnection:
         mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """If onboarding not completed, don't update bio_status."""
         mock_user_repo.get.return_value = UserDocument(
@@ -1054,8 +1095,10 @@ class TestHandleOAuthConnection:
         self,
         mock_user_repo,
         mock_update_user_integration_status,
+        mock_enqueue_personalization,
     ):
         """ARQ enqueue failure should be logged, not raised."""
+        mock_enqueue_personalization.return_value = None
         mock_user_repo.get.return_value = UserDocument(onboarding={"completed": True})
         config = _make_integration_config(integration_id="gmail")
         background_tasks = MagicMock()
@@ -1145,6 +1188,7 @@ class TestHandleOAuthConnection:
         mock_update_user_integration_status,
         mock_provision_system_workflows,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """Gmail connection should provision system workflows."""
         mock_user_repo.get.return_value = UserDocument(onboarding={"completed": False})
@@ -1257,6 +1301,7 @@ class TestHandleOAuthConnection:
         mock_user_repo,
         mock_update_user_integration_status,
         mock_redis_pool_manager,
+        mock_enqueue_personalization,
     ):
         """WebSocket broadcast failure should not block the OAuth flow."""
         mock_user_repo.get.return_value = UserDocument(

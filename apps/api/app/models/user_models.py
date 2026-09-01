@@ -155,14 +155,6 @@ class OnboardingRequest(BaseModel):
         max_length=25,
         description="Integration slugs the user selected during onboarding.",
     )
-    defer_workflows: bool = Field(
-        default=False,
-        description=(
-            "Gmail-path split: run inbox intelligence immediately and defer "
-            "workflow creation until the user submits selected integrations."
-        ),
-    )
-
     @field_validator("selected_integrations")
     @classmethod
     def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
@@ -208,34 +200,6 @@ class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
     message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     user: dict[str, Any] | None = Field(None, description="Updated user data")
-
-
-class OnboardingIntegrationsRequest(BaseModel):
-    selected_integrations: list[IntegrationSlug] = Field(
-        default_factory=list,
-        max_length=25,
-        description="Integration slugs the user selected during onboarding.",
-    )
-
-    @field_validator("selected_integrations")
-    @classmethod
-    def dedupe_integrations(cls, v: list[str]) -> list[str]:
-        return _dedupe_slugs(v) or []
-
-
-class OnboardingIntegrationsStatus(str, Enum):
-    """Outcome of submitting onboarding integration selections."""
-
-    QUEUED = "queued"  # Selections saved; workflows-phase job enqueued.
-    ALREADY_COMPLETE = "already_complete"  # Onboarding already finished (replay).
-    ALREADY_RUNNING = "already_running"  # Workflows job already in flight (replay).
-
-
-class OnboardingIntegrationsResponse(BaseModel):
-    success: bool = Field(..., description="Whether the submission was accepted")
-    status: OnboardingIntegrationsStatus = Field(
-        ..., description="Outcome of persisting the selected integrations"
-    )
 
 
 class OnboardingPhaseUpdateRequest(BaseModel):

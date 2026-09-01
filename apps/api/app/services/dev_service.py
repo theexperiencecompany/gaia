@@ -146,9 +146,9 @@ async def seed_dev_data(
         user_id,
         phase=OnboardingPhase.COMPLETED,
         bio_status=BioStatus.NO_GMAIL,
-        pipeline_mode="full",
         preferences=OnboardingPreferences(
             profession="Developer",
+            needs=None,
             response_style="casual",
             custom_instructions=None,
         ),

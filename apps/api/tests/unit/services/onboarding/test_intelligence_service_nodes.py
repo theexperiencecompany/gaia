@@ -2,8 +2,9 @@
 
 Each `_run_*` node is a fail-soft wrapper: it must emit its stage and return a
 usable default even when its dependency raises, because the pipeline gathers all
-of them and a leaked exception would abort onboarding. These tests pin that
-contract down, node by node, faking only the service/repository boundaries.
+of them and a leaked exception would abort the personalization run. These tests
+pin that contract down, node by node, faking only the service/repository
+boundaries.
 
 Production bugs found while writing these tests and fixed at the root are marked
 with a "BUG:" comment.
@@ -19,37 +20,31 @@ from app.agents.memory.email_processor import OnboardingFetchOptions
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.models.onboarding_models import (
-    CompletePayload,
     EmailSummary,
     InboxTriage,
-    OnboardingTodoSummary,
-    OnboardingTriggerPayload,
-    OnboardingWorkflowSummary,
+    ProfileCardDesign,
     SocialProfile,
+    SocialProfilesReadyPayload,
     StagePayload,
     StatusTextPayload,
     TriageReadyPayload,
+    UserProfileMetadata,
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.workflow_models import TriggerType
+from app.models.user_models import UserDocument
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
     OnboardingContext,
     OnboardingStage,
     _emit_stage,
-    _fetch_onboarding_todos,
     _persist_profiles,
     _persist_social_profiles,
+    _run_holo_card,
     _run_inbox_scanning,
-    _run_provision_gmail,
-    _run_social_profiles_background,
-    _run_todos,
+    _run_social_profiles,
     _run_triage,
-    _run_workflows,
     _run_writing_style,
-    _safe_run,
-    _seed_conversation,
 )
 
 MODULE = "app.services.onboarding.intelligence_service"
@@ -62,7 +57,6 @@ def _ctx(**overrides: Any) -> OnboardingContext:
         "name": "Ann",
         "profession": "dev",
         "focus": "ship v2",
-        "has_gmail": True,
     }
     defaults.update(overrides)
     return OnboardingContext(**defaults)
@@ -84,16 +78,6 @@ def _triage(**overrides: Any) -> InboxTriage:
 
 def _style() -> WritingStyleProfile:
     return WritingStyleProfile(summary="Terse", example=WritingStyleExampleBlocks(body=["Thanks."]))
-
-
-def _workflow(workflow_id: str, title: str = "Daily") -> OnboardingWorkflowSummary:
-    return OnboardingWorkflowSummary(
-        id=workflow_id,
-        title=title,
-        description="d",
-        categories=[],
-        trigger=OnboardingTriggerPayload(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *"),
-    )
 
 
 class StageSink:
@@ -180,10 +164,10 @@ class TestEmitStage:
         manager = MagicMock()
         manager.broadcast_to_user = AsyncMock()
         with patch(f"{MODULE}.websocket_manager", manager):
-            await _emit_stage(USER, OnboardingStage.COMPLETE)
+            await _emit_stage(USER, OnboardingStage.HOLO_READY)
 
         stage = manager.broadcast_to_user.await_args.kwargs["message"]["data"]["stage"]
-        assert stage == "complete"
+        assert stage == "holo_ready"
 
     async def test_missing_payload_becomes_an_empty_dict(self) -> None:
         manager = MagicMock()
@@ -198,7 +182,7 @@ class TestEmitStage:
         manager = MagicMock()
         manager.broadcast_to_user = AsyncMock(side_effect=ConnectionError("socket gone"))
         with patch(f"{MODULE}.websocket_manager", manager):
-            await _emit_stage(USER, OnboardingStage.COMPLETE)
+            await _emit_stage(USER, OnboardingStage.HOLO_READY)
 
     async def test_status_text_is_logged_with_the_stage(self) -> None:
         # These lines are how a stalled onboarding is diagnosed from the logs, so
@@ -222,47 +206,17 @@ class TestEmitStage:
         manager = MagicMock()
         manager.broadcast_to_user = AsyncMock()
         with patch(f"{MODULE}.websocket_manager", manager), patch(f"{MODULE}.log") as log:
-            await _emit_stage(USER, OnboardingStage.COMPLETE, CompletePayload(conversation_id="c1"))
+            await _emit_stage(
+                USER,
+                OnboardingStage.SOCIAL_PROFILES_READY,
+                SocialProfilesReadyPayload(profiles=[]),
+            )
 
         line = log.info.call_args.args[0]
         kwargs = log.info.call_args.kwargs
         assert "stage" in line
-        assert kwargs.get("stage_value") == OnboardingStage.COMPLETE.value
+        assert kwargs.get("stage_value") == OnboardingStage.SOCIAL_PROFILES_READY.value
         assert kwargs.get("status_text") is None
-
-
-# ---------------------------------------------------------------------------
-# _safe_run
-# ---------------------------------------------------------------------------
-
-
-class TestSafeRun:
-    async def test_passes_the_result_through(self) -> None:
-        async def ok() -> str:
-            return "value"
-
-        assert await _safe_run("node", ok(), default="fallback") == "value"
-
-    async def test_returns_the_default_when_the_node_raises(self) -> None:
-        async def boom() -> str:
-            raise RuntimeError("node failed")
-
-        assert await _safe_run("node", boom(), default="fallback") == "fallback"
-
-    async def test_a_falsy_result_is_not_replaced_by_the_default(self) -> None:
-        # Returning the default for an empty-but-valid result would mask real data.
-        async def empty() -> list[str]:
-            return []
-
-        assert await _safe_run("node", empty(), default=["fallback"]) == []
-
-    async def test_cancellation_is_not_swallowed(self) -> None:
-        # CancelledError must propagate so shutdown actually cancels the DAG.
-        async def cancelled() -> str:
-            raise asyncio.CancelledError
-
-        with pytest.raises(asyncio.CancelledError):
-            await _safe_run("node", cancelled(), default="fallback")
 
 
 # ---------------------------------------------------------------------------
@@ -414,47 +368,15 @@ class TestRunInboxScanning:
 
 
 # ---------------------------------------------------------------------------
-# _run_provision_gmail
-# ---------------------------------------------------------------------------
-
-
-class TestRunProvisionGmail:
-    async def test_provisions_the_gmail_system_workflows(self) -> None:
-        provision = AsyncMock()
-        with patch(f"{MODULE}.provision_system_workflows", provision):
-            await _run_provision_gmail(USER)
-
-        assert provision.await_args.args == (USER, "gmail", "Gmail")
-        # notify=False: these are background system workflows, not user-visible news.
-        assert provision.await_args.kwargs["notify"] is False
-
-    async def test_failure_is_swallowed(self) -> None:
-        # This runs detached from the critical path; it must never surface.
-        with patch(
-            f"{MODULE}.provision_system_workflows", AsyncMock(side_effect=RuntimeError("boom"))
-        ):
-            await _run_provision_gmail(USER)
-
-
-# ---------------------------------------------------------------------------
 # _run_writing_style
 # ---------------------------------------------------------------------------
 
 
 class TestRunWritingStyle:
-    async def test_without_gmail_the_node_is_skipped_entirely(self, stages: Any) -> None:
-        learn = AsyncMock()
-        with patch(f"{MODULE}.learn_writing_style", learn):
-            assert await _run_writing_style(USER, has_gmail=False, profession="dev") is None
-
-        assert learn.await_count == 0
-        # No READY stage either — the card must not appear for a no-Gmail user.
-        assert stages.stages() == []
-
     async def test_learned_style_is_returned_and_announced(self, stages: Any) -> None:
         style = _style()
         with patch(f"{MODULE}.learn_writing_style", AsyncMock(return_value=style)):
-            assert await _run_writing_style(USER, has_gmail=True, profession="dev") is style
+            assert await _run_writing_style(USER, profession="dev") is style
 
         payload = stages.payload_for(OnboardingStage.WRITING_STYLE_READY)
         assert payload["style_summary"] == "Terse"
@@ -463,7 +385,7 @@ class TestRunWritingStyle:
     async def test_profession_reaches_the_learner(self, stages: Any) -> None:
         learn = AsyncMock(return_value=None)
         with patch(f"{MODULE}.learn_writing_style", learn):
-            await _run_writing_style(USER, has_gmail=True, profession="lawyer")
+            await _run_writing_style(USER, profession="lawyer")
 
         assert learn.await_args.args[0] == USER
         assert learn.await_args.kwargs["profession"] == "lawyer"
@@ -473,7 +395,7 @@ class TestRunWritingStyle:
             await kwargs["on_status"]("Reading sent mail")
 
         with patch(f"{MODULE}.learn_writing_style", AsyncMock(side_effect=learn)):
-            await _run_writing_style(USER, has_gmail=True, profession="dev")
+            await _run_writing_style(USER, profession="dev")
 
         assert stages.payload_for(OnboardingStage.WRITING_STYLE_PROGRESS) == {
             "status_text": "Reading sent mail"
@@ -482,7 +404,7 @@ class TestRunWritingStyle:
     async def test_a_failure_still_announces_readiness(self, stages: Any) -> None:
         # The frontend blocks its reveal on this stage; skipping it would hang the UI.
         with patch(f"{MODULE}.learn_writing_style", AsyncMock(side_effect=RuntimeError("llm"))):
-            assert await _run_writing_style(USER, has_gmail=True, profession="dev") is None
+            assert await _run_writing_style(USER, profession="dev") is None
 
         assert stages.payload_for(OnboardingStage.WRITING_STYLE_READY) == {
             "style_summary": None,
@@ -492,7 +414,7 @@ class TestRunWritingStyle:
     async def test_a_style_without_a_summary_reports_none(self, stages: Any) -> None:
         style = WritingStyleProfile(summary="", example=WritingStyleExampleBlocks(body=["x"]))
         with patch(f"{MODULE}.learn_writing_style", AsyncMock(return_value=style)):
-            await _run_writing_style(USER, has_gmail=True, profession="dev")
+            await _run_writing_style(USER, profession="dev")
 
         assert stages.payload_for(OnboardingStage.WRITING_STYLE_READY)["style_summary"] is None
 
@@ -503,14 +425,6 @@ class TestRunWritingStyle:
 
 
 class TestRunTriage:
-    async def test_no_inbox_context_skips_triage(self, stages: Any) -> None:
-        triage_inbox = AsyncMock()
-        with patch(f"{MODULE}.triage_inbox", triage_inbox):
-            assert await _run_triage(USER, None, "dev", "focus") is None
-
-        assert triage_inbox.await_count == 0
-        assert stages.stages() == []
-
     async def test_waits_for_the_first_batch_before_triaging(self, stages: Any) -> None:
         ctx = InboxScanContext()
         started = asyncio.Event()
@@ -643,11 +557,11 @@ class TestRunTriage:
 
 
 # ---------------------------------------------------------------------------
-# _run_social_profiles_background
+# _run_social_profiles
 # ---------------------------------------------------------------------------
 
 
-class TestRunSocialProfilesBackground:
+class TestRunSocialProfiles:
     async def test_extracts_dedupes_persists_and_announces(
         self, stages: Any, scan_cache: Any
     ) -> None:
@@ -660,7 +574,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.dedup_profiles_by_platform", return_value=deduped),
             patch(f"{MODULE}._persist_social_profiles", AsyncMock()) as persist,
         ):
-            result = await _run_social_profiles_background(USER, "Ann", "a@x.com")
+            result = await _run_social_profiles(USER, "Ann", "a@x.com")
 
         assert result == deduped
         assert persist.await_args.args == (USER, deduped)
@@ -677,7 +591,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.extract_social_profiles_from_emails", AsyncMock(return_value=[])),
             patch(f"{MODULE}.dedup_profiles_by_platform", return_value=[]),
         ):
-            await _run_social_profiles_background(USER, "Ann", "a@x.com")
+            await _run_social_profiles(USER, "Ann", "a@x.com")
 
         opts = fetch.await_args.kwargs["options"]
         assert isinstance(opts, OnboardingFetchOptions)
@@ -694,7 +608,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.extract_social_profiles_from_emails", extract),
             patch(f"{MODULE}.dedup_profiles_by_platform", return_value=[]),
         ):
-            await _run_social_profiles_background(USER, "Ann", "a@x.com")
+            await _run_social_profiles(USER, "Ann", "a@x.com")
 
         assert fetch.await_count == 0
         assert extract.await_args.args[0] == [{"id": "cached"}]
@@ -708,7 +622,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.extract_social_profiles_from_emails", AsyncMock(return_value=[])),
             patch(f"{MODULE}.dedup_profiles_by_platform", return_value=[]),
         ):
-            await _run_social_profiles_background(USER, "Ann", "a@x.com")
+            await _run_social_profiles(USER, "Ann", "a@x.com")
 
         assert scan_cache.put.await_count == 0
 
@@ -718,7 +632,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.extract_social_profiles_from_emails", AsyncMock(return_value=[])),
             patch(f"{MODULE}.dedup_profiles_by_platform", return_value=[]),
         ):
-            await _run_social_profiles_background(USER, "Ann", "a@x.com")
+            await _run_social_profiles(USER, "Ann", "a@x.com")
 
         assert scan_cache.put.await_args.args[:2] == (USER, "full")
 
@@ -728,7 +642,7 @@ class TestRunSocialProfilesBackground:
             patch(f"{MODULE}.fetch_emails_for_onboarding", AsyncMock(return_value=[])),
             patch(f"{MODULE}.extract_social_profiles_from_emails", extract),
         ):
-            assert await _run_social_profiles_background(USER, "Ann", "a@x.com") == []
+            assert await _run_social_profiles(USER, "Ann", "a@x.com") == []
 
         assert extract.await_count == 0
 
@@ -736,213 +650,14 @@ class TestRunSocialProfilesBackground:
         with patch(
             f"{MODULE}.fetch_emails_for_onboarding", AsyncMock(side_effect=RuntimeError("gmail"))
         ):
-            assert await _run_social_profiles_background(USER, "Ann", "a@x.com") == []
+            assert await _run_social_profiles(USER, "Ann", "a@x.com") == []
 
         assert stages.payload_for(OnboardingStage.SOCIAL_PROFILES_READY) == {"profiles": []}
 
 
 # ---------------------------------------------------------------------------
-# _run_todos
-# ---------------------------------------------------------------------------
-
-
-async def _resolved(value: Any) -> Any:
-    return value
-
-
-class TestRunTodos:
-    async def test_gmail_with_important_emails_uses_the_triage_path(self, stages: Any) -> None:
-        triage = _triage()
-        created = [{"id": "t1", "title": "Reply"}]
-
-        with (
-            patch(
-                f"{MODULE}._create_todos_from_triage", AsyncMock(return_value=created)
-            ) as from_triage,
-            patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus,
-        ):
-            result = await _run_todos(_ctx(), asyncio.ensure_future(_resolved(triage)))
-
-        assert result == created
-        assert from_triage.await_args.args == (USER, triage)
-        assert from_focus.await_count == 0
-
-    async def test_gmail_without_important_emails_falls_back_to_focus(self, stages: Any) -> None:
-        triage = _triage(important_emails=[])
-        created = [{"id": "t1", "title": "Plan"}]
-
-        with (
-            patch(f"{MODULE}._create_todos_from_triage", AsyncMock()) as from_triage,
-            patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)) as from_focus,
-        ):
-            result = await _run_todos(_ctx(), asyncio.ensure_future(_resolved(triage)))
-
-        assert result == created
-        assert from_triage.await_count == 0
-        # Same call as the no-Gmail branch below and just as easy to under-fill:
-        # a dropped name/profession/focus makes the LLM draft generic todos.
-        assert from_focus.await_args.args == (USER, "Ann", "dev", "ship v2", [])
-
-    async def test_gmail_with_no_triage_and_no_focus_creates_nothing(self, stages: Any) -> None:
-        with (
-            patch(f"{MODULE}._create_todos_from_triage", AsyncMock()) as from_triage,
-            patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus,
-        ):
-            result = await _run_todos(_ctx(focus=""), asyncio.ensure_future(_resolved(None)))
-
-        assert result == []
-        assert from_triage.await_count == from_focus.await_count == 0
-
-    async def test_without_gmail_focus_drives_the_todos(self, stages: Any) -> None:
-        created = [{"id": "t1", "title": "Plan"}]
-        with patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)) as from_focus:
-            result = await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
-
-        assert result == created
-        assert from_focus.await_args.args == (USER, "Ann", "dev", "ship v2", [])
-
-    async def test_without_gmail_and_without_focus_creates_nothing(self, stages: Any) -> None:
-        with patch(f"{MODULE}._create_focus_todos", AsyncMock()) as from_focus:
-            result = await _run_todos(
-                _ctx(has_gmail=False, focus=""), asyncio.ensure_future(_resolved(None))
-            )
-
-        assert result == []
-        assert from_focus.await_count == 0
-
-    async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
-        with patch(f"{MODULE}._create_focus_todos", AsyncMock(side_effect=RuntimeError("llm"))):
-            result = await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
-
-        assert result == []
-        assert stages.payload_for(OnboardingStage.TODOS_READY)["todos"] == []
-
-    @pytest.mark.parametrize(
-        ("count", "expected"),
-        [(0, "No todos to save"), (1, "Saved 1 todo"), (2, "Saved 2 todos")],
-    )
-    async def test_ready_status_is_pluralized(self, stages: Any, count: int, expected: str) -> None:
-        created = [OnboardingTodoSummary(id=f"t{i}", title="x") for i in range(count)]
-        with patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)):
-            await _run_todos(_ctx(has_gmail=False), asyncio.ensure_future(_resolved(None)))
-
-        assert stages.payload_for(OnboardingStage.TODOS_READY)["status_text"] == expected
-
-
-# ---------------------------------------------------------------------------
-# _run_workflows
-# ---------------------------------------------------------------------------
-
-
-class TestRunWorkflows:
-    async def test_created_workflows_are_returned_and_announced(self, stages: Any) -> None:
-        created = [_workflow("w1", title="Daily")]
-        with (
-            patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
-            patch(f"{MODULE}.user_repository") as repo,
-        ):
-            repo.set_suggested_workflows = AsyncMock()
-            result = await _run_workflows(_ctx())
-
-        assert result == created
-        assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == [
-            w.model_dump(mode="json", exclude_none=True) for w in created
-        ]
-
-    async def test_workflow_ids_are_persisted_as_suggestions(self, stages: Any) -> None:
-        created = [_workflow("w1"), _workflow("w2")]
-        with (
-            patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
-            patch(f"{MODULE}.user_repository") as repo,
-        ):
-            repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(_ctx())
-
-        assert repo.set_suggested_workflows.await_args.args == (USER, ["w1", "w2"])
-
-    async def test_workflows_without_an_id_are_not_persisted(self, stages: Any) -> None:
-        with (
-            patch(
-                f"{MODULE}._create_onboarding_workflows",
-                AsyncMock(return_value=[_workflow("")]),
-            ),
-            patch(f"{MODULE}.user_repository") as repo,
-        ):
-            repo.set_suggested_workflows = AsyncMock()
-            await _run_workflows(_ctx())
-
-        assert repo.set_suggested_workflows.await_count == 0
-
-    async def test_a_persistence_failure_does_not_lose_the_workflows(self, stages: Any) -> None:
-        # The workflows exist in Mongo either way; only the suggestion list is lost.
-        created = [_workflow("w1")]
-        with (
-            patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
-            patch(f"{MODULE}.user_repository") as repo,
-        ):
-            repo.set_suggested_workflows = AsyncMock(side_effect=RuntimeError("mongo"))
-            assert await _run_workflows(_ctx()) == created
-
-    async def test_a_creation_failure_degrades_to_an_empty_list(self, stages: Any) -> None:
-        with patch(
-            f"{MODULE}._create_onboarding_workflows", AsyncMock(side_effect=RuntimeError("llm"))
-        ):
-            assert await _run_workflows(_ctx()) == []
-
-        assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == []
-
-    async def test_context_is_forwarded_to_the_creator(self, stages: Any) -> None:
-        triage, style = _triage(), _style()
-        with (
-            patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=[])) as create,
-            patch(f"{MODULE}.user_repository"),
-        ):
-            ctx = OnboardingContext(
-                user_id=USER,
-                name="Ann",
-                profession="dev",
-                focus="ship v2",
-                has_gmail=True,
-                user_timezone="Europe/London",
-                triage=triage,
-                writing_style=style,
-                clarify_answers=[{"kind": "scope", "value": "a"}],
-            )
-            await _run_workflows(ctx, ["slack"])
-
-        assert create.await_args.args == (ctx, ["slack"])
-
-    @pytest.mark.parametrize(
-        ("count", "expected"),
-        [(0, "No workflows to save"), (1, "Saved 1 workflow"), (2, "Saved 2 workflows")],
-    )
-    async def test_ready_status_is_pluralized(self, stages: Any, count: int, expected: str) -> None:
-        created = [_workflow(f"w{i}") for i in range(count)]
-        with (
-            patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
-            patch(f"{MODULE}.user_repository"),
-        ):
-            await _run_workflows(_ctx())
-
-        assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["status_text"] == expected
-
-
-# ---------------------------------------------------------------------------
 # Persistence helpers
 # ---------------------------------------------------------------------------
-
-
-class TestSeedConversation:
-    async def test_returns_the_seeded_conversation_id(self) -> None:
-        with patch(f"{MODULE}.seed_onboarding_conversation", AsyncMock(return_value="c1")):
-            assert await _seed_conversation(USER) == "c1"
-
-    async def test_a_failure_returns_none_rather_than_raising(self) -> None:
-        # The caller still needs to persist completion and emit COMPLETE.
-        with patch(
-            f"{MODULE}.seed_onboarding_conversation", AsyncMock(side_effect=RuntimeError("mongo"))
-        ):
-            assert await _seed_conversation(USER) is None
 
 
 class TestPersistSocialProfiles:
@@ -1020,19 +735,146 @@ class TestPersistProfiles:
             await _persist_profiles(USER, _style(), None)
 
 
-class TestFetchOnboardingTodos:
-    async def test_maps_todos_to_id_and_title(self) -> None:
-        todo = MagicMock()
-        todo.id, todo.title = "t1", "Reply to Ann"
-        with patch(f"{MODULE}.todo_repository") as repo:
-            repo.list_onboarding_todos = AsyncMock(return_value=[todo])
-            assert await _fetch_onboarding_todos(USER) == [
-                OnboardingTodoSummary(id="t1", title="Reply to Ann")
-            ]
+# ---------------------------------------------------------------------------
+# _run_holo_card
+# ---------------------------------------------------------------------------
 
-    async def test_a_missing_title_becomes_an_empty_string(self) -> None:
-        todo = MagicMock()
-        todo.id, todo.title = "t1", None
-        with patch(f"{MODULE}.todo_repository") as repo:
-            repo.list_onboarding_todos = AsyncMock(return_value=[todo])
-            assert await _fetch_onboarding_todos(USER) == [OnboardingTodoSummary(id="t1", title="")]
+
+@pytest.fixture
+def holo_stack() -> Any:
+    with (
+        patch(
+            f"{MODULE}.get_user_metadata",
+            AsyncMock(return_value=UserProfileMetadata(account_number=1, member_since="2026")),
+        ),
+        patch(
+            f"{MODULE}.generate_profile_card_design",
+            return_value=ProfileCardDesign(
+                house="mistgrove", overlay_color="#fff", overlay_opacity=20
+            ),
+        ),
+        patch(
+            f"{MODULE}.generate_holo_card_content",
+            AsyncMock(return_value=("a phrase", "a bio", "ok")),
+        ) as content,
+        patch(f"{MODULE}.save_personalization_data", AsyncMock()) as save,
+        patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
+    ):
+        yield content, save, emit
+
+
+class TestRunHoloCard:
+    async def test_saves_the_generated_card_and_announces_readiness(self, holo_stack: Any) -> None:
+        _, save, emit = holo_stack
+        user = UserDocument(id=USER)
+        with patch(
+            f"{MODULE}.get_user_metadata",
+            AsyncMock(return_value=UserProfileMetadata(account_number=1, member_since="2026")),
+        ) as metadata:
+            assert await _run_holo_card(_ctx(focus="focus"), user, []) is True
+
+        args = save.await_args.args
+        assert args[0] == USER
+        assert args[1] == "mistgrove"
+        assert args[2] == "a phrase"
+        # Both the id and the already-loaded document: without the document the
+        # lookup re-reads Mongo, without the id it reads the wrong person.
+        metadata.assert_awaited_once_with(USER, user=user)
+        assert emit.await_args.args[0] == USER
+        assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
+
+    async def test_context_summary_gathers_every_available_signal(self, holo_stack: Any) -> None:
+        content, _, _ = holo_stack
+        await _run_holo_card(
+            OnboardingContext(
+                user_id=USER,
+                name="Ann",
+                focus="ship v2",
+                triage=_triage(
+                    important_emails=[
+                        EmailSummary(sender="ann@x.com", subject="Contract", why_important="d"),
+                        EmailSummary(sender="bob@x.com", subject="Invoice", why_important="d"),
+                    ],
+                    patterns=["newsletters", "receipts"],
+                ),
+                writing_style=WritingStyleProfile(
+                    summary="Terse", example=WritingStyleExampleBlocks(body=["x"])
+                ),
+                clarify_answers=[{"kind": "goal", "value": "grow the team"}],
+            ),
+            UserDocument(id=USER),
+            [SocialProfile(platform="x", url="u1")],
+        )
+
+        summary = content.await_args.args[1]
+        assert "Busy inbox" in summary
+        # Exact separators, from multi-element lists: with one element a wrong
+        # join string never appears in the output at all.
+        assert "Inbox patterns: newsletters; receipts" in summary
+        assert "Key contacts: ann@x.com, bob@x.com" in summary
+        assert "Terse" in summary
+        assert "x: u1" in summary
+        assert "ship v2" in summary
+        assert "Goal: grow the team" in summary
+
+    async def test_only_the_top_five_contacts_reach_the_card(self, holo_stack: Any) -> None:
+        """The cap keeps the card prompt bounded; slipping it by one is invisible
+        in every fixture with fewer than six important emails."""
+        content, _, _ = holo_stack
+        emails = [
+            EmailSummary(sender=f"s{i}@x.com", subject="s", why_important="w") for i in range(6)
+        ]
+        await _run_holo_card(
+            _ctx(focus="", triage=_triage(important_emails=emails)), UserDocument(id=USER), []
+        )
+
+        summary = content.await_args.args[1]
+        assert "Key contacts: s0@x.com, s1@x.com, s2@x.com, s3@x.com, s4@x.com" in summary
+        assert "s5@x.com" not in summary
+
+    async def test_blank_clarify_answers_are_skipped(self, holo_stack: Any) -> None:
+        content, _, _ = holo_stack
+        await _run_holo_card(
+            _ctx(focus="", clarify_answers=[{"kind": "goal", "value": "   "}]),
+            UserDocument(id=USER),
+            [],
+        )
+
+        assert "Goal" not in content.await_args.args[1]
+
+    async def test_a_clarify_answer_without_a_kind_defaults_to_context(
+        self, holo_stack: Any
+    ) -> None:
+        content, _, _ = holo_stack
+        await _run_holo_card(
+            _ctx(focus="", clarify_answers=[{"value": "some note"}]), UserDocument(id=USER), []
+        )
+
+        assert "Context: some note" in content.await_args.args[1]
+
+    async def test_absent_signals_produce_an_empty_summary(self, holo_stack: Any) -> None:
+        content, _, _ = holo_stack
+        await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), [])
+
+        assert content.await_args.args[1] == ""
+
+    async def test_a_failure_still_announces_readiness(self, holo_stack: Any) -> None:
+        # The frontend waits on HOLO_READY; skipping it leaves the card spinning.
+        _, _, emit = holo_stack
+        with patch(f"{MODULE}.get_user_metadata", AsyncMock(side_effect=RuntimeError("mongo"))):
+            await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), [])
+
+        assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
+
+    async def test_a_failed_card_reports_itself_as_not_viewable(self, holo_stack: Any) -> None:
+        # The caller links the public card page off this; a card that never got
+        # persisted 404s there.
+        with patch(f"{MODULE}.get_user_metadata", AsyncMock(side_effect=RuntimeError("mongo"))):
+            assert await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), []) is False
+
+    async def test_a_failed_save_reports_itself_as_not_viewable(self, holo_stack: Any) -> None:
+        # The card only becomes viewable once its content lands in Mongo.
+        with patch(
+            f"{MODULE}.save_personalization_data", AsyncMock(side_effect=RuntimeError("mongo"))
+        ):
+            assert await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), []) is False

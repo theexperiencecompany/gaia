@@ -31,6 +31,10 @@ from app.constants.cache import (
     USER_CACHE_PREFIX,
 )
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    GMAIL_PERSONALIZATION_MARKER,
+    HOLO_CONVERSATION_ID_FIELD,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
@@ -228,7 +232,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         *,
         phase: OnboardingPhase,
         bio_status: BioStatus,
-        pipeline_mode: str,
         preferences: OnboardingPreferences,
         name: str | None = None,
         timezone: str | None = None,
@@ -250,7 +253,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
             "onboarding.preferences": preferences.model_dump(),
-            "onboarding.pipeline_mode": pipeline_mode,
         }
         if name is not None:
             set_fields["name"] = name
@@ -335,20 +337,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_first_message(self, user_id: str, first_message: str) -> None:
-        """Store the user's first message on their onboarding subdocument."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.first_message": first_message}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
+    async def mark_gmail_personalization_done(
+        self, user_id: str, *, conversation_id: str | None = None
+    ) -> None:
+        """Stamp the Gmail personalization pipeline as run for this user.
 
-    async def mark_early_intelligence_done(self, user_id: str) -> None:
-        """Stamp the early-intelligence onboarding completion."""
+        The marker is what makes a later Gmail reconnect a no-op. The seeded
+        holo-card conversation id rides along so ``reset_onboarding`` can tear it
+        down with the rest of the personalization state.
+        """
+        set_fields: dict[str, object] = {
+            f"onboarding.{GMAIL_PERSONALIZATION_MARKER}": _now(),
+        }
+        if conversation_id is not None:
+            set_fields[f"onboarding.{HOLO_CONVERSATION_ID_FIELD}"] = conversation_id
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.early_intelligence_done_at": _now()}},
+            {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -411,15 +416,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         await self._cache_evict(REPO_GLOBAL_SCOPE, user_id)
         await self._invalidate(REPO_GLOBAL_SCOPE)
-
-    async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
-        """Persist the suggested workflows shown to the user during onboarding."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.suggested_workflows": workflow_ids}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
 
     async def set_social_profiles_if_unset(
         self, user_id: str, profiles: list[SocialProfile]
@@ -504,7 +500,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         member_since: str,
         overlay_color: str,
         overlay_opacity: int,
-        workflow_ids: list[str],
     ) -> None:
         """Persist the generated personalization bundle and advance the phase to
         personalization-complete."""
@@ -519,8 +514,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.overlay_color": overlay_color,
             "onboarding.overlay_opacity": overlay_opacity,
         }
-        if workflow_ids:
-            set_fields["onboarding.suggested_workflows"] = workflow_ids
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
