@@ -113,10 +113,8 @@ function OnboardingProgressImpl({
                     <span className="text-zinc-200">disconnected</span> — you'll
                     need to reconnect them.
                   </li>
-                  <li>Suggested workflows and their schedules</li>
-                  <li>Onboarding todos</li>
-                  <li>Your writing style and triage profile</li>
-                  <li>The welcome conversation and its agent memory</li>
+                  <li>Everything GAIA learned about you, including memories</li>
+                  <li>Your answers and the platforms you linked</li>
                 </ul>
               </ModalBody>
               <ModalFooter>

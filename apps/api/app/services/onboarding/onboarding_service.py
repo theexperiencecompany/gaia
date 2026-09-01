@@ -9,10 +9,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
-from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
-    OnboardingResetCounts,
-)
+from app.models.onboarding_models import OnboardingResetCounts
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -51,56 +48,29 @@ async def complete_onboarding(
     onboarding_data: OnboardingRequest,
 ) -> dict[str, Any]:
     """Complete a user's onboarding submission. Idempotent under concurrent
-    retries via an atomic `onboarding: {$exists: false}` gate."""
+    retries via an atomic `onboarding: {$exists: false}` gate.
+
+    Submitting the answers IS completion: nothing is generated here, so the
+    phase lands on COMPLETED and the user is routed straight into chat. The
+    intelligence pipeline runs when Gmail is connected, whenever that is."""
     log.set(auth={"user_id": user_id})
 
     try:
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
-            needs=None,
+            needs=onboarding_data.needs,
             response_style="casual",  # Default response style
             custom_instructions=None,
         )
 
-        clarify_answers: list[ClarifyAnswerRecord] | None = None
-        if onboarding_data.clarify_answers:
-            kept: list[ClarifyAnswerRecord] = [
-                {
-                    "id": a.id,
-                    "kind": a.kind,
-                    "question": a.question,
-                    "value": (a.value or "").strip() or None,
-                }
-                for a in onboarding_data.clarify_answers
-                if a.value and a.value.strip()
-            ]
-            clarify_answers = kept or None
-
-        focus = None
-        if onboarding_data.focus and onboarding_data.focus.strip():
-            focus = onboarding_data.focus.strip()
-
         # Atomic gate inside the repository: only the request that creates the
         # `onboarding` subdoc wins; concurrent POSTs and replays get None.
-        # selected_integrations is already lowercased/stripped/deduped by the
-        # IntegrationSlug type on OnboardingRequest — store as-is.
         updated_user = await user_repository.complete_onboarding(
             user_id,
-            name=onboarding_data.name.strip(),
             timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
-            # Nothing is generated at onboarding time any more, so there is no
-            # pending personalization to wait on. The holo card and everything
-            # else is earned by connecting Gmail, whenever that happens.
-            phase=OnboardingPhase.PERSONALIZATION_COMPLETE,
+            phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
             preferences=preferences,
-            focus=focus,
-            clarify_answers=clarify_answers,
-            selected_integrations=(
-                list(onboarding_data.selected_integrations)
-                if onboarding_data.selected_integrations
-                else None
-            ),
         )
 
         if updated_user is None:
@@ -114,15 +84,11 @@ async def complete_onboarding(
             )
             return _serialize_user(existing)
 
-        # Submitting the form IS completion now — nothing is generated afterwards.
         # `dedupe_key` guards against a retried POST re-counting the milestone.
         capture_event(
             user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
-            {
-                "selected_integrations_count": len(onboarding_data.selected_integrations or []),
-                "has_focus": focus is not None,
-            },
+            {"needs": sorted(need.value for need in onboarding_data.needs)},
             dedupe_key=user_id,
         )
 

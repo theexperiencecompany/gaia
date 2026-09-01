@@ -5,15 +5,15 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import {
+  PhoneLinkModal,
+  type PhoneLinkTarget,
+} from "@/components/shared/PhoneLinkModal";
+import {
   BOT_AUTH_COMMAND,
   BOT_PLATFORM_ICONS,
   BOT_PLATFORM_LABELS,
 } from "@/config/botPlatforms";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
-import {
-  PhoneLinkModal,
-  type PhoneLinkTarget,
-} from "@/features/settings/components/PhoneLinkModal";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";

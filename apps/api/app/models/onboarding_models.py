@@ -172,25 +172,10 @@ class SocialProfileFilterOutput(BaseModel):
 
 # --------------------------------------------------------------------- clarify
 
-ClarifyQuestionKind = Literal["scope", "blocker", "constraint"]
-
-
-class ClarifyQuestion(BaseModel):
-    """One no-Gmail follow-up question from ``POST /onboarding/clarify-questions``."""
-
-    id: ClarifyQuestionKind
-    kind: ClarifyQuestionKind
-    question: str
-    options: list[str]
-
-
-class ClarifyQuestionsResponse(BaseModel):
-    questions: list[ClarifyQuestion]
-
 
 class ClarifyAnswerRecord(TypedDict, total=False):
-    """``users.onboarding.clarify_answers`` as persisted by ``complete_onboarding``
-    from :class:`~app.models.user_models.ClarifyAnswer`.
+    """``users.onboarding.clarify_answers`` as persisted by the pre-paid-flow
+    onboarding submission. Read-only legacy data — nothing writes it now.
 
     A ``TypedDict``, not a model (Type Safety item 6): it is read straight off an
     already-persisted subdocument and only ever consumed in-process, so validating

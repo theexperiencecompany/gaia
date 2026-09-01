@@ -39,7 +39,6 @@ from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
@@ -233,12 +232,8 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         phase: OnboardingPhase,
         bio_status: BioStatus,
         preferences: OnboardingPreferences,
-        name: str | None = None,
         timezone: str | None = None,
         completed_at: datetime | None = None,
-        focus: str | None = None,
-        clarify_answers: list[ClarifyAnswerRecord] | None = None,
-        selected_integrations: list[str] | None = None,
     ) -> UserDocument | None:
         """Atomically create the ``onboarding`` subdocument (gated on its absence).
 
@@ -254,16 +249,8 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.bio_status": bio_status,
             "onboarding.preferences": preferences.model_dump(),
         }
-        if name is not None:
-            set_fields["name"] = name
         if timezone is not None:
             set_fields["timezone"] = timezone
-        if focus is not None:
-            set_fields["onboarding.focus"] = focus
-        if clarify_answers is not None:
-            set_fields["onboarding.clarify_answers"] = clarify_answers
-        if selected_integrations is not None:
-            set_fields["onboarding.selected_integrations"] = selected_integrations
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},

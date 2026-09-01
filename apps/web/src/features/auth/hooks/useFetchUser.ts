@@ -4,11 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { authApi } from "@/features/auth/api/authApi";
-import {
-  ONBOARDING_PROCESSING_PHASES,
-  PUBLIC_PAGES,
-  SESSION_RESUMED_KEY,
-} from "@/features/auth/constants";
+import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import { useUserActions } from "@/features/auth/hooks/useUser";
 import { readPendingCheckout } from "@/features/pricing/lib/pendingCheckout";
 import { usePathname } from "@/i18n/navigation";
@@ -103,9 +99,6 @@ const useFetchUser = () => {
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
     const needsOnboarding = !data.onboarding?.completed;
-    const phase = data.onboarding?.phase;
-    const isStillProcessing =
-      !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
     if (needsOnboarding && currentPath !== "/onboarding") {
       redirect("/onboarding", RedirectType.push);
@@ -113,7 +106,6 @@ const useFetchUser = () => {
 
     if (
       !needsOnboarding &&
-      !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
       redirect("/c", RedirectType.push);

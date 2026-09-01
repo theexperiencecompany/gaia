@@ -10,6 +10,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
+import { cn } from "@/lib/utils";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
 import { DevSkipOnboarding } from "./DevSkipOnboarding";
@@ -35,25 +36,14 @@ interface OnboardingShellProps {
 }
 
 function getContentFingerprint(state: OnboardingState, stage: Stage): string {
-  const b = state.server;
-  const progress = Object.values(state.progressByStage).join("");
   return [
     stage,
     state.questionIndex,
-    progress,
-    state.completedStages.size,
-    state.ackedWritingStyle ? 1 : 0,
-    state.ackedTodos ? 1 : 0,
-    state.workflowsConfirmed ? 1 : 0,
+    state.selectedNeeds.length,
+    state.paidRevealAcked ? 1 : 0,
+    state.greetingAcked ? 1 : 0,
     state.platformsConfirmed ? 1 : 0,
     state.connectedPlatform ?? "",
-    b?.writing_style?.style_summary ?? "",
-    b?.onboarding_todos?.length ?? 0,
-    b?.suggested_workflows?.length ?? 0,
-    b?.first_message_conversation_id ?? "",
-    state.todoExecutionMessage ?? "",
-    Object.keys(state.clarifyAnswers).length,
-    state.clarifySubmitted ? 1 : 0,
   ].join("|");
 }
 
@@ -138,11 +128,11 @@ export function OnboardingShell({
       {composer && (
         <div
           ref={composerRef}
-          className={
-            stage === "clarify"
-              ? "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-xl pb-3"
-              : "fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
-          }
+          // The Q2 chip grid needs more room than a single-line input.
+          className={cn(
+            "fixed inset-x-0 bottom-0 z-30 mx-auto w-full pb-3",
+            stage === "questions" ? "max-w-2xl" : "max-w-lg",
+          )}
         >
           {composer}
         </div>

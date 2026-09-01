@@ -20,7 +20,6 @@ import pytest
 from app.api.v1.endpoints.onboarding import get_onboarding_personalization
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
-from app.models.onboarding_models import ClarifyQuestion
 from app.models.payment_models import PlanType
 from app.models.user_models import (
     AuthenticatedUser,
@@ -70,8 +69,8 @@ _TODO_LIST = "app.api.v1.endpoints.onboarding.todo_repository.list_onboarding_to
 
 def _make_onboarding_request(**overrides) -> dict:
     base = {
-        "name": "Test User",
         "profession": "Developer",
+        "needs": ["inbox", "todos"],
         "timezone": "UTC",
     }
     base.update(overrides)
@@ -188,35 +187,45 @@ class TestOnboardingAnalytics:
             AnalyticsEvents.ONBOARDING_STEP_COMPLETED, {"phase": "getting_started"}
         )
 
-    async def test_complete_onboarding_missing_name_returns_422(self, client: AsyncClient):
+    async def test_complete_onboarding_missing_needs_returns_422(self, client: AsyncClient):
+        response = await client.post(BASE_URL, json={"profession": "Developer"})
+        assert response.status_code == 422
+
+    async def test_complete_onboarding_empty_needs_returns_422(self, client: AsyncClient):
+        """Q2 is min-1: an empty selection is the client skipping a required answer."""
+        response = await client.post(BASE_URL, json={"profession": "Developer", "needs": []})
+        assert response.status_code == 422
+
+    async def test_complete_onboarding_unknown_need_returns_422(self, client: AsyncClient):
         response = await client.post(
-            BASE_URL,
-            json={"profession": "Developer"},
+            BASE_URL, json={"profession": "Developer", "needs": ["world_peace"]}
         )
         assert response.status_code == 422
 
     async def test_complete_onboarding_missing_profession_returns_422(self, client: AsyncClient):
-        response = await client.post(
-            BASE_URL,
-            json={"name": "Test User"},
-        )
+        response = await client.post(BASE_URL, json={"needs": ["inbox"]})
         assert response.status_code == 422
 
-    async def test_complete_onboarding_empty_name_returns_422(self, client: AsyncClient):
-        response = await client.post(
-            BASE_URL,
-            json={"name": "", "profession": "Developer"},
-        )
-        assert response.status_code == 422
-
-    async def test_complete_onboarding_invalid_name_characters_returns_422(
+    async def test_complete_onboarding_invalid_profession_characters_returns_422(
         self, client: AsyncClient
     ):
-        response = await client.post(
-            BASE_URL,
-            json={"name": "Test123!", "profession": "Developer"},
-        )
+        response = await client.post(BASE_URL, json={"profession": "Dev123!", "needs": ["inbox"]})
         assert response.status_code == 422
+
+    async def test_a_name_in_the_body_is_not_accepted(self, client: AsyncClient):
+        """The name is derived from the email server-side; the client cannot set it."""
+        with patch(
+            _COMPLETE_ONBOARDING,
+            new_callable=AsyncMock,
+            return_value={"user_id": FAKE_USER_ID},
+        ) as mock_complete:
+            response = await client.post(
+                BASE_URL, json=_make_onboarding_request(name="Someone Else")
+            )
+
+        assert response.status_code == 200
+        submitted = mock_complete.call_args.args[1]
+        assert not hasattr(submitted, "name")
 
     async def test_complete_onboarding_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -833,47 +842,17 @@ class TestGetPersonalizationFullShape:
 # routes that must not be free before then.
 # ---------------------------------------------------------------------------
 
-CLARIFY_URL = f"{BASE_URL}/clarify-questions"
 REGENERATE_URL = f"{BASE_URL}/writing-style/regenerate-example"
-_CLARIFY_SERVICE = "app.api.v1.endpoints.onboarding.generate_clarify_questions"
 _REGENERATE_SERVICE = "app.api.v1.endpoints.onboarding.regenerate_example_for_style"
 # The gate reads the plan through this seam; patching it directly keeps the
 # test off the shared local Redis the plan cache would otherwise consult.
 _CACHED_PLAN = "app.decorators.entitlements.payment_service.get_cached_plan_type"
 
-_CLARIFY_PAYLOAD = {"name": "Ada", "profession": "engineer", "focus": "inbox"}
 _REGENERATE_PAYLOAD = {"edited_summary": "Warm and brief", "profession": "engineer"}
 
 
 class TestOnboardingGenerationPaidOnlyGate:
     """402 contract on the onboarding routes that burn LLM spend."""
-
-    async def test_clarify_questions_free_user_gets_402(self, client: AsyncClient):
-        with (
-            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.FREE)),
-            patch(_CLARIFY_SERVICE, new_callable=AsyncMock) as mock_generate,
-        ):
-            resp = await client.post(CLARIFY_URL, json=_CLARIFY_PAYLOAD)
-
-        assert resp.status_code == 402
-        assert resp.json()["detail"]["code"] == "subscription_required"
-        mock_generate.assert_not_called()
-
-    async def test_clarify_questions_pro_user_reaches_the_handler(self, client: AsyncClient):
-        question = ClarifyQuestion(
-            id="scope", kind="scope", question="What is in scope?", options=["a", "b"]
-        )
-        with (
-            patch(_CACHED_PLAN, new=AsyncMock(return_value=PlanType.PRO)),
-            patch(
-                _CLARIFY_SERVICE, new_callable=AsyncMock, return_value=[question]
-            ) as mock_generate,
-        ):
-            resp = await client.post(CLARIFY_URL, json=_CLARIFY_PAYLOAD)
-
-        assert resp.status_code == 200
-        assert resp.json()["questions"][0]["question"] == "What is in scope?"
-        mock_generate.assert_awaited_once()
 
     async def test_regenerate_example_free_user_gets_402(self, client: AsyncClient):
         with (

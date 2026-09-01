@@ -1,57 +1,74 @@
-import type { ProfessionOption, Question } from "../types";
-
-export const HOLO_CARD_HEIGHT = 470;
-export const HOLO_CARD_WIDTH = 330;
+import type { NeedOption, ProfessionOption, Question } from "../types";
 
 export const professionOptions: ProfessionOption[] = [
-  { label: "Student", value: "student" },
-  { label: "Teacher", value: "teacher" },
-  { label: "Engineer", value: "engineer" },
-  { label: "Developer", value: "developer" },
-  { label: "Designer", value: "designer" },
-  { label: "Manager", value: "manager" },
-  { label: "Consultant", value: "consultant" },
-  { label: "Entrepreneur", value: "entrepreneur" },
-  { label: "Researcher", value: "researcher" },
-  { label: "Writer", value: "writer" },
-  { label: "Artist", value: "artist" },
-  { label: "Doctor", value: "doctor" },
-  { label: "Lawyer", value: "lawyer" },
-  { label: "Accountant", value: "accountant" },
+  { label: "Founder / CEO", value: "founder" },
+  { label: "Executive", value: "executive" },
   { label: "Sales", value: "sales" },
+  { label: "Product", value: "product" },
+  { label: "Creative", value: "creative" },
+  { label: "Engineering", value: "engineering" },
   { label: "Marketing", value: "marketing" },
-  { label: "Analyst", value: "analyst" },
-  { label: "Freelancer", value: "freelancer" },
-  { label: "Retired", value: "retired" },
+  { label: "Finance", value: "finance" },
+  { label: "Student", value: "student" },
   { label: "Other", value: "other" },
 ];
 
+/**
+ * Q2 options. `value` mirrors the backend `OnboardingNeed` StrEnum
+ * (`apps/api/app/models/user_models.py`) one-for-one — the API rejects
+ * anything outside that set, so the two lists must stay in lockstep.
+ */
+export const needOptions: NeedOption[] = [
+  {
+    value: "inbox",
+    label: "Manage my inbox",
+    sub: "Triage, label, draft replies",
+  },
+  {
+    value: "calendar",
+    label: "Handle my calendar",
+    sub: "Schedule and prep meetings",
+  },
+  {
+    value: "briefings",
+    label: "Daily briefings",
+    sub: "Morning summary of what matters",
+  },
+  { value: "todos", label: "Track my todos", sub: "Capture tasks, remind me" },
+  {
+    value: "memory",
+    label: "Remember everything",
+    sub: "People, context, notes",
+  },
+  { value: "research", label: "Do research", sub: "Search, read, summarize" },
+  {
+    value: "automation",
+    label: "Automate routines",
+    sub: "Workflows that run without me",
+  },
+  {
+    value: "reach",
+    label: "Reach me anywhere",
+    sub: "WhatsApp, Telegram, voice",
+  },
+];
+
+export const NEEDS_MIN_SELECTION = 1;
+
 export const FIELD_NAMES = {
-  NAME: "name",
   PROFESSION: "profession",
-  GMAIL: "gmail",
-  FOCUS: "focus",
+  NEEDS: "needs",
 } as const;
 
 export const questions: Question[] = [
   {
     id: "1",
-    question: "Hey! I'm GAIA. What should I call you?",
-    placeholder: "Enter your name...",
-    fieldName: FIELD_NAMES.NAME,
-  },
-  {
-    id: "2",
-    question:
-      "What do you do? This helps me handle your emails, calendar, and tasks the right way.",
-    placeholder: "e.g., Software Developer, Student, Designer...",
+    question: "What do you do?",
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
-    id: "3",
-    question:
-      "Last thing. Connect your Gmail and I'll go through your inbox, find what matters, and set up your first action items.",
-    placeholder: "",
-    fieldName: FIELD_NAMES.GMAIL,
+    id: "2",
+    question: "How can GAIA help?",
+    fieldName: FIELD_NAMES.NEEDS,
   },
 ];

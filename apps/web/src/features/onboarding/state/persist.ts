@@ -1,58 +1,29 @@
-import type { ClarifyAnswer, ClarifyQuestion } from "../types";
 import type { OnboardingState } from "./types";
 
-const STORAGE_KEY = "gaia-onboarding-state-v2";
+// v3 = the paid-first flow. A bumped key is what stops a half-finished v2
+// run (clarify answers, reveal acks) from rehydrating into a state shape
+// that no longer has those stages.
+const STORAGE_KEY = "gaia-onboarding-state-v3";
 
 interface PersistedShape {
   responses: Record<string, string>;
   questionIndex: number;
-  draftText: string;
-  draftProfession: string | null;
-  ackedWritingStyle: boolean;
-  ackedTodos: boolean;
-  workflowsConfirmed: boolean;
+  selectedNeeds: string[];
+  paidRevealAcked: boolean;
+  greetingAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
-  clarifyQuestions: ClarifyQuestion[] | null;
-  clarifyAnswers: Record<string, ClarifyAnswer>;
-  clarifyActiveTab: string | null;
-  clarifyCustomDrafts: Record<string, string>;
-  clarifyOtherSelected: Record<string, boolean>;
-  clarifySubmitted: boolean;
-  integrationSelectDone: boolean;
-  selectedIntegrations: string[];
-  // todoExecutionMessage is deliberately omitted — persisting it re-sends on reload.
-  todoExecutionStarted: boolean;
-  todoExecutionConvoId: string | null;
-  todoExecutionTodo: {
-    id: string;
-    title: string;
-    sourceEmail: { sender: string; subject: string } | null;
-  } | null;
 }
 
 function pick(state: OnboardingState): PersistedShape {
   return {
     responses: state.responses,
     questionIndex: state.questionIndex,
-    draftText: state.draftText,
-    draftProfession: state.draftProfession,
-    ackedWritingStyle: state.ackedWritingStyle,
-    ackedTodos: state.ackedTodos,
-    workflowsConfirmed: state.workflowsConfirmed,
+    selectedNeeds: state.selectedNeeds,
+    paidRevealAcked: state.paidRevealAcked,
+    greetingAcked: state.greetingAcked,
     platformsConfirmed: state.platformsConfirmed,
     connectedPlatform: state.connectedPlatform,
-    clarifyQuestions: state.clarifyQuestions,
-    clarifyAnswers: state.clarifyAnswers,
-    clarifyActiveTab: state.clarifyActiveTab,
-    clarifyCustomDrafts: state.clarifyCustomDrafts,
-    clarifyOtherSelected: state.clarifyOtherSelected,
-    clarifySubmitted: state.clarifySubmitted,
-    integrationSelectDone: state.integrationSelectDone,
-    selectedIntegrations: state.selectedIntegrations,
-    todoExecutionStarted: state.todoExecutionStarted,
-    todoExecutionConvoId: state.todoExecutionConvoId,
-    todoExecutionTodo: state.todoExecutionTodo,
   };
 }
 
@@ -65,25 +36,12 @@ export function loadPersisted(): Partial<OnboardingState> | null {
     return {
       responses: parsed.responses ?? {},
       questionIndex: parsed.questionIndex ?? 0,
-      draftText: parsed.draftText ?? "",
-      draftProfession: parsed.draftProfession ?? null,
-      ackedWritingStyle: parsed.ackedWritingStyle ?? false,
-      ackedTodos: parsed.ackedTodos ?? false,
-      workflowsConfirmed: parsed.workflowsConfirmed ?? false,
+      selectedNeeds: parsed.selectedNeeds ?? [],
+      paidRevealAcked: parsed.paidRevealAcked ?? false,
+      greetingAcked: parsed.greetingAcked ?? false,
       platformsConfirmed:
         parsed.platformsConfirmed ?? !!parsed.connectedPlatform,
       connectedPlatform: parsed.connectedPlatform ?? null,
-      clarifyQuestions: parsed.clarifyQuestions ?? null,
-      clarifyAnswers: parsed.clarifyAnswers ?? {},
-      clarifyActiveTab: parsed.clarifyActiveTab ?? null,
-      clarifyCustomDrafts: parsed.clarifyCustomDrafts ?? {},
-      clarifyOtherSelected: parsed.clarifyOtherSelected ?? {},
-      clarifySubmitted: parsed.clarifySubmitted ?? false,
-      integrationSelectDone: parsed.integrationSelectDone ?? false,
-      selectedIntegrations: parsed.selectedIntegrations ?? [],
-      todoExecutionStarted: parsed.todoExecutionStarted ?? false,
-      todoExecutionConvoId: parsed.todoExecutionConvoId ?? null,
-      todoExecutionTodo: parsed.todoExecutionTodo ?? null,
     };
   } catch {
     return null;

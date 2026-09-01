@@ -1,22 +1,12 @@
 from datetime import datetime
 from enum import Enum, StrEnum
 import re
-from typing import Annotated, Any, TypedDict
+from typing import Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.repositories.base import MongoDocument
 from app.utils.timezone import is_valid_timezone
-
-# Lowercased, bounded slug for request-supplied integration ids.
-IntegrationSlug = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        to_lower=True,
-        pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
-    ),
-]
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
@@ -124,53 +114,29 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-class ClarifyAnswer(BaseModel):
-    """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
-
-    id: str = Field(..., description="Question id — one of scope, blocker, constraint")
-    kind: str = Field(..., description="scope / blocker / constraint")
-    question: str = Field(..., description="Original question text")
-    value: str | None = Field(
-        None,
-        max_length=500,
-        description="User's answer; None means the question was skipped",
-    )
-
-
 class OnboardingRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100, description="User's preferred name")
+    """The onboarding submission — Q1 (profession) and Q2 (needs).
+
+    The name is derived from the email server-side, so it is not submitted;
+    nothing else is generated at onboarding, so nothing else is collected.
+    """
+
     profession: str = Field(..., min_length=1, max_length=50, description="User's profession")
+    needs: list[OnboardingNeed] = Field(
+        ...,
+        min_length=1,
+        description="What the user wants GAIA to help with (onboarding Q2)",
+    )
     timezone: str | None = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
     )
-    focus: str | None = Field(
-        None, max_length=500, description="User's current primary focus or goal"
-    )
-    clarify_answers: list[ClarifyAnswer] | None = Field(
-        None,
-        description="No-Gmail follow-up answers (scope/blocker/constraint)",
-    )
-    selected_integrations: list[IntegrationSlug] | None = Field(
-        None,
-        max_length=25,
-        description="Integration slugs the user selected during onboarding.",
-    )
-    @field_validator("selected_integrations")
-    @classmethod
-    def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
-        return _dedupe_slugs(v)
 
-    @field_validator("name")
+    @field_validator("needs")
     @classmethod
-    def validate_name(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Name cannot be empty")
-        if not re.match(r"^[a-zA-Z\s\-\'\.]+$", v):
-            raise ValueError(
-                "Name can only contain letters, spaces, hyphens, apostrophes, and periods"
-            )
-        return v
+    def dedupe_needs(cls, v: list[OnboardingNeed]) -> list[OnboardingNeed]:
+        """First-occurrence order, no duplicates — the UI is a toggle grid, so
+        a repeated value is a client bug, not a meaningful selection."""
+        return list(dict.fromkeys(v))
 
     @field_validator("profession")
     @classmethod
@@ -212,22 +178,6 @@ class OnboardingPhaseUpdateRequest(BaseModel):
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer
         return v
-
-
-def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
-    # Order-preserving dedupe: a user can select the same integration twice
-    # (e.g. via a chip and a mention). We keep the first occurrence so the
-    # selection order — which downstream workflow generation treats as priority
-    # — is stable, rather than using set() which would scramble it.
-    if not v:
-        return v
-    seen: set[str] = set()
-    out: list[str] = []
-    for slug in v:
-        if slug not in seen:
-            seen.add(slug)
-            out.append(slug)
-    return out
 
 
 class AuthenticatedUser(TypedDict, total=False):

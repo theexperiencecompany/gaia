@@ -27,7 +27,7 @@ from app.constants.onboarding import (
 )
 from app.models.user_models import (
     BioStatus,
-    ClarifyAnswer,
+    OnboardingNeed,
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
@@ -74,7 +74,7 @@ def sample_user_id() -> str:
 
 @pytest.fixture
 def sample_onboarding_request() -> OnboardingRequest:
-    return OnboardingRequest(name="Alice", profession="Engineer", timezone="UTC")
+    return OnboardingRequest(profession="Engineer", needs=["inbox"], timezone="UTC")
 
 
 @pytest.fixture
@@ -134,7 +134,6 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
         return UserDocument.model_validate(
             {
                 "id": user_id,
-                "name": fields["name"],
                 "onboarding": {
                     "completed": True,
                     "phase": fields["phase"],
@@ -163,21 +162,21 @@ class TestCompleteOnboarding:
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
 
-    async def test_persists_personalization_complete_phase(
+    async def test_persists_the_completed_phase(
         self,
         persisting_repo: MagicMock,
         sample_user_id: str,
         sample_onboarding_request: OnboardingRequest,
     ) -> None:
-        """Submitting the form is completion. Any other phase parks the user on
-        a loading screen waiting for a pipeline that will never run."""
+        """Submitting the form is completion. Any non-terminal phase parks the
+        user on onboarding waiting for a pipeline that will never run."""
         result = await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         assert (
             persisting_repo.complete_onboarding.await_args.kwargs["phase"]
-            == OnboardingPhase.PERSONALIZATION_COMPLETE
+            == OnboardingPhase.COMPLETED
         )
-        assert result["onboarding"]["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
+        assert result["onboarding"]["phase"] == OnboardingPhase.COMPLETED.value
 
     async def test_queues_no_job_and_seeds_nothing(
         self,
@@ -210,12 +209,7 @@ class TestCompleteOnboarding:
         """The milestone is emitted here now that nothing runs afterwards, keyed
         on the user so a retried POST cannot count it twice."""
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            focus="ship v2",
-            selected_integrations=["gmail", "slack"],
-        )
+        request = OnboardingRequest(profession="Engineer", needs=["todos", "inbox"])
 
         with patch(f"{SERVICE}.capture_event") as capture:
             await complete_onboarding(sample_user_id, request)
@@ -223,7 +217,7 @@ class TestCompleteOnboarding:
         capture.assert_called_once_with(
             sample_user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
-            {"selected_integrations_count": 2, "has_focus": True},
+            {"needs": ["inbox", "todos"]},
             dedupe_key=sample_user_id,
         )
 
@@ -281,7 +275,7 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            name="Alice", profession="Engineer", timezone="America/New_York"
+            profession="Engineer", needs=["inbox"], timezone="America/New_York"
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -296,22 +290,7 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         request = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            timezone="UTC",
-            focus="  ship the product  ",
-            clarify_answers=[
-                ClarifyAnswer(
-                    id="scope",
-                    kind="scope",
-                    question="What should GAIA take off your plate?",
-                    value="  triage my inbox  ",
-                ),
-                # Whitespace-only and skipped answers must not survive.
-                ClarifyAnswer(id="blocker", kind="blocker", question="Q2?", value="   "),
-                ClarifyAnswer(id="constraint", kind="constraint", question="Q3?", value=None),
-            ],
-            selected_integrations=["gmail"],
+            profession="  Engineer  ", needs=["inbox", "briefings"], timezone=" UTC "
         )
         mock_repo.complete_onboarding.return_value = sample_user
 
@@ -319,41 +298,33 @@ class TestCompleteOnboarding:
 
         mock_repo.complete_onboarding.assert_awaited_once_with(
             sample_user_id,
-            name="Alice",
             timezone="UTC",
-            phase=OnboardingPhase.PERSONALIZATION_COMPLETE,
+            phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
             preferences=OnboardingPreferences(
-                profession="Engineer", response_style="casual", custom_instructions=None
+                profession="Engineer",
+                needs=[OnboardingNeed.INBOX, OnboardingNeed.BRIEFINGS],
+                response_style="casual",
+                custom_instructions=None,
             ),
-            focus="ship the product",
-            clarify_answers=[
-                {
-                    "id": "scope",
-                    "kind": "scope",
-                    "question": "What should GAIA take off your plate?",
-                    "value": "triage my inbox",
-                }
-            ],
-            selected_integrations=["gmail"],
         )
 
-    async def test_blank_and_absent_optionals_normalize_to_none(
+    async def test_an_absent_timezone_is_not_written(
         self,
         mock_repo: MagicMock,
         sample_user_id: str,
         sample_user: UserDocument,
     ) -> None:
-        request = OnboardingRequest(name="Alice", profession="Engineer", focus="   ")
+        request = OnboardingRequest(profession="Engineer", needs=["inbox"])
         mock_repo.complete_onboarding.return_value = sample_user
 
         await complete_onboarding(sample_user_id, request)
 
-        kwargs = mock_repo.complete_onboarding.await_args.kwargs
-        assert kwargs["timezone"] is None
-        assert kwargs["focus"] is None
-        assert kwargs["clarify_answers"] is None
-        assert kwargs["selected_integrations"] is None
+        assert mock_repo.complete_onboarding.await_args.kwargs["timezone"] is None
+
+    async def test_duplicate_needs_are_deduped_in_selection_order(self) -> None:
+        request = OnboardingRequest(profession="Engineer", needs=["todos", "inbox", "todos"])
+        assert request.needs == [OnboardingNeed.TODOS, OnboardingNeed.INBOX]
 
     async def test_generic_exception_returns_500(
         self,
@@ -827,25 +798,14 @@ class TestCompleteOnboardingExactKwargs:
         sample_user: UserDocument,
     ) -> None:
         mock_repo.complete_onboarding.return_value = sample_user
-        request = OnboardingRequest(
-            name="  Alice  ",
-            profession="Engineer",
-            timezone=" UTC ",
-            focus="  ship v2  ",
-            clarify_answers=[
-                {"id": "c1", "kind": "goal", "question": "q", "value": "  grow  "},
-                {"id": "c2", "kind": "goal", "question": "q", "value": "   "},
-            ],
-        )
+        request = OnboardingRequest(profession="  Engineer  ", needs=["memory"], timezone=" UTC ")
         await complete_onboarding(sample_user_id, request)
 
         kwargs = mock_repo.complete_onboarding.await_args.kwargs
-        assert kwargs["name"] == "Alice"
         assert kwargs["timezone"] == "UTC"
-        assert kwargs["focus"] == "ship v2"
-        assert kwargs["clarify_answers"] == [
-            {"id": "c1", "kind": "goal", "question": "q", "value": "grow"}
-        ]
         assert kwargs["preferences"] == OnboardingPreferences(
-            profession="Engineer", response_style="casual", custom_instructions=None
+            profession="Engineer",
+            needs=[OnboardingNeed.MEMORY],
+            response_style="casual",
+            custom_instructions=None,
         )

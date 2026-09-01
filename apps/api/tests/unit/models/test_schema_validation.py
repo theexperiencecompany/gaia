@@ -200,99 +200,73 @@ class TestBatchSyncRequest:
 class TestOnboardingRequest:
     def test_valid(self):
         r = OnboardingRequest(
-            name="Alice",
             profession="Engineer",
+            needs=["inbox", "calendar"],
             timezone="America/New_York",
         )
-        assert r.name == "Alice"
-
-    def test_invalid_name_characters(self):
-        with pytest.raises(ValidationError):
-            OnboardingRequest(name="Al1ce!", profession="Engineer")
-
-    def test_empty_name(self):
-        with pytest.raises(ValidationError):
-            OnboardingRequest(name="", profession="Engineer")
-
-    def test_name_stripped(self):
-        r = OnboardingRequest(name="  Alice  ", profession="Engineer")
-        assert r.name == "Alice"
+        assert r.profession == "Engineer"
+        assert [n.value for n in r.needs] == ["inbox", "calendar"]
 
     def test_invalid_profession(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(name="Alice", profession="Eng1neer!")
+            OnboardingRequest(profession="Eng1neer!", needs=["inbox"])
 
-    # --- max_length=100 on name ---
-
-    def test_name_at_max_length_accepted(self):
-        name_100 = "A" * 100
-        r = OnboardingRequest(name=name_100, profession="Engineer")
-        assert r.name == name_100
-
-    def test_name_exceeds_max_length_rejected(self):
+    def test_empty_profession(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(name="A" * 101, profession="Engineer")
+            OnboardingRequest(profession="", needs=["inbox"])
 
-    # --- profession max_length=50 ---
+    def test_profession_stripped(self):
+        r = OnboardingRequest(profession="  Engineer  ", needs=["inbox"])
+        assert r.profession == "Engineer"
 
     def test_profession_at_max_length_accepted(self):
         profession_50 = "Engineer" + " " * (50 - len("Engineer"))
-        r = OnboardingRequest(name="Alice", profession=profession_50)
-        # validator strips, so check stripped length is within limit
+        r = OnboardingRequest(profession=profession_50, needs=["inbox"])
         assert len(r.profession) <= 50
 
     def test_profession_exceeds_max_length_rejected(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(name="Alice", profession="E" * 51)
+            OnboardingRequest(profession="E" * 51, needs=["inbox"])
+
+    # --- needs (Q2) ---
+
+    def test_needs_required(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(profession="Engineer")
+
+    def test_empty_needs_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(profession="Engineer", needs=[])
+
+    def test_unknown_need_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(profession="Engineer", needs=["world_peace"])
+
+    def test_duplicate_needs_deduped_in_order(self):
+        r = OnboardingRequest(profession="Engineer", needs=["todos", "inbox", "todos"])
+        assert [n.value for n in r.needs] == ["todos", "inbox"]
+
+    def test_a_name_is_not_part_of_the_contract(self):
+        """The name is derived from the email server-side; an extra key is ignored."""
+        r = OnboardingRequest(profession="Engineer", needs=["inbox"], name="Mallory")
+        assert not hasattr(r, "name")
 
     # --- timezone validator ---
 
     def test_valid_timezone_accepted(self):
-        r = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            timezone="America/New_York",
-        )
+        r = OnboardingRequest(profession="Engineer", needs=["inbox"], timezone="America/New_York")
         assert r.timezone == "America/New_York"
-
-    def test_another_valid_timezone_accepted(self):
-        r = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            timezone="Asia/Kolkata",
-        )
-        assert r.timezone == "Asia/Kolkata"
-
-    def test_utc_timezone_accepted(self):
-        r = OnboardingRequest(
-            name="Alice",
-            profession="Engineer",
-            timezone="UTC",
-        )
-        assert r.timezone == "UTC"
 
     def test_invalid_timezone_rejected(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(
-                name="Alice",
-                profession="Engineer",
-                timezone="not_a_timezone",
-            )
-
-    def test_invalid_timezone_random_string_rejected(self):
-        with pytest.raises(ValidationError):
-            OnboardingRequest(
-                name="Alice",
-                profession="Engineer",
-                timezone="Foo/Bar",
-            )
+            OnboardingRequest(profession="Engineer", needs=["inbox"], timezone="Mars/Phobos")
 
     def test_none_timezone_accepted(self):
-        r = OnboardingRequest(name="Alice", profession="Engineer", timezone=None)
+        r = OnboardingRequest(profession="Engineer", needs=["inbox"], timezone=None)
         assert r.timezone is None
 
     def test_timezone_omitted_defaults_to_none(self):
-        r = OnboardingRequest(name="Alice", profession="Engineer")
+        r = OnboardingRequest(profession="Engineer", needs=["inbox"])
         assert r.timezone is None
 
 

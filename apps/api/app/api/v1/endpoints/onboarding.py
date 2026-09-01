@@ -17,7 +17,6 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import require_subscription, tiered_rate_limit
 from app.models.onboarding_models import (
-    ClarifyQuestionsResponse,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
     PersistedTriageSummary,
@@ -44,7 +43,6 @@ from app.models.user_models import (
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.composio.composio_service import get_composio_service
-from app.services.onboarding.clarify_service import generate_clarify_questions
 from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
@@ -124,34 +122,6 @@ async def complete_user_onboarding(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
-
-
-class ClarifyQuestionsRequest(BaseModel):
-    name: str
-    profession: str
-    focus: str
-
-
-@router.post("/clarify-questions", responses={402: {"description": "Subscription required"}})
-@require_subscription()
-@tiered_rate_limit("onboarding_generation")
-async def get_clarify_questions(
-    payload: ClarifyQuestionsRequest,
-    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> ClarifyQuestionsResponse:
-    """Generate the LLM 3-question follow-up for the no-Gmail path."""
-    log.set(
-        user={"id": user["user_id"]},
-        onboarding={"operation": "clarify_questions"},
-    )
-    name = payload.name.strip() or "there"
-    profession = payload.profession.strip() or "professional"
-    focus = payload.focus.strip()
-    if not focus:
-        raise HTTPException(status_code=400, detail="Focus is required")
-
-    questions = await generate_clarify_questions(name, profession, focus, user_id=user["user_id"])
-    return ClarifyQuestionsResponse(questions=questions)
 
 
 @router.post(

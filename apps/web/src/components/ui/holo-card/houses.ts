@@ -1,4 +1,4 @@
-import type { House } from "@/features/onboarding/types/websocket";
+import type { House } from "@/features/onboarding/types/personalization";
 
 const HOUSES: Record<House, { image: string }> = {
   frostpeak: { image: "/images/wallpapers/holo/frostpeak.jpg" },

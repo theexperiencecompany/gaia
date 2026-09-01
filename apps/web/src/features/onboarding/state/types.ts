@@ -5,100 +5,39 @@
  * remembers and how it can change.
  */
 
-import type { ClarifyAnswer, ClarifyQuestion } from "../types";
-import type { OnboardingStage, PersonalizationData } from "../types/websocket";
-
 export type Stage =
   | "questions"
-  | "focus"
-  | "clarify"
-  | "integrationSelect"
-  | "processing"
-  | "revealWriting"
-  | "revealTodos"
-  | "workflows"
-  | "platforms"
+  | "payment"
+  | "paidReveal"
+  | "greeting"
+  | "platformPick"
   | "chat";
 
 export interface OnboardingState {
+  /** Answers keyed by `FIELD_NAMES`. Q2 lives in `selectedNeeds`, not here. */
   responses: Record<string, string>;
   questionIndex: number;
-  draftText: string;
   draftProfession: string | null;
+  selectedNeeds: string[];
 
-  server: PersonalizationData | null;
-
-  progressByStage: Partial<Record<OnboardingStage, string>>;
-  completedStages: Set<OnboardingStage>;
-
-  ackedWritingStyle: boolean;
-  ackedTodos: boolean;
-
-  workflowsConfirmed: boolean;
+  paidRevealAcked: boolean;
+  greetingAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
 
-  todoExecutionMessage: string | null;
-  todoExecutionConvoId: string | null;
-  todoExecutionStarted: boolean;
-  todoExecutionTodo: {
-    id: string;
-    title: string;
-    sourceEmail: { sender: string; subject: string } | null;
-  } | null;
-
   isRestarting: boolean;
-
-  integrationSelectDone: boolean;
-  selectedIntegrations: string[];
-
-  clarifyQuestions: ClarifyQuestion[] | null;
-  clarifyAnswers: Record<string, ClarifyAnswer>;
-  clarifyActiveTab: string | null;
-  clarifyCustomDrafts: Record<string, string>;
-  clarifyOtherSelected: Record<string, boolean>;
-  clarifySubmitted: boolean;
 }
 
 export type Action =
-  | { type: "draftText"; value: string }
   | { type: "draftProfession"; value: string | null }
   | { type: "answer"; field: string; value: string }
-  | { type: "serverSnapshot"; data: PersonalizationData }
-  | {
-      type: "serverPatch";
-      patch: Partial<PersonalizationData>;
-    }
-  | { type: "progress"; stage: OnboardingStage; message: string }
-  | { type: "stageComplete"; stage: OnboardingStage }
-  | { type: "ackWriting" }
-  | { type: "ackTodos" }
-  | { type: "confirmWorkflows" }
+  | { type: "toggleNeed"; value: string }
+  | { type: "submitNeeds" }
+  | { type: "ackPaidReveal" }
+  | { type: "ackGreeting" }
   | { type: "platformConnected"; platform: string }
   | { type: "skipPlatforms" }
-  | {
-      type: "executeTodo";
-      message: string;
-      convoId: string;
-      todo: {
-        id: string;
-        title: string;
-        sourceEmail: { sender: string; subject: string } | null;
-      };
-    }
-  | { type: "clearTodoExecutionMessage" }
-  | { type: "ackTodoDemo" }
   | { type: "restartStart" }
   | { type: "restartDone" }
   | { type: "hydrate"; partial: Partial<OnboardingState> }
-  | { type: "reset" }
-  | { type: "clarifyLoaded"; questions: ClarifyQuestion[] }
-  | { type: "clarifySelectOption"; questionId: string; value: string }
-  | { type: "clarifyOtherSelect"; questionId: string }
-  | { type: "clarifyCustomDraft"; questionId: string; value: string }
-  | { type: "clarifyCustomCommit"; questionId: string }
-  | { type: "clarifySkip"; questionId: string }
-  | { type: "clarifyTab"; questionId: string }
-  | { type: "clarifySubmit" }
-  | { type: "integrationSelectUpdate"; integrations: string[] }
-  | { type: "integrationSelectConfirm" };
+  | { type: "reset" };

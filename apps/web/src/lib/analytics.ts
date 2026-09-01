@@ -250,19 +250,3 @@ export function trackOnboardingStep(
     ...properties,
   });
 }
-
-/**
- * Track onboarding completion.
- */
-export function trackOnboardingComplete(properties: {
-  profession?: string;
-  integrationsConnected?: string[];
-  totalSteps: number;
-  timeToComplete?: number;
-}): void {
-  trackEvent(ANALYTICS_EVENTS.ONBOARDING_COMPLETED, properties);
-  setUserProperties({
-    onboarding_completed: true,
-    profession: properties.profession,
-  });
-}

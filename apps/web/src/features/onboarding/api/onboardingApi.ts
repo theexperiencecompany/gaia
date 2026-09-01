@@ -1,39 +1,16 @@
 /**
  * REST surface for the onboarding flow. Thin wrappers over `apiService` —
- * all auth, error toast, and analytics behaviour come from there. The WS
- * channel is owned separately by `useBackendSync`.
+ * all auth, error toast, and analytics behaviour come from there.
  */
 
 import { authApi, type UserInfo } from "@/features/auth/api/authApi";
 import { apiService } from "@/lib/api/service";
 
-import type { ClarifyQuestion } from "../types";
-import type { PersonalizationData } from "../types/websocket";
-
-export interface CompleteOnboardingClarifyAnswer {
-  id: string;
-  kind: string;
-  question: string;
-  value: string | null;
-}
-
 export interface CompleteOnboardingArgs {
-  name: string;
   profession: string;
+  /** Must be `OnboardingNeed` values; the API rejects anything else. */
+  needs: string[];
   timezone: string;
-  focus: string;
-  clarify_answers?: CompleteOnboardingClarifyAnswer[];
-  selected_integrations?: string[];
-  defer_workflows?: boolean;
-}
-
-export interface SubmitIntegrationsResponse {
-  success: boolean;
-  status: "queued" | "already_running" | "already_complete";
-}
-
-export interface ClarifyQuestionsResponse {
-  questions: ClarifyQuestion[];
 }
 
 export interface CompleteOnboardingResponse {
@@ -42,45 +19,14 @@ export interface CompleteOnboardingResponse {
   user?: UserInfo;
 }
 
-// A 409 means a prior submission was already accepted — callers treat it as success.
+// A replayed submission is accepted server-side (the atomic gate returns the
+// existing document), so callers can retry without special-casing.
 export function completeOnboarding(
   args: CompleteOnboardingArgs,
 ): Promise<CompleteOnboardingResponse> {
   return authApi.completeOnboarding(args);
 }
 
-export function submitOnboardingIntegrations(
-  selectedIntegrations: string[],
-): Promise<SubmitIntegrationsResponse> {
-  return apiService.post<SubmitIntegrationsResponse>(
-    "/onboarding/integrations",
-    { selected_integrations: selectedIntegrations },
-    { silent: true },
-  );
-}
-
-export function getPersonalization(): Promise<PersonalizationData> {
-  return apiService.get<PersonalizationData>("/onboarding/personalization", {
-    silent: true,
-  });
-}
-
-export function postPhase(phase: string): Promise<unknown> {
-  return apiService.post("/onboarding/phase", { phase });
-}
-
 export function resetOnboarding(): Promise<unknown> {
   return apiService.post("/onboarding/reset", {}, { silent: true });
-}
-
-export function getClarifyQuestions(args: {
-  name: string;
-  profession: string;
-  focus: string;
-}): Promise<ClarifyQuestionsResponse> {
-  return apiService.post<ClarifyQuestionsResponse>(
-    "/onboarding/clarify-questions",
-    args,
-    { silent: true },
-  );
 }

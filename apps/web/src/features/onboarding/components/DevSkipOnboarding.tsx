@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
+import { useUserActions } from "@/features/auth/hooks/useUser";
 import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
 import { completeOnboarding } from "@/features/onboarding/api/onboardingApi";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -18,7 +18,6 @@ import { toast } from "@/lib/toast";
  */
 export function DevSkipOnboarding() {
   const router = useRouter();
-  const user = useUser();
   const { setUser, updateUser } = useUserActions();
   const [loading, setLoading] = useState(false);
 
@@ -29,14 +28,11 @@ export function DevSkipOnboarding() {
     setLoading(true);
     try {
       const res = await completeOnboarding({
-        name: user.name || "Dev User",
-        profession: "Software Developer",
+        profession: "engineering",
+        needs: ["inbox", "todos"],
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        focus: "Testing GAIA in development",
       });
       if (res.user) setUser(userInfoToStoreUser(res.user));
-      // Force completed locally so useOnboardingGuard routes to /c instead of
-      // holding on /onboarding while the backend intelligence pipeline runs.
       updateUser({ onboarding: { completed: true, phase: "completed" } });
       router.push("/c");
     } catch (error) {

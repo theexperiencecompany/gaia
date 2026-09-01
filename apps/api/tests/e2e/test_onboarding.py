@@ -154,8 +154,6 @@ class _UserStore:
         doc = self.docs.get(user_id)
         if doc is None or "onboarding" in doc:
             return None
-        if fields.get("name") is not None:
-            doc["name"] = fields["name"]
         if fields.get("timezone") is not None:
             doc["timezone"] = fields["timezone"]
         sub: dict[str, Any] = {
@@ -165,9 +163,6 @@ class _UserStore:
             "bio_status": fields["bio_status"],
             "preferences": fields["preferences"].model_dump(),
         }
-        for key in ("focus", "clarify_answers", "selected_integrations"):
-            if fields.get(key) is not None:
-                sub[key] = fields[key]
         doc["onboarding"] = sub
         return await self.get(user_id)
 
@@ -593,23 +588,11 @@ async def connect_gmail() -> None:
     await handle_oauth_connection(USER_ID, GMAIL_CONFIG, BackgroundTasks())
 
 
-#: A filled-in no-Gmail follow-up, shaped as the clarify endpoint returns it.
-CLARIFY_ANSWERS: list[dict[str, Any]] = [
-    {
-        "id": "scope",
-        "kind": "scope",
-        "question": "What are you working on right now?",
-        "value": "Migrating the billing stack",
-    }
-]
-
-
 def submit_body(**overrides: Any) -> dict[str, Any]:
     return {
-        "name": "Test User",
         "profession": "Lawyer",
+        "needs": ["inbox", "briefings"],
         "timezone": "UTC",
-        "focus": "close the Q3 deals",
         **overrides,
     }
 
@@ -632,9 +615,7 @@ class TestSubmittingTheFormIsCompletion:
         response = await complete_submit(client)
 
         assert response.status_code == 200
-        assert (
-            users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
-        )
+        assert users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.COMPLETED.value
 
     async def test_no_job_is_queued_and_nothing_is_seeded(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
@@ -650,22 +631,14 @@ class TestSubmittingTheFormIsCompletion:
     async def test_the_submitted_choices_are_persisted(
         self, client: AsyncClient, users: _UserStore
     ):
-        """Everything the form collects has to survive the write: the Gmail
-        pipeline reads focus, profession and clarify answers back off the
-        document whenever it eventually runs, and nothing re-asks the user."""
-        response = await complete_submit(
-            client,
-            selected_integrations=["slack", "slack", "notion"],
-            timezone="Europe/London",
-            clarify_answers=CLARIFY_ANSWERS,
-        )
+        """Both answers have to survive the write: the agent reads profession
+        and needs back off the document, and nothing re-asks the user."""
+        response = await complete_submit(client, timezone="Europe/London")
 
         assert response.status_code == 200
         onboarding = users.onboarding_of(USER_ID)
-        assert onboarding["selected_integrations"] == ["slack", "notion"]
-        assert onboarding["focus"] == "close the Q3 deals"
-        assert onboarding["clarify_answers"] == CLARIFY_ANSWERS
         assert onboarding["preferences"]["profession"] == "Lawyer"
+        assert onboarding["preferences"]["needs"] == ["inbox", "briefings"]
         assert users.docs[USER_ID]["timezone"] == "Europe/London"
 
     async def test_a_replayed_submit_returns_the_stored_user_unchanged(
@@ -676,11 +649,11 @@ class TestSubmittingTheFormIsCompletion:
         and the atomic gate must keep the second one from overwriting anything."""
         await complete_submit(client)
 
-        response = await complete_submit(client, name="Someone Else")
+        response = await complete_submit(client, profession="Doctor")
 
         assert response.status_code == 200
         assert response.json()["user"]["user_id"] == USER_ID
-        assert response.json()["user"]["name"] == "Test User"
+        assert response.json()["user"]["onboarding"]["preferences"]["profession"] == "Lawyer"
         assert await queued_job_names(arq_pool) == []
 
     async def test_the_status_endpoint_reports_the_user_as_onboarded(self, client: AsyncClient):
@@ -689,7 +662,7 @@ class TestSubmittingTheFormIsCompletion:
         body = (await client.get(STATUS)).json()
 
         assert body["completed"] is True
-        assert body["phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE.value
+        assert body["phase"] == OnboardingPhase.COMPLETED.value
 
     async def test_an_unknown_user_is_a_404_not_a_500(self, client: AsyncClient, users: _UserStore):
         users.docs.clear()
@@ -758,7 +731,7 @@ class TestConnectingGmailEarnsThePersonalization:
         prompt = externals.llm_prompts["holo_card"]
         assert TRIAGE_SUMMARY in prompt
         assert STYLE_SUMMARY in prompt
-        assert "close the Q3 deals" in prompt
+        assert "Lawyer" in prompt  # the profession answer reaches the card prompt
 
     async def test_the_user_is_handed_the_card_in_a_seeded_conversation(
         self, externals: _Externals

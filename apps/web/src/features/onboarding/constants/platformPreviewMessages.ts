@@ -1,6 +1,6 @@
 /**
  * Profession-keyed message scripts for the platform preview shown in the
- * `platforms` onboarding stage. The 20 profession enum values are grouped
+ * `platformPick` onboarding stage. The profession enum values are grouped
  * into 5 archetypes; each archetype owns three scripts (one per platform)
  * that demonstrate the three things the copy promises: morning briefings,
  * urgent email flags, and workflow-finished pings.
@@ -24,31 +24,32 @@ export type {
 } from "./platformPreviewMessages.types";
 
 const PROFESSION_TO_ARCHETYPE: Record<string, ProfessionArchetype> = {
-  engineer: "builder",
-  developer: "builder",
-  designer: "builder",
+  engineering: "builder",
+  product: "builder",
 
-  manager: "operator",
-  consultant: "operator",
-  analyst: "operator",
-  accountant: "operator",
+  executive: "operator",
   sales: "operator",
   marketing: "operator",
+  finance: "operator",
 
-  entrepreneur: "founder",
-  freelancer: "founder",
+  founder: "founder",
 
   student: "scholar",
-  teacher: "scholar",
-  researcher: "scholar",
-  doctor: "scholar",
-  lawyer: "scholar",
-  writer: "scholar",
 
-  artist: "default",
-  retired: "default",
+  creative: "default",
   other: "default",
 };
+
+const PREVIEW_PLATFORMS: ReadonlySet<string> = new Set<PlatformPreviewPlatform>(
+  ["telegram", "whatsapp", "slack", "discord"],
+);
+
+/** Whether a platform has a preview script — iMessage does not. */
+export function isPreviewPlatform(
+  platform: string,
+): platform is PlatformPreviewPlatform {
+  return PREVIEW_PLATFORMS.has(platform);
+}
 
 export function getArchetype(
   profession: string | undefined,

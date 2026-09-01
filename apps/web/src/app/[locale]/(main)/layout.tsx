@@ -15,16 +15,11 @@ import { useBackgroundSync } from "@/hooks/useBackgroundSync";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { useChatStoreSync } from "@/stores/chatStore";
-import { useHoloCardModalStore } from "@/stores/holoCardModalStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
 
 export const dynamic = "force-dynamic";
 
-const HoloCardModal = nextDynamic(
-  () => import("@/features/onboarding/components/HoloCardModal"),
-  { ssr: false },
-);
 const GlobalPricingModal = nextDynamic(
   () =>
     import("@/features/pricing/components/GlobalPricingModal").then((m) => ({
@@ -71,9 +66,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   const [defaultOpen, setDefaultOpen] = useState(true);
   const dragRef = useRef<HTMLDivElement>(null);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
-  const { open: isHoloCardModalOpen, closeModal: closeHoloCardModal } =
-    useHoloCardModalStore();
-
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
@@ -177,12 +169,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           <CommandMenu
             open={commandMenuOpen}
             onOpenChange={setCommandMenuOpen}
-          />
-
-          {/* Onboarding Components */}
-          <HoloCardModal
-            isOpen={isHoloCardModalOpen}
-            onClose={closeHoloCardModal}
           />
         </SidebarProvider>
       </TooltipProvider>

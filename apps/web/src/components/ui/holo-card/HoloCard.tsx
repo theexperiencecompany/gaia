@@ -3,7 +3,7 @@ import { useId, useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
 
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
-import { getHouseImage } from "@/features/onboarding/constants/houses";
+import { getHouseImage } from "@/components/ui/holo-card/houses";
 
 import { BackCardContent, BackCardFooter } from "./BackCardContent";
 import { CardOverlay } from "./CardOverlay";
