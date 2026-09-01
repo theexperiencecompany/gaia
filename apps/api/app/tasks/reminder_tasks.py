@@ -62,14 +62,19 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
     into the conversation thread. Best-effort — never fails the reminder."""
     if not isinstance(reminder.payload, StaticReminderPayload) or not reminder.id:
         return
-    user = cast(AuthenticatedUser, await get_user_by_id(reminder.user_id) or {})
-    if not user.get("user_id") and not user.get("_id"):
+    user_data = await get_user_by_id(reminder.user_id)
+    if not user_data:
         log.warning(
             "Reminder platform delivery skipped: user not found",
             reminder_id=reminder.id,
             user_id=reminder.user_id,
         )
         return
+    # get_user_by_id returns the raw Mongo doc keyed by _id; downstream delivery
+    # (update_messages ownership, session keying) reads user_id, so stamp it —
+    # the same normalization the tracked-todo worker does.
+    user_data["user_id"] = reminder.user_id
+    user = cast(AuthenticatedUser, user_data)
     title = reminder.payload.title
     origin = f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
     await deliver_result_to_platforms(
