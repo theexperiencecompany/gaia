@@ -1,8 +1,9 @@
 import asyncio
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 import math
+import time
 from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -10,6 +11,7 @@ from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import AIMessage
 from langchain_core.outputs import LLMResult
 from langchain_core.runnables import (
     Runnable,
@@ -60,15 +62,21 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
+    LLMCallContext,
     TokenUsage,
+    extract_finish_reason,
     extract_message_cost,
+    extract_message_provider,
+    record_failed_llm_call,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import log
 
@@ -746,6 +754,53 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
     return f"{session_id}{AUX_SESSION_SUFFIX}" if auxiliary else str(session_id)
 
 
+def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shape
+    """The model id this runnable was going to ask for, or ``UNKNOWN_MODEL_NAME``.
+
+    A failed call has no reply to read the served model off, so the ledger's
+    ``model_requested`` is all there is. Read defensively: the bound runnable is
+    a chat model on the graph lane but a ``with_structured_output`` wrapper on
+    the auxiliary one, and neither shape is guaranteed to expose the name.
+    """
+    for attribute in ("model_name", "model"):
+        value = getattr(runnable, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return UNKNOWN_MODEL_NAME
+
+
+def _invoke_context(
+    config: RunnableConfig | None,
+    label: str,
+    *,
+    background: bool,
+    duration_ms: float | None,
+) -> LLMCallContext:
+    """The ledger identity of a call made through this seam.
+
+    Shared by the auxiliary success path and the failure path so a call that
+    fails is described the same way as one that succeeds — otherwise error rows
+    and ok rows could not be compared on the dimensions that matter (which
+    conversation, which surface, which workflow).
+    """
+    configurable = agent_configurable(config)
+    conversation_id = configurable.get("conversation_id")
+    thread_id = configurable.get("thread_id")
+    workflow_id = configurable.get("workflow_id")
+    return LLMCallContext(
+        agent_name=label,
+        background=background,
+        # Nothing reached the budget: the auxiliary route never charges, and a
+        # failed call has no spend to charge.
+        charge_to_budget=False,
+        conversation_id=str(conversation_id) if conversation_id else None,
+        thread_id=str(thread_id) if thread_id else None,
+        workflow_id=str(workflow_id) if workflow_id else None,
+        channel=resolve_channel(configurable, background=background),
+        duration_ms=duration_ms,
+    )
+
+
 @dataclass(frozen=True)
 class LLMInvokeOptions:
     """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
@@ -851,35 +906,60 @@ async def ainvoke_llm(
     usage_handler = UsageMetadataCallbackHandler() if opts.meter_auxiliary else None
     generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
+    # Wall time of the whole provider interaction — retries, backoff sleeps and
+    # the fallback attempt included, because that is what the caller waited for.
+    # Started before the timeout scope so a call killed by the ceiling still
+    # reports how long it burned rather than nothing at all.
+    invoke_start = time.monotonic()
     try:
-        async with asyncio.timeout(opts.timeout):
-            try:
-                return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
-                    messages,
-                    config=_with_usage_handler(
-                        _with_usage_handler(config, usage_handler), generation_handler
-                    ),
-                )
-            except LLM_FALLBACK_EXCEPTIONS as primary_error:
-                # The fallback runs under ``fallback_config`` when given. Reusing
-                # ``config`` here is what made provider failover a no-op: LangChain
-                # merges a passed config OVER a ``with_config`` one, so the run's
-                # own configurable put the just-failed provider straight back.
-                return _stamp_fallback(
-                    await _resolve_fallback(
-                        fallback,
-                        label,
-                        primary_error,
-                        session_id=opts.sticky_session_id
-                        or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
-                    ).ainvoke(
+        try:
+            async with asyncio.timeout(opts.timeout):
+                try:
+                    return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                         messages,
                         config=_with_usage_handler(
-                            _with_usage_handler(opts.fallback_config or config, usage_handler),
-                            generation_handler,
+                            _with_usage_handler(config, usage_handler), generation_handler
                         ),
                     )
-                )
+                except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                    # The fallback runs under ``fallback_config`` when given. Reusing
+                    # ``config`` here is what made provider failover a no-op: LangChain
+                    # merges a passed config OVER a ``with_config`` one, so the run's
+                    # own configurable put the just-failed provider straight back.
+                    return _stamp_fallback(
+                        await _resolve_fallback(
+                            fallback,
+                            label,
+                            primary_error,
+                            session_id=opts.sticky_session_id
+                            or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
+                        ).ainvoke(
+                            messages,
+                            config=_with_usage_handler(
+                                _with_usage_handler(opts.fallback_config or config, usage_handler),
+                                generation_handler,
+                            ),
+                        )
+                    )
+        except Exception as call_error:
+            # One row per failed CALL: the retry wrapper and the fallback have both
+            # been spent by the time the exception reaches here, so this counts
+            # outages rather than attempts. ``except Exception`` deliberately does
+            # not catch ``CancelledError`` (a BaseException) — a caller hanging up
+            # is not the provider failing, and recording it would inflate the error
+            # rate with our own cancellations.
+            await record_failed_llm_call(
+                user_id=str(user_id) if user_id else None,
+                model_name=_requested_model(primary),
+                error=call_error,
+                context=_invoke_context(
+                    config,
+                    label,
+                    background=opts.meter_auxiliary,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
+            )
+            raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
@@ -888,8 +968,13 @@ async def ainvoke_llm(
                 usage_handler,
                 label,
                 str(user_id) if user_id else None,
-                generation_id=generation_handler.generation_id if generation_handler else None,
-                provider_cost=generation_handler.cost if generation_handler else None,
+                context=_invoke_context(
+                    config,
+                    label,
+                    background=True,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
+                facts=(generation_handler.facts if generation_handler else ResponseFacts()),
             )
 
 
@@ -995,6 +1080,21 @@ def _reported_cost(response: LLMResult) -> float | None:
     return None
 
 
+@dataclass(frozen=True)
+class ResponseFacts:
+    """What the provider's reply says about ITSELF, captured in one place.
+
+    Grouped rather than passed as four parallel keywords because they are read
+    from one object and describe one call — and because passing them separately
+    is precisely how three of them went missing one at a time.
+    """
+
+    generation_id: str | None = None
+    provider: str | None = None
+    finish_reason: str | None = None
+    cost: float | None = None
+
+
 class _GenerationIdCallback(BaseCallbackHandler):
     """Captures the upstream generation id for auxiliary calls.
 
@@ -1008,9 +1108,21 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
+        self.provider: str | None = None
+        self.finish_reason: str | None = None
         self._attempts = 0
         self._priced_attempts = 0
         self._cost_total = 0.0
+
+    @property
+    def facts(self) -> ResponseFacts:
+        """Everything captured off the reply, as one value for the metering seam."""
+        return ResponseFacts(
+            generation_id=self.generation_id,
+            provider=self.provider,
+            finish_reason=self.finish_reason,
+            cost=self.cost,
+        )
 
     @property
     def cost(self) -> float | None:
@@ -1043,16 +1155,54 @@ class _GenerationIdCallback(BaseCallbackHandler):
         if reported is not None:
             self._priced_attempts += 1
             self._cost_total += reported
-        llm_output = getattr(response, "llm_output", None) or {}
+        self._read_response_facts(response)
+        llm_output = response.llm_output or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
             return
-        for generations in getattr(response, "generations", None) or []:
+        for generations in response.generations or []:
             for generation in generations:
                 info = getattr(generation, "generation_info", None) or {}
                 if info.get("id"):
                     self.generation_id = str(info["id"])
                     return
+
+    def _read_response_facts(self, response: LLMResult) -> None:
+        """Capture what the reply says about ITSELF: the upstream and the finish.
+
+        Read here rather than at the metering seam because this callback holds
+        the only thing that carries them on this route — the auxiliary lane
+        returns a parsed schema, not the ``AIMessage``, so
+        ``extract_message_provider`` has nothing to read and the fields arrived
+        empty. Three separate fields have now been lost at this seam for that
+        same reason (the cost, the generation id, and the upstream), so the
+        whole reply is read once instead of a field at a time.
+
+        Last non-empty attempt wins: on a retry or a fallback the LAST attempt
+        is the one that produced the answer the caller received, so it is the
+        one whose upstream and finish describe the result.
+        """
+        for generations in response.generations or []:
+            for generation in generations:
+                # A plain ``Generation`` (completion models) carries no message;
+                # only a ``ChatGeneration`` does, and only that can name an
+                # upstream. Keep scanning rather than stopping — a run can mix
+                # them, and the one that matters may not be first.
+                message = getattr(generation, "message", None)
+                if isinstance(message, AIMessage):
+                    provider = extract_message_provider(message)
+                    if provider:
+                        self.provider = provider
+                    finish_reason = extract_finish_reason(message)
+                    if finish_reason:
+                        self.finish_reason = finish_reason
+                # ``generation_info`` is where the NON-streaming path leaves the
+                # finish reason — it never reaches the message (see
+                # ``extract_finish_reason``), so it is read straight off the
+                # result and wins, being the more specific source.
+                info = generation.generation_info or {}
+                if info.get("finish_reason"):
+                    self.finish_reason = str(info["finish_reason"])
 
 
 def _with_usage_handler(
@@ -1082,8 +1232,8 @@ async def _record_auxiliary_usage(
     label: str,
     user_id: str | None,
     *,
-    generation_id: str | None = None,
-    provider_cost: float | None = None,
+    context: LLMCallContext,
+    facts: ResponseFacts,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1103,11 +1253,17 @@ async def _record_auxiliary_usage(
     fully measurable and splittable from in-turn agent spend.
     """
     # The handler aggregates per model, so a call that fanned out across models
-    # cannot attribute one price to one of them; only the single-model case
-    # (every real auxiliary call) takes the reported figure, and the rest fall
-    # back to the table. Resolved ONCE, here, so what gets booked and what
-    # ``cost_source`` claims can never disagree.
-    booked_cost = provider_cost if len(handler.usage_metadata) == 1 else None
+    # cannot attribute one price OR one generation to any single one of them;
+    # only the single-model case (every real auxiliary call) takes the reported
+    # figures, and the rest fall back to the table and to no id. Resolved ONCE,
+    # here, so what gets booked, what ``cost_source`` claims and what the ledger
+    # names as the serving generation can never disagree with each other.
+    attributable = len(handler.usage_metadata) == 1
+    booked_cost = facts.cost if attributable else None
+    booked_generation_id = facts.generation_id if attributable else None
+    # Same rule for the upstream: a fan-out cannot say which model any one
+    # provider served, and naming the wrong one is worse than naming none.
+    booked_provider = facts.provider if attributable else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1134,8 +1290,25 @@ async def _record_auxiliary_usage(
                 cached_tokens=cached_tokens,
                 reasoning_tokens=reasoning_tokens,
             ),
-            charge_to_budget=False,
             provider_cost=booked_cost,
+            # The handler keys its usage by the model that answered, and that
+            # is the same string being priced — requested and served are one
+            # value on this route, not two. ``provider`` stays None: the raw
+            # response never reaches here (the handler aggregates counts only),
+            # so the upstream name is not recoverable and must not be guessed.
+            #
+            # ``generation_id`` has to be stamped HERE and not only on the log
+            # line below: the ledger is the durable record, and a row without it
+            # cannot be audited against OpenRouter's generation endpoint at all.
+            # Every auxiliary row shipped with a null id while its own log line
+            # carried one, because this was the seam that dropped it.
+            context=replace(
+                context,
+                model_served=model_name,
+                generation_id=booked_generation_id,
+                provider=booked_provider,
+                finish_reason=facts.finish_reason,
+            ),
         )
         log.info(
             "llm_call",
@@ -1148,7 +1321,9 @@ async def _record_auxiliary_usage(
             cost_source="provider" if booked_cost is not None else "table",
             agent_name=label,
             model=model_name,
-            generation_id=generation_id,
+            # The attributed id, not the merely-captured one, so the event and
+            # the ledger row for this call always name the same generation.
+            generation_id=booked_generation_id,
             user_id=user_id,
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,

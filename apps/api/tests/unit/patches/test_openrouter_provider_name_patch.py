@@ -310,7 +310,7 @@ def _gen_chunk(message: Any) -> ChatGenerationChunk:
     return ChatGenerationChunk(message=message)
 
 
-class TestKeepFirstProviderName:
+class TestKeepFirstResponseKey:
     """The per-stream de-duplicator, exercised directly.
 
     Its branches are unreachable through a scripted wire — every chunk a real
@@ -321,26 +321,78 @@ class TestKeepFirstProviderName:
         chunk = _gen_chunk(
             AIMessageChunk(content="", response_metadata={PROVIDER_NAME_METADATA_KEY: UPSTREAM})
         )
-        assert _patch._keep_first_provider_name(chunk, 0) == 1
+        assert _patch._keep_first_response_key(chunk, PROVIDER_NAME_METADATA_KEY, 0) == 1
         assert chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY] == UPSTREAM
 
     def test_a_later_stamped_chunk_is_stripped_and_does_not_count(self) -> None:
         chunk = _gen_chunk(
             AIMessageChunk(content="", response_metadata={PROVIDER_NAME_METADATA_KEY: UPSTREAM})
         )
-        assert _patch._keep_first_provider_name(chunk, 1) == 0
+        assert _patch._keep_first_response_key(chunk, PROVIDER_NAME_METADATA_KEY, 1) == 0
         assert PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata
 
     def test_an_unstamped_chunk_does_not_count(self) -> None:
         """Counting it would strip the name off the first chunk that does carry it."""
         chunk = _gen_chunk(AIMessageChunk(content="hi"))
-        assert _patch._keep_first_provider_name(chunk, 0) == 0
+        assert _patch._keep_first_response_key(chunk, PROVIDER_NAME_METADATA_KEY, 0) == 0
 
     def test_a_non_ai_chunk_does_not_count(self) -> None:
         from langchain_core.messages import ToolMessageChunk
 
         chunk = _gen_chunk(ToolMessageChunk(content="x", tool_call_id="t1"))
-        assert _patch._keep_first_provider_name(chunk, 0) == 0
+        assert _patch._keep_first_response_key(chunk, PROVIDER_NAME_METADATA_KEY, 0) == 0
+
+
+class TestFinishReasonIsNotDoubled:
+    """``finish_reason`` hits the same merge_dicts trap as the provider name.
+
+    Observed live: 8 ledger rows stored ``"stopstop"`` and 3 stored
+    ``"tool_callstool_calls"``, because a streamed answer carries more than one
+    finish event (one closing the reasoning block, one closing the content) and
+    ``merge_dicts`` concatenates equal strings. A doubled value means a query
+    for ``length`` can never match, which is the entire reason the field exists
+    — a truncation alarm that can never fire.
+    """
+
+    def test_a_second_finish_chunk_is_stripped(self) -> None:
+        chunk = _gen_chunk(AIMessageChunk(content="", response_metadata={"finish_reason": "stop"}))
+
+        assert _patch._keep_first_response_key(chunk, "finish_reason", 1) == 0
+        assert "finish_reason" not in chunk.message.response_metadata
+
+    def test_a_key_present_only_in_generation_info_is_stripped_safely(self) -> None:
+        """``finish_reason`` lives in generation_info and is only mirrored onto
+        response_metadata by the streaming builder — so a later chunk can carry
+        it in one place and not the other. Popping without a default would raise
+        on exactly that chunk and kill the stream."""
+        chunk = ChatGenerationChunk(
+            message=AIMessageChunk(content=""), generation_info={"finish_reason": "stop"}
+        )
+
+        assert _patch._keep_first_response_key(chunk, "finish_reason", 1) == 0
+        assert chunk.generation_info == {}
+
+    def test_the_first_finish_chunk_is_kept(self) -> None:
+        chunk = _gen_chunk(AIMessageChunk(content="", response_metadata={"finish_reason": "stop"}))
+
+        assert _patch._keep_first_response_key(chunk, "finish_reason", 0) == 1
+        assert chunk.message.response_metadata["finish_reason"] == "stop"
+
+    def test_a_two_finish_chunk_stream_merges_to_one_value(self) -> None:
+        """The end-to-end shape of the live defect: a reasoning finish followed
+        by a content finish must merge to ``"stop"``, never ``"stopstop"``."""
+        turn = [
+            _sse(_chunk("he", provider=UPSTREAM)),
+            _sse(_chunk("ll", provider=UPSTREAM, finish="stop")),
+            _sse(_chunk("o", provider=UPSTREAM, finish="stop")),
+        ]
+        with _ScriptedWire(turn) as wire:
+            merged = None
+            for chunk in _client(wire.base_url).stream("hi"):
+                merged = chunk if merged is None else merged + chunk
+
+        assert merged is not None
+        assert merged.response_metadata["finish_reason"] == "stop"
 
 
 class TestStreaming:

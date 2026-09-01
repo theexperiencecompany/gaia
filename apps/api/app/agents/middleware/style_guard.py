@@ -54,9 +54,15 @@ from app.models.agent_models import AgentConfigurable, agent_configurable, curre
 from app.models.stream_events import MessageBoundaryPayload
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.llm_metering import (
+    LLMCallContext,
+    extract_finish_reason,
+    extract_generation_id,
     extract_message_cost,
+    extract_message_model,
+    extract_message_provider,
     extract_message_usage,
     record_llm_call,
+    resolve_channel,
 )
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -206,13 +212,37 @@ class StyleGuardMiddleware(AgentMiddleware):
         usage = extract_message_usage(draft)
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
+        thread_id = configurable.get("thread_id")
+        workflow_id = configurable.get("workflow_id")
         return await record_llm_call(
             user_id=str(user_id) if user_id else None,
             model_name=(lane.model if lane else None) or UNKNOWN_MODEL_NAME,
             usage=usage,
             root_request_id=str(root_request_id) if root_request_id else None,
-            charge_to_budget=True,
             provider_cost=extract_message_cost(draft),
+            context=LLMCallContext(
+                agent_name="comms_agent",
+                # The user asked for this turn; they just never saw this draft
+                # of it. Charged, and not background — same as any comms call.
+                background=False,
+                charge_to_budget=True,
+                model_served=extract_message_model(draft),
+                provider=extract_message_provider(draft),
+                generation_id=extract_generation_id(draft),
+                conversation_id=(
+                    str(configurable["conversation_id"])
+                    if configurable.get("conversation_id")
+                    else None
+                ),
+                thread_id=str(thread_id) if thread_id else None,
+                workflow_id=str(workflow_id) if workflow_id else None,
+                channel=resolve_channel(configurable),
+                finish_reason=extract_finish_reason(draft),
+                # ``duration_ms`` is left at its default: the draft was produced
+                # by the wrapped model call that accounting timed, and this seam
+                # only sees the finished message — there is no second latency to
+                # report and none is invented.
+            ),
         )
 
     def _retract(self, message_id: str) -> None:

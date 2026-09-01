@@ -59,10 +59,15 @@ from app.services.cost_budget import (
     is_budget_wrapup_threshold,
 )
 from app.services.llm_metering import (
+    LLMCallContext,
+    extract_finish_reason,
     extract_generation_id,
     extract_message_cost,
+    extract_message_model,
+    extract_message_provider,
     extract_message_usage,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import ModelContext, log
 
@@ -111,6 +116,12 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         self._hwm_emitted: set[str] = set()
         self._budget_wrapup_emitted: set[str] = set()
         self._start_ts: dict[str, float] = {}
+        # Wall time of the last provider call on each thread, measured around
+        # the invocation itself in ``awrap_model_call``. ``_start_ts`` cannot
+        # stand in: it spans before_model -> after_model, so it also carries
+        # every other middleware in the stack. Consumed (popped) by the
+        # ``aafter_model`` that meters that same call.
+        self._invoke_ms: dict[str, float] = {}
 
     # --- helpers ---------------------------------------------------------
 
@@ -257,7 +268,15 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 messages=[*request.messages, HumanMessage(content=BUDGET_WRAPUP_NOTICE)]
             )
 
-        return await handler(request)
+        # The one seam that can see the provider call start and finish, so it
+        # is the only place a real latency number exists. Measured across the
+        # retry/fallback chain the handler owns, i.e. what the turn actually
+        # waited for, and stashed for the ``aafter_model`` that meters it.
+        invoke_start = time.monotonic()
+        try:
+            return await handler(request)
+        finally:
+            self._invoke_ms[thread_id] = round((time.monotonic() - invoke_start) * 1000, 2)
 
     async def aafter_model(
         self,
@@ -309,13 +328,37 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # The provider's own price when it reported one; the pricing table only
         # when it did not (direct Gemini, the sim lane).
         provider_cost = extract_message_cost(ai_msg)
+        generation_id = extract_generation_id(ai_msg)
+        workflow_id = configurable.get("workflow_id")
         total_cost = await record_llm_call(
             user_id=str(user_id) if user_id else None,
             model_name=str(model_name),
             usage=usage,
             root_request_id=str(root_request_id) if root_request_id else None,
-            charge_to_budget=True,
             provider_cost=provider_cost,
+            context=LLMCallContext(
+                agent_name=self.agent_name,
+                background=False,
+                charge_to_budget=True,
+                model_served=extract_message_model(ai_msg),
+                provider=extract_message_provider(ai_msg),
+                generation_id=generation_id,
+                # The TRUE conversation id, which for a child agent is NOT the
+                # checkpoint thread (that one is ``executor_<conv>``). Both are
+                # passed so the ledger can carry each in its own field.
+                conversation_id=(
+                    str(configurable["conversation_id"])
+                    if configurable.get("conversation_id")
+                    else None
+                ),
+                thread_id=thread_id,
+                workflow_id=str(workflow_id) if workflow_id else None,
+                # The surface the turn came from — inherited by executor and
+                # subagent runs, so a child call reports its root's channel.
+                channel=resolve_channel(configurable),
+                duration_ms=self._invoke_ms.pop(thread_id, None),
+                finish_reason=extract_finish_reason(ai_msg),
+            ),
         )
 
         step_index = self._next_step(thread_id)
@@ -383,7 +426,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             # different upstream that holds no warm prefix, or did the prefix
             # break? This id resolves to the serving provider through
             # OpenRouter's generation-metadata endpoint, spending no model call.
-            generation_id=extract_generation_id(ai_msg),
+            generation_id=generation_id,
         )
 
         # Recursion high-water-mark — emitted once per thread when the run

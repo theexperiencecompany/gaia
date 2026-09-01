@@ -107,6 +107,12 @@ async def run_executor_background(
         conversation_id=run.conversation_id,
         stream_id=run.stream_id,
         task_id=run.task_id,
+        # The surface the turn came from, carried on the boundary so auxiliary
+        # calls made INSIDE this run can still name it. They are handed a bare
+        # config, so without this a user's web turn is metered as ``system`` —
+        # and executor turns are the expensive ones, so the under-count lands
+        # exactly where COGS-by-channel matters most.
+        conversation_source=configurable.get("conversation_source"),
     ):
         result_text = ""
         result_type = "final"

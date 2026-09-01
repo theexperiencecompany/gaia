@@ -12,6 +12,7 @@ Covers:
 """
 
 import asyncio
+from dataclasses import replace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, NonCallableMagicMock, patch
 
@@ -36,6 +37,7 @@ from app.agents.llm.client import (
     PROVIDER_MODELS,
     PROVIDER_PRIORITY,
     LLMInvokeOptions,
+    ResponseFacts,
     StructuredCallOptions,
     _build_default_llm,
     _create_configurable_llm,
@@ -45,7 +47,9 @@ from app.agents.llm.client import (
     _openrouter_wire_configurables,
     _record_auxiliary_usage,
     _reported_cost,
+    _requested_model,
     _stamp_fallback,
+    _with_usage_handler,
     ainvoke_llm,
     ainvoke_structured,
     ainvoke_structured_gemini,
@@ -66,14 +70,26 @@ from app.constants.llm import (
     OPENROUTER_DEV_APP_TITLE,
     OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
+    PROVIDER_NAME_METADATA_KEY,
+    UNKNOWN_MODEL_NAME,
 )
 from app.core.lazy_loader import ProviderRegistry
+from app.services.llm_metering import LLMCallContext
 from shared.py.wide_events import log
 from tests.helpers import create_fake_llm
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# The identity every auxiliary one-shot now states about itself. These tests are
+# about what gets BOOKED, not about the ledger row, so they share one minimal
+# context; the row it produces is covered in test_llm_metering_ledger.py.
+_CLIENT = "app.agents.llm.client"
+
+_AUX_CONTEXT = LLMCallContext(
+    agent_name="memory_extraction", background=True, charge_to_budget=False
+)
 
 
 def _make_fake_provider(name: str = "fake") -> MagicMock:
@@ -825,6 +841,73 @@ class TestAinvokeLlm:
         )
         assert "callbacks" not in primary.ainvoke.call_args.kwargs["config"]
 
+    async def test_an_auxiliary_call_is_metered_with_the_runs_own_context(self) -> None:
+        """The ledger row for a one-shot helper has to name the conversation it
+        ran for. Auxiliary spend used to be attributable to nothing but a label,
+        which is how "what did this turn actually cost" stayed unanswerable —
+        the helper's spend sat in a bucket with no link back to the turn."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+        config = RunnableConfig(
+            configurable={
+                "user_id": "u1",
+                "conversation_id": "conv-1",
+                "thread_id": "executor_conv-1",
+                "workflow_id": "wf-1",
+            }
+        )
+
+        with patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record:
+            await ainvoke_llm(
+                primary, [HumanMessage(content="hi")], config=config, label="memory_extraction"
+            )
+
+        context = record.await_args.kwargs["context"]
+        assert context.agent_name == "memory_extraction"
+        # Never the user's allowance: a memory save is work GAIA chose to do.
+        assert context.background is True
+        assert context.charge_to_budget is False
+        assert context.conversation_id == "conv-1"
+        assert context.thread_id == "executor_conv-1"
+        assert context.workflow_id == "wf-1"
+
+    async def test_an_auxiliary_calls_wall_time_is_reported_in_milliseconds(self) -> None:
+        """Measured around the whole retry/fallback chain, because that is what
+        the caller waited for. The clock is pinned rather than slept against: a
+        real elapsed time cannot tell a millisecond from a second-scaled one
+        within its own noise, and 50.1234 ms survives rounding to 2dp so a
+        different scale, offset or precision is visible."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+        clock = iter([100.0])
+
+        def _monotonic() -> float:
+            # First read is the start; every later read is the finish, so an
+            # extra clock read inside the retry wrapper cannot shift the result.
+            return next(clock, 100.0501234)
+
+        with (
+            patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record,
+            patch.object(client_module.time, "monotonic", _monotonic),
+        ):
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+
+        assert record.await_args.kwargs["context"].duration_ms == 50.12
+
+    async def test_an_auxiliary_call_with_a_bare_config_attributes_nothing_it_lacks(self) -> None:
+        """Most one-shots run outside any conversation. Their ledger rows say so
+        rather than inheriting whichever ids happened to be around."""
+        primary = self._runnable(result=AIMessage(content="ok"))
+
+        with patch(f"{_CLIENT}._record_auxiliary_usage", new_callable=AsyncMock) as record:
+            await ainvoke_llm(primary, [HumanMessage(content="hi")], config=RunnableConfig())
+
+        context = record.await_args.kwargs["context"]
+        assert context.conversation_id is None
+        assert context.thread_id is None
+        assert context.workflow_id is None
+        # Background work nobody typed a message for: "system", per the rule.
+        # It used to come out null, which is neither answer the rule promises.
+        assert context.channel == "system"
+
 
 class TestOneInvocationPerCall:
     """``ainvoke_llm`` sends a graph call to the provider EXACTLY once, however
@@ -1359,7 +1442,11 @@ class TestRecordAuxiliaryUsage:
             patch("app.agents.llm.client.log") as mock_log,
         ):
             await _record_auxiliary_usage(
-                handler, "follow_up_actions", "user-1", generation_id="gen-abc123"
+                handler,
+                "follow_up_actions",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(generation_id="gen-abc123"),
             )
 
         assert mock_log.info.call_args.kwargs["generation_id"] == "gen-abc123"
@@ -1405,10 +1492,10 @@ class TestRecordAuxiliaryUsage:
             patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
             patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()) as rec,
         ):
-            cb_cls.return_value.generation_id = "gen-wired"
+            cb_cls.return_value.facts = ResponseFacts(generation_id="gen-wired")
             await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
 
-        assert rec.await_args.kwargs["generation_id"] == "gen-wired"
+        assert rec.await_args.kwargs["facts"].generation_id == "gen-wired"
 
     async def test_the_fallback_call_carries_the_generation_handler_too(self) -> None:
         """A fallback that drops the handler makes exactly the calls that
@@ -1450,7 +1537,13 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 77
 
@@ -1460,14 +1553,26 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs["usage"]["input_tokens"] == 0
         assert rec.call_args.kwargs["usage"]["output_tokens"] == 20
 
         handler = self._handler(gemini={"input_tokens": 100})
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs["usage"]["input_tokens"] == 100
         assert rec.call_args.kwargs["usage"]["output_tokens"] == 0
@@ -1478,7 +1583,13 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
@@ -1492,7 +1603,13 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs["usage"]["reasoning_tokens"] == 0
 
@@ -1509,7 +1626,13 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         assert rec.call_args.kwargs == {
             "user_id": "user-1",
@@ -1520,16 +1643,25 @@ class TestRecordAuxiliaryUsage:
                 "cached_tokens": 40,
                 "reasoning_tokens": 7,
             },
-            "charge_to_budget": False,
             # This lane reported no price, so metering falls back to the table.
             "provider_cost": None,
+            # The model the handler keyed its usage by is what answered, so the
+            # ledger records it as served; the upstream stays unknown here (the
+            # raw response never reaches this seam) and is never guessed.
+            "context": replace(_AUX_CONTEXT, model_served="gemini"),
         }
 
     async def test_a_call_that_burned_no_tokens_is_not_booked(self) -> None:
         handler = self._handler(gemini={"input_tokens": 0, "output_tokens": 0})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock()) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         rec.assert_not_called()
 
@@ -1546,7 +1678,13 @@ class TestRecordAuxiliaryUsage:
         )
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.1)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", "user-1")
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "user-1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(),
+            )
 
         booked = {
             c.kwargs["model_name"]: c.kwargs["usage"]["reasoning_tokens"]
@@ -1560,7 +1698,9 @@ class TestRecordAuxiliaryUsage:
         handler = self._handler(gemini={"input_tokens": 100, "output_tokens": 20})
 
         with patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.5)) as rec:
-            await _record_auxiliary_usage(handler, "memory_extraction", None)
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", None, context=_AUX_CONTEXT, facts=ResponseFacts()
+            )
 
         assert rec.call_args.kwargs["user_id"] is None
 
@@ -2193,7 +2333,13 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(cost=0.008),
+            )
 
         assert rec.call_args.kwargs["provider_cost"] == 0.008
         assert mock_log.info.call_args.kwargs["cost_source"] == "provider"
@@ -2211,7 +2357,13 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1", provider_cost=0.008)
+            await _record_auxiliary_usage(
+                handler,
+                "memory_extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(cost=0.008),
+            )
 
         assert [c.kwargs["provider_cost"] for c in rec.call_args_list] == [None, None]
         assert {c.kwargs["cost_source"] for c in mock_log.info.call_args_list} == {"table"}
@@ -2223,7 +2375,9 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client.record_llm_call", new=AsyncMock(return_value=0.9)) as rec,
             patch("app.agents.llm.client.log") as mock_log,
         ):
-            await _record_auxiliary_usage(handler, "memory_extraction", "u1")
+            await _record_auxiliary_usage(
+                handler, "memory_extraction", "u1", context=_AUX_CONTEXT, facts=ResponseFacts()
+            )
 
         assert rec.call_args.kwargs["provider_cost"] is None
         assert mock_log.info.call_args.kwargs["cost_source"] == "table"
@@ -2236,7 +2390,411 @@ class TestAuxiliaryCostSource:
             patch("app.agents.llm.client._GenerationIdCallback") as cb_cls,
             patch("app.agents.llm.client._record_auxiliary_usage", new=AsyncMock()) as rec,
         ):
-            cb_cls.return_value.cost = 0.0123
+            cb_cls.return_value.facts = ResponseFacts(cost=0.0123)
             await ainvoke_llm(create_fake_llm(["ok"]), "hi", label="follow_up_actions")
 
-        assert rec.await_args.kwargs["provider_cost"] == 0.0123
+        assert rec.await_args.kwargs["facts"].cost == 0.0123
+
+
+class TestAuxiliaryGenerationIdAttribution:
+    """Which upstream generation each auxiliary ledger row names.
+
+    ``generation_id`` is the ONLY handle back to the upstream that served a
+    call, and the ledger exists to be spot-audited against OpenRouter's
+    generation-metadata endpoint. A row whose id is missing cannot be audited
+    at all; a row carrying a NEIGHBOUR's id audits clean against a call that
+    was never it, which is worse than carrying nothing. So each row must name
+    its own call's generation or none.
+    """
+
+    @staticmethod
+    def _handler(**usage_by_model: dict[str, Any]) -> UsageMetadataCallbackHandler:
+        handler = UsageMetadataCallbackHandler()
+        handler.usage_metadata = dict(usage_by_model)
+        return handler
+
+    async def test_the_ledger_row_carries_the_generation_id_its_log_line_reports(self) -> None:
+        """Observed live: every auxiliary doc (chatbot, follow_up_actions,
+        memory:extraction, memory:reconcile) had no generation_id while its
+        matching ``llm_call`` log line carried one. The id reached the log and
+        was dropped on the way to the ledger."""
+        handler = self._handler(gemini={"input_tokens": 10, "output_tokens": 2})
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(
+                handler,
+                "memory:extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(generation_id="gen-its-own"),
+            )
+
+        assert rec.call_args.kwargs["context"].generation_id == "gen-its-own"
+
+    async def test_a_fan_out_across_models_attributes_the_generation_id_to_none_of_them(
+        self,
+    ) -> None:
+        """One id cannot name two provider calls. The price already falls back
+        to the table on a fan-out for exactly this reason; stamping the single
+        captured id onto every row would attribute one upstream's generation to
+        a model it never served."""
+        handler = self._handler(
+            gemini={"input_tokens": 10, "output_tokens": 2},
+            deepseek={"input_tokens": 5, "output_tokens": 1},
+        )
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(
+                handler,
+                "memory:extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(generation_id="gen-one-of-them"),
+            )
+
+        assert [call.kwargs["context"].generation_id for call in rec.call_args_list] == [None, None]
+
+    async def test_two_concurrent_auxiliary_calls_each_record_their_own_generation(self) -> None:
+        """The cross-attribution guard. Two one-shots in flight at once — the
+        normal state of a chat turn, where memory extraction, follow-ups and the
+        chatbot lane overlap — must not be able to hand each other's generation
+        ids to the ledger."""
+        seen: dict[str, str | None] = {}
+
+        async def _record(**kwargs: Any) -> float:
+            # Yield mid-flight so the two calls genuinely interleave rather than
+            # running to completion one after the other.
+            await asyncio.sleep(0)
+            seen[kwargs["context"].agent_name] = kwargs["context"].generation_id
+            return 0.0
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(side_effect=_record)):
+            await asyncio.gather(
+                _record_auxiliary_usage(
+                    self._handler(gemini={"input_tokens": 10, "output_tokens": 2}),
+                    "memory:extraction",
+                    "u1",
+                    context=replace(_AUX_CONTEXT, agent_name="memory:extraction"),
+                    facts=ResponseFacts(generation_id="gen-extraction"),
+                ),
+                _record_auxiliary_usage(
+                    self._handler(gemini={"input_tokens": 7, "output_tokens": 3}),
+                    "follow_up_actions",
+                    "u1",
+                    context=replace(_AUX_CONTEXT, agent_name="follow_up_actions"),
+                    facts=ResponseFacts(generation_id="gen-followup"),
+                ),
+            )
+
+        assert seen == {
+            "memory:extraction": "gen-extraction",
+            "follow_up_actions": "gen-followup",
+        }
+
+
+class TestFailedCallsReachTheLedger:
+    """A provider call that never answered is still a fact about the system.
+
+    Without error rows the ledger describes only the calls that worked, so a
+    provider outage reads as a quiet dip in traffic instead of a spike in
+    failures — and the one question you actually want answered during an
+    incident ("what is failing, and how?") has no data behind it.
+    """
+
+    @staticmethod
+    def _runnable(side_effect: Any) -> NonCallableMagicMock:
+        runnable = NonCallableMagicMock()
+        runnable.with_retry = MagicMock(return_value=runnable)
+        runnable.ainvoke = AsyncMock(side_effect=side_effect)
+        return runnable
+
+    async def test_a_failing_call_books_one_error_row_and_still_raises(self) -> None:
+        """One row per CALL, not per attempt: the retry wrapper has already
+        exhausted itself by the time this seam sees the exception, so counting
+        attempts here would multiply every outage by the retry budget. And the
+        caller must still see the error — a ledger row is not a recovery."""
+        primary = self._runnable(TimeoutError("provider never answered"))
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], label="memory:extraction")
+
+        failed.assert_awaited_once()
+        context = failed.await_args.kwargs["context"]
+        assert context.agent_name == "memory:extraction"
+        # A failure is described like a success or the two cannot be compared.
+        assert context.channel == "system"
+        assert context.charge_to_budget is False
+
+    async def test_the_error_row_names_the_surface_and_the_model_it_asked_for(self) -> None:
+        """A failed call has no reply, so the model it INTENDED to use is all the
+        row can name — and without the surface, an outage cannot be told from a
+        single broken client."""
+        primary = self._runnable(TimeoutError("no answer"))
+        primary.model_name = "deepseek/deepseek-v4-flash"
+        config = RunnableConfig(configurable={"user_id": "u1", "conversation_source": "telegram"})
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], config=config)
+
+        assert failed.await_args.kwargs["model_name"] == "deepseek/deepseek-v4-flash"
+        assert failed.await_args.kwargs["context"].channel == "telegram"
+
+    async def test_the_error_row_classifies_the_failure_and_times_it(self) -> None:
+        """``error_family`` is what an operator groups by, and the latency says
+        whether the call died fast or hung — different incidents. The clock is
+        pinned because a real elapsed time cannot tell a millisecond from a
+        second-scaled one within its own noise."""
+        primary = self._runnable(TimeoutError("deadline exceeded"))
+        clock = iter([100.0])
+        config = RunnableConfig(configurable={"user_id": "u-7"})
+
+        with (
+            patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed,
+            patch.object(client_module.time, "monotonic", lambda: next(clock, 100.0501234)),
+        ):
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")], config=config)
+
+        assert isinstance(failed.await_args.kwargs["error"], TimeoutError)
+        # Whose call failed — an error rate with no user cannot be triaged.
+        assert failed.await_args.kwargs["user_id"] == "u-7"
+        assert failed.await_args.kwargs["context"].duration_ms == 50.12
+
+    async def test_a_failure_with_no_user_records_none_rather_than_a_string(self) -> None:
+        """System lanes fail too. ``"None"`` would look like a real user id."""
+        primary = self._runnable(TimeoutError("x"))
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(TimeoutError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        assert failed.await_args.kwargs["user_id"] is None
+
+    async def test_a_cancelled_turn_is_not_recorded_as_a_provider_failure(self) -> None:
+        """The user closing the tab is not the provider failing. Recording it
+        would inflate the error rate with our own callers' cancellations."""
+        primary = self._runnable(asyncio.CancelledError())
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            with pytest.raises(asyncio.CancelledError):
+                await ainvoke_llm(primary, [HumanMessage(content="hi")])
+
+        failed.assert_not_awaited()
+
+    async def test_a_call_the_fallback_rescued_books_no_error_row(self) -> None:
+        """The fallback answering IS the call succeeding. An error row here would
+        double-count a turn that the user received a reply for."""
+        primary = self._runnable(ConnectionError("provider down"))
+        fallback = NonCallableMagicMock()
+        fallback.with_retry = MagicMock(return_value=fallback)
+        fallback.ainvoke = AsyncMock(return_value=AIMessage(content="rescued"))
+        fallback.bind = MagicMock(return_value=fallback)
+
+        with patch(f"{_CLIENT}.record_failed_llm_call", new_callable=AsyncMock) as failed:
+            result = await ainvoke_llm(primary, [HumanMessage(content="hi")], fallback=fallback)
+
+        assert result.content == "rescued"
+        failed.assert_not_awaited()
+
+
+class TestRequestedModel:
+    """What a failed call says it was going to ask for.
+
+    There is no reply to read the served model off, so this is the only model
+    identity an error row can carry — and a row that cannot name its model
+    cannot answer "is one model failing, or all of them".
+    """
+
+    def test_a_chat_model_reports_its_model_name(self) -> None:
+        runnable = NonCallableMagicMock()
+        runnable.model_name = "deepseek/deepseek-v4-flash"
+
+        assert _requested_model(runnable) == "deepseek/deepseek-v4-flash"
+
+    def test_a_runnable_that_only_carries_model_is_still_read(self) -> None:
+        """The auxiliary lane's ``with_structured_output`` wrapper exposes the
+        name under a different attribute than a bare chat model does."""
+        runnable = NonCallableMagicMock(spec=["model"])
+        runnable.model = "gemini-3-pro"
+
+        assert _requested_model(runnable) == "gemini-3-pro"
+
+    def test_a_runnable_that_names_no_model_is_unknown_not_a_crash(self) -> None:
+        """Metering a failure must not itself fail — an unnameable model is
+        recorded as unknown, which is still a row."""
+        assert _requested_model(NonCallableMagicMock(spec=[])) == UNKNOWN_MODEL_NAME
+
+    def test_a_blank_model_name_is_unknown_rather_than_empty(self) -> None:
+        """An empty string would land in the ledger as a real-looking model that
+        groups with nothing."""
+        runnable = NonCallableMagicMock(spec=["model_name"])
+        runnable.model_name = ""
+
+        assert _requested_model(runnable) == UNKNOWN_MODEL_NAME
+
+
+class TestAuxiliaryResponseFacts:
+    """What the auxiliary seam learns from the provider's own reply.
+
+    Three fields have now been lost at this exact seam in turn — the cost, the
+    generation id, and the upstream name — each because the callback captured
+    only what someone needed that week. Live evidence: all 27 calls in a session
+    were served by Baidu and the ledger knew it for 11, because the 16 auxiliary
+    rows had no provider at all. The callback reads the whole reply once so the
+    next field is not a fourth incident.
+    """
+
+    @staticmethod
+    def _llm_result(**metadata: Any) -> LLMResult:
+        message = AIMessage(content="hi", response_metadata=dict(metadata))
+        return LLMResult(generations=cast(Any, [[ChatGeneration(message=message)]]))
+
+    def test_a_callback_that_never_ran_reports_nothing_known(self) -> None:
+        """Every field must start as None, not empty string: the metering seam
+        distinguishes "the provider did not say" from a value, and an empty
+        string would be written to the ledger as a real-looking blank."""
+        facts = _GenerationIdCallback().facts
+
+        assert facts.generation_id is None
+        assert facts.provider is None
+        assert facts.finish_reason is None
+        assert facts.cost is None
+
+    def test_the_upstream_name_is_read_off_the_reply(self) -> None:
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(self._llm_result(**{PROVIDER_NAME_METADATA_KEY: "Baidu"}))
+
+        assert callback.provider == "Baidu"
+
+    def test_the_aggregator_is_still_not_an_upstream(self) -> None:
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(self._llm_result(**{PROVIDER_NAME_METADATA_KEY: "openrouter"}))
+
+        assert callback.provider is None
+
+    def test_a_reply_that_names_no_upstream_reports_none(self) -> None:
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(self._llm_result())
+
+        assert callback.provider is None
+
+    def test_the_finish_reason_is_read_from_generation_info_alone(self) -> None:
+        """The NON-streaming path is the one that matters here: it leaves the
+        finish reason in ``generation_info`` and never copies it onto the
+        message, so reading only the message would report nothing for every
+        auxiliary one-shot — which is all of them on this route."""
+        message = AIMessage(content="hi")
+        generation = ChatGeneration(message=message, generation_info={"finish_reason": "length"})
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(LLMResult(generations=cast(Any, [[generation]])))
+
+        assert callback.finish_reason == "length"
+
+    def test_a_generation_carrying_no_message_does_not_stop_the_scan(self) -> None:
+        """Completion-model generations have no message. Stopping at the first
+        one would skip the chat generation behind it — the only one that can
+        name an upstream."""
+        plain = Generation(text="raw")
+        chat = ChatGeneration(
+            message=AIMessage(content="hi", response_metadata={PROVIDER_NAME_METADATA_KEY: "Baidu"})
+        )
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(LLMResult(generations=cast(Any, [[plain, chat]])))
+
+        assert callback.provider == "Baidu"
+
+    def test_the_finish_reason_is_read_off_the_reply(self) -> None:
+        """The non-streaming path leaves it in generation_info, which never
+        reaches an AIMessage — but the LLMResult this callback receives has it."""
+        callback = _GenerationIdCallback()
+
+        callback.on_llm_end(self._llm_result(finish_reason="length"))
+
+        assert callback.finish_reason == "length"
+
+    async def test_the_auxiliary_ledger_row_records_the_upstream(self) -> None:
+        """End to end through the aux route: the seam that already extracts the
+        cost and the generation id now hands the provider through too."""
+        handler = UsageMetadataCallbackHandler()
+        handler.usage_metadata = {"gemini": {"input_tokens": 10, "output_tokens": 2}}
+
+        with patch(f"{_CLIENT}.record_llm_call", new=AsyncMock(return_value=0.0)) as rec:
+            await _record_auxiliary_usage(
+                handler,
+                "memory:extraction",
+                "u1",
+                context=_AUX_CONTEXT,
+                facts=ResponseFacts(generation_id="gen-1", provider="Baidu", finish_reason="stop"),
+            )
+
+        context = rec.call_args.kwargs["context"]
+        assert context.provider == "Baidu"
+        assert context.finish_reason == "stop"
+
+
+class TestWithUsageHandler:
+    """Attaching the metering handler without disturbing the caller's config.
+
+    Every auxiliary call is metered through the handler this attaches, so a
+    branch that drops it makes that call's spend invisible — and one that
+    mutates the caller's object corrupts a config shared across calls.
+    """
+
+    def test_a_config_with_no_callbacks_gets_the_handler(self) -> None:
+        handler = UsageMetadataCallbackHandler()
+
+        merged = _with_usage_handler(RunnableConfig(), handler)
+
+        assert merged["callbacks"] == [handler]
+
+    def test_an_existing_callback_list_is_appended_to_not_replaced(self) -> None:
+        """Replacing it would silently drop the caller's own callbacks —
+        tracing, streaming — while still metering correctly, so nothing fails."""
+        existing = UsageMetadataCallbackHandler()
+        handler = UsageMetadataCallbackHandler()
+
+        merged = _with_usage_handler(RunnableConfig(callbacks=[existing]), handler)
+
+        assert merged["callbacks"] == [existing, handler]
+
+    def test_the_callers_config_is_never_mutated(self) -> None:
+        """Several callers pass a shared module-level constant; mutating it
+        would attach one call's handler to every later call."""
+        original = RunnableConfig(callbacks=[])
+        handler = UsageMetadataCallbackHandler()
+
+        _with_usage_handler(original, handler)
+
+        assert original["callbacks"] == []
+
+    def test_a_live_manager_is_copied_and_extended(self) -> None:
+        """Graph nodes forward a config whose ``callbacks`` is a live manager,
+        not a list. Adding to the caller's manager in place would leak this
+        call's handler into the rest of the graph run."""
+        manager = MagicMock()
+        copied = MagicMock()
+        manager.copy.return_value = copied
+        handler = UsageMetadataCallbackHandler()
+
+        merged = _with_usage_handler(RunnableConfig(callbacks=manager), handler)
+
+        manager.copy.assert_called_once()
+        copied.add_handler.assert_called_once_with(handler, inherit=True)
+        assert merged["callbacks"] is copied
+
+    def test_no_handler_returns_the_config_untouched(self) -> None:
+        """The graph lane meters itself and passes None — attaching anything
+        here would book every graph call a second time."""
+        config = RunnableConfig(callbacks=[])
+
+        assert _with_usage_handler(config, None) is config
+
+    def test_no_handler_and_no_config_still_yields_a_config(self) -> None:
+        assert _with_usage_handler(None, None) == RunnableConfig()

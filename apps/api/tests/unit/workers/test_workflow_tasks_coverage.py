@@ -78,6 +78,30 @@ async def _run_task(
     return _Run(result, scheduler, user_get, budget, log)
 
 
+class TestLedgerAttribution:
+    """Which run a workflow's model spend is attributed to.
+
+    The execution id exists only inside this task — it never reaches
+    ``config.configurable``, so the ``llm_calls`` ledger reads it off the task's
+    wide event (``llm_metering._ambient_worker_context``). Without the stamp,
+    every model call a workflow makes lands in the ledger with no execution to
+    attribute it to, and "what did this run cost" comes back empty rather than
+    wrong — which is far harder to notice.
+    """
+
+    async def test_the_runs_execution_is_stamped_before_the_agent_makes_any_call(self) -> None:
+        run = await _run_task(
+            _workflow("owner-7"), _user(completed=True), {"trigger_type": "schedule"}
+        )
+
+        stamped = [
+            call.kwargs["workflow"]
+            for call in run.log.set.call_args_list
+            if "workflow" in call.kwargs
+        ]
+        assert {"id": "wf-1", "execution_id": "exec-1"} in stamped
+
+
 class TestSystemRunGuards:
     async def test_onboarding_is_checked_for_the_workflows_owner(self) -> None:
         run = await _run_task(

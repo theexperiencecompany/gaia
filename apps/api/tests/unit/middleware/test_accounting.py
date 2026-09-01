@@ -30,6 +30,7 @@ from app.config.rate_limits import (
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     BUDGET_WRAPUP_REMAINING_FRACTION,
+    PROVIDER_NAME_METADATA_KEY,
     RECURSION_HWM_FRACTION,
 )
 from app.constants.log_tags import LogTag
@@ -127,6 +128,227 @@ def test_latest_ai_message_is_none_without_any_ai_message() -> None:
 def test_latest_ai_message_tolerates_empty_and_none_histories() -> None:
     assert _latest_ai_message([]) is None
     assert _latest_ai_message(cast(Any, None)) is None
+
+
+# --- the ledger row's identity ------------------------------------------------- #
+#
+# The graph lane is where the overwhelming majority of calls are metered, so
+# whatever it fails to state about a call is simply missing from the ledger for
+# most of GAIA's spend. Each field below answers a question that has no other
+# source once the log line has expired.
+
+
+_LEDGER_CONFIG: dict[str, Any] = {
+    "configurable": {
+        # The wrapped child-agent thread — deliberately NOT the conversation id,
+        # which is the whole reason both are carried.
+        "thread_id": "executor_conv-1",
+        "conversation_id": "conv-1",
+        "workflow_id": "wf-1",
+        "root_request_id": "req-1",
+        "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        "user_id": "user-1",
+    }
+}
+
+
+async def _ledger_context(message: AIMessage, config: dict[str, Any] = _LEDGER_CONFIG) -> Any:
+    """Drive one metered call and return the context handed to the ledger."""
+    config_patch, cost_patch, usage_patch = _accounting_env(config)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "record_llm_call", AsyncMock(return_value=0.5)) as record,
+    ):
+        await mw.abefore_model({"messages": []}, None)
+        await mw.aafter_model(_state(message), None)
+    return record.await_args.kwargs["context"]
+
+
+async def test_the_metered_call_states_which_lane_and_whose_budget_it_is() -> None:
+    context = await _ledger_context(_ai())
+
+    assert context.agent_name == "comms_agent"
+    # Graph work is the user's own turn: it is charged, and it is not background.
+    # Flipping either books real spend into the wrong half of every COGS report.
+    assert context.background is False
+    assert context.charge_to_budget is True
+
+
+async def test_the_metered_call_carries_both_the_conversation_and_its_lane_thread() -> None:
+    """A child agent runs on ``executor_<conv>``. Recording only the wrapper
+    splits one turn across two ids; recording only the conversation loses which
+    lane spent the money."""
+    context = await _ledger_context(_ai())
+
+    assert context.conversation_id == "conv-1"
+    assert context.thread_id == "executor_conv-1"
+
+
+async def test_a_run_with_no_conversation_id_states_its_absence() -> None:
+    """A bare checkpoint bag has no conversation. The ledger derives one from the
+    thread rather than the middleware inventing the string ``"None"``."""
+    context = await _ledger_context(_ai(), CONFIG)
+
+    assert context.conversation_id is None
+    assert context.thread_id == "conv-1"
+
+
+async def test_the_metered_call_names_the_workflow_that_triggered_it() -> None:
+    context = await _ledger_context(_ai())
+    assert context.workflow_id == "wf-1"
+    # No interactive source on this bag, so the workflow IS the channel.
+    assert context.channel == "workflow"
+
+    outside_a_workflow = await _ledger_context(_ai(), CONFIG)
+    assert outside_a_workflow.workflow_id is None
+
+
+async def test_the_surface_the_turn_came_from_reaches_the_ledger() -> None:
+    """``conversation_source`` was already on the configurable and simply unread.
+    An executor call inherits it, so a child reports its root turn's surface."""
+    config = {"configurable": {**_LEDGER_CONFIG["configurable"], "conversation_source": "slack"}}
+
+    assert (await _ledger_context(_ai(), config)).channel == "slack"
+
+
+async def test_a_graph_call_is_never_recorded_as_background_system_work() -> None:
+    """The graph lane IS the user's turn. Passing it as background would relabel
+    every chat call with no explicit source as ``system``, which is the bucket
+    that exists for work nobody asked for — and it is most of the spend."""
+    bare = {
+        "configurable": {
+            "user_id": "user-1",
+            "lane": {"provider": "gemini", "model": "gemini-3-pro"},
+        }
+    }
+
+    assert (await _ledger_context(_ai(), bare)).channel is None
+
+
+async def test_why_the_provider_stopped_reaches_the_ledger() -> None:
+    """A run of ``length`` on one lane is a truncation bug that otherwise only
+    surfaces as users reporting answers that stop mid-sentence."""
+    message = _ai(response_metadata={"finish_reason": "length"})
+
+    assert (await _ledger_context(message)).finish_reason == "length"
+
+
+async def test_the_metered_call_records_what_the_provider_actually_served() -> None:
+    """The lane says what we asked for; only the reply says what answered. On a
+    fallback or a provider substitution those differ, and the ledger has to be
+    able to show it."""
+    message = _ai(
+        response_metadata={
+            "model_name": "served/model",
+            PROVIDER_NAME_METADATA_KEY: "StreamLake",
+        }
+    )
+
+    context = await _ledger_context(message)
+
+    assert context.model_served == "served/model"
+    assert context.provider == "StreamLake"
+
+
+async def test_a_reply_that_names_no_upstream_records_none_rather_than_a_guess() -> None:
+    context = await _ledger_context(_ai())
+    assert context.provider is None
+
+
+async def test_the_metered_call_carries_the_generation_id_for_spot_audits() -> None:
+    context = await _ledger_context(_ai(response_metadata={"id": "gen-abc123"}))
+    assert context.generation_id == "gen-abc123"
+
+
+async def test_the_provider_calls_wall_time_reaches_the_ledger_in_milliseconds() -> None:
+    """Latency is measured around the invocation in ``awrap_model_call`` — the
+    only seam that sees the provider call start and finish — and consumed by the
+    ``aafter_model`` that meters that same call. We have no latency visibility on
+    model calls today, so the unit and the precision both matter: the clock is
+    pinned here rather than slept against, because a real elapsed time cannot
+    tell a millisecond from a second-scaled one within its own noise.
+    """
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+
+    async def _handler(_request: Any) -> Any:
+        return ModelResponse(result=[_ai()])
+
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "record_llm_call", AsyncMock(return_value=0.5)) as record,
+        patch.object(
+            accounting,
+            "get_budget_stop_reason",
+            AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
+        ),
+        # 50.1234 ms of provider time. Deliberately not a round number: a value
+        # that survives rounding to 2dp is what distinguishes the real
+        # measurement from one scaled, offset or rounded differently.
+        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+    ):
+        await mw.awrap_model_call(_model_request(), _handler)
+        await mw.aafter_model(_state(_ai()), None)
+
+    assert record.await_args.kwargs["context"].duration_ms == 50.12
+
+
+async def test_a_call_the_budget_wall_stopped_reports_no_latency() -> None:
+    """The wall short-circuits before the provider is invoked, so there is no
+    provider call to have timed. A zero would read as an instant reply."""
+    context = await _ledger_context(_ai())
+    assert context.duration_ms is None
+
+
+async def test_the_latency_is_consumed_by_the_call_it_measured() -> None:
+    """The measurement is popped, not read: leaving it behind would attribute one
+    call's wall time to the next step on the same thread, which on a multi-step
+    run makes every step after the first report a latency it never had."""
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+
+    async def _handler(_request: Any) -> Any:
+        return ModelResponse(result=[_ai()])
+
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "record_llm_call", AsyncMock(return_value=0.5)) as record,
+        patch.object(
+            accounting,
+            "get_budget_stop_reason",
+            AsyncMock(return_value=BudgetCheck(stop_reason=None, plan_type=None, spent_usd=None)),
+        ),
+        patch.object(accounting.time, "monotonic", side_effect=[100.0, 100.0501234]),
+    ):
+        await mw.awrap_model_call(_model_request(), _handler)
+        await mw.aafter_model(_state(_ai()), None)
+        await mw.aafter_model(_state(_ai()), None)
+
+    assert record.await_args_list[0].kwargs["context"].duration_ms == 50.12
+    assert record.await_args_list[1].kwargs["context"].duration_ms is None
+
+
+async def test_the_metered_call_carries_the_request_tree_it_belongs_to() -> None:
+    """``root_request_id`` is what joins a comms turn to the executor calls it
+    spawned. Losing it makes a multi-agent turn look like unrelated spend."""
+    config_patch, cost_patch, usage_patch = _accounting_env(_LEDGER_CONFIG)
+    mw = LLMAccountingMiddleware(agent_name="comms_agent")
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(accounting, "record_llm_call", AsyncMock(return_value=0.5)) as record,
+    ):
+        await mw.aafter_model(_state(_ai()), None)
+
+    assert record.await_args.kwargs["root_request_id"] == "req-1"
 
 
 # --- the emitted model context ------------------------------------------------ #

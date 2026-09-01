@@ -69,6 +69,12 @@ from pydantic.fields import FieldInfo
 
 from app.constants.llm import PROVIDER_NAME_METADATA_KEY
 
+#: Response-metadata keys that arrive on more than one streamed chunk and would
+#: otherwise merge into a doubled string. Both are read downstream as exact
+#: values — one prices a call, the other alarms on truncation — so a
+#: concatenated value matches nothing rather than being merely untidy.
+_DEDUPED_RESPONSE_KEYS = (PROVIDER_NAME_METADATA_KEY, "finish_reason")
+
 #: The top-level key OpenRouter names the serving upstream under.
 _WIRE_PROVIDER_KEY = "provider"
 
@@ -161,32 +167,51 @@ def _convert_chunk_to_message_chunk(
     )
 
 
-def _keep_first_provider_name(chunk: ChatGenerationChunk, kept_so_far: int) -> int:
-    """Drop the name from every chunk after the first; return 1 if this one kept it.
+def _keep_first_response_key(chunk: ChatGenerationChunk, key: str, kept_so_far: int) -> int:
+    """Drop ``key`` from every chunk after the first; return 1 if this one kept it.
 
     A running count rather than a bool so the caller's accumulator has to start
     at a real number — the arithmetic is what makes a wrong initial value fail
     loudly instead of silently behaving like "not seen yet".
 
-    OpenRouter repeats ``provider`` on every chunk, and ``AIMessageChunk.__add__``
-    merges ``response_metadata`` with ``merge_dicts``, which CONCATENATES equal
-    strings for any key outside its small idempotent set — so N stamped chunks
-    merge into "BaiduBaiduBaidu". This is the same defect that once doubled
-    ``model_name`` into a pricing key matching nothing.
+    ``AIMessageChunk.__add__`` merges ``response_metadata`` with ``merge_dicts``,
+    which CONCATENATES equal strings for any key outside its small idempotent
+    set. So any repeated key merges into a doubled value, and both keys this
+    module de-duplicates arrive more than once:
 
-    De-duplicating per stream rather than stamping only the ``finish_reason``
-    chunk, because that is not unique either: verified on live traffic, an
-    8-chunk answer carried TWO finish events (reasoning block, then content),
-    which doubled the name just as thoroughly. "First one wins" is the only rule
-    that holds regardless of how many chunks carry it, and it keeps the fix
-    inside this module instead of adding a key to another patch's set.
+    - ``provider`` is repeated by OpenRouter on every chunk, merging into
+      "BaiduBaiduBaidu".
+    - ``finish_reason`` arrives once per finish event, and a streamed answer has
+      more than one — verified live, an 8-chunk answer carried TWO (one closing
+      the reasoning block, one closing the content). Observed in the ledger as
+      ``"stopstop"`` and ``"tool_callstool_calls"``.
+
+    Both are the same defect that once doubled ``model_name`` into a pricing key
+    matching nothing. A doubled ``finish_reason`` is worse than useless: a query
+    for ``length`` can never match, so the truncation alarm the field exists for
+    can never fire.
+
+    "First one wins" is the only rule that holds however many chunks carry a
+    key. It is a real tradeoff for ``finish_reason``: a stream whose two finish
+    events disagree reports the earlier one. Every doubled value observed live
+    was an identical pair (``"stopstop"``, ``"tool_callstool_calls"``), and a
+    single wrong-but-valid reason is still queryable, whereas a concatenation
+    matches nothing at all.
+
+    ``generation_info`` is stripped alongside ``response_metadata`` because
+    ``BaseChatModel.stream`` re-merges it back over the message
+    (``_gen_info_and_msg_metadata``, chat_models.py:781/914) AFTER this runs —
+    deleting from the metadata alone is silently undone one frame later, which
+    is exactly how the doubled values reached the ledger.
     """
     if not isinstance(chunk.message, AIMessageChunk):
         return 0
-    if PROVIDER_NAME_METADATA_KEY not in chunk.message.response_metadata:
+    if key not in chunk.message.response_metadata and key not in (chunk.generation_info or {}):
         return 0
     if kept_so_far > 0:
-        del chunk.message.response_metadata[PROVIDER_NAME_METADATA_KEY]
+        chunk.message.response_metadata.pop(key, None)
+        if chunk.generation_info is not None:
+            chunk.generation_info.pop(key, None)
         return 0
     return 1
 
@@ -197,10 +222,11 @@ def _stream(
     stop: list[str] | None = None,
     **kwargs: object,
 ) -> Iterator[ChatGenerationChunk]:
-    """``ChatOpenRouter._stream`` with the repeated provider name reduced to one."""
-    kept = 0
+    """``ChatOpenRouter._stream`` with every repeated metadata key reduced to one."""
+    kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     for chunk in _ORIGINAL_STREAM(self, messages, stop=stop, **kwargs):
-        kept += _keep_first_provider_name(chunk, kept)
+        for key in _DEDUPED_RESPONSE_KEYS:
+            kept[key] += _keep_first_response_key(chunk, key, kept[key])
         yield chunk
 
 
@@ -210,10 +236,11 @@ async def _astream(
     stop: list[str] | None = None,
     **kwargs: object,
 ) -> AsyncIterator[ChatGenerationChunk]:
-    """``ChatOpenRouter._astream`` with the repeated provider name reduced to one."""
-    kept = 0
+    """``ChatOpenRouter._astream`` with every repeated metadata key reduced to one."""
+    kept = dict.fromkeys(_DEDUPED_RESPONSE_KEYS, 0)
     async for chunk in _ORIGINAL_ASTREAM(self, messages, stop=stop, **kwargs):
-        kept += _keep_first_provider_name(chunk, kept)
+        for key in _DEDUPED_RESPONSE_KEYS:
+            kept[key] += _keep_first_response_key(chunk, key, kept[key])
         yield chunk
 
 

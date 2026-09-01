@@ -2031,3 +2031,52 @@ class TestWorkflowNotificationRef:
         assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
             workflow_id="wf-1", workflow_title="Morning digest", notify_on_completion=False
         )
+
+
+class TestRunBoundaryCarriesTheOriginatingSurface:
+    """The executor run stamps the turn's surface on its own wide event.
+
+    An auxiliary call made INSIDE this run (a follow-up, a memory write) is
+    handed a bare config with no ``conversation_source``, so without this stamp
+    the ledger records a user's web turn as ``system`` — and executor turns are
+    the expensive ones, so the under-count lands exactly where COGS-by-channel
+    is read.
+    """
+
+    @staticmethod
+    async def _boundary_fields(configurable: dict[str, object]) -> dict[str, object]:
+        from app.agents.core.background.executor_runner import _ExecutorResult
+
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.LIVE,
+            task_id="task-1",
+            user_message_id=None,
+        )
+        with (
+            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch.object(
+                er,
+                "_execute_executor",
+                new_callable=AsyncMock,
+                return_value=_ExecutorResult("done", "final"),
+            ),
+            patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
+            patch.object(er, "wide_task") as boundary,
+        ):
+            await er.run_executor_background(run, "do things", configurable)
+        return boundary.call_args.kwargs
+
+    async def test_the_turns_surface_is_carried_onto_the_run(self) -> None:
+        fields = await self._boundary_fields({"user_id": "u1", "conversation_source": "web"})
+
+        assert fields["conversation_source"] == "web"
+
+    async def test_a_run_started_from_no_surface_carries_none(self) -> None:
+        """A workflow-triggered executor run has no originating surface. None is
+        the honest value; the ledger's own rule then classifies it."""
+        fields = await self._boundary_fields({"user_id": "u1"})
+
+        assert fields["conversation_source"] is None
