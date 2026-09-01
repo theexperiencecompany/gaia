@@ -253,9 +253,8 @@ class _WorkflowSpec(BaseModel):
     title: str = Field(description="Workflow title — under 60 chars, starts with a verb or noun")
     description: str = Field(
         description=(
-            "1-2 sentences: what it does and what output it produces. Never say when it runs "
-            "or what triggers it: the card shows the schedule, and this text also seeds the "
-            "execution instructions the agent reads after the trigger has already fired."
+            "1-2 sentences: what it does and what output it produces, not when it runs "
+            "or what triggers it"
         )
     )
     categories: list[str] = Field(

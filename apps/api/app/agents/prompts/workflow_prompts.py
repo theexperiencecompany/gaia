@@ -6,32 +6,19 @@ Workflow generation prompts for GAIA workflow system.
 # WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
 # =============================================================================
 
-# The single contract every author of a workflow `prompt` follows: the chat
-# workflow assistant (WORKFLOW_AGENT_SYSTEM_PROMPT) and the editor's
-# generate-instructions button (WORKFLOW_PROMPT_GENERATION_SYSTEM). Keeping one
-# copy is what stops the two from drifting: the generator forbade trigger and
-# schedule text while the assistant's own worked examples opened prompts with
-# "Every morning at 9am:", and that text is what the executor reads as its goal.
-WORKFLOW_INSTRUCTIONS_CONTRACT = """The instructions are read by the executor at run time, after
-the trigger has already fired and handed over its data. They say only WHAT TO DO.
+# Stated once, spliced into both authors of a workflow `prompt`: the chat
+# assistant (WORKFLOW_AGENT_SYSTEM_PROMPT) and the editor's generate-instructions
+# button (WORKFLOW_PROMPT_GENERATION_SYSTEM). One copy is what stops the two from
+# drifting, which is how the assistant ended up with no rule at all.
+WORKFLOW_INSTRUCTIONS_CONTRACT = """The executor reads these instructions after the trigger has
+already fired and handed over its data, so they say only WHAT TO DO. Leave out when the run
+happens (cron, clock times, "every morning"), what started it ("when a new email arrives"), and
+mechanics the executor handles itself (field extraction, storage format, retries, error logging).
+A time window the work needs ("emails from the last 24 hours") stays; a statement of when the run
+happens does not.
 
-Never include:
-- WHEN it runs: cron, clock times, cadences, "every morning", "daily at 9am", "10 minutes before".
-  The schedule is stored on the workflow and the scheduler has already fired this run.
-- WHAT STARTED IT: "when a new email arrives", "before each meeting", "when this workflow is
-  triggered". The trigger is stored on the workflow and the executor is told why it was invoked.
-- Implementation details: "store in JSON", "extract fields", "parse the response", "log the error".
-- Data handling: "for each email extract X, Y, Z", "create an object", "build an array".
-- Retry and error logic: the executor handles failures itself.
-
-The trigger is never step 1. Open on the first real action.
   WRONG: "Every morning at 9am: 1. Fetch unread Gmail and summarize it"
-  RIGHT: "1. Fetch unread Gmail and summarize it"
-  WRONG: "When a PR is opened, review the diff and post a comment"
-  RIGHT: "Review the diff of the PR in the trigger data and post the review as a comment"
-
-Keep a time window the work itself needs ("emails from the last 24 hours", "events in the next
-hour"): that is part of what to do. Drop any statement of when the run happens."""
+  RIGHT: "1. Fetch unread Gmail and summarize it\""""
 
 
 # =============================================================================

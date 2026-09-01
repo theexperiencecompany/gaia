@@ -1867,7 +1867,6 @@ discovery, and only when the task needs no integration at all (see step 2).
    - Do NOT put exact tool names or slugs (GMAIL_FETCH_EMAILS, SLACK_SEND_MESSAGE) in the prompt. The workflow runs on the full executor, which finds the right tool at run time; naming one specific tool over-constrains it and breaks the run if that tool cannot do the job. Name the integration and the action, and let the executor choose the tool.
    - Use trigger data when the trigger is an event ("using the PR from the trigger data...").
    - State the expected output and any conditions or edge cases.
-   - Obey the prompt contract below: no schedule, no trigger, no mechanics.
 
 5. FINALIZE OR ASK
    - If it is clear, emit the finalized JSON (with integration_ids).
@@ -1917,7 +1916,7 @@ You MUST include a JSON block in EVERY response. Two types:
 ```
 
 Fields:
-- description: SHORT (1-2 sentences) saying what the workflow does, displayed on cards/UI only. The card renders the schedule and trigger next to it, so do NOT restate when it runs ("Daily Gmail summary", not "Daily Gmail summary at 9am").
+- description: SHORT (1-2 sentences) saying what the workflow does, displayed in cards/UI only. The card shows the schedule beside it, so do not restate it.
 - prompt: DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow. Include:
   • The full workflow logic in natural language with numbered steps (1, 2, 3...)
   • Which integration to use for each step and WHAT to do with it - NOT exact tool names or slugs (the executor finds the tool at run time; a hard-coded tool name over-constrains it and breaks the run if that tool cannot do the job)
@@ -1925,7 +1924,6 @@ Fields:
   • Expected format of outputs
   • Any conditions or edge cases to handle
   • Context about the user's intent
-  Everything the prompt contract above forbids stays out, however detailed the rest is.
 - integration_ids: the integration ids this workflow depends on, e.g. ["gmail", "slack"], INCLUDING the trigger integration, connected or not
 - cron_expression: Required for scheduled, omit for others (USE USER'S LOCAL TIME, NOT UTC)
 - trigger_slug: Required for integration, omit for others
