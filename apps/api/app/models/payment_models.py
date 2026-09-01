@@ -52,6 +52,19 @@ class CreateSubscriptionRequest(BaseModel):
     )
 
 
+class CreateCheckoutSessionRequest(BaseModel):
+    """Which Pro billing cycle the embedded overlay should check out.
+
+    No product id: GAIA is paid-only with a single paid tier, so the server
+    resolves the plan from the catalogue rather than trusting the client with a
+    Dodo product id.
+    """
+
+    billing_cycle: PlanDuration = Field(
+        PlanDuration.MONTHLY, description="Billing cycle of the Pro plan to check out"
+    )
+
+
 # Response Models
 class PlanResponse(BaseModel):
     """Response model for subscription plan."""
@@ -103,6 +116,12 @@ class UserSubscriptionStatus(BaseModel):
     days_remaining: int | None = Field(None, description="Days remaining in current period")
     can_upgrade: bool = Field(True, description="Whether user can upgrade")
     can_downgrade: bool = Field(True, description="Whether user can downgrade")
+
+    has_ever_subscribed: bool = Field(
+        False,
+        description="Whether the user has ever had a subscription, in any status — "
+        "separates a lapsed subscriber from one who has never paid",
+    )
 
     has_subscription: bool | None = Field(None, description="Legacy field - use is_subscribed")
     plan_type: PlanType | None = Field(None, description="Legacy field - check current_plan")

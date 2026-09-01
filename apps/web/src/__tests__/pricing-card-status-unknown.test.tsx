@@ -6,7 +6,7 @@
 // the plan status is genuinely not yet known (cold cache / user store
 // rehydrating). Before this fix that made `isOnFreePlan`-style logic read
 // "not subscribed" for a paying user, and — worse — let them click straight
-// into `createSubscriptionAndRedirect`, risking a duplicate checkout. The
+// into checkout, risking a duplicate subscription. The
 // fix threads a `planViewerState="unknown"` down from PricingCards and holds
 // the CTA disabled (never actionable) while it is.
 import { fireEvent, render, screen } from "@testing-library/react";
@@ -28,10 +28,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-const createSubscriptionAndRedirect = vi.fn();
+const openCheckoutOverlay = vi.fn();
 vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
   useDodoPayments: () => ({
-    createSubscriptionAndRedirect,
+    openCheckoutOverlay,
+    checkoutPhase: "idle",
     isLoading: false,
     error: null,
   }),
@@ -60,7 +61,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
   });
 
   beforeEach(() => {
-    createSubscriptionAndRedirect.mockReset();
+    openCheckoutOverlay.mockReset();
   });
 
   it("lets a logged-in user click into checkout once plan status is known", () => {
@@ -79,7 +80,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
-    expect(createSubscriptionAndRedirect).toHaveBeenCalledTimes(1);
+    expect(openCheckoutOverlay).toHaveBeenCalledTimes(1);
   });
 
   it("holds the CTA disabled and does not start a checkout while the plan status is still unknown", () => {
@@ -102,6 +103,6 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     fireEvent.click(button);
-    expect(createSubscriptionAndRedirect).not.toHaveBeenCalled();
+    expect(openCheckoutOverlay).not.toHaveBeenCalled();
   });
 });

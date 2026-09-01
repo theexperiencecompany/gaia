@@ -23,6 +23,10 @@ export interface CreateSubscriptionRequest {
   discount_code?: string;
 }
 
+export interface CreateCheckoutSessionRequest {
+  billing_cycle: "monthly" | "yearly";
+}
+
 export interface CreateSubscriptionResponse {
   subscription_id: string;
   payment_link: string;
@@ -71,6 +75,10 @@ export interface UserSubscriptionStatus {
   has_subscription?: boolean;
   plan_type?: "free" | "pro";
   status?: string;
+  /** Whether this user has ever had a subscription, in any status — separates a
+   *  lapsed subscriber from one who has never paid, which the paywall copy
+   *  keys on. */
+  has_ever_subscribed?: boolean;
 }
 
 // Helper function for consistent error handling
@@ -120,6 +128,21 @@ class PricingApi {
       );
     } catch (error) {
       return handleApiError(error, "Create subscription");
+    }
+  }
+
+  // Mint the Dodo checkout session the embedded overlay opens. The server
+  // resolves the Pro plan for the cycle, so no product id crosses the wire.
+  async createCheckoutSession(
+    data: CreateCheckoutSessionRequest,
+  ): Promise<CreateSubscriptionResponse> {
+    try {
+      return await apiService.post<CreateSubscriptionResponse>(
+        "/payments/checkout-session",
+        data,
+      );
+    } catch (error) {
+      return handleApiError(error, "Create checkout session");
     }
   }
 

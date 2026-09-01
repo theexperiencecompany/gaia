@@ -2,11 +2,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const createSubscriptionAndRedirect = vi.fn();
+const openCheckoutOverlay = vi.fn();
 const logout = vi.fn();
 
 let isPaid = false;
 let isSubscriptionStatusUnknown = false;
+let checkoutPhase = "idle";
+let hasEverSubscribed: boolean | undefined;
 
 vi.mock("@/lib/analytics", () => ({
   ANALYTICS_EVENTS: {
@@ -22,7 +24,8 @@ vi.mock("@/features/auth/hooks/useLogout", () => ({
 
 vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
   useDodoPayments: () => ({
-    createSubscriptionAndRedirect,
+    openCheckoutOverlay,
+    checkoutPhase,
     isLoading: false,
     error: null,
     clearError: vi.fn(),
@@ -51,6 +54,12 @@ const PRO_PLAN = {
 
 vi.mock("@/features/pricing/hooks/usePricing", () => ({
   usePricing: () => ({ plans: [PRO_PLAN] }),
+  useUserSubscriptionStatus: () => ({
+    data:
+      hasEverSubscribed === undefined
+        ? undefined
+        : { has_ever_subscribed: hasEverSubscribed },
+  }),
 }));
 
 import { PaywallModal } from "@/features/pricing/components/PaywallModal";
@@ -66,6 +75,8 @@ describe("PaywallModal", () => {
     });
     isPaid = false;
     isSubscriptionStatusUnknown = false;
+    checkoutPhase = "idle";
+    hasEverSubscribed = false;
     vi.clearAllMocks();
   });
 
@@ -131,7 +142,7 @@ describe("PaywallModal", () => {
     expect(screen.queryByText(/at checkout/i)).toBeNull();
   });
 
-  it("starts checkout for the Pro monthly plan, carrying the offer's discount code", async () => {
+  it("opens the embedded overlay for Pro monthly instead of redirecting away", async () => {
     usePaywallModalStore.getState().openModal({
       checkoutUrl: null,
       discountCode: "LAUNCH20",
@@ -143,10 +154,74 @@ describe("PaywallModal", () => {
       screen.getByRole("button", { name: /subscribe to gaia pro/i }),
     );
 
-    expect(createSubscriptionAndRedirect).toHaveBeenCalledWith(
-      "dodo_pro_monthly",
-      { source: "paywall_modal", discountCode: "LAUNCH20" },
-    );
+    // No discount code from the client: the server pre-applies
+    // PAYWALL_DISCOUNT_CODE inside create_pro_checkout, so passing it here too
+    // would be a second source of truth for the same code.
+    expect(openCheckoutOverlay).toHaveBeenCalledWith("monthly", {
+      source: "paywall_modal",
+    });
+  });
+
+  it("shows the migration copy to a user who has never subscribed", async () => {
+    hasEverSubscribed = false;
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText("GAIA is Pro-only")).not.toBeNull();
+    expect(screen.queryByText(/your subscription ended/i)).toBeNull();
+  });
+
+  it("shows the lapsed copy to a user who has subscribed before", async () => {
+    hasEverSubscribed = true;
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText("Your subscription ended")).not.toBeNull();
+    expect(
+      screen.getByText(/pick up right where you left off/i),
+    ).not.toBeNull();
+    expect(screen.queryByText("GAIA is Pro-only")).toBeNull();
+  });
+
+  it("keeps the migration copy while the status is still unknown", async () => {
+    hasEverSubscribed = undefined;
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText("GAIA is Pro-only")).not.toBeNull();
+  });
+
+  it("shows the 7-day cancellation line next to the CTA", async () => {
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText("Cancel within 7 days.")).not.toBeNull();
+  });
+
+  it("replaces the CTA with a confirming state once the overlay closes", async () => {
+    checkoutPhase = "confirming";
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText(/confirming your payment/i)).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /subscribe to gaia pro/i }),
+    ).toBeNull();
+    expect(screen.queryByText(/taking longer than expected/i)).toBeNull();
+  });
+
+  it("admits the delay once confirmation passes its visible budget", async () => {
+    checkoutPhase = "timeout";
+    usePaywallModalStore.getState().openModal();
+    render(<PaywallModal />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText(/taking longer than expected/i)).not.toBeNull();
   });
 
   it("attributes the checkout to the paywall without emitting a second checkout event", () => {
@@ -167,8 +242,8 @@ describe("PaywallModal", () => {
       "subscription:checkout_started",
       expect.anything(),
     );
-    expect(createSubscriptionAndRedirect).toHaveBeenCalledWith(
-      "dodo_pro_monthly",
+    expect(openCheckoutOverlay).toHaveBeenCalledWith(
+      "monthly",
       expect.objectContaining({ source: "paywall_modal" }),
     );
   });

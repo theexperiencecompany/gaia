@@ -321,6 +321,7 @@ class DodoPaymentService:
                 can_upgrade=True,
                 can_downgrade=False,
                 has_subscription=False,
+                has_ever_subscribed=await subscription_repository.has_any_for_user(user_id),
                 plan_type=PlanType.FREE,
                 status=SubscriptionStatus.PENDING,
             )
@@ -336,6 +337,7 @@ class DodoPaymentService:
             can_upgrade=True,
             can_downgrade=True,
             has_subscription=True,
+            has_ever_subscribed=True,
             plan_type=PlanType.PRO,
             status=SubscriptionStatus(subscription.status),
         )

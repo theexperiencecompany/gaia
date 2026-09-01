@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
 import { pricingApi } from "../api/pricingApi";
 import { LAST_CHECKOUT_PRODUCT_KEY } from "../constants";
+import {
+  type CheckoutBillingCycle,
+  useCheckoutOverlayStore,
+} from "../stores/checkoutOverlayStore";
+import { useUserSubscriptionStatus } from "./usePricing";
 
 /** Where a checkout was started from — the paid-only gate, or a place the
  *  user chose to upgrade on their own. Required at every call site so the
@@ -24,6 +29,17 @@ interface CheckoutOptions {
 export const useDodoPayments = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const checkoutPhase = useCheckoutOverlayStore((s) => s.phase);
+  const checkoutError = useCheckoutOverlayStore((s) => s.error);
+  const startOverlayCheckout = useCheckoutOverlayStore((s) => s.startCheckout);
+  const resetOverlayCheckout = useCheckoutOverlayStore((s) => s.reset);
+  const { refetch: refetchSubscription } = useUserSubscriptionStatus();
+
+  // The store polls the raw endpoint; this is what pushes the confirmed answer
+  // into the shared `["subscription-status"]` cache every paid-only gate reads.
+  useEffect(() => {
+    if (checkoutPhase === "confirmed") void refetchSubscription();
+  }, [checkoutPhase, refetchSubscription]);
 
   const createSubscriptionAndRedirect = useCallback(
     async (productId: string, { source, discountCode }: CheckoutOptions) => {
@@ -72,14 +88,43 @@ export const useDodoPayments = () => {
     [],
   );
 
+  /** The preferred path: pay inside the app, no redirect. Falls back to
+   *  nothing — a failure surfaces through `checkoutError` and the caller stays
+   *  where it is. */
+  const openCheckoutOverlay = useCallback(
+    async (billingCycle: CheckoutBillingCycle, { source }: CheckoutOptions) => {
+      trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_CHECKOUT_STARTED, {
+        billingCycle,
+        source,
+        surface: "overlay",
+      });
+      try {
+        await startOverlayCheckout(billingCycle);
+      } catch (err) {
+        const reason =
+          err instanceof Error ? err.message : "Failed to start checkout";
+        toast.error(reason);
+        trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
+          billingCycle,
+          source,
+          reason,
+        });
+      }
+    },
+    [startOverlayCheckout],
+  );
+
   const clearError = useCallback(() => {
     setError(null);
-  }, []);
+    resetOverlayCheckout();
+  }, [resetOverlayCheckout]);
 
   return {
     createSubscriptionAndRedirect,
+    openCheckoutOverlay,
+    checkoutPhase,
     isLoading,
-    error,
+    error: error ?? checkoutError,
     clearError,
   };
 };

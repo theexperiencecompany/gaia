@@ -19,6 +19,7 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
 )
+from app.services.analytics_service import AnalyticsEvents
 from app.services.payments.payment_webhook_service import PaymentWebhookService
 
 MODULE = "app.services.payments.payment_webhook_service"
@@ -105,6 +106,55 @@ class TestSubscriptionActiveReactivatesWorkflows:
 
         assert result.status == "processed"
         reactivate.assert_awaited_once_with(USER_ID)
+
+
+@pytest.mark.unit
+class TestSubscriptionActivatedAnalytics:
+    """The server owns ``subscription:activated`` — it is the only place a
+    completed subscription is captured (the web app's success page used to fire
+    its own ``subscription:completed`` for the same action, double-counting it
+    and missing every overlay checkout that never lands on that page)."""
+
+    async def test_activation_captures_the_event_once_against_the_gaia_user_id(self) -> None:
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(
+                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                new_callable=AsyncMock,
+            ),
+            patch(f"{MODULE}.track_subscription_event") as track,
+            patch.object(service, "_send_welcome_email", new_callable=AsyncMock),
+        ):
+            sub_repo.get_by_dodo_id = AsyncMock(return_value=None)
+            sub_repo.create = AsyncMock()
+            await service._handle_subscription_active(
+                _event(DodoWebhookEventType.SUBSCRIPTION_ACTIVE)
+            )
+
+        track.assert_called_once()
+        assert track.call_args.kwargs["user_id"] == USER_ID
+        assert track.call_args.kwargs["event_type"] == AnalyticsEvents.SUBSCRIPTION_ACTIVATED
+        assert track.call_args.kwargs["subscription_id"] == "sub_123"
+
+    async def test_a_redelivered_activation_does_not_capture_a_second_time(self) -> None:
+        """Dodo re-fires ``subscription.active`` for an existing row; that early
+        return must not inflate the activation count."""
+        service = PaymentWebhookService()
+        with (
+            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(
+                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                new_callable=AsyncMock,
+            ),
+            patch(f"{MODULE}.track_subscription_event") as track,
+        ):
+            sub_repo.get_by_dodo_id = AsyncMock(return_value=MagicMock(user_id=USER_ID))
+            await service._handle_subscription_active(
+                _event(DodoWebhookEventType.SUBSCRIPTION_ACTIVE)
+            )
+
+        track.assert_not_called()
 
 
 @pytest.mark.unit

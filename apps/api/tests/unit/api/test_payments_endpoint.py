@@ -15,11 +15,15 @@ from httpx import AsyncClient
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
+    PlanDuration,
+    PlanResponse,
+    ProCheckout,
 )
 from app.services.analytics_service import AnalyticsEvents
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
+CHECKOUT_SESSION_URL = "/api/v1/payments/checkout-session"
 SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
@@ -203,6 +207,62 @@ class TestCreateSubscription:
             )
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# POST /checkout-session
+# ---------------------------------------------------------------------------
+
+
+class TestCreateCheckoutSession:
+    """The overlay's session endpoint: authenticated, never paywalled (a
+    non-subscriber calling it is the entire point)."""
+
+    async def test_returns_the_checkout_url_for_the_requested_cycle(self, client: AsyncClient):
+        checkout = CreateSubscriptionResponse(
+            subscription_id="sess_overlay",
+            payment_link="https://checkout.dodopayments.com/sess_overlay",
+            status="payment_link_created",
+        )
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_pro_checkout",
+            new_callable=AsyncMock,
+            return_value=ProCheckout(plan=PlanResponse(**_make_plan()), checkout=checkout),
+        ) as mock_create:
+            response = await client.post(CHECKOUT_SESSION_URL, json={"billing_cycle": "yearly"})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "subscription_id": "sess_overlay",
+            "payment_link": "https://checkout.dodopayments.com/sess_overlay",
+            "status": "payment_link_created",
+        }
+        mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", PlanDuration.YEARLY)
+
+    async def test_defaults_to_the_monthly_cycle(self, client: AsyncClient):
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_pro_checkout",
+            new_callable=AsyncMock,
+            return_value=ProCheckout(
+                plan=PlanResponse(**_make_plan()),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="sess_overlay",
+                    payment_link="https://checkout.dodopayments.com/sess_overlay",
+                    status="payment_link_created",
+                ),
+            ),
+        ) as mock_create:
+            await client.post(CHECKOUT_SESSION_URL, json={})
+
+        mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", PlanDuration.MONTHLY)
+
+    async def test_rejects_an_unknown_billing_cycle(self, client: AsyncClient):
+        response = await client.post(CHECKOUT_SESSION_URL, json={"billing_cycle": "weekly"})
+        assert response.status_code == 422
+
+    async def test_requires_authentication(self, unauthed_client: AsyncClient):
+        response = await unauthed_client.post(CHECKOUT_SESSION_URL, json={})
+        assert response.status_code in (401, 403)
 
 
 # ---------------------------------------------------------------------------

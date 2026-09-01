@@ -9,19 +9,40 @@ import { useLogout } from "@/features/auth/hooks/useLogout";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
+import { REFUND_WINDOW_COPY } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { useIsPaid } from "../hooks/useIsPaid";
-import { usePricing } from "../hooks/usePricing";
+import { usePricing, useUserSubscriptionStatus } from "../hooks/usePricing";
 import { isProPlan } from "../utils/planPredicates";
+import { CheckoutConfirming } from "./CheckoutConfirming";
 import { PlanFeature } from "./PlanFeature";
+
+/** Two audiences hit the same wall for different reasons, so they read
+ *  different copy: someone whose subscription ran out is being asked to come
+ *  back, while a free user at the paid-only migration is being told the rules
+ *  changed. `has_ever_subscribed` is the only thing that separates them. */
+const LAPSED_COPY = {
+  heading: "Your subscription ended",
+  body: "Pick up right where you left off.",
+} as const;
+
+const MIGRATION_COPY = {
+  heading: "GAIA is Pro-only",
+  body: "Subscribe to GAIA Pro to keep chatting and running workflows.",
+} as const;
 
 export function PaywallModal() {
   const { open, offer, dismissible, closeModal } = usePaywallModalStore();
   const { plans } = usePricing();
   const { logout } = useLogout();
-  const { createSubscriptionAndRedirect, isLoading: isCreatingSubscription } =
-    useDodoPayments();
+  const { openCheckoutOverlay, checkoutPhase } = useDodoPayments();
   const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
+  const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const copy = subscriptionStatus?.has_ever_subscribed
+    ? LAPSED_COPY
+    : MIGRATION_COPY;
+  const isConfirming =
+    checkoutPhase === "confirming" || checkoutPhase === "timeout";
 
   // A cold-cache render can open this modal while the subscription-status is
   // still unknown (see useComposerSubmit / useWorkflowModalActions — they let
@@ -54,11 +75,7 @@ export function PaywallModal() {
   );
 
   const handleSubscribe = () => {
-    if (!proPlan) return;
-    createSubscriptionAndRedirect(proPlan.dodo_product_id, {
-      source: "paywall_modal",
-      discountCode: offer?.discountCode ?? undefined,
-    });
+    void openCheckoutOverlay("monthly", { source: "paywall_modal" });
   };
 
   return (
@@ -77,11 +94,10 @@ export function PaywallModal() {
         <ModalBody>
           <div className="mb-2 flex flex-col items-center gap-1.5 text-center">
             <h2 className="font-serif text-4xl font-normal tracking-tight">
-              GAIA is Pro-only
+              {copy.heading}
             </h2>
             <p className="text-sm font-light text-zinc-400">
-              {offer?.message ??
-                "Subscribe to GAIA Pro to keep chatting and running workflows."}
+              {offer?.message ?? copy.body}
             </p>
           </div>
 
@@ -113,16 +129,25 @@ export function PaywallModal() {
             </div>
           )}
 
-          <RaisedButton
-            className="w-full text-black!"
-            color="#00bbff"
-            onClick={handleSubscribe}
-            disabled={isCreatingSubscription || !proPlan}
-          >
-            {isCreatingSubscription
-              ? "Creating subscription..."
-              : "Subscribe to GAIA Pro"}
-          </RaisedButton>
+          {isConfirming ? (
+            <CheckoutConfirming isLate={checkoutPhase === "timeout"} />
+          ) : (
+            <>
+              <RaisedButton
+                className="w-full text-black!"
+                color="#00bbff"
+                onClick={handleSubscribe}
+                disabled={checkoutPhase !== "idle"}
+              >
+                {checkoutPhase === "idle"
+                  ? "Subscribe to GAIA Pro"
+                  : "Opening checkout..."}
+              </RaisedButton>
+              <p className="mt-2 text-center text-xs font-light text-zinc-500">
+                {REFUND_WINDOW_COPY}
+              </p>
+            </>
+          )}
 
           {!dismissible && (
             <Button

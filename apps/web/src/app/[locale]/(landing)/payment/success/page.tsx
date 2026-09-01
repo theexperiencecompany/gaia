@@ -17,7 +17,6 @@ import { LAST_CHECKOUT_PRODUCT_KEY } from "@/features/pricing/constants";
 import { useDodoPayments } from "@/features/pricing/hooks/useDodoPayments";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type PaymentStatus = "verifying" | "success" | "error";
 
@@ -50,7 +49,6 @@ export default function PaymentSuccessPage() {
         const result = await verifyPayment();
         if (cancelled) return;
         if (result.payment_completed) {
-          trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
         } else {
           setStatus("error");

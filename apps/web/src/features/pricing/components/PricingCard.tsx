@@ -18,10 +18,15 @@ import {
   usePricingModalStore,
 } from "@/stores/pricingModalStore";
 
-import { CENTS_PER_DOLLAR, MONTHS_PER_YEAR } from "../constants";
+import {
+  CENTS_PER_DOLLAR,
+  MONTHS_PER_YEAR,
+  REFUND_WINDOW_COPY,
+} from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { writePendingCheckout } from "../lib/pendingCheckout";
 import type { PlanViewerState } from "../types";
+import { CheckoutConfirming } from "./CheckoutConfirming";
 
 interface PricingCardProps {
   title: string;
@@ -107,10 +112,12 @@ export function PricingCard({
   } = getPriceDisplay(price, originalPrice, durationIsMonth);
 
   const {
-    createSubscriptionAndRedirect,
-    isLoading: isCreatingSubscription,
+    openCheckoutOverlay,
+    checkoutPhase,
     error: paymentError,
   } = useDodoPayments();
+  const isConfirmingPayment =
+    checkoutPhase === "confirming" || checkoutPhase === "timeout";
   // An offer the modal was opened with (the founder's letter, for one) rides
   // along to checkout so the code is already applied when the page loads. The
   // discounted figures run through the same price maths as the list ones, so
@@ -187,14 +194,14 @@ export function PricingCard({
       return;
     }
 
-    await createSubscriptionAndRedirect(planId, {
+    await openCheckoutOverlay(durationIsMonth ? "monthly" : "yearly", {
       source: "pricing_card",
-      discountCode: offer?.discountCode,
     });
   };
 
   const getButtonText = () => {
-    if (isCreatingSubscription) return "Creating subscription...";
+    if (checkoutPhase === "creating") return "Creating subscription...";
+    if (checkoutPhase === "open") return "Checkout open";
     if (isSubscriptionStatusUnknown) return "Checking your plan...";
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
@@ -209,19 +216,26 @@ export function PricingCard({
 
   const renderCta = () => {
     if (!isFree) {
+      if (isConfirmingPayment)
+        return <CheckoutConfirming isLate={checkoutPhase === "timeout"} />;
       return (
-        <RaisedButton
-          className="w-full text-black!"
-          color="#00bbff"
-          onClick={handleGetStarted}
-          disabled={
-            isCreatingSubscription ||
-            isSubscriptionStatusUnknown ||
-            (isCurrentPlan && hasActiveSubscription)
-          }
-        >
-          {getButtonText()}
-        </RaisedButton>
+        <>
+          <RaisedButton
+            className="w-full text-black!"
+            color="#00bbff"
+            onClick={handleGetStarted}
+            disabled={
+              checkoutPhase !== "idle" ||
+              isSubscriptionStatusUnknown ||
+              (isCurrentPlan && hasActiveSubscription)
+            }
+          >
+            {getButtonText()}
+          </RaisedButton>
+          <p className="mt-2 text-center text-xs font-light text-zinc-500">
+            {REFUND_WINDOW_COPY}
+          </p>
+        </>
       );
     }
     if (isOnFreePlan) {

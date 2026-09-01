@@ -12,6 +12,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
+    CreateCheckoutSessionRequest,
     CreateSubscriptionRequest,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
@@ -88,6 +89,37 @@ async def create_subscription_endpoint(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to create subscription") from e
+
+
+@router.post("/checkout-session")
+@limiter.limit("5/minute")
+async def create_checkout_session_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    payload: CreateCheckoutSessionRequest,
+    user_id: str = Depends(get_user_id),
+) -> CreateSubscriptionResponse:
+    """Mint the Dodo checkout session the embedded overlay opens.
+
+    Authenticated but deliberately not gated behind Pro — a user without a
+    subscription calling this is the whole point of the paid-only flow.
+    """
+    log.set(
+        user={"id": user_id},
+        payment={"operation": "create_checkout_session", "billing_cycle": payload.billing_cycle},
+    )
+    pro_checkout = await payment_service.create_pro_checkout(user_id, payload.billing_cycle)
+    log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
+    log.audit(
+        "overlay checkout session created",
+        actor=user_id,
+        resource=pro_checkout.plan.dodo_product_id,
+        provider="dodo",
+    )
+    capture_context_event(
+        AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+        {"billing_cycle": payload.billing_cycle, "surface": "overlay"},
+    )
+    return pro_checkout.checkout
 
 
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)

@@ -220,6 +220,7 @@ def mock_subscription_repository():
         mock_repo.get_latest_active_for_user = AsyncMock(return_value=None)
         mock_repo.get_user_id_by_dodo_id = AsyncMock(return_value=None)
         mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
+        mock_repo.has_any_for_user = AsyncMock(return_value=False)
         yield mock_repo
 
 
@@ -1032,6 +1033,23 @@ class TestGetUserSubscriptionStatus:
         assert status.has_subscription is False
         assert status.current_plan is None
         assert status.subscription is None
+        assert status.has_ever_subscribed is False
+
+    async def test_lapsed_user_is_distinguishable_from_a_never_paid_one(
+        self,
+        payment_service,
+        mock_subscription_repository,
+    ):
+        """No active subscription but a row in history — the paywall shows the
+        "your subscription ended" copy off this flag, so it must not read the
+        same as a user who has never paid."""
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        mock_subscription_repository.has_any_for_user = AsyncMock(return_value=True)
+
+        status = await payment_service.get_user_subscription_status(FAKE_USER_ID)
+
+        assert status.is_subscribed is False
+        assert status.has_ever_subscribed is True
 
     async def test_active_subscription_returns_pro_status(
         self,
@@ -1054,6 +1072,7 @@ class TestGetUserSubscriptionStatus:
         assert status.plan_type == PlanType.PRO
         assert status.status == SubscriptionStatus.ACTIVE
         assert status.has_subscription is True
+        assert status.has_ever_subscribed is True
         assert status.can_upgrade is True
         assert status.can_downgrade is True
         assert status.current_plan is not None
