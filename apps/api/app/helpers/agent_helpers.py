@@ -48,7 +48,6 @@ from app.models.stream_events import (
 )
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
-    extract_reasoning_delta,
     format_sse_data,
     format_sse_response,
     format_tool_call_entry,
@@ -57,6 +56,7 @@ from app.utils.agent_utils import (
 )
 from app.utils.general_utils import clip_text
 from app.utils.multimodal import extract_text_content, has_media_blocks
+from app.utils.reasoning import extract_reasoning_delta
 from shared.py.wide_events import log
 
 

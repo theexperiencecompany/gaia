@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any, TypedDict, cast
 
-from langchain_core.messages import AIMessageChunk, ToolCall
+from langchain_core.messages import ToolCall
 
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_tool_registry
@@ -441,28 +441,3 @@ def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
         )
         return {}
 
-
-def extract_reasoning_delta(chunk: AIMessageChunk) -> str:
-    """Pull this chunk's reasoning ("thinking") text, model-agnostic.
-
-    ChatOpenRouter surfaces reasoning as standard ``reasoning`` content blocks;
-    other providers (DeepSeek-style) put it in ``additional_kwargs.reasoning_content``.
-    Returns "" when the chunk carries no thinking (e.g. non-reasoning models), so
-    the caller emits nothing for them.
-    """
-    parts: list[str] = []
-    for block in getattr(chunk, "content_blocks", None) or []:
-        block_type = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
-        if block_type == "reasoning":
-            text = (
-                block.get("reasoning")
-                if isinstance(block, dict)
-                else getattr(block, "reasoning", "")
-            )
-            if text:
-                parts.append(text)
-    if not parts:
-        fallback = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content")
-        if fallback:
-            parts.append(fallback if isinstance(fallback, str) else str(fallback))
-    return "".join(parts)

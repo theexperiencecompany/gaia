@@ -133,7 +133,7 @@ def absorb_collector_event(
         if tid and val:
             tool_outputs[tid] = val
     if "reasoning" in evt:
-        _absorb_reasoning(evt["reasoning"], accumulated["tool_data"])
+        absorb_reasoning(evt["reasoning"], accumulated["tool_data"])
     if "subagent_start" in evt:
         sid = evt["subagent_start"]["subagent_id"]
         accumulated.setdefault("subagent_starts", {})[sid] = evt["subagent_start"]
@@ -142,7 +142,7 @@ def absorb_collector_event(
         accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
 
 
-def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry]) -> None:
+def absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry]) -> None:
     """Persist a streamed thinking delta into tool_data as a reasoning step.
 
     Mirrors the frontend (streamHandlers.handleReasoning): a reasoning step rides a

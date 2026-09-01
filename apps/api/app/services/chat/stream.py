@@ -65,7 +65,7 @@ from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
-from app.utils.stream_utils import reconstruct_subagent_groups
+from app.utils.stream_utils import absorb_reasoning, reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
@@ -615,6 +615,18 @@ async def _consume_agent_stream(
                     state.error = str(payload["error"])
 
         if chunk.startswith("data: "):
+            # Comms' own thinking arrives as a plain `reasoning` frame (the
+            # executor's rides the tool-event collector, which absorbs it
+            # already). Fold it into tool_data with the SAME helper, so a
+            # reloaded turn keeps the thinking block and both agents produce one
+            # identical shape instead of two.
+            if '"reasoning"' in chunk:
+                with contextlib.suppress(json.JSONDecodeError):
+                    reasoning_payload = json.loads(chunk[len("data: ") :])
+                    if isinstance(reasoning_payload, dict) and "reasoning" in reasoning_payload:
+                        absorb_reasoning(
+                            reasoning_payload["reasoning"], state.tool_data["tool_data"]
+                        )
             try:
                 state.follow_up_actions, _ = await process_data_chunk(
                     stream_id,

@@ -55,8 +55,9 @@ from app.models.agent_models import (
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
-from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable, extract_reasoning_delta
+from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.multimodal import extract_text_content
+from app.utils.reasoning import extract_reasoning_delta
 from app.utils.stream_utils import extract_tool_entries_from_update
 from shared.py.wide_events import log
 
