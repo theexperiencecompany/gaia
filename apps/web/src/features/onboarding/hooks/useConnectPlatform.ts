@@ -2,22 +2,26 @@
  * Platform-connect wiring for the `platformPick` stage — the single seam
  * between a platform button and whatever it takes to reach GAIA there.
  *
- * Telegram and WhatsApp open their public bot deep link in a new tab.
- * iMessage cannot: the number has to be registered with the delivery pool
- * first, so it collects an E.164 number, POSTs it to
- * `/platform-links/imessage/connect`, and hands the returned contact number
- * back for the user to text. Phase 7 replaces the plain deep links with
- * code-carrying ones by changing this hook and nothing else.
+ * On entry the hook mints a one-tap linking code. Telegram and WhatsApp then
+ * open a deep link that carries it, so the user's first contact links the
+ * account and starts a real conversation without anyone typing `/auth`.
+ * iMessage cannot use a pre-built link: the number has to be registered with
+ * the delivery pool first, so it collects an E.164 number, POSTs it to
+ * `/platform-links/imessage/connect`, and builds the `sms:` handoff from the
+ * contact number that call returns. Skipping hands the same composed message
+ * to the web chat instead.
  */
 
 "use client";
 
-import { type Dispatch, useCallback, useState } from "react";
+import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { BOT_LINKS } from "@/features/bots/constants";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
+import { useComposerStore } from "@/stores/composerStore";
+import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
 import type { Action } from "../state/types";
 
 interface PlatformConnectResponse {
@@ -38,12 +42,45 @@ interface UseConnectPlatformReturn {
   closePhoneModal: () => void;
 }
 
+/**
+ * The iOS form is `sms:<number>&body=<text>` — the RFC's `?body=` is what
+ * Messages ignores, and iMessage is an Apple-only surface.
+ */
+function buildImessageHandoffLink(
+  contactNumber: string,
+  handoffText: string,
+): string {
+  return `sms:${contactNumber}&body=${encodeURIComponent(handoffText)}`;
+}
+
 export function useConnectPlatform(
   dispatch: Dispatch<Action>,
 ): UseConnectPlatformReturn {
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [phoneTarget, setPhoneTarget] = useState<PhoneLinkTarget | null>(null);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
+  const [linkCode, setLinkCode] = useState<LinkCodeResponse | null>(null);
+  const setPendingPrompt = useComposerStore((s) => s.setPendingPrompt);
+
+  // Minted once on stage entry rather than per click: `window.open` in a click
+  // handler must be synchronous or the browser blocks it as a popup. The code
+  // outlives the step, and a user who stalls past its TTL gets the bot's
+  // "that link expired" reply pointing them back here.
+  useEffect(() => {
+    let cancelled = false;
+    mintLinkCode()
+      .then((data) => {
+        if (!cancelled) setLinkCode(data);
+      })
+      .catch((error: unknown) => {
+        // Degrade to the plain bot links: the user links with /auth instead of
+        // one tap. Blocking onboarding on this would be worse.
+        console.error("[onboarding] link code mint failed:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const connect = useCallback(
     (platform: BotPlatform) => {
@@ -52,11 +89,11 @@ export function useConnectPlatform(
         setPhoneModalOpen(true);
         return;
       }
-      const url = BOT_LINKS[platform];
+      const url = linkCode?.links[platform] ?? BOT_LINKS[platform];
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       dispatch({ type: "platformConnected", platform });
     },
-    [dispatch],
+    [dispatch, linkCode],
   );
 
   const submitPhone = useCallback(
@@ -74,11 +111,17 @@ export function useConnectPlatform(
             return;
           }
           // An sms: deep link only resolves on Apple devices, so the number
-          // and command have to stay readable (and copyable) on any device.
+          // and the text to send have to stay readable (and copyable) on any
+          // device.
           setPhoneTarget({
             contactNumber: data.contact_number,
-            command: BOT_AUTH_COMMAND,
-            actionLink: data.action_link,
+            command: linkCode?.handoff_text ?? BOT_AUTH_COMMAND,
+            actionLink: linkCode
+              ? buildImessageHandoffLink(
+                  data.contact_number,
+                  linkCode.handoff_text,
+                )
+              : data.action_link,
           });
         })
         .catch((error: unknown) => {
@@ -87,7 +130,7 @@ export function useConnectPlatform(
         })
         .finally(() => setIsSubmittingPhone(false));
     },
-    [dispatch],
+    [linkCode],
   );
 
   // The stage only advances once the modal is dismissed: advancing on the
@@ -102,8 +145,11 @@ export function useConnectPlatform(
   }, [dispatch, phoneTarget]);
 
   const skip = useCallback(() => {
+    // No platform, so the composed opener is sent on the web instead — as the
+    // user's own turn, once the redirect to /c lands.
+    if (linkCode) setPendingPrompt(linkCode.first_message, true);
     dispatch({ type: "skipPlatforms" });
-  }, [dispatch]);
+  }, [dispatch, linkCode, setPendingPrompt]);
 
   return {
     connect,

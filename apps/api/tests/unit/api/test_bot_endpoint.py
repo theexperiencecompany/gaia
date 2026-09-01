@@ -25,7 +25,10 @@ from app.models.payment_models import (
     PlanType,
     ProCheckout,
 )
+from app.models.platform_models import PlatformLinkResult
 from app.services.analytics_service import AnalyticsEvents
+from app.services.platform_link_code_service import PlatformLinkCodePayload
+from app.utils.errors import AppError
 from shared.py.wide_events import log, log_context
 
 BOT_BASE = "/api/v1/bot"
@@ -127,6 +130,152 @@ class TestCreateLinkToken:
             json={"platform": "discord", "platform_user_id": "u1"},
         )
         assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /bot/redeem-link-code
+# ---------------------------------------------------------------------------
+
+REDEEM_BODY = {"platform": "telegram", "platform_user_id": "TG42", "code": "CODE123"}
+FIRST_MESSAGE = "Hi! I'm a founder. I could use help with my inbox. Who are you?"
+CONSUME_PATCH = "app.api.v1.endpoints.bot.consume_platform_link_code"
+COMPLETE_PATCH = "app.api.v1.endpoints.bot.complete_platform_link"
+
+
+def _link_result(is_new_link: bool = True) -> PlatformLinkResult:
+    return PlatformLinkResult(
+        status="linked",
+        platform="telegram",
+        platform_user_id="TG42",
+        connected_at="2026-09-01T00:00:00Z",
+        is_new_link=is_new_link,
+    )
+
+
+class TestRedeemLinkCode:
+    """POST /api/v1/bot/redeem-link-code"""
+
+    async def test_no_api_key(self, client: AsyncClient):
+        response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+        assert response.status_code == 401
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_happy_path_links_and_returns_the_first_message(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(
+                CONSUME_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(
+                    user_id="user1", first_message=FIRST_MESSAGE
+                ),
+            ),
+            patch(
+                COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()
+            ) as mock_complete,
+        ):
+            response = await client.post(
+                f"{BOT_BASE}/redeem-link-code",
+                json={**REDEEM_BODY, "username": "tg_user", "display_name": "TG User"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {"linked": True, "first_message": FIRST_MESSAGE}
+        # The code, not the request body, decides which GAIA user gets linked.
+        mock_complete.assert_awaited_once_with(
+            "user1",
+            "telegram",
+            "TG42",
+            profile={"username": "tg_user", "display_name": "TG User"},
+        )
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_expired_or_unknown_code_is_rejected_without_linking(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(CONSUME_PATCH, new_callable=AsyncMock, return_value=None),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock) as mock_complete,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 400
+        assert "expired" in response.json()["message"].lower()
+        mock_complete.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_reused_code_is_rejected_on_the_second_call(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """Single-use: the store hands the binding over exactly once."""
+        payload = PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE)
+        with (
+            patch(
+                CONSUME_PATCH, new_callable=AsyncMock, side_effect=[payload, None]
+            ),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            first = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+            second = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert first.status_code == 200
+        assert second.status_code == 400
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_account_linked_elsewhere_returns_409(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        with (
+            patch(
+                CONSUME_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(
+                    user_id="user1", first_message=FIRST_MESSAGE
+                ),
+            ),
+            patch(
+                COMPLETE_PATCH,
+                new_callable=AsyncMock,
+                side_effect=AppError(
+                    message="This telegram account is already linked to another GAIA user",
+                    status_code=409,
+                ),
+            ),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 409
+        assert "already linked" in response.json()["message"]
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_invalid_platform_is_rejected(self, _auth: AsyncMock, client: AsyncClient):
+        response = await client.post(
+            f"{BOT_BASE}/redeem-link-code", json={**REDEEM_BODY, "platform": "myspace"}
+        )
+        assert response.status_code == 422
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_header_mismatch_is_rejected_before_the_code_is_consumed(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """An API-key holder must not redeem a code onto someone else's handle."""
+
+        async def _mismatched_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "SOMEONE_ELSE"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_mismatched_request),
+            ),
+            patch(CONSUME_PATCH, new_callable=AsyncMock) as mock_consume,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        mock_consume.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

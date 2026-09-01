@@ -19,6 +19,14 @@ CONNECT_LINK_CODE_BYTES = 12
 # pool of live codes small and the leak/brute-force window tiny.
 CONNECT_LINK_TTL_MINUTES = 60
 
+# One-tap platform-linking code minted by the web at onboarding. Travels inside
+# a deep link (Telegram) or the user's own visible first message (WhatsApp /
+# iMessage), so it is also what the adapters' trailing-#code regex matches:
+# 16 bytes → exactly 22 urlsafe-base64 characters, 128 bits of entropy. Changing
+# this changes the code length the adapters accept — update
+# LINK_CODE_LENGTH in libs/shared/ts/src/bots/link-codes.ts in the same commit.
+PLATFORM_LINK_CODE_BYTES = 16
+
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"
 

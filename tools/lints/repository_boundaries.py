@@ -107,6 +107,11 @@ CACHE_CALL_ALLOWLIST: frozenset[str] = frozenset(
         # tokens / auth / short-lived handshake caches
         "core/bot_auth_middleware.py",
         "services/connect_link_service.py",
+        # Same shape as connect_link_service above and deliberately so: a
+        # single-use, 30-minute linking code that is not an entity and has no
+        # repository. GETDEL is the single-use guarantee, so the raw helper is
+        # the mechanism, not a hand-rolled cache of a stored document.
+        "services/platform_link_code_service.py",
         "services/mcp/mcp_token_store.py",
         # per-user / derived aggregate caches + their imperative invalidations
         "api/v1/endpoints/todos.py",

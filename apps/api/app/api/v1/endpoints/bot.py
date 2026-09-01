@@ -33,6 +33,8 @@ from app.models.bot_models import (
     LinkedUsersResponse,
     LinkTokenInfoResponse,
     LinkTokenRecord,
+    RedeemLinkCodeRequest,
+    RedeemLinkCodeResponse,
     ResetSessionRequest,
     ResetSessionResponse,
     TranscribeAudioResponse,
@@ -55,12 +57,16 @@ from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.payments.payment_service import payment_service
+from app.services.platform_link_code_service import consume_platform_link_code
+from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import (
     Platform,
     PlatformLinkService,
     platform_requires_upgrade,
+    require_platform_plan,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.errors import create_error
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
@@ -399,6 +405,75 @@ async def create_link_token(
     )
     log.set(outcome="success")
     return CreateLinkTokenResponse(token=token, auth_url=auth_url)
+
+
+@router.post(
+    "/redeem-link-code",
+    status_code=200,
+    summary="Redeem Platform Link Code",
+    description="Link a platform account using a one-tap code minted by the web at onboarding.",
+)
+async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> RedeemLinkCodeResponse:
+    """Consume a web-minted code and link the platform account that presented it.
+
+    Returns the opening message composed during onboarding so the caller can
+    start the conversation as the user's own turn.
+    """
+    await require_bot_api_key(request)
+    log.set(operation="redeem_link_code", platform=body.platform)
+
+    # Same guard as create_link_token: an API key holder must not be able to
+    # redeem a code on behalf of an arbitrary platform user.
+    state_platform = getattr(request.state, "bot_platform", None)
+    state_user_id = getattr(request.state, "bot_platform_user_id", None)
+    if (state_platform and state_platform != body.platform) or (
+        state_user_id and state_user_id != body.platform_user_id
+    ):
+        log.audit(
+            "platform link code rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="platform_header_mismatch",
+        )
+        raise create_error(
+            message="Request body does not match the authenticated bot headers",
+            status_code=403,
+        )
+
+    payload = await consume_platform_link_code(body.code)
+    if payload is None:
+        # Never log the code — it is the credential. The platform account that
+        # presented it and the outcome are what make a probe findable.
+        log.audit(
+            "platform link code rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="unknown_or_expired_code",
+        )
+        raise create_error(
+            message="This link has expired or was already used.",
+            why="the one-tap code is single-use and short-lived",
+            fix="head back to GAIA on the web and pick your platform again",
+            status_code=400,
+        )
+
+    log.set(user={"id": payload.user_id})
+    await require_platform_plan(payload.user_id, body.platform)
+
+    profile: dict[str, str | None] = {"username": body.username, "display_name": body.display_name}
+    result = await complete_platform_link(
+        payload.user_id, body.platform, body.platform_user_id, profile=profile
+    )
+    log.audit(
+        "platform account linked via one-tap code",
+        actor=payload.user_id,
+        resource=body.platform_user_id,
+        provider=body.platform,
+    )
+    log.set(outcome="success", is_new_link=result.is_new_link)
+    return RedeemLinkCodeResponse(linked=True, first_message=payload.first_message)
 
 
 @router.get(

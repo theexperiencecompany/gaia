@@ -86,6 +86,30 @@ class LinkPlatformResponse(BaseModel):
     connected_at: str | None = Field(None, description="Connection timestamp")
 
 
+class MintPlatformLinkCodeResponse(BaseModel):
+    """A freshly minted one-tap linking code and everything built from it."""
+
+    code: str = Field(..., description="Single-use code the bot redeems on first contact")
+    first_message: str = Field(
+        ..., description="Opening message composed from the user's onboarding answers"
+    )
+    handoff_text: str = Field(
+        ...,
+        description=(
+            "first_message with ' #<code>' appended — the exact text a WhatsApp or "
+            "iMessage user sends. Used to build the iMessage sms: link, whose number "
+            "is only known after the phone is registered on Photon's pool."
+        ),
+    )
+    links: dict[str, str] = Field(
+        ...,
+        description=(
+            "Deep link per platform that carries the code. iMessage is absent by "
+            "construction — its number is assigned per user."
+        ),
+    )
+
+
 class PendingPlatformRegistrationDocument(MongoDocument):
     """A platform handle provisioned upstream but not yet linked to the GAIA user.
 

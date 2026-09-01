@@ -363,6 +363,17 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Register a phone number on the GAIA iMessage pool",
         ),
     ),
+    "platform_link_code": TieredRateLimits(
+        # Minted once per visit to the onboarding platform-pick step, so real use
+        # is a handful. Wide enough for a re-run of onboarding, tight enough that
+        # a stolen session cannot flood Redis with live link credentials.
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=50, month=500),
+        info=FeatureInfo(
+            title="Platform Link Code",
+            description="Mint a one-tap code that links a messaging platform",
+        ),
+    ),
     "account_platform_connect": TieredRateLimits(
         # Abuse guard: minting link credentials from chat. Conservative —
         # connecting a platform is rare; even 5/day is far above real use.

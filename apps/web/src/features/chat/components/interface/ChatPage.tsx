@@ -33,6 +33,7 @@ import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
   usePendingPrompt,
+  usePendingPromptAutoSend,
 } from "@/stores/composerStore";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
@@ -49,6 +50,10 @@ const MainChat = React.memo(function MainChat() {
   const { enterVoiceMode, exitVoiceMode } = useVoiceModeActions();
   const openPricingModal = usePricingModalStore((s) => s.openModal);
   const pendingPrompt = usePendingPrompt();
+  const pendingPromptAutoSend = usePendingPromptAutoSend();
+  // Exactly-once guard: the auto-send clears the store, but StrictMode's
+  // simulated remount re-runs the effect before the clear has propagated.
+  const pendingAutoSendFiredRef = useRef(false);
   const { clearPendingPrompt } = useComposerTextActions();
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
@@ -198,11 +203,34 @@ const MainChat = React.memo(function MainChat() {
   });
 
   useEffect(() => {
-    if (pendingPrompt && appendToInputRef.current) {
+    if (!pendingPrompt) return;
+
+    // Onboarding's web path: the composed first message is sent as the user's
+    // own turn into a new conversation, so they see their bubble and GAIA's
+    // streamed reply — not a pre-filled composer they still have to submit.
+    if (pendingPromptAutoSend) {
+      if (pendingAutoSendFiredRef.current) return;
+      pendingAutoSendFiredRef.current = true;
+      clearPendingPrompt();
+      sendMessage(pendingPrompt, {
+        selectedTool: null,
+        selectedToolCategory: null,
+        conversationId: null,
+      });
+      return;
+    }
+
+    if (appendToInputRef.current) {
       appendToInputRef.current(pendingPrompt);
       clearPendingPrompt();
     }
-  }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
+  }, [
+    pendingPrompt,
+    pendingPromptAutoSend,
+    clearPendingPrompt,
+    appendToInputRef,
+    sendMessage,
+  ]);
 
   useEffect(() => {
     const queryParam = new URLSearchParams(window.location.search).get("q");

@@ -129,8 +129,9 @@ vi.mock("@/hooks/ui/useDragAndDrop", () => ({
   useDragAndDrop: () => ({ isDragging: false, dragHandlers: {} }),
 }));
 
+const sendMessage = vi.fn();
 vi.mock("@/hooks/useSendMessage", () => ({
-  useSendMessage: () => vi.fn(),
+  useSendMessage: () => sendMessage,
 }));
 
 vi.mock("@/lib/analytics", () => ({
@@ -164,9 +165,17 @@ vi.mock("@/stores/chatStore", () => ({
   ),
 }));
 
+let pendingPrompt: string | null = null;
+let pendingPromptAutoSend = false;
+const clearPendingPrompt = vi.fn(() => {
+  pendingPrompt = null;
+  pendingPromptAutoSend = false;
+});
+
 vi.mock("@/stores/composerStore", () => ({
-  useComposerTextActions: () => ({ clearPendingPrompt: vi.fn() }),
-  usePendingPrompt: () => null,
+  useComposerTextActions: () => ({ clearPendingPrompt }),
+  usePendingPrompt: () => pendingPrompt,
+  usePendingPromptAutoSend: () => pendingPromptAutoSend,
 }));
 
 vi.mock("@/stores/paywallModalStore", () => ({
@@ -262,5 +271,61 @@ describe("ChatPage voice-mode gate — plan status unknown vs. known-free", () =
     act(() => capturedComposerProps?.onVoiceModeHover());
 
     expect(prefetchConnectionDetails).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Onboarding's web first message. Mounted here rather than in a file of its own
+// because ChatPage is the component under test in both cases and its mock
+// preamble above is the only harness that boots it.
+// ---------------------------------------------------------------------------
+
+describe("ChatPage pending-prompt auto-send", () => {
+  beforeEach(() => {
+    isPaid = true;
+    isUnknown = false;
+    pendingPrompt = null;
+    pendingPromptAutoSend = false;
+    sendMessage.mockReset();
+    clearPendingPrompt.mockClear();
+  });
+
+  it("sends a flagged prompt as the user's turn into a new conversation", () => {
+    pendingPrompt = "Hi! I'm a founder. Who are you?";
+    pendingPromptAutoSend = true;
+
+    render(<ChatPage />);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      "Hi! I'm a founder. Who are you?",
+      {
+        selectedTool: null,
+        selectedToolCategory: null,
+        // null forces a brand-new conversation rather than appending to whatever
+        // the store last had open.
+        conversationId: null,
+      },
+    );
+    expect(clearPendingPrompt).toHaveBeenCalled();
+  });
+
+  it("does not send an unflagged prompt — that one fills the composer", () => {
+    pendingPrompt = "summarise this page";
+    pendingPromptAutoSend = false;
+
+    render(<ChatPage />);
+
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends once even if the effect re-runs", () => {
+    pendingPrompt = "Hi! Who are you?";
+    pendingPromptAutoSend = true;
+
+    const { rerender } = render(<ChatPage />);
+    rerender(<ChatPage />);
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });
