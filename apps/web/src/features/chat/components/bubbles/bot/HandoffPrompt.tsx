@@ -165,8 +165,8 @@ export function HandoffPrompt({
               />
             )}
             <Button
-              radius="full"
-              className="flex-1 bg-zinc-100 font-semibold text-zinc-900 data-[hover=true]:bg-white"
+              variant="flat"
+              className="flex-1 font-semibold text-zinc-100"
               isLoading={pending}
               startContent={
                 !pending ? (
@@ -179,7 +179,6 @@ export function HandoffPrompt({
             </Button>
             <Button
               variant="light"
-              radius="full"
               className="shrink-0 px-3 text-zinc-500"
               isDisabled={pending}
               onPress={() => decide("cancel")}
@@ -190,12 +189,13 @@ export function HandoffPrompt({
 
           <Input
             size="sm"
-            radius="full"
             value={note}
             onValueChange={setNote}
             isDisabled={pending}
             aria-label="Note for the assistant"
-            placeholder={'Or tell me what to do instead, e.g. "skip the login"'}
+            placeholder={
+              'Optional: tell me what to do instead, e.g. "skip the login"'
+            }
             classNames={{
               inputWrapper:
                 "bg-zinc-800 data-[hover=true]:bg-zinc-800/80 group-data-[focus=true]:bg-zinc-800/80",
@@ -228,7 +228,6 @@ function TakeOverButton({
   if (onOpenPanel) {
     return (
       <Button
-        radius="full"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<CursorInWindowIcon className="size-4" />}
         onPress={onOpenPanel}
@@ -244,7 +243,6 @@ function TakeOverButton({
         href={pageUrl}
         target="_blank"
         rel="noopener noreferrer"
-        radius="full"
         className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
         endContent={<SquareArrowUpRight02Icon className="size-4" />}
       >

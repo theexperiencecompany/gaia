@@ -44,25 +44,7 @@ export function AgentCursor({ target }: { target: AgentCursorTarget | null }) {
             onAnimationEnd={() => setRippleKey(null)}
           />
         )}
-        {/* The pointer itself. */}
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 16 16"
-          fill="none"
-          className="drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]"
-          role="img"
-          aria-label="Agent cursor"
-        >
-          <title>Agent cursor</title>
-          <path
-            d="M1 1L6.5 15L8.6 9.1L14.5 7L1 1Z"
-            fill="#00bbff"
-            stroke="white"
-            strokeWidth="1.1"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <CursorArrow />
         {/* Name/action tag, Figma-style, offset from the pointer tip. */}
         {target.label && (
           <span className="absolute left-4 top-4 whitespace-nowrap rounded-md bg-[#00bbff] px-1.5 py-0.5 text-[11px] font-medium text-white shadow-sm">
@@ -91,5 +73,30 @@ function Dot({ delay }: { delay: string }) {
       className="inline-block size-1 animate-bounce rounded-full bg-white/90"
       style={{ animationDelay: delay }}
     />
+  );
+}
+
+/** The agent's pointer — a Figma-style arrow in the browser accent. Shared by
+ * the live overlay and the recap so both read as the same cursor, not a dot. */
+export function CursorArrow({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={`drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)] ${className}`}
+      role="img"
+      aria-label="Agent cursor"
+    >
+      <title>Agent cursor</title>
+      <path
+        d="M1 1L6.5 15L8.6 9.1L14.5 7L1 1Z"
+        fill="#00bbff"
+        stroke="white"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
