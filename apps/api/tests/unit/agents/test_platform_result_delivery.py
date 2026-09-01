@@ -10,8 +10,6 @@ sibling platforms).
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.agents.core.background.platform_result_delivery import (
     _preferred_bot_platforms,
     deliver_result_to_platforms,
@@ -237,7 +235,9 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         return recorder
 
-    @pytest.mark.regression
+    # Not @regression: these were proven on base as test_workflow_platform_delivery.py
+    # before this PR renamed the module; the regression-proof lane can't re-run them
+    # against a base where this path (and the source module it imports) don't exist.
     async def test_published_result_is_recorded_in_each_session_thread(self) -> None:
         record = await self._deliver(OutboundResult.PUBLISHED)
 
@@ -314,7 +314,7 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         assert recorder.await_args.args[1].startswith("[Delivered to the user on Imessage —")
 
-    @pytest.mark.regression
+    # Not @regression — carried over from the pre-rename file (see above).
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:
         record = await self._deliver(OutboundResult.FAILED)
 

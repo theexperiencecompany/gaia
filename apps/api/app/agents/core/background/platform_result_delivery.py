@@ -65,18 +65,12 @@ async def deliver_result_to_platforms(
     if not targets:
         return
 
-    # Comms splits its reply into bubbles with the break sentinel. The bubbles
-    # are needed here too — the langgraph provenance record below has to say what
-    # was actually delivered, not the raw text with its control tokens.
-    bubbles = split_message_bubbles(notification_text)
-    for source, platform_user_id in targets:
+    for target in targets:
         await _post_platform_result_message(
             user=user,
             user_id=user_id,
-            source=source,
-            platform_user_id=platform_user_id,
+            target=target,
             response=notification_text,
-            bubbles=bubbles,
             origin=origin,
         )
 
@@ -112,16 +106,19 @@ async def _post_platform_result_message(
     *,
     user: AuthenticatedUser,
     user_id: str,
-    source: ConversationSource,
-    platform_user_id: str,
+    target: tuple[ConversationSource, str],
     response: str,
-    bubbles: list[str],
     origin: str,
 ) -> None:
     """Persist the result into the platform's session conversation and deliver it
     as ordered bubbles, then record it in that conversation's langgraph thread —
     framed with the platform and origin so a later turn can backtrack to the
     source. Best-effort: logs and swallows any single-platform failure."""
+    source, platform_user_id = target
+    # Comms splits its reply into bubbles with the break sentinel; the outbound
+    # publish and the provenance record below both need the split, not the raw
+    # text with its control tokens.
+    bubbles = split_message_bubbles(response)
     try:
         conversation_id = await BotService.get_or_create_session(
             platform=source.value,
