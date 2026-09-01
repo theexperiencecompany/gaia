@@ -21,6 +21,7 @@ import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
 import { BROWSER_STATUS_META } from "@/features/browser/utils";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
+import { AgentCursor } from "../bubbles/bot/AgentCursor";
 import { ShimmerText } from "../bubbles/bot/ShimmerText";
 
 type ChipColor =
@@ -81,6 +82,7 @@ export function BrowserLivePanel() {
     status,
     currentTask,
     pendingHandoff,
+    agentCursor,
     close,
   } = useBrowserPanel();
   const closeSidebar = useRightSidebar((state) => state.close);
@@ -117,6 +119,7 @@ export function BrowserLivePanel() {
       pageUrl={pageUrl}
       status={status}
       currentTask={currentTask}
+      agentCursor={agentCursor}
       pendingHandoffId={pendingHandoff?.handoff_id ?? null}
       handoffReason={pendingHandoff?.reason ?? null}
       onClose={() => {
@@ -202,6 +205,7 @@ function BrowserChrome({
   pageUrl,
   status,
   currentTask,
+  agentCursor,
   pendingHandoffId,
   handoffReason,
   onClose,
@@ -210,6 +214,7 @@ function BrowserChrome({
   pageUrl: string | null;
   status: ReturnType<typeof useBrowserPanel.getState>["status"];
   currentTask: string | null;
+  agentCursor: ReturnType<typeof useBrowserPanel.getState>["agentCursor"];
   pendingHandoffId: string | null;
   handoffReason: string | null;
   onClose: () => void;
@@ -271,15 +276,20 @@ function BrowserChrome({
       {/* The screen — natural height, so the action bar sits right below it. */}
       {socketUrl && !done ? (
         <>
-          <canvas
-            ref={canvasRef}
-            width={1280}
-            height={800}
-            tabIndex={interactive ? 0 : -1}
-            className={`h-auto w-full shrink-0 outline-none ${
-              interactive ? "cursor-crosshair" : "pointer-events-none"
-            }`}
-          />
+          <div className="relative shrink-0">
+            <canvas
+              ref={canvasRef}
+              width={1280}
+              height={800}
+              tabIndex={interactive ? 0 : -1}
+              className={`block h-auto w-full outline-none ${
+                interactive ? "cursor-crosshair" : "pointer-events-none"
+              }`}
+            />
+            {!interactive && liveStatus === "live" && (
+              <AgentCursor target={agentCursor} />
+            )}
+          </div>
           {liveStatus !== "live" && (
             <div className="flex items-center gap-2 bg-zinc-800 px-4 py-3 text-xs text-zinc-400">
               {liveStatus === "connecting" && (

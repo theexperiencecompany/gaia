@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
+import type { AgentCursorTarget } from "@/features/chat/components/bubbles/bot/AgentCursor";
 import type {
   BrowserHandoffSnapshot,
   BrowserSessionStatus,
@@ -21,6 +22,7 @@ interface BrowserPanelState {
   status: BrowserSessionStatus | null;
   currentTask: string | null;
   pendingHandoff: BrowserHandoffSnapshot | null;
+  agentCursor: AgentCursorTarget | null;
   open: (sessionId: string) => void;
   close: () => void;
   sync: (update: {
@@ -30,6 +32,7 @@ interface BrowserPanelState {
     status: BrowserSessionStatus;
     currentTask: string | null;
     pendingHandoff: BrowserHandoffSnapshot | null;
+    agentCursor: AgentCursorTarget | null;
   }) => void;
 }
 
@@ -42,6 +45,7 @@ export const useBrowserPanel = create<BrowserPanelState>()(
       status: null,
       currentTask: null,
       pendingHandoff: null,
+      agentCursor: null,
       open: (sessionId) => set({ sessionId }, false, "browserPanel/open"),
       close: () =>
         set(
@@ -52,6 +56,7 @@ export const useBrowserPanel = create<BrowserPanelState>()(
             status: null,
             currentTask: null,
             pendingHandoff: null,
+            agentCursor: null,
           },
           false,
           "browserPanel/close",

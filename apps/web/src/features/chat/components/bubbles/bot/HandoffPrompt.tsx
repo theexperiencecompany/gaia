@@ -40,22 +40,22 @@ const HANDOFF_META: Record<
   none: {
     icon: CursorInWindowIcon,
     title: "Take over for a moment",
-    cta: "Open the live browser",
+    cta: "Take over",
   },
   payment: {
     icon: CreditCardIcon,
     title: "Finish the payment yourself",
-    cta: "Open the browser to pay",
+    cta: "Take over",
   },
   credentials: {
     icon: ShieldUserIcon,
     title: "Sign in to continue",
-    cta: "Open the browser to sign in",
+    cta: "Take over",
   },
   irreversible: {
     icon: Alert01Icon,
     title: "Confirm this step to continue",
-    cta: "Open the browser to confirm",
+    cta: "Take over",
   },
 };
 
@@ -72,74 +72,6 @@ const RESOLVED_META: Record<
   cancelled: { icon: StopCircleIcon, label: "Stopped." },
   timeout: { icon: StopCircleIcon, label: "Timed out, the task was stopped." },
 };
-
-// The step-appropriate primary action: first "open the live browser" (side
-// panel on desktop, tokened page on bots/mobile), then — once opened, or when
-// already inside the panel — the confirm that resumes the agent.
-function HandoffPrimaryAction({
-  showOpen,
-  cta,
-  pageUrl,
-  onOpenPanel,
-  onOpened,
-  pending,
-  hasNote,
-  onContinue,
-}: {
-  showOpen: boolean;
-  cta: string;
-  pageUrl: string | null;
-  onOpenPanel?: () => void;
-  onOpened: () => void;
-  pending: boolean;
-  hasNote: boolean;
-  onContinue: () => void;
-}) {
-  if (showOpen && onOpenPanel) {
-    return (
-      <Button
-        radius="full"
-        className="w-full bg-[#00bbff] font-semibold text-zinc-900"
-        endContent={<CursorInWindowIcon className="size-4" />}
-        onPress={() => {
-          onOpened();
-          onOpenPanel();
-        }}
-      >
-        {cta}
-      </Button>
-    );
-  }
-  if (showOpen && pageUrl) {
-    return (
-      <Button
-        as="a"
-        href={pageUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        radius="full"
-        className="w-full bg-[#00bbff] font-semibold text-zinc-900"
-        endContent={<SquareArrowUpRight02Icon className="size-4" />}
-        onPress={onOpened}
-      >
-        {cta}
-      </Button>
-    );
-  }
-  return (
-    <Button
-      radius="full"
-      className="w-full bg-[#00bbff] font-semibold text-zinc-900"
-      isLoading={pending}
-      startContent={
-        !pending ? <CheckmarkCircle02Icon className="size-4" /> : undefined
-      }
-      onPress={onContinue}
-    >
-      {hasNote ? "Send note and continue" : "I'm done, continue"}
-    </Button>
-  );
-}
 
 export function HandoffPrompt({
   handoff,
@@ -161,9 +93,6 @@ export function HandoffPrompt({
     onSettled,
   );
   const [note, setNote] = useState("");
-  // The primary action starts as "open the full browser"; only once the user has
-  // actually opened it does the confirm ("Done") make sense as the next step.
-  const [opened, setOpened] = useState(false);
   const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
   const Icon = meta.icon;
   const liveToken = useLiveViewToken(handoff.session_id);
@@ -171,7 +100,6 @@ export function HandoffPrompt({
     handoff.live_view_url && liveToken
       ? liveViewPageUrl(handoff.live_view_url, liveToken)
       : null;
-  const hasNote = note.trim().length > 0;
 
   return (
     <div className="rounded-2xl bg-zinc-900 p-3.5">
@@ -225,16 +153,40 @@ export function HandoffPrompt({
         </div>
       ) : (
         <div className="mt-3 space-y-2.5 pt-1">
-          <HandoffPrimaryAction
-            showOpen={!inPanel && !opened}
-            cta={meta.cta}
-            pageUrl={pageUrl}
-            onOpenPanel={onOpenPanel}
-            onOpened={() => setOpened(true)}
-            pending={pending}
-            hasNote={hasNote}
-            onContinue={() => decide("continue", note.trim() || undefined)}
-          />
+          {/* Three clear choices, in order of intent: take over (do it live),
+              I'm done (resume), skip (give up on this step). "Take over" hides
+              once you're already inside the panel — nothing left to open. */}
+          <div className="flex items-center gap-2">
+            {!inPanel && (onOpenPanel || pageUrl) && (
+              <TakeOverButton
+                cta={meta.cta}
+                pageUrl={pageUrl}
+                onOpenPanel={onOpenPanel}
+              />
+            )}
+            <Button
+              radius="full"
+              className="flex-1 bg-zinc-100 font-semibold text-zinc-900 data-[hover=true]:bg-white"
+              isLoading={pending}
+              startContent={
+                !pending ? (
+                  <CheckmarkCircle02Icon className="size-4" />
+                ) : undefined
+              }
+              onPress={() => decide("continue", note.trim() || undefined)}
+            >
+              I&rsquo;m done
+            </Button>
+            <Button
+              variant="light"
+              radius="full"
+              className="shrink-0 px-3 text-zinc-500"
+              isDisabled={pending}
+              onPress={() => decide("cancel")}
+            >
+              Skip
+            </Button>
+          </div>
 
           <Input
             size="sm"
@@ -256,23 +208,49 @@ export function HandoffPrompt({
               }
             }}
           />
-
-          {/* Stop is the rare, destructive path — quiet text, not a peer of the
-              primary action it sits under. */}
-          <div className="flex justify-center">
-            <Button
-              variant="light"
-              size="sm"
-              radius="full"
-              className="h-7 text-xs text-zinc-500"
-              startContent={<StopCircleIcon className="size-3.5" />}
-              onPress={() => decide("cancel")}
-            >
-              Stop the task
-            </Button>
-          </div>
         </div>
       )}
     </div>
   );
+}
+
+// "Take over": open the live browser — the side panel on desktop, the tokened
+// page in a new tab on bots/mobile.
+function TakeOverButton({
+  cta,
+  pageUrl,
+  onOpenPanel,
+}: {
+  cta: string;
+  pageUrl: string | null;
+  onOpenPanel?: () => void;
+}) {
+  if (onOpenPanel) {
+    return (
+      <Button
+        radius="full"
+        className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
+        endContent={<CursorInWindowIcon className="size-4" />}
+        onPress={onOpenPanel}
+      >
+        {cta}
+      </Button>
+    );
+  }
+  if (pageUrl) {
+    return (
+      <Button
+        as="a"
+        href={pageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        radius="full"
+        className="flex-1 bg-[#00bbff] font-semibold text-zinc-900"
+        endContent={<SquareArrowUpRight02Icon className="size-4" />}
+      >
+        {cta}
+      </Button>
+    );
+  }
+  return null;
 }

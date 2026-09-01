@@ -12,7 +12,10 @@ import {
 } from "@/features/browser/api/browserApi";
 import { useLiveViewToken } from "@/features/browser/hooks/useLiveViewToken";
 import { useBrowserPanel } from "@/features/browser/stores/browserPanelStore";
-import { BROWSER_STATUS_META } from "@/features/browser/utils";
+import {
+  BROWSER_STATUS_META,
+  latestAgentCursor,
+} from "@/features/browser/utils";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
@@ -89,6 +92,12 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   // What the agent is doing right now — the latest step's goal, surfaced live
   // on the (collapsed) steps header so the user sees progress without expanding.
   const currentTask = working ? steps[steps.length - 1]?.goal : undefined;
+  // The agent's live cursor target — only while the agent itself is driving
+  // (not during a handoff, when the user has the cursor).
+  const agentCursor = useMemo(
+    () => (working ? latestAgentCursor(steps) : null),
+    [working, steps],
+  );
 
   const isMobile = useIsMobile();
   const { setOpen: setLeftSidebarOpen } = useUIStoreSidebar();
@@ -130,6 +139,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
       status,
       currentTask: currentTask ?? null,
       pendingHandoff: pendingHandoff ?? null,
+      agentCursor,
     });
   }, [
     inPanel,
@@ -139,6 +149,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
     status,
     currentTask,
     pendingHandoff,
+    agentCursor,
     syncPanel,
   ]);
 
@@ -190,6 +201,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
             socketUrl={socketUrl}
             pageUrl={pageUrl}
             currentTask={currentTask}
+            agentCursor={agentCursor}
             inPanel={inPanel}
             onOpenPanel={isMobile ? undefined : openPanel}
           />

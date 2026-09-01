@@ -9,6 +9,7 @@ import {
   SquareArrowUpRight02Icon,
 } from "@icons";
 import { useState } from "react";
+import type { AgentCursorTarget } from "./AgentCursor";
 import { LiveBrowserCanvas } from "./LiveBrowserCanvas";
 import { ShimmerText } from "./ShimmerText";
 
@@ -20,12 +21,14 @@ export function LivePreview({
   socketUrl,
   pageUrl,
   currentTask,
+  agentCursor,
   inPanel = false,
   onOpenPanel,
 }: {
   socketUrl: string;
   pageUrl: string;
   currentTask?: string;
+  agentCursor?: AgentCursorTarget | null;
   /** This session is currently streaming in the side panel. */
   inPanel?: boolean;
   /** Open the side panel (undefined on mobile — falls back to the modal). */
@@ -34,7 +37,11 @@ export function LivePreview({
   const [fullscreen, setFullscreen] = useState(false);
   // One socket: the canvas mounts inline OR in the modal, never both at once.
   const canvas = (
-    <LiveBrowserCanvas socketUrl={socketUrl} interactive={false} />
+    <LiveBrowserCanvas
+      socketUrl={socketUrl}
+      interactive={false}
+      agentCursor={agentCursor}
+    />
   );
 
   return (
