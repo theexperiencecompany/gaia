@@ -1838,8 +1838,6 @@ async def _create_fallback_workflow(
     description = "Summarizes unread emails by priority, today's meetings, and open todos."
     if focus:
         description += f" Focus: {focus[:100]}."
-    # The schedule lives on trigger_config and the card renders it, so neither the
-    # card copy nor the executor's instructions restate when this runs.
     prompt = (
         "1. Summarize my unread emails, most in need of attention first\n"
         "2. List today's meetings with their times\n"
