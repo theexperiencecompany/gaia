@@ -499,9 +499,13 @@ async def create_tracked_todo(
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     """
-    user_id = config.get("metadata", {}).get("user_id")
+    metadata = config.get("metadata", {})
+    user_id = metadata.get("user_id")
     if not user_id:
         return _ERR_NO_USER_ID
+    # The chat this tracked todo was created in, captured for a later push back
+    # into it. None for a non-chat root (onboarding/REST).
+    source_conversation_id = metadata.get("conversation_id")
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)
@@ -524,6 +528,7 @@ async def create_tracked_todo(
         initial_canvas=initial_canvas,
         labels=labels,
         priority=parsed_priority,
+        source_conversation_id=source_conversation_id,
     )
 
     persist_error = await _persist_scheduling_fields(

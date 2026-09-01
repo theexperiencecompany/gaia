@@ -44,6 +44,7 @@ async def deliver_result_to_platforms(
     user_id: str,
     notification_text: str,
     origin: str,
+    exclude_source: ConversationSource | None = None,
 ) -> None:
     """Deliver a proactive result into the user's preferred messaging platforms as
     real, persisted bot messages, split into natural bubbles, and record each into
@@ -52,13 +53,17 @@ async def deliver_result_to_platforms(
     Only platforms the user has linked AND left enabled in their notification
     channel preferences receive it. ``origin`` names what produced the result
     (workflow, reminder, …) so the langgraph record can backtrack to the source.
-    Best-effort: a single platform failing never blocks the others or propagates
-    to the caller.
+    ``exclude_source`` drops one platform from the fan-out — used when the result
+    was already delivered into that platform's conversation directly, so the user
+    isn't pinged twice on it. Best-effort: a single platform failing never blocks
+    the others or propagates to the caller.
     """
     if not notification_text.strip():
         return
 
     targets = await _preferred_bot_platforms(user_id)
+    if exclude_source is not None:
+        targets = [t for t in targets if t[0] != exclude_source]
     if not targets:
         return
 

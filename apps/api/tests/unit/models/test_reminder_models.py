@@ -312,6 +312,14 @@ class TestCreateReminderToolRequestConversion:
         assert result.scheduled_at is None
         assert result.stop_after is None
 
+    def test_source_conversation_id_is_threaded_through(self):
+        # The originating chat captured at the tool boundary must survive the
+        # conversion to the service request, or the fire-time delivery has no
+        # chat to deliver back into.
+        m = CreateReminderToolRequest(**self._base_data(source_conversation_id="conv-99"))
+        result = m.to_create_reminder_request()
+        assert result.source_conversation_id == "conv-99"
+
     def test_conversion_with_scheduled_at_home_tz(self):
         m = CreateReminderToolRequest(**self._base_data(scheduled_at="2030-06-15 09:00:00"))
         result = m.to_create_reminder_request()

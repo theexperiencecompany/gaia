@@ -37,7 +37,7 @@ EXECUTOR_CONNECTED_INTEGRATIONS_HEADER = (
     "handoff subagent_id. If the user asks for a provider that is NOT listed here, STILL do the "
     "handoff: the handoff is what shows the user the connect card. Telling the user to connect "
     "WITHOUT handing off leaves them hunting for a button that was never rendered. Built-in "
-    "subagents (reminders, todos, gaia_knowledge_guide, docgen) are always available; one is "
+    "subagents (todos, gaia_knowledge_guide, docgen) are always available; one is "
     "listed below only where a connected account could be mistaken for it:"
 )
 

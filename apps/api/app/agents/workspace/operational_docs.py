@@ -548,10 +548,10 @@ reminders. "Every morning summarize my email" is a workflow.
 
 ## How to use it
 
-Reminders are owned by the reminders subagent. Hand the request to it:
-`handoff("reminders", "remind me to ...")`. It owns the reminder tools (create,
-update, list, get, search, delete) and handles scheduling, recurrence, and
-timezones; you do not call those tools directly.
+Call the reminder tools directly: `create_reminder_tool`, `update_reminder_tool`,
+`list_user_reminders_tool`, `get_reminder_tool`, `search_reminders_tool`,
+`delete_reminder_tool`. They handle scheduling, recurrence, and timezones. There
+is no reminders subagent, so do not hand off for reminders.
 
 - **Timezone:** times are read in the user's home timezone unless they name
   another. Do not convert to UTC yourself.
@@ -769,7 +769,7 @@ these.
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
 | "Set a goal / make a roadmap / track progress on X" | `handoff("goals", ...)` | `goals` |
-| "Remind me / ping me / set a timer at <time>" | `handoff("reminders", ...)` | `reminders` |
+| "Remind me / ping me / set a timer at <time>" | `create_reminder_tool(...)` | `reminders` |
 | "Text / notify me on WhatsApp/Telegram/Slack" | `send_notification(channels=[...])` | `notifications` |
 | "Automate X / every morning do Y / set up a workflow" | `create_workflow(user_request)` | `workflows` |
 | "Change / pause / resume a workflow" | `edit_workflow` / `pause_workflow` / `resume_workflow` (list first for the id) | `workflows` |
@@ -800,7 +800,8 @@ context. It is cheap and keeps you from guessing how your own machinery works.
 - `goals`: long-term goals and AI-generated roadmaps; tracking progress (the
   goals subagent).
 - `reminders`: one-off and recurring time-based nudges to the user; how a
-  reminder differs from a workflow and a tracked todo (the reminders subagent).
+  reminder differs from a workflow and a tracked todo (executor-direct tools,
+  no subagent).
 - `sessions-and-artifacts`: working inside a session; producing artifacts.
 - `notifications`: reading the inbox and sending the user a message on a
   channel (`send_notification`); channel linking is user-managed.
