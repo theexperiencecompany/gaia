@@ -100,6 +100,7 @@ class TestTheTableIsWellFormed:
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.DYNAMIC_STABLE)] == [
             "user_identity",
             "user_prefs",
+            "new_user_guidance",
             "integrations_manifest",
         ]
         # core_memory sits in the volatile TAIL, not the cached prefix. The old
