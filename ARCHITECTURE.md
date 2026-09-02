@@ -336,6 +336,18 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 - `apps/api/app/agents/tools/file_tools.py` — higher-level file ops.
 - `apps/api/app/agents/tools/context_tool.py` — file/context gathering.
 
+### 9.1b The execute proxy & code mode
+
+Integration tools (Composio + per-user MCP — the thousands) are **never bound** to the model. `retrieve_tools` returns their **schema docs**, and one proxy runs them:
+
+- `apps/api/app/agents/tools/execute/dispatch.py` — `dispatch_tool(user_id, tool_name, data, config)`: the single resolve → validate (`args_schema`, stands in for provider constrained decoding) → invoke → analytics core. Instrumented: Prometheus `gaia_execute_dispatch_total{outcome}`, PostHog `tool:execute_failed` + `tool:used{via=execute|bound}` — invalid_args/ok is the migration's retries-per-successful-action health ratio.
+- `apps/api/app/agents/tools/execute/resolver.py` — name → BaseTool across the registry, the per-user `MCPClient`, and on-demand Composio catalog materialization (`get_tools_by_name`).
+- `apps/api/app/agents/tools/execute/execute_tool.py` — `execute(task_description, tool_name, data)`, bound to executor + subagents. `task_description` is the tool card's display label.
+- `apps/api/app/agents/tools/execute/schema_docs.py` — compact capped schema docs; response shapes rendered only when the provider supplies one.
+- `apps/api/app/agents/tools/execute/unwrap.py` — `unwrap_execute_call`: the ONE unwrap every name-keyed seam imports (HIL gate `hil/utils.py::unpack_tool_call` + sibling scan, streaming `agent_utils.py::format_tool_call_entry`, analytics, timeout exemption). Without it a destructive tool classifies as the harmless proxy.
+- **Code mode** — `apps/api/app/agents/tools/coding/run_code_tool.py` (`run_code`, registry-stamped `always_gate`: the HIL card IS the whole-script approval) seeds a stdlib `gaia.execute()` client into the E2B sandbox with a short-lived HMAC token (`apps/api/app/services/sandbox/execute_token.py`, minted only after the gate clears). The sandbox's only door back is `POST /api/v1/sandbox/execute` (`apps/api/app/api/v1/endpoints/sandbox_execute.py`, token-auth, WorkOS-excluded) → the same dispatch core; credentials never enter the sandbox. Ships dark until `SANDBOX_EXECUTE_TOKEN_SECRET`/`SANDBOX_EXECUTE_CALLBACK_URL` are set.
+- Internal tools (coding, orchestration, memory, todos, webpage/research) still bind directly, as do `use_direct_tools`/`auto_bind_tools` subagent fast paths — the proxy covers the retrieval-based long tail.
+
 ### 9.2 Tool discovery (`retrieve_tools`)
 
 - `apps/api/app/agents/tools/core/registry.py` — `ToolRegistry`, `DynamicToolDict` (a `Mapping[str, BaseTool]` that lets tools added after graph compilation be visible to the agent), `get_tool_registry()` async singleton. `_CatalogToolMeta` — lightweight provider-tool metadata for warmup-time indexing.
@@ -500,6 +512,7 @@ A **PG-backed** memory engine projected to VFS as Markdown (`/workspace/memory/.
 | Change the executor's tool set or handoff behavior | `apps/api/app/agents/core/graph_builder/build_graph.py` (executor) + `apps/api/app/agents/tools/executor_tool.py` |
 | Add a new integration subagent | `apps/api/app/config/oauth_config.py` (register `SubAgentConfig`) + `apps/api/app/agents/tools/integrations/<provider>_tool.py` + `apps/api/app/agents/core/subagents/provider_subagents.py` |
 | Add a new tool the executor can use | `apps/api/app/agents/tools/<your_tool>.py` + register in `apps/api/app/agents/tools/core/registry.py` |
+| Change how integration tools run (the execute proxy / code mode) | `apps/api/app/agents/tools/execute/` + `apps/api/app/agents/tools/coding/run_code_tool.py` + `apps/api/app/api/v1/endpoints/sandbox_execute.py` |
 | Add a built-in skill | `apps/api/app/agents/skills/builtin/<skill_name>/SKILL.md` |
 | Change bot command behavior | `libs/shared/ts/src/bots/commands/<command>.ts` |
 | Change voice STT/TTS/VAD | `apps/voice-agent/src/worker.py` + `apps/voice-agent/src/config.py` |
