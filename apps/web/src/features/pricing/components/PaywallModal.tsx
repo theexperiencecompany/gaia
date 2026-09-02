@@ -9,7 +9,7 @@ import { useLogout } from "@/features/auth/hooks/useLogout";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
-import { REFUND_WINDOW_COPY } from "../constants";
+import { REFUND_WINDOW_COPY, TAX_NOTE_COPY } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { useIsPaid } from "../hooks/useIsPaid";
 import { usePricing, useUserSubscriptionStatus } from "../hooks/usePricing";
@@ -144,7 +144,7 @@ export function PaywallModal() {
                   : "Opening checkout..."}
               </RaisedButton>
               <p className="mt-2 text-center text-xs font-light text-zinc-500">
-                {REFUND_WINDOW_COPY}
+                {REFUND_WINDOW_COPY} {TAX_NOTE_COPY}
               </p>
             </>
           )}

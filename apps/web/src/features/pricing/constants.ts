@@ -59,6 +59,12 @@ export const DODO_CHECKOUT_MODE: "test" | "live" =
  */
 export const REFUND_WINDOW_COPY = "Cancel within 7 days.";
 
+/**
+ * Dodo charges in the buyer's local currency and adds their local tax on top
+ * of the USD list price, so the card never shows the final amount.
+ */
+export const TAX_NOTE_COPY = "Local taxes may apply.";
+
 /** First gap between subscription-status polls while confirming a payment. */
 export const CHECKOUT_CONFIRM_INITIAL_DELAY_MS = 1_000;
 

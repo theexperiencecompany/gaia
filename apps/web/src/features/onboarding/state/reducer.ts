@@ -40,6 +40,9 @@ export function reducer(
       if (!canSubmitNeeds(state)) return state;
       return { ...state, questionIndex: questions.length };
 
+    case "preferencesPersisted":
+      return { ...state, preferencesPersisted: true };
+
     case "ackPaidReveal":
       return { ...state, paidRevealAcked: true };
 

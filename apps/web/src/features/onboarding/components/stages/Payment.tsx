@@ -10,11 +10,10 @@
 
 "use client";
 
-import { Chip } from "@heroui/chip";
 import { Spinner } from "@heroui/spinner";
-import { Tab, Tabs } from "@heroui/tabs";
 import * as m from "motion/react-m";
 import { useState } from "react";
+import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { PAYMENT_INTRO } from "../../constants/messages";
@@ -39,26 +38,7 @@ export function Payment() {
         <Spinner size="lg" aria-label="Checking your subscription" />
       ) : (
         <>
-          <Tabs
-            selectedKey={isYearly ? "yearly" : "monthly"}
-            onSelectionChange={(key) => setIsYearly(key === "yearly")}
-            radius="full"
-            size="lg"
-            aria-label="Billing period"
-          >
-            <Tab key="monthly" title="Monthly" />
-            <Tab
-              key="yearly"
-              title={
-                <div className="flex items-center gap-2">
-                  Yearly
-                  <Chip color="primary" size="sm" variant="solid">
-                    Save 25%
-                  </Chip>
-                </div>
-              }
-            />
-          </Tabs>
+          <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
           <PricingCards durationIsMonth={!isYearly} hideEnterprise />
         </>
       )}

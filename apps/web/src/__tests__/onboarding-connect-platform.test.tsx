@@ -9,7 +9,9 @@
  * auto-send rather than dropping it in the composer.
  */
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { type ReactNode, StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mintLinkCode = vi.fn();
@@ -48,12 +50,24 @@ const MINTED = {
   },
 };
 
+/** One client per test: the mint is cached per key, exactly as in the app. */
+function makeWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
 /**
  * Renders the hook and flushes the mint promise, so every test starts from the
  * state the user actually sees: buttons wired to a resolved (or failed) mint.
  */
 async function renderConnect(dispatch = vi.fn()) {
-  const result = renderHook(() => useConnectPlatform(dispatch));
+  const result = renderHook(() => useConnectPlatform(dispatch, true), {
+    wrapper: makeWrapper(),
+  });
   await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
   await act(async () => {
     await Promise.resolve();
@@ -78,6 +92,51 @@ describe("useConnectPlatform", () => {
     act(() => result.current.connect("telegram"));
     act(() => result.current.connect("whatsapp"));
 
+    expect(mintLinkCode).toHaveBeenCalledOnce();
+  });
+
+  // The server composes `first_message` from the stored profession + needs, so
+  // a code minted before the PATCH lands says "Hi! Who are you?" instead of
+  // "Hi! I'm a founder…" — on the web opener and every platform handoff.
+  it("does not mint before the answers are persisted, and mints once after", async () => {
+    const { rerender } = renderHook(
+      ({ persisted }: { persisted: boolean }) =>
+        useConnectPlatform(vi.fn(), persisted),
+      { wrapper: makeWrapper(), initialProps: { persisted: false } },
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mintLinkCode).not.toHaveBeenCalled();
+
+    rerender({ persisted: true });
+    await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+  });
+
+  // The stage renders the hook twice — once for the picker, once for the
+  // composer's "I'll do it later" — and React StrictMode double-invokes every
+  // effect. That was four mints (and four dead codes) per stage entry.
+  it("mints exactly once per stage entry across both hook users under StrictMode", async () => {
+    function TwoConsumers() {
+      useConnectPlatform(vi.fn(), true);
+      useConnectPlatform(vi.fn(), true);
+      return null;
+    }
+    const Wrapper = makeWrapper();
+
+    render(
+      <Wrapper>
+        <StrictMode>
+          <TwoConsumers />
+        </StrictMode>
+      </Wrapper>,
+    );
+
+    await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(mintLinkCode).toHaveBeenCalledOnce();
   });
 
@@ -158,7 +217,9 @@ describe("useConnectPlatform", () => {
   it("queues the composed first message for auto-send when platforms are skipped", async () => {
     const { result, dispatch } = await renderConnect();
 
-    act(() => result.current.skip());
+    await act(async () => {
+      await result.current.skip();
+    });
 
     // `true` is the auto-send flag: the message must land as the user's own
     // turn, not sit unsent in the composer.
@@ -170,7 +231,9 @@ describe("useConnectPlatform", () => {
     mintLinkCode.mockRejectedValue(new Error("boom"));
     const { result, dispatch } = await renderConnect();
 
-    act(() => result.current.skip());
+    await act(async () => {
+      await result.current.skip();
+    });
 
     expect(setPendingPrompt).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({ type: "skipPlatforms" });

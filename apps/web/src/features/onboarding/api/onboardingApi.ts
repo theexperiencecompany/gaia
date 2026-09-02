@@ -27,6 +27,27 @@ export function completeOnboarding(
   return authApi.completeOnboarding(args);
 }
 
+export interface OnboardingPreferencesArgs {
+  profession: string;
+  /** Must be `OnboardingNeed` values; the API rejects anything else. */
+  needs: string[];
+}
+
+/**
+ * Writes Q1 + Q2 as soon as they are answered, well before the flow's final
+ * `POST /onboarding`. Everything the server composes from the user's answers —
+ * the platform-link opener above all — reads these fields, so they have to be
+ * stored before anything that consumes them runs.
+ *
+ * Silent: the caller surfaces its own failure, because the answers not being
+ * saved is not a generic request error to shrug at.
+ */
+export function saveOnboardingPreferences(
+  args: OnboardingPreferencesArgs,
+): Promise<unknown> {
+  return apiService.patch("/onboarding/preferences", args, { silent: true });
+}
+
 export function resetOnboarding(): Promise<unknown> {
   return apiService.post("/onboarding/reset", {}, { silent: true });
 }

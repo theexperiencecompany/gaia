@@ -19,6 +19,12 @@ export interface OnboardingState {
   questionIndex: number;
   draftProfession: string | null;
   selectedNeeds: string[];
+  /**
+   * Whether Q1 + Q2 have reached the server (`PATCH /onboarding/preferences`).
+   * The link-code mint composes its opener from those two fields server-side,
+   * so nothing may mint until this is true.
+   */
+  preferencesPersisted: boolean;
 
   paidRevealAcked: boolean;
   greetingAcked: boolean;
@@ -33,6 +39,7 @@ export type Action =
   | { type: "answer"; field: string; value: string }
   | { type: "toggleNeed"; value: string }
   | { type: "submitNeeds" }
+  | { type: "preferencesPersisted" }
   | { type: "ackPaidReveal" }
   | { type: "ackGreeting" }
   | { type: "platformConnected"; platform: string }

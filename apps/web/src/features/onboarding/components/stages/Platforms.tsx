@@ -46,7 +46,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
     isSubmittingPhone,
     submitPhone,
     closePhoneModal,
-  } = useConnectPlatform(dispatch);
+  } = useConnectPlatform(dispatch, state.preferencesPersisted);
 
   return (
     <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
@@ -78,7 +78,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
 }
 
 export function PlatformsComposer({ state, dispatch }: PlatformsProps) {
-  const { skip } = useConnectPlatform(dispatch);
+  const { skip } = useConnectPlatform(dispatch, state.preferencesPersisted);
   if (state.connectedPlatform) return null;
 
   return (

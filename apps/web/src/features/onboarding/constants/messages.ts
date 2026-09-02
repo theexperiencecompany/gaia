@@ -2,7 +2,7 @@
 
 export const NEEDS_HINT = "You can always add more later.";
 
-export const PAYMENT_INTRO = "One thing before we start —";
+export const PAYMENT_INTRO = "One thing before we start:";
 
 export const PAID_REVEAL_TITLE = "Welcome to GAIA Pro!";
 

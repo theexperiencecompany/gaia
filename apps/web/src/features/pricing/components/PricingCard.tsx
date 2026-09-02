@@ -22,6 +22,7 @@ import {
   CENTS_PER_DOLLAR,
   MONTHS_PER_YEAR,
   REFUND_WINDOW_COPY,
+  TAX_NOTE_COPY,
 } from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { writePendingCheckout } from "../lib/pendingCheckout";
@@ -233,7 +234,7 @@ export function PricingCard({
             {getButtonText()}
           </RaisedButton>
           <p className="mt-2 text-center text-xs font-light text-zinc-500">
-            {REFUND_WINDOW_COPY}
+            {REFUND_WINDOW_COPY} {TAX_NOTE_COPY}
           </p>
         </>
       );

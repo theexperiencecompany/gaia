@@ -199,7 +199,7 @@ describe("PaywallModal", () => {
     render(<PaywallModal />);
 
     await screen.findByRole("dialog");
-    expect(screen.getByText("Cancel within 7 days.")).not.toBeNull();
+    expect(screen.getByText(/Cancel within 7 days\./)).not.toBeNull();
   });
 
   it("replaces the CTA with a confirming state once the overlay closes", async () => {

@@ -5,7 +5,7 @@ import type {
 
 export type PlatformPreviewPlatform = Extract<
   ChatPlatform,
-  "telegram" | "whatsapp" | "slack" | "discord"
+  "telegram" | "whatsapp"
 >;
 
 export type ProfessionArchetype =

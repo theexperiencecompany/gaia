@@ -21,6 +21,7 @@ import { toast } from "@/lib/toast";
 import { resetOnboarding } from "../api/onboardingApi";
 import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
 import { useOnboardingPersistence } from "../effects/useOnboardingPersistence";
+import { useOnboardingPreferences } from "../effects/useOnboardingPreferences";
 import { useOnboardingSubmission } from "../effects/useOnboardingSubmission";
 import { getStage } from "../state/derive";
 import { initialState } from "../state/initial";
@@ -42,6 +43,7 @@ export function useOnboarding(): UseOnboardingReturn {
   const stage = getStage(state, isPaid);
 
   useOnboardingPersistence(state, dispatch);
+  useOnboardingPreferences(state, dispatch);
 
   const handleSubmissionSuccess = useCallback(
     (info: UserInfo) => {
