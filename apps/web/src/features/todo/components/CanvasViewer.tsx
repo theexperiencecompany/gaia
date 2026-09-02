@@ -20,9 +20,6 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({ todoId, todoTitle }) => {
 
   const handleOpen = async () => {
     setIsOpen(true);
-    // Re-fetch if we have neither content nor a prior successful load, so a
-    // failed read can be retried simply by reopening the viewer.
-    if (content !== null) return;
     setIsLoading(true);
     setHasError(false);
     try {

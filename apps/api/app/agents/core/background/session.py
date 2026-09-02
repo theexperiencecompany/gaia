@@ -26,7 +26,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
-from shared.py.wide_events import log
+from shared.py.wide_events import current_workflow_execution_id, log
 
 
 class RunKind(StrEnum):
@@ -93,11 +93,14 @@ class RunIdentity:
     object beside the LangGraph ``configurable`` it reads the rest from.
     """
 
-    stream_id: str
     conversation_id: str
-    kind: RunKind
     task_id: str | None
     user_message_id: str | None
+    #: Empty until the run is dispatched: a queued item is written before its
+    #: stream exists (``prepare_run_from_item`` mints one at dequeue), and a
+    #: run with no stream yet is by definition a queued one.
+    stream_id: str = ""
+    kind: RunKind = RunKind.QUEUED
     #: The ORIGINAL live turn's bot message id — see ``ExecutorRun.bot_message_id``.
     bot_message_id: str | None = None
 
@@ -118,6 +121,10 @@ class ExecutorRun:
     #: mints a fresh message keyed on ``task_id``.
     bot_message_id: str | None = None
     workflow_id: str | None = None
+    #: The workflow execution this run belongs to. Read off the workflow task's
+    #: wide event at construction (it exists nowhere else), so the executor's
+    #: own boundary can carry it and the ledger can attribute its calls to the run.
+    workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
@@ -132,8 +139,15 @@ class ExecutorRun:
         configurable: AgentConfigurable,
         *,
         identity: RunIdentity,
+        workflow_execution_id: str | None = None,
     ) -> "ExecutorRun":
-        """Build the run context from a LangGraph ``configurable`` dict."""
+        """Build the run context from a LangGraph ``configurable`` dict.
+
+        ``workflow_execution_id`` is the stored one when rebuilding from a queue
+        item or HIL resume record (those rebuild in a context with no workflow
+        boundary); a live dispatch leaves it unset and reads the execution in
+        flight off the boundary it is being built in.
+        """
         return cls(
             stream_id=identity.stream_id,
             conversation_id=identity.conversation_id,
@@ -151,12 +165,25 @@ class ExecutorRun:
             user_message_id=identity.user_message_id,
             bot_message_id=identity.bot_message_id,
             workflow_id=configurable.get("workflow_id"),
+            workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
             active_todo_id=configurable.get("active_todo_id"),
             source_category=SourceCategory(
                 configurable.get("source_category") or SourceCategory.BG.value
             ),
+        )
+
+    @property
+    def identity(self) -> RunIdentity:
+        """This run's identity, in the shape a stored run item is written from."""
+        return RunIdentity(
+            stream_id=self.stream_id,
+            conversation_id=self.conversation_id,
+            kind=self.kind,
+            task_id=self.task_id,
+            user_message_id=self.user_message_id,
+            bot_message_id=self.bot_message_id,
         )
 
     @property

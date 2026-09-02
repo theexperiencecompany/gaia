@@ -643,6 +643,16 @@ class TestCreateOnboardingWorkflows:
 # _create_fallback_workflow
 # ---------------------------------------------------------------------------
 
+#: The fallback's two fields, verbatim. They are fixed templates, so the tests
+#: below pin them exactly rather than sampling a substring.
+_FALLBACK_DESCRIPTION = "Summarizes unread emails by priority, today's meetings, and open todos."
+_FALLBACK_PROMPT = (
+    "1. Summarize my unread emails, most in need of attention first\n"
+    "2. List today's meetings with their times\n"
+    "3. List my open todos\n\n"
+    "Expected output: one short briefing I can read in under a minute."
+)
+
 
 class TestCreateFallbackWorkflow:
     async def test_creates_a_daily_briefing(self) -> None:
@@ -670,6 +680,32 @@ class TestCreateFallbackWorkflow:
             result = await _create_fallback_workflow(USER, "")
 
         assert "Focus:" not in result[0].description
+
+    async def test_the_prompt_is_instructions_not_the_card_copy(self) -> None:
+        """This prompt is what the executor reads as the run's goal. It used to be
+        the description, which opened "Every morning at 9am" — config the scheduler
+        has already acted on by the time the agent sees it. Asserted in full: it is
+        a fixed template, so anything less lets a reworded step through."""
+        with patch(f"{MODULE}.WorkflowService") as service:
+            service.create_workflow = AsyncMock(return_value=_workflow())
+            await _create_fallback_workflow(USER)
+
+        request = service.create_workflow.await_args.args[0]
+        assert request.prompt == _FALLBACK_PROMPT
+        assert request.description == _FALLBACK_DESCRIPTION
+        assert request.prompt != request.description
+
+    async def test_a_long_focus_is_truncated_into_both_fields(self) -> None:
+        focus = "shipping the billing rewrite " * 8  # comfortably over the 100-char cap
+        with patch(f"{MODULE}.WorkflowService") as service:
+            service.create_workflow = AsyncMock(return_value=_workflow())
+            await _create_fallback_workflow(USER, focus)
+
+        request = service.create_workflow.await_args.args[0]
+        assert request.description == f"{_FALLBACK_DESCRIPTION} Focus: {focus[:100]}."
+        assert request.prompt == (
+            f"{_FALLBACK_PROMPT}\n\nWeight everything toward what matters for: {focus[:100]}."
+        )
 
     async def test_integration_ids_are_forwarded(self) -> None:
         with patch(f"{MODULE}.WorkflowService") as service:
