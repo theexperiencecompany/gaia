@@ -168,10 +168,17 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
         return
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
+        # as_node="tools", not "agent": aupdate_state evaluates as_node's outgoing
+        # edges to compute the next tasks, and the agent node's should_continue
+        # branch requires a ``store`` that aupdate_state cannot inject — so writing
+        # as "agent" raises "Missing required config key 'store'" and the record
+        # is lost. The tools->agent edge is unconditional and needs no store, so
+        # the write lands; the AIMessage is appended by the reducer either way.
+        # Mirrors record_executor_cancellation.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
             {"messages": [AIMessage(content=text)]},
-            as_node="agent",
+            as_node="tools",
         )
         log.info(
             f"{LogTag.AGENT} Recorded platform delivery in conversation thread",

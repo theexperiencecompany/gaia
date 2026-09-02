@@ -230,9 +230,11 @@ class TestRecordPlatformDelivery:
         graph.aupdate_state.assert_awaited_once()
         call = graph.aupdate_state.await_args
         assert call.args[0] == {"configurable": {"thread_id": CONVERSATION_ID}}
-        # GAIA's own voice on that platform, so the next turn reads it as a
-        # message it already sent.
-        assert call.kwargs["as_node"] == "agent"
+        # as_node="tools", not "agent": writing as the agent node makes
+        # aupdate_state evaluate should_continue, which needs a store it cannot
+        # inject, so the write raises and is lost. The tools->agent edge needs no
+        # store. Proven against the real graph in the e2e recording test.
+        assert call.kwargs["as_node"] == "tools"
         messages = call.args[1]["messages"]
         assert len(messages) == 1
         assert isinstance(messages[0], AIMessage)

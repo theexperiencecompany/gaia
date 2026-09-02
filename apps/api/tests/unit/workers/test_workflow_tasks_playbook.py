@@ -179,7 +179,7 @@ class _Harness:
                 self.increment_heal_attempts,
             ),
             patch(f"{MODULE}.add_playbook_run_messages", self.add_messages),
-            patch(f"{MODULE}.deliver_workflow_result_to_platforms", self.platform_delivery),
+            patch(f"{MODULE}.deliver_result_to_platforms", self.platform_delivery),
             patch(
                 f"{MODULE}.send_workflow_completion_notification",
                 self.completion_notification,
@@ -2123,7 +2123,7 @@ class TestTheReplayCompletionNotificationEdges:
         workflow = _workflow().model_copy(update={"id": None})
         completion = AsyncMock()
         with (
-            patch(f"{MODULE}.deliver_workflow_result_to_platforms", AsyncMock()),
+            patch(f"{MODULE}.deliver_result_to_platforms", AsyncMock()),
             patch(f"{MODULE}.send_workflow_completion_notification", completion),
         ):
             await _notify_replay_finished(workflow, AGENT_USER, "conv_1", "Agenda sent.")
@@ -2142,7 +2142,7 @@ class TestTheReplayCompletionNotificationEdges:
         log_seam = MagicMock()
         with (
             patch(
-                f"{MODULE}.deliver_workflow_result_to_platforms",
+                f"{MODULE}.deliver_result_to_platforms",
                 AsyncMock(side_effect=TimeoutError("platform down")),
             ),
             patch(f"{MODULE}.send_workflow_completion_notification", AsyncMock()),

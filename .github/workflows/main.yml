@@ -619,7 +619,7 @@ jobs:
     needs: [select-runner, detect, build, test-typescript]
     if: ${{ !cancelled() && needs.select-runner.result == 'success' }}
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -629,6 +629,11 @@ jobs:
           fetch-depth: ${{ runner.environment == 'self-hosted' && '0' || '1' }}
           persist-credentials: false
       - uses: ./.github/actions/setup-uv
+      # scripts/ci/tests exercise the Node-based checks (checks.mjs -> bots-facts.mjs
+      # -> @babel/parser, a devDependency), so node_modules must be installed. Without
+      # this the lane only had uv and failed with ERR_MODULE_NOT_FOUND on a runner
+      # instance whose persistent workspace had no node_modules yet.
+      - uses: ./.github/actions/setup-node-pnpm
       - name: Run harness tooling tests
         run: |
           trap 'echo "::error::repro: uv run --no-project --with pytest"' ERR

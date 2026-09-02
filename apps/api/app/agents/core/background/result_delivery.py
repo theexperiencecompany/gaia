@@ -30,7 +30,7 @@ from langsmith import traceable
 from app.agents.core.background.comms_narrator import narrate_executor_result
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.workflow_platform_delivery import (
-    deliver_workflow_result_to_platforms,
+    deliver_result_to_platforms,
 )
 from app.agents.core.nodes.follow_up_actions_node import generate_follow_up_actions
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
@@ -253,7 +253,7 @@ async def _narrate_and_deliver(
         # messaging-platform conversations as normal bot messages (GAIA's voice,
         # no notification chrome). The in-app badge below is a web-only heads-up.
         if result_type != "error" and run.workflow_notify_on_completion:
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=run.user,
                 user_id=user_id,
                 notification_text=notification_text,

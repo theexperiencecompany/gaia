@@ -38,16 +38,13 @@ long backfill is resumable and an interrupted one costs nothing to restart.
 
 import argparse
 import asyncio
-from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import json
-import math
 import os
 from pathlib import Path
 import sys
-from typing import Any
 
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -57,15 +54,9 @@ from pydantic import BaseModel, Field
 
 from app.db.mongodb.mongodb import init_mongodb
 from app.db.repositories.usage_daily import TrueCostActuals, usage_daily_repository
-from shared.py.wide_events import log
-
-_LOKI_SELECTOR = '{service=~"gaia-backend|arq_worker"} |= "\\"llm_event\\": \\"llm_call\\""'
-_LOKI_PAGE = 5000
-_LOKI_MAX_PAGES = 40
-_OPENROUTER_URL = "https://openrouter.ai/api/v1/generation"
-_LOOKUP_CONCURRENCY = 5
-_LOOKUP_ATTEMPTS = 4
-_MAX_DAYS = 30  # Loki's retention — asking for more silently returns less
+from scripts._events import finite_cost
+from scripts._loki import MAX_DAYS, fetch_day
+from scripts._openrouter import GenerationRecord, default_cache_dir, resolve_generations
 
 #: Provider bucket for calls whose real cost could not be confirmed. Keeping
 #: them in the mix means it always sums to the reported true total, instead of
@@ -81,13 +72,6 @@ class LlmCall(BaseModel):
     background: bool
     logged_cost: float
     generation_id: str | None
-
-
-class GenerationRecord(BaseModel):
-    """OpenRouter's own billing record for one generation."""
-
-    total_cost: float = 0.0
-    provider_name: str = "unknown"
 
 
 class UserDayTrueCost(BaseModel):
@@ -106,15 +90,6 @@ class UserDayTrueCost(BaseModel):
     def gap(self) -> float:
         """Dollars the flat price table missed (positive = we under-counted)."""
         return (self.cost_actual + self.aux_cost_actual) - (self.logged_cost + self.logged_aux_cost)
-
-
-class _Lookup(BaseModel):
-    """A generation lookup outcome. ``resolved`` False means the answer is
-    still unknown (network/5xx exhausted) and must NOT be cached — a 404 is a
-    resolved ``None``, because OpenRouter will never know that id again."""
-
-    resolved: bool
-    record: GenerationRecord | None = None
 
 
 class _Accum(BaseModel):
@@ -190,7 +165,7 @@ def _parse_event(line: str) -> LlmCall | None:
     # json.loads accepts NaN/Infinity, and one of those would poison every sum
     # this day feeds — including what --apply writes to cost_actual. A line whose
     # own cost is not a real number is not evidence of anything: drop it.
-    logged_cost = _finite_cost(raw.get("cost_usd"))
+    logged_cost = finite_cost(raw.get("cost_usd"))
     if logged_cost is None:
         return None
     generation_id = raw.get("generation_id")
@@ -201,18 +176,6 @@ def _parse_event(line: str) -> LlmCall | None:
         logged_cost=logged_cost,
         generation_id=str(generation_id) if generation_id else None,
     )
-
-
-def _finite_cost(value: object) -> float | None:
-    """A cost we are willing to add up: a real, non-negative number. ``None`` for
-    anything else — missing, unparseable, negative, NaN or infinite."""
-    if value is None:
-        return 0.0
-    try:
-        cost = float(value)  # type: ignore[arg-type]  # guarded by the except below
-    except (TypeError, ValueError):
-        return None
-    return cost if math.isfinite(cost) and cost >= 0.0 else None
 
 
 def _is_background(raw: Mapping[str, object]) -> bool:
@@ -231,257 +194,6 @@ def _is_background(raw: Mapping[str, object]) -> bool:
     deploy by the new one.
     """
     return raw.get("background") is True or raw.get("sticky_flip_discarded") is True
-
-
-def _nanos(moment: datetime) -> int:
-    """``moment`` as whole nanoseconds — Loki's own timestamp resolution.
-
-    Integer nanoseconds end to end, deliberately. Rounding the page cursor to
-    a whole second (or round-tripping it through a ``datetime``, whose float
-    seconds cannot hold a nanosecond) makes the next page restart *inside* a
-    second already returned, and every event in that second is folded twice —
-    inflating ``cost_actual`` for exactly the busiest user-days.
-    """
-    return int(moment.timestamp() * 1_000_000_000)
-
-
-class PageBudgetExhaustedError(RuntimeError):
-    """A day needed more than ``_LOKI_MAX_PAGES`` pages, so what was read is a
-    prefix, not the day — it must not be written."""
-
-    def __init__(self, day: str) -> None:
-        super().__init__(
-            f"{day}: more than {_LOKI_MAX_PAGES * _LOKI_PAGE} llm_call lines; "
-            "raise _LOKI_MAX_PAGES rather than backfilling a prefix of the day"
-        )
-        self.day = day
-
-
-class UndrainableTimestampError(RuntimeError):
-    """More log lines share one nanosecond than fit in a Loki page, so the day
-    cannot be read completely and must not be written."""
-
-    def __init__(self, day: str, nanos: int) -> None:
-        super().__init__(
-            f"{day}: more than {_LOKI_PAGE} llm_call lines share timestamp {nanos}ns; "
-            "Loki cannot page inside one timestamp, so this day cannot be backfilled completely"
-        )
-        self.day = day
-        self.nanos = nanos
-
-
-async def _fetch_day(client: httpx.AsyncClient, loki_url: str, day: str) -> list[LlmCall]:
-    """Every ``llm_call`` event Loki holds for one UTC day.
-
-    Pages forward — Loki caps a single response at ``limit`` lines and gives
-    no cursor of its own, so a busy day needs several passes. ``start`` is
-    inclusive, and several lines can share one nanosecond, so the next page
-    re-opens AT the last timestamp seen and the lines already taken from that
-    timestamp are skipped by identity. Starting one nanosecond later would drop
-    the rest of that group; starting any coarser would double-count.
-    """
-    start = datetime.fromisoformat(f"{day}T00:00:00+00:00")
-    end_nanos = _nanos(min(start + timedelta(days=1), datetime.now(UTC)))
-    calls: list[LlmCall] = []
-    cursor_nanos = _nanos(start)
-    # Lines already taken at exactly ``cursor_nanos``, counted — the overlap
-    # between pages. Identical lines can repeat within one nanosecond, so the
-    # count matters: skipping by identity alone would drop the repeats.
-    taken_at_cursor: Counter[str] = Counter()
-    scan_complete = False
-    for _ in range(_LOKI_MAX_PAGES):
-        streams = await _query(client, loki_url, cursor_nanos, end_nanos, _LOKI_PAGE)
-        page = _fold_page(streams, cursor_nanos, taken_at_cursor, calls)
-        if page.seen < _LOKI_PAGE:
-            scan_complete = True
-            break
-        if page.fresh == 0:
-            # The page held nothing but the overlap, so it cannot say whether the
-            # group at this nanosecond is finished or runs past a page. Read that
-            # one nanosecond on its own to find out.
-            if not await _drain_timestamp(client, loki_url, cursor_nanos, taken_at_cursor, calls):
-                raise UndrainableTimestampError(day, cursor_nanos)
-            cursor_nanos, taken_at_cursor = cursor_nanos + 1, Counter()
-        elif page.latest == cursor_nanos:
-            taken_at_cursor += page.at_latest
-        else:
-            cursor_nanos, taken_at_cursor = page.latest, Counter(page.at_latest)
-        if cursor_nanos >= end_nanos:
-            scan_complete = True
-            break
-    if not scan_complete:
-        raise PageBudgetExhaustedError(day)
-    return calls
-
-
-async def _query(
-    client: httpx.AsyncClient, loki_url: str, start: int, end: int, limit: int
-) -> list[dict[str, Any]]:
-    """One Loki range query, forward, over [start, end) nanoseconds."""
-    response = await client.get(
-        f"{loki_url.rstrip('/')}/loki/api/v1/query_range",
-        params={
-            "query": _LOKI_SELECTOR,
-            "start": start,
-            "end": end,
-            "limit": limit,
-            "direction": "forward",
-        },
-        headers={"accept": "application/json"},
-    )
-    response.raise_for_status()
-    streams: list[dict[str, Any]] = response.json()["data"]["result"]
-    return streams
-
-
-async def _drain_timestamp(
-    client: httpx.AsyncClient,
-    loki_url: str,
-    nanos: int,
-    taken: Counter[str],
-    calls: list[LlmCall],
-) -> bool:
-    """Read everything logged at exactly ``nanos``, keeping whatever was not taken
-    on an earlier page. False means the group is larger than one page, so Loki
-    cannot serve it whole and the day cannot be read completely.
-    """
-    streams = await _query(client, loki_url, nanos, nanos + 1, _LOKI_PAGE + 1)
-    lines = Counter(line for _, line in _page_values(streams))
-    if sum(lines.values()) > _LOKI_PAGE:
-        return False
-    for line in (lines - taken).elements():
-        call = _parse_event(line)
-        if call is not None:
-            calls.append(call)
-    return True
-
-
-@dataclass(frozen=True)
-class _PageScan:
-    """What one Loki page contributed: how many lines it held, how many were new,
-    and the lines at its last nanosecond WITH their multiplicity — two identical
-    lines can share a timestamp, and the next page must skip exactly the ones
-    already taken, not every line that looks like them."""
-
-    seen: int
-    fresh: int
-    latest: int
-    at_latest: Counter[str]
-
-
-def _fold_page(
-    streams: list[dict[str, Any]],
-    cursor_nanos: int,
-    taken_at_cursor: Counter[str],
-    calls: list[LlmCall],
-) -> _PageScan:
-    seen = 0
-    fresh = 0
-    latest = 0
-    at_latest: Counter[str] = Counter()
-    skipped: Counter[str] = Counter()
-    for at, line in _page_values(streams):
-        seen += 1
-        if at == cursor_nanos and skipped[line] < taken_at_cursor[line]:
-            skipped[line] += 1
-            continue
-        fresh += 1
-        if at > latest:
-            latest, at_latest = at, Counter()
-        if at == latest:
-            at_latest[line] += 1
-        call = _parse_event(line)
-        if call is not None:
-            calls.append(call)
-    return _PageScan(seen=seen, fresh=fresh, latest=latest, at_latest=at_latest)
-
-
-def _page_values(streams: list[dict[str, Any]]) -> Iterator[tuple[int, str]]:
-    """Every (nanosecond, line) in a Loki page, across its streams."""
-    for stream in streams:
-        for nanos, line in stream["values"]:
-            yield int(nanos), line
-
-
-async def _lookup_generation(
-    client: httpx.AsyncClient, api_key: str, generation_id: str, gate: asyncio.Semaphore
-) -> _Lookup:
-    """Ask OpenRouter what one generation really cost, with backoff on 429/5xx."""
-    async with gate:
-        for attempt in range(_LOOKUP_ATTEMPTS):
-            try:
-                response = await client.get(
-                    _OPENROUTER_URL,
-                    params={"id": generation_id},
-                    headers={"Authorization": f"Bearer {api_key}"},
-                )
-            except httpx.HTTPError:
-                await asyncio.sleep(0.8 * (attempt + 1))
-                continue
-            if response.status_code == 429 or response.status_code >= 500:
-                await asyncio.sleep(1.2 * (attempt + 1))
-                continue
-            if response.status_code == 404:
-                # OpenRouter drops old generations; unverifiable, not a failure.
-                return _Lookup(resolved=True, record=None)
-            response.raise_for_status()
-            data = response.json().get("data")
-            record = GenerationRecord.model_validate(data) if data else None
-            return _Lookup(resolved=True, record=record)
-    log.warning(
-        "[backfill_true_cost] generation lookup exhausted its retries",
-        error_type="openrouter_unreachable",
-        generation_id=generation_id,
-    )
-    return _Lookup(resolved=False)
-
-
-def _read_cache(path: Path) -> dict[str, GenerationRecord | None]:
-    if not path.exists():
-        return {}
-    raw = json.loads(path.read_text())
-    return {
-        key: GenerationRecord.model_validate(value) if value else None for key, value in raw.items()
-    }
-
-
-def _default_cache_dir() -> Path:
-    """Where resolved generations are cached between runs.
-
-    Under the invoking user's cache home, never a shared temp directory: the
-    cache is written and read back as the script's own input, so a world-
-    writable path lets anyone on the box pre-create it and decide what this
-    backfill believes each call cost — and that number is written to
-    ``usage_daily``. Ephemeral either way; it only makes a re-run cheaper.
-    """
-    xdg = os.environ.get("XDG_CACHE_HOME")
-    return (Path(xdg) if xdg else Path.home() / ".cache") / "gaia-true-cost"
-
-
-def _write_cache(path: Path, known: Mapping[str, GenerationRecord | None]) -> None:
-    # 0o700: same reason as _default_cache_dir — nobody else gets to write what
-    # this run reads back as the real cost of a call.
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.write_text(json.dumps({k: (v.model_dump() if v else None) for k, v in known.items()}))
-
-
-async def _resolve_generations(
-    client: httpx.AsyncClient, api_key: str, calls: Sequence[LlmCall], cache_path: Path
-) -> dict[str, GenerationRecord | None]:
-    """Resolve every generation id in ``calls``, reusing the day's cache file."""
-    known = _read_cache(cache_path)
-    todo = sorted({c.generation_id for c in calls if c.generation_id} - set(known))
-    if not todo:
-        return known
-    gate = asyncio.Semaphore(_LOOKUP_CONCURRENCY)
-    lookups = await asyncio.gather(
-        *(_lookup_generation(client, api_key, gen_id, gate) for gen_id in todo)
-    )
-    for gen_id, lookup in zip(todo, lookups, strict=True):
-        if lookup.resolved:
-            known[gen_id] = lookup.record
-    _write_cache(cache_path, known)
-    return known
 
 
 def _render(rows: Sequence[UserDayTrueCost]) -> None:
@@ -554,9 +266,12 @@ async def backfill(days: int, cache_dir: Path, apply: bool) -> None:
     generations: dict[str, GenerationRecord | None] = {}
     async with httpx.AsyncClient(timeout=60.0) as client:
         for day in wanted:
-            day_calls = await _fetch_day(client, loki_url, day)
-            day_generations = await _resolve_generations(
-                client, api_key, day_calls, cache_dir / f"{day}.json"
+            day_calls = await fetch_day(client, loki_url, day, _parse_event)
+            day_generations = await resolve_generations(
+                client,
+                api_key,
+                (call.generation_id for call in day_calls if call.generation_id),
+                cache_dir / f"{day}.json",
             )
             unresolved = sum(
                 1 for c in day_calls if c.generation_id and c.generation_id not in day_generations
@@ -586,18 +301,18 @@ def main() -> None:
     mode.add_argument("--apply", action="store_true", help="write the actuals to usage_daily")
     mode.add_argument("--dry-run", action="store_true", help="report only (default)")
     parser.add_argument(
-        "--days", type=int, default=_MAX_DAYS, help=f"trailing window (max {_MAX_DAYS})"
+        "--days", type=int, default=MAX_DAYS, help=f"trailing window (max {MAX_DAYS})"
     )
     parser.add_argument(
         "--cache-dir",
         type=Path,
-        default=_default_cache_dir(),
+        default=default_cache_dir(),
         help="where per-day generation lookups are cached",
     )
     args = parser.parse_args()
     if args.days < 1:
         raise SystemExit("--days must be at least 1")
-    asyncio.run(backfill(min(args.days, _MAX_DAYS), args.cache_dir, args.apply))
+    asyncio.run(backfill(min(args.days, MAX_DAYS), args.cache_dir, args.apply))
 
 
 if __name__ == "__main__":
