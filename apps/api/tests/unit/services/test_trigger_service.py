@@ -387,17 +387,17 @@ class TestTriggerHandlerBase:
         assert "Queued 1 workflows" in result["message"]
         mock_queue_svc.queue_workflow_execution.assert_awaited_once()
 
-    @patch("app.services.triggers.base.tracked_todo_service")
+    @patch("app.services.triggers.base.get_signal_matching_context")
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_queues_with_integration_trigger_context(
-        self, mock_queue_svc, mock_todo_svc
+        self, mock_queue_svc, mock_signal_context
     ) -> None:
         """The queued context carries the raw payload and the integration trigger stamp."""
         workflow = _make_workflow()
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_todo_svc.get_signal_matching_context = AsyncMock(return_value="")
+        mock_signal_context.return_value = ""
         payload = {"start_time": "2026-01-01T10:00:00+00:00", "id": "evt_1"}
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, payload)
@@ -411,21 +411,21 @@ class TestTriggerHandlerBase:
             },
         )
 
-    @patch("app.services.triggers.base.tracked_todo_service")
+    @patch("app.services.triggers.base.get_signal_matching_context")
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_adds_tracked_todos_context_once_per_user(
-        self, mock_queue_svc, mock_todo_svc
+        self, mock_queue_svc, mock_signal_context
     ) -> None:
         """Signal context is attached to every workflow but fetched once per user."""
         workflows = [_make_workflow(workflow_id="wf_1"), _make_workflow(workflow_id="wf_2")]
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=workflows)
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_todo_svc.get_signal_matching_context = AsyncMock(return_value="todo: buy milk")
+        mock_signal_context.return_value = "todo: buy milk"
 
         await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {"id": "evt_1"})
 
-        mock_todo_svc.get_signal_matching_context.assert_awaited_once_with(USER_ID)
+        mock_signal_context.assert_awaited_once_with(USER_ID)
         contexts = [
             call.kwargs["context"]
             for call in mock_queue_svc.queue_workflow_execution.await_args_list
@@ -442,17 +442,17 @@ class TestTriggerHandlerBase:
             * 2
         )
 
-    @patch("app.services.triggers.base.tracked_todo_service")
+    @patch("app.services.triggers.base.get_signal_matching_context")
     @patch("app.services.triggers.base.WorkflowQueueService")
     async def test_process_event_queues_without_todos_when_signal_context_fails(
-        self, mock_queue_svc, mock_todo_svc
+        self, mock_queue_svc, mock_signal_context
     ) -> None:
         """A failing signal-context fetch still queues the workflow, minus the todos key."""
         workflow = _make_workflow()
         handler = _ConcreteTriggerHandler()
         handler.find_workflows = AsyncMock(return_value=[workflow])
         mock_queue_svc.queue_workflow_execution = AsyncMock(return_value=True)
-        mock_todo_svc.get_signal_matching_context = AsyncMock(side_effect=Exception("mongo down"))
+        mock_signal_context.side_effect = Exception("mongo down")
 
         result = await handler.process_event("TEST_EVENT", TRIGGER_ID, USER_ID, {})
 

@@ -33,8 +33,16 @@ const PREFETCH = 8;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-/** Sends one already-rendered message to a platform destination. */
-type DeliverFn = (destinationId: string, text: string) => Promise<void>;
+/**
+ * Sends one already-rendered message to a platform destination. `isChannel`
+ * tells the adapter whether `destinationId` is a channel/group id (send to the
+ * channel) or a user id (open the DM).
+ */
+type DeliverFn = (
+  destinationId: string,
+  text: string,
+  isChannel: boolean,
+) => Promise<void>;
 
 /** Sends one file attachment to a platform destination. */
 type DeliverFileFn = (
@@ -222,6 +230,7 @@ export class OutboundConsumer {
           env.destination_id,
           env.text,
           env.text_parts,
+          env.is_channel,
         );
       },
     );
@@ -314,6 +323,7 @@ export class OutboundConsumer {
     destinationId: string,
     text: string | null | undefined,
     textParts: string[] | null | undefined,
+    isChannel: boolean,
   ): Promise<void> {
     const sources = resolveSources(text, textParts);
     if (sources.length === 0) {
@@ -326,7 +336,7 @@ export class OutboundConsumer {
     // many chunks already went out — a partial send must NOT requeue.
     const progress = { delivered: 0 };
     try {
-      await this.deliverSources(destinationId, sources, progress);
+      await this.deliverSources(destinationId, sources, progress, isChannel);
       wideLog.set({ delivered_count: progress.delivered });
       // `redelivered` only ever appeared on the error branches, so a duplicate
       // that succeeded — the exact case the at-least-once queue produces — was
@@ -382,6 +392,7 @@ export class OutboundConsumer {
     destinationId: string,
     sources: string[],
     progress: { delivered: number },
+    isChannel: boolean,
   ): Promise<void> {
     const render = (chunk: string): string =>
       renderForPlatform(chunk, this.platform);
@@ -395,7 +406,7 @@ export class OutboundConsumer {
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
-        await this.deliver(destinationId, rendered);
+        await this.deliver(destinationId, rendered, isChannel);
         progress.delivered += 1;
       }
     }

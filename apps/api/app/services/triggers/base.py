@@ -17,10 +17,12 @@ from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
-from app.services.tracked_todo_service import tracked_todo_service
+from app.services.todos.signal_context import get_signal_matching_context
 from app.services.triggers.batching import buffer_trigger_event, coalesce_window_seconds
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
+from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import TriggerContext, log
 
 
@@ -106,19 +108,32 @@ class TriggerHandler(ABC):
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
 
+    @property
+    def registers_instances(self) -> bool:
+        """Whether ``register`` returns per-owner Composio trigger instance ids.
+
+        False for account-level triggers, which Composio fires on the connected
+        account itself: there is no per-owner instance to register, so the only
+        way to find their subscribers is by user and trigger name. Dispatch and
+        subscription storage both branch on this, so it lives with the handler
+        that decides it rather than in a list somewhere that can drift.
+        """
+        return True
+
     @abstractmethod
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
-        """Register triggers for a workflow.
+        """Register triggers for whatever owns them.
 
         Args:
             user_id: The user ID
-            workflow_id: The workflow ID
+            owner_id: The workflow or tracked-todo that owns this registration.
+                Handlers use it for logging only — Composio keys on the config.
             trigger_name: The trigger name (e.g., 'calendar_event_created')
             trigger_config: The complete TriggerConfig with typed trigger_data
 
@@ -370,6 +385,12 @@ class TriggerHandler(ABC):
         workflows = await self.find_workflows(event_type, trigger_id or "", data)
         log.set_ns("trigger", matched_count=len(workflows))
 
+        # Tracked todos subscribe to the same triggers workflows do, and this is
+        # handed off BEFORE the no-workflow return below: an event that matches no
+        # workflow can still be the reply a todo has been waiting for, and that
+        # return drops it.
+        todos_queued = await self._queue_todo_dispatch(event_type, trigger_id, user_id, data)
+
         if not workflows:
             log.set_ns("trigger", fired=False)
             log.info(
@@ -377,6 +398,7 @@ class TriggerHandler(ABC):
                 outcome="no_match",
                 event_type=event_type,
                 trigger_id=trigger_id,
+                todo_dispatch_queued=todos_queued,
             )
             return TriggerEventResult(status="success", message="No matching workflows")
 
@@ -395,6 +417,40 @@ class TriggerHandler(ABC):
         log.set_ns("trigger", fired=queued_count > 0, result_count=queued_count)
 
         return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
+
+    async def _queue_todo_dispatch(
+        self, event_type: str, trigger_id: str | None, user_id: str | None, data: dict[str, Any]
+    ) -> bool:
+        """Hand the todo fan-out to its worker task. Returns whether it was queued.
+
+        Enqueue rather than call: dispatch needs the todo completion path, which
+        imports the trigger stack back to tear subscriptions down. A task name is
+        a string, so the cycle never forms.
+
+        A failure here must not cost the workflow dispatch below it — the two
+        consumers are independent, and letting a subscription problem take
+        workflows down with it turns a small bug into an outage.
+        """
+        try:
+            pool = await RedisPoolManager.get_pool()
+            await enqueue_worker_job(
+                pool,
+                "dispatch_todo_subscriptions",
+                self.trigger_names,
+                trigger_id,
+                user_id,
+                data,
+            )
+            return True
+        except Exception as e:
+            log.error(
+                "trigger_todo_dispatch_enqueue_failed",
+                event_type=event_type,
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return False
 
     async def _queue_one_workflow(
         self,
@@ -420,9 +476,9 @@ class TriggerHandler(ABC):
             context: dict[str, Any] = {"trigger_type": TriggerType.INTEGRATION.value}
             if workflow.user_id not in signal_context_by_user:
                 try:
-                    signal_context_by_user[
+                    signal_context_by_user[workflow.user_id] = await get_signal_matching_context(
                         workflow.user_id
-                    ] = await tracked_todo_service.get_signal_matching_context(workflow.user_id)
+                    )
                 except Exception as e:
                     log.warning(
                         "trigger.signal_context_fetch_failed",

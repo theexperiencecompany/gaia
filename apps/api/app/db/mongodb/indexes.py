@@ -259,6 +259,21 @@ async def create_todo_indexes() -> None:
                 ],
                 name="tracked_sweep",
             ),
+            # Trigger dispatch resolves subscriptions on every webhook event, so
+            # both lookups must be indexed or each event scans the collection.
+            # Per-resource triggers are found by Composio instance id (cross-user,
+            # mirroring the workflows index); account-level triggers (Gmail) carry
+            # no instance id and are found by user + trigger name instead.
+            todos_collection.create_index(
+                "trigger_subscriptions.composio_trigger_ids",
+                name="subscription_trigger_ids",
+                sparse=True,
+            ),
+            todos_collection.create_index(
+                [("user_id", 1), ("trigger_subscriptions.trigger_name", 1)],
+                name="user_subscription_trigger_name",
+                sparse=True,
+            ),
         )
 
     except Exception as e:

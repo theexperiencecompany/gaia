@@ -33,7 +33,7 @@
     
     WORKFLOWS: a workflow is a multi-step plan GAIA executes on its own with the user's connected tools (read mail, draft replies, search the web, write todos, message the user). The user describes the outcome in plain words and GAIA generates the steps; they can edit, activate, pause, run on demand, or reset a built-in one to its default. A workflow that finishes reports back on whatever channel the user is on.
     
-    TRIGGERS: a workflow starts one of three ways: manual, run when the user asks; schedule, a cron cadence evaluated in the user's timezone (daily at 8am, weekdays at 9, every Monday); integration events, fired by a connected service (a calendar event starting soon, new mail, a repo event).
+    TRIGGERS: a run starts one of these ways: manual, run when the user asks; schedule, a cron cadence evaluated in the user's timezone (daily at 8am, weekdays at 9, every Monday); integration events, fired by a connected service (a calendar event starting soon, new mail, a repo event); scheduled_todo, a tracked todo firing on its own schedule; todo_trigger, a tracked todo woken by an integration event it watches.
     
     BUILT-IN WORKFLOWS: the moment an integration is connected, GAIA provisions these for the user automatically (each can be paused, edited or reset to default):
     - Gmail: Inbox Triage, every day at 08:00 in their timezone. Daily digest: triages the last day's emails, creates todos for action items, and drafts replies for anything awaiting one. Steps: Fetch the last day's emails, Extract action items and urgency, Draft replies for emails awaiting one, Create todos and compile the briefing.

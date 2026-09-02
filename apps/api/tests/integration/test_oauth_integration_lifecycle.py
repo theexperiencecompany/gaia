@@ -910,6 +910,12 @@ class TestWorkflowResumeOnReconnect:
                 "app.services.workflow.integration_pause.compute_required_integrations"
             ) as required,
             patch("app.services.workflow.integration_pause.WorkflowService") as service,
+            # Reconnect now resyncs todo subscriptions too; this test is about
+            # which workflows come back, so the todo side is stubbed.
+            patch(
+                "app.services.workflow.integration_pause.resync_subscriptions_for_trigger_names",
+                new_callable=AsyncMock,
+            ),
         ):
             # Notion first: a resume that stopped at the first non-match would
             # never reach the Gmail workflow behind it.

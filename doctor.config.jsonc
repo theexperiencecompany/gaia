@@ -23,6 +23,17 @@
     // excludes .claude and .agents outright.
     "files": [".agents/skills/**", ".claude/skills/**"],
     "overrides": [
+      // deliverSources MUST await each send before the next: the bubbles of one
+      // logical message have to arrive in published order, so fanning them out
+      // with Promise.all (what async-await-in-loop suggests) would reorder the
+      // user's message. The sequential await is the correctness guarantee, not
+      // an oversight — see the method's own comment. The line is only flagged
+      // now because this branch added the isChannel argument to the awaited
+      // deliver() call; the loop itself predates it and is unchanged.
+      {
+        "files": ["libs/shared/ts/src/bots/consumer/outbound-consumer.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // The wake-word controller's lifetime is managed imperatively (start()
       // creates it, stop() disposes it), not by an effect, so the three
       // listeners are attached in start() and released by detachListeners().

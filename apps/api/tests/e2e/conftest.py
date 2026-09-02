@@ -70,14 +70,19 @@ _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """HIL e2e files need real Mongo/Redis; skip them at collection otherwise.
+    """Some e2e files need real Mongo/Redis; skip them at collection otherwise.
 
     These are the only e2e files that request the real-infra fixtures from
-    tests/integration/real/db_fixtures (verified by grep). Everything else in
-    this directory runs hermetic with MemorySaver + fake LLM.
+    tests/integration/real/db_fixtures (verified by grep): the HIL journeys and
+    the trigger-dispatch fan-out. Everything else in this directory runs hermetic
+    with MemorySaver + fake LLM.
     """
 
-    real_infra_files = {"test_hil_barrier_e2e.py", "test_hil_spawn_e2e.py"}
+    real_infra_files = {
+        "test_hil_barrier_e2e.py",
+        "test_hil_spawn_e2e.py",
+        "test_todo_trigger_dispatch_e2e.py",
+    }
     dir_root = Path(__file__).resolve().parent
     skip_items_without_real_services(
         [
@@ -85,7 +90,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             for item in items
             if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
         ],
-        reason="HIL e2e requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
+        reason="requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
     )
 
 

@@ -41,6 +41,8 @@ _TRIGGER_TEXT: dict[TriggerType, str] = {
     TriggerType.MANUAL: "manual, run when the user asks",
     TriggerType.SCHEDULE: "schedule, a cron cadence evaluated in the user's timezone (daily at 8am, weekdays at 9, every Monday)",
     TriggerType.INTEGRATION: "integration events, fired by a connected service (a calendar event starting soon, new mail, a repo event)",
+    TriggerType.SCHEDULED_TODO: "scheduled_todo, a tracked todo firing on its own schedule",
+    TriggerType.TODO_TRIGGER: "todo_trigger, a tracked todo woken by an integration event it watches",
 }
 
 
@@ -81,7 +83,7 @@ def _integration_name(integration_id: str) -> str:
 
 def build_capability_block() -> str:
     trigger_kinds = "; ".join(_TRIGGER_TEXT[kind] for kind in TriggerType)
-    triggers = f"TRIGGERS: a workflow starts one of three ways: {trigger_kinds}."
+    triggers = f"TRIGGERS: a run starts one of these ways: {trigger_kinds}."
     workflows = "\n".join(
         _describe_workflow(_integration_name(integration_id), factory())
         for integration_id, entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.items()

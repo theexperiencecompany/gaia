@@ -10,22 +10,19 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.constants.todos import BLOCKING_LABELS
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
-    RedirectConfig,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.notification_service import notification_service
+from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
@@ -50,8 +47,6 @@ SECONDS_PER_DAY = 86400
 # so reminders never arrive in the middle of the night.
 DAYTIME_START_HOUR = 9
 DAYTIME_END_HOUR = 21
-
-BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
 
 # What a tier's health check decided, so the caller's counter branches are checked.
 ExpiredOutcome = Literal["archived", "notified", "muted"]
@@ -424,23 +419,6 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
     return True
 
 
-def _todo_redirect_action(label: str, todo_id: str | None) -> NotificationAction:
-    """Build a primary REDIRECT action to the todos page.
-
-    Deep-links the specific todo via ``?todoId`` when one is given (single-item
-    notifications), otherwise lands on the todos list (multi-item digest).
-    """
-    url = f"/todos?todoId={todo_id}" if todo_id else "/todos"
-    return NotificationAction(
-        type=ActionType.REDIRECT,
-        label=label,
-        style=ActionStyle.PRIMARY,
-        config=ActionConfig(
-            redirect=RedirectConfig(url=url, open_in_new_tab=False, close_notification=True)
-        ),
-    )
-
-
 async def _send_dormant_digest(todos: list[TodoDocument]) -> None:
     """Send a single digest notification for all dormant todos that need attention."""
     if not todos:
@@ -470,7 +448,7 @@ async def _send_user_dormant_digest(
     count = len(user_todos)
     body = "\n".join(lines)
     # Deep-link the single todo; land on the list when the digest bundles several.
-    action = _todo_redirect_action(
+    action = todo_redirect_action(
         "View todo" if count == 1 else "Review todos",
         user_todos[0].id if count == 1 else None,
     )
@@ -610,7 +588,7 @@ async def _send_individual_notification(
                 content=NotificationContent(
                     title=title,
                     body=body,
-                    actions=[_todo_redirect_action("View todo", todo_id)],
+                    actions=[todo_redirect_action("View todo", todo_id)],
                 ),
                 metadata={"todo_id": todo_id},
             )

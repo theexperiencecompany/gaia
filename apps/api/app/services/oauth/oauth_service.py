@@ -33,6 +33,7 @@ from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
 )
 from app.services.system_workflows.provisioner import provision_system_workflows
+from app.services.triggers.subscription_service import resync_subscriptions_for_trigger_names
 from app.services.workflow.dormancy import resume_dormancy_paused_workflows
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
@@ -384,6 +385,13 @@ def _setup_integration_triggers(
             TriggerService.resync_user_workflow_triggers,
             user_id,
             workflow_trigger_names,
+        )
+        # Todo subscriptions register against the same connected account, so a
+        # reconnect strands their trigger ids exactly as it strands workflows'.
+        background_tasks.add_task(
+            resync_subscriptions_for_trigger_names,
+            user_id,
+            set(workflow_trigger_names),
         )
 
 

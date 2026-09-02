@@ -18,7 +18,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 
-from app.agents.context.slots import EXECUTOR_STATUS_MARKER
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME, EXECUTOR_STATUS_MARKER
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
@@ -36,6 +36,16 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         if not thread_id or not redis_cache.client:
             return state
 
+        messages = state.get("messages", [])
+        # Skip during result narration. When comms is silently re-voicing a finished
+        # executor result (the trigger is a HumanMessage named BACKGROUND_EXECUTOR_NAME),
+        # that task's busy lock is still held — the runner frees it just AFTER delivery.
+        # Injecting "STILL RUNNING" here contradicts the very result being delivered,
+        # which can make the model return an empty narration that then falls back to
+        # the raw executor text leaking to the user.
+        if messages and messages[-1].name == BACKGROUND_EXECUTOR_NAME:
+            return state
+
         raw = await redis_cache.client.get(f"{EXECUTOR_BUSY_PREFIX}{thread_id}")
         if raw is None:
             return state
@@ -51,7 +61,6 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
             ),
             additional_kwargs={EXECUTOR_STATUS_MARKER: True},
         )
-        messages = state.get("messages", [])
         return cast(State, {**state, "messages": [*messages, status]})
     except Exception as e:  # a status frame must never break the turn
         log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)

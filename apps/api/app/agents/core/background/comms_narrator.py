@@ -8,6 +8,7 @@ persona. This module owns that single invocation.
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE, PLATFORM_DELIVERY_NOTE
@@ -99,7 +100,7 @@ async def narrate_executor_result(
                 #     before the HumanMessage→SystemMessage regression.
                 HumanMessage(
                     content=content,
-                    name="background_executor",
+                    name=BACKGROUND_EXECUTOR_NAME,
                 ),
             ],
         }
@@ -130,7 +131,7 @@ async def record_executor_cancellation(
             "cancelled by the user before it completed. It did NOT finish and will "
             "not deliver results — do not claim otherwise.",
         ),
-        name="background_executor",
+        name=BACKGROUND_EXECUTOR_NAME,
     )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
