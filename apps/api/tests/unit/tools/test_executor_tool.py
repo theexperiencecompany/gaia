@@ -517,7 +517,7 @@ class TestCallExecutorFailures:
         """An unconditional release here let a second executor run concurrently."""
         await fake_redis.set(LOCK_KEY, "stream-1:live-task", ex=EXECUTOR_BUSY_TTL)
 
-        async def explode(**kwargs: Any) -> None:
+        async def explode(*args: Any, **kwargs: Any) -> None:
             raise RuntimeError("redis write failed")
 
         monkeypatch.setattr(executor_tool, "enqueue_task", explode)

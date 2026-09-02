@@ -44,7 +44,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.utils.general_utils import is_json_safe
-from shared.py.wide_events import log
+from shared.py.wide_events import current_workflow_execution_id, log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
@@ -71,6 +71,12 @@ class ExecutorRunItem(TypedDict, total=False):
     #: written by a HIL pause (``_record_pause``) — a plain queue enqueue never
     #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
     bot_message_id: str | None
+    #: The workflow execution the run belongs to. It exists only on the workflow
+    #: task's wide event, and a queue pop or HIL resume rebuilds the run in some
+    #: other context (the previous run's finalize, the approval request), so the
+    #: item is the only thing that can carry it across. Read back into
+    #: ``ExecutorRun`` so the resumed run's model calls stay attributable.
+    workflow_execution_id: str | None
 
 
 @dataclass(frozen=True)
@@ -232,31 +238,22 @@ async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | No
 # ── Enqueue ──────────────────────────────────────────────────────────
 
 
-async def enqueue_task(
-    queue_key: str,
-    task: str,
-    task_id: str,
-    configurable: AgentConfigurable,
-    conversation_id: str,
-    user_message_id: str | None,
-) -> None:
-    """Push a task to the executor queue for deferred execution."""
-    queue_item = json.dumps(
-        build_run_item(
-            task=task,
-            task_id=task_id,
-            configurable=configurable,
-            conversation_id=conversation_id,
-            user_message_id=user_message_id,
-        )
-    )
+async def enqueue_task(queue_key: str, item: ExecutorRunItem) -> None:
+    """Push a run item (see :func:`build_run_item`) to the executor queue.
+
+    Takes the built item rather than its fields: the item is the one shape a
+    queued run is rebuilt from, so the fields it carries belong in one place.
+    """
+    queue_item = json.dumps(item)
     if redis_cache.client:
         await redis_cache.client.rpush(queue_key, queue_item)
         await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
 
 
 async def enqueue_collection_run(
-    conversation_id: str, base_configurable: AgentConfigurable
+    conversation_id: str,
+    base_configurable: AgentConfigurable,
+    workflow_execution_id: str | None = None,
 ) -> bool:
     """Queue a wake-up turn to collect landed background-subagent work.
 
@@ -283,12 +280,17 @@ async def enqueue_collection_run(
     }
     configurable.pop("subagent_id", None)
     await enqueue_task(
-        queue_key=f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
-        task=EXECUTOR_COLLECTION_TASK,
-        task_id=str(uuid4()),
-        configurable=configurable,
-        conversation_id=conversation_id,
-        user_message_id=None,
+        f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
+        build_run_item(
+            task=EXECUTOR_COLLECTION_TASK,
+            configurable=configurable,
+            identity=RunIdentity(
+                conversation_id=conversation_id,
+                task_id=str(uuid4()),
+                user_message_id=None,
+            ),
+            workflow_execution_id=workflow_execution_id,
+        ),
     )
     log.info(
         f"{LogTag.AGENT} Queued background-subagent collection turn",
@@ -352,22 +354,25 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
 def build_run_item(
     *,
     task: str,
-    task_id: str | None,
     configurable: AgentConfigurable,
-    conversation_id: str,
-    user_message_id: str | None,
-    bot_message_id: str | None = None,
+    identity: RunIdentity,
+    workflow_execution_id: str | None = None,
 ) -> ExecutorRunItem:
     """The one serialized run-context shape: written by the queue and the HIL
     resume store, read back by ``prepare_run_from_item``. Add fields here, not
-    at the write sites, or a resumed run silently drops what a queued run keeps."""
+    at the write sites, or a resumed run silently drops what a queued run keeps.
+
+    ``workflow_execution_id`` defaults to the execution in flight on the caller's
+    wide event — a run that already knows its own passes it explicitly, since a
+    pause is recorded from inside the run's boundary, not the workflow task's."""
     return {
         "task": task,
-        "task_id": task_id,
+        "task_id": identity.task_id,
         "configurable": safe_configurable(configurable),
-        "conversation_id": conversation_id,
-        "user_message_id": user_message_id,
-        "bot_message_id": bot_message_id,
+        "conversation_id": identity.conversation_id,
+        "user_message_id": identity.user_message_id,
+        "bot_message_id": identity.bot_message_id,
+        "workflow_execution_id": workflow_execution_id or current_workflow_execution_id(),
     }
 
 
@@ -463,5 +468,6 @@ async def prepare_run_from_item(
             user_message_id=queued_user_message_id,
             bot_message_id=queued_bot_message_id,
         ),
+        workflow_execution_id=item.get("workflow_execution_id"),
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)

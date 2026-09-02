@@ -1280,10 +1280,14 @@ async def _record_interruption_quietly(
         )
 
 
-@traceable(run_type="llm", name="Call Agent")
 def _parse_stream_event(event: tuple[Any, ...]) -> tuple[str, Any] | None:
     """The (mode, payload) of a stream event; handles both the 2-tuple and the
-    3-tuple (subgraphs=True) shapes, and ``None`` for anything else."""
+    3-tuple (subgraphs=True) shapes, and ``None`` for anything else.
+
+    NOT traceable: this runs once per LangGraph stream event (dozens/hundreds per
+    turn). Decorating it as an ``llm`` run emitted one empty "Call Agent" root run
+    to LangSmith per chunk, flooding the project with hundreds of empty traces.
+    """
     if len(event) == 3:
         _ns, stream_mode, payload = event
         return stream_mode, payload

@@ -15,6 +15,9 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+from app.services.triggers.subscription_service import (
+    resync_subscriptions_for_trigger_names,
+)
 from app.services.workflow.integration_pause import (
     resume_workflows_for_reconnected_integration,
 )
@@ -1160,6 +1163,36 @@ class TestHandleOAuthConnection:
             resume_workflows_for_reconnected_integration,
             "user123",
             "notion",
+        )
+
+    async def test_reconnect_resyncs_todo_subscriptions_for_this_integrations_triggers(
+        self,
+        mock_update_user_integration_status,
+    ):
+        """A reconnect strands the todo subscriptions on this integration's
+        triggers exactly as it strands workflow triggers. They must be resynced
+        for the reconnecting user against the set of trigger slugs — dropped or
+        nulled, the todo watches stay dead on a fresh connected account with no
+        signal to the user."""
+        trigger = MagicMock()
+        trigger.workflow_trigger_schema.slug = "notion_page_added"
+        config = _make_integration_config(
+            integration_id="notion",
+            associated_triggers=[trigger],
+        )
+        background_tasks = MagicMock()
+
+        with patch("app.services.oauth.oauth_service.get_composio_service"):
+            await handle_oauth_connection(
+                user_id="user123",
+                integration_config=config,
+                background_tasks=background_tasks,
+            )
+
+        background_tasks.add_task.assert_any_call(
+            resync_subscriptions_for_trigger_names,
+            "user123",
+            {"notion_page_added"},
         )
 
     async def test_integration_status_update_failure_does_not_raise(

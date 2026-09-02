@@ -36,7 +36,7 @@ class AsanaTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        _workflow_id: str,
+        _owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

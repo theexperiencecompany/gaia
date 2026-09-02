@@ -694,3 +694,23 @@ def _reset_limit_origin() -> Iterator[None]:
     from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
     mark_run_origin(LimitHitOrigin.INTERACTIVE)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_wide_event_state() -> Iterator[None]:
+    """Keep one test's wide-event boundary from leaking into the next.
+
+    ``log.reset()`` (used bare in ~8 unit test files to simulate a request)
+    seeds the runner ContextVar with a shared, MUTABLE ``_EventState``. A later
+    async test's ``log.set(...)`` mutates that same object in place — the async
+    context copy shares the reference — so its fields surface back in the sync
+    runner context and bleed into subsequent tests. That is how a workflow
+    execution id set in one test made ``current_workflow_execution_id()`` return
+    non-None in a test that opened no boundary at all. Reset to the module
+    defaults after every test so no shared object survives.
+    """
+    from shared.py import wide_events
+
+    yield
+    wide_events._event_state.set(None)
+    wide_events._trace_id.set("")

@@ -1,6 +1,6 @@
 """Terminal delivery for background-executor results.
 
-Exactly two entry points, both taking the run's ``ExecutorRun`` context:
+Two run-based entry points, both taking the run's ``ExecutorRun`` context:
 
 - ``deliver_result``  — completed/errored run: narrate via comms, compose the
   bot message, persist to MongoDB, then route over EXACTLY ONE transport
@@ -11,6 +11,11 @@ Exactly two entry points, both taking the run's ``ExecutorRun`` context:
   frontend sync reconciles by ``message_id == task_id``).
 
 Every executor terminal path goes through one of these.
+
+- ``deliver_message_to_conversation`` — the run-free primitive underneath: push
+  an already-voiced proactive message (a fired reminder, a tracked-todo result)
+  into one conversation on its own surface and record it in that conversation's
+  langgraph thread. Reuses the same save / route / checkpoint seams.
 
 Neither reads the run's session: both take the cards their caller snapshotted
 before signalling the run done. By the time delivery runs, the comms consumer
@@ -27,7 +32,10 @@ from uuid import uuid4
 from fastapi import HTTPException
 from langsmith import traceable
 
-from app.agents.core.background.comms_narrator import narrate_executor_result
+from app.agents.core.background.comms_narrator import (
+    narrate_executor_result,
+    record_platform_delivery,
+)
 from app.agents.core.background.session import ExecutorRun
 from app.agents.core.background.workflow_platform_delivery import (
     deliver_result_to_platforms,
@@ -45,6 +53,7 @@ from app.models.chat_models import (
 )
 from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
@@ -178,6 +187,76 @@ async def persist_cancelled_run(run: ExecutorRun, tool_data: list[ToolDataEntry]
     )
 
 
+async def deliver_message_to_conversation(
+    *,
+    conversation_id: str,
+    user: AuthenticatedUser,
+    text: str,
+    origin: str,
+) -> ConversationSource | None:
+    """Deliver an already-voiced, proactively-produced message into one existing
+    conversation and record it in that conversation's langgraph thread.
+
+    Saves it, routes it over the conversation's OWN transport (its bot platform's
+    API, or the web/mobile WebSocket), then appends it to the checkpoint so a later
+    turn in this conversation remembers it. Unlike ``deliver_result`` it takes no
+    run and does not narrate — ``text`` is the user-facing message (a fired
+    reminder, a tracked-todo result); ``origin`` names the producer for the
+    checkpoint record. Returns the conversation's source when delivered, else None.
+    Best-effort: never raises into the caller.
+    """
+    if not text.strip():
+        return None
+    user_id = user.get("user_id", "")
+    bot_message = MessageModel(type="bot", response=text, date=datetime.now(UTC).isoformat())
+    bot_message.message_id = str(uuid4())
+
+    if not await _save_bot_message(conversation_id, user, bot_message):
+        return None
+
+    source = await _get_conversation_source(conversation_id, user_id)
+    target = _DeliveryTarget(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        task_id=None,
+        emit_task_id=False,
+        show_reply_quote=False,
+        user_message_id=None,
+        user_msg_content="",
+    )
+    if is_bot_platform(source):
+        delivered = await deliver_message_to_platform(
+            source, user_id, text, conversation_id=conversation_id
+        )
+        transport = "platform"
+    else:
+        await _broadcast_bot_message(
+            target=target,
+            bot_message=bot_message,
+            notification_text=text,
+            tool_data=None,
+            follow_up_actions=[],
+        )
+        delivered = True
+        transport = "websocket"
+
+    # No narration ran, so nothing wrote this into the comms checkpoint. Record it
+    # (only once actually delivered) so the next turn here remembers it.
+    if delivered:
+        await record_platform_delivery(
+            conversation_id, f"[Delivered to the user — {origin}]: {text}"
+        )
+
+    _log_delivery_verdict(
+        target=target,
+        message_id=bot_message.message_id,
+        conversation_source=source,
+        transport=transport,
+        delivered=delivered,
+    )
+    return source if delivered else None
+
+
 async def _narrate_and_deliver(
     run: ExecutorRun,
     result_text: str,
@@ -241,7 +320,7 @@ async def _narrate_and_deliver(
     fresh_append, tool_data = await _resolve_append_mode(
         run, bot_message, tool_data, is_hil_resume=is_hil_resume
     )
-    if fresh_append and not await _save_bot_message(run, bot_message):
+    if fresh_append and not await _save_bot_message(run.conversation_id, run.user, bot_message):
         return None, None
 
     # Workflow run: the result was produced with no human watching, so deliver it
@@ -280,6 +359,7 @@ async def _narrate_and_deliver(
             conversation_source,
             user_id,
             notification_text,
+            conversation_id=run.conversation_id,
         )
         transport = "platform"
     else:
@@ -423,21 +503,23 @@ async def _resolve_append_mode(
     return True, tool_data
 
 
-async def _save_bot_message(run: ExecutorRun, bot_message: MessageModel) -> bool:
+async def _save_bot_message(
+    conversation_id: str, user: AuthenticatedUser, bot_message: MessageModel
+) -> bool:
     """Append the bot message to the conversation; False when it wasn't saved."""
     try:
         await update_messages(
             UpdateMessagesRequest(
-                conversation_id=run.conversation_id,
+                conversation_id=conversation_id,
                 messages=[bot_message],
             ),
-            user=run.user,
+            user=user,
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
             log.info(
                 f"{LogTag.AGENT} conversation deleted, skipping message save",
-                conversation_id=run.conversation_id,
+                conversation_id=conversation_id,
             )
             return False
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))

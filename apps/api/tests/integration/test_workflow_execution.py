@@ -485,7 +485,10 @@ class TestTriggerRegistration:
         assert connected is True
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
-            workflow_id=FAKE_WORKFLOW_ID,
+            # The parameter is `owner_id` now: registration serves tracked todos
+            # as well as workflows, and naming it workflow_id made every handler's
+            # logging and error text lie for half its callers.
+            owner_id=FAKE_WORKFLOW_ID,
             trigger_name="calendar_event_created",
             trigger_config=trigger_config,
             raise_on_failure=True,

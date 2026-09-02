@@ -250,8 +250,14 @@ export class SlackAdapter extends BaseBotAdapter {
   protected async deliverOutbound(
     destinationId: string,
     text: string,
+    isChannel: boolean,
   ): Promise<void> {
-    // platform_links stores the Slack user id; resolve it to a DM channel id.
+    // A channel/group conversation posts to the channel id directly; a DM posts
+    // to the user's resolved DM channel (platform_links stores the user id).
+    if (isChannel) {
+      await this.app.client.chat.postMessage({ channel: destinationId, text });
+      return;
+    }
     const channel = await this.resolveDmChannel(destinationId);
     try {
       await this.app.client.chat.postMessage({ channel, text });

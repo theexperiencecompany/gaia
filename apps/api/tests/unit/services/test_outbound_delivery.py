@@ -10,14 +10,21 @@ from app.services import outbound_delivery as od
 
 class TestPublishOutboundMessage:
     async def test_unlinked_account_is_skipped(self) -> None:
-        with patch.object(
-            od.PlatformLinkService,
-            "get_linked_platforms",
-            new_callable=AsyncMock,
-            return_value={},
+        with (
+            patch.object(
+                od.PlatformLinkService,
+                "get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={},
+            ) as linked,
+            patch.object(od, "log") as mock_log,
         ):
             ok = await od.publish_outbound_message(ConversationSource.WHATSAPP, "user-1", ["hi"])
         assert ok is od.OutboundResult.SKIPPED
+        # The DM destination is resolved for the real user, not a dropped id.
+        linked.assert_awaited_once_with("user-1")
+        # The skip is attributed to the operation that hit it.
+        assert mock_log.warning.call_args.kwargs["log_label"] == "publish_outbound_message"
 
     async def test_no_non_blank_parts_is_skipped(self) -> None:
         with patch.object(
@@ -98,6 +105,33 @@ class TestPublishOutboundMessage:
         # A lone part stays in ``text`` (the common executor-reply shape).
         assert envelope["text"] == "just one"
         assert envelope.get("text_parts") is None
+        # Default (no override): a DM target, not a channel send.
+        assert envelope["is_channel"] is False
+
+    async def test_destination_override_sends_to_the_channel_without_dm_lookup(self) -> None:
+        """A channel override addresses the group directly: the envelope carries
+        the override id and is_channel=True, and the DM link is never resolved."""
+        publisher = AsyncMock()
+        resolve = AsyncMock()
+        with (
+            patch.object(od.PlatformLinkService, "get_linked_platforms", resolve),
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+        ):
+            ok = await od.publish_outbound_message(
+                ConversationSource.TELEGRAM,
+                "user-1",
+                ["ping"],
+                destination_override="-100999",
+                is_channel=True,
+            )
+        assert ok is od.OutboundResult.PUBLISHED
+        resolve.assert_not_awaited()  # the DM link is bypassed entirely
+        _queue, body = publisher.publish_outbound.await_args.args
+        envelope = json.loads(body)
+        assert envelope["destination_id"] == "-100999"
+        assert envelope["is_channel"] is True
 
 
 def _linked(platform: str, platform_user_id: object) -> dict[str, dict[str, object]]:

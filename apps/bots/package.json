@@ -17,6 +17,7 @@
     "discord.js": "^14.26.5",
     "hono": "^4.12.29",
     "spectrum-ts": "^12.7.0",
+    "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
   }

@@ -69,10 +69,9 @@ def get_subagent_by_id(subagent_id: str) -> Subagent | None:
 def _third_party_name_matchers() -> tuple[tuple[Subagent, re.Pattern[str]], ...]:
     """One whole-word matcher per third-party provider, over its name and its id.
 
-    Internal subagents are deliberately absent as *matches*: "todos",
-    "reminders" and "skills" are ordinary words that appear in task prose
-    constantly, and a generic noun cannot mislead anyone about which product
-    holds their data. `short_name` is excluded for the same reason — Google
+    Internal subagents are deliberately absent as *matches*: "todos" and
+    "skills" are ordinary words that appear in task prose constantly, and a
+    generic noun cannot mislead anyone about which product holds their data. `short_name` is excluded for the same reason — Google
     Tasks' short name is literally "tasks".
 
     Cached with `all_subagents()`; call `_third_party_name_matchers.cache_clear()`

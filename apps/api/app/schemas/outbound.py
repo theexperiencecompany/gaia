@@ -30,6 +30,10 @@ class OutboundMessageEnvelope(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     platform: str = Field(min_length=1)
     destination_id: str = Field(min_length=1)
+    # False (default): destination_id is the user's DM target. True: it is a
+    # channel/group id and the bot must send to the channel — some platforms
+    # (Discord, Slack) address a channel differently from a user DM.
+    is_channel: bool = False
     # A message carries a single ``text`` body, an ordered ``text_parts`` group,
     # an attachment, or a combination. ``text_parts`` is how a multi-bubble
     # notification (e.g. a workflow completion: header, result messages, footer)
