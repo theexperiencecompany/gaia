@@ -6,7 +6,7 @@ Clean, simple, and maintainable.
 import asyncio
 from typing import Any, Literal
 
-from dodopayments import DodoPayments
+from dodopayments import DodoPayments, NotFoundError
 from fastapi import HTTPException
 
 from app.config.settings import settings
@@ -38,7 +38,12 @@ from app.models.payment_models import (
     SubscriptionUpdate,
     UserSubscriptionStatus,
 )
+from app.models.webhook_models import DodoSubscriptionData
 from app.services.email import send_pro_subscription_email
+from app.services.payments.subscription_activation import (
+    activate_subscription,
+    resolve_subscription_owner,
+)
 from shared.py.wide_events import log
 
 
@@ -276,9 +281,64 @@ class DodoPaymentService:
 
         return await self.get_user_subscription_status(user_id)
 
-    async def verify_payment_completion(self, user_id: str) -> PaymentVerificationResponse:
-        """Check payment completion status from webhook data."""
+    async def _reconcile_subscription_with_dodo(
+        self, user_id: str, subscription_id: str
+    ) -> SubscriptionDocument | None:
+        """Recover a paid user whose ``subscription.active`` webhook never landed.
+
+        ``subscription_id`` comes off the Dodo return URL, so it is a hint the
+        client could forge: Dodo is asked what it actually is, and it is only
+        acted on once it is both active and demonstrably this user's. Activation
+        then runs through the same path the webhook uses, so the recovered state
+        is indistinguishable from the delivered one.
+        """
+        try:
+            remote = await asyncio.to_thread(self.client.subscriptions.retrieve, subscription_id)
+        except NotFoundError:
+            log.warning(
+                f"{LogTag.PAYMENT} Dodo has no such subscription to reconcile",
+                failure_reason="subscription_not_found",
+                user_id=user_id,
+            )
+            return None
+
+        sub_data = DodoSubscriptionData.model_validate(remote.model_dump(mode="json"))
+        if sub_data.status != SubscriptionStatus.ACTIVE.value:
+            log.warning(
+                f"{LogTag.PAYMENT} Dodo subscription is not active; nothing to reconcile",
+                failure_reason="subscription_not_active",
+                subscription_status=sub_data.status,
+                user_id=user_id,
+            )
+            return None
+
+        owner_id = await resolve_subscription_owner(sub_data)
+        if owner_id != user_id:
+            log.audit(
+                "payment verification refused",
+                actor=user_id,
+                provider="dodo",
+                reason="subscription_owner_mismatch",
+            )
+            return None
+
+        await activate_subscription(sub_data)
+        return await subscription_repository.get_latest_active_for_user(user_id)
+
+    async def verify_payment_completion(
+        self, user_id: str, subscription_id: str | None = None
+    ) -> PaymentVerificationResponse:
+        """Whether this user's payment has landed, reconciling with Dodo if it hasn't.
+
+        The webhook is the normal way a subscription becomes active. When it is
+        dropped or rejected the local row never appears, so a caller that knows
+        which subscription was just paid for can hand it over and have Dodo
+        settle the question instead of stranding the user on the free tier.
+        """
         subscription = await subscription_repository.get_latest_active_for_user(user_id)
+
+        if not subscription and subscription_id:
+            subscription = await self._reconcile_subscription_with_dodo(user_id, subscription_id)
 
         if not subscription:
             return PaymentVerificationResponse(

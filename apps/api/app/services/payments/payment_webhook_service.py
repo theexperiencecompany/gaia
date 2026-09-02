@@ -3,7 +3,6 @@ Clean payment webhook service for Dodo Payments integration.
 Handles webhook events and updates database state accordingly.
 """
 
-from datetime import UTC, datetime
 from typing import Any
 
 from standardwebhooks.webhooks import Webhook
@@ -12,8 +11,7 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.db.repositories.subscriptions import subscription_repository
-from app.db.repositories.users import user_repository
-from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
+from app.models.payment_models import SubscriptionUpdate
 from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
@@ -25,11 +23,13 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
-from app.services.email import send_pro_subscription_email
 from app.services.payments.payment_service import payment_service
+from app.services.payments.subscription_activation import (
+    activate_subscription,
+    reactivate_workflows_safely,
+)
 from app.services.workflow.subscription_pause import (
     deactivate_workflows_for_lapsed_subscription,
-    reactivate_workflows_for_restored_subscription,
 )
 from shared.py.wide_events import log
 
@@ -329,87 +329,21 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        # Check if subscription already exists
-        existing = await subscription_repository.get_by_dodo_id(sub_data.subscription_id)
-
-        if existing:
-            log.info(
-                f"{LogTag.PAYMENT} Subscription already exists",
-                subscription_id=sub_data.subscription_id,
-            )
-            await self._reactivate_workflows_for_restored_subscription(existing.user_id)
+        activation = await activate_subscription(sub_data)
+        if activation.user_id is None:
             return DodoWebhookProcessingResult(
                 event_type=event.type.value,
-                status="processed",
-                message="Subscription already active",
+                status="failed",
+                message="User not found",
                 subscription_id=sub_data.subscription_id,
             )
 
-        # Find user by email or metadata
-        user_id = sub_data.metadata.get("user_id")
-        user_email = sub_data.customer.email
-        if not user_id:
-            user = await user_repository.get_by_email(user_email)
-            if not user:
-                log.error(
-                    f"{LogTag.PAYMENT} User not found for subscription",
-                    subscription_id=sub_data.subscription_id,
-                )
-                return DodoWebhookProcessingResult(
-                    event_type=event.type.value,
-                    status="failed",
-                    message="User not found",
-                    subscription_id=sub_data.subscription_id,
-                )
-            user_id = str(user.id)
-
-        # Create subscription record
-        subscription_doc = {
-            "dodo_subscription_id": sub_data.subscription_id,
-            "user_id": user_id,
-            "product_id": sub_data.product_id,
-            "status": "active",
-            "quantity": sub_data.quantity,
-            "currency": sub_data.currency,
-            "recurring_pre_tax_amount": sub_data.recurring_pre_tax_amount,
-            "payment_frequency_count": sub_data.payment_frequency_count,
-            "payment_frequency_interval": sub_data.payment_frequency_interval,
-            "subscription_period_count": sub_data.subscription_period_count,
-            "subscription_period_interval": sub_data.subscription_period_interval,
-            "next_billing_date": sub_data.next_billing_date,
-            "previous_billing_date": sub_data.previous_billing_date,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
-            "metadata": sub_data.metadata,
-        }
-
-        await subscription_repository.create(SubscriptionDocument.model_validate(subscription_doc))
-
-        # Track subscription activation in PostHog
-        if user_id:
-            track_subscription_event(
-                user_id=user_id,
-                event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-                subscription_id=sub_data.subscription_id,
-                plan_name="Pro",
-                amount=sub_data.recurring_pre_tax_amount / 100
-                if sub_data.recurring_pre_tax_amount
-                else None,
-                currency=sub_data.currency,
-            )
-
-        # Send welcome email
-        await self._send_welcome_email(user_id)
-
-        await self._reactivate_workflows_for_restored_subscription(user_id)
-
-        log.info(
-            f"{LogTag.PAYMENT} Subscription activated", subscription_id=sub_data.subscription_id
-        )
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
-            message="Subscription activated",
+            message="Subscription activated"
+            if activation.created
+            else "Subscription already active",
             subscription_id=sub_data.subscription_id,
         )
 
@@ -450,7 +384,7 @@ class PaymentWebhookService:
                     subscription_id=sub_data.subscription_id,
                     currency=sub_data.currency,
                 )
-                await self._reactivate_workflows_for_restored_subscription(user_id)
+                await reactivate_workflows_safely(user_id)
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -636,38 +570,6 @@ class PaymentWebhookService:
         except Exception as e:
             log.error(
                 f"{LogTag.PAYMENT} Failed to deactivate workflows for lapsed subscription",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
-
-    async def _reactivate_workflows_for_restored_subscription(self, user_id: str) -> None:
-        """Turn a user's paused automation back on once they're paid again. Never
-        raises — a workflow-reactivation failure must not turn an otherwise-successful
-        billing webhook into a "failed" result that Dodo would retry."""
-        try:
-            await reactivate_workflows_for_restored_subscription(user_id)
-        except Exception as e:
-            log.error(
-                f"{LogTag.PAYMENT} Failed to reactivate workflows for restored subscription",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-            )
-
-    async def _send_welcome_email(self, user_id: str) -> None:
-        """Send welcome email for new subscription."""
-        try:
-            user = await user_repository.get(user_id)
-            if user and user.email:
-                await send_pro_subscription_email(
-                    user_name=user.first_name or "User",
-                    user_email=user.email,
-                )
-                log.info(f"{LogTag.PAYMENT} Welcome email sent to", email=user.email)
-        except Exception as e:
-            log.error(
-                f"{LogTag.PAYMENT} Failed to send welcome email",
                 error=str(e),
                 error_type=type(e).__name__,
                 user_id=user_id,

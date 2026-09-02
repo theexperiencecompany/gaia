@@ -40,22 +40,25 @@ export const usePricing = (initialPlans: Plan[] = []) => {
   });
 
   // Verify payment status
-  const verifyPayment = useCallback(async () => {
-    try {
-      setError(null);
-      const result = await pricingApi.verifyPayment();
+  const verifyPayment = useCallback(
+    async (subscriptionId?: string | null) => {
+      try {
+        setError(null);
+        const result = await pricingApi.verifyPayment(subscriptionId);
 
-      // Refetch subscription status after verification
-      await refetchSubscription();
+        // Refetch subscription status after verification
+        await refetchSubscription();
 
-      return result;
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Payment verification failed";
-      setError(errorMessage);
-      throw err;
-    }
-  }, [refetchSubscription]);
+        return result;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Payment verification failed";
+        setError(errorMessage);
+        throw err;
+      }
+    },
+    [refetchSubscription],
+  );
 
   // Get plan by ID
   const getPlanById = useCallback(

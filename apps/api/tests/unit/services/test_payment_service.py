@@ -36,6 +36,7 @@ from app.models.webhook_models import (
 )
 from app.services.payments.payment_service import DodoPaymentService
 from app.services.payments.payment_webhook_service import PaymentWebhookService
+from app.services.payments.subscription_activation import send_welcome_email_safely
 from shared.py.wide_events import log
 
 # ---------------------------------------------------------------------------
@@ -271,19 +272,28 @@ def payment_service(mock_dodo_client):
 
 @pytest.fixture
 def mock_webhook_subscription_repository():
-    with patch(
-        "app.services.payments.payment_webhook_service.subscription_repository"
-    ) as mock_repo:
-        mock_repo.get_by_dodo_id = AsyncMock(return_value=None)
-        mock_repo.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
-        mock_repo.create = AsyncMock()
-        mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
+    """One mock behind both modules that write subscription rows.
+
+    ``subscription.active`` activates through
+    ``subscription_activation.activate_subscription`` (shared with payment
+    verification's Dodo reconciliation); the other handlers still update the row
+    from the webhook service itself.
+    """
+    mock_repo = MagicMock()
+    mock_repo.get_by_dodo_id = AsyncMock(return_value=None)
+    mock_repo.get_user_id_by_dodo_id = AsyncMock(return_value=FAKE_USER_ID)
+    mock_repo.create = AsyncMock()
+    mock_repo.apply_update_by_dodo_id = AsyncMock(return_value=True)
+    with (
+        patch("app.services.payments.payment_webhook_service.subscription_repository", mock_repo),
+        patch("app.services.payments.subscription_activation.subscription_repository", mock_repo),
+    ):
         yield mock_repo
 
 
 @pytest.fixture
 def mock_webhook_users_collection():
-    with patch("app.services.payments.payment_webhook_service.user_repository") as mock_repo:
+    with patch("app.services.payments.subscription_activation.user_repository") as mock_repo:
         _set_user(mock_repo, SAMPLE_USER_DOC)
         yield mock_repo
 
@@ -306,7 +316,11 @@ def mock_track_payment():
 
 @pytest.fixture
 def mock_track_subscription():
-    with patch("app.services.payments.payment_webhook_service.track_subscription_event") as mock_fn:
+    mock_fn = MagicMock()
+    with (
+        patch("app.services.payments.payment_webhook_service.track_subscription_event", mock_fn),
+        patch("app.services.payments.subscription_activation.track_subscription_event", mock_fn),
+    ):
         yield mock_fn
 
 
@@ -323,7 +337,19 @@ def mock_deactivate_workflows():
 @pytest.fixture
 def mock_webhook_send_email():
     with patch(
-        "app.services.payments.payment_webhook_service.send_pro_subscription_email",
+        "app.services.payments.subscription_activation.send_pro_subscription_email",
+        new_callable=AsyncMock,
+    ) as mock_fn:
+        yield mock_fn
+
+
+@pytest.fixture(autouse=True)
+def mock_activation_workflow_reactivation():
+    """``activate_subscription`` resumes lapsed workflows; that reaches the
+    workflow stack, which no webhook test wants to run. Patched at the source
+    module because the import is deferred to break a cycle."""
+    with patch(
+        "app.services.workflow.subscription_pause.reactivate_workflows_for_restored_subscription",
         new_callable=AsyncMock,
     ) as mock_fn:
         yield mock_fn
@@ -2733,15 +2759,14 @@ class TestHandleSubscriptionPlanChanged:
 
 
 class TestSendWelcomeEmail:
-    """Tests for _send_welcome_email."""
+    """Tests for send_welcome_email_safely."""
 
     async def test_sends_email_when_user_found(
         self,
-        webhook_service,
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
-        await webhook_service._send_welcome_email(FAKE_USER_ID)
+        await send_welcome_email_safely(FAKE_USER_ID)
 
         mock_webhook_send_email.assert_awaited_once_with(
             user_name="Alice",
@@ -2750,31 +2775,28 @@ class TestSendWelcomeEmail:
 
     async def test_no_email_when_user_not_found(
         self,
-        webhook_service,
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
         _set_user(mock_webhook_users_collection, None)
 
-        await webhook_service._send_welcome_email(FAKE_USER_ID)
+        await send_welcome_email_safely(FAKE_USER_ID)
 
         mock_webhook_send_email.assert_not_awaited()
 
     async def test_no_email_when_user_has_no_email(
         self,
-        webhook_service,
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
         _set_user(mock_webhook_users_collection, {**SAMPLE_USER_DOC, "email": None})
 
-        await webhook_service._send_welcome_email(FAKE_USER_ID)
+        await send_welcome_email_safely(FAKE_USER_ID)
 
         mock_webhook_send_email.assert_not_awaited()
 
     async def test_email_error_is_swallowed(
         self,
-        webhook_service,
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
@@ -2782,7 +2804,7 @@ class TestSendWelcomeEmail:
         mock_webhook_send_email.side_effect = Exception("SMTP down")
 
         # Should not raise
-        await webhook_service._send_welcome_email(FAKE_USER_ID)
+        await send_welcome_email_safely(FAKE_USER_ID)
 
 
 class TestGetUserIdFromMetadata:

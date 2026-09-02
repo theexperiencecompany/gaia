@@ -8,7 +8,7 @@ import {
   CircleArrowRight02Icon,
   RedoIcon,
 } from "@icons";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -26,50 +26,55 @@ export default function PaymentSuccessPage() {
   const { createSubscriptionAndRedirect, isLoading: isRestarting } =
     useDodoPayments();
   const user = useUser();
+  // Dodo appends the subscription it just activated. The server treats it as a
+  // hint to reconcile against Dodo when no webhook ever landed, and verifies
+  // ownership before acting on it.
+  const subscriptionId = useSearchParams().get("subscription_id");
 
-  // Send the user straight to onboarding when we already know it's incomplete,
-  // so they don't land on /c and get bounced by the onboarding guard a couple
-  // seconds later (once the user-info fetch resolves). Default to chat.
-  const continueDestination =
-    user.onboarding && !user.onboarding.completed ? "/onboarding" : "/c";
+  // Off-page rails (Cashfree's bank mandate, for one) navigate the top-level
+  // page away mid-onboarding, so this is where an unfinished flow is picked
+  // back up: `/onboarding` rehydrates its persisted stage machine and the
+  // payment stage — now seeing an active subscription — advances itself.
+  // Read from the user record the onboarding guard already uses, never from a
+  // URL parameter the client could forge.
+  const isOnboardingIncomplete = Boolean(
+    user.onboarding && !user.onboarding.completed,
+  );
+  const continueDestination = isOnboardingIncomplete ? "/onboarding" : "/c";
 
   const [status, setStatus] = useState<PaymentStatus>("verifying");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasVerified = useRef(false);
 
+  // The charge is verified exactly once per page load — `hasVerified` is the
+  // only guard, and it is deliberately NOT paired with a cancel-on-cleanup
+  // flag. The two together strand the page: StrictMode's double-invoke (and
+  // any re-render that hands `verifyPayment` a fresh identity) cancels the
+  // single in-flight run while the ref short-circuits the replacement, so no
+  // branch ever calls `setStatus` and the spinner never ends.
   useEffect(() => {
     if (hasVerified.current) return;
     hasVerified.current = true;
 
-    // `cancelled` is scoped to this effect run, so an overlapping re-run can
-    // never resolve out of order and write stale state.
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const result = await verifyPayment();
-        if (cancelled) return;
+    verifyPayment(subscriptionId)
+      .then((result) => {
         if (result.payment_completed) {
           setStatus("success");
-        } else {
-          setStatus("error");
-          setErrorMessage(
-            "Your payment hasn't completed yet. You can try checking out again.",
-          );
+          return;
         }
-      } catch (error) {
+        setStatus("error");
+        setErrorMessage(
+          "Your payment hasn't completed yet. You can try checking out again.",
+        );
+      })
+      .catch((error: unknown) => {
         console.error("Payment verification failed:", error);
-        if (cancelled) return;
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
         );
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [verifyPayment]);
+      });
+  }, [verifyPayment, subscriptionId]);
 
   // Celebrate an active subscription.
   useEffect(() => {
@@ -119,7 +124,9 @@ export default function PaymentSuccessPage() {
               className="w-full text-black!"
               onClick={() => router.push(continueDestination)}
             >
-              Continue to chat
+              {isOnboardingIncomplete
+                ? "Finish setting up"
+                : "Continue to chat"}
               <CircleArrowRight02Icon className="size-4" />
             </RaisedButton>
           </>

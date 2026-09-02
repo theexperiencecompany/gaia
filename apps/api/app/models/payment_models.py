@@ -258,6 +258,18 @@ class ProcessedWebhookUpdate(BaseModel):
     status: str | None = None
 
 
+class VerifyPaymentRequest(BaseModel):
+    """The subscription Dodo handed back on its return URL, when it did.
+
+    Purely a hint — the client controls it, so the server asks Dodo what the id
+    really is and whether it belongs to the caller before acting on it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: str | None = None
+
+
 class PaymentVerificationResponse(BaseModel):
     payment_completed: bool
     subscription_id: str | None = None

@@ -157,12 +157,16 @@ class PricingApi {
     }
   }
 
-  // Verify payment completion after redirect
-  async verifyPayment(): Promise<PaymentVerificationResponse> {
+  // Verify payment completion after redirect. `subscriptionId` (from the Dodo
+  // return URL) lets the server reconcile against Dodo when the webhook that
+  // would have created the row never arrived.
+  async verifyPayment(
+    subscriptionId?: string | null,
+  ): Promise<PaymentVerificationResponse> {
     try {
       return await apiService.post<PaymentVerificationResponse>(
         "/payments/verify-payment",
-        {},
+        subscriptionId ? { subscription_id: subscriptionId } : {},
       );
     } catch (error) {
       return handleApiError(error, "Verify payment");

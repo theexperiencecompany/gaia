@@ -18,6 +18,7 @@ from app.models.payment_models import (
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
+    VerifyPaymentRequest,
 )
 from app.models.webhook_models import DodoWebhookAckResponse
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
@@ -176,6 +177,7 @@ async def cancel_subscription_endpoint(
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
     request: Request,  # noqa: ARG001 -- framework contract
+    body: VerifyPaymentRequest = VerifyPaymentRequest(),
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -184,7 +186,9 @@ async def verify_payment_endpoint(
         payment={"operation": "verify_payment"},
     )
     try:
-        result = await payment_service.verify_payment_completion(user_id)
+        result = await payment_service.verify_payment_completion(
+            user_id, subscription_id=body.subscription_id
+        )
         log.audit("payment verification completed", actor=user_id, provider="dodo")
         return result
     except Exception as e:

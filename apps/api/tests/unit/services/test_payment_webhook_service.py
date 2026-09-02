@@ -21,8 +21,14 @@ from app.models.webhook_models import (
 )
 from app.services.analytics_service import AnalyticsEvents
 from app.services.payments.payment_webhook_service import PaymentWebhookService
+from app.services.payments.subscription_activation import reactivate_workflows_safely
 
 MODULE = "app.services.payments.payment_webhook_service"
+ACTIVATION = "app.services.payments.subscription_activation"
+# `subscription_activation` imports this lazily (it would otherwise pull the
+# workflow stack into `app.decorators`' import graph), so it is only ever
+# patchable at its source module.
+PAUSE = "app.services.workflow.subscription_pause"
 
 USER_ID = "507f1f77bcf86cd799439011"
 
@@ -73,9 +79,9 @@ class TestSubscriptionActiveReactivatesWorkflows:
         service = PaymentWebhookService()
         existing = MagicMock(user_id=USER_ID)
         with (
-            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(f"{ACTIVATION}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
             ) as reactivate,
         ):
@@ -90,13 +96,13 @@ class TestSubscriptionActiveReactivatesWorkflows:
     async def test_newly_created_subscription_reactivates_paused_workflows(self) -> None:
         service = PaymentWebhookService()
         with (
-            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(f"{ACTIVATION}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
             ) as reactivate,
-            patch(f"{MODULE}.track_subscription_event"),
-            patch.object(service, "_send_welcome_email", new_callable=AsyncMock),
+            patch(f"{ACTIVATION}.track_subscription_event"),
+            patch(f"{ACTIVATION}.send_welcome_email_safely", new_callable=AsyncMock),
         ):
             sub_repo.get_by_dodo_id = AsyncMock(return_value=None)
             sub_repo.create = AsyncMock()
@@ -118,13 +124,13 @@ class TestSubscriptionActivatedAnalytics:
     async def test_activation_captures_the_event_once_against_the_gaia_user_id(self) -> None:
         service = PaymentWebhookService()
         with (
-            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(f"{ACTIVATION}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
             ),
-            patch(f"{MODULE}.track_subscription_event") as track,
-            patch.object(service, "_send_welcome_email", new_callable=AsyncMock),
+            patch(f"{ACTIVATION}.track_subscription_event") as track,
+            patch(f"{ACTIVATION}.send_welcome_email_safely", new_callable=AsyncMock),
         ):
             sub_repo.get_by_dodo_id = AsyncMock(return_value=None)
             sub_repo.create = AsyncMock()
@@ -142,12 +148,12 @@ class TestSubscriptionActivatedAnalytics:
         return must not inflate the activation count."""
         service = PaymentWebhookService()
         with (
-            patch(f"{MODULE}.subscription_repository") as sub_repo,
+            patch(f"{ACTIVATION}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
             ),
-            patch(f"{MODULE}.track_subscription_event") as track,
+            patch(f"{ACTIVATION}.track_subscription_event") as track,
         ):
             sub_repo.get_by_dodo_id = AsyncMock(return_value=MagicMock(user_id=USER_ID))
             await service._handle_subscription_active(
@@ -164,7 +170,7 @@ class TestSubscriptionRenewedReactivatesWorkflows:
         with (
             patch(f"{MODULE}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
             ) as reactivate,
             patch(f"{MODULE}.track_subscription_event"),
@@ -185,7 +191,7 @@ class TestSubscriptionRenewedReactivatesWorkflows:
         with (
             patch(f"{MODULE}.subscription_repository") as sub_repo,
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ),
@@ -345,29 +351,27 @@ class TestDeactivateWorkflowsWrapperNeverRaises:
 
 @pytest.mark.unit
 class TestReactivateWorkflowsWrapperNeverRaises:
-    """The private wrapper ``_reactivate_workflows_for_restored_subscription`` —
-    same swallow-and-log posture as deactivation."""
+    """``reactivate_workflows_safely`` — same swallow-and-log posture as
+    deactivation. Shared by the webhook and the verification reconciliation."""
 
     async def test_delegates_to_the_free_function(self) -> None:
-        service = PaymentWebhookService()
         with patch(
-            f"{MODULE}.reactivate_workflows_for_restored_subscription", new_callable=AsyncMock
+            f"{PAUSE}.reactivate_workflows_for_restored_subscription", new_callable=AsyncMock
         ) as reactivate:
-            await service._reactivate_workflows_for_restored_subscription(USER_ID)
+            await reactivate_workflows_safely(USER_ID)
 
         reactivate.assert_awaited_once_with(USER_ID)
 
     async def test_a_failure_is_swallowed_and_logged_with_exact_context(self) -> None:
-        service = PaymentWebhookService()
         with (
             patch(
-                f"{MODULE}.reactivate_workflows_for_restored_subscription",
+                f"{PAUSE}.reactivate_workflows_for_restored_subscription",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mongo exploded"),
             ),
-            patch(f"{MODULE}.log") as mock_log,
+            patch(f"{ACTIVATION}.log") as mock_log,
         ):
-            await service._reactivate_workflows_for_restored_subscription(USER_ID)  # must not raise
+            await reactivate_workflows_safely(USER_ID)  # must not raise
 
         mock_log.error.assert_called_once_with(
             "[PAYMENT] Failed to reactivate workflows for restored subscription",
