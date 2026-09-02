@@ -9,7 +9,7 @@ from app.api.v1.dependencies.google_scope_dependencies import (
     require_integration_user_id,
 )
 from app.constants.log_tags import LogTag
-from app.decorators import tiered_rate_limit
+from app.decorators import require_subscription, tiered_rate_limit
 from app.models.mail_models import (
     ApplyLabelRequest,
     ArchiveEmailsResponse,
@@ -236,6 +236,7 @@ async def search_emails(
 
 
 @router.post("/mail/ai/compose")
+@require_subscription()
 @tiered_rate_limit("mail_actions")
 async def process_email(
     request: EmailRequest,

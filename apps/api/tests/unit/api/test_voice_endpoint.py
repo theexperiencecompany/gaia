@@ -6,13 +6,14 @@ status codes, response shapes, and payload forwarding are verified.
 """
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 from jose import jwt
 import pytest
 
 from app.config.settings import settings
+from app.models.payment_models import PlanType
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.services.analytics_service import AnalyticsEvents
 from app.utils.errors import AppError
@@ -21,6 +22,39 @@ VOICE_BASE = "/api/v1"
 USER_ID = "507f1f77bcf86cd799439011"
 FAKE_API_KEY = "test_api_key"
 FAKE_API_SECRET = "test_api_secret"  # nosec B105 — fake test credential
+
+# The `client` fixture's user is FREE by default (root conftest patches
+# get_user_subscription_status to FREE) — voice is paid-only, so /token 402s
+# before the handler runs. Classes exercising token behavior (not the paywall
+# itself) opt into PRO through the same seam the gate reads.
+_GET_SUBSCRIPTION_STATUS = (
+    "app.services.payments.payment_service.payment_service.get_user_subscription_status"
+)
+
+
+def _subscription_mock(plan_type: PlanType = PlanType.PRO) -> MagicMock:
+    sub = MagicMock()
+    sub.plan_type = plan_type
+    return sub
+
+
+@pytest.fixture(autouse=True)
+def _no_real_redis_plan_cache():
+    """``get_cached_plan_type`` caches the tier in Redis under a key derived
+    from the user id, and every test here shares FAKE_USER's id — without this
+    a tier cached by one test leaks into the next (the stray local-Redis
+    singleton flake noted in ``apps/api/CLAUDE.md``)."""
+    with (
+        patch(
+            "app.services.payments.payment_service.redis_cache.get",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.payments.payment_service.redis_cache.set",
+            new=AsyncMock(),
+        ),
+    ):
+        yield
 
 
 def _voice_option(voice_id: str = "v1", name: str = "Aria") -> VoiceOption:
@@ -51,6 +85,15 @@ def _decode_token(token: str) -> dict:
 
 class TestGetVoiceToken:
     """GET /api/v1/token — LiveKit room token minting"""
+
+    @pytest.fixture(autouse=True)
+    def _pro_subscription(self):
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            yield
 
     def _enable_livekit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
@@ -112,6 +155,43 @@ class TestGetVoiceToken:
     async def test_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get(VOICE_BASE + "/token")
         assert resp.status_code == 401
+
+
+class TestVoicePaidOnlyGate:
+    """402 contract on /token — a voice session is spend, so it is Pro-only."""
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_free_user_gets_402_and_never_mints_a_token(
+        self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
+        monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", FAKE_API_SECRET)
+        monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://test.livekit.cloud")
+
+        resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 402
+        assert resp.json()["detail"]["code"] == "subscription_required"
+        mock_get_voice.assert_not_called()
+
+    @patch("app.api.v1.endpoints.voice.get_user_voice", new_callable=AsyncMock)
+    async def test_pro_user_still_gets_a_token(
+        self, mock_get_voice: AsyncMock, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(settings, "LIVEKIT_API_KEY", FAKE_API_KEY)
+        monkeypatch.setattr(settings, "LIVEKIT_API_SECRET", FAKE_API_SECRET)
+        monkeypatch.setattr(settings, "LIVEKIT_URL", "wss://test.livekit.cloud")
+        mock_get_voice.return_value = None
+
+        with patch(
+            _GET_SUBSCRIPTION_STATUS,
+            new_callable=AsyncMock,
+            return_value=_subscription_mock(),
+        ):
+            resp = await client.get(VOICE_BASE + "/token")
+
+        assert resp.status_code == 200
+        assert resp.json()["participantToken"]
 
 
 # ---------------------------------------------------------------------------

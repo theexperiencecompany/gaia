@@ -26,6 +26,7 @@
     "./types/notes": "./src/types/notes.ts",
     "./types/memory": "./src/types/memory.ts",
     "./types/chat": "./src/types/chat.ts",
+    "./types/subscription": "./src/types/subscription.ts",
     "./types/models": "./src/types/models.ts",
     "./api": "./src/api/index.ts",
     "./api/apiClient": "./src/api/apiClient.ts",

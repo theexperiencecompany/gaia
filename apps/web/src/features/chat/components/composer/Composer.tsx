@@ -1,6 +1,5 @@
 import type React from "react";
 import {
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -12,6 +11,7 @@ import FilePreview from "@/features/chat/components/files/FilePreview";
 import { ALLOWED_FILE_TYPES } from "@/features/chat/constants/files";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerPaste } from "@/features/chat/hooks/useComposerPaste";
+import { useComposerSeeds } from "@/features/chat/hooks/useComposerSeeds";
 import { useComposerSubmit } from "@/features/chat/hooks/useComposerSubmit";
 import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useSlashCommandDropdownControl } from "@/features/chat/hooks/useSlashCommandDropdownControl";
@@ -30,6 +30,7 @@ import type { SearchMode } from "@/types/shared/searchTypes";
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
+import { PaywallNotice } from "./PaywallNotice";
 import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
 import SelectedReplyIndicator from "./SelectedReplyIndicator";
 import SelectedToolIndicator from "./SelectedToolIndicator";
@@ -41,7 +42,6 @@ interface MainSearchbarProps {
   fileUploadRef?: React.RefObject<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>;
-  appendToInputRef?: React.RefObject<((text: string) => void) | null>;
   hasMessages: boolean;
   voiceModeActive: () => void;
   /** Hover intent on the voice button — used to prefetch the session token. */
@@ -52,7 +52,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   scrollToBottom,
   inputRef,
   fileUploadRef,
-  appendToInputRef,
   hasMessages,
   voiceModeActive,
   onVoiceModeHover,
@@ -156,32 +155,21 @@ const Composer: React.FC<MainSearchbarProps> = ({
     clearSelectedCalendarEvent();
   };
 
-  // Function to append text to the input
-  const appendToInput = useCallback(
-    (text: string) => {
-      const newText = inputText ? `${inputText} ${text}` : text;
-      setInputText(newText);
-      // Focus the input after appending
-      if (inputRef.current) {
-        inputRef.current.focus();
-      }
-    },
-    [inputText, setInputText, inputRef],
-  );
-
-  // Expose appendToInput function to parent via ref
-  useImperativeHandle(appendToInputRef, () => appendToInput, [appendToInput]);
+  // Out-of-band seeds (staged prompt, `?q=` deep link) land in the box here,
+  // where the input actually lives.
+  useComposerSeeds(inputRef);
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
+      <PaywallNotice />
+      <IntegrationsBanner
+        integrations={integrations}
+        isLoading={integrationsLoading}
+        hasMessages={hasMessages}
+        onToggleSlashCommand={handleToggleSlashCommandDropdown}
+      />
       <div className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
-        <IntegrationsBanner
-          integrations={integrations}
-          isLoading={integrationsLoading}
-          hasMessages={hasMessages}
-          onToggleSlashCommand={handleToggleSlashCommandDropdown}
-        />
-        {/* relative z-10 ensures indicators always paint above the absolute banner */}
+        {/* relative z-10 ensures indicators always paint above the banner's tucked-under overlap */}
         <div className="relative z-10">
           <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
           <SelectedToolIndicator

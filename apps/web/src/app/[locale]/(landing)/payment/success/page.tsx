@@ -9,7 +9,7 @@ import {
   RedoIcon,
 } from "@icons";
 import * as m from "motion/react-m";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
@@ -22,12 +22,15 @@ import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrint
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type PaymentStatus = "verifying" | "success" | "error";
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
+  // Dodo appends the subscription id to the return URL. It is a hint the
+  // server verifies against Dodo before trusting, and it lets verification
+  // recover a paid user whose webhook never landed.
+  const subscriptionId = useSearchParams().get("subscription_id") ?? undefined;
   const { plans, subscriptionStatus, verifyPayment } = usePricing();
   const { createSubscriptionAndRedirect, isLoading: isRestarting } =
     useDodoPayments();
@@ -53,42 +56,37 @@ export default function PaymentSuccessPage() {
   const printerStage = useReceiptPrinterStage(status === "success");
 
   useEffect(() => {
+    // The charge is verified exactly once per page load. `hasVerified` is the
+    // only guard, deliberately NOT paired with a cancel-on-cleanup flag: the
+    // two together strand the page, because StrictMode's double-invoke (and
+    // any re-render that hands `verifyPayment` a fresh identity) cancels the
+    // single in-flight run while the ref short-circuits the replacement, so
+    // nothing ever calls `setStatus` and the spinner never ends.
     if (hasVerified.current) return;
     hasVerified.current = true;
 
-    // `cancelled` is scoped to this effect run, so an overlapping re-run can
-    // never resolve out of order and write stale state.
-    let cancelled = false;
-    const run = async () => {
-      try {
-        // The Dodo redirect can beat the webhook, so a single "not
-        // completed" is not a failure — retry with growing delays while the
-        // printer shows "Processing your order", and only then give up.
-        const result = await verifyPaymentWithRetry(() => verifyPayment());
-        if (cancelled) return;
+    // The Dodo redirect can beat the webhook, so a single "not completed" is
+    // not a failure: retry with growing delays while the printer shows
+    // "Processing your order", and only then give up.
+    verifyPaymentWithRetry(() => verifyPayment(subscriptionId))
+      .then((result) => {
         if (result.payment_completed) {
-          trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
-        } else {
-          setStatus("error");
-          setErrorMessage(
-            "We haven't received your payment confirmation yet. You can try checking out again.",
-          );
+          return;
         }
-      } catch (error) {
+        setStatus("error");
+        setErrorMessage(
+          "We haven't received your payment confirmation yet. You can try checking out again.",
+        );
+      })
+      .catch((error: unknown) => {
         console.error("Payment verification failed:", error);
-        if (cancelled) return;
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
         );
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [verifyPayment]);
+      });
+  }, [verifyPayment, subscriptionId]);
 
   // Celebrate an active subscription — confetti fires as the receipt starts
   // printing.
@@ -100,10 +98,17 @@ export default function PaymentSuccessPage() {
     };
   }, [status]);
 
-  // Restart checkout for the plan the user last tried, falling back to pricing.
+  // Restart checkout for the plan the user last tried. Mid-onboarding the
+  // checkout lives in the wizard, so that is where a retry goes; otherwise
+  // fall back to pricing.
   const handleTryAgain = () => {
+    if (continueDestination === "/onboarding") {
+      router.push("/onboarding");
+      return;
+    }
     const productId = localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY);
-    if (productId) createSubscriptionAndRedirect(productId);
+    if (productId)
+      createSubscriptionAndRedirect(productId, { source: "payment_retry" });
     else router.push("/pricing");
   };
 

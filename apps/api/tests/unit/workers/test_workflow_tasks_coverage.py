@@ -57,6 +57,9 @@ async def _run_task(
     with (
         patch(f"{MODULE}.workflow_scheduler", scheduler),
         patch(f"{MODULE}.user_repository.get", user_get),
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these guard tests
+        # are about onboarding/budget, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget",
             new_callable=AsyncMock,

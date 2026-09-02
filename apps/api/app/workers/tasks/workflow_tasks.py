@@ -45,6 +45,7 @@ from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.decorators import enforce_daily_cost_budget
+from app.decorators.entitlements import is_subscription_active
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel, ToolDataEntry
 from app.models.message_models import MessageRequestWithHistory
@@ -101,6 +102,9 @@ from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
 from app.services.workflow.service import WorkflowService
+from app.services.workflow.subscription_pause import (
+    deactivate_workflows_for_lapsed_subscription,
+)
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.errors import create_error
 from app.utils.occurrence import parse_occurrence_stamp
@@ -1294,6 +1298,20 @@ async def execute_workflow_by_id(
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # Paid-only gate: no workflow may run for a lapsed/free user, regardless
+        # of trigger type (schedule, manual run-now, or a Composio/email trigger
+        # fire) — every one of those paths enqueues this same ARQ task, so this
+        # is the single choke point that covers all of them. Deactivate the
+        # user's workflows so the trigger stops re-enqueuing this task.
+        if not await is_subscription_active(workflow.user_id):
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — subscription required, deactivating",
+                workflow_id=workflow_id,
+                user_id=workflow.user_id,
+            )
+            await deactivate_workflows_for_lapsed_subscription(workflow.user_id)
+            return f"Workflow {workflow_id} skipped — subscription required"
 
         # A coalesced trigger run carries its events (keyed by batch_key) in
         # Redis rather than in the job payload, so that concurrent enqueues

@@ -49,6 +49,10 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_EMAIL: True,
 }
 
+# In-app route a notification action redirects to. Shared so the memory-backfill
+# and Gmail-personalization notifications can't drift onto different pages.
+MEMORY_SETTINGS_URL = "/settings/memory"
+
 # Workflow-completion notification copy. GAIA texts like a friend (first person,
 # casual), not a status bar. Each entry is (title, body); {title} is the workflow
 # name. One pair is picked per run so repeats don't read like a robot. This is the

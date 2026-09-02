@@ -1,11 +1,10 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Tab, Tabs } from "@heroui/tabs";
 import { ArrowRight02Icon } from "@icons";
 import Link from "next/link";
 import { useState } from "react";
 
+import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import LargeHeader from "../shared/LargeHeader";
 
@@ -17,33 +16,14 @@ export default function PricingSection() {
       <LargeHeader
         chipText="Pricing"
         headingText="$1 a day to never work again."
-        subHeadingText="Free to start. The cheapest hire you'll ever make."
+        subHeadingText="The cheapest hire you'll ever make."
         centered
       />
 
       <div className="mt-8 flex w-full flex-col items-center gap-6">
-        <Tabs
-          selectedKey={isYearly ? "yearly" : "monthly"}
-          onSelectionChange={(key) => setIsYearly(key === "yearly")}
-          radius="full"
-          size="lg"
-          aria-label="Billing period"
-        >
-          <Tab key="monthly" title="Monthly" />
-          <Tab
-            key="yearly"
-            title={
-              <div className="flex items-center gap-2">
-                Yearly
-                <Chip color="primary" size="sm" variant="solid">
-                  Save 25%
-                </Chip>
-              </div>
-            }
-          />
-        </Tabs>
+        <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
 
-        <PricingCards durationIsMonth={!isYearly} hideEnterprise />
+        <PricingCards durationIsMonth={!isYearly} />
 
         <Link
           href="/pricing"

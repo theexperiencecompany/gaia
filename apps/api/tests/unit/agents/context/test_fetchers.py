@@ -15,6 +15,7 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 
 from app.agents.context.fetchers import (
+    NEW_USER_CONVERSATION_LIMIT,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -25,6 +26,7 @@ from app.agents.context.fetchers import (
     build_core_memory_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
+    build_new_user_guidance_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
     format_active_todo_banner,
@@ -36,10 +38,12 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
 )
 from app.agents.context.tiers import AgentTier
+from app.agents.prompts.new_user_prompts import NEED_PLAYBOOKS, build_new_user_guidance
 from app.agents.workspace.paths import session_dir
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
+from app.models.user_models import OnboardingNeed
 from app.utils.artifact_utils import artifact_url_base
 
 
@@ -49,6 +53,7 @@ def ctx(
     query: str | None = "q",
     active_todo_id: str | None = None,
     execution_mode: ExecutionMode = "interactive",
+    user_preferences: dict[str, Any] | None = None,
 ) -> SectionContext:
     """A comms context carrying everything these sections read, minus overrides."""
     return SectionContext(
@@ -57,6 +62,7 @@ def ctx(
         query=query,
         active_todo_id=active_todo_id,
         execution_mode=execution_mode,
+        user_preferences=user_preferences,
     )
 
 
@@ -413,6 +419,209 @@ class TestTrackedTodosBlock:
             AsyncMock(side_effect=RuntimeError("mongo down")),
         ):
             assert await build_tracked_todos_block(ctx(active_todo_id="todo-7")) == ""
+
+
+@pytest.mark.unit
+class TestNewUserGuidanceBlock:
+    """The first-conversation playbooks: present only while the user is new,
+    carrying only the needs they picked."""
+
+    #: A ceiling, not a measurement. The block rides every early comms turn, so
+    #: an edit that doubles it should fail here rather than show up as a bill.
+    MAX_BLOCK_CHARS = 3_400
+
+    @staticmethod
+    def _count(value: int) -> AsyncMock:
+        return AsyncMock(return_value=value)
+
+    def _patch_count(self, counter: AsyncMock) -> Any:
+        return patch(
+            "app.agents.context.fetchers.conversation_repository.count_non_onboarding", counter
+        )
+
+    async def test_renders_the_picked_needs_and_the_profession(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox"]})
+            )
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+        assert "Founder" in block
+
+    async def test_a_need_they_did_not_pick_never_reaches_the_model(self) -> None:
+        """The whole economy of the block: a user who ticked one box carries one
+        playbook, not the catalogue they would have to be told to ignore."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Student", "needs": ["memory"]})
+            )
+        assert NEED_PLAYBOOKS[OnboardingNeed.MEMORY] in block
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] not in block
+
+    async def test_one_need_alone_is_enough_to_render(self) -> None:
+        with self._patch_count(self._count(0)):
+            assert await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["automation"]})
+            )
+
+    async def test_the_typed_need_reaches_the_model_in_their_words(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(
+                    user_preferences={
+                        "profession": "Founder",
+                        "needs": ["inbox"],
+                        "other_need": "chasing invoices",
+                    }
+                )
+            )
+        assert '"chasing invoices"' in block
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+
+    async def test_a_typed_need_alone_is_enough_to_render(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "other_need": "chasing invoices"})
+            )
+        assert block == build_new_user_guidance("Founder", [], "chasing invoices")
+
+    async def test_a_non_string_typed_need_is_ignored(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
+            )
+        assert block == build_new_user_guidance("Founder", [OnboardingNeed.INBOX])
+
+    async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
+        with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
+            assert (
+                await build_new_user_guidance_block(
+                    ctx(user_preferences={"profession": "Founder", "needs": ["inbox"]})
+                )
+                == ""
+            )
+
+    async def test_the_last_new_conversation_still_renders(self) -> None:
+        """Pins the boundary itself: an off-by-one here silently drops the block
+        a conversation early, which is invisible in any output."""
+        with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT)):
+            assert await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox"]})
+            )
+
+    async def test_no_needs_means_no_block_and_no_lookup(self) -> None:
+        """Users who predate the signup questions must not pay for the count."""
+        counter = self._count(0)
+        with self._patch_count(counter):
+            assert (
+                await build_new_user_guidance_block(ctx(user_preferences={"profession": "Founder"}))
+                == ""
+            )
+        counter.assert_not_awaited()
+
+    async def test_no_preferences_at_all_means_no_block(self) -> None:
+        assert await build_new_user_guidance_block(ctx()) == ""
+
+    async def test_an_unknown_need_is_skipped_rather_than_dropping_the_block(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["telepathy", "todos"]})
+            )
+        assert NEED_PLAYBOOKS[OnboardingNeed.TODOS] in block
+
+    async def test_a_skipped_need_names_itself_in_the_wide_event(self) -> None:
+        """Silently dropping a need would look identical to never picking it —
+        the warning is the only trace that a rename left users unserved."""
+        async with captured_wide_event() as event:
+            with self._patch_count(self._count(1)):
+                await build_new_user_guidance_block(
+                    ctx(user_preferences={"profession": "Founder", "needs": ["telepathy", "todos"]})
+                )
+
+        assert event["warnings"] == [
+            {"msg": "Unknown onboarding need in preferences", "need": "telepathy"}
+        ]
+
+    async def test_a_user_with_no_profession_still_gets_their_playbooks(self) -> None:
+        """The profession is optional; its absence must leave the guidance clean
+        rather than leak a placeholder into the prompt."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
+        assert block == build_new_user_guidance("", [OnboardingNeed.INBOX])
+
+    async def test_a_failed_count_yields_no_block(self) -> None:
+        with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
+            assert (
+                await build_new_user_guidance_block(
+                    ctx(user_preferences={"profession": "Founder", "needs": ["inbox"]})
+                )
+                == ""
+            )
+
+    async def test_a_failed_count_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
+                await build_new_user_guidance_block(
+                    ctx(
+                        user_id="user-9",
+                        user_preferences={"profession": "Founder", "needs": ["inbox"]},
+                    )
+                )
+
+        assert event["warnings"] == [
+            {
+                "msg": "Error counting conversations for new-user guidance",
+                "error": "mongo down",
+                "error_type": "RuntimeError",
+                "user_id": "user-9",
+            }
+        ]
+
+    async def test_the_conversation_count_is_scoped_to_this_user(self) -> None:
+        """Counting someone else's conversations would keep the block alive long
+        past the point the user stopped being new."""
+        counter = self._count(1)
+        with self._patch_count(counter):
+            await build_new_user_guidance_block(
+                ctx(
+                    user_id="user-9", user_preferences={"profession": "Founder", "needs": ["inbox"]}
+                )
+            )
+        counter.assert_awaited_once_with("user-9")
+
+    async def test_every_need_has_a_playbook(self) -> None:
+        assert set(NEED_PLAYBOOKS) == set(OnboardingNeed)
+
+    async def test_each_playbook_is_its_own_bullet_line(self) -> None:
+        """Two needs are two lines. Run them together and the model reads one
+        malformed bullet instead of two instructions."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox", "todos"]})
+            )
+        assert (
+            f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}\n- {NEED_PLAYBOOKS[OnboardingNeed.TODOS]}"
+            in block
+        )
+
+    async def test_a_user_who_skipped_the_profession_is_addressed_as_a_person(self) -> None:
+        """The template interpolates the profession three times; an unset Q1
+        must render a plain noun, never an empty hole the model reads around."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
+        assert block.startswith("FIRST CONVERSATIONS (you just met this person)")
+        assert "do for a person" in block
+        assert "the way a person talks" in block
+
+    async def test_no_needs_renders_nothing_rather_than_a_headerless_block(self) -> None:
+        """The guard behind the fetcher's own check: a block with an empty
+        playbook list is the generic coaching this whole section exists to
+        replace, so it must be empty string, not an empty shell."""
+        assert build_new_user_guidance("Founder", []) == ""
+
+    async def test_the_worst_case_block_stays_within_budget(self) -> None:
+        """Every need at once is the largest this can ever be."""
+        block = build_new_user_guidance("Founder", list(OnboardingNeed))
+        assert len(block) <= self.MAX_BLOCK_CHARS, f"guidance block grew to {len(block)} chars"
 
 
 @pytest.mark.unit

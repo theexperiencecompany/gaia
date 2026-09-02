@@ -13,13 +13,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.models.payment_models import (
+    CheckoutSource,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
+    PlanDuration,
+    PlanResponse,
+    ProCheckout,
 )
 from app.services.analytics_service import AnalyticsEvents
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
+CHECKOUT_SESSION_URL = "/api/v1/payments/checkout-session"
 SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
@@ -162,9 +167,45 @@ class TestCreateSubscription:
                 )
 
         mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", "prod_abc", 1, None)
+        # A bundle deployed before `source` existed still checks out; the event
+        # carries a null source rather than being silently mis-attributed.
         mock_capture.assert_called_once_with(
-            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED, {"quantity": 1}
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+            {"quantity": 1, "source": None, "surface": "redirect"},
         )
+
+    async def test_create_subscription_attributes_the_redirect_path_to_its_source(
+        self, client: AsyncClient
+    ):
+        """The legacy redirect path emits the same event name as the overlay, so
+        the funnel reads one event with a `source`/`surface` split rather than
+        two rival events."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_subscription",
+            new_callable=AsyncMock,
+            return_value=CreateSubscriptionResponse(
+                subscription_id="sess_abc",
+                payment_link="https://pay.example.com/link",
+                status="payment_link_created",
+            ),
+        ):
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                response = await client.post(
+                    SUBSCRIPTIONS_URL,
+                    json={"product_id": "prod_abc", "source": "payment_retry"},
+                )
+
+        assert response.status_code == 200
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+            {"quantity": 1, "source": "payment_retry", "surface": "redirect"},
+        )
+
+    async def test_create_subscription_rejects_an_unknown_source(self, client: AsyncClient):
+        response = await client.post(
+            SUBSCRIPTIONS_URL, json={"product_id": "prod_abc", "source": "billboard"}
+        )
+        assert response.status_code == 422
 
     async def test_create_subscription_forwards_discount_code(self, client: AsyncClient):
         """A code offered in the app (the founder's letter) reaches the checkout session."""
@@ -203,6 +244,183 @@ class TestCreateSubscription:
             )
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# POST /checkout-session
+# ---------------------------------------------------------------------------
+
+
+class TestCreateCheckoutSession:
+    """The overlay's session endpoint: authenticated, never paywalled (a
+    non-subscriber calling it is the entire point)."""
+
+    async def test_returns_the_checkout_url_for_the_requested_cycle(self, client: AsyncClient):
+        checkout = CreateSubscriptionResponse(
+            subscription_id="sess_overlay",
+            payment_link="https://checkout.dodopayments.com/sess_overlay",
+            status="payment_link_created",
+        )
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_pro_checkout",
+            new_callable=AsyncMock,
+            return_value=ProCheckout(plan=PlanResponse(**_make_plan()), checkout=checkout),
+        ) as mock_create:
+            response = await client.post(
+                CHECKOUT_SESSION_URL,
+                json={"billing_cycle": "yearly", "source": "pricing_card"},
+            )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "subscription_id": "sess_overlay",
+            "payment_link": "https://checkout.dodopayments.com/sess_overlay",
+            "status": "payment_link_created",
+        }
+        mock_create.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", PlanDuration.YEARLY, CheckoutSource.PRICING_CARD
+        )
+
+    async def test_attributes_the_overlay_checkout_to_its_source(self, client: AsyncClient):
+        """The server is the single emitter of `payment:checkout_started`; the
+        client no longer fires its own rival event, so the attribution the
+        funnel reads has to arrive on this call."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_pro_checkout",
+            new_callable=AsyncMock,
+            return_value=ProCheckout(
+                plan=PlanResponse(**_make_plan()),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="sess_overlay",
+                    payment_link="https://checkout.dodopayments.com/sess_overlay",
+                    status="payment_link_created",
+                ),
+            ),
+        ):
+            with patch("app.api.v1.endpoints.payments.capture_context_event") as mock_capture:
+                await client.post(
+                    CHECKOUT_SESSION_URL,
+                    json={"billing_cycle": "monthly", "source": "paywall_modal"},
+                )
+
+        mock_capture.assert_called_once_with(
+            AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+            {
+                "billing_cycle": PlanDuration.MONTHLY,
+                "source": "paywall_modal",
+                "surface": "overlay",
+            },
+        )
+
+    async def test_rejects_a_checkout_with_no_source(self, client: AsyncClient):
+        """Attribution is not optional on the path that replaced the client
+        emitter — an unattributed checkout would silently vanish from the funnel."""
+        response = await client.post(CHECKOUT_SESSION_URL, json={"billing_cycle": "monthly"})
+        assert response.status_code == 422
+
+    async def test_rejects_an_unknown_source(self, client: AsyncClient):
+        response = await client.post(
+            CHECKOUT_SESSION_URL, json={"billing_cycle": "monthly", "source": "billboard"}
+        )
+        assert response.status_code == 422
+
+    async def test_defaults_to_the_monthly_cycle(self, client: AsyncClient):
+        with patch(
+            "app.services.payments.payment_service.payment_service.create_pro_checkout",
+            new_callable=AsyncMock,
+            return_value=ProCheckout(
+                plan=PlanResponse(**_make_plan()),
+                checkout=CreateSubscriptionResponse(
+                    subscription_id="sess_overlay",
+                    payment_link="https://checkout.dodopayments.com/sess_overlay",
+                    status="payment_link_created",
+                ),
+            ),
+        ) as mock_create:
+            await client.post(CHECKOUT_SESSION_URL, json={"source": "checkout_resume"})
+
+        mock_create.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", PlanDuration.MONTHLY, CheckoutSource.CHECKOUT_RESUME
+        )
+
+    async def test_rejects_an_unknown_billing_cycle(self, client: AsyncClient):
+        response = await client.post(
+            CHECKOUT_SESSION_URL, json={"billing_cycle": "weekly", "source": "pricing_card"}
+        )
+        assert response.status_code == 422
+
+    async def test_requires_authentication(self, unauthed_client: AsyncClient):
+        response = await unauthed_client.post(CHECKOUT_SESSION_URL, json={"source": "pricing_card"})
+        assert response.status_code in (401, 403)
+
+    async def test_wide_event_carries_the_checkout_request_before_dodo_is_called(
+        self, client: AsyncClient
+    ):
+        """The request context is stamped up front, so a checkout that fails
+        inside Dodo still shows who asked for which cycle from where."""
+        with (
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+            patch(
+                "app.services.payments.payment_service.payment_service.create_pro_checkout",
+                new_callable=AsyncMock,
+                return_value=ProCheckout(
+                    plan=PlanResponse(**_make_plan()),
+                    checkout=CreateSubscriptionResponse(
+                        subscription_id="sess_overlay",
+                        payment_link="https://checkout.dodopayments.com/sess_overlay",
+                        status="payment_link_created",
+                    ),
+                ),
+            ),
+        ):
+            response = await client.post(
+                CHECKOUT_SESSION_URL,
+                json={"billing_cycle": "yearly", "source": "pricing_card"},
+            )
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": "507f1f77bcf86cd799439011"},
+            payment={
+                "operation": "create_checkout_session",
+                "billing_cycle": PlanDuration.YEARLY,
+                "source": CheckoutSource.PRICING_CARD,
+            },
+        )
+
+    async def test_audits_the_minted_session_against_the_plan_it_was_priced_from(
+        self, client: AsyncClient
+    ):
+        """Money moves here: the audit trail has to name the caller, the Dodo
+        product they were charged for, and the session id support can look up."""
+        with (
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+            patch(
+                "app.services.payments.payment_service.payment_service.create_pro_checkout",
+                new_callable=AsyncMock,
+                return_value=ProCheckout(
+                    plan=PlanResponse(**_make_plan(dodo_product_id="prod_yearly")),
+                    checkout=CreateSubscriptionResponse(
+                        subscription_id="sess_overlay",
+                        payment_link="https://checkout.dodopayments.com/sess_overlay",
+                        status="payment_link_created",
+                    ),
+                ),
+            ),
+        ):
+            response = await client.post(
+                CHECKOUT_SESSION_URL,
+                json={"billing_cycle": "monthly", "source": "paywall_modal"},
+            )
+
+        assert response.status_code == 200
+        mock_log.set_ns.assert_called_once_with("payment", session_id="sess_overlay")
+        mock_log.audit.assert_called_once_with(
+            "overlay checkout session created",
+            actor="507f1f77bcf86cd799439011",
+            resource="prod_yearly",
+            provider="dodo",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +520,46 @@ class TestVerifyPayment:
         assert response.status_code == 200
         data = response.json()
         assert data["payment_completed"] is False
+
+    async def test_verify_payment_hands_the_returned_subscription_to_its_own_user(
+        self, client: AsyncClient
+    ):
+        """The id off Dodo's return URL is forwarded for reconciliation, scoped
+        to the authenticated caller — never to whoever the id belongs to."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.verify_payment_completion",
+            new_callable=AsyncMock,
+            return_value=PaymentVerificationResponse(
+                payment_completed=True,
+                subscription_id="sub_returned",
+                message="Payment verified",
+            ),
+        ) as mock_verify:
+            response = await client.post(
+                VERIFY_PAYMENT_URL, json={"subscription_id": "sub_returned"}
+            )
+
+        assert response.status_code == 200
+        mock_verify.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", subscription_id="sub_returned"
+        )
+
+    async def test_verify_payment_without_a_body_reconciles_nothing(self, client: AsyncClient):
+        """A poll with no returned id is the plain webhook-landed check — the
+        service is still told there is nothing to reconcile against."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.verify_payment_completion",
+            new_callable=AsyncMock,
+            return_value=PaymentVerificationResponse(
+                payment_completed=False,
+                subscription_id=None,
+                message="No payment found",
+            ),
+        ) as mock_verify:
+            response = await client.post(VERIFY_PAYMENT_URL)
+
+        assert response.status_code == 200
+        mock_verify.assert_awaited_once_with("507f1f77bcf86cd799439011", subscription_id=None)
 
     async def test_verify_payment_service_error_returns_500(self, client: AsyncClient):
         """Endpoint catches exceptions and returns 500."""

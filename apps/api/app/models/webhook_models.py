@@ -41,11 +41,13 @@ class DodoCustomerData(BaseModel):
 class DodoBillingData(BaseModel):
     """Billing address from webhook."""
 
-    city: str
+    # Only `country` is guaranteed by Dodo's schema; the rest are optional and
+    # routinely absent on a subscription read back from the API.
     country: str
-    state: str
-    street: str
-    zipcode: str
+    city: str | None = None
+    state: str | None = None
+    street: str | None = None
+    zipcode: str | None = None
 
 
 class DodoPaymentData(BaseModel):

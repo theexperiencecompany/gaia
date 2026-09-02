@@ -3,8 +3,10 @@
  * to get the derived stage, then picks a `stageContent` and a `composer`
  * for that stage. Stage-driven swapping keeps each stage's logic isolated;
  * shared transcript + progress chrome live in `OnboardingShell` /
- * `MessagesRegion`. `skipAutoRedirect` keeps the chat stage rendered here
- * instead of redirecting into the standalone `/c/:id` route.
+ * `MessagesRegion`.
+ *
+ * The `payment` stage is deliberately exclusive: the transcript is hidden
+ * so nothing competes with the decision.
  */
 
 "use client";
@@ -12,27 +14,19 @@
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useEffect, useState } from "react";
-import { CompletedStagesTimeline } from "@/features/onboarding/components/CompletedStagesTimeline";
 import { MessagesRegion } from "@/features/onboarding/components/MessagesRegion";
 import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntro";
 import { OnboardingShell } from "@/features/onboarding/components/OnboardingShell";
 import {
   Chat,
-  ChatComposer,
-  ClarifyComposer,
-  FocusComposer,
-  IntegrationSelect,
-  IntegrationSelectComposer,
+  Greeting,
+  GreetingComposer,
+  PaidReveal,
+  PaidRevealComposer,
+  Payment,
   Platforms,
   PlatformsComposer,
-  QuestionsComposer,
-  RevealTodos,
-  RevealTodosComposer,
-  RevealWritingStyle,
-  RevealWritingStyleComposer,
-  useChatStage,
-  Workflows,
-  WorkflowsComposer,
+  QuestionsReply,
 } from "@/features/onboarding/components/stages";
 import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
@@ -82,9 +76,7 @@ function clearIntroSeen(userId: string): void {
 }
 
 export default function Onboarding() {
-  const { state, stage, dispatch, restart } = useOnboarding({
-    skipAutoRedirect: true,
-  });
+  const { state, stage, dispatch, restart } = useOnboarding();
   const userId = useUserStore((s) => s.userId);
   // `null` until userId hydrates from persisted storage AND we confirm on the
   // client, so the intro doesn't replay on every reload and server/client
@@ -107,54 +99,35 @@ export default function Onboarding() {
     setIntroDone(true);
   };
 
-  const { todoDemo: todoDemoChat } = useChatStage(state, dispatch);
-
   const stageContent = (() => {
     switch (stage) {
       case "questions":
-      case "focus":
-      case "clarify":
-      case "processing":
-        return null;
-      case "integrationSelect":
-        return <IntegrationSelect state={state} dispatch={dispatch} />;
-      case "revealWriting":
-        return <RevealWritingStyle state={state} />;
-      case "revealTodos":
-        return (
-          <RevealTodos state={state} dispatch={dispatch} chat={todoDemoChat} />
-        );
-      case "workflows":
-        return <Workflows state={state} dispatch={dispatch} />;
-      case "platforms":
+        return <QuestionsReply state={state} dispatch={dispatch} />;
+      case "payment":
+        return <Payment />;
+      case "paidReveal":
+        return <PaidReveal />;
+      case "greeting":
+        return <Greeting />;
+      case "platformPick":
         return <Platforms state={state} dispatch={dispatch} />;
       case "chat":
-        return <Chat state={state} />;
+        return <Chat />;
     }
   })();
 
   const composer = (() => {
     switch (stage) {
       case "questions":
-        return <QuestionsComposer state={state} dispatch={dispatch} />;
-      case "focus":
-        return <FocusComposer state={state} dispatch={dispatch} />;
-      case "clarify":
-        return <ClarifyComposer state={state} dispatch={dispatch} />;
-      case "integrationSelect":
-        return <IntegrationSelectComposer state={state} dispatch={dispatch} />;
-      case "processing":
-        return null;
-      case "revealWriting":
-        return <RevealWritingStyleComposer state={state} dispatch={dispatch} />;
-      case "revealTodos":
-        return <RevealTodosComposer dispatch={dispatch} chat={todoDemoChat} />;
-      case "workflows":
-        return <WorkflowsComposer state={state} dispatch={dispatch} />;
-      case "platforms":
-        return <PlatformsComposer state={state} dispatch={dispatch} />;
+      case "payment":
       case "chat":
-        return <ChatComposer state={state} />;
+        return null;
+      case "paidReveal":
+        return <PaidRevealComposer dispatch={dispatch} />;
+      case "greeting":
+        return <GreetingComposer dispatch={dispatch} />;
+      case "platformPick":
+        return <PlatformsComposer state={state} dispatch={dispatch} />;
     }
   })();
 
@@ -174,12 +147,7 @@ export default function Onboarding() {
       >
         {introDone ? (
           <m.div {...INTRO_FADE_IN}>
-            <MessagesRegion state={state} stage={stage} />
-            <CompletedStagesTimeline
-              state={state}
-              dispatch={dispatch}
-              chat={todoDemoChat}
-            />
+            {stage !== "payment" && <MessagesRegion state={state} />}
             {stageContent}
           </m.div>
         ) : null}

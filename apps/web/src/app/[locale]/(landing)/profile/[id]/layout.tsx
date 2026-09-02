@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-
-import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
 import {
   getHouseImage,
   normalizeHouse,
-} from "@/features/onboarding/constants/houses";
+} from "@/components/ui/holo-card/houses";
+import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
 import { siteConfig } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 

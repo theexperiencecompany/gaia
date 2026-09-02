@@ -42,6 +42,9 @@ async def _run_task(
         patch(
             f"{MODULE}.drain_trigger_batch", new_callable=AsyncMock, return_value=drained
         ) as drain,
+        # The paid-only gate is defaulted to active by the workers-dir conftest's
+        # autouse _subscription_active_by_default fixture — these tests are
+        # about batching, not that one.
         patch(
             f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock, side_effect=budget_error
         ),

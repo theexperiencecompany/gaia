@@ -1,22 +1,17 @@
 /**
- * Builds the chat-style transcript shown above the composer during the Q&A
- * and processing stages. Pure; derives entirely from `responses` and
- * `questionIndex` so it can be memoised cheaply.
+ * Builds the chat-style transcript shown above the composer. Pure; derives
+ * entirely from the answered questions so it can be memoised cheaply.
  */
 
-import { FIELD_NAMES, professionOptions, questions } from "../constants";
+import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
+
 import {
-  CLARIFY_INTRO,
-  CLARIFY_PROCESSING_MSG,
-  CLARIFY_SKIP_REPLY,
-} from "../constants/clarify";
-import {
-  FOCUS_QUESTION,
-  PROCESSING_MSG_FOCUS,
-  PROCESSING_MSG_GMAIL,
-  PROCESSING_MSG_NO_GMAIL,
-} from "../constants/messages";
-import type { ClarifyAnswer, ClarifyQuestion, Message } from "../types";
+  FIELD_NAMES,
+  needOptions,
+  professionOptions,
+  questions,
+} from "../constants";
+import type { Message } from "../types";
 
 /**
  * The exact slice of onboarding state the transcript derives from, so callers
@@ -25,150 +20,50 @@ import type { ClarifyAnswer, ClarifyQuestion, Message } from "../types";
 export interface TranscriptInputs {
   responses: Record<string, string>;
   questionIndex: number;
-  clarifyQuestions: ClarifyQuestion[] | null;
-  clarifyAnswers: Record<string, ClarifyAnswer>;
-  clarifySubmitted: boolean;
+  selectedNeeds: string[];
+  otherNeed: string;
 }
 
-function appendClarifyTranscript(
-  messages: Message[],
-  state: TranscriptInputs,
-): void {
-  if (!state.clarifyQuestions) return;
-  messages.push({
-    id: "clarify-intro",
-    type: "bot",
-    content: CLARIFY_INTRO,
-  });
-  for (const q of state.clarifyQuestions) {
-    const answer = state.clarifyAnswers[q.id];
-    if (!answer) continue;
-    messages.push({
-      id: `clarify-q-${q.id}`,
-      type: "bot",
-      content: q.question,
-    });
-    const userContent =
-      answer.kind === "skip" ? CLARIFY_SKIP_REPLY : (answer.value ?? "");
-    messages.push({
-      id: `clarify-a-${q.id}`,
-      type: "user",
-      content: userContent,
-    });
+function answerFor(fieldName: string, state: TranscriptInputs): string | null {
+  if (fieldName === FIELD_NAMES.NEEDS) {
+    if (state.questionIndex < questions.length) return null;
+    const labels = state.selectedNeeds
+      .map((need) => needOptions.find((o) => o.value === need)?.label)
+      .filter((label): label is string => !!label);
+    const other = state.otherNeed.trim();
+    if (other) labels.push(other);
+    return labels.length > 0 ? labels.join(", ") : null;
   }
-}
-
-// The bot question + user answer pairs for every question asked so far.
-function appendQuestionTranscript(
-  messages: Message[],
-  state: TranscriptInputs,
-): void {
-  const { responses, questionIndex } = state;
-
-  for (let i = 0; i < Math.min(questionIndex + 1, questions.length); i++) {
-    const q = questions[i];
-
-    let botContent = q.question;
-    if (i === 1 && responses[FIELD_NAMES.NAME]) {
-      const firstName = responses[FIELD_NAMES.NAME].split(" ")[0];
-      botContent = `Nice to meet you, ${firstName}!<NEW_MESSAGE_BREAK>${q.question}`;
-    }
-
-    messages.push({
-      id: q.id,
-      type: "bot",
-      content: botContent,
-    });
-
-    const answer = responses[q.fieldName];
-    if (answer != null) {
-      messages.push({
-        id: `user-${q.id}`,
-        type: "user",
-        content: displayValue(q.fieldName, answer),
-        questionFieldName: q.fieldName,
-      });
-    }
+  const raw = state.responses[fieldName];
+  if (raw == null) return null;
+  if (fieldName === FIELD_NAMES.PROFESSION) {
+    return professionOptions.find((p) => p.value === raw)?.label ?? raw;
   }
-}
-
-// The focus question, its answer, optional clarify transcript, and the closing
-// processing message — the transcript shown once all questions are answered.
-function appendFinalStage(messages: Message[], state: TranscriptInputs): void {
-  const { responses } = state;
-  const gmail = responses[FIELD_NAMES.GMAIL];
-  const focus = responses[FIELD_NAMES.FOCUS];
-
-  if (gmail === "skipped" && focus == null) {
-    messages.push({
-      id: "focus-q",
-      type: "bot",
-      content: FOCUS_QUESTION,
-    });
-    return;
-  }
-
-  if (focus == null) {
-    messages.push({
-      id: "processing",
-      type: "bot",
-      content:
-        gmail === "connected" ? PROCESSING_MSG_GMAIL : PROCESSING_MSG_NO_GMAIL,
-    });
-    return;
-  }
-
-  const isNoGmail = gmail === "skipped";
-  if (isNoGmail) {
-    messages.push({
-      id: "focus-q",
-      type: "bot",
-      content: FOCUS_QUESTION,
-    });
-  }
-  messages.push({
-    id: `user-focus`,
-    type: "user",
-    content: focus,
-    questionFieldName: FIELD_NAMES.FOCUS,
-  });
-
-  if (isNoGmail) {
-    appendClarifyTranscript(messages, state);
-  }
-
-  const showProcessing =
-    !isNoGmail || !state.clarifyQuestions || state.clarifySubmitted;
-  if (showProcessing) {
-    messages.push({
-      id: "processing",
-      type: "bot",
-      content:
-        isNoGmail && state.clarifySubmitted
-          ? CLARIFY_PROCESSING_MSG
-          : PROCESSING_MSG_FOCUS,
-    });
-  }
+  return raw;
 }
 
 export function getMessages(state: TranscriptInputs): Message[] {
   const messages: Message[] = [];
+  const upTo = Math.min(state.questionIndex + 1, questions.length);
 
-  appendQuestionTranscript(messages, state);
+  for (let i = 0; i < upTo; i++) {
+    const q = questions[i];
+    messages.push({
+      id: q.id,
+      type: "bot",
+      content: q.lines(state.responses).join(NEW_MESSAGE_BREAK_TOKEN),
+    });
 
-  if (state.questionIndex >= questions.length) {
-    appendFinalStage(messages, state);
+    const answer = answerFor(q.fieldName, state);
+    if (answer != null) {
+      messages.push({
+        id: `user-${q.id}`,
+        type: "user",
+        content: answer,
+        questionFieldName: q.fieldName,
+      });
+    }
   }
 
   return messages;
-}
-
-function displayValue(fieldName: string, value: string): string {
-  if (fieldName === FIELD_NAMES.GMAIL) {
-    return value === "connected" ? "Connected" : "Continue without Gmail";
-  }
-  if (fieldName === FIELD_NAMES.PROFESSION) {
-    return professionOptions.find((p) => p.value === value)?.label ?? value;
-  }
-  return value;
 }

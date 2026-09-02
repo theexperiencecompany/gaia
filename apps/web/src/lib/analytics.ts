@@ -26,9 +26,22 @@ export const ANALYTICS_EVENTS = {
   // Subscription events
   SUBSCRIPTION_PAGE_VIEWED: "subscription:page_viewed",
   SUBSCRIPTION_PLAN_VIEWED: "subscription:plan_viewed",
-  SUBSCRIPTION_CHECKOUT_STARTED: "subscription:checkout_started",
-  SUBSCRIPTION_COMPLETED: "subscription:completed",
+  // Two subscription events deliberately have no entry here, because the API
+  // owns them and a client copy would be a rival event for one user action:
+  //   - starting a checkout -> `payment:checkout_started`, captured by
+  //     POST /payments/checkout-session and POST /payments/subscriptions with
+  //     the `source` the caller passes down (see `useDodoPayments`).
+  //   - completing one -> `subscription:activated`, captured on the Dodo
+  //     webhook (`_handle_subscription_active`), the only place a subscription
+  //     actually becomes real.
+  // SUBSCRIPTION_FAILED stays client-side: a checkout that fails before the
+  // request lands is something the server never sees.
   SUBSCRIPTION_FAILED: "subscription:failed",
+
+  // The paid-only wall appeared on screen. Client-only by necessity: the
+  // server captures the 402 that caused it (`paywall:blocked`), but only the
+  // browser knows whether the modal actually rendered for the user.
+  PAYWALL_MODAL_VIEWED: "paywall:modal_viewed",
 
   // Chat events
   CHAT_STARTED: "chat:started",
@@ -235,21 +248,5 @@ export function trackOnboardingStep(
     step_number: step,
     step_name: stepName,
     ...properties,
-  });
-}
-
-/**
- * Track onboarding completion.
- */
-export function trackOnboardingComplete(properties: {
-  profession?: string;
-  integrationsConnected?: string[];
-  totalSteps: number;
-  timeToComplete?: number;
-}): void {
-  trackEvent(ANALYTICS_EVENTS.ONBOARDING_COMPLETED, properties);
-  setUserProperties({
-    onboarding_completed: true,
-    profession: properties.profession,
   });
 }

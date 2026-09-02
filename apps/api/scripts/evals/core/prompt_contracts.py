@@ -169,7 +169,7 @@ CLAUSES: tuple[Clause, ...] = (
         name="no_invented_capabilities",
         source="comms",
         starts_at="11. NO INVENTED CAPABILITIES:",
-        ends_before="## Voice (Human WhatsApp Mode)",
+        ends_before="12. CONNECT MEANS A LINK:",
         governs="how a request outside GAIA's real abilities is declined",
         depends_on=("data/quality/refusals.yaml", "data/comms/honesty.yaml"),
     ),

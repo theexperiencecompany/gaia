@@ -12,11 +12,13 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
+    CreateCheckoutSessionRequest,
     CreateSubscriptionRequest,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
+    VerifyPaymentRequest,
 )
 from app.models.webhook_models import DodoWebhookAckResponse
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
@@ -76,7 +78,11 @@ async def create_subscription_endpoint(
         )
         capture_context_event(
             AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
-            {"quantity": subscription_data.quantity},
+            {
+                "quantity": subscription_data.quantity,
+                "source": subscription_data.source,
+                "surface": "redirect",
+            },
         )
         return result
     except Exception as e:
@@ -88,6 +94,47 @@ async def create_subscription_endpoint(
             error=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to create subscription") from e
+
+
+@router.post("/checkout-session")
+@limiter.limit("5/minute")
+async def create_checkout_session_endpoint(
+    request: Request,  # noqa: ARG001 -- framework contract
+    payload: CreateCheckoutSessionRequest,
+    user_id: str = Depends(get_user_id),
+) -> CreateSubscriptionResponse:
+    """Mint the Dodo checkout session the embedded overlay opens.
+
+    Authenticated but deliberately not gated behind Pro — a user without a
+    subscription calling this is the whole point of the paid-only flow.
+    """
+    log.set(
+        user={"id": user_id},
+        payment={
+            "operation": "create_checkout_session",
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+        },
+    )
+    pro_checkout = await payment_service.create_pro_checkout(
+        user_id, payload.billing_cycle, payload.source
+    )
+    log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
+    log.audit(
+        "overlay checkout session created",
+        actor=user_id,
+        resource=pro_checkout.plan.dodo_product_id,
+        provider="dodo",
+    )
+    capture_context_event(
+        AnalyticsEvents.PAYMENT_CHECKOUT_STARTED,
+        {
+            "billing_cycle": payload.billing_cycle,
+            "source": payload.source,
+            "surface": "overlay",
+        },
+    )
+    return pro_checkout.checkout
 
 
 @router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
@@ -132,6 +179,7 @@ async def cancel_subscription_endpoint(
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
     request: Request,  # noqa: ARG001 -- framework contract
+    body: VerifyPaymentRequest = VerifyPaymentRequest(),
     user_id: str = Depends(get_user_id),
 ) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
@@ -140,7 +188,9 @@ async def verify_payment_endpoint(
         payment={"operation": "verify_payment"},
     )
     try:
-        result = await payment_service.verify_payment_completion(user_id)
+        result = await payment_service.verify_payment_completion(
+            user_id, subscription_id=body.subscription_id
+        )
         log.audit("payment verification completed", actor=user_id, provider="dodo")
         return result
     except Exception as e:

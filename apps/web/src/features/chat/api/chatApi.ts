@@ -9,6 +9,7 @@ import type {
 } from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
+import { getSubscriptionRequiredDetail } from "@shared/types/subscription";
 import { apiService } from "@/lib/api/service";
 import { desktopClientHeaders } from "@/lib/electron/api";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
@@ -16,6 +17,7 @@ import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { usePaywallModalStore } from "@/stores/paywallModalStore";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
@@ -23,6 +25,7 @@ import type { FileData } from "@/types/shared/fileTypes";
 import {
   getErrorMessage,
   handleRateLimitError,
+  subscriptionRequiredOfferFromDetail,
 } from "@/utils/interceptorUtils";
 
 /** Thrown when the backend rejects a send whose turn_id was already claimed —
@@ -44,7 +47,18 @@ export class RateLimitError extends Error {
   }
 }
 
+/** Thrown when chat-stream rejects a send with 402 (the user isn't on Pro).
+ *  The paywall is opened at throw time, so downstream failure handling must
+ *  not add a generic error toast on top. */
+export class SubscriptionRequiredError extends Error {
+  constructor(message?: string) {
+    super(message || "Subscription required");
+    this.name = "SubscriptionRequiredError";
+  }
+}
+
 const HTTP_CONFLICT = 409;
+const HTTP_PAYMENT_REQUIRED = 402;
 const HTTP_GONE = 410;
 const HTTP_TOO_MANY_REQUESTS = 429;
 
@@ -370,6 +384,21 @@ export const chatApi = {
         async onopen(response) {
           if (response.status === HTTP_CONFLICT) {
             throw new DuplicateTurnError();
+          }
+          // Paid-only gate: the user isn't on Pro. This is the core gated
+          // endpoint, so this is the request most likely to hit it — the
+          // axios interceptor never sees this request (it isn't axios), so
+          // the paywall has to be opened here directly. Throw typed so
+          // failure handling (turnSession.ts) skips its generic error toast.
+          if (response.status === HTTP_PAYMENT_REQUIRED) {
+            const data: unknown = await response.json().catch(() => undefined);
+            const detail = getSubscriptionRequiredDetail(data);
+            if (detail) {
+              usePaywallModalStore
+                .getState()
+                .openModal(subscriptionRequiredOfferFromDetail(detail));
+            }
+            throw new SubscriptionRequiredError(detail?.message);
           }
           // Usage wall (message count or cost budget exhausted): render the
           // rate-limit upsell UI here — the axios interceptor never sees this

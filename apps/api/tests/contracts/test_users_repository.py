@@ -10,6 +10,7 @@ platform / background-job named methods.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 
 import pytest
 
@@ -19,6 +20,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     UserDocument,
     UserUpdate,
 )
@@ -130,14 +132,11 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         first = await repo.complete_onboarding(
             created.id,
-            name="New Name",
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.COMPLETED,
-            pipeline_mode="split",
             preferences=OnboardingPreferences(profession="eng"),
         )
         assert first is not None
-        assert first.name == "New Name"
         assert first.onboarding["completed"] is True
         assert first.onboarding["phase"] == OnboardingPhase.COMPLETED.value
         # Gate misses on replay (onboarding already exists) → None, original untouched.
@@ -145,7 +144,6 @@ class TestOnboardingWrites:
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="z",
             preferences=OnboardingPreferences(),
         )
         assert second is None
@@ -157,7 +155,6 @@ class TestOnboardingWrites:
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
             preferences=OnboardingPreferences(profession="eng", response_style="brief"),
         )
         # Only `profession` is set, so exclude_unset must leave response_style alone.
@@ -173,37 +170,41 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.save_personalization(
             created.id,
-            house="explorer",
-            personality_phrase="Creative",
-            user_bio="Bio",
-            bio_status="completed",
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
-            workflow_ids=["wf1", "wf2"],
+            PersonalizationBundle(
+                house="explorer",
+                personality_phrase="Creative",
+                user_bio="Bio",
+                bio_status=BioStatus.COMPLETED,
+                account_number=42,
+                member_since="Mar 2024",
+                overlay_color="#ff0000",
+                overlay_opacity=80,
+            ),
         )
         onboarding = (await repo.get(created.id)).onboarding
         assert onboarding["house"] == "explorer"
         assert onboarding["phase"] == "personalization_complete"
         assert onboarding["account_number"] == 42
-        assert onboarding["suggested_workflows"] == ["wf1", "wf2"]
 
-    async def test_save_personalization_omits_empty_workflows(self, repo, make_user):
+    async def test_mark_gmail_personalization_done_stamps_marker_and_conversation(
+        self, repo, make_user
+    ):
         created = await repo.create(make_user())
-        await repo.save_personalization(
-            created.id,
-            house="h",
-            personality_phrase="p",
-            user_bio="b",
-            bio_status="completed",
-            account_number=1,
-            member_since="Jan 2024",
-            overlay_color="#000",
-            overlay_opacity=50,
-            workflow_ids=[],
-        )
-        assert "suggested_workflows" not in (await repo.get(created.id)).onboarding
+        await repo.mark_gmail_personalization_done(created.id, conversation_id="conv-1")
+
+        onboarding = (await repo.get(created.id)).onboarding
+        assert isinstance(onboarding["gmail_personalization_at"], datetime)
+        assert onboarding["holo_conversation_id"] == "conv-1"
+
+    async def test_mark_gmail_personalization_done_omits_missing_conversation(
+        self, repo, make_user
+    ):
+        created = await repo.create(make_user())
+        await repo.mark_gmail_personalization_done(created.id)
+
+        onboarding = (await repo.get(created.id)).onboarding
+        assert "gmail_personalization_at" in onboarding
+        assert "holo_conversation_id" not in onboarding
 
     async def test_set_social_profiles_overwrites(self, repo, make_user):
         created = await repo.create(make_user())
@@ -231,7 +232,6 @@ class TestOnboardingWrites:
             created.id,
             phase=OnboardingPhase.INITIAL,
             bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
             preferences=OnboardingPreferences(),
         )
         await repo.reset_onboarding(created.id)

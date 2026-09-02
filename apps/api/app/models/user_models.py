@@ -1,25 +1,44 @@
 from datetime import datetime
-from enum import Enum
-import re
-from typing import Annotated, Any, TypedDict
+from enum import Enum, StrEnum
+from typing import Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import MongoDocument
 from app.utils.timezone import is_valid_timezone
 
-# Lowercased, bounded slug for request-supplied integration ids.
-IntegrationSlug = Annotated[
-    str,
-    StringConstraints(
-        strip_whitespace=True,
-        to_lower=True,
-        pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
-    ),
-]
-
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
+
+#: Onboarding Q2 "Something else": one short line, sent verbatim in the first message.
+OTHER_NEED_MAX_LENGTH = 120
+PROFESSION_MAX_LENGTH = 50
+
+
+def clean_profession(value: str) -> str:
+    """One rule for every surface that stores a job title.
+
+    Q1's "Other" field asks "What do you do?", and people answer in sentences
+    ("I'm a founder, building a startup"), so punctuation and digits are fine.
+    What is not fine is a second line: the text is spoken back inside GAIA's
+    first message. The completion request and the preferences PATCH once had
+    different rules here, and the wizard hung on the stricter one.
+    """
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("Profession cannot be empty")
+    if len(cleaned) > PROFESSION_MAX_LENGTH:
+        raise ValueError(f"Profession must be {PROFESSION_MAX_LENGTH} characters or less")
+    if any(ch.isspace() and ch != " " for ch in cleaned) or not any(ch.isalpha() for ch in cleaned):
+        raise ValueError("Profession must be one line of words")
+    return cleaned
+
+
+def clean_other_need(value: str | None) -> str | None:
+    """Whitespace-only is "nothing typed", not a need."""
+    if value is None:
+        return None
+    return value.strip() or None
 
 
 class OnboardingPhase(str, Enum):
@@ -55,32 +74,54 @@ class UpdateTimezoneResponse(BaseModel):
     timezone: str = Field(..., description="The timezone that was set")
 
 
+class OnboardingNeed(StrEnum):
+    """What the user asked GAIA for during onboarding (Q2, multi-select)."""
+
+    INBOX = "inbox"
+    CALENDAR = "calendar"
+    BRIEFINGS = "briefings"
+    TODOS = "todos"
+    MEMORY = "memory"
+    RESEARCH = "research"
+    AUTOMATION = "automation"
+    REACH = "reach"
+
+
 class OnboardingPreferences(BaseModel):
     profession: str | None = Field(
         None,
         description="User's profession or main area of focus",
     )
+    needs: list[OnboardingNeed] | None = Field(
+        None,
+        description="What the user wants GAIA to help with (onboarding Q2)",
+    )
     response_style: str | None = Field(
         None,
         description="Preferred communication style: brief, detailed, casual, professional",
+    )
+    other_need: str | None = Field(
+        None,
+        max_length=OTHER_NEED_MAX_LENGTH,
+        description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
     custom_instructions: str | None = Field(
         None, max_length=500, description="Custom instructions for the AI assistant"
     )
     # Removed timezone field - now only stored at user.timezone root level
 
+    @field_validator("other_need")
+    @classmethod
+    def validate_other_need(cls, v: str | None) -> str | None:
+        return clean_other_need(v)
+
     @field_validator("profession")
     @classmethod
     def validate_profession(cls, v: str | None) -> str | None:
-        if v is not None and v != "":
-            v = v.strip()
-            if not v:
-                raise ValueError("Profession cannot be empty")
-            if len(v) > 50:
-                raise ValueError("Profession must be 50 characters or less")
-            return v
-        # Return None for empty strings to normalize the data
-        return None if v == "" else v
+        # Empty string normalises to None: "unset", not "set to nothing".
+        if v is None or v == "":
+            return None
+        return clean_profession(v)
 
     @field_validator("response_style")
     @classmethod
@@ -107,71 +148,53 @@ class OnboardingPreferences(BaseModel):
         return None if v == "" else v
 
 
-class ClarifyAnswer(BaseModel):
-    """One answered no-Gmail clarify question, persisted on onboarding.clarify_answers."""
-
-    id: str = Field(..., description="Question id — one of scope, blocker, constraint")
-    kind: str = Field(..., description="scope / blocker / constraint")
-    question: str = Field(..., description="Original question text")
-    value: str | None = Field(
-        None,
-        max_length=500,
-        description="User's answer; None means the question was skipped",
-    )
-
-
 class OnboardingRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100, description="User's preferred name")
-    profession: str = Field(..., min_length=1, max_length=50, description="User's profession")
+    """The onboarding submission — Q1 (profession) and Q2 (needs).
+
+    The name is derived from the email server-side, so it is not submitted;
+    nothing else is generated at onboarding, so nothing else is collected.
+    """
+
+    profession: str = Field(
+        ..., min_length=1, max_length=PROFESSION_MAX_LENGTH, description="User's profession"
+    )
+    needs: list[OnboardingNeed] = Field(
+        default_factory=list,
+        description="What the user wants GAIA to help with (onboarding Q2)",
+    )
+    other_need: str | None = Field(
+        None,
+        max_length=OTHER_NEED_MAX_LENGTH,
+        description="What the user typed under 'Something else' in Q2, verbatim",
+    )
     timezone: str | None = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
     )
-    focus: str | None = Field(
-        None, max_length=500, description="User's current primary focus or goal"
-    )
-    clarify_answers: list[ClarifyAnswer] | None = Field(
-        None,
-        description="No-Gmail follow-up answers (scope/blocker/constraint)",
-    )
-    selected_integrations: list[IntegrationSlug] | None = Field(
-        None,
-        max_length=25,
-        description="Integration slugs the user selected during onboarding.",
-    )
-    defer_workflows: bool = Field(
-        default=False,
-        description=(
-            "Gmail-path split: run inbox intelligence immediately and defer "
-            "workflow creation until the user submits selected integrations."
-        ),
-    )
 
-    @field_validator("selected_integrations")
+    @field_validator("needs")
     @classmethod
-    def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
-        return _dedupe_slugs(v)
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Name cannot be empty")
-        if not re.match(r"^[a-zA-Z\s\-\'\.]+$", v):
-            raise ValueError(
-                "Name can only contain letters, spaces, hyphens, apostrophes, and periods"
-            )
-        return v
+    def dedupe_needs(cls, v: list[OnboardingNeed]) -> list[OnboardingNeed]:
+        """First-occurrence order, no duplicates — the UI is a toggle grid, so
+        a repeated value is a client bug, not a meaningful selection."""
+        return list(dict.fromkeys(v))
 
     @field_validator("profession")
     @classmethod
     def validate_profession(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Profession cannot be empty")
-        if not re.match(r"^[a-zA-Z\s\-\.]+$", v):
-            raise ValueError("Profession can only contain letters, spaces, hyphens, and periods")
-        return v
+        return clean_profession(v)
+
+    @field_validator("other_need")
+    @classmethod
+    def validate_other_need(cls, v: str | None) -> str | None:
+        return clean_other_need(v)
+
+    @model_validator(mode="after")
+    def require_an_answer_to_q2(self) -> "OnboardingRequest":
+        # Q2 is answered by a pick or by typed words; an empty Q2 leaves the
+        # first message with nothing to ask about.
+        if not self.needs and not self.other_need:
+            raise ValueError("Pick at least one need or say it in your own words")
+        return self
 
     @field_validator("timezone")
     @classmethod
@@ -193,34 +216,6 @@ class OnboardingResponse(BaseModel):
     user: dict[str, Any] | None = Field(None, description="Updated user data")
 
 
-class OnboardingIntegrationsRequest(BaseModel):
-    selected_integrations: list[IntegrationSlug] = Field(
-        default_factory=list,
-        max_length=25,
-        description="Integration slugs the user selected during onboarding.",
-    )
-
-    @field_validator("selected_integrations")
-    @classmethod
-    def dedupe_integrations(cls, v: list[str]) -> list[str]:
-        return _dedupe_slugs(v) or []
-
-
-class OnboardingIntegrationsStatus(str, Enum):
-    """Outcome of submitting onboarding integration selections."""
-
-    QUEUED = "queued"  # Selections saved; workflows-phase job enqueued.
-    ALREADY_COMPLETE = "already_complete"  # Onboarding already finished (replay).
-    ALREADY_RUNNING = "already_running"  # Workflows job already in flight (replay).
-
-
-class OnboardingIntegrationsResponse(BaseModel):
-    success: bool = Field(..., description="Whether the submission was accepted")
-    status: OnboardingIntegrationsStatus = Field(
-        ..., description="Outcome of persisting the selected integrations"
-    )
-
-
 class OnboardingPhaseUpdateRequest(BaseModel):
     phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
 
@@ -231,22 +226,6 @@ class OnboardingPhaseUpdateRequest(BaseModel):
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer
         return v
-
-
-def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
-    # Order-preserving dedupe: a user can select the same integration twice
-    # (e.g. via a chip and a mention). We keep the first occurrence so the
-    # selection order — which downstream workflow generation treats as priority
-    # — is stable, rather than using set() which would scramble it.
-    if not v:
-        return v
-    seen: set[str] = set()
-    out: list[str] = []
-    for slug in v:
-        if slug not in seen:
-            seen.add(slug)
-            out.append(slug)
-    return out
 
 
 class AuthenticatedUser(TypedDict, total=False):
@@ -480,6 +459,19 @@ class HoloCardOnboardingFields(BaseModel):
     member_since: str | None = None
     overlay_color: str = "rgba(0,0,0,0)"
     overlay_opacity: int = 40
+
+
+class PersonalizationBundle(BaseModel):
+    """The holo-card fields the Gmail pipeline generates and persists in one write."""
+
+    house: str
+    personality_phrase: str
+    user_bio: str
+    bio_status: BioStatus
+    account_number: int
+    member_since: str
+    overlay_color: str
+    overlay_opacity: int
 
 
 class UpdateHoloCardColorsResponse(BaseModel):

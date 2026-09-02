@@ -79,7 +79,7 @@ export const faqData: FAQItem[] = [
   {
     question: "Is GAIA free?",
     answer:
-      "Yes, there is a free tier that covers email automation, calendar management, and todos. Pro starts at $20 a month for higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
+      "GAIA is a paid product. Pro starts at $20 a month for full access with higher limits and priority support. Enterprise is available for teams that need SSO, custom integrations, and dedicated support. You can also self-host the whole thing for zero cost on your own infrastructure.",
   },
 ];
 

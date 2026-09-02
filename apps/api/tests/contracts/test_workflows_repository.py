@@ -16,16 +16,14 @@ from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.db.repositories.workflows import (
-    SystemWorkflowDefinition,
-    WorkflowReArm,
-    WorkflowsRepository,
-)
+from app.db.repositories.workflows import WorkflowsRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    SystemWorkflowDefinition,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
+    WorkflowRearm,
     WorkflowStep,
     WorkflowUpdate,
 )
@@ -125,15 +123,6 @@ class TestWorkflowsOwnedCrud:
         assert await repo.get(created.id) is not None
         assert await repo.delete_for_user(created.id, "owner") is True
         assert await repo.get(created.id) is None
-
-    async def test_delete_many_for_user(self, repo):
-        owner = _uid("owner")
-        a = await repo.create(_workflow(user_id=owner))
-        b = await repo.create(_workflow(user_id=owner))
-        other = await repo.create(_workflow(user_id=_uid("other")))
-        deleted = await repo.delete_many_for_user([a.id, b.id, other.id], owner)
-        assert deleted == 2  # other user's row is not touched
-        assert await repo.get(other.id) is not None
 
     async def test_list_for_user_newest_first_excludes_todo(self, repo):
         owner = _uid("owner")
@@ -237,7 +226,7 @@ class TestWorkflowsScheduler:
             await repo.set_status(
                 wf.id,
                 ScheduledTaskStatus.SCHEDULED,
-                rearm=WorkflowReArm(scheduled_at=new_fire, next_run=new_fire),
+                rearm=WorkflowRearm(scheduled_at=new_fire, next_run=new_fire),
             )
             is True
         )
@@ -324,7 +313,7 @@ class TestWorkflowsScheduler:
             wf.id,
             ScheduledTaskStatus.SCHEDULED,
             user_id=owner,
-            rearm=WorkflowReArm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
+            rearm=WorkflowRearm(scheduled_at=run_at, occurrence_count=3, next_run=run_at),
         )
         assert ok is True
         fetched = await repo.get(wf.id)
@@ -343,7 +332,7 @@ class TestWorkflowsScheduler:
         # an explicit None clears it (the reap path for a non-recurring workflow).
         assert (
             await repo.set_status(
-                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowReArm(scheduled_at=None)
+                wf.id, ScheduledTaskStatus.SCHEDULED, rearm=WorkflowRearm(scheduled_at=None)
             )
             is True
         )

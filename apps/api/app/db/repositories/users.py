@@ -31,11 +31,14 @@ from app.constants.cache import (
     USER_CACHE_PREFIX,
 )
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    GMAIL_PERSONALIZATION_MARKER,
+    HOLO_CONVERSATION_ID_FIELD,
+)
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.onboarding_models import (
-    ClarifyAnswerRecord,
     PersistedTriageSummary,
     SocialProfile,
     WritingStyleExampleBlocks,
@@ -44,6 +47,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     PlatformLinkRecord,
     UserDocument,
     UserUpdate,
@@ -228,20 +232,17 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         *,
         phase: OnboardingPhase,
         bio_status: BioStatus,
-        pipeline_mode: str,
         preferences: OnboardingPreferences,
-        name: str | None = None,
         timezone: str | None = None,
         completed_at: datetime | None = None,
-        focus: str | None = None,
-        clarify_answers: list[ClarifyAnswerRecord] | None = None,
-        selected_integrations: list[str] | None = None,
     ) -> UserDocument | None:
-        """Atomically create the ``onboarding`` subdocument (gated on its absence).
+        """Atomically mark onboarding complete (gated on it not being complete yet).
 
-        Returns ``None`` when the gate misses — either onboarding already exists
-        (idempotent replay) or the user is gone; the caller distinguishes via
-        ``get``.
+        The gate is ``onboarding.completed``, not the subdocument's existence:
+        the wizard writes ``onboarding.preferences`` before payment, so the
+        subdocument exists long before completion. Returns ``None`` when the
+        gate misses — already completed (idempotent replay) or the user is
+        gone; the caller distinguishes via ``get``.
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
@@ -250,32 +251,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
             "onboarding.preferences": preferences.model_dump(),
-            "onboarding.pipeline_mode": pipeline_mode,
         }
-        if name is not None:
-            set_fields["name"] = name
         if timezone is not None:
             set_fields["timezone"] = timezone
-        if focus is not None:
-            set_fields["onboarding.focus"] = focus
-        if clarify_answers is not None:
-            set_fields["onboarding.clarify_answers"] = clarify_answers
-        if selected_integrations is not None:
-            set_fields["onboarding.selected_integrations"] = selected_integrations
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
-            extra_filter={"onboarding": {"$exists": False}},
-        )
-
-    async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
-        """Persist the user's selected integrations (onboarding)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.selected_integrations": integrations}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
+            extra_filter={"onboarding.completed": {"$ne": True}},
         )
 
     async def update_onboarding_preferences(
@@ -300,15 +283,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def clear_onboarding(self, user_id: str) -> None:
-        """Roll back a partially-created onboarding subdocument."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
     # ---------------------------------------------------- intelligence writes
 
     async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
@@ -321,34 +295,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         return updated is not None
 
-    async def set_pipeline_completion(
-        self, user_id: str, *, phase: OnboardingPhase, conversation_id: str | None = None
+    async def mark_gmail_personalization_done(
+        self, user_id: str, *, conversation_id: str | None = None
     ) -> None:
-        """Advance the onboarding pipeline phase (optionally tying the first conversation)."""
-        set_fields: dict[str, object] = {"onboarding.phase": phase}
+        """Stamp the Gmail personalization pipeline as run for this user.
+
+        The marker is what makes a later Gmail reconnect a no-op. The seeded
+        holo-card conversation id rides along so ``reset_onboarding`` can tear it
+        down with the rest of the personalization state.
+        """
+        set_fields: dict[str, object] = {
+            f"onboarding.{GMAIL_PERSONALIZATION_MARKER}": _now(),
+        }
         if conversation_id is not None:
-            set_fields["onboarding.first_message_conversation_id"] = conversation_id
+            set_fields[f"onboarding.{HOLO_CONVERSATION_ID_FIELD}"] = conversation_id
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def set_first_message(self, user_id: str, first_message: str) -> None:
-        """Store the user's first message on their onboarding subdocument."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.first_message": first_message}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
-    async def mark_early_intelligence_done(self, user_id: str) -> None:
-        """Stamp the early-intelligence onboarding completion."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.early_intelligence_done_at": _now()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -411,15 +374,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
         await self._cache_evict(REPO_GLOBAL_SCOPE, user_id)
         await self._invalidate(REPO_GLOBAL_SCOPE)
-
-    async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
-        """Persist the suggested workflows shown to the user during onboarding."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.suggested_workflows": workflow_ids}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
 
     async def set_social_profiles_if_unset(
         self, user_id: str, profiles: list[SocialProfile]
@@ -492,35 +446,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def save_personalization(
-        self,
-        user_id: str,
-        *,
-        house: str,
-        personality_phrase: str,
-        user_bio: str,
-        bio_status: BioStatus,
-        account_number: int,
-        member_since: str,
-        overlay_color: str,
-        overlay_opacity: int,
-        workflow_ids: list[str],
-    ) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         """Persist the generated personalization bundle and advance the phase to
         personalization-complete."""
         set_fields: dict[str, object] = {
-            "onboarding.house": house,
-            "onboarding.personality_phrase": personality_phrase,
-            "onboarding.user_bio": user_bio,
-            "onboarding.bio_status": bio_status,
-            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
-            "onboarding.account_number": account_number,
-            "onboarding.member_since": member_since,
-            "onboarding.overlay_color": overlay_color,
-            "onboarding.overlay_opacity": overlay_opacity,
+            f"onboarding.{field}": value for field, value in bundle.model_dump().items()
         }
-        if workflow_ids:
-            set_fields["onboarding.suggested_workflows"] = workflow_ids
+        set_fields["onboarding.phase"] = OnboardingPhase.PERSONALIZATION_COMPLETE.value
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},

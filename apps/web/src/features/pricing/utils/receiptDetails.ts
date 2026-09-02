@@ -2,6 +2,7 @@ import type {
   Plan,
   UserSubscriptionStatus,
 } from "@/features/pricing/api/pricingApi";
+import { displayPlanName } from "@/features/pricing/utils/planPredicates";
 
 export type ReceiptDetails = {
   planName?: string;
@@ -28,7 +29,7 @@ export function buildReceiptDetails(
   const isSubscribed = subscriptionStatus?.is_subscribed === true;
   if (!isSubscribed) {
     return {
-      planName: previewPlan?.name,
+      planName: previewPlan ? displayPlanName(previewPlan) : undefined,
       amount: previewPlan?.amount ?? null,
       currency: previewPlan?.currency ?? undefined,
       billingPeriod: previewPlan?.duration,
@@ -42,7 +43,11 @@ export function buildReceiptDetails(
   const activePlan = subscriptionStatus?.current_plan;
   const subscription = subscriptionStatus?.subscription;
   return {
-    planName: activePlan?.name ?? previewPlan?.name,
+    planName: activePlan
+      ? displayPlanName(activePlan)
+      : previewPlan
+        ? displayPlanName(previewPlan)
+        : undefined,
     amount:
       subscription?.recurring_pre_tax_amount ?? activePlan?.amount ?? null,
     currency: subscription?.currency ?? activePlan?.currency ?? undefined,

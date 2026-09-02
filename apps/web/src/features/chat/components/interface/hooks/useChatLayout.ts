@@ -14,7 +14,6 @@ interface UseChatLayoutReturn {
   fileUploadRef: React.RefObject<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>;
-  appendToInputRef: React.RefObject<((text: string) => void) | null>;
   router: ReturnType<typeof useRouter>;
   convoIdParam: string;
 }
@@ -31,8 +30,6 @@ export const useChatLayout = (): UseChatLayoutReturn => {
   const fileUploadRef = useRef<{
     attachFiles: (files: File[]) => Promise<void>;
   } | null>(null);
-  const appendToInputRef = useRef<((text: string) => void) | null>(null);
-
   // Find the current conversation
   const conversation = useMemo(() => {
     return conversations.find(
@@ -67,7 +64,6 @@ export const useChatLayout = (): UseChatLayoutReturn => {
     dummySectionRef,
     inputRef,
     fileUploadRef,
-    appendToInputRef,
     router,
     convoIdParam,
   };

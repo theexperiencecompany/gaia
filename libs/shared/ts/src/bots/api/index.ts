@@ -618,6 +618,43 @@ export class GaiaClient {
       };
     });
   }
+
+  /**
+   * Redeems a one-tap link code the web minted during onboarding.
+   *
+   * The reverse of {@link createLinkToken}: the code — not this request —
+   * decides which GAIA user gets linked. Returns the opening message composed
+   * from the user's onboarding answers, to be run through the normal chat flow
+   * as their own turn. Throws {@link GaiaApiError} with status 400 (expired or
+   * already used) or 409 (handle linked to another account).
+   */
+  async redeemLinkCode(
+    platform: string,
+    platformUserId: string,
+    code: string,
+    profile?: { username?: string; displayName?: string },
+  ): Promise<{ linked: boolean; firstMessage: string }> {
+    return this.request(async () => {
+      const { data } = await this.client.post(
+        "/api/v1/bot/redeem-link-code",
+        {
+          platform,
+          platform_user_id: platformUserId,
+          code,
+          ...(profile?.username && { username: profile.username }),
+          ...(profile?.displayName && { display_name: profile.displayName }),
+        },
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": platform,
+            "X-Bot-Platform-User-Id": platformUserId,
+          },
+        },
+      );
+      return { linked: data.linked, firstMessage: data.first_message };
+    });
+  }
 }
 
 /**

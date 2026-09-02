@@ -42,9 +42,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.exceptions import OutputParserException
 import pytest
 
-from app.db.repositories.workflows import UNSET
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    UNSET,
     CreateWorkflowRequest,
     GeneratedPromptOutput,
     GeneratedStep,

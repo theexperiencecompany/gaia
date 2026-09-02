@@ -7,7 +7,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from dodopayments import DodoPayments
+from dodopayments import DodoPayments, NotFoundError
 from fastapi import HTTPException
 
 from app.config.settings import settings
@@ -27,7 +27,9 @@ from app.db.repositories.plans import plan_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    PAYMENT_RESULT_PATH,
     CheckoutSessionDocument,
+    CheckoutSource,
     CreateSubscriptionResponse,
     PaymentHistoryEntry,
     PaymentVerificationResponse,
@@ -41,12 +43,25 @@ from app.models.payment_models import (
     SubscriptionUpdate,
     UserSubscriptionStatus,
 )
+from app.models.webhook_models import DodoSubscriptionData
 from app.services.analytics_service import (
     AnalyticsEvents,
+    SubscriptionPlan,
     track_subscription_event,
 )
 from app.services.email import send_pro_subscription_email
+from app.services.payments.subscription_activation import (
+    activate_subscription,
+    resolve_subscription_owner,
+)
 from shared.py.wide_events import log
+
+
+def _is_free_plan(name: str, amount: int) -> bool:
+    """GAIA is paid-only — the seeded Free row (``amount=0``, ``name="Free"``)
+    must never reach the frontend. ``amount`` alone would also catch Enterprise
+    ($0, contact-sales), so both must match."""
+    return amount == 0 and name.strip().lower() == PlanType.FREE.value
 
 
 class DodoPaymentService:
@@ -95,7 +110,9 @@ class DodoPaymentService:
                     if "dodo_product_id" not in plan_data:
                         plan_data["dodo_product_id"] = ""
                     plan_responses.append(PlanResponse(**plan_data))
-                return plan_responses
+                return [
+                    plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)
+                ]
             except Exception:
                 # If cached data is incompatible, clear cache and fetch fresh
                 await redis_cache.delete(cache_key)
@@ -121,9 +138,11 @@ class DodoPaymentService:
             for plan in plans
         ]
 
-        # Cache result
+        # Cache result — full catalogue, including the free row, so the cache
+        # stays a faithful mirror of the DB; the free row is filtered on every
+        # read path instead (see the cache-hit branch above).
         await redis_cache.set(cache_key, [plan.model_dump() for plan in plan_responses])
-        return plan_responses
+        return [plan for plan in plan_responses if not _is_free_plan(plan.name, plan.amount)]
 
     async def create_subscription(
         self,
@@ -131,8 +150,13 @@ class DodoPaymentService:
         product_id: str,
         quantity: int = 1,
         discount_code: str | None = None,
+        return_path: str = PAYMENT_RESULT_PATH,
     ) -> CreateSubscriptionResponse:
-        """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
+        """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url.
+
+        ``return_path`` is where Dodo sends the browser afterwards, relative to
+        the frontend origin; the caller derives it from the checkout's source.
+        """
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
         # Get user
@@ -164,7 +188,7 @@ class DodoPaymentService:
                     # Allow customers to change their billing address country
                     "allow_customer_editing_country": True,
                 },
-                "return_url": f"{settings.FRONTEND_URL}/payment/success",
+                "return_url": f"{settings.FRONTEND_URL}{return_path}",
                 "metadata": {"user_id": user_id, "product_id": product_id},
                 "subscription_data": {
                     # Use product's stored price; override trial if needed
@@ -294,6 +318,50 @@ class DodoPaymentService:
 
         return await self.get_user_subscription_status(user_id)
 
+    async def _reconcile_subscription_with_dodo(
+        self, user_id: str, subscription_id: str
+    ) -> SubscriptionDocument | None:
+        """Recover a paid user whose ``subscription.active`` webhook never landed.
+
+        ``subscription_id`` comes off the Dodo return URL, so it is a hint the
+        client could forge: Dodo is asked what it actually is, and it is only
+        acted on once it is both active and demonstrably this user's. Activation
+        then runs through the same path the webhook uses, so the recovered state
+        is indistinguishable from the delivered one.
+        """
+        try:
+            remote = await asyncio.to_thread(self.client.subscriptions.retrieve, subscription_id)
+        except NotFoundError:
+            log.warning(
+                f"{LogTag.PAYMENT} Dodo has no such subscription to reconcile",
+                failure_reason="subscription_not_found",
+                user_id=user_id,
+            )
+            return None
+
+        sub_data = DodoSubscriptionData.model_validate(remote.model_dump(mode="json"))
+        if sub_data.status != SubscriptionStatus.ACTIVE.value:
+            log.warning(
+                f"{LogTag.PAYMENT} Dodo subscription is not active; nothing to reconcile",
+                failure_reason="subscription_not_active",
+                subscription_status=sub_data.status,
+                user_id=user_id,
+            )
+            return None
+
+        owner_id = await resolve_subscription_owner(sub_data)
+        if owner_id != user_id:
+            log.audit(
+                "payment verification refused",
+                actor=user_id,
+                provider="dodo",
+                reason="subscription_owner_mismatch",
+            )
+            return None
+
+        await activate_subscription(sub_data)
+        return await subscription_repository.get_latest_active_for_user(user_id)
+
     async def _materialize_subscription_from_dodo(
         self, user_id: str
     ) -> SubscriptionDocument | None:
@@ -389,17 +457,30 @@ class DodoPaymentService:
             user_id=user_id,
             event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id=subscription.subscription_id,
-            plan_name="Pro",
-            amount=subscription.recurring_pre_tax_amount / 100
-            if subscription.recurring_pre_tax_amount
-            else None,
-            currency=str(subscription.currency),
+            plan=SubscriptionPlan(
+                name="Pro",
+                amount=subscription.recurring_pre_tax_amount / 100
+                if subscription.recurring_pre_tax_amount
+                else None,
+                currency=str(subscription.currency),
+            ),
         )
         return created
 
-    async def verify_payment_completion(self, user_id: str) -> PaymentVerificationResponse:
-        """Check payment completion status from webhook data."""
+    async def verify_payment_completion(
+        self, user_id: str, subscription_id: str | None = None
+    ) -> PaymentVerificationResponse:
+        """Whether this user's payment has landed, reconciling with Dodo if it hasn't.
+
+        The webhook is the normal way a subscription becomes active. When it is
+        dropped or rejected the local row never appears, so a caller that knows
+        which subscription was just paid for can hand it over and have Dodo
+        settle the question instead of stranding the user on the free tier.
+        """
         subscription = await subscription_repository.get_latest_active_for_user(user_id)
+
+        if not subscription and subscription_id:
+            subscription = await self._reconcile_subscription_with_dodo(user_id, subscription_id)
 
         if not subscription:
             # The Dodo redirect can land the user on the result page before the
@@ -449,6 +530,7 @@ class DodoPaymentService:
                 can_upgrade=True,
                 can_downgrade=False,
                 has_subscription=False,
+                has_ever_subscribed=await subscription_repository.has_any_for_user(user_id),
                 plan_type=PlanType.FREE,
                 status=SubscriptionStatus.PENDING,
             )
@@ -464,6 +546,7 @@ class DodoPaymentService:
             can_upgrade=True,
             can_downgrade=True,
             has_subscription=True,
+            has_ever_subscribed=True,
             plan_type=PlanType.PRO,
             status=SubscriptionStatus(subscription.status),
         )
@@ -521,7 +604,10 @@ class DodoPaymentService:
         return plan
 
     async def create_pro_checkout(
-        self, user_id: str, billing_cycle: PlanDuration = PlanDuration.MONTHLY
+        self,
+        user_id: str,
+        billing_cycle: PlanDuration = PlanDuration.MONTHLY,
+        source: CheckoutSource | None = None,
     ) -> ProCheckout:
         """Mint (or reuse) a hosted checkout session that upgrades this user to Pro.
 
@@ -529,8 +615,17 @@ class DodoPaymentService:
         wall repeatedly — reuses one session instead of stranding a new one in Dodo
         each time. The plan is cached alongside the session so a cached hit quotes
         the price the session was minted under, never a newer catalogue read.
+
+        ``settings.PAYWALL_DISCOUNT_CODE`` is pre-applied here rather than passed
+        in by callers: every caller (the 402 paywall body, the bot notice, the
+        subscription tool) advertises that same code, so applying it at the one
+        place the session is minted keeps the link and the pitch from drifting —
+        and keeps one cached session per user and cycle.
         """
-        cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}"
+        return_path = source.return_path if source else PAYMENT_RESULT_PATH
+        # The session carries its return URL, so a session minted for one
+        # destination must never be handed to a checkout that expects another.
+        cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}:{return_path}"
         cached = await redis_cache.get(cache_key)
         if isinstance(cached, dict) and "plan" in cached and "checkout" in cached:
             return ProCheckout(
@@ -539,7 +634,12 @@ class DodoPaymentService:
             )
 
         plan = await self.get_pro_plan(billing_cycle)
-        checkout = await self.create_subscription(user_id, plan.dodo_product_id)
+        checkout = await self.create_subscription(
+            user_id,
+            plan.dodo_product_id,
+            discount_code=settings.PAYWALL_DISCOUNT_CODE,
+            return_path=return_path,
+        )
         await redis_cache.set(
             cache_key,
             {"plan": plan.model_dump(), "checkout": checkout.model_dump()},

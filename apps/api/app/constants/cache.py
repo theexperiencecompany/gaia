@@ -147,6 +147,12 @@ STATE_KEY_PREFIX = "oauth_state"
 CONNECT_LINK_PREFIX = "connect_link"
 PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
 PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL
+# One-tap onboarding linking, the opposite direction to the token above: the WEB
+# mints this code at the platform-pick step and the BOT redeems it on the user's
+# first contact. code -> {user_id, first_message}. Longer TTL than the token
+# because the user may sit on the platform-pick screen before tapping through.
+PLATFORM_LINK_CODE_PREFIX = "platform_link_code"  # nosec B105
+PLATFORM_LINK_CODE_TTL = THIRTY_MINUTES_TTL
 # Desktop tool bridge — request ownership keys + per-request result channels.
 # A request key expiring means the desktop never answered; the result endpoint
 # rejects late POSTs whose key is gone.

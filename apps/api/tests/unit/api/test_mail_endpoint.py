@@ -27,9 +27,16 @@ from app.models.mail_models import (
     GmailToolResult,
 )
 from app.services.analytics_service import AnalyticsEvents
+from tests.conftest import FAKE_USER
 
 MAIL_BASE = "/api/v1"
 ANALYTICS_PATCH = "app.api.v1.endpoints.mail.capture_context_event"
+# The `client` fixture's dependency override is FastAPI DI, not the
+# WorkOSAuthMiddleware-set request context that require_subscription's
+# resolve_caller reads first — the test app strips that middleware entirely.
+# A gate test has to set the context directly to exercise the real
+# resolution path, the same way production requests do.
+_GET_AUTHENTICATED_USER = "app.core.request_context.get_authenticated_user"
 
 
 @pytest.fixture(autouse=True)
@@ -416,6 +423,18 @@ class TestMailAnalytics:
 
         assert response.status_code == 200
         mock_capture.assert_called_once_with(AnalyticsEvents.EMAIL_COMPOSED)
+
+    @patch("app.api.v1.endpoints.mail.ainvoke_structured", new_callable=AsyncMock)
+    async def test_ai_compose_free_user_gets_402(self, mock_invoke: AsyncMock, client: AsyncClient):
+        with patch(_GET_AUTHENTICATED_USER, return_value=FAKE_USER):
+            response = await client.post(
+                f"{MAIL_BASE}/mail/ai/compose",
+                json={"prompt": "Write a follow up"},
+            )
+
+        assert response.status_code == 402
+        assert response.json()["detail"]["code"] == "subscription_required"
+        mock_invoke.assert_not_called()
 
     @patch(
         "app.api.v1.endpoints.mail.send_email",

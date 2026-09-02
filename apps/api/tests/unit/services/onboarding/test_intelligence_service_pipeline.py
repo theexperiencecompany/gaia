@@ -1,47 +1,79 @@
-"""Unit tests for the onboarding pipeline orchestration.
+"""Unit tests for the Gmail personalization pipeline orchestration.
 
-`process_onboarding_intelligence` runs one of two shapes chosen at submission
-time — `split` (Gmail connected: run the inbox work now, defer workflows to a
-second job) and `full` (no Gmail: everything inline). The tests below pin down
-which nodes each shape runs, what it persists, and that the tail always advances
-the user's phase even when individual nodes fail.
+`process_onboarding_intelligence` runs once, when a user connects Gmail. The
+tests below pin down its two early exits (already personalized, Gmail not
+connected), which nodes the happy path runs and in what shape, that the pipeline
+creates nothing the user has to clean up (no todos, no workflows), and that the
+tail announces the result and stamps the marker that makes a reconnect a no-op.
 
 Every node is faked at its own function boundary so the orchestration itself —
-branch selection, wiring, ordering — is what is under test.
+guard order, wiring, the context threaded through it — is what is under test.
 """
 
-import asyncio
 from dataclasses import replace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
+from app.constants.notifications import MEMORY_SETTINGS_URL
+from app.constants.onboarding import (
+    GMAIL_PERSONALIZATION_MARKER,
+    LEGACY_PERSONALIZATION_MARKER,
+)
+from app.models.notification.notification_models import (
+    ActionStyle,
+    ActionType,
+    NotificationSourceEnum,
+    NotificationType,
+)
 from app.models.onboarding_models import (
-    CompletePayload,
     EmailSummary,
     InboxTriage,
+    SocialProfile,
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.user_models import OnboardingPhase
-from app.services.onboarding.first_message_service import default_first_message
+from app.models.user_models import UserDocument
+from app.services.onboarding import intelligence_service
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
     OnboardingContext,
-    OnboardingStage,
-    _finalize_onboarding,
-    _finish_early_phase,
-    _persist_completion,
+    _announce_personalization,
+    _holo_card_message,
     _scan_then_enqueue_memory,
-    _social_then_holo,
-    _start_gmail_branch,
+    holo_card_url,
     process_onboarding_intelligence,
-    process_onboarding_workflows_phase,
 )
 
 MODULE = "app.services.onboarding.intelligence_service"
 USER = "user-42"
+
+# Everything the refactor removed. Each of these was a node the pipeline used to
+# run; a re-import of any of them silently reinstates work the user must clean up.
+REMOVED_FROM_THE_PIPELINE = (
+    "process_onboarding_workflows_phase",
+    "_finalize_onboarding",
+    "_finish_early_phase",
+    "_wait_for_early_phase",
+    "_persist_completion",
+    "_start_gmail_branch",
+    "_run_provision_gmail",
+    "_seed_conversation",
+    "_safe_run",
+    "_run_todos",
+    "_create_todos_from_triage",
+    "_create_focus_todos",
+    "_run_workflows",
+    "_create_onboarding_workflows",
+    "_create_fallback_workflow",
+    "_build_one_workflow",
+    "_generate_workflow_specs",
+    "_fetch_onboarding_todos",
+    "_triage_from_doc",
+    "_writing_style_from_doc",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -64,23 +96,19 @@ def _style() -> WritingStyleProfile:
     return WritingStyleProfile(summary="Terse", example=WritingStyleExampleBlocks(body=["Thanks."]))
 
 
-def _user(**overrides: Any) -> MagicMock:
-    user = MagicMock()
-    user.id = USER
-    user.name = "Ann"
-    user.email = "ann@x.com"
-    user.timezone = "UTC"
-    user.onboarding = {
-        "preferences": {"profession": "lawyer"},
-        "focus": "close Q3",
-        "clarify_answers": [{"kind": "goal", "value": "grow"}],
-        "selected_integrations": ["slack"],
-        "pipeline_mode": "full",
+def _user(**overrides: Any) -> UserDocument:
+    payload: dict[str, Any] = {
+        "id": USER,
+        "name": "Ann",
+        "email": "ann@x.com",
+        "onboarding": {
+            "preferences": {"profession": "lawyer"},
+            "focus": "close Q3",
+            "clarify_answers": [{"kind": "goal", "value": "grow"}],
+        },
     }
-    for key, value in overrides.items():
-        setattr(user, key, value)
-    user.model_dump.return_value = {"name": user.name, "timezone": user.timezone}
-    return user
+    payload.update(overrides)
+    return UserDocument(**payload)
 
 
 def _expected_ctx() -> OnboardingContext:
@@ -90,100 +118,14 @@ def _expected_ctx() -> OnboardingContext:
         name="Ann",
         profession="lawyer",
         focus="close Q3",
-        has_gmail=False,
-        user_timezone="UTC",
         user_email="ann@x.com",
         clarify_answers=[{"kind": "goal", "value": "grow"}],
     )
 
 
 # ---------------------------------------------------------------------------
-# Small orchestration helpers
+# _scan_then_enqueue_memory
 # ---------------------------------------------------------------------------
-
-
-class TestPersistCompletion:
-    async def test_advances_the_user_to_personalization_complete(self) -> None:
-        with patch(f"{MODULE}.user_repository") as repo:
-            repo.set_pipeline_completion = AsyncMock()
-            await _persist_completion(USER, "conv-1", None)
-
-        kwargs = repo.set_pipeline_completion.await_args.kwargs
-        assert repo.set_pipeline_completion.await_args.args[0] == USER
-        assert kwargs["phase"] is OnboardingPhase.PERSONALIZATION_COMPLETE
-        assert kwargs["conversation_id"] == "conv-1"
-
-    async def test_an_empty_conversation_id_is_normalized_to_none(self) -> None:
-        with patch(f"{MODULE}.user_repository") as repo:
-            repo.set_pipeline_completion = AsyncMock()
-            await _persist_completion(USER, "", None)
-
-        assert repo.set_pipeline_completion.await_args.kwargs["conversation_id"] is None
-
-    async def test_a_running_provision_task_is_kept_alive(self) -> None:
-        done = asyncio.Event()
-
-        async def slow() -> None:
-            await done.wait()
-
-        task = asyncio.create_task(slow())
-        tasks: set[asyncio.Task] = set()
-        with (
-            patch(f"{MODULE}.user_repository") as repo,
-            patch("app.utils.background_tasks._background_tasks", tasks),
-        ):
-            repo.set_pipeline_completion = AsyncMock()
-            await _persist_completion(USER, "c", task)
-            # Without a strong reference the task can be garbage collected mid-flight.
-            assert task in tasks
-
-        done.set()
-        await task
-
-    async def test_a_finished_provision_task_is_not_retained(self) -> None:
-        async def quick() -> None:
-            return None
-
-        task = asyncio.create_task(quick())
-        await task
-
-        tasks: set[asyncio.Task] = set()
-        with (
-            patch(f"{MODULE}.user_repository") as repo,
-            patch("app.utils.background_tasks._background_tasks", tasks),
-        ):
-            repo.set_pipeline_completion = AsyncMock()
-            await _persist_completion(USER, "c", task)
-
-        assert tasks == set()
-
-
-class TestFinishEarlyPhase:
-    async def test_marks_the_early_half_done(self) -> None:
-        with patch(f"{MODULE}.user_repository") as repo:
-            repo.mark_early_intelligence_done = AsyncMock()
-            await _finish_early_phase(USER, None)
-
-        assert repo.mark_early_intelligence_done.await_args.args == (USER,)
-
-    async def test_a_running_provision_task_is_kept_alive(self) -> None:
-        done = asyncio.Event()
-
-        async def slow() -> None:
-            await done.wait()
-
-        task = asyncio.create_task(slow())
-        tasks: set[asyncio.Task] = set()
-        with (
-            patch(f"{MODULE}.user_repository") as repo,
-            patch("app.utils.background_tasks._background_tasks", tasks),
-        ):
-            repo.mark_early_intelligence_done = AsyncMock()
-            await _finish_early_phase(USER, task)
-            assert task in tasks
-
-        done.set()
-        await task
 
 
 class TestScanThenEnqueueMemory:
@@ -219,228 +161,6 @@ class TestScanThenEnqueueMemory:
             await _scan_then_enqueue_memory(USER, InboxScanContext())
 
 
-class TestStartGmailBranch:
-    async def test_starts_the_scan_and_the_provision_task(self) -> None:
-        with (
-            patch(f"{MODULE}._scan_then_enqueue_memory", AsyncMock()) as scan,
-            patch(f"{MODULE}._run_provision_gmail", AsyncMock()) as provision,
-            patch("app.utils.background_tasks._background_tasks", set()),
-        ):
-            ctx, provision_future = _start_gmail_branch(USER)
-            await asyncio.gather(provision_future)
-            await asyncio.sleep(0)
-
-        assert isinstance(ctx, InboxScanContext)
-        assert scan.await_count == 1
-        assert provision.await_count == 1
-
-    async def test_the_scan_task_is_held_against_garbage_collection(self) -> None:
-        started = asyncio.Event()
-        release = asyncio.Event()
-
-        async def scan(user_id: str, ctx: Any) -> None:
-            started.set()
-            await release.wait()
-
-        tasks: set[asyncio.Task] = set()
-        with (
-            patch(f"{MODULE}._scan_then_enqueue_memory", AsyncMock(side_effect=scan)),
-            patch(f"{MODULE}._run_provision_gmail", AsyncMock()),
-            patch("app.utils.background_tasks._background_tasks", tasks),
-        ):
-            _, provision_future = _start_gmail_branch(USER)
-            await started.wait()
-            assert len(tasks) == 1
-
-            release.set()
-            await asyncio.sleep(0)
-            await provision_future
-
-
-class TestSocialThenHolo:
-    async def test_gmail_users_get_social_extraction_before_the_card(self) -> None:
-        profiles = [MagicMock()]
-        with (
-            patch(
-                f"{MODULE}._run_social_profiles_background", AsyncMock(return_value=profiles)
-            ) as social,
-            patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
-        ):
-            await _social_then_holo(
-                OnboardingContext(
-                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=True
-                ),
-                {"_id": USER},
-            )
-
-        assert social.await_args.args == (USER, "Ann", "ann@x.com")
-        # The extracted profiles must reach the card, not be recomputed.
-        assert holo.await_args.args[2] is profiles
-
-    async def test_without_gmail_the_card_is_built_from_no_profiles(self) -> None:
-        with (
-            patch(f"{MODULE}._run_social_profiles_background", AsyncMock()) as social,
-            patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
-        ):
-            await _social_then_holo(
-                OnboardingContext(
-                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=False
-                ),
-                {"_id": USER},
-            )
-
-        assert social.await_count == 0
-        assert holo.await_args.args[2] == []
-
-
-# ---------------------------------------------------------------------------
-# _finalize_onboarding
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def finalize_stack() -> Any:
-    with (
-        patch(f"{MODULE}.generate_first_message", AsyncMock(return_value="Hi Ann!")) as message,
-        patch(f"{MODULE}.user_repository") as repo,
-        patch(f"{MODULE}._seed_conversation", AsyncMock(return_value="conv-1")) as seed,
-        patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
-    ):
-        repo.set_first_message = AsyncMock()
-        repo.set_pipeline_completion = AsyncMock()
-        yield message, repo, seed, emit
-
-
-def _finalize_ctx(**overrides: Any) -> OnboardingContext:
-    defaults: dict[str, Any] = {
-        "user_id": USER,
-        "name": "Ann",
-        "profession": "lawyer",
-        "focus": "close Q3",
-    }
-    defaults.update(overrides)
-    return OnboardingContext(**defaults)
-
-
-def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "todos": [],
-        "workflows": [],
-        "provision_future": None,
-    }
-    payload.update(overrides)
-    return payload
-
-
-class TestFinalizeOnboarding:
-    async def test_returns_the_seeded_conversation_id(self, finalize_stack: Any) -> None:
-        assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) == "conv-1"
-
-    async def test_first_message_is_persisted_before_anything_else_writes(
-        self, finalize_stack: Any
-    ) -> None:
-        # COMPLETE triggers a frontend fetch of /onboarding/personalization, and the
-        # holo leg in `concurrent_tasks` writes that same document — so the message
-        # has to land before the gather starts, not merely before the event.
-        _, repo, seed, emit = finalize_stack
-        order: list[str] = []
-        repo.set_first_message = AsyncMock(side_effect=lambda *a: order.append("persist"))
-
-        def _seed(*_args: Any) -> str:
-            order.append("seed")
-            return "conv-1"
-
-        seed.side_effect = _seed
-        emit.side_effect = lambda *a, **k: order.append("emit")
-
-        async def side_work() -> None:
-            order.append("side_work")
-
-        await _finalize_onboarding(
-            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
-        )
-
-        assert order[0] == "persist"
-        assert order.index("persist") < order.index("side_work") < order.index("emit")
-
-    async def test_complete_carries_the_conversation_id(self, finalize_stack: Any) -> None:
-        _, _, _, emit = finalize_stack
-        await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
-
-        stage, payload = emit.await_args.args[1], emit.await_args.args[2]
-        assert stage is OnboardingStage.COMPLETE
-        assert payload == CompletePayload(conversation_id="conv-1")
-
-    async def test_context_reaches_the_message_generator(self, finalize_stack: Any) -> None:
-        message, _, _, _ = finalize_stack
-        triage, style = _triage(), _style()
-        await _finalize_onboarding(
-            _finalize_ctx(triage=triage, writing_style=style, has_gmail=True),
-            **_finalize_kwargs(
-                todos=[{"id": "t1"}],
-                workflows=[{"id": "w1"}],
-            ),
-        )
-
-        kwargs = message.await_args.kwargs
-        assert kwargs["triage"] is triage
-        assert kwargs["writing_style"] is style
-        assert kwargs["created_todos"] == [{"id": "t1"}]
-        assert kwargs["created_workflows"] == [{"id": "w1"}]
-        assert kwargs["has_gmail"] is True
-
-    async def test_every_write_in_the_tail_is_scoped_to_this_user(
-        self, finalize_stack: Any
-    ) -> None:
-        """The tail writes the first message, seeds a conversation and flips the
-        phase. Each takes the user id separately, and losing it on any one of
-        them writes another user's record — or none at all — with no error."""
-        _, repo, seed, _ = finalize_stack
-        provision = MagicMock()
-        provision.done.return_value = True
-
-        with patch(f"{MODULE}._persist_completion", AsyncMock()) as persist:
-            await _finalize_onboarding(
-                _finalize_ctx(), **_finalize_kwargs(provision_future=provision)
-            )
-
-        repo.set_first_message.assert_awaited_once_with(USER, "Hi Ann!")
-        seed.assert_awaited_once_with(USER)
-        persist.assert_awaited_once_with(USER, "conv-1", provision)
-
-    async def test_a_message_failure_falls_back_to_the_default_copy(
-        self, finalize_stack: Any
-    ) -> None:
-        _, repo, _, _ = finalize_stack
-        with patch(f"{MODULE}.generate_first_message", AsyncMock(side_effect=RuntimeError("llm"))):
-            await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
-
-        assert repo.set_first_message.await_args.args[1] == default_first_message("Ann")
-
-    async def test_concurrent_tasks_run_alongside_seeding(self, finalize_stack: Any) -> None:
-        ran = asyncio.Event()
-
-        async def side_work() -> None:
-            ran.set()
-
-        await _finalize_onboarding(
-            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
-        )
-
-        assert ran.is_set()
-
-    async def test_completion_is_persisted_even_when_seeding_fails(
-        self, finalize_stack: Any
-    ) -> None:
-        # The user must still advance out of the personalization phase.
-        _, repo, _, emit = finalize_stack
-        with patch(f"{MODULE}._seed_conversation", AsyncMock(return_value=None)):
-            assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) is None
-
-        assert repo.set_pipeline_completion.await_count == 1
-        assert emit.await_args.args[2] == CompletePayload(conversation_id=None)
-
-
 # ---------------------------------------------------------------------------
 # process_onboarding_intelligence
 # ---------------------------------------------------------------------------
@@ -448,384 +168,551 @@ class TestFinalizeOnboarding:
 
 @pytest.fixture
 def pipeline_stack() -> Any:
-    """Fakes every node so only the orchestration is exercised."""
+    """Fakes every node so only the orchestration is exercised.
+
+    `personalization_already_ran` is deliberately NOT faked — the guard reads the
+    user's real onboarding subdoc, so the tests drive it with real markers.
+    """
     with (
-        patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
         patch(f"{MODULE}.user_repository") as repo,
         patch(f"{MODULE}.get_composio_service") as composio,
-        patch(f"{MODULE}._start_gmail_branch") as gmail_branch,
+        patch(f"{MODULE}._scan_then_enqueue_memory", AsyncMock()) as scan,
         patch(f"{MODULE}._run_writing_style", AsyncMock(return_value=None)) as style,
         patch(f"{MODULE}._run_triage", AsyncMock(return_value=None)) as triage,
-        patch(f"{MODULE}._run_todos", AsyncMock(return_value=[])) as todos,
-        patch(f"{MODULE}._run_workflows", AsyncMock(return_value=[])) as workflows,
         patch(f"{MODULE}._persist_profiles", AsyncMock()) as persist,
-        patch(f"{MODULE}._social_then_holo", AsyncMock()) as social_holo,
-        patch(f"{MODULE}._finalize_onboarding", AsyncMock(return_value="conv-1")) as finalize,
-        patch(f"{MODULE}._finish_early_phase", AsyncMock()) as finish_early,
+        patch(f"{MODULE}._run_social_profiles", AsyncMock(return_value=[])) as social,
+        patch(f"{MODULE}._run_holo_card", AsyncMock(return_value=True)) as holo,
+        patch(f"{MODULE}._announce_personalization", AsyncMock(return_value="conv-1")) as announce,
     ):
         repo.get = AsyncMock(return_value=_user())
+        repo.mark_gmail_personalization_done = AsyncMock()
         service = MagicMock()
-        service.check_connection_status = AsyncMock(return_value={"gmail": False})
+        service.check_connection_status = AsyncMock(return_value={"gmail": True})
         composio.return_value = service
 
-        async def _close_side_work(*_args: Any, **kwargs: Any) -> str:
-            # The real tail awaits these; closing them keeps the fake from
-            # leaking "coroutine was never awaited" warnings.
-            for coro in kwargs.get("concurrent_tasks", ()):
-                coro.close()
-            return "conv-1"
-
-        finalize.side_effect = _close_side_work
-
-        provision_future = MagicMock()
-        gmail_branch.return_value = (InboxScanContext(), provision_future)
-
         yield {
-            "emit": emit,
             "repo": repo,
             "composio": service,
-            "gmail_branch": gmail_branch,
+            "scan": scan,
             "style": style,
             "triage": triage,
-            "todos": todos,
-            "workflows": workflows,
             "persist": persist,
-            "social_holo": social_holo,
-            "finalize": finalize,
-            "finish_early": finish_early,
-            "provision_future": provision_future,
+            "social": social,
+            "holo": holo,
+            "announce": announce,
         }
 
 
-class TestProcessOnboardingIntelligence:
-    async def test_activity_is_announced_before_any_slow_check(self, pipeline_stack: Any) -> None:
-        # Both first-step cards must light up before the Composio round trip.
-        await process_onboarding_intelligence(USER)
-
-        first_two = {call.args[1] for call in pipeline_stack["emit"].await_args_list[:2]}
-        assert first_two == {OnboardingStage.INBOX_SCANNING, OnboardingStage.TODOS_CREATING}
-
-    async def test_an_unknown_user_aborts_before_doing_work(self, pipeline_stack: Any) -> None:
+class TestProcessOnboardingIntelligenceGuards:
+    async def test_an_unknown_user_aborts_before_the_gmail_check(self, pipeline_stack: Any) -> None:
         pipeline_stack["repo"].get = AsyncMock(return_value=None)
 
         await process_onboarding_intelligence(USER)
 
+        assert pipeline_stack["composio"].check_connection_status.await_count == 0
+        assert pipeline_stack["scan"].await_count == 0
+        assert pipeline_stack["repo"].mark_gmail_personalization_done.await_count == 0
+
+    async def test_an_already_personalized_user_is_a_no_op(self, pipeline_stack: Any) -> None:
+        # A queued job can outlive a second connect that already finished the
+        # pipeline — re-running would re-scan the inbox and re-seed a conversation.
+        user = _user(onboarding={GMAIL_PERSONALIZATION_MARKER: "2026-08-01T00:00:00Z"})
+        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["scan"].await_count == 0
+        assert pipeline_stack["triage"].await_count == 0
         assert pipeline_stack["style"].await_count == 0
-        assert pipeline_stack["finalize"].await_count == 0
+        assert pipeline_stack["composio"].check_connection_status.await_count == 0
+        assert pipeline_stack["announce"].await_count == 0
+        assert pipeline_stack["repo"].mark_gmail_personalization_done.await_count == 0
 
-    async def test_without_gmail_no_inbox_branch_is_started(self, pipeline_stack: Any) -> None:
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["gmail_branch"].call_count == 0
-        assert pipeline_stack["triage"].await_args.args[1] is None
-
-    async def test_with_gmail_the_inbox_branch_is_started(self, pipeline_stack: Any) -> None:
-        pipeline_stack["composio"].check_connection_status = AsyncMock(return_value={"gmail": True})
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["gmail_branch"].call_count == 1
-        assert pipeline_stack["triage"].await_args.args[1] is not None
-
-    async def test_full_mode_runs_workflows_and_finalizes(self, pipeline_stack: Any) -> None:
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["workflows"].await_count == 1
-        assert pipeline_stack["finalize"].await_count == 1
-        assert pipeline_stack["finish_early"].await_count == 0
-
-    async def test_split_mode_defers_workflows_to_the_second_job(self, pipeline_stack: Any) -> None:
-        user = _user()
-        user.onboarding = {**user.onboarding, "pipeline_mode": "split"}
+    async def test_the_legacy_marker_also_short_circuits(self, pipeline_stack: Any) -> None:
+        # Users who finished the pre-relocation onboarding carry holo-card fields
+        # but no marker; re-running for them would duplicate everything they have.
+        user = _user(onboarding={LEGACY_PERSONALIZATION_MARKER: "mistgrove"})
         pipeline_stack["repo"].get = AsyncMock(return_value=user)
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_count == 0
-        assert pipeline_stack["finalize"].await_count == 0
-        assert pipeline_stack["finish_early"].await_count == 1
+        assert pipeline_stack["scan"].await_count == 0
+        assert pipeline_stack["announce"].await_count == 0
 
-    async def test_split_mode_still_persists_profiles_and_builds_the_card(
+    async def test_gmail_not_connected_aborts_before_scanning(self, pipeline_stack: Any) -> None:
+        pipeline_stack["composio"].check_connection_status = AsyncMock(
+            return_value={"gmail": False}
+        )
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["scan"].await_count == 0
+        assert pipeline_stack["triage"].await_count == 0
+        assert pipeline_stack["style"].await_count == 0
+        assert pipeline_stack["announce"].await_count == 0
+        assert pipeline_stack["repo"].mark_gmail_personalization_done.await_count == 0
+
+    async def test_an_absent_gmail_key_is_treated_as_not_connected(
         self, pipeline_stack: Any
     ) -> None:
-        user = _user()
-        user.onboarding = {**user.onboarding, "pipeline_mode": "split"}
+        pipeline_stack["composio"].check_connection_status = AsyncMock(return_value={})
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["scan"].await_count == 0
+
+    async def test_an_already_personalized_user_is_logged_as_skipped_not_failed(
+        self, pipeline_stack: Any
+    ) -> None:
+        """Three no-op exits look identical from outside the job; `outcome` and
+        `reason` are the only things that tell a skipped reconnect apart from a
+        user whose Gmail fell off, and the second needs chasing."""
+        user = _user(onboarding={GMAIL_PERSONALIZATION_MARKER: "2026-08-01T00:00:00Z"})
         pipeline_stack["repo"].get = AsyncMock(return_value=user)
 
         await process_onboarding_intelligence(USER)
 
+        intelligence_service.log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} pipeline skipped",
+            user_id=USER,
+            outcome="skipped",
+            reason="already_ran",
+        )
+
+    async def test_a_disconnected_gmail_is_logged_as_aborted_with_its_reason(
+        self, pipeline_stack: Any
+    ) -> None:
+        pipeline_stack["composio"].check_connection_status = AsyncMock(
+            return_value={"gmail": False}
+        )
+
+        await process_onboarding_intelligence(USER)
+
+        intelligence_service.log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} pipeline aborted — gmail not connected",
+            user_id=USER,
+            outcome="aborted",
+            reason="no_gmail",
+        )
+
+    async def test_the_connection_check_names_gmail_and_the_user(self, pipeline_stack: Any) -> None:
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["composio"].check_connection_status.await_args.args == (
+            ["gmail"],
+            USER,
+        )
+
+
+class TestProcessOnboardingIntelligenceHappyPath:
+    async def test_every_kept_stage_runs_once(self, pipeline_stack: Any) -> None:
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["scan"].await_count == 1
+        assert pipeline_stack["triage"].await_count == 1
+        assert pipeline_stack["style"].await_count == 1
         assert pipeline_stack["persist"].await_count == 1
-        # The card leg gets the resolved context AND the user document: the
-        # card is rendered from both, so either being dropped empties it.
-        assert pipeline_stack["social_holo"].call_args.args == (
-            replace(_expected_ctx(), triage=None, writing_style=None),
-            user,
-        )
+        assert pipeline_stack["social"].await_count == 1
+        assert pipeline_stack["holo"].await_count == 1
+        assert pipeline_stack["announce"].await_count == 1
 
-    async def test_an_absent_pipeline_mode_defaults_to_full(self, pipeline_stack: Any) -> None:
-        user = _user()
-        user.onboarding = {"focus": "f"}
-        pipeline_stack["repo"].get = AsyncMock(return_value=user)
-
+    async def test_the_scan_and_triage_share_one_inbox_context(self, pipeline_stack: Any) -> None:
+        """Triage starts as soon as the scan has buffered its first batch, which
+        only works if both hold the same context object — a second instance
+        leaves triage waiting on an event nothing ever sets."""
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["finalize"].await_count == 1
+        scanned_ctx = pipeline_stack["scan"].await_args.args[1]
+        assert isinstance(scanned_ctx, InboxScanContext)
+        # The scan runs detached, so a lost user id reads nobody's mailbox and
+        # nothing downstream notices — the DAG still completes, empty.
+        assert pipeline_stack["scan"].await_args.args[0] == USER
+        assert pipeline_stack["triage"].await_args.args[1] is scanned_ctx
 
-    async def test_full_mode_hands_its_side_work_to_the_tail(self, pipeline_stack: Any) -> None:
-        await process_onboarding_intelligence(USER)
-
-        concurrent = pipeline_stack["finalize"].await_args.kwargs["concurrent_tasks"]
-        assert len(concurrent) == 2
-        # Built here, awaited by the tail — so this is call_args, not await_args.
-        assert pipeline_stack["social_holo"].call_args.args == (
-            replace(_expected_ctx(), triage=None, writing_style=None),
-            pipeline_stack["repo"].get.return_value,
-        )
-
-    async def test_onboarding_context_is_threaded_into_the_nodes(self, pipeline_stack: Any) -> None:
-        """Every node downstream reads its inputs off one context object, so a
-        field dropped where it is built silently degrades every node at once —
-        todos with no focus, a card with no name, a schedule in the wrong zone.
-        Pin the whole object, not its type."""
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["style"].await_args.args == (USER, False, "lawyer")
-        assert pipeline_stack["triage"].await_args.args == (USER, None, "lawyer", "close Q3")
-
-        base = _expected_ctx()
-        # _run_todos gets the base context plus the triage task it waits on.
-        todo_args = pipeline_stack["todos"].await_args.args
-        assert todo_args[0] == base
-        assert isinstance(todo_args[1], asyncio.Task)
-        # The workflows and finalize legs each get it with the resolved triage
-        # and writing style folded in — here both nodes returned None.
-        resolved = replace(base, triage=None, writing_style=None)
-        assert pipeline_stack["workflows"].await_args.args == (resolved, ["slack"])
-        assert pipeline_stack["finalize"].await_args.args == (resolved,)
-
-    async def test_the_resolved_triage_and_style_are_folded_into_the_context(
+    async def test_the_pipeline_brackets_itself_with_a_start_and_a_done_line(
         self, pipeline_stack: Any
     ) -> None:
-        """The two slowest nodes land after the base context is built, so they
-        are folded in with `replace`. Losing either leaves the workflow and
-        first-message legs blind to the inbox the user just waited on."""
+        """A personalization run has no other trace: `phase` is what pairs the
+        two lines into a duration, and the counts are the only record of what a
+        given user actually got out of it."""
+        triage = _triage()
+        pipeline_stack["triage"].return_value = triage
+        pipeline_stack["style"].return_value = _style()
+        pipeline_stack["social"].return_value = [SocialProfile(platform="x", url="u1")]
+
+        await process_onboarding_intelligence(USER)
+
+        intelligence_service.log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} pipeline start", user_id=USER, phase="start"
+        )
+        done = next(
+            call
+            for call in intelligence_service.log.info.call_args_list
+            if call.kwargs.get("phase") == "done"
+        )
+        assert done.args == (f"{LogTag.ONBOARDING} pipeline done",)
+        assert done.kwargs["user_id"] == USER
+        assert done.kwargs["writing_style_learned"] is True
+        assert done.kwargs["triage_important_count"] == len(triage.important_emails)
+        assert done.kwargs["social_profiles_count"] == 1
+        assert done.kwargs["conversation_seeded"] is True
+        assert done.kwargs["outcome"] == "ok"
+
+    async def test_a_run_that_found_nothing_reports_zero_not_one(self, pipeline_stack: Any) -> None:
+        """`triage_important_count` is the volume metric for the whole feature —
+        a floor of 1 on empty runs invents inbox findings that never existed."""
+        await process_onboarding_intelligence(USER)
+
+        done = next(
+            call
+            for call in intelligence_service.log.info.call_args_list
+            if call.kwargs.get("phase") == "done"
+        )
+        assert done.kwargs["triage_important_count"] == 0
+        assert done.kwargs["writing_style_learned"] is False
+        assert done.kwargs["social_profiles_count"] == 0
+
+    async def test_the_context_is_threaded_into_every_node(self, pipeline_stack: Any) -> None:
+        """Every node reads its inputs off one context built from the user
+        document, so a field dropped where it is built degrades several nodes at
+        once — a card with no name, a triage with no focus. Pin the whole object."""
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["triage"].await_args.args[0] == USER
+        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
+        assert pipeline_stack["style"].await_args.args == (USER, "lawyer")
+        assert pipeline_stack["social"].await_args.args == (USER, "Ann", "ann@x.com")
+        assert pipeline_stack["holo"].await_args.args[0] == replace(
+            _expected_ctx(), triage=None, writing_style=None
+        )
+
+    async def test_the_resolved_triage_and_style_are_folded_into_the_card_context(
+        self, pipeline_stack: Any
+    ) -> None:
+        """The two slowest nodes land after the base context is built, so they are
+        folded in with `replace`. Losing either leaves the holo card blind to the
+        inbox the user just waited on."""
         triage, style = _triage(), _style()
         pipeline_stack["triage"].return_value = triage
         pipeline_stack["style"].return_value = style
-        pipeline_stack["composio"].check_connection_status = AsyncMock(return_value={"gmail": True})
 
         await process_onboarding_intelligence(USER)
 
-        expected = replace(_expected_ctx(), has_gmail=True, triage=triage, writing_style=style)
-        assert pipeline_stack["workflows"].await_args.args == (expected, ["slack"])
-        assert pipeline_stack["finalize"].await_args.args == (expected,)
-        assert pipeline_stack["social_holo"].call_args.args[0] == expected
+        expected = replace(_expected_ctx(), triage=triage, writing_style=style)
+        assert pipeline_stack["holo"].await_args.args[0] == expected
+
+    async def test_the_learned_profiles_are_persisted_before_the_card_is_built(
+        self, pipeline_stack: Any
+    ) -> None:
+        triage, style = _triage(), _style()
+        pipeline_stack["triage"].return_value = triage
+        pipeline_stack["style"].return_value = style
+        order: list[str] = []
+
+        def _persist(*_args: Any) -> None:
+            order.append("persist")
+
+        def _holo(*_args: Any) -> bool:
+            order.append("holo")
+            return True
+
+        pipeline_stack["persist"].side_effect = _persist
+        pipeline_stack["holo"].side_effect = _holo
+
+        await process_onboarding_intelligence(USER)
+
+        assert order == ["persist", "holo"]
+        assert pipeline_stack["persist"].await_args.args == (USER, style, triage)
+
+    async def test_the_extracted_social_profiles_reach_the_card(self, pipeline_stack: Any) -> None:
+        # The card renders them; recomputing or dropping them empties that row.
+        profiles = [SocialProfile(platform="x", url="u1")]
+        pipeline_stack["social"].return_value = profiles
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["holo"].await_args.args[2] is profiles
+
+    async def test_the_loaded_user_document_reaches_the_card(self, pipeline_stack: Any) -> None:
+        # Without it the card node re-reads Mongo for metadata it already has.
+        user = _user()
+        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["holo"].await_args.args[1] is user
+
+    async def test_the_marker_is_stamped_once_with_the_seeded_conversation_id(
+        self, pipeline_stack: Any
+    ) -> None:
+        """The marker is what makes a Gmail reconnect a no-op, and the seeded
+        conversation id rides along so a reset can tear it down."""
+        pipeline_stack["announce"].return_value = "conv-7"
+
+        await process_onboarding_intelligence(USER)
+
+        mark = pipeline_stack["repo"].mark_gmail_personalization_done
+        assert mark.await_count == 1
+        assert mark.await_args.args == (USER,)
+        assert mark.await_args.kwargs == {"conversation_id": "conv-7"}
+
+    async def test_a_failed_announcement_still_stamps_the_marker(self, pipeline_stack: Any) -> None:
+        # An undelivered reward must not leave the user eligible for a re-run.
+        pipeline_stack["announce"].return_value = None
+
+        await process_onboarding_intelligence(USER)
+
+        mark = pipeline_stack["repo"].mark_gmail_personalization_done
+        assert mark.await_count == 1
+        assert mark.await_args.kwargs == {"conversation_id": None}
+
+    async def test_the_card_outcome_decides_what_is_announced(self, pipeline_stack: Any) -> None:
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["announce"].await_args.args == (USER,)
+        assert pipeline_stack["announce"].await_args.kwargs == {"card_ready": True}
+
+    async def test_a_card_that_failed_to_generate_is_announced_as_absent(
+        self, pipeline_stack: Any
+    ) -> None:
+        """The public /profile page 404s until the card exists, so a failed card
+        must never be advertised — and with nothing to hand over there is no
+        conversation to record against the marker."""
+        pipeline_stack["holo"].return_value = False
+        pipeline_stack["announce"].return_value = None
+
+        await process_onboarding_intelligence(USER)
+
+        assert pipeline_stack["announce"].await_args.kwargs == {"card_ready": False}
+        mark = pipeline_stack["repo"].mark_gmail_personalization_done
+        assert mark.await_count == 1
+        assert mark.await_args.kwargs == {"conversation_id": None}
 
     async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
-        user = _user(name=None)
-        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+        pipeline_stack["repo"].get = AsyncMock(return_value=_user(name=None))
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["finalize"].await_args.args[0].name == "there"
-
-    @pytest.mark.parametrize("stored", [None, "", "   "])
-    async def test_a_blank_timezone_falls_back_to_utc(
-        self, pipeline_stack: Any, stored: str | None
-    ) -> None:
-        user = _user(timezone=stored)
-        pipeline_stack["repo"].get = AsyncMock(return_value=user)
-
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "UTC"
-
-    async def test_a_stored_timezone_is_used(self, pipeline_stack: Any) -> None:
-        user = _user(timezone="Europe/London")
-        pipeline_stack["repo"].get = AsyncMock(return_value=user)
-
-        await process_onboarding_intelligence(USER)
-
-        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "Europe/London"
+        assert pipeline_stack["social"].await_args.args[1] == "there"
+        assert pipeline_stack["holo"].await_args.args[0].name == "there"
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
     ) -> None:
-        user = _user()
-        user.onboarding = None
-        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+        pipeline_stack["repo"].get = AsyncMock(return_value=_user(onboarding=None))
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["finalize"].await_count == 1
+        assert pipeline_stack["holo"].await_args.args[0] == OnboardingContext(
+            user_id=USER, name="Ann", user_email="ann@x.com"
+        )
+        assert pipeline_stack["repo"].mark_gmail_personalization_done.await_count == 1
+
+
+class TestProcessOnboardingIntelligenceCreatesNothingToCleanUp:
+    async def test_no_todos_and_no_workflows_are_created(self, pipeline_stack: Any) -> None:
+        """The pipeline's output is memories, a style, a triage, profiles and the
+        card. Anything it persists on the user's behalf is theirs to delete."""
+        with (
+            patch(
+                "app.services.todos.todo_service.TodoService.create_todo", AsyncMock()
+            ) as create_todo,
+            patch(
+                "app.services.workflow.service.WorkflowService.create_workflow", AsyncMock()
+            ) as create_workflow,
+        ):
+            await process_onboarding_intelligence(USER)
+
+        assert create_todo.await_count == 0
+        assert create_workflow.await_count == 0
+
+    @pytest.mark.parametrize("name", REMOVED_FROM_THE_PIPELINE)
+    def test_the_removed_nodes_are_gone_for_good(self, name: str) -> None:
+        assert not hasattr(intelligence_service, name)
 
 
 # ---------------------------------------------------------------------------
-# process_onboarding_workflows_phase
+# The announcement tail
 # ---------------------------------------------------------------------------
+
+CARD_URL = "https://app.example.test/profile/user-42"
 
 
 @pytest.fixture
-def phase_stack() -> Any:
+def announce_stack() -> Any:
+    frontend = MagicMock()
+    frontend.FRONTEND_URL = "https://app.example.test"
     with (
-        patch(f"{MODULE}._wait_for_early_phase", AsyncMock(return_value=True)) as wait,
-        patch(f"{MODULE}.user_repository") as repo,
-        patch(f"{MODULE}.workflow_repository") as workflows_repo,
-        patch(f"{MODULE}.get_composio_service") as composio,
-        patch(f"{MODULE}._run_workflows", AsyncMock(return_value=[{"id": "w1"}])) as run,
-        patch(f"{MODULE}._fetch_onboarding_todos", AsyncMock(return_value=[{"id": "t1"}])),
-        patch(f"{MODULE}._finalize_onboarding", AsyncMock(return_value="conv-1")) as finalize,
+        patch(f"{MODULE}.settings", frontend),
+        patch(f"{MODULE}.notification_service") as notifications,
+        patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value="conv-1")) as seed,
     ):
-        repo.get = AsyncMock(return_value=_user())
-        workflows_repo.delete_many_for_user = AsyncMock(return_value=0)
-        service = MagicMock()
-        service.check_connection_status = AsyncMock(return_value={"gmail": True})
-        composio.return_value = service
-        yield {
-            "wait": wait,
-            "repo": repo,
-            "workflows_repo": workflows_repo,
-            "run": run,
-            "finalize": finalize,
-        }
+        notifications.create_notification = AsyncMock()
+        yield notifications, seed
 
 
-class TestProcessOnboardingWorkflowsPhase:
-    async def test_waits_for_the_early_phase_before_reading_the_user(
-        self, phase_stack: Any
-    ) -> None:
-        await process_onboarding_workflows_phase(USER)
-        assert phase_stack["wait"].await_count == 1
+class TestHoloCardUrl:
+    def test_points_at_the_public_card_page_for_this_user(self, announce_stack: Any) -> None:
+        # The route's card id *is* the user id — the card is live with no publish step.
+        assert holo_card_url(USER) == CARD_URL
 
-    async def test_an_unknown_user_aborts(self, phase_stack: Any) -> None:
-        phase_stack["repo"].get = AsyncMock(return_value=None)
+    def test_a_trailing_slash_on_the_frontend_url_is_not_doubled(self) -> None:
+        frontend = MagicMock()
+        frontend.FRONTEND_URL = "https://app.example.test/"
+        with patch(f"{MODULE}.settings", frontend):
+            assert holo_card_url(USER) == CARD_URL
 
-        await process_onboarding_workflows_phase(USER)
+    def test_only_the_trailing_separator_is_trimmed(self) -> None:
+        """`rstrip("/")` takes a character SET, so a widened set would eat real
+        characters off the end of a deployment URL and 404 the card page."""
+        frontend = MagicMock()
+        frontend.FRONTEND_URL = "https://app.example.test/X/"
+        with patch(f"{MODULE}.settings", frontend):
+            assert holo_card_url(USER) == "https://app.example.test/X/profile/user-42"
 
-        assert phase_stack["run"].await_count == 0
-        assert phase_stack["finalize"].await_count == 0
 
-    async def test_runs_workflows_then_finalizes(self, phase_stack: Any) -> None:
-        await process_onboarding_workflows_phase(USER)
+class TestHoloCardMessage:
+    def test_the_card_travels_as_its_public_link(self) -> None:
+        # Chat has no holo-card renderer, so a payload the client would drop is
+        # not an option — the link has to be in the message body.
+        assert CARD_URL in _holo_card_message(CARD_URL)
 
-        assert phase_stack["run"].await_count == 1
-        assert phase_stack["finalize"].await_args.kwargs["workflows"] == [{"id": "w1"}]
-        assert phase_stack["finalize"].await_args.kwargs["todos"] == [{"id": "t1"}]
-
-    async def test_persisted_learnings_are_rebuilt_for_the_prompt(self, phase_stack: Any) -> None:
-        # The early phase persisted these; this job must not re-derive them.
-        user = _user()
-        user.onboarding = {
-            **user.onboarding,
-            "triage_summary": {"total_scanned": 5, "total_unread": 1, "summary": "S"},
-            "writing_style": {"summary": "Terse", "example": {"body": ["x"]}},
-        }
-        phase_stack["repo"].get = AsyncMock(return_value=user)
-
-        await process_onboarding_workflows_phase(USER)
-
-        ctx = phase_stack["run"].await_args.args[0]
-        assert ctx.triage is not None and ctx.triage.total_scanned == 5
-        assert ctx.writing_style is not None and ctx.writing_style.summary == "Terse"
-
-    async def test_absent_learnings_degrade_to_none(self, phase_stack: Any) -> None:
-        await process_onboarding_workflows_phase(USER)
-
-        ctx = phase_stack["run"].await_args.args[0]
-        assert ctx.triage is None
-        assert ctx.writing_style is None
-
-    async def test_the_second_job_rebuilds_the_whole_context_and_the_selection(
-        self, phase_stack: Any
-    ) -> None:
-        """This job re-derives the context from Mongo rather than inheriting the
-        early phase's, so a field missed here reaches only the workflow leg —
-        no other assertion in this pipeline would notice."""
-        await process_onboarding_workflows_phase(USER)
-
-        assert phase_stack["run"].await_args.args == (
-            OnboardingContext(
-                user_id=USER,
-                name="Ann",
-                profession="lawyer",
-                focus="close Q3",
-                # The fixture's composio stub reports gmail connected here.
-                has_gmail=True,
-                user_timezone="UTC",
-                clarify_answers=[{"kind": "goal", "value": "grow"}],
-            ),
-            ["slack"],
+    def test_the_message_is_the_whole_reward_the_user_reads(self) -> None:
+        """This text is the entire hand-off after a Gmail connect — it is seeded
+        as GAIA's own turn, so it is prose a user reads, not a log line."""
+        assert _holo_card_message(CARD_URL) == (
+            "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
+            f"{CARD_URL}\n\n"
+            "I also added a lot to your memories while I was in there."
         )
 
-    async def test_a_stored_timezone_reaches_the_workflow_leg(self, phase_stack: Any) -> None:
-        """Workflow schedules are written in this zone; defaulting to UTC fires
-        every onboarding automation at the wrong hour for most of the world."""
-        user = _user(timezone="Europe/London")
-        phase_stack["repo"].get = AsyncMock(return_value=user)
 
-        await process_onboarding_workflows_phase(USER)
+class TestAnnouncePersonalization:
+    @pytest.mark.parametrize("card_ready", [True, False])
+    async def test_creates_exactly_one_notification(
+        self, announce_stack: Any, card_ready: bool
+    ) -> None:
+        notifications, _ = announce_stack
 
-        assert phase_stack["run"].await_args.args[0].user_timezone == "Europe/London"
+        await _announce_personalization(USER, card_ready=card_ready)
 
-    async def test_a_retry_purges_the_previous_suggestions(self, phase_stack: Any) -> None:
-        # Without this, a killed run that already created workflows doubles up.
-        user = _user()
-        user.onboarding = {**user.onboarding, "suggested_workflows": ["w-old-1", "w-old-2"]}
-        phase_stack["repo"].get = AsyncMock(return_value=user)
+        assert notifications.create_notification.await_count == 1
+        request = notifications.create_notification.await_args.args[0]
+        assert request.user_id == USER
+        assert request.source is NotificationSourceEnum.BACKGROUND_JOB
+        assert request.content.title == "Check your memories — I just added a lot"
 
-        await process_onboarding_workflows_phase(USER)
+    async def test_the_notification_offers_the_memories_and_the_card(
+        self, announce_stack: Any
+    ) -> None:
+        notifications, _ = announce_stack
 
-        assert phase_stack["workflows_repo"].delete_many_for_user.await_args.args == (
-            ["w-old-1", "w-old-2"],
-            USER,
+        await _announce_personalization(USER, card_ready=True)
+
+        content = notifications.create_notification.await_args.args[0].content
+        assert [a.type for a in content.actions] == [ActionType.REDIRECT, ActionType.REDIRECT]
+        assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL, CARD_URL]
+        assert content.body.endswith("Your holo card is ready too.")
+
+    async def test_a_card_that_does_not_exist_is_never_linked(self, announce_stack: Any) -> None:
+        """The public card page 404s until the card is persisted, so a failed
+        card must leave no link anywhere — action, body, or conversation."""
+        notifications, seed = announce_stack
+
+        assert await _announce_personalization(USER, card_ready=False) is None
+
+        content = notifications.create_notification.await_args.args[0].content
+        assert [a.config.redirect.url for a in content.actions] == [MEMORY_SETTINGS_URL]
+        assert CARD_URL not in content.body
+        assert "holo card" not in content.body
+        assert seed.await_count == 0
+
+    async def test_the_seeded_conversation_holds_the_card_url(self, announce_stack: Any) -> None:
+        _, seed = announce_stack
+
+        assert await _announce_personalization(USER, card_ready=True) == "conv-1"
+
+        assert seed.await_args.args[0] == USER
+        assert seed.await_args.args[1] == _holo_card_message(CARD_URL)
+        assert CARD_URL in seed.await_args.args[1]
+
+    async def test_an_undeliverable_notification_still_seeds_the_conversation(
+        self, announce_stack: Any
+    ) -> None:
+        # Delivery is fail-soft: the user must not lose the card link because a
+        # notification channel was down.
+        notifications, seed = announce_stack
+        notifications.create_notification = AsyncMock(side_effect=RuntimeError("channel down"))
+
+        assert await _announce_personalization(USER, card_ready=True) == "conv-1"
+
+        assert seed.await_args.args == (USER, ANY)
+
+    async def test_a_failed_seed_reports_no_conversation(self, announce_stack: Any) -> None:
+        with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
+            assert await _announce_personalization(USER, card_ready=True) is None
+
+    async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
+        """Every field here is rendered or acted on by the client: the labels are
+        the buttons, the styles decide which one is primary, `open_in_new_tab`
+        and `close_notification` decide whether the user loses the notification
+        on the way to their memories, and `metadata.source` is what attributes
+        the notification to this pipeline in analytics."""
+        notifications, _ = announce_stack
+
+        await _announce_personalization(USER, card_ready=True)
+
+        request = notifications.create_notification.await_args.args[0]
+        assert request.type is NotificationType.SUCCESS
+        assert request.priority == 2
+        assert request.metadata == {"source": "gmail_personalization"}
+        memories, card = request.content.actions
+        assert memories.label == "View memories"
+        assert memories.style is ActionStyle.PRIMARY
+        assert memories.config.redirect.url == MEMORY_SETTINGS_URL
+        assert memories.config.redirect.open_in_new_tab is False
+        assert memories.config.redirect.close_notification is True
+        assert card.label == "See your holo card"
+        assert card.style is ActionStyle.SECONDARY
+        assert card.config.redirect.url == CARD_URL
+        assert card.config.redirect.open_in_new_tab is True
+
+    async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
+        self, announce_stack: Any
+    ) -> None:
+        """Delivery is swallowed on purpose, so the warning is the ONLY evidence
+        a user was never told their personalization finished."""
+        notifications, _ = announce_stack
+        # Long on purpose: a provider stack trace is what actually lands here,
+        # and the 200-char cap is what keeps one failure from flooding the event.
+        blurb = "channel down: " + "x" * 500
+        notifications.create_notification = AsyncMock(side_effect=RuntimeError(blurb))
+
+        await _announce_personalization(USER, card_ready=True)
+
+        intelligence_service.log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} personalization notification failed",
+            user_id=USER,
+            step="announce",
+            error=blurb[:200],
+            error_type="RuntimeError",
         )
 
-    async def test_a_first_run_purges_nothing(self, phase_stack: Any) -> None:
-        await process_onboarding_workflows_phase(USER)
-
-        assert phase_stack["workflows_repo"].delete_many_for_user.await_count == 0
-
-    async def test_the_purge_happens_before_regenerating(self, phase_stack: Any) -> None:
-        user = _user()
-        user.onboarding = {**user.onboarding, "suggested_workflows": ["w-old"]}
-        phase_stack["repo"].get = AsyncMock(return_value=user)
-        order: list[str] = []
-
-        def _purge(*_args: Any) -> int:
-            order.append("purge")
-            return 1
-
-        def _regenerate(*_args: Any, **_kwargs: Any) -> list[dict]:
-            order.append("regenerate")
-            return []
-
-        phase_stack["workflows_repo"].delete_many_for_user = AsyncMock(side_effect=_purge)
-        phase_stack["run"].side_effect = _regenerate
-
-        await process_onboarding_workflows_phase(USER)
-
-        assert order == ["purge", "regenerate"]
-
-    async def test_gmail_state_is_rechecked_for_this_phase(self, phase_stack: Any) -> None:
-        # The user may have connected or revoked Gmail while picking integrations.
-        await process_onboarding_workflows_phase(USER)
-
-        ctx = phase_stack["run"].await_args.args[0]
-        assert ctx.has_gmail is True
-        assert phase_stack["finalize"].await_args.args[0].has_gmail is True
-
-    @pytest.mark.parametrize("stored", [None, "", "   "])
-    async def test_a_blank_timezone_falls_back_to_utc(
-        self, phase_stack: Any, stored: str | None
+    @pytest.mark.parametrize(("seeded", "outcome"), [("conv-1", "ok"), (None, "partial")])
+    async def test_the_announce_line_reports_which_half_landed(
+        self, announce_stack: Any, seeded: str | None, outcome: str
     ) -> None:
-        user = _user(timezone=stored)
-        phase_stack["repo"].get = AsyncMock(return_value=user)
+        """`outcome` is what separates a user who got their card handed over from
+        one who got only a notification — the two are indistinguishable
+        otherwise, and only this line records which happened."""
+        with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=seeded)):
+            await _announce_personalization(USER, card_ready=True)
 
-        await process_onboarding_workflows_phase(USER)
-
-        assert phase_stack["run"].await_args.args[0].user_timezone == "UTC"
-
-    async def test_no_provision_task_is_handed_to_the_tail(self, phase_stack: Any) -> None:
-        # Provisioning belongs to the first job; this one has nothing to keep alive.
-        await process_onboarding_workflows_phase(USER)
-
-        assert phase_stack["finalize"].await_args.kwargs["provision_future"] is None
+        intelligence_service.log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} announce done",
+            user_id=USER,
+            step="announce",
+            card_ready=True,
+            outcome=outcome,
+            conversation_id=seeded,
+        )

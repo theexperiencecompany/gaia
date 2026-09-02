@@ -1,3 +1,4 @@
+import type { SubscriptionRequiredDetail } from "@gaia/shared";
 import type {
   ChatStreamEvent,
   StreamToolOutput,
@@ -50,6 +51,12 @@ export interface StreamCallbacks {
   onImageData?: (data: ImageData) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
+  /**
+   * GAIA is paid-only and this user is not subscribed — the backend refused
+   * the turn with 402. Terminal, and distinct from `onError`: there is nothing
+   * to retry, and the offer carries the checkout link to send the user to.
+   */
+  onSubscriptionRequired?: (detail: SubscriptionRequiredDetail) => void;
   /**
    * The SSE transport closed before the backend sent its done event — the
    * response is truncated. Consumers should keep the partial text but mark
@@ -266,6 +273,9 @@ export async function fetchChatStream(
       },
       onError: (error) => {
         callbacks.onError?.(error);
+      },
+      onSubscriptionRequired: (detail) => {
+        callbacks.onSubscriptionRequired?.(detail);
       },
       onClose: () => {
         if (sawBackendDone) return; // already settled via onDone

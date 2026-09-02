@@ -1,8 +1,8 @@
 /**
- * `platforms` stage. Shows the Telegram / WhatsApp / Discord picker so the
- * user can pick a messaging platform to receive briefings on. The stage
- * advances when the user either connects a platform (dispatch
- * `platformConnected`) or clicks Skip (dispatch `skipPlatforms`).
+ * `platformPick` stage. Telegram / WhatsApp / iMessage — Slack and Discord
+ * moved to Settings → Linked accounts. The stage advances when the user
+ * either connects a platform (`platformConnected`) or skips
+ * (`skipPlatforms`).
  */
 
 "use client";
@@ -10,16 +10,18 @@
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useState } from "react";
-import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
+import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
+import { BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import { useUserStore } from "@/stores/userStore";
 import { FIELD_NAMES } from "../../constants";
-import { BOT_BUBBLE_DEFAULTS } from "../../constants/bubbleDefaults";
+import { PLATFORM_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMessages";
 import { useConnectPlatform } from "../../hooks/useConnectPlatform";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
+import { OnboardingBotBubbles } from "../OnboardingMessages";
 import { OnboardingPlatformConnect } from "../OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 
@@ -33,13 +35,18 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
     useState<PlatformPreviewPlatform | null>(null);
 
   const profession = state.responses[FIELD_NAMES.PROFESSION];
-  const onboardingName = state.responses[FIELD_NAMES.NAME];
-  const storeName = useUserStore((s) => s.name);
-  const storeAvatar = useUserStore((s) => s.profilePicture);
-  const userName = onboardingName || storeName;
-  const userAvatar = storeAvatar;
+  const userName = useUserStore((s) => s.name);
+  const userAvatar = useUserStore((s) => s.profilePicture);
 
-  const { connect, skip } = useConnectPlatform(dispatch);
+  const {
+    connect,
+    skip,
+    phoneModalOpen,
+    phoneTarget,
+    isSubmittingPhone,
+    submitPhone,
+    closePhoneModal,
+  } = useConnectPlatform(dispatch, state.preferencesPersisted);
 
   return (
     <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
@@ -51,24 +58,27 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
           userAvatar={userAvatar}
         />
       )}
-      <ChatBubbleBot
-        {...BOT_BUBBLE_DEFAULTS}
-        text={
-          "Tell me where you already hang out and I’ll text you when it matters, morning briefings, urgent emails, calendar nudges, deadline reminders, anything that can’t wait."
-        }
-      />
+      <OnboardingBotBubbles lines={PLATFORM_INTRO_LINES} />
       <OnboardingPlatformConnect
         onConnect={connect}
         onSkip={skip}
         onHoverPlatform={setHoveredPlatform}
         hideSkip
       />
+      <PhoneLinkModal
+        isOpen={phoneModalOpen}
+        platformName={BOT_PLATFORM_LABELS.imessage}
+        isSubmitting={isSubmittingPhone}
+        target={phoneTarget}
+        onSubmit={submitPhone}
+        onClose={closePhoneModal}
+      />
     </m.div>
   );
 }
 
 export function PlatformsComposer({ state, dispatch }: PlatformsProps) {
-  const { skip } = useConnectPlatform(dispatch);
+  const { skip } = useConnectPlatform(dispatch, state.preferencesPersisted);
   if (state.connectedPlatform) return null;
 
   return (

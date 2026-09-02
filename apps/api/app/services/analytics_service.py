@@ -3,6 +3,7 @@ Analytics service for server-side PostHog event tracking.
 Provides type-safe event tracking with consistent naming conventions.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -54,6 +55,9 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_CANCELLED = "subscription:cancelled"
     SUBSCRIPTION_EXPIRED = "subscription:expired"
     RATE_LIMIT_HIT = "rate_limit_hit"
+    # A non-PRO caller was turned away from a paid-only surface with a 402.
+    # Carries which surface blocked them, never what they were trying to do.
+    PAYWALL_BLOCKED = "paywall:blocked"
 
     # Conversations
     CONVERSATION_CREATED = "chat:conversation_created"
@@ -347,40 +351,38 @@ def track_logout(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SubscriptionPlan:
+    """The priced plan a subscription event refers to. Fields a given webhook does
+    not carry stay None and are dropped from the event."""
+
+    name: str | None = None
+    amount: float | None = None
+    currency: str | None = None
+
+
 def track_subscription_event(
     user_id: str,
     event_type: AnalyticsEvents,
     subscription_id: str | None = None,
-    plan_name: str | None = None,
-    amount: float | None = None,
-    currency: str | None = None,
+    plan: SubscriptionPlan | None = None,
     properties: dict[str, Any] | None = None,
 ) -> None:
-    """
-    Track subscription-related events.
-
-    Args:
-        user_id: User's unique identifier
-        event_type: Type of subscription event
-        subscription_id: Subscription identifier
-        plan_name: Name of the plan
-        amount: Subscription amount
-        currency: Currency code
-        properties: Additional properties
-    """
+    """Track subscription-related events."""
+    plan = plan or SubscriptionPlan()
     log.set(
         subscription={
             "user_id": user_id,
             "event_type": event_type,
-            "plan_name": plan_name,
+            "plan_name": plan.name,
             "subscription_id": subscription_id,
         }
     )
     event_properties = {
         "subscription_id": subscription_id,
-        "plan_name": plan_name,
-        "amount": amount,
-        "currency": currency,
+        "plan_name": plan.name,
+        "amount": plan.amount,
+        "currency": plan.currency,
         **(properties or {}),
     }
     # Remove None values

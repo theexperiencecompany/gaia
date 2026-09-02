@@ -75,6 +75,12 @@ export type {
   SkillStatus,
   SkillTool,
 } from "./skills";
+export type { SubscriptionRequiredDetail } from "./subscription";
+export {
+  getSubscriptionRequiredDetail,
+  parseSubscriptionRequiredBody,
+  SUBSCRIPTION_REQUIRED_CODE,
+} from "./subscription";
 export type {
   BulkMoveRequest,
   PaginationMeta,

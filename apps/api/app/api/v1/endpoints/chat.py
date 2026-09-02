@@ -22,7 +22,7 @@ from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
+from app.decorators import enforce_daily_cost_budget, require_subscription, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
@@ -125,6 +125,7 @@ async def _stream_from_redis(
 
 
 @router.post("/chat-stream")
+@require_subscription()
 @tiered_rate_limit("chat_messages")
 async def chat_stream_endpoint(
     request: Request,
