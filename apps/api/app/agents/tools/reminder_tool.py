@@ -76,7 +76,8 @@ async def create_reminder_tool(
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
-        user_id = agent_configurable(config).get("user_id")
+        configurable = agent_configurable(config)
+        user_id = configurable.get("user_id")
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
 
@@ -95,6 +96,9 @@ async def create_reminder_tool(
             # the agent config), so "daily at 9am" fires at 9am home wherever they
             # are; relative delays are computed from the server's current instant.
             home_timezone=home_timezone_from_config(config).value,
+            # The chat this reminder was created in — delivered back into it when
+            # it fires. None for a non-chat root (e.g. a REST/UI-created reminder).
+            source_conversation_id=configurable.get("conversation_id"),
         )
 
         # Convert to the service request model

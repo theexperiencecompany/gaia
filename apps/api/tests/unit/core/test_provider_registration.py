@@ -92,3 +92,52 @@ class TestBlockingStartupHonorsStrategy:
         await unified_startup("arq_worker")  # must not raise
 
         auto_init_spy.assert_awaited_once()
+
+
+class TestMainAppRegistersTheBroadcastListener:
+    async def test_only_the_web_app_subscribes_to_the_broadcast_fanout(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Only the web app holds user WebSockets, so only it registers the Redis
+        # broadcast listener — and it must be func + name + required exactly, or a
+        # replica silently stops delivering pushes.
+        monkeypatch.setattr(provider_registration.settings, "ENABLE_LAZY_LOADING", True)
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
+        monkeypatch.setattr(provider_registration, "resync_stale_user_workspaces", AsyncMock())
+        monkeypatch.setattr(provider_registration, "spawn_logged_task", lambda *a, **k: None)
+
+        real = provider_registration.StartupService
+        seen: list[tuple] = []
+
+        def _spy(func, name, required):
+            seen.append((func, name, required))
+            return real(func, name, required)
+
+        monkeypatch.setattr(provider_registration, "StartupService", _spy)
+
+        await unified_startup("main_app")
+
+        listener = provider_registration.init_websocket_broadcast_listener
+        entries = [(f, n, r) for (f, n, r) in seen if f is listener]
+        assert len(entries) == 1
+        _func, name, required = entries[0]
+        assert name == "websocket_broadcast_listener"
+        assert required is True
+
+    async def test_the_worker_does_not_register_the_broadcast_listener(
+        self, auto_init_spy: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(provider_registration, "init_websocket_broadcast_listener", AsyncMock())
+        real = provider_registration.StartupService
+        seen: list[tuple] = []
+
+        def _spy(func, name, required):
+            seen.append((func, name, required))
+            return real(func, name, required)
+
+        monkeypatch.setattr(provider_registration, "StartupService", _spy)
+
+        await unified_startup("arq_worker")
+
+        listener = provider_registration.init_websocket_broadcast_listener
+        assert [entry for entry in seen if entry[0] is listener] == []

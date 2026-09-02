@@ -192,6 +192,49 @@ class TestIsValidTimezone:
 
 
 # ---------------------------------------------------------------------------
+class TestTryParseEdges:
+    """Pins the offset guards and the tzinfo input path of ``try_parse``
+    (mutation survivors on 2026-08-28: the bounds, the sign and the tzinfo
+    branch were only reachable through ``parse``, which hides failures
+    behind the UTC fallback)."""
+
+    @pytest.mark.parametrize("bad", ["+24:00", "+23:60", "-24:00", "+00:60", "+99:99"])
+    def test_out_of_range_offset_is_not_a_zone(self, bad: str) -> None:
+        assert Timezone.try_parse(bad) is None
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("+23:59", timedelta(hours=23, minutes=59)),
+            ("-23:59", timedelta(hours=-23, minutes=-59)),
+            ("-00:01", timedelta(minutes=-1)),
+            ("+00:01", timedelta(minutes=1)),
+        ],
+    )
+    def test_boundary_offsets_parse_exactly(self, raw: str, expected: timedelta) -> None:
+        tz = Timezone.try_parse(raw)
+        assert tz is not None
+        assert tz.value == raw
+        assert tz.tzinfo.utcoffset(None) == expected
+
+    def test_tzinfo_input_keeps_its_canonical_name(self) -> None:
+        tz = Timezone.try_parse(ZoneInfo("Asia/Kolkata"))
+        assert tz is not None
+        assert tz.value == "Asia/Kolkata"
+        assert tz.tzinfo.utcoffset(datetime(2026, 1, 1, tzinfo=UTC)) == timedelta(
+            hours=5, minutes=30
+        )
+
+    def test_timezone_input_is_returned_as_is(self) -> None:
+        tz = Timezone.parse("Asia/Kolkata")
+        assert Timezone.try_parse(tz) is tz
+
+    def test_padded_offset_is_stripped(self) -> None:
+        tz = Timezone.try_parse("  +05:30  ")
+        assert tz is not None
+        assert tz.value == "+05:30"
+
+
 # resolve_home_timezone — the ONE precedence rule (+ stored-"UTC" heal)
 # ---------------------------------------------------------------------------
 

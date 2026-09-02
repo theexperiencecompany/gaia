@@ -531,6 +531,12 @@ class TestCreateTrackedTodoValidation:
         result = await create_tracked_todo.coroutine(config=_config(None), title="t")
         assert "user_id not found" in result
 
+    async def test_missing_metadata_key_returns_error_not_a_crash(self):
+        # config with no "metadata" at all: the {} default keeps .get("user_id")
+        # returning None -> clean error. A None default would crash on None.get().
+        result = await create_tracked_todo.coroutine(config={}, title="t")
+        assert "user_id not found" in result
+
     async def test_invalid_priority_returns_error(self):
         result = await create_tracked_todo.coroutine(config=_config(), title="t", priority="urgent")
         assert "invalid priority" in result
@@ -1120,7 +1126,7 @@ class TestUpdateTrackedTodoSuccess:
                 "app.agents.tools.tracked_todo_tools._get_user_tz",
                 new_callable=AsyncMock,
                 return_value="UTC",
-            ),
+            ) as mock_tz,
         ):
             result = await update_tracked_todo.coroutine(
                 config=_config(),
@@ -1130,6 +1136,9 @@ class TestUpdateTrackedTodoSuccess:
             )
         assert "Notes:" in result
         assert "ignored" in result
+        # The cron first-fire is computed in the OWNER's timezone, so the user_id
+        # must reach the tz lookup, not be dropped along the validator chain.
+        mock_tz.assert_awaited_once_with("user-1")
 
     async def test_references_are_appended_and_reported(self):
         with (
@@ -1156,6 +1165,60 @@ class TestUpdateTrackedTodoSuccess:
             )
         mock_add_refs.assert_awaited_once_with("t1", user_id="user-1", references=["t2", "t3"])
         assert "references" in result
+
+    async def test_labels_update_persists_and_reports_key(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", labels=["gaia-tracked", "urgent"]
+            )
+        assert "labels" in result
+
+    async def test_due_date_update_persists_and_reports_key(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", due_date=_FUTURE_ISO
+            )
+        assert "due_date" in result
+
+    async def test_expires_at_update_persists_and_reports_key(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", expires_at=_FUTURE_ISO
+            )
+        assert "expires_at" in result
 
     async def test_update_returns_none_when_todo_disappears_mid_call(self):
         """The doc existed at the pre-check but the update call itself found
@@ -1205,6 +1268,26 @@ class TestCreateTrackedTodoSuccess:
             result = await create_tracked_todo.coroutine(config=_config(), title="t")
         assert "Tracked todo created: t1" in result
         assert "update_tracked_todo_canvas(todo_id='t1'" in result
+
+    async def test_source_conversation_id_is_read_from_configurable_and_passed_through(self):
+        # The chat the todo was created in is captured and handed to the service so
+        # a later fire can be pushed back into that chat. build_agent_config puts
+        # conversation_id in `configurable` (not `metadata`, which only carries
+        # user_id/langfuse fields), so the tool must read it from there — matching
+        # reminder_tool. Reading metadata yields None in production.
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ) as create:
+            await create_tracked_todo.coroutine(
+                config={
+                    "configurable": {"conversation_id": "conv-9"},
+                    "metadata": {"user_id": "user-1"},
+                },
+                title="t",
+            )
+        assert create.await_args.kwargs["source_conversation_id"] == "conv-9"
 
     async def test_create_with_scheduled_at_persists_and_schedules(self):
         with (

@@ -1,0 +1,15 @@
+{
+  "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. The 2026-08-29 sweep cleared 15 of the original 17 entries by pinning fixed versions through pnpm.overrides in the root package.json (CLAUDE.md §9). What remains is image-size, which has no fixed release on the registry at all — pnpm audit reports patched_versions '<0.0.0' for both advisories, so there is nothing to bump to.",
+  "allow": [
+    {
+      "id": "GHSA-5p2g-fcmc-qvqq",
+      "reason": "image-size (CVE-2025-71329, JXL/HEIF parser infinite loop, high): NO upstream fix exists — the GitHub advisory reports first_patched_version null over a vulnerable range of <=2.0.2, and 2.0.2 is the latest published release, so every version on the registry is affected. Transitive and pinned by the consumer: apps/mobile > expo > @expo/metro > metro > image-size, where metro@0.83.7 declares image-size ^1.0.2 (1.2.1 installed); image-size 2.x is a breaking major metro's range excludes and is vulnerable anyway. Not reachable from a request path — metro is a build-time bundler, not shipped in the app. Re-check when metro ships a release that drops or replaces image-size.",
+      "expires": "2026-09-28"
+    },
+    {
+      "id": "GHSA-w3rx-r6r6-pgpr",
+      "reason": "image-size (CVE-2025-71330, ICNS parser infinite loop, high): NO upstream fix exists — the GitHub advisory reports first_patched_version null over a vulnerable range of <=2.0.2, and 2.0.2 is the latest published release, so every version on the registry is affected. Same consumer and constraint as GHSA-5p2g-fcmc-qvqq: apps/mobile > expo > @expo/metro > metro > image-size, metro@0.83.7 pins ^1.0.2 and image-size 2.x is a breaking major that is itself unpatched. Not reachable from a request path — metro is a build-time bundler, not shipped in the app. Re-check when metro ships a release that drops or replaces image-size.",
+      "expires": "2026-09-28"
+    }
+  ]
+}

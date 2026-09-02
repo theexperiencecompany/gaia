@@ -117,7 +117,6 @@ dev = [
   "pika>=1.4.1",
   "pytest-randomly>=4.1.0",
   "pytest-timeout>=2.4.0",
-  "pytest-split>=0.8.0",
   "time-machine>=3.3.1",
   "schemathesis>=4.25.0",
   "hypothesis>=6.165.2",
@@ -213,7 +212,7 @@ Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
 
 [tool.mutmut]
-# Mutation spot-checks (scripts/test/mutation.sh) — see that script for how
+# Mutation spot-checks (scripts/ci/mutation.sh module) — see that script for how
 # the pieces fit. Key repo integration points:
 # - Single-process pytest: the repo pytest.ini addopts carry -n 4 (xdist),
 #   but mutmut's trampoline stats are collected by in-process pytest plugins
@@ -228,7 +227,7 @@ Issues = "https://github.com/theexperiencecompany/gaia/issues"
 #   other C extensions) cannot be re-imported in the same process.
 source_paths = ["app"]
 also_copy = ["app", "tests", "scripts"]
-# The diff-driven scoping in scripts/test/mutation.sh stamps
+# The diff-driven scoping in scripts/ci/mutation.sh module stamps
 # `# pragma: no mutate` onto every unchanged line; mutmut's AST visitor only
 # honors that comment on simple statement lines and standalone comments, so
 # interior lines of multi-line statements still got mutated. The pattern
@@ -244,3 +243,22 @@ do_not_mutate_patterns = ["# pragma: no mutate"]
 timeout_constant = 60.0
 pytest_add_cli_args_test_selection = []
 pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']
+
+# coverage.py does not read pytest.ini (only .coveragerc, setup.cfg, tox.ini,
+# pyproject.toml), so the [coverage:*] sections that used to live there were
+# never applied — the CI lane passed --cov-fail-under explicitly, which is why
+# nobody noticed. relative_files is required at DATA-COLLECTION time: the two
+# test lanes write coverage on self-hosted runners and the combine job runs
+# wherever it lands; absolute runner paths there fail with "No source for code".
+[tool.coverage.run]
+source = ["app"]
+relative_files = true
+omit = ["app/patches.py", "app/static/*"]
+
+[tool.coverage.paths]
+source = ["app", "*/apps/api/app"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "if __name__ == .__main__.:"]

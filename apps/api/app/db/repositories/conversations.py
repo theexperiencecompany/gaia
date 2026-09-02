@@ -441,6 +441,23 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return bool(row and row.is_system_generated)
 
+    async def is_workflow_execution(self, conversation_id: str) -> bool:
+        """Whether this is the conversation a workflow's runs execute in.
+
+        Narrower than ``is_system_generated``: email and reminder runs are
+        system-generated too, and the workflow thread reset must not touch them.
+        """
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id},
+            {"_id": 0, "is_system_generated": 1, "system_purpose": 1},
+            _SystemGeneratedRow,
+        )
+        return bool(
+            row
+            and row.is_system_generated
+            and row.system_purpose == SystemPurpose.WORKFLOW_EXECUTION
+        )
+
     async def find_owner_of_message(
         self, user_id: str, message_id: str, *, message_type: str = "bot"
     ) -> str | None:

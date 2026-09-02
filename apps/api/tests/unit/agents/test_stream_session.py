@@ -11,6 +11,7 @@ import pytest
 from app.agents.core.background import session as sess
 from app.agents.core.background.session import (
     ExecutorRun,
+    RunIdentity,
     RunKind,
     claim_bg_integration,
     claim_tool_output,
@@ -21,8 +22,10 @@ from app.agents.core.background.session import (
     get_session,
     has_bg_integration,
     increment_pending_subagents,
+    mark_executor_queued,
     mark_executor_spawned,
     note_tool_output_owner,
+    queued_without_run,
     release_bg_integration,
     signal_executor_done,
     teardown_session,
@@ -98,6 +101,33 @@ class TestExecutorLifecycleFlags:
         signal_executor_done("missing")  # must not raise
 
 
+class TestQueuedWithoutRun:
+    """``queued_without_run`` is the "nothing happened yet" signal the turn's
+    final message is built from, so each of its three answers is load-bearing."""
+
+    def test_a_stream_with_no_session_reports_nothing(self) -> None:
+        # A stream nobody registered has no queued dispatch to report, and the
+        # missing session must be answered rather than dereferenced.
+        assert queued_without_run("never-seen") is None
+
+    def test_a_queue_with_no_spawn_reports_the_task(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        mark_executor_queued("s1", "task-1")
+        assert queued_without_run("s1") == "task-1"
+
+    def test_a_spawned_executor_hides_the_queued_task(self) -> None:
+        # The turn did real work, so the queued dispatch is extra work alongside
+        # it, not the substitute the caller would otherwise narrate.
+        create_session("s1", RunKind.LIVE)
+        mark_executor_queued("s1", "task-1")
+        mark_executor_spawned("s1")
+        assert queued_without_run("s1") is None
+
+    def test_a_session_that_never_queued_reports_nothing(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        assert queued_without_run("s1") is None
+
+
 class TestOwnershipRule:
     """The single source of truth that prevents duplicate/lost tool cards.
 
@@ -149,11 +179,13 @@ class TestOwnershipRule:
                 "workflow_title": "Daily digest",
                 "workflow_notify_on_completion": False,
             },
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.QUEUED,
-            task_id="t1",
-            user_message_id="m1",
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="t1",
+                user_message_id="m1",
+            ),
         )
         assert run.user == {"user_id": "u1", "email": "u1@x.com", "name": "Uno", "timezone": None}
         assert run.workflow_id == "wf-9"
@@ -163,11 +195,13 @@ class TestOwnershipRule:
     def test_from_configurable_defaults(self) -> None:
         run = ExecutorRun.from_configurable(
             {},
-            stream_id="s1",
-            conversation_id="conv-1",
-            kind=RunKind.LIVE,
-            task_id=None,
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.LIVE,
+                task_id=None,
+                user_message_id=None,
+            ),
         )
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True
@@ -249,3 +283,42 @@ class TestToolOutputOwnership:
     def test_ownership_for_missing_session_is_safe(self) -> None:
         note_tool_output_owner("missing", "tc_fetch", "row-1")  # must not raise
         assert claim_tool_output("missing", "tc_fetch", None) is True
+
+
+@pytest.mark.regression
+class TestExecutorRunCarriesWorkflowExecution:
+    """The execution id lives only on the workflow task's wide event, never in
+    ``configurable``; the run built inside that boundary has to pick it up or
+    every executor call it makes is unattributable to the run in the ledger."""
+
+    async def test_from_configurable_reads_the_execution_id_off_the_boundary(self) -> None:
+        from shared.py.wide_events import WorkflowContext, log, wide_task
+
+        async with wide_task("workflow_execution"):
+            log.set(workflow=WorkflowContext(id="wf-9", execution_id="exec-42"))
+            run = ExecutorRun.from_configurable(
+                {"workflow_id": "wf-9"},
+                identity=RunIdentity(
+                    stream_id="s1",
+                    conversation_id="conv-1",
+                    kind=RunKind.LIVE,
+                    task_id=None,
+                    user_message_id=None,
+                ),
+            )
+
+        assert run.workflow_execution_id == "exec-42"
+
+    def test_no_boundary_means_no_execution_id(self) -> None:
+        run = ExecutorRun.from_configurable(
+            {},
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.LIVE,
+                task_id=None,
+                user_message_id=None,
+            ),
+        )
+
+        assert run.workflow_execution_id is None

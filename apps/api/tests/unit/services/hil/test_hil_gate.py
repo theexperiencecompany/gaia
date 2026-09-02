@@ -18,7 +18,9 @@ import pytest
 from app.constants.hil import HIL_STATUS_KWARG
 from app.models.hil_models import HILApprovalStatus
 from app.services.hil.bridge import ApprovalOutcome
-from app.services.hil.gate import _outcome_from_record, read_gate_context
+from app.services.hil.gate import GateContext, _judge, _outcome_from_record, read_gate_context
+from app.services.hil.intent import IntentDecision, JudgedCall
+from app.services.hil.utils import GatedCall
 
 from .conftest import (
     CONVERSATION_ID,
@@ -26,6 +28,7 @@ from .conftest import (
     USER_ID,
     make_record,
     make_request,
+    make_tool,
     run_through_gate,
 )
 
@@ -296,3 +299,41 @@ class TestDeclineMemory:
         assert isinstance(result, ToolMessage)
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
         assert "wrong person" in result.content
+
+
+class TestWhatTheIntentJudgeIsAskedAbout:
+    """The judge rules on the call it is handed. A name, description, arguments or
+    summary that arrives blank means it ruled on a different action than the one
+    about to run — and an auto-approval on that ruling is the tool running
+    unattended on evidence nobody checked."""
+
+    async def test_the_whole_pending_call_reaches_the_judge(self) -> None:
+        request = make_request(
+            args={"to": "bob@example.com"},
+            tool=make_tool(description="Send an email on the user's behalf."),
+        )
+        context = GateContext(
+            stream_id=STREAM_ID,
+            user_id=USER_ID,
+            conversation_id=CONVERSATION_ID,
+            user_messages=["send the deck to bob"],
+            pausable=True,
+        )
+        call = GatedCall(name="send_email", id="call-1", args={"to": "bob@example.com"})
+        allowed = IntentDecision(True, "You asked me to send Bob the deck.")
+
+        with (
+            patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
+            patch(f"{MODULE}.judge_intent", new=AsyncMock(return_value=allowed)) as judge,
+        ):
+            decision = await _judge(
+                request, context, call, None, "Send email — to: bob@example.com"
+            )
+
+        assert decision is allowed
+        assert judge.await_args.kwargs["call"] == JudgedCall(
+            tool_name="send_email",
+            description="Send an email on the user's behalf.",
+            args={"to": "bob@example.com"},
+            summary="Send email — to: bob@example.com",
+        )

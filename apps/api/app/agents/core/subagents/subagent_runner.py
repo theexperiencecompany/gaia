@@ -5,7 +5,7 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -35,12 +35,12 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_AUTO_NOTIFY_SECTION,
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import EXECUTOR_THREAD_PREFIX, FINISH_TASK_NAME
 from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
@@ -108,10 +108,16 @@ class SubagentOutcome:
     ``interrupt`` carries the payload the gate passed to ``interrupt()``. When it
     is set the graph is checkpointed mid-run and ``text`` is meaningless — the
     caller must bubble the pause up rather than treat it as an answer.
+
+    ``run_messages`` are THIS run's tool-bearing messages captured off the
+    stream — the agent node's AIMessages (complete tool_calls) and the
+    ToolMessages answering them. Workflow handoffs render them into the call
+    record the executor transcribes playbook steps from (see ``call_record``).
     """
 
     text: str
     interrupt: dict[str, Any] | None = None
+    run_messages: tuple[AnyMessage, ...] = ()
 
     @property
     def paused(self) -> bool:
@@ -160,41 +166,42 @@ def resume_for_gate(interrupt_payload: dict[str, Any]) -> object:
     return decision
 
 
+# eq/repr stay off: instances are compared and printed by identity (a generated
+# repr would dump the whole message history in `initial_state`), and __hash__ must
+# survive for anything holding a context in a set.
+@dataclass(eq=False, repr=False)
 class SubagentExecutionContext:
     """Container for all data needed to execute a subagent."""
 
-    def __init__(
-        self,
-        subagent_graph: CompiledAgentGraph,
-        agent_name: str,
-        config: AgentRunnableConfig,
-        configurable: AgentConfigurable,
-        integration_id: str,
-        initial_state: dict[str, Any],
-        user_id: str | None = None,
-        stream_id: str | None = None,
-    ) -> None:
-        self.subagent_graph = subagent_graph
-        self.agent_name = agent_name
-        self.config = config
-        self.configurable = configurable
-        self.integration_id = integration_id
-        self.initial_state = initial_state
-        self.user_id = user_id
-        self.stream_id = stream_id
+    subagent_graph: CompiledAgentGraph
+    agent_name: str
+    config: AgentRunnableConfig
+    configurable: AgentConfigurable
+    integration_id: str
+    initial_state: dict[str, Any]
+    user_id: str | None = None
+    stream_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ThreadSeed:
+    """What a worker tier's opening thread is seeded from: the tier, the run's
+    configurable, and the identifiers the context sections retrieve against."""
+
+    tier: AgentTier
+    configurable: AgentConfigurable
+    user_id: str | None = None
+    subagent_id: str | None = None
+    retrieval_query: str | None = None
+    integration_id: str | None = None
 
 
 async def build_initial_messages(
     *,
     system_message: SystemMessage,
-    tier: AgentTier,
     agent_name: str,
-    configurable: AgentConfigurable,
     task: str,
-    user_id: str | None = None,
-    subagent_id: str | None = None,
-    retrieval_query: str | None = None,
-    integration_id: str | None = None,
+    seed: ThreadSeed,
 ) -> list[AnyMessage]:
     """Seed a worker tier's thread, in canonical slot order.
 
@@ -211,6 +218,15 @@ async def build_initial_messages(
         integration_id: For a provider subagent, the underlying integration id
             — what provider metadata and custom instructions are looked up by.
     """
+    tier, configurable, user_id, subagent_id, retrieval_query, integration_id = (
+        seed.tier,
+        seed.configurable,
+        seed.user_id,
+        seed.subagent_id,
+        seed.retrieval_query,
+        seed.integration_id,
+    )
+
     log.set(agent_prep={"agent_name": agent_name, "task_length": len(task)})
 
     assembled = await assemble_context(
@@ -334,6 +350,110 @@ def _process_messages_payload(
     return complete_message
 
 
+@dataclass
+class _StreamRun:
+    """One drive of ``execute_subagent_stream``: its emitters and its running state.
+
+    Mutable and passed by reference to the per-stream-mode handlers, so the loop
+    keeps a single copy of the state every branch accumulates into.
+    """
+
+    ctx: SubagentExecutionContext
+    stream_writer: StreamWriterCallable | None
+    integration_metadata: IntegrationMetadata | None
+    subagent_id: str | None
+    complete_message: str = ""
+    emitted_tool_calls: set[str] = field(default_factory=set)
+    tool_ran: bool = False
+    pending_approvals: list[dict[str, Any]] = field(default_factory=list)
+    run_messages: list[AnyMessage] = field(default_factory=list)
+
+
+async def _process_updates_payload(run: _StreamRun, payload: dict[str, Any]) -> None:
+    """Handle one "updates"-mode stream event: record a pause, or emit tool_data.
+
+    The run paused. Record the approval and KEEP DRAINING — never break.
+
+    Under durability="exit" the run-exit save is the only checkpoint write
+    there is, and abandoning the generator early skips it: the writes of
+    every task that COMPLETED in the interrupting step are lost, so those
+    tasks re-run on resume. That is how an ungated tool call beside a gated
+    one used to execute twice. Verified in isolation — break + "exit" is the
+    only combination that loses them; either alone is fine.
+    """
+    if LANGGRAPH_INTERRUPT_KEY in payload:
+        # ONE event per paused task, so two gated calls in a message arrive as
+        # two events. Accumulate: the caller stamps re-dispatch context onto
+        # every id here, and an approval left out of that can never be applied.
+        run.pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
+        log.info(f"{LogTag.HIL} Subagent paused on approval", agent=run.ctx.agent_name)
+        return
+    for node_name, state_update in payload.items():
+        # Only emit tool_data from the LLM ("agent") node.
+        # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
+        # etc.) produce "updates" events containing historical AIMessages
+        # with tool_calls from previous checkpoint runs — emitting those
+        # would replay stale tool cards into the current stream.
+        if node_name != "agent":
+            continue
+        # The agent node's update is the one place this run's complete
+        # tool_calls (exact names + args) appear — "messages" mode only
+        # streams them as partial chunks. Captured for the call record.
+        if isinstance(state_update, dict):
+            run.run_messages.extend(
+                msg for msg in state_update.get("messages", []) if getattr(msg, "tool_calls", None)
+            )
+        # Use shared helper to extract and format tool entries
+        entries = await extract_tool_entries_from_update(
+            state_update=state_update,
+            emitted_tool_calls=run.emitted_tool_calls,
+            integration_metadata=run.integration_metadata,
+        )
+        for tc_id, tool_entry in entries:
+            # Announcing the call is what claims its result: "messages" mode
+            # will replay this ToolMessage into the outer run's stream too.
+            note_tool_output_owner(run.ctx.stream_id or "", tc_id, run.subagent_id)
+            if run.stream_writer:
+                chunk_data: dict[str, Any] = {"tool_data": tool_entry}
+                if run.subagent_id:
+                    chunk_data["tool_data"] = {**tool_entry, "subagent_id": run.subagent_id}
+                run.stream_writer(chunk_data)
+
+
+def _finalize_run(run: _StreamRun) -> SubagentOutcome:
+    """The outcome a drained (or paused) stream produced."""
+    # A pause is not a result: the narration-only heuristic below would misread a
+    # half-finished run as "planning text" and tell the parent to re-issue it.
+    if run.pending_approvals:
+        return SubagentOutcome(
+            text=run.complete_message,
+            interrupt=merge_approvals(run.pending_approvals),
+            run_messages=tuple(run.run_messages),
+        )
+
+    # A subagent that only narrated and never ran a tool didn't do the work — return
+    # an actionable signal so the parent re-issues the handoff instead of treating the
+    # planning text as the result.
+    if not run.tool_ran and not run.emitted_tool_calls and run.complete_message:
+        log.warning("subagent_returned_narration_only", subagent_name=run.ctx.agent_name)
+        final_message = (
+            f"The {run.ctx.agent_name} subagent ended without running any tool; it only "
+            f'produced planning text: "{run.complete_message}". Re-issue the handoff with an '
+            "explicit instruction to perform the action."
+        )
+    else:
+        final_message = run.complete_message or "Task completed"
+    log.set(
+        subagent={
+            "name": run.ctx.agent_name,
+            "provider": run.ctx.integration_id,
+            "response_length": len(final_message),
+            "messages_count": len(run.ctx.initial_state.get("messages", [])),
+        }
+    )
+    return SubagentOutcome(text=final_message, run_messages=tuple(run.run_messages))
+
+
 async def execute_subagent_stream(
     ctx: SubagentExecutionContext,
     stream_writer: StreamWriterCallable | None = None,
@@ -353,10 +473,12 @@ async def execute_subagent_stream(
     outcome carries the approval payload and the caller must bubble it up.
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
-    complete_message = ""
-    emitted_tool_calls: set[str] = set()
-    tool_ran = False
-    pending_approvals: list[dict[str, Any]] = []
+    run = _StreamRun(
+        ctx=ctx,
+        stream_writer=stream_writer,
+        integration_metadata=integration_metadata,
+        subagent_id=subagent_id,
+    )
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -404,86 +526,37 @@ async def execute_subagent_stream(
         # A list `stream_mode` makes astream yield (mode, payload) tuples, which
         # langgraph's own overload return type does not express.
         stream_mode, payload = cast(tuple[str, Any], event)
+        await _consume_stream_event(run, stream_mode, payload)
 
-        if stream_mode == "updates":
-            # The run paused. Record the approval and KEEP DRAINING — never break.
-            #
-            # Under durability="exit" the run-exit save is the only checkpoint write
-            # there is, and abandoning the generator early skips it: the writes of
-            # every task that COMPLETED in the interrupting step are lost, so those
-            # tasks re-run on resume. That is how an ungated tool call beside a gated
-            # one used to execute twice. Verified in isolation — break + "exit" is the
-            # only combination that loses them; either alone is fine.
-            if LANGGRAPH_INTERRUPT_KEY in payload:
-                # ONE event per paused task, so two gated calls in a message arrive as
-                # two events. Accumulate: the caller stamps re-dispatch context onto
-                # every id here, and an approval left out of that can never be applied.
-                pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
-                log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
-                continue
-            for node_name, state_update in payload.items():
-                # Only emit tool_data from the LLM ("agent") node.
-                # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
-                # etc.) produce "updates" events containing historical AIMessages
-                # with tool_calls from previous checkpoint runs — emitting those
-                # would replay stale tool cards into the current stream.
-                if node_name != "agent":
-                    continue
-                # Use shared helper to extract and format tool entries
-                entries = await extract_tool_entries_from_update(
-                    state_update=state_update,
-                    emitted_tool_calls=emitted_tool_calls,
-                    integration_metadata=integration_metadata,
-                )
-                for tc_id, tool_entry in entries:
-                    # Announcing the call is what claims its result: "messages" mode
-                    # will replay this ToolMessage into the outer run's stream too.
-                    note_tool_output_owner(ctx.stream_id or "", tc_id, subagent_id)
-                    if stream_writer:
-                        chunk_data: dict[str, Any] = {"tool_data": tool_entry}
-                        if subagent_id:
-                            chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
-                        stream_writer(chunk_data)
-            continue
+    return _finalize_run(run)
 
-        if stream_mode == "messages":
-            complete_message = _process_messages_payload(
-                payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
-            )
-            if isinstance(payload[0], ToolMessage):
-                tool_ran = True
-            continue
 
-        if stream_mode == "custom":
-            if stream_writer:
-                stream_writer(normalize_custom_event(payload))
+async def _consume_stream_event(run: _StreamRun, stream_mode: str, payload: object) -> None:
+    """One (mode, payload) event off the subagent's stream, into the run's state.
 
-    # A pause is not a result: the narration-only heuristic below would misread a
-    # half-finished run as "planning text" and tell the parent to re-issue it.
-    if pending_approvals:
-        return SubagentOutcome(text=complete_message, interrupt=merge_approvals(pending_approvals))
+    The payload's shape is decided by the mode, which is why the driver holds it
+    untyped: each branch narrows it to the shape that mode is documented to carry.
+    """
+    if stream_mode == "updates":
+        await _process_updates_payload(run, cast(dict[str, Any], payload))
+        return
 
-    # A subagent that only narrated and never ran a tool didn't do the work — return
-    # an actionable signal so the parent re-issues the handoff instead of treating the
-    # planning text as the result.
-    if not tool_ran and not emitted_tool_calls and complete_message:
-        log.warning("subagent_returned_narration_only", subagent_name=ctx.agent_name)
-        final_message = (
-            f"The {ctx.agent_name} subagent ended without running any tool; it only "
-            f'produced planning text: "{complete_message}". Re-issue the handoff with an '
-            "explicit instruction to perform the action."
+    if stream_mode == "messages":
+        chunk_and_metadata = cast(tuple[BaseMessage, dict[str, Any]], payload)
+        run.complete_message = _process_messages_payload(
+            chunk_and_metadata,
+            run.complete_message,
+            run.stream_writer,
+            run.subagent_id,
+            run.ctx.stream_id or "",
         )
-    else:
-        final_message = complete_message or "Task completed"
-    log.set(
-        subagent={
-            "name": ctx.agent_name,
-            "provider": ctx.integration_id,
-            "response_length": len(final_message),
-            "messages_count": len(ctx.initial_state.get("messages", [])),
-        }
-    )
-    return SubagentOutcome(text=final_message)
+        if isinstance(chunk_and_metadata[0], ToolMessage):
+            run.tool_ran = True
+            run.run_messages.append(chunk_and_metadata[0])
+        return
+
+    if stream_mode == "custom" and run.stream_writer:
+        run.stream_writer(normalize_custom_event(cast(dict[str, Any], payload)))
 
 
 def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:
@@ -645,16 +718,33 @@ def compose_executor_brief(
     acceptance_criteria: list[str],
     *,
     verbatim_request: str | None = None,
+    last_run: str | None = None,
+    playbook_check: str | None = None,
 ) -> str:
-    """Fold the definition-of-done (and verbatim request) into the executor brief."""
+    """Fold the definition-of-done (and verbatim request, previous run) into the brief.
+
+    ``last_run`` is a workflow's previous run, already rendered by
+    ``run_trace.render_last_run`` — the workflow's memory now that its checkpoint
+    threads are dropped before each fire.
+
+    ``playbook_check`` asks the executor, once the work is done, whether the
+    sequence it just ran is worth freezing as a playbook. It rides in the brief
+    rather than in the finished result's narration because ``write_playbook`` is
+    an executor tool and comms cannot reach it. Placed last, after the
+    definition of done, so it reads as the closing instruction it is.
+    """
     criteria = [c.strip() for c in acceptance_criteria if c and c.strip()]
     parts: list[str] = []
     if verbatim_request:
         parts.append(f"Original request (verbatim):\n{verbatim_request.strip()}")
     parts.append(task)
+    if last_run:
+        parts.append(last_run.strip())
     if criteria:
         lines = "\n".join(f"- {c}" for c in criteria)
         parts.append(f"Definition of done (every item must be true before you finish):\n{lines}")
+    if playbook_check:
+        parts.append(playbook_check.strip())
     return "\n\n".join(parts)
 
 
@@ -680,7 +770,7 @@ async def prepare_executor_execution(
     # executor (and the subagents it spawns, whose threads are derived from
     # this one) retains its history across call_executor invocations within
     # the same conversation.
-    executor_thread_id = f"executor_{thread_id}"
+    executor_thread_id = f"{EXECUTOR_THREAD_PREFIX}{thread_id}"
 
     # VFS session stays pinned to the conversation thread so files written by
     # one executor call are visible to the next.
@@ -706,18 +796,24 @@ async def prepare_executor_execution(
 
     # Build config
     config = await build_agent_config(
-        conversation_id=thread_id,
-        user=user,
-        thread_id=executor_thread_id,
-        base_configurable=configurable,
-        agent_name="executor_agent",
-        role=AgentRole.EXECUTOR,
-        # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
-        # in development; otherwise the executor inherits comms's lane.
-        dev_option=dev_option(configurable.get("dev_executor_model")),
-        subagent_id="executor_agent",  # Use agent_name as the memory namespace id
-        vfs_session_id=vfs_session_id,
-        recursion_limit=EXECUTOR_RECURSION_LIMIT,
+        identity=AgentIdentity(
+            conversation_id=thread_id,
+            user=user,
+            agent_name="executor_agent",
+        ),
+        lane=AgentLane(
+            role=AgentRole.EXECUTOR,
+            # DEV-ONLY: the switcher's executor pick, stashed by comms. Present only
+            # in development; otherwise the executor inherits comms's lane.
+            dev_option=dev_option(configurable.get("dev_executor_model")),
+        ),
+        thread=AgentThread(
+            thread_id=executor_thread_id,
+            base_configurable=configurable,
+            subagent_id="executor_agent",  # Use agent_name as the memory namespace id
+            vfs_session_id=vfs_session_id,
+            recursion_limit=EXECUTOR_RECURSION_LIMIT,
+        ),
     )
     new_configurable = agent_configurable(config)
 
@@ -782,12 +878,14 @@ async def prepare_executor_execution(
     # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
     messages = await build_initial_messages(
         system_message=system_message,
-        tier=AgentTier.EXECUTOR,
         agent_name="executor_agent",
-        configurable=new_configurable,
         task=enhanced_task,
-        user_id=user_id,
-        retrieval_query=task,
+        seed=ThreadSeed(
+            tier=AgentTier.EXECUTOR,
+            configurable=new_configurable,
+            user_id=user_id,
+            retrieval_query=task,
+        ),
     )
 
     return SubagentExecutionContext(

@@ -20,6 +20,7 @@ through any prompt edit, at any size.
 import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
+    ContextSeed,
     HarnessUser,
     common_prefix_len,
     effective_context,
@@ -63,9 +64,11 @@ class TestPrefixSurvivesAClockTick:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_nothing_at_or_before_the_stable_block_moves(self, tier: AgentTier) -> None:
         user = HarnessUser()
-        first = await effective_context(tier, user=user, sources=SOURCES, now=FIXED_NOW)
+        first = await effective_context(
+            tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW)
+        )
         later = await effective_context(
-            tier, user=user, sources=SOURCES, now=FIXED_NOW.replace(minute=45)
+            tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW.replace(minute=45))
         )
 
         shared = common_prefix_len(request_bytes(first), request_bytes(later))
@@ -81,9 +84,11 @@ class TestPrefixSurvivesAClockTick:
         """Stated separately from the floor: a prefix can clear the boundary
         while something else still moved behind it."""
         user = HarnessUser()
-        first = await effective_context(tier, user=user, sources=SOURCES, now=FIXED_NOW)
+        first = await effective_context(
+            tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW)
+        )
         later = await effective_context(
-            tier, user=user, sources=SOURCES, now=FIXED_NOW.replace(minute=45)
+            tier, ContextSeed(user=user, sources=SOURCES, now=FIXED_NOW.replace(minute=45))
         )
 
         differing = [(a, b) for a, b in zip(first, later, strict=True) if text_of(a) != text_of(b)]
@@ -101,20 +106,24 @@ class TestPrefixSurvivesANewQuery:
         user = HarnessUser()
         first = await effective_context(
             tier,
-            user=user,
-            query="summarise my unread mail",
-            sources=ContextSources(
-                memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
-                connected_integrations=[{"id": "gmail", "name": "Gmail"}],
+            ContextSeed(
+                user=user,
+                query="summarise my unread mail",
+                sources=ContextSources(
+                    memories=[memory("Ships on Fridays", mentioned="2026-02-01")],
+                    connected_integrations=[{"id": "gmail", "name": "Gmail"}],
+                ),
             ),
         )
         second = await effective_context(
             tier,
-            user=user,
-            query="what did I promise the design team?",
-            sources=ContextSources(
-                memories=[memory("Owes the design team a spec", mentioned="2026-03-02")],
-                connected_integrations=[{"id": "gmail", "name": "Gmail"}],
+            ContextSeed(
+                user=user,
+                query="what did I promise the design team?",
+                sources=ContextSources(
+                    memories=[memory("Owes the design team a spec", mentioned="2026-03-02")],
+                    connected_integrations=[{"id": "gmail", "name": "Gmail"}],
+                ),
             ),
         )
 
@@ -139,9 +148,11 @@ class TestTheFloorCanFail:
         runs = [
             await effective_context(
                 AgentTier.EXECUTOR,
-                user=user,
-                query=query,
-                sources=ContextSources(memories=[memory(text, mentioned="2026-02-01")]),
+                ContextSeed(
+                    user=user,
+                    query=query,
+                    sources=ContextSources(memories=[memory(text, mentioned="2026-02-01")]),
+                ),
             )
             for query, text in (("one", "alpha"), ("two", "beta"))
         ]

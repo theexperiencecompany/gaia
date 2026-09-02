@@ -59,7 +59,7 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
-from app.services.hil.intent import IntentDecision, judge_intent
+from app.services.hil.intent import IntentDecision, JudgedCall, judge_intent
 from app.services.hil.policy import (
     GatingPolicy,
     gated_tool_object,
@@ -336,12 +336,14 @@ async def _judge(
     return await judge_intent(
         user_id=context.user_id,
         user_messages=context.user_messages,
-        tool_name=call.name,
-        # The REAL tool's description — for an execute-proxied call the request
-        # carries the proxy's object, which would mislead the judge.
-        description=tool_description(await gated_tool_object(request, call.name)),
-        args=call.args,
-        summary=summary,
+        call=JudgedCall(
+            tool_name=call.name,
+            # The REAL tool's description — for an execute-proxied call the
+            # request carries the proxy's object, which would mislead the judge.
+            description=tool_description(await gated_tool_object(request, call.name)),
+            args=call.args,
+            summary=summary,
+        ),
         # Actions only — the agent's own prose is never handed to its gate.
         prior_calls=prior_tool_calls(request.state, call.id),
     )

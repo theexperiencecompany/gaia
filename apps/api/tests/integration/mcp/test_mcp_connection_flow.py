@@ -161,6 +161,101 @@ class TestMCPConnectionFlow:
         assert len(result) == 1
 
     # ------------------------------------------------------------------
+    # 1b. A revoked integration must not keep working off the warm session
+    # ------------------------------------------------------------------
+
+    async def test_ensure_connected_refuses_an_integration_revoked_elsewhere(self):
+        """The DB is the authorization record; ``_tools`` is only a transport cache.
+
+        ``disconnect()`` clears the local dicts, so with one process the user
+        revoking an integration took effect immediately. Across replicas the
+        DELETE lands on one of them and every other replica keeps the live
+        session for the life of the process (the pool's LRU cap is 5000, so
+        nothing evicts it and there is no TTL). Checking ``_tools`` before the
+        DB status let those replicas keep executing tools against an
+        integration the user had already revoked.
+        """
+        client = _build_client_with_no_auth("user-revoked-elsewhere")
+        client._tools["gone"] = [_make_fake_tool("stale_tool")]
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        with pytest.raises(ValueError, match="not connected"):
+            await client.ensure_connected("gone")
+
+    async def test_ensure_connected_drops_the_stale_session_it_refused(self):
+        """Refusing once is not enough — the warm entry must go.
+
+        ``_find_integration_id_by_server_url`` routes tool calls off
+        ``_clients``, so leaving the entry behind keeps the revoked
+        integration reachable through the MCP proxy.
+        """
+        client = _build_client_with_no_auth("user-revoked-cleanup")
+        client._tools["gone"] = [_make_fake_tool("stale_tool")]
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        with pytest.raises(ValueError):
+            await client.ensure_connected("gone")
+
+        assert "gone" not in client._tools
+        assert "gone" not in client._clients
+
+    async def test_server_url_routing_skips_an_integration_revoked_elsewhere(self):
+        """The MCP proxy routes by server_url off ``_clients`` — status must gate it.
+
+        The slow path already filters on ``status == "connected"``; the warm
+        fast path did not, so a replica holding a live session would still route
+        ``/mcp/proxy/tool-call`` to an integration the user had revoked on
+        another replica. This is the path the MCP-App iframe actually uses, and
+        it never goes through ``ensure_connected``.
+        """
+        client = _build_client_with_no_auth("user-proxy-revoked")
+        client._clients["gone"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=False)
+
+        resolved = MagicMock()
+        resolved.mcp_config = MagicMock(server_url="https://mcp.example.com/sse")
+        with (
+            patch(
+                "app.services.mcp.mcp_client.IntegrationResolver.resolve",
+                AsyncMock(return_value=resolved),
+            ),
+            patch(
+                "app.services.mcp.mcp_client.get_user_integration_records",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+
+        assert found is None, "routed a tool call to a revoked integration"
+
+    async def test_server_url_routing_still_resolves_a_live_integration(self):
+        """Control: a connected integration must still route off the warm session."""
+        client = _build_client_with_no_auth("user-proxy-live")
+        client._clients["live"] = MagicMock()
+        client.is_connected_db = AsyncMock(return_value=True)
+
+        resolved = MagicMock()
+        resolved.mcp_config = MagicMock(server_url="https://mcp.example.com/sse")
+        with patch(
+            "app.services.mcp.mcp_client.IntegrationResolver.resolve",
+            AsyncMock(return_value=resolved),
+        ):
+            found = await client._find_integration_id_by_server_url("https://mcp.example.com/sse")
+
+        assert found == "live"
+
+    async def test_ensure_connected_still_serves_a_live_integration_from_cache(self):
+        """Control: a still-connected integration keeps its warm-path return."""
+        client = _build_client_with_no_auth("user-still-live")
+        warm = [_make_fake_tool("live_tool")]
+        client._tools["live"] = warm
+        client.is_connected_db = AsyncMock(return_value=True)
+
+        assert await client.ensure_connected("live") is warm
+
+    # ------------------------------------------------------------------
     # 2. _tools dict is populated after a fresh connect
     # ------------------------------------------------------------------
 

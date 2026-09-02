@@ -11,11 +11,13 @@ from . import (
     openrouter_tool_multimodal_patch,
 )
 
-# Apply the streaming patch explicitly here so the patch module itself has no
+# Apply these patches explicitly here so the patch modules themselves have no
 # import-time side effect — mutmut cannot grade modules that invoke functions
 # at import time (its trampoline aborts with "Unable to force test failures").
+from .openrouter_provider_name_patch import apply as _apply_provider_name
 from .openrouter_stream_finish_reason_patch import (
     apply as _apply_stream_finish_reason,
 )
 
 _apply_stream_finish_reason()
+_apply_provider_name()

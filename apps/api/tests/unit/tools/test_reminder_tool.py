@@ -24,8 +24,15 @@ FAKE_USER_ID = "507f1f77bcf86cd799439011"
 MODULE = "app.agents.tools.reminder_tool"
 
 
-def _cfg(user_id: str = FAKE_USER_ID, user_timezone: str = "Asia/Kolkata") -> dict[str, Any]:
-    return {"configurable": {"user_id": user_id, "user_timezone": user_timezone}}
+def _cfg(
+    user_id: str = FAKE_USER_ID,
+    user_timezone: str = "Asia/Kolkata",
+    conversation_id: str | None = None,
+) -> dict[str, Any]:
+    configurable: dict[str, Any] = {"user_id": user_id, "user_timezone": user_timezone}
+    if conversation_id is not None:
+        configurable["conversation_id"] = conversation_id
+    return {"configurable": configurable}
 
 
 def _cfg_no_user() -> dict[str, Any]:
@@ -73,6 +80,27 @@ class TestCreateReminderTool:
         )
         assert result == "Reminder created successfully"
         mock_scheduler.create_reminder.assert_awaited_once()
+
+    @patch(f"{MODULE}.reminder_scheduler")
+    @patch(f"{MODULE}.CreateReminderToolRequest")
+    async def test_source_conversation_id_threaded_from_config(
+        self, mock_req_cls: MagicMock, mock_scheduler: MagicMock
+    ) -> None:
+        mock_instance = MagicMock()
+        mock_instance.to_create_reminder_request.return_value = MagicMock()
+        mock_req_cls.return_value = mock_instance
+        mock_scheduler.create_reminder = AsyncMock()
+
+        from app.agents.tools.reminder_tool import create_reminder_tool
+        from app.models.reminder_models import StaticReminderPayload
+
+        payload = StaticReminderPayload(title="Wake up", body="Time to wake up")
+        await create_reminder_tool.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+            config=_cfg(conversation_id="conv-abc123"),
+            payload=payload,
+            scheduled_at="2026-03-21 08:00:00",
+        )
+        assert mock_req_cls.call_args.kwargs["source_conversation_id"] == "conv-abc123"
 
     async def test_no_user_id(self) -> None:
         from app.agents.tools.reminder_tool import create_reminder_tool

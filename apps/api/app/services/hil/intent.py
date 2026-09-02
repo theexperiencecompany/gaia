@@ -39,7 +39,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured, silent_metered_config
+from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
@@ -73,6 +73,21 @@ class RiskFactor(StrEnum):
     # The one unconditional block: no phrasing of a request auto-approves shipping
     # secrets out. Enforced in code (see _accept), never left to the model's discretion.
     EXFILTRATES_SECRETS = "exfiltrates_secrets"
+
+
+@dataclass(frozen=True)
+class JudgedCall:
+    """The tool call put to the judge, as the judge sees it.
+
+    Name, description, arguments and summary always travel together — the gate reads
+    them off one pending call, and the prompt renders all four — so they are passed as
+    one value rather than four parallel arguments.
+    """
+
+    tool_name: str
+    description: str
+    args: dict[str, Any]
+    summary: str
 
 
 @dataclass(frozen=True)
@@ -116,10 +131,7 @@ async def judge_intent(
     *,
     user_id: str,
     user_messages: list[str],
-    tool_name: str,
-    description: str,
-    args: dict[str, Any],
-    summary: str,
+    call: JudgedCall,
     prior_calls: list[PriorCall],
 ) -> IntentDecision:
     """Whether the user's own words authorize this call. Fails toward asking.
@@ -134,18 +146,17 @@ async def judge_intent(
     turns = [text for text in user_messages if text.strip()]
     if not turns:
         log.info(
-            f"{LogTag.HIL} intent judge : nothing to verify against; asking", tool_name=tool_name
+            f"{LogTag.HIL} intent judge : nothing to verify against; asking",
+            tool_name=call.tool_name,
         )
         return IntentDecision(False, _NO_REQUEST_REASON)
 
     try:
-        verdict = await _ask_judge(
-            user_id, turns, tool_name, description, args, summary, prior_calls
-        )
+        verdict = await _ask_judge(user_id, turns, call, prior_calls)
     except Exception as e:  # a judge failure must fall back to asking
         log.warning(
             f"{LogTag.HIL} intent judge failed for ; asking",
-            tool_name=tool_name,
+            tool_name=call.tool_name,
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -153,10 +164,10 @@ async def judge_intent(
 
     # Grounded against EVERY user turn, not just the latest: "looks good, send it" is
     # authorized by the earlier "draft an email to Bob about the deck".
-    aligned = _accept(verdict, "\n".join(turns), tool_name)
+    aligned = _accept(verdict, "\n".join(turns), call.tool_name)
     log.info(
         f"{LogTag.HIL} intent judge : aligned",
-        tool_name=tool_name,
+        tool_name=call.tool_name,
         aligned=aligned,
         reason=verdict.reason,
         hil={
@@ -172,10 +183,7 @@ async def judge_intent(
 async def _ask_judge(
     user_id: str,
     turns: list[str],
-    tool_name: str,
-    description: str,
-    args: dict[str, Any],
-    summary: str,
+    call: JudgedCall,
     prior_calls: list[PriorCall],
 ) -> _Verdict:
     return await ainvoke_structured(
@@ -185,14 +193,14 @@ async def _ask_judge(
             earlier="\n".join(turns[:-1]) or "(none)",
             latest=turns[-1],
             prior_actions=render_prior_calls(prior_calls),
-            tool=tool_name,
-            description=description or "(no description)",
-            summary=summary,
-            args=args_preview(args),
+            tool=call.tool_name,
+            description=call.description or "(no description)",
+            summary=call.summary,
+            args=args_preview(call.args),
         ),
         label="hil_intent_judge",
-        timeout=HIL_LLM_TIMEOUT_SECONDS,
         config=silent_metered_config(user_id),
+        options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
     )
 
 

@@ -23,7 +23,7 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator
 import contextlib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import time
 from typing import Any, cast
@@ -45,6 +45,7 @@ from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.sandbox.artifact_watcher import start_watcher_for
+from app.services.sandbox.errors import SandboxAcquisitionError, SandboxRateLimitError
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
 from app.services.storage import (
@@ -67,14 +68,6 @@ MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
 # Graceful JuiceFS unmount before a hard kill — short, best-effort.
 JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
-
-
-class SandboxAcquisitionError(RuntimeError):
-    """Raised when a usable sandbox cannot be obtained for a user."""
-
-
-class SandboxRateLimitError(SandboxAcquisitionError):
-    """Raised when the user has exhausted their sandbox-creation rate limit."""
 
 
 def _now() -> datetime:
@@ -639,6 +632,32 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
         return False
 
 
+async def _idle_on_every_replica(user_id: str) -> bool:
+    """Has nobody, on any replica, used this user's sandbox during the idle window?
+
+    ``entry.refcount`` only knows about this process. The pause timer also
+    outlives the acquisition lease that guarded the turn, so by the time it
+    fires another replica may have connected to the same sandbox (its id comes
+    from Mongo) and started a long run — pausing then kills that user's tool
+    call mid-command. ``last_used_at`` is stamped on every release from every
+    replica, which makes it the shared idleness signal; this is the same
+    predicate the hourly sweep uses in ``find_idle_user_ids``.
+
+    A missing record means nothing has claimed it, so the pause proceeds.
+    """
+    doc = await e2b_sandbox_repository.get_for_user(user_id)
+    if doc is None or doc.last_used_at is None:
+        return True
+    idle_since = _now() - timedelta(seconds=settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
+    if doc.last_used_at > idle_since:
+        log.info(
+            f"{LogTag.SANDBOX} skipping idle pause; another replica used the sandbox",
+            user_id=user_id,
+        )
+        return False
+    return True
+
+
 def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
     """Pause the sandbox after the idle window if no further work arrives."""
 
@@ -648,6 +667,8 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
         # cancels cleanly when work arrives.
         await asyncio.sleep(settings.E2B_SANDBOX_IDLE_PAUSE_SECONDS)
         if entry.refcount > 0:
+            return
+        if not await _idle_on_every_replica(user_id):
             return
         await _stop_watcher(entry)
         await _pause_sandbox(user_id, entry)
@@ -728,9 +749,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
         raise SandboxAcquisitionError("user_id is required")
 
     pool = get_sandbox_pool()
-    lock = await pool.get_lock(user_id)
-    await lock.acquire()
-    try:
+    async with pool.distributed_lock(user_id):
         async with fs_timer(FsOps.SBX_ACQUIRE):
             entry = await _acquire_or_create(user_id)
         entry.refcount += 1
@@ -759,5 +778,3 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
                     await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
                 if entry.refcount <= 0:
                     _schedule_pause(user_id, entry)
-    finally:
-        lock.release()

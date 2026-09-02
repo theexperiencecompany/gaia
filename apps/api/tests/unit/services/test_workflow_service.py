@@ -207,6 +207,7 @@ class TestCompleteExecution:
             summary="Did 3 things",
             error_message=None,
             conversation_id=None,
+            trace=None,
         )
 
     async def test_forwards_error_message(self, mock_executions_repo):

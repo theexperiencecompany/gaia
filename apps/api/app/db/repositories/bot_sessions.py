@@ -73,6 +73,13 @@ class BotSessionsRepository(MongoRepository[BotSessionDocument, BotSessionUpdate
         ``claim_session`` for callers that must not mint one on a miss."""
         return await self._find_one({"session_key": session_key})
 
+    async def get_by_conversation_id(self, conversation_id: str) -> BotSessionDocument | None:
+        """The bot session whose conversation this is, or ``None`` for a non-bot
+        (web/mobile) conversation. Carries the ``channel_id`` a proactive delivery
+        needs to reach the group/channel the chat lives in. Indexed on
+        ``conversation_id`` (see ``app/db/mongodb/indexes.py``)."""
+        return await self._find_one({"conversation_id": conversation_id})
+
     async def list_legacy_dm_sessions(
         self, *, platform: str | None = None
     ) -> list[BotSessionDocument]:

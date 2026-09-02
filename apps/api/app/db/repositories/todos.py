@@ -27,6 +27,7 @@ from app.models.todo_models import (
     TodoStats,
     TodoUpdate,
 )
+from app.models.trigger_subscription_models import SubscriptionStatus
 
 # Top-N labels surfaced in the stats aggregation (mirrors the legacy pipeline).
 _STATS_LABEL_LIMIT = 50
@@ -332,6 +333,77 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
         """Every user's active tracked todos — the maintenance sweep's scan set."""
         return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)
+
+    async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
+        """Every user's incomplete todos with an active subscription registered against
+        ``composio_trigger_id`` — the per-resource half of trigger dispatch."""
+        return await self._find(
+            {
+                "completed": False,
+                "trigger_subscriptions": {
+                    "$elemMatch": {
+                        "composio_trigger_ids": composio_trigger_id,
+                        "status": SubscriptionStatus.ACTIVE.value,
+                    }
+                },
+            }
+        )
+
+    async def find_active_by_user_and_trigger(
+        self, user_id: str, trigger_name: str
+    ) -> list[TodoDocument]:
+        """One user's incomplete todos with an active subscription to ``trigger_name``
+        — the account-level half of dispatch, for triggers (Gmail) that register no
+        per-subscriber Composio instance and can only be found by user."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "trigger_subscriptions": {
+                    "$elemMatch": {
+                        "trigger_name": trigger_name,
+                        "status": SubscriptionStatus.ACTIVE.value,
+                    }
+                },
+            }
+        )
+
+    async def find_paused_by_user_and_trigger(
+        self, user_id: str, trigger_name: str
+    ) -> list[TodoDocument]:
+        """One user's incomplete todos whose ``trigger_name`` subscription is paused —
+        the resync set after the integration behind it is reconnected."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "trigger_subscriptions": {
+                    "$elemMatch": {
+                        "trigger_name": trigger_name,
+                        "status": SubscriptionStatus.PAUSED.value,
+                    }
+                },
+            }
+        )
+
+    async def count_trigger_references(
+        self, composio_trigger_id: str, *, excluding_todo_id: str | None = None
+    ) -> int:
+        """How many todos still reference ``composio_trigger_id``. Summed with the
+        workflow count before a Composio trigger is deleted — the two consumers share
+        trigger instances, so either one alone would delete the other's live trigger.
+
+        Counts paused subscriptions too: a paused subscription is resumed on
+        reconnect, so its trigger must survive the pause.
+        """
+        query: dict[str, object] = {
+            "trigger_subscriptions.composio_trigger_ids": composio_trigger_id
+        }
+        if excluding_todo_id:
+            # Todos key on ObjectId (workflows key on plain strings), so the id has
+            # to go through the identity seam or the $ne matches nothing.
+            query["_id"] = {"$ne": self._id_value(excluding_todo_id)}
+        return await self._count(query)
 
     async def find_due_tracked_all_users(
         self, *, now: datetime, max_retries: int, limit: int

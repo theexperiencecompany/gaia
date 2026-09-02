@@ -749,26 +749,65 @@ class TestMCPClientIsConnectedDb:
 
 class TestMCPClientEnsureConnected:
     async def test_returns_cached(self):
+        """The warm path still short-circuits — once the DB confirms it is live.
+
+        The status check comes first now: the in-memory map is a transport
+        cache, not the authorization record (a disconnect on another replica
+        never reaches this process's dicts).
+        """
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
         client._tools[INTEGRATION_ID] = tools
-        result = await client.ensure_connected(INTEGRATION_ID)
+        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True):
+            result = await client.ensure_connected(INTEGRATION_ID)
         assert result is tools
 
     async def test_reconnects_from_db(self):
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
 
-        with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True):
-            with patch.object(client, "connect", new_callable=AsyncMock, return_value=tools):
-                result = await client.ensure_connected(INTEGRATION_ID)
-                assert result is tools
+        with (
+            patch.object(
+                client, "is_connected_db", new_callable=AsyncMock, return_value=True
+            ) as is_connected,
+            patch.object(client, "connect", new_callable=AsyncMock, return_value=tools) as connect,
+        ):
+            result = await client.ensure_connected(INTEGRATION_ID)
+
+        assert result is tools
+        is_connected.assert_awaited_once_with(INTEGRATION_ID)
+        connect.assert_awaited_once_with(INTEGRATION_ID)
 
     async def test_raises_when_not_connected(self):
         client = MCPClient(user_id=USER_ID)
         with patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False):
             with pytest.raises(ValueError, match="not connected"):
                 await client.ensure_connected(INTEGRATION_ID)
+
+    async def test_drops_a_stale_warm_session_when_db_says_disconnected(self):
+        # Revoked elsewhere but still in THIS replica's transport cache: the stale
+        # session must be dropped, whether it lingers in _tools or _clients.
+        for attr in ("_tools", "_clients"):
+            client = MCPClient(user_id=USER_ID)
+            getattr(client, attr)[INTEGRATION_ID] = [_mock_tool()]
+            with (
+                patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
+                patch.object(client, "disconnect", new_callable=AsyncMock) as disconnect,
+            ):
+                with pytest.raises(ValueError, match="not connected"):
+                    await client.ensure_connected(INTEGRATION_ID)
+            disconnect.assert_awaited_once_with(INTEGRATION_ID)
+
+    async def test_no_disconnect_when_nothing_is_cached(self):
+        # Nothing warm to drop → raise without a spurious disconnect.
+        client = MCPClient(user_id=USER_ID)
+        with (
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
+            patch.object(client, "disconnect", new_callable=AsyncMock) as disconnect,
+        ):
+            with pytest.raises(ValueError, match="not connected"):
+                await client.ensure_connected(INTEGRATION_ID)
+        disconnect.assert_not_awaited()
 
 
 class TestMCPClientNormalizeServerUrl:
@@ -2543,12 +2582,20 @@ class TestMCPClientReadUiResource:
 
 class TestMCPClientFindIntegrationIdByServerUrl:
     async def test_finds_from_active_clients(self):
+        """The warm fast path resolves — for an integration still connected.
+
+        Gated on the stored status like the slow path, so a session this
+        replica still holds cannot route to an integration revoked elsewhere.
+        """
         client = MCPClient(user_id=USER_ID)
         client._clients[INTEGRATION_ID] = MagicMock()
 
         resolved = MagicMock()
         resolved.mcp_config = _make_mcp_config()
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True),
+        ):
             mock_resolver.resolve = AsyncMock(return_value=resolved)
             result = await client._find_integration_id_by_server_url(SERVER_URL)
 
@@ -3133,6 +3180,86 @@ class TestMCPClientHandleCustomIntegrationConnect:
             # Should not raise
             await client._handle_custom_integration_connect(INTEGRATION_ID, SERVER_URL, tools)
 
+    async def test_the_indexed_request_carries_the_integrations_identity_verbatim(self):
+        """The subagent entry is what a handoff later resolves the integration by,
+        so every field of the request is pinned: a dropped server_url or tool list
+        indexes a subagent that ranks for nothing and routes nowhere."""
+        from app.agents.core.subagents.handoff_tools import (
+            CustomMcpIndexRequest,
+        )
+
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool()]
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.derive_integration_namespace",
+                return_value="ns::custom",
+            ),
+            patch("app.services.mcp.mcp_client.index_tools_to_store", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.providers") as mock_providers,
+        ):
+            mock_store = MagicMock()
+            mock_providers.aget = AsyncMock(return_value=mock_store)
+
+            with patch(
+                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                new_callable=AsyncMock,
+            ) as mock_subagent:
+                await client._handle_custom_integration_connect(
+                    INTEGRATION_ID,
+                    SERVER_URL,
+                    tools,
+                    name="My Tool",
+                    description="A custom tool",
+                )
+
+        mock_subagent.assert_awaited_once()
+        assert mock_subagent.await_args.kwargs["store"] is mock_store
+        assert mock_subagent.await_args.kwargs["request"] == CustomMcpIndexRequest(
+            integration_id=INTEGRATION_ID,
+            name="My Tool",
+            description="A custom tool",
+            server_url=SERVER_URL,
+            tools=tools,
+        )
+
+    async def test_an_integration_with_no_description_indexes_an_empty_one(self):
+        """The request's description is a plain ``str``; a missing one becomes the
+        empty string rather than travelling as None into the embedded text."""
+        from app.agents.core.subagents.handoff_tools import (
+            CustomMcpIndexRequest,
+        )
+
+        client = MCPClient(user_id=USER_ID)
+        tools = [_mock_tool()]
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.derive_integration_namespace",
+                return_value="ns::custom",
+            ),
+            patch("app.services.mcp.mcp_client.index_tools_to_store", new_callable=AsyncMock),
+            patch("app.services.mcp.mcp_client.providers") as mock_providers,
+        ):
+            mock_providers.aget = AsyncMock(return_value=MagicMock())
+
+            with patch(
+                "app.agents.core.subagents.handoff_tools.index_custom_mcp_as_subagent",
+                new_callable=AsyncMock,
+            ) as mock_subagent:
+                await client._handle_custom_integration_connect(
+                    INTEGRATION_ID, SERVER_URL, tools, name="My Tool", description=None
+                )
+
+        assert mock_subagent.await_args.kwargs["request"] == CustomMcpIndexRequest(
+            integration_id=INTEGRATION_ID,
+            name="My Tool",
+            description="",
+            server_url=SERVER_URL,
+            tools=tools,
+        )
+
     async def test_resolves_name_from_integration_when_not_provided(self):
         client = MCPClient(user_id=USER_ID)
         tools = [_mock_tool()]
@@ -3166,7 +3293,7 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
             mock_subagent.assert_awaited_once()
             call_kwargs = mock_subagent.call_args[1]
-            assert call_kwargs["name"] == "Resolved Name"
+            assert call_kwargs["request"].name == "Resolved Name"
 
 
 # ===========================================================================
@@ -4845,11 +4972,58 @@ class TestServerUrlMatchingHelpersExact:
             "bbb": self._resolved_with(SERVER_URL),
         }
 
-        with patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver:
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            # Both are still connected; the gate is exercised in its own test.
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=True),
+        ):
             mock_resolver.resolve = AsyncMock(side_effect=lambda iid: resolutions[iid])
             match = await client._match_active_client_by_server_url(target)
 
         assert match == "bbb"
+
+    async def test_match_active_client_skips_an_integration_revoked_elsewhere(self):
+        """A warm session is not authorization — the stored status gates it.
+
+        ``disconnect`` only clears the dicts of the replica that handled it, so
+        without this a revoked integration stays routable through the MCP proxy
+        on every other replica for the life of the process.
+        """
+        client = MCPClient(user_id=USER_ID)
+        client._clients["bbb"] = MagicMock()
+        target = client._normalize_server_url(SERVER_URL)
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(client, "is_connected_db", new_callable=AsyncMock, return_value=False),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=self._resolved_with(SERVER_URL))
+            match = await client._match_active_client_by_server_url(target)
+
+        assert match is None
+
+    async def test_match_active_client_skips_a_revoked_one_and_returns_a_live_one(self):
+        # Two warm clients match the URL; the first is revoked in the DB. The scan
+        # must SKIP it (not stop) and return the second, live one — keyed by the
+        # right integration id.
+        client = MCPClient(user_id=USER_ID)
+        client._clients["revoked"] = MagicMock()
+        client._clients["live"] = MagicMock()
+        target = client._normalize_server_url(SERVER_URL)
+
+        with (
+            patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
+            patch.object(
+                client,
+                "is_connected_db",
+                new_callable=AsyncMock,
+                side_effect=lambda iid: iid == "live",
+            ),
+        ):
+            mock_resolver.resolve = AsyncMock(return_value=self._resolved_with(SERVER_URL))
+            match = await client._match_active_client_by_server_url(target)
+
+        assert match == "live"
 
     async def test_match_active_client_returns_none_when_nothing_matches(self):
         client = MCPClient(user_id=USER_ID)

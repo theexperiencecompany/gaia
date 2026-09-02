@@ -8,12 +8,19 @@ persona. This module owns that single invocation.
 
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.agents.context.slots import BACKGROUND_EXECUTOR_NAME
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import INTERACTIVE_DELIVERY_NOTE, PLATFORM_DELIVERY_NOTE
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.log_tags import LogTag
-from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentLane,
+    AgentTurn,
+    build_agent_config,
+    execute_graph_silent,
+)
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_tags
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -67,12 +74,16 @@ async def narrate_executor_result(
         # build_agent_config resolves its own comms lane and stamps plan_type —
         # matching the interactive comms path and keeping the budget wall enforced.
         config = await build_agent_config(
-            conversation_id=conversation_id,
-            user=user,
-            agent_name="comms_agent",
-            role=AgentRole.COMMS,
-            user_preferences=user_preferences,
-            writing_style=writing_style,
+            identity=AgentIdentity(
+                conversation_id=conversation_id,
+                user=user,
+                agent_name="comms_agent",
+            ),
+            lane=AgentLane(role=AgentRole.COMMS),
+            turn=AgentTurn(
+                user_preferences=user_preferences,
+                writing_style=writing_style,
+            ),
         )
         initial_state = {
             "messages": [
@@ -89,7 +100,7 @@ async def narrate_executor_result(
                 #     before the HumanMessage→SystemMessage regression.
                 HumanMessage(
                     content=content,
-                    name="background_executor",
+                    name=BACKGROUND_EXECUTOR_NAME,
                 ),
             ],
         }
@@ -120,7 +131,7 @@ async def record_executor_cancellation(
             "cancelled by the user before it completed. It did NOT finish and will "
             "not deliver results — do not claim otherwise.",
         ),
-        name="background_executor",
+        name=BACKGROUND_EXECUTOR_NAME,
     )
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
@@ -158,10 +169,17 @@ async def record_platform_delivery(conversation_id: str, text: str) -> None:
         return
     try:
         comms_graph = await GraphManager.get_graph("comms_agent")
+        # as_node="tools", not "agent": aupdate_state evaluates as_node's outgoing
+        # edges to compute the next tasks, and the agent node's should_continue
+        # branch requires a ``store`` that aupdate_state cannot inject — so writing
+        # as "agent" raises "Missing required config key 'store'" and the record
+        # is lost. The tools->agent edge is unconditional and needs no store, so
+        # the write lands; the AIMessage is appended by the reducer either way.
+        # Mirrors record_executor_cancellation.
         await comms_graph.aupdate_state(
             {"configurable": {"thread_id": conversation_id}},
             {"messages": [AIMessage(content=text)]},
-            as_node="agent",
+            as_node="tools",
         )
         log.info(
             f"{LogTag.AGENT} Recorded platform delivery in conversation thread",

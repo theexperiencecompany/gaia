@@ -160,7 +160,7 @@ class WorkflowService:
 
         trigger_ids = await TriggerService.register_triggers(
             user_id=user_id,
-            workflow_id=workflow_id,
+            owner_id=workflow_id,
             trigger_name=trigger_name,
             trigger_config=trigger_config,
             raise_on_failure=True,

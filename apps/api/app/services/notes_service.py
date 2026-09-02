@@ -5,6 +5,7 @@ Service module for handling note operations.
 from fastapi import HTTPException, status
 from langchain_core.documents import Document
 
+from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.notes import note_repository
 from app.models.notes_models import NoteModel, NoteResponse, NoteUpdate
@@ -42,7 +43,9 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
 
     # Keep the vector index in sync; a ChromaDB hiccup must not fail the write.
     try:
-        chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
+        chroma_notes_collection = await ChromaClient.get_langchain_client(
+            collection_name=CHROMA_NOTES_COLLECTION
+        )
         await chroma_notes_collection.update_document(  # type: ignore[func-returns-value]  # langchain types update_document as None-returning; upstream actually returns the doc
             document_id=note_id,
             document=Document(page_content=note.plaintext),
@@ -70,7 +73,9 @@ async def delete_note(note_id: str, user_id: str) -> None:
 
     # Best-effort vector-index cleanup; a ChromaDB hiccup must not fail the delete.
     try:
-        chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
+        chroma_notes_collection = await ChromaClient.get_langchain_client(
+            collection_name=CHROMA_NOTES_COLLECTION
+        )
         await chroma_notes_collection.adelete(ids=[note_id])
         log.info("Note with id deleted from ChromaDB", note_id=note_id)
     except Exception as e:

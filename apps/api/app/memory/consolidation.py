@@ -89,6 +89,9 @@ _AGENDA_EMPTY_BODY = "- (nothing open)"
 # memory_node background-task set). A process restart during the sleep loses
 # the pending debounce — acceptable: the next ingestion reschedules it and
 # the documents converge.
+#
+# Across replicas each keeps its own waiter, but the pending set is in Redis and
+# claimed with an atomic GETDEL, so exactly one replica gets the payload.
 _waiters: dict[str, asyncio.Task] = {}
 
 
@@ -149,6 +152,12 @@ async def cancel_consolidation(user_id: str) -> None:
     await delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id))
 
 
+async def _debounce_wait() -> None:
+    """The debounce window; a module-level seam so the integration suite can
+    release the waiter on demand instead of sleeping out a wall-clock window."""
+    await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+
+
 async def _debounce_waiter(user_id: str) -> None:
     """Sleep out the debounce window, then consume the pending set and consolidate.
 
@@ -162,7 +171,7 @@ async def _debounce_waiter(user_id: str) -> None:
         # stays quiet (it must not crash the event loop).
         with contextlib.suppress(Exception):
             async with wide_task("memory_consolidation", user=UserContext(id=user_id)):
-                await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+                await _debounce_wait()
                 pending = await get_and_delete_cache(
                     CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
                 )

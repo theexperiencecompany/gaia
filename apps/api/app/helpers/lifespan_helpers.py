@@ -2,9 +2,9 @@ from collections.abc import Awaitable, Callable
 from typing import NamedTuple
 
 from app.core.lazy_loader import providers
-from app.core.websocket_consumer import (
-    start_websocket_consumer,
-    stop_websocket_consumer,
+from app.core.websocket_broadcast_listener import (
+    start_websocket_broadcast_listener,
+    stop_websocket_broadcast_listener,
 )
 from app.db.postgresql import close_postgresql_db
 from app.db.rabbitmq import get_rabbitmq_publisher
@@ -39,13 +39,16 @@ async def init_workflow_service() -> None:
         raise
 
 
-async def init_websocket_consumer() -> None:
-    """Initialize WebSocket event consumer."""
+async def init_websocket_broadcast_listener() -> None:
+    """Subscribe this replica to the WebSocket broadcast fan-out."""
     try:
-        await start_websocket_consumer()
-        log.info("WebSocket event consumer started")
+        start_websocket_broadcast_listener()
     except Exception as e:
-        log.error("Failed to start WebSocket consumer", error=str(e), error_type=type(e).__name__)
+        log.error(
+            "Failed to start WebSocket broadcast listener",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -98,12 +101,15 @@ async def close_workflow_scheduler() -> None:
 
 
 async def close_websocket_async() -> None:
-    """Close WebSocket event consumer."""
+    """Unsubscribe this replica from the WebSocket broadcast fan-out."""
     try:
-        await stop_websocket_consumer()
-        log.info("WebSocket event consumer stopped")
+        await stop_websocket_broadcast_listener()
     except Exception as e:
-        log.error("Error stopping WebSocket consumer", error=str(e), error_type=type(e).__name__)
+        log.error(
+            "Error stopping WebSocket broadcast listener",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def close_publisher_async() -> None:

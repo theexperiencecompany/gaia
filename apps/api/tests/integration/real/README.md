@@ -25,5 +25,5 @@ When adding a service test, patch the module singleton (`redis_cache.redis`, or 
 
 ## PostgreSQL credentials
 
-CI's test container runs `gaia:gaia` (see `scripts/ci/start-test-services.sh`) — the fixture defaults match CI. Local `docker compose` Postgres uses `postgres:postgres`; when testing against it, export
+CI's test container runs `gaia:gaia` (see `scripts/ci/test-services.sh`) — the fixture defaults match CI. Local `docker compose` Postgres uses `postgres:postgres`; when testing against it, export
 `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres`.

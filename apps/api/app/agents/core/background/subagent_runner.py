@@ -10,6 +10,7 @@ subagents complete or park, collect their results, and — when any parked on a
 HIL approval — pause the executor once for the whole batch.
 """
 
+from dataclasses import dataclass
 import time
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
@@ -19,6 +20,7 @@ from app.agents.core.background.session import (
     decrement_pending_subagents,
     release_bg_integration,
 )
+from app.agents.core.subagents.call_record import append_call_record
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     execute_subagent_stream,
@@ -28,21 +30,33 @@ from app.models.agent_models import AgentConfigurable
 from app.services.hil.approvals_store import stamp_subagent_resume
 from app.utils.agent_utils import (
     IntegrationMetadata,
+    SubagentStartDetails,
     format_subagent_end_event,
     format_subagent_start_event,
 )
 from shared.py.wide_events import get_trace_id, log, wide_task
 
 
+@dataclass(frozen=True)
+class BackgroundHandoff:
+    """How a background subagent run presents itself and what it releases on exit:
+    the integration's icon/name metadata for tool events, the subagent and
+    integration ids, the display triple for the start/end cards, and whether
+    the run's successful calls are recorded (workflow runs only)."""
+
+    integration_metadata: IntegrationMetadata | None = None
+    subagent_id: str | None = None
+    display_name: str | None = None
+    tool_category: str | None = None
+    icon_url: str | None = None
+    integration_id: str | None = None
+    record_calls: bool = False
+
+
 async def run_subagent_background(
     ctx: SubagentExecutionContext,
     stream_id: str,
-    integration_metadata: IntegrationMetadata | None = None,
-    subagent_id: str | None = None,
-    display_name: str | None = None,
-    tool_category: str | None = None,
-    icon_url: str | None = None,
-    integration_id: str | None = None,
+    handoff: BackgroundHandoff | None = None,
 ) -> None:
     """Run a provider subagent in the background and store its result.
 
@@ -59,7 +73,23 @@ async def run_subagent_background(
         stream_id: Active SSE stream ID for tool event publishing.
         integration_metadata: Optional icon/name metadata for tool events.
         integration_id: Releases this integration's background slot on exit.
+        record_calls: Workflow runs only — append the subagent's successful tool
+            calls to the stored result so the executor can transcribe them into
+            a playbook (see ``call_record``).
     """
+    handoff = handoff or BackgroundHandoff()
+    integration_metadata, subagent_id, integration_id = (
+        handoff.integration_metadata,
+        handoff.subagent_id,
+        handoff.integration_id,
+    )
+    display_name, tool_category, icon_url = (
+        handoff.display_name,
+        handoff.tool_category,
+        handoff.icon_url,
+    )
+    record_calls = handoff.record_calls
+
     conversation_id = str(ctx.configurable.get("conversation_id", ""))
     # This task outlives the spawning executor turn, so it needs its own
     # wide-event boundary or every log.set() in the run (LLM accounting
@@ -85,8 +115,9 @@ async def run_subagent_background(
                             subagent_name=display_name or ctx.agent_name,
                             agent_type="handoff",
                             subagent_id=subagent_id,
-                            icon_url=icon_url,
-                            tool_category=tool_category,
+                            details=SubagentStartDetails(
+                                icon_url=icon_url, tool_category=tool_category
+                            ),
                         )
                     }
                 )
@@ -101,7 +132,11 @@ async def run_subagent_background(
             if outcome.paused:
                 await _park(ctx, outcome.interrupt or {}, stream_id)
                 return
-            result = outcome.text
+            result = (
+                append_call_record(outcome.text, outcome.run_messages)
+                if record_calls
+                else outcome.text
+            )
             duration_ms = int((time.monotonic() - start_time) * 1000)
 
             if subagent_id:

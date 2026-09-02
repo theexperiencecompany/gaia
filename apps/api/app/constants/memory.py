@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 import os
 
+from app.constants.chroma import CHROMA_COLLECTION_SUFFIX
+
 # Local ONNX models (fastembed). Memory must work offline and fast —
 # do NOT swap these for cloud models.
 # mxbai-embed-large (1024-dim, ~0.7GB, ~14ms/query CPU) ranks the gold fact
@@ -15,8 +17,10 @@ import os
 EMBEDDING_MODEL_NAME = os.getenv("GAIA_EMBEDDING_MODEL", "mixedbread-ai/mxbai-embed-large-v1")
 EMBEDDING_DIM = int(os.getenv("GAIA_EMBEDDING_DIM", "1024"))
 # Appended to the Chroma collection names so runs with different embedding
-# dimensions never collide in the same collection (empty = prod default).
-_COLLECTION_SUFFIX = os.getenv("GAIA_CHROMA_COLLECTION_SUFFIX", "")
+# dimensions — and concurrent CI lanes sharing one Chroma — never collide in
+# the same collection (empty = prod default). Defined once in constants/chroma.py
+# so every GAIA collection, not just the memory ones, carries the same namespace.
+_COLLECTION_SUFFIX = CHROMA_COLLECTION_SUFFIX
 # jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
 # implicit conversational queries ("what do I do for a living" -> the job
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.

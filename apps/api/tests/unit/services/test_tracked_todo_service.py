@@ -76,6 +76,7 @@ def mock_deps():
         patch(f"{_MOD}.read_canvas", new_callable=AsyncMock) as m_read,
         patch(f"{_MOD}.write_canvas", new_callable=AsyncMock) as m_write,
         patch(f"{_MOD}.append_log", new_callable=AsyncMock) as m_append_log,
+        patch(f"{_MOD}.teardown_subscriptions", new_callable=AsyncMock) as m_teardown,
     ):
         yield SimpleNamespace(
             create=m_create,
@@ -87,6 +88,7 @@ def mock_deps():
             read=m_read,
             write=m_write,
             append_log=m_append_log,
+            teardown=m_teardown,
         )
 
 
@@ -166,6 +168,22 @@ class TestCompleteTrackedTodo:
         mock_deps.mark.assert_awaited_once_with(TODO_ID)
         mock_deps.sync.assert_called_once_with(USER_ID)
 
+    async def test_completion_stops_the_todo_watching(self, mock_repo, mock_deps):
+        # Teardown lives inside completion rather than at its callers (tool, sweep,
+        # worker) so no completion path can forget it and strand a live trigger.
+        mock_repo.get.return_value = _todo_doc()
+
+        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        mock_deps.teardown.assert_awaited_once_with(TODO_ID, USER_ID, reason="completed")
+
+    async def test_an_already_completed_todo_does_not_tear_down_again(self, mock_repo, mock_deps):
+        mock_repo.get.return_value = _todo_doc(completed=True)
+
+        await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done")
+
+        mock_deps.teardown.assert_not_awaited()
+
     async def test_missing_vfs_path_falls_back_to_derived_workspace_label(
         self, mock_repo: MagicMock, mock_deps: SimpleNamespace
     ) -> None:
@@ -208,12 +226,9 @@ class TestGetActiveTrackedSummary:
         mock_deps.read.return_value = "## Key Details\nthread: abc123\n"
 
         summary = await TrackedTodoService.get_active_tracked_summary(USER_ID)
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
 
         assert USER_ID not in summary
-        assert USER_ID not in context
         assert "/users/" not in summary
-        assert "/users/" not in context
 
     async def test_renders_summary_lines(self, mock_repo):
         mock_repo.list_active_tracked.return_value = [_todo_doc()]
@@ -313,44 +328,6 @@ class TestSystemLog:
         entry = mock_deps.append_log.await_args.args[2]
         assert "[rescheduled]" in entry
         assert "Retry at 9am" in entry
-
-
-class TestGetSignalMatchingContext:
-    async def test_empty_string_without_docs(self, mock_repo, mock_deps):
-        assert await TrackedTodoService.get_signal_matching_context(USER_ID) == ""
-
-    async def test_renders_entries_with_indented_key_details(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.return_value = (
-            "# Prepare Q3 report\n\n## Key Details\nthread: abc123\nemail: x@y.com\n"
-        )
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        lines = context.split("\n")
-        assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1)'
-        assert USER_ID not in context
-        assert "    thread: abc123" in lines[2]
-        assert "    email: x@y.com" in lines[3]
-
-    async def test_caps_key_details_at_five_lines(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.return_value = "## Key Details\n" + "\n".join(f"line {i}" for i in range(8))
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        indented = [line for line in context.split("\n") if line.startswith("    ")]
-        assert len(indented) == 5
-
-    async def test_degrades_gracefully_when_canvas_unreadable(self, mock_repo, mock_deps):
-        mock_repo.list_active_tracked.return_value = [_todo_doc()]
-        mock_deps.read.side_effect = RuntimeError("read failed")
-
-        context = await TrackedTodoService.get_signal_matching_context(USER_ID)
-
-        assert context.startswith("ACTIVE TRACKED TODOS")
-        assert "thread: abc123" not in context
 
 
 class TestReindexCanvas:

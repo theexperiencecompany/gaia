@@ -13,7 +13,7 @@ import pytest
 
 from app.agents.core.background.workflow_platform_delivery import (
     _preferred_bot_platforms,
-    deliver_workflow_result_to_platforms,
+    deliver_result_to_platforms,
 )
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
@@ -94,7 +94,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock()) as linked,
             patch(f"{MODULE}.fetch_channel_preferences", AsyncMock()),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text="   ", origin=self.ORIGIN
             )
 
@@ -106,7 +106,7 @@ class TestDeliverWorkflowResultToPlatforms:
             patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value={})),
             patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock()) as session,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -128,7 +128,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -167,7 +167,7 @@ class TestDeliverWorkflowResultToPlatforms:
             ),
         ):
             async with captured_wide_event() as event:
-                await deliver_workflow_result_to_platforms(
+                await deliver_result_to_platforms(
                     user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
                 )
 
@@ -178,6 +178,65 @@ class TestDeliverWorkflowResultToPlatforms:
         ]
         assert {e["platform"] for e in errors} == {"telegram", "slack"}
         assert errors[0]["conversation_id"] == "tg-conv"
+
+    async def test_exclude_source_drops_that_platform_from_the_fanout(self) -> None:
+        """A result already delivered into the source conversation's platform must
+        not be re-sent to that platform in the fan-out — but every other linked,
+        enabled platform still receives it."""
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock(return_value=LINKED)
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value=PREFERENCES)),
+            patch(f"{MODULE}.BotService.get_or_create_session", AsyncMock(return_value="sl-conv")),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(
+                f"{MODULE}.publish_outbound_message",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
+            ) as publish,
+        ):
+            await deliver_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                exclude_source=ConversationSource.TELEGRAM,
+            )
+
+        # Telegram was the source and is excluded; Slack still delivered.
+        assert publish.await_count == 1
+        assert publish.await_args.args[0] == ConversationSource.SLACK
+
+    async def test_exclude_source_none_delivers_to_every_platform(self) -> None:
+        """The default (no exclusion) reaches every linked, enabled platform —
+        the filter must not drop a target when ``exclude_source`` is None."""
+        with (
+            patch(
+                f"{MODULE}.PlatformLinkService.get_linked_platforms", AsyncMock(return_value=LINKED)
+            ),
+            patch(f"{MODULE}.fetch_channel_preferences", AsyncMock(return_value=PREFERENCES)),
+            patch(
+                f"{MODULE}.BotService.get_or_create_session",
+                AsyncMock(side_effect=["tg-conv", "sl-conv"]),
+            ),
+            patch(f"{MODULE}.update_messages", AsyncMock()),
+            patch(
+                f"{MODULE}.publish_outbound_message",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
+            ) as publish,
+        ):
+            await deliver_result_to_platforms(
+                user=USER,
+                user_id=USER_ID,
+                notification_text=TEXT,
+                origin=self.ORIGIN,
+                exclude_source=None,
+            )
+
+        assert {call.args[0] for call in publish.await_args_list} == {
+            ConversationSource.TELEGRAM,
+            ConversationSource.SLACK,
+        }
 
     async def test_a_failing_platform_does_not_block_the_other(self) -> None:
         with (
@@ -195,7 +254,7 @@ class TestDeliverWorkflowResultToPlatforms:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER, user_id=USER_ID, notification_text=TEXT, origin=self.ORIGIN
             )
 
@@ -228,7 +287,7 @@ class TestDeliveredResultsReachTheSessionThread:
             patch(f"{MODULE}.publish_outbound_message", AsyncMock(return_value=publish_result)),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text=TEXT,
@@ -279,7 +338,7 @@ class TestDeliveredResultsReachTheSessionThread:
             ),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text="hello",
@@ -305,7 +364,7 @@ class TestDeliveredResultsReachTheSessionThread:
             ),
             patch(f"{MODULE}.record_platform_delivery", recorder),
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text="hello",
@@ -341,7 +400,7 @@ class TestVariantBreakTokens:
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
         ):
-            await deliver_workflow_result_to_platforms(
+            await deliver_result_to_platforms(
                 user=USER,
                 user_id=USER_ID,
                 notification_text=text,

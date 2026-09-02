@@ -304,12 +304,14 @@ async def resolve_lane(
             provider=LLMProviderName(PAID_MODEL_PROVIDER),
             model=PAID_MODEL_NAME,
             reasoning=_reasoning_for(role),
-            # No routing pin, deliberately. The session_id key on every request
-            # forces OpenRouter's sticky routing, which keeps a conversation on
-            # the provider holding its warm prompt cache; an explicit `only`
-            # pin conflicted with that and measured WORSE (64% cache hits vs
-            # 83-91% per turn without it). See the DEFAULT_MODEL_NAME note in
-            # constants/llm.py for the measurements.
+            # No per-lane `only` pin, deliberately. The session_id key on every
+            # request forces OpenRouter's sticky routing, which keeps a
+            # conversation on the provider holding its warm prompt cache; an
+            # explicit `only` pin conflicted with that and measured WORSE (64%
+            # cache hits vs 83-91% per turn without it). See the
+            # DEFAULT_MODEL_NAME note in constants/llm.py. The soft `order`
+            # preference (OPENROUTER_PROVIDER_ORDER) is set on the client at
+            # construction instead and composes with sticky routing.
             provider_pin=None,
             max_input_tokens=DEFAULT_MAX_TOKENS,
         ),

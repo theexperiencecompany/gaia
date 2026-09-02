@@ -1,6 +1,7 @@
 """Types for driving one LangGraph agent run: the config, the user it is built
 from, and the middleware stack it runs under."""
 
+from dataclasses import dataclass
 from typing import Any, Literal, TypedDict, cast
 
 from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
@@ -168,6 +169,11 @@ class AgentConfigurable(TypedDict, total=False):
     workflow_id: str
     workflow_title: str
     workflow_notify_on_completion: bool
+    #: A playbook replay stopped partway in THIS fire and the agent is finishing
+    #: it: the replay's own record of what already ran. Carried to the executor
+    #: verbatim (``call_executor`` folds it into the heal brief) because comms
+    #: cannot be trusted to transcribe "do not repeat these" into its task.
+    playbook_fallback: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit
@@ -252,3 +258,19 @@ class AgentRunnableConfig(RunnableConfig):
     """
 
     agent_name: str
+
+
+@dataclass(frozen=True)
+class SilentRunResult:
+    """What one ``call_agent_silent`` turn produced.
+
+    ``queued_task_id`` is set when the turn's comms agent delegated to the
+    executor and that dispatch was QUEUED behind an in-flight run for the same
+    conversation instead of running. The ``message`` is then an acknowledgement
+    of work that has not started, so a caller must not record the turn as work
+    done. It is ``None`` whenever an executor actually ran.
+    """
+
+    message: str
+    tool_data: dict[str, Any]
+    queued_task_id: str | None = None

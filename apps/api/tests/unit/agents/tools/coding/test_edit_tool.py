@@ -418,6 +418,10 @@ async def test_edit_empty_old_string_rejected_before_sandbox() -> None:
         ("x" * (MAX_PATCH_BYTES + 1), "y"),
         ("x", "y" * (MAX_PATCH_BYTES + 1)),
     ],
+    # Explicit ids: the default id embeds the 2 MB parameter, and a 2 MB test
+    # id in pytest's --durations output wedged the CI runner (it processes
+    # step output line by line) for the job's whole timeout.
+    ids=["oversize-old_string", "oversize-new_string"],
 )
 async def test_edit_oversize_strings_rejected_before_sandbox(
     old_string: str, new_string: str

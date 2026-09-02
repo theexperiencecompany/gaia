@@ -16,6 +16,7 @@ import pytest
 
 from app.agents.context.assemble import AssembledContext
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
+from app.helpers.agent_helpers import AgentIdentity, AgentThread
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
 
 _MOD = "app.services.workflow.workflow_subagent"
@@ -112,12 +113,16 @@ class TestTheLaneItInherits:
         run = await _execute('{"title": "x"}', base_configurable=parent)
 
         assert run.build_config.call_args.kwargs == {
-            "conversation_id": "t1",
-            "user": {"user_id": "u1", "email": None, "name": "Dev", "timezone": "UTC"},
-            "thread_id": "workflow_t1",
-            "agent_name": "workflow_agent",
-            "subagent_id": "workflow_agent",
-            "base_configurable": parent,
+            "identity": AgentIdentity(
+                conversation_id="t1",
+                user={"user_id": "u1", "email": None, "name": "Dev", "timezone": "UTC"},
+                agent_name="workflow_agent",
+            ),
+            "thread": AgentThread(
+                thread_id="workflow_t1",
+                subagent_id="workflow_agent",
+                base_configurable=parent,
+            ),
         }
 
     async def test_authoring_runs_on_a_capped_step_budget(self) -> None:

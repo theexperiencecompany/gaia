@@ -116,7 +116,19 @@ async def build_executor_graph(
                 "complete_tracked_todo",
                 "search_todo_context",
                 "list_tracked_todos",
+                "list_trigger_fields",
+                "subscribe_todo_to_trigger",
+                "unsubscribe_todo_from_trigger",
                 "save_learned_skill",
+                # Bound statically, not left to retrieve_tools: the <playbook_check>
+                # and heal briefs name these directly, so a run whose semantic
+                # retrieval happens to miss them would read the instruction, be
+                # unable to act on it, and silently never decide. A tool a prompt
+                # names by hand has to be reachable by hand.
+                "write_playbook",
+                "decline_playbook",
+                "read_playbook",
+                "disable_playbook",
             ],
         ),
         hooks_config=HookConfig(

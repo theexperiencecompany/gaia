@@ -2,7 +2,7 @@
 """Run the custom GAIA Python AST lints and fail loud with teaching messages.
 
 Usage:
-    python3 tools/lints/run.py apps/api/app [more/paths ...]
+    uv run --project apps/api python tools/lints/run.py apps/api/app [more/paths ...]
 
 Each failure prints the rule, why it exists, the offending file:line, the exact
 remediation, and a doc pointer — so the fix is obvious without leaving the error.
@@ -19,6 +19,19 @@ import os
 from pathlib import Path
 import sys
 import traceback
+
+# The rules parse app sources with the *running* interpreter's ``ast``, so an
+# older python is not a degraded run — it crashes rules on syntax it cannot
+# parse and stops matching CI. Fail loud here rather than diverge silently.
+REQUIRED_PYTHON = (3, 12)
+if sys.version_info < REQUIRED_PYTHON:
+    _required = f"{REQUIRED_PYTHON[0]}.{REQUIRED_PYTHON[1]}"
+    _running = f"{sys.version_info.major}.{sys.version_info.minor}"
+    raise SystemExit(
+        f"tools/lints/run.py needs Python {_required}+ (the version CI runs), got {_running} "
+        f"at {sys.executable} — rerun with: uv run --project apps/api python tools/lints/run.py "
+        f"{' '.join(sys.argv[1:]) or 'apps/api/app'}"
+    )
 
 from _common import display, iter_python_files, report_rule
 import no_service_classes
@@ -88,15 +101,15 @@ def main(argv: list[str]) -> int:
             f"\n{summary}. See tools/lints/README.md for each rule's rationale and remediation.",
             file=sys.stderr,
         )
-        _write_summary(False, total, len(files))
+        _write_summary(False, total, len(crashed), len(files))
         return 1
 
     print(f"custom python lints: {len(RULES)} rules passed on {len(files)} files")
-    _write_summary(True, 0, len(files))
+    _write_summary(True, 0, 0, len(files))
     return 0
 
 
-def _write_summary(ok: bool, total: int, file_count: int) -> None:
+def _write_summary(ok: bool, total: int, crash_count: int, file_count: int) -> None:
     """Minimal human-facing lane summary for $GITHUB_STEP_SUMMARY."""
 
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
@@ -109,7 +122,14 @@ def _write_summary(ok: bool, total: int, file_count: int) -> None:
                     f"### Custom Python lints — ✅ passed ({len(RULES)} rules, {file_count} files)\n"
                 )
             else:
-                f.write(f"### Custom Python lints — ❌ {total} violation(s) ({len(RULES)} rules)\n")
+                # A crashed rule checked nothing, so naming only the violation
+                # count would render a crash-only run as "0 violation(s)" — the
+                # lane summary would read like a pass.
+                crashes = f", {crash_count} rule(s) crashed" if crash_count else ""
+                f.write(
+                    f"### Custom Python lints — ❌ {total} violation(s){crashes} "
+                    f"({len(RULES)} rules)\n"
+                )
                 f.write("See `tools/lints/README.md` for rationale and remediation.\n")
     except OSError:
         pass

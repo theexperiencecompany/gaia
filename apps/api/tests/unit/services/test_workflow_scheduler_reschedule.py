@@ -151,11 +151,13 @@ class TestStaleScheduledFireRejected:
         assert claimed is False
         # The whole atomic filter: liveness, run-state, and the occurrence pin
         # must all hold together or the fire is not claimable.
+        # The pin is the one-second occurrence window, not an equality: the
+        # stamp the job carries only survives at second resolution.
         assert captured_filters[0] == {
             "_id": "wf_1",
             "activated": True,
             "status": ScheduledTaskStatus.SCHEDULED.value,
-            "trigger_config.next_run": new_fire,
+            "trigger_config.next_run": {"$gte": new_fire, "$lt": new_fire + timedelta(seconds=1)},
         }
 
     @pytest.mark.regression
@@ -170,7 +172,7 @@ class TestStaleScheduledFireRejected:
                 "_id": "wf_1",
                 "activated": True,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
-                "trigger_config.next_run": fire,
+                "trigger_config.next_run": {"$gte": fire, "$lt": fire + timedelta(seconds=1)},
             }
             return MagicMock()
 
@@ -206,13 +208,13 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
     (workflow_id, expected) pairs so tests assert the worker claimed the right
     workflow for the right occurrence."""
 
-    async def _claim(workflow_id: str, expected_next_run: datetime | None = None) -> bool:
-        calls.append((workflow_id, expected_next_run))
+    async def _claim(workflow_id: str, expected_occurrence: datetime | None = None) -> bool:
+        calls.append((workflow_id, expected_occurrence))
         next_run = workflow.trigger_config.next_run
-        if expected_next_run is None:
+        if expected_occurrence is None:
             return True  # legacy unstamped fire: ungated
         return next_run is not None and int(next_run.timestamp()) == int(
-            expected_next_run.timestamp()
+            expected_occurrence.timestamp()
         )
 
     return _claim
@@ -247,7 +249,7 @@ class TestWorkerRejectsStaleFire:
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
         claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
+        scheduler.claim_task_for_execution = AsyncMock(
             side_effect=_gate_claim(workflow, claim_calls)
         )
 
@@ -260,13 +262,25 @@ class TestWorkerRejectsStaleFire:
             patch("app.workers.tasks.workflow_tasks.complete_execution", AsyncMock()),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch("app.workers.tasks.workflow_tasks.log") as mock_log,
+            # The stamp parser lives beside the code that writes and compares
+            # the stamp (app.utils.occurrence), so its discard warning is
+            # emitted there.
+            patch("app.utils.occurrence.log") as mock_stamp_log,
             patch(
                 "app.workers.tasks.workflow_tasks.enforce_daily_cost_budget",
                 AsyncMock(),
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
-                AsyncMock(return_value="conv_1"),
+                AsyncMock(return_value=("conv_1", [])),
+            ),
+            # These workflows have no playbook, so the fire takes the agent path.
+            # Stubbed rather than left to the mocked Mongo client, whose lookup
+            # raises and logs — which would put an unrelated warning in front of
+            # the scheduling warnings these tests assert on.
+            patch(
+                "app.workers.tasks.workflow_tasks.playbook_repository.get_for_workflow",
+                AsyncMock(return_value=None),
             ),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
@@ -274,6 +288,7 @@ class TestWorkerRejectsStaleFire:
             mocks = MagicMock()
             mocks.create_execution = mock_create
             mocks.log_warning = mock_log.warning
+            mocks.stamp_log_warning = mock_stamp_log.warning
             mocks.increment_execution_count = mock_wf_svc.increment_execution_count
 
         return workflow, scheduler, claim_calls, result, mocks
@@ -291,7 +306,7 @@ class TestWorkerRejectsStaleFire:
         scheduler = AsyncMock()
         scheduler.get_task = AsyncMock(return_value=workflow)
         claim_calls: list[tuple[str, datetime | None]] = []
-        scheduler.claim_scheduled_for_execution = AsyncMock(
+        scheduler.claim_task_for_execution = AsyncMock(
             side_effect=_gate_claim(workflow, claim_calls)
         )
         context = {"trigger_type": "schedule", "scheduled_for": int(old_fire.timestamp())}
@@ -352,9 +367,9 @@ class TestWorkerRejectsStaleFire:
 
         assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result
-        mocks.log_warning.assert_called_once_with(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
-            workflow_id=workflow.id,
+        mocks.stamp_log_warning.assert_called_once_with(
+            "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
+            task_id=workflow.id,
             scheduled_for=garbage[:32],
         )
 
@@ -368,8 +383,8 @@ class TestWorkerRejectsStaleFire:
 
         assert claim_calls == [(workflow.id, None)]
         assert "executed successfully" in result
-        mocks.log_warning.assert_called_once_with(
-            f"{LogTag.WORKER} Unparseable scheduled_for on scheduled fire; treating as unstamped",
-            workflow_id=workflow.id,
+        mocks.stamp_log_warning.assert_called_once_with(
+            "Unparseable occurrence stamp on a scheduled fire; treating as unstamped",
+            task_id=workflow.id,
             scheduled_for=str(stamp)[:32],
         )

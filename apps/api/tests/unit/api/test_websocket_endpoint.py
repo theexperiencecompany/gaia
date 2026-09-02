@@ -3,11 +3,11 @@
 ASGITransport cannot run WebSocket handshakes, so the endpoint is exercised
 directly with a mock WebSocket: the real handler logic (auth gate, subprotocol
 accept, connection registration, disconnect/server-error cleanup) runs against
-a stubbed transport. The manager's connection bookkeeping and both broadcast
-paths are covered separately.
+a stubbed transport. Connection bookkeeping is covered here; broadcast delivery
+and the fan-out belong to the manager and live in
+``tests/unit/core/test_websocket_manager.py``.
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -176,61 +176,3 @@ class TestConnectionBookkeeping:
 
 # ---------------------------------------------------------------------------
 # WebSocketManager — broadcast
-# ---------------------------------------------------------------------------
-
-
-class TestBroadcastToUser:
-    """WebSocketManager.broadcast_to_user — direct and RabbitMQ paths"""
-
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_main_app_sends_to_every_connection(self, _mock_main):
-        ws_a = MagicMock()
-        ws_a.send_json = AsyncMock()
-        ws_b = MagicMock()
-        ws_b.send_json = AsyncMock()
-        websocket_manager.add_connection("u1", ws_a)
-        websocket_manager.add_connection("u1", ws_b)
-
-        await websocket_manager.broadcast_to_user("u1", {"type": "update"})
-
-        ws_a.send_json.assert_awaited_once_with({"type": "update"})
-        ws_b.send_json.assert_awaited_once_with({"type": "update"})
-
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_main_app_drops_a_socket_that_fails_to_send(self, _mock_main):
-        ok_ws = MagicMock()
-        ok_ws.send_json = AsyncMock()
-        dead_ws = MagicMock()
-        dead_ws.send_json = AsyncMock(side_effect=RuntimeError("socket closed"))
-        websocket_manager.add_connection("u1", ok_ws)
-        websocket_manager.add_connection("u1", dead_ws)
-
-        await websocket_manager.broadcast_to_user("u1", {"type": "update"})
-
-        ok_ws.send_json.assert_awaited_once()
-        assert websocket_manager.connections["u1"] == {ok_ws}
-
-    @patch("app.core.websocket_manager.is_main_app", return_value=True)
-    async def test_main_app_skips_users_without_connections(self, _mock_main):
-        await websocket_manager.broadcast_to_user("nobody", {"type": "update"})
-        assert websocket_manager.connections == {}
-
-    @patch("app.core.websocket_manager.is_main_app", return_value=False)
-    async def test_worker_publishes_to_rabbitmq_instead(self, _mock_main):
-        publisher = MagicMock()
-        publisher.publish = AsyncMock()
-        with patch(
-            "app.core.websocket_manager.get_rabbitmq_publisher",
-            new=AsyncMock(return_value=publisher),
-        ):
-            await websocket_manager.broadcast_to_user("u1", {"type": "update"})
-
-        args, kwargs = publisher.publish.await_args
-        assert args[0] == "websocket-events"
-        payload = json.loads(args[1].decode("utf-8"))
-        assert payload == {
-            "type": "websocket_broadcast",
-            "user_id": "u1",
-            "message": {"type": "update"},
-        }
-        assert kwargs == {}

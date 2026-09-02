@@ -1,6 +1,9 @@
 """Unit tests for ARQ worker lifecycle (startup, shutdown) and config."""
 
 import asyncio
+import importlib.util
+from pathlib import Path
+import socket
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -225,7 +228,40 @@ class TestWorkerSettings:
         """health_check_key must be a non-empty string."""
         assert isinstance(WorkerSettings.health_check_key, str)
         assert len(WorkerSettings.health_check_key) > 0
-        assert WorkerSettings.health_check_key == "arq:health"
+
+    def test_health_check_key_is_per_worker(self):
+        """Each worker must own its liveness key, or the probe stops being liveness.
+
+        ``scripts/arq_healthcheck.py`` runs INSIDE each worker container and is
+        just ``EXISTS <key>``. While the key was the global ``arq:health``,
+        every worker wrote the same one, so a wedged worker's own probe was
+        satisfied by a sibling still refreshing it — measured: worker 1 dead,
+        worker 2 alive, worker 1's probe still HEALTHY. The container is never
+        restarted, it holds a replica slot doing nothing, and the queue backs up
+        with nothing to alert on. Correct at one worker; silently wrong at more.
+        """
+        assert WorkerSettings.health_check_key != "arq:health", (
+            "a fleet-wide health key makes the probe report 'is ANY worker alive'"
+        )
+        assert socket.gethostname() in WorkerSettings.health_check_key
+
+    def test_healthcheck_probe_reads_the_key_this_worker_writes(self):
+        """The probe cannot import ``app``, so the two derivations must be pinned.
+
+        ``arq_healthcheck.py`` deliberately imports nothing from the app (it runs
+        outside the entrypoint with no Infisical credentials), so the key format
+        is duplicated on purpose. Nothing but this test stops the two sides from
+        drifting apart — and a drifted probe reads a key nobody writes, which
+        fails every container immediately.
+        """
+        spec = importlib.util.spec_from_file_location(
+            "arq_healthcheck", Path(__file__).resolve().parents[3] / "scripts/arq_healthcheck.py"
+        )
+        assert spec and spec.loader
+        probe = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(probe)
+
+        assert WorkerSettings.health_check_key == probe.ARQ_HEALTH_KEY
 
     def test_allow_abort_jobs_enabled(self):
         """allow_abort_jobs should be True."""

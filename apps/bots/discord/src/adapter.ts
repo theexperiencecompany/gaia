@@ -198,7 +198,19 @@ export class DiscordAdapter extends BaseBotAdapter {
   protected async deliverOutbound(
     destinationId: string,
     text: string,
+    isChannel: boolean,
   ): Promise<void> {
+    if (isChannel) {
+      // A group/channel conversation: send to the channel itself, not a DM.
+      const channel = await this.client.channels.fetch(destinationId);
+      if (channel?.isTextBased() && "send" in channel) {
+        await channel.send(text);
+        return;
+      }
+      throw new Error(
+        `Discord destination ${destinationId} is not a sendable text channel`,
+      );
+    }
     const user = await this.client.users.fetch(destinationId);
     await user.send(text);
   }

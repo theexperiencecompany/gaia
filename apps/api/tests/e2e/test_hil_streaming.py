@@ -75,6 +75,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.users import user_repository
 from app.memory.ingestion import RetainedMemory
+from app.models.chat_models import ToolDataEntry
 from app.models.hil_models import (
     HILApprovalRecord,
     HILApprovalStatus,
@@ -541,7 +542,14 @@ async def hil_world(
         elif payload.get("type") == WS_EVENT_EXECUTOR_CANCELLED:
             world.cancelled_broadcasts.append(payload)
 
-    async def _deliver(_run: Any, text: str, result_type: str, _note: str) -> tuple[str, str]:
+    async def _deliver(
+        _run: Any,
+        text: str,
+        result_type: str,
+        _note: str,
+        *,
+        tool_data: list[ToolDataEntry] | None,
+    ) -> tuple[str, str]:
         world.delivered.append((text, result_type))
         return text, "executor-message-1"
 

@@ -24,7 +24,7 @@ import pytest
 
 from app.agents.middleware.style_guard import StyleGuardMiddleware, build_correction_note
 from app.constants.agents import AgentTag
-from app.constants.llm import LANE_FIELD_ID, UNKNOWN_MODEL_NAME
+from app.constants.llm import LANE_FIELD_ID, PROVIDER_NAME_METADATA_KEY, UNKNOWN_MODEL_NAME
 from app.constants.log_tags import LogTag
 
 #: Every detector at once, in the register the production replies used. The
@@ -386,10 +386,108 @@ class TestStyleGuardRegeneration:
 
         charged = record.call_args.kwargs
         assert charged["user_id"] == "u1"
-        assert charged["input_tokens"] == 900
-        assert charged["output_tokens"] == 40
-        assert charged["cached_tokens"] == 800
-        assert charged["charge_to_budget"] is True
+        assert charged["usage"]["input_tokens"] == 900
+        assert charged["usage"]["output_tokens"] == 40
+        assert charged["usage"]["cached_tokens"] == 800
+        assert charged["context"].charge_to_budget is True
+
+    async def test_the_retracted_draft_lands_in_the_ledger_with_the_turns_own_identity(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The draft the user paid for and never saw is a real call, so its ledger
+        row has to name the same conversation and the same model as the reply that
+        replaced it — otherwise the turn's cost breakdown is missing a call that
+        has no obvious home."""
+        draft = _draft(DIRTY_DRAFT, "m1")
+        draft.usage_metadata = {"input_tokens": 900, "output_tokens": 40, "total_tokens": 940}
+        draft.response_metadata = {
+            "model_name": "served/model",
+            "id": "gen-abc123",
+            "finish_reason": "stop",
+            PROVIDER_NAME_METADATA_KEY: "StreamLake",
+        }
+        interactive_run["configurable"]["conversation_source"] = "web"
+        interactive_run["configurable"]["conversation_id"] = "conv-1"
+        interactive_run["configurable"]["thread_id"] = "executor_conv-1"
+        interactive_run["configurable"]["workflow_id"] = "wf-1"
+        handler = _ScriptedHandler(draft, _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        context = record.call_args.kwargs["context"]
+        assert context.agent_name == "comms_agent"
+        assert context.background is False
+        assert context.conversation_id == "conv-1"
+        assert context.thread_id == "executor_conv-1"
+        assert context.workflow_id == "wf-1"
+        assert context.model_served == "served/model"
+        assert context.generation_id == "gen-abc123"
+        # The surface the turn came from, and why the draft stopped — the
+        # retraction is a real call and its row has to answer both.
+        assert context.channel == "web"
+        assert context.finish_reason == "stop"
+        assert context.provider == "StreamLake"
+        # Nothing here timed the draft: it arrives already finished, so an
+        # invented latency would be worse than no latency.
+        assert context.duration_ms is None
+
+    async def test_a_retracted_draft_is_not_background_system_work(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The user asked for this turn — they just never saw this draft of it.
+        Recording it as ``system`` would move real user spend into the bucket
+        for work nobody requested."""
+        draft = _draft(DIRTY_DRAFT, "m1")
+        draft.usage_metadata = {"input_tokens": 900, "output_tokens": 40, "total_tokens": 940}
+        handler = _ScriptedHandler(draft, _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert record.call_args.kwargs["context"].channel is None
+
+    async def test_the_retracted_draft_is_charged_what_the_provider_said_it_cost(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """The pricing table carries ONE rate per model while OpenRouter routes
+        the same model to upstreams more than 10x apart, so a table-priced
+        retraction charges the user's budget the wrong amount. When the reply
+        says what it cost, that figure is what gets booked."""
+        draft = _draft(DIRTY_DRAFT, "m1")
+        draft.usage_metadata = {
+            "input_tokens": 900,
+            "output_tokens": 40,
+            "total_tokens": 940,
+            "input_token_details": {"cache_read": 800},
+        }
+        draft.response_metadata = {"cost": 0.0041}
+        handler = _ScriptedHandler(draft, _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert record.call_args.kwargs["provider_cost"] == 0.0041
+
+    async def test_a_draft_with_no_reported_price_falls_back_to_the_table(
+        self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig
+    ) -> None:
+        """Direct Gemini and the sim lane never report one; passing anything but
+        ``None`` there would book an invented figure."""
+        handler = _ScriptedHandler(_draft(DIRTY_DRAFT, "m1"), _draft(CLEAN_REWRITE, "m2"))
+
+        with patch(
+            "app.agents.middleware.style_guard.record_llm_call", new_callable=AsyncMock
+        ) as record:
+            await StyleGuardMiddleware().awrap_model_call(_request(), handler)
+
+        assert record.call_args.kwargs["provider_cost"] is None
 
     async def test_the_charge_carries_the_run_s_lane_model_and_root_request(
         self, emitted_frames: list[dict[str, Any]]
@@ -425,7 +523,7 @@ class TestStyleGuardRegeneration:
         charged = record.call_args.kwargs
         assert charged["model_name"] == "gemini-2.5-flash"
         assert charged["root_request_id"] == "req-42"
-        assert charged["reasoning_tokens"] == 12
+        assert charged["usage"]["reasoning_tokens"] == 12
 
     async def test_a_run_with_no_lane_is_charged_against_the_unknown_model(
         self, emitted_frames: list[dict[str, Any]], interactive_run: RunnableConfig

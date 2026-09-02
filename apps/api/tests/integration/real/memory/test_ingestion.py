@@ -239,6 +239,17 @@ async def test_retain_single_duplicate_collapses_to_existing_memory(
 async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
     memory_user: str, fake_llm: FakeMemoryLLM
 ) -> None:
+    # Journal lines must be mutually distinct beyond EPISODE_ENTRY_DEDUPE_RATIO:
+    # _append_episode_entries re-reads today's page before writing, so whichever
+    # retain reads after a sibling committed would drop a line differing only by
+    # an index ("... entry 0"/"1" match at ratio 0.96) as a paraphrase. That
+    # dedupe is intended behaviour; this test is about concurrent appends
+    # converging on one journal row, not about it.
+    entry_texts = [
+        "Booked a table at the trattoria Marco suggested.",
+        "Joined the Tuesday five-a-side football game.",
+        "Blocked out Friday afternoon for code review.",
+    ]
     batches = {
         f"convo {index}": make_batch(
             facts=[
@@ -248,7 +259,7 @@ async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
                     entities=[("Marco", "person")],
                 )
             ],
-            entries=[f"concurrent retain entry {index}"],
+            entries=[entry_texts[index]],
         )
         for index, (content, category) in enumerate(
             [
@@ -293,6 +304,4 @@ async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
     episodes = await fetch_episode_rows(memory_user)
     assert len(episodes) == 1, "concurrent retains must converge on one journal row"
     texts = {entry["text"] for entry in episodes[0].entries}
-    assert texts == {f"concurrent retain entry {index}" for index in range(3)}, (
-        "concurrent retains lost journal entries"
-    )
+    assert texts == set(entry_texts), "concurrent retains lost journal entries"

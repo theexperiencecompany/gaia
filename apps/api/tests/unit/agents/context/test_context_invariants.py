@@ -14,6 +14,7 @@ import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
     AgentTier,
+    ContextSeed,
     HarnessUser,
     effective_context,
     message_in_slot,
@@ -93,9 +94,11 @@ class TestSystemBlockIsLeadingAndContiguous:
     ) -> None:
         messages = await effective_context(
             tier,
-            sources=RICH_SOURCES,
-            prior_messages=list(STALE_THREAD) if multi_turn else None,
-            configurable_overrides={"provider": LLMProviderName.GEMINI},
+            ContextSeed(
+                sources=RICH_SOURCES,
+                prior_messages=list(STALE_THREAD) if multi_turn else None,
+                configurable_overrides={"provider": LLMProviderName.GEMINI},
+            ),
         )
 
         first_non_system = next(
@@ -122,7 +125,7 @@ class TestTheTailLayoutOnTheOpenAIWire:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_the_per_turn_slots_sit_behind_the_conversation(self, tier: AgentTier) -> None:
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         slots = slots_of(messages)
@@ -136,7 +139,7 @@ class TestTheTailLayoutOnTheOpenAIWire:
         the conversation is byte-stable — if a stable slot slipped behind it, the
         prefix would end at the static prompt again."""
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         slots = slots_of(messages)
@@ -156,8 +159,8 @@ class TestStaticPromptIsUserIndependent:
         ada = HarnessUser(user_id="user-alpha", name="Ada", timezone="Asia/Kolkata")
         grace = HarnessUser(user_id="user-beta", name="Grace", timezone="America/New_York")
 
-        for_ada = await effective_context(tier, user=ada, sources=RICH_SOURCES)
-        for_grace = await effective_context(tier, user=grace, sources=RICH_SOURCES)
+        for_ada = await effective_context(tier, ContextSeed(user=ada, sources=RICH_SOURCES))
+        for_grace = await effective_context(tier, ContextSeed(user=grace, sources=RICH_SOURCES))
 
         assert text_of(message_in_slot(for_ada, PromptSlot.STATIC)) == text_of(
             message_in_slot(for_grace, PromptSlot.STATIC)
@@ -173,7 +176,7 @@ class TestStaticPromptIsUserIndependent:
             email="zylphara@example.invalid",
             timezone="Asia/Kolkata",
         )
-        messages = await effective_context(tier, user=user, sources=RICH_SOURCES)
+        messages = await effective_context(tier, ContextSeed(user=user, sources=RICH_SOURCES))
 
         static = text_of(message_in_slot(messages, PromptSlot.STATIC))
         for leak in (user.name, user.user_id, user.timezone, user.email):
@@ -182,7 +185,7 @@ class TestStaticPromptIsUserIndependent:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_identity_is_carried_outside_the_static_prompt(self, tier: AgentTier) -> None:
         user = HarnessUser(name="Zylphara", timezone="Asia/Kolkata")
-        messages = await effective_context(tier, user=user, sources=RICH_SOURCES)
+        messages = await effective_context(tier, ContextSeed(user=user, sources=RICH_SOURCES))
 
         carried = " ".join(
             text_of(m) for m in messages if m.type == "system" and m.content != messages[0].content
@@ -199,14 +202,14 @@ class TestClockPlacement:
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_clock_is_the_final_message_and_is_human(self, tier: AgentTier) -> None:
-        messages = await effective_context(tier, sources=RICH_SOURCES)
+        messages = await effective_context(tier, ContextSeed(sources=RICH_SOURCES))
 
         assert messages[-1].type == "human"
         assert slots_of(messages)[-1] is PromptSlot.TIME
 
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_no_system_message_carries_a_timestamp(self, tier: AgentTier) -> None:
-        messages = await effective_context(tier, sources=RICH_SOURCES)
+        messages = await effective_context(tier, ContextSeed(sources=RICH_SOURCES))
 
         stamp = FIXED_NOW.strftime("%H:%M")
         for message in messages:
@@ -218,7 +221,7 @@ class TestClockPlacement:
 
     async def test_only_the_latest_clock_survives_a_multi_turn_thread(self) -> None:
         messages = await effective_context(
-            AgentTier.EXECUTOR, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         clocks = [m for m in messages if m.additional_kwargs.get("time_context")]
@@ -231,7 +234,7 @@ class TestOneMessagePerSlot:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_every_singleton_slot_holds_at_most_one_message(self, tier: AgentTier) -> None:
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         slots = slots_of(messages)
@@ -250,7 +253,7 @@ class TestOneMessagePerSlot:
         no current-turn copy to displace, so a stale one legitimately survives.
         """
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            tier, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         refilled = {PromptSlot.STATIC, PromptSlot.DYNAMIC_STABLE, PromptSlot.TIME}
@@ -269,9 +272,11 @@ class TestOneMessagePerSlot:
         differ, and sorting by the enum alone would only ever check one of them."""
         messages = await effective_context(
             tier,
-            sources=RICH_SOURCES,
-            prior_messages=list(STALE_THREAD),
-            configurable_overrides={"provider": provider},
+            ContextSeed(
+                sources=RICH_SOURCES,
+                prior_messages=list(STALE_THREAD),
+                configurable_overrides={"provider": provider},
+            ),
         )
 
         order = request_slot_order(provider)
@@ -281,7 +286,7 @@ class TestOneMessagePerSlot:
     async def test_conversation_history_is_preserved_in_order(self) -> None:
         """Collapsing slots must never collapse the conversation."""
         messages = await effective_context(
-            AgentTier.EXECUTOR, sources=RICH_SOURCES, prior_messages=list(STALE_THREAD)
+            AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=list(STALE_THREAD))
         )
 
         turns = [text_of(m) for m in messages if m.type in ("human", "ai")]
@@ -298,7 +303,7 @@ class TestLegacyMarkersStillResolve:
         assert slot_of(legacy) is PromptSlot.DYNAMIC_STABLE
 
         messages = await effective_context(
-            AgentTier.EXECUTOR, sources=RICH_SOURCES, prior_messages=[legacy]
+            AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=[legacy])
         )
         assert legacy not in messages, "the legacy block competes for the stable slot and loses"
 
@@ -319,7 +324,7 @@ class TestLegacyMarkersStillResolve:
         assert slot_of(legacy) is PromptSlot.DYNAMIC_STABLE
 
         messages = await effective_context(
-            AgentTier.EXECUTOR, sources=RICH_SOURCES, prior_messages=[legacy]
+            AgentTier.EXECUTOR, ContextSeed(sources=RICH_SOURCES, prior_messages=[legacy])
         )
         assert legacy not in messages
 
@@ -336,7 +341,7 @@ class TestWorkspaceSessionNeverGuesses:
     )
     async def test_absent_vfs_session_id_yields_no_banner(self, tier: AgentTier) -> None:
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None}
+            tier, ContextSeed(sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None})
         )
 
         assembled = " ".join(text_of(m) for m in messages if m.type == "system")
@@ -347,7 +352,7 @@ class TestWorkspaceSessionNeverGuesses:
     )
     async def test_it_never_falls_back_to_thread_id(self, tier: AgentTier) -> None:
         messages = await effective_context(
-            tier, sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None}
+            tier, ContextSeed(sources=RICH_SOURCES, configurable_overrides={"vfs_session_id": None})
         )
 
         assembled = " ".join(text_of(m) for m in messages if m.type == "system")

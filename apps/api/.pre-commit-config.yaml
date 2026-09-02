@@ -14,6 +14,10 @@ repos:
         stages: [pre-commit]
         priority: 0
 
+  # prek runs this nested config with the working directory set to apps/api
+  # ("Running hooks for `apps/api`"), so entries are relative to apps/api —
+  # repo-root tools live at ../../tools. Root-relative paths here fail with
+  # "can't open file 'apps/api/tools/...'" the moment a hook actually fires.
   - repo: local
     hooks:
       - id: bandit
@@ -36,22 +40,25 @@ repos:
       - id: outbound-topology-parity
         name: Outbound topology parity (Python <-> TypeScript)
         language: system
-        # Same pattern as gaia-ignore-whys below: this sub-config's hooks run
-        # with cwd=apps/api, where the repo-relative path does not resolve and
-        # the system python3 (older than 3.10 on macOS) cannot run the tooling.
-        entry: ../../.venv/bin/python ../../apps/api/scripts/check_outbound_topology_parity.py
-        files: ^(apps/api/(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)|libs/shared/ts/src/bots/consumer/topology\.ts)$
+        # Runs on the repo venv, not the system python3 (3.9 on macOS cannot
+        # parse the app's 3.10+ syntax); paths are apps/api-relative because
+        # this nested config runs with cwd=apps/api.
+        entry: ../../.venv/bin/python scripts/check_outbound_topology_parity.py
+        # libs/shared/ts/src/bots/consumer/topology.ts is outside apps/api and cannot
+        # be matched from this nested config; the root config must guard that side.
+        files: ^(app/models/chat_models\.py|scripts/check_outbound_topology_parity\.py)$
         pass_filenames: false
         priority: 0
 
       - id: gaia-python-lints
         name: GAIA custom Python lints (route contract, service classes, wide events)
         language: system
-        # Same pattern as gaia-ignore-whys below: hooks in this sub-config run
-        # with cwd=apps/api, and the system python3 (3.9 on macOS) crashes
-        # ast.parse on the app's 3.10+ syntax — run on the repo venv instead.
-        entry: ../../.venv/bin/python ../../tools/lints/run.py ../../apps/api/app
-        files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
+        # cwd=apps/api: repo-root tools live at ../../tools, and the repo venv
+        # python replaces the system python3 (3.9 on macOS crashes ast.parse on
+        # the app's 3.10+ syntax). tools/lints/*.py is outside apps/api and
+        # cannot be matched here; the root config must guard that side.
+        entry: ../../.venv/bin/python ../../tools/lints/run.py app
+        files: ^app/.*\.py$
         pass_filenames: false
         priority: 0
 
@@ -59,10 +66,11 @@ repos:
         name: Ruff/mypy escape hatches must carry a why-comment
         language: system
         # The api sub-config runs with cwd=apps/api, but the script lives at
-        # the repo root — neither the relative path nor the system python3
-        # works here.
+        # the repo root — neither a root-relative path nor the system python3
+        # works here. tools/lints/*.py cannot be matched from this nested
+        # config; the root config must guard that side.
         entry: ../../.venv/bin/python ../../tools/lints/check_ignore_whys.py
-        files: ^(pyproject\.toml|tools/lints/(check_ignore_whys\.py|test_check_ignore_whys\.py))$
+        files: ^pyproject\.toml$
         pass_filenames: false
         priority: 0
 
@@ -71,9 +79,16 @@ repos:
       - id: gaia-mypy
         name: Mypy (pinned to uv.lock version)
         language: system
-        # Pinned via uvx instead of the mirror: same version as CI's lockfile
-        # mypy, no tag drift; stub packages ride along via --with.
-        entry: bash -c 'uvx --no-build --with types-redis --with types-requests --with types-pytz --with types-croniter mypy@1.19.1 --ignore-missing-imports "$@"' --
-        files: ^apps/api/app/
+        # Same mypy as CI, same environment, same config — anything less
+        # disagrees with the lane. uvx runs mypy in an isolated venv WITHOUT
+        # the app's dependencies, so pydantic/langchain resolve to Any and it
+        # invents no-any-return / unused-ignore errors on code the lane
+        # passes; and cwd=apps/api has no [tool.mypy], so the root config has
+        # to be named explicitly. `uv run --frozen` pins the version from
+        # uv.lock, which is what the uvx pin was reaching for.
+        entry: bash -c 'uv run --project . --frozen --group backend --group dev mypy --config-file ../../pyproject.toml --ignore-missing-imports "$@"' --
+        # apps/api-relative: this nested config runs with cwd=apps/api, so
+        # ^apps/api/app/ can never match and the hook would always skip.
+        files: ^app/
         pass_filenames: true
         priority: 0

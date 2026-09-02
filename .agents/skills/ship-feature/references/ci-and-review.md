@@ -39,7 +39,7 @@ Mirror what CI will run, scoped to what you touched:
 - `mise tasks` lists the aggregate runners if you want one command per area.
 
 **The diff-scoping trap:** many Code Quality lanes run only on files changed
-vs the PR base (see `scripts/ci/changed-files.sh`). Locally the base-ref env
+vs the PR base (see `scripts/ci/changes.sh files`). Locally the base-ref env
 var is unset, so the same command runs repo-wide and can fail on files you
 never touched. Reproduce a lane exactly as CI sees it by exporting the
 base-ref variable the script reads (with `master` fetched), or by limiting

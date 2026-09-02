@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.cache import STREAM_TTL
 from app.constants.streaming import STREAM_DONE_SIGNAL
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
@@ -83,6 +84,18 @@ class _FakeStreamsRedis:
 
     async def expire(self, name: str, time: int) -> bool:
         return name in self._keys or name in self._streams
+
+    async def ttl(self, name: str) -> int:
+        """Full TTL for a live key, -2 for a missing one.
+
+        This fake has no clock, so keys never age. publish_chunk's liveness
+        refresh reads this to decide whether to re-expire the turn's keys; a
+        full TTL means "plenty of headroom" and it returns early, leaving these
+        resume-cursor tests to exercise only the stream semantics they are about.
+        """
+        if name in self._keys or name in self._streams:
+            return STREAM_TTL
+        return -2
 
     async def get(self, name: str) -> str | None:
         return self._keys.get(name)

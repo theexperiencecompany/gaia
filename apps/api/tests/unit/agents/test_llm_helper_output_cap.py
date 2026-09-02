@@ -6,7 +6,7 @@ at the top of a module that also holds a regression-marked test makes that file
 uncollectable on the base revision, and the regression-proof lane then reports a
 harness error instead of the proof it went looking for.
 
-The marker is named indirectly above on purpose: regression-proof.sh selects
+The marker is named indirectly above on purpose: `pytest.sh regression-proof` selects
 files with a plain text grep, so spelling the decorator out in prose enlists
 this file into the lane it exists to document.
 """

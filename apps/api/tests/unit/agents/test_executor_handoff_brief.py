@@ -42,6 +42,21 @@ class TestComposeTaskBrief:
         assert out.startswith("Original request (verbatim):\npls archive the junk mail")
         assert "archive the promos and flag the offer letter" in out
 
+    def test_the_previous_run_folds_in_after_the_task(self):
+        out = compose_executor_brief(
+            "run the morning briefing",
+            ["digest sent"],
+            last_run="<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>\n",
+        )
+
+        assert out == (
+            "run the morning briefing"
+            "\n\n"
+            "<last_run>\nat: 2026-08-27T09:00:00+00:00\n</last_run>"
+            "\n\n"
+            "Definition of done (every item must be true before you finish):\n- digest sent"
+        )
+
     def test_the_brief_layout_is_exact(self):
         """The executor reads this back as its own instructions, so the layout is
         the contract: sections separated by a blank line, criteria one per line.
@@ -138,6 +153,65 @@ class TestVerbatimRequestComesFromTheServer:
 
         assert "Original request (verbatim)" not in dispatched_task
         assert dispatched_task.startswith("triage inbox")
+
+
+class TestPreviousRunReachesTheExecutor:
+    """A workflow run's checkpoint threads are dropped before it starts, so the
+    previous run reaches the worker tier here or not at all."""
+
+    async def test_a_workflow_run_carries_its_previous_run_into_the_brief(self):
+        last_run = '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>\n'
+
+        with patch(
+            "app.agents.tools.executor_tool.get_last_run_brief",
+            new=AsyncMock(return_value=last_run),
+        ) as mock_last_run:
+            dispatched_task = await _dispatched_brief(
+                {"task": "run the briefing", "acceptance_criteria": ["digest sent"]},
+                {"thread_id": "conv-1", "workflow_id": "wf-1", "user_id": "u-1"},
+            )
+
+        mock_last_run.assert_awaited_once_with("wf-1", "u-1")
+        assert '<last_run>\nGMAIL_FETCH({"query": "is:unread"})\n</last_run>' in dispatched_task
+
+    async def test_the_playbook_check_is_asked_about_this_workflow_and_this_user(self):
+        """The check reads the workflow's playbook and the user's own run history —
+        asked about the wrong one (or about nobody), it answers about a run that
+        never happened and the executor writes a playbook from it."""
+        with (
+            patch(
+                "app.agents.tools.executor_tool.get_last_run_brief",
+                new=AsyncMock(return_value=""),
+            ),
+            patch(
+                "app.agents.tools.executor_tool.playbook_check_brief",
+                new=AsyncMock(return_value=""),
+            ) as mock_check,
+        ):
+            await _dispatched_brief(
+                {"task": "run the briefing", "acceptance_criteria": ["digest sent"]},
+                {
+                    "thread_id": "conv-1",
+                    "workflow_id": "wf-1",
+                    "user_id": "u-1",
+                    "playbook_fallback": "the replay stopped at step 3",
+                },
+            )
+
+        assert mock_check.await_args.args == ("wf-1", "u-1")
+        assert mock_check.await_args.kwargs == {"fallback_note": "the replay stopped at step 3"}
+
+    async def test_an_interactive_chat_turn_never_looks_for_one(self):
+        with patch(
+            "app.agents.tools.executor_tool.get_last_run_brief", new=AsyncMock(return_value="")
+        ) as mock_last_run:
+            dispatched_task = await _dispatched_brief(
+                {"task": "triage inbox", "acceptance_criteria": ["promos archived"]},
+                {"thread_id": "conv-1", "user_id": "u-1"},
+            )
+
+        mock_last_run.assert_not_awaited()
+        assert "last_run" not in dispatched_task
 
 
 if __name__ == "__main__":

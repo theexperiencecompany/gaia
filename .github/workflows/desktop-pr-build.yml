@@ -56,13 +56,31 @@ jobs:
       - name: Archive packaging payload
         run: tar -czf desktop-payload.tar.gz apps/desktop/out apps/desktop/.next-server-prepared
       # upload v7 + download v8 — different artifact backends (v7 for upload, v8 for download), not a drift — both node24
+      # upload-artifact is a JS action (can't be shell-looped) with no retry input,
+      # but its CreateArtifact call intermittently ETIMEDOUTs against GitHub's
+      # results service and reds an otherwise-green build. Attempt once tolerantly,
+      # retry once only on failure; a second failure still fails the job (fail loud,
+      # never a silent skip — `package` needs this artifact). Same shape as the
+      # RabbitMQ recreate-once-on-timeout probe. overwrite on the retry in case the
+      # first attempt half-registered the artifact before timing out.
       - name: Upload packaging payload
+        id: upload-payload
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-payload
           if-no-files-found: error
           retention-days: 3
           path: desktop-payload.tar.gz
+      - name: Upload packaging payload (retry after a transient CreateArtifact timeout)
+        if: steps.upload-payload.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-payload
+          if-no-files-found: error
+          retention-days: 3
+          path: desktop-payload.tar.gz
+          overwrite: true
 
   # ---------------------------------------------------------------------------
   # Package the app on each OS (no installer) to prove it builds + links.
