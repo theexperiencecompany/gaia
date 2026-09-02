@@ -26,7 +26,7 @@ import {
   Payment,
   Platforms,
   PlatformsComposer,
-  QuestionsComposer,
+  QuestionsReply,
 } from "@/features/onboarding/components/stages";
 import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
@@ -102,7 +102,7 @@ export default function Onboarding() {
   const stageContent = (() => {
     switch (stage) {
       case "questions":
-        return null;
+        return <QuestionsReply state={state} dispatch={dispatch} />;
       case "payment":
         return <Payment />;
       case "paidReveal":
@@ -119,7 +119,6 @@ export default function Onboarding() {
   const composer = (() => {
     switch (stage) {
       case "questions":
-        return <QuestionsComposer state={state} dispatch={dispatch} />;
       case "payment":
       case "chat":
         return null;

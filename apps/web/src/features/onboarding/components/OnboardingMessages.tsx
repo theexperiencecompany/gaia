@@ -20,6 +20,17 @@ export function OnboardingBotBubble({ text }: { text: string }) {
   return <ChatBubbleBot {...BOT_BUBBLE_DEFAULTS} text={text} />;
 }
 
+/** GAIA's side of a stage as consecutive bubbles, one per line. */
+export function OnboardingBotBubbles({ lines }: { lines: string[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {lines.map((line) => (
+        <OnboardingBotBubble key={line} text={line} />
+      ))}
+    </div>
+  );
+}
+
 function OnboardingUserBubble({ text }: { text: string }) {
   return <ChatBubbleUser {...USER_BUBBLE_DEFAULTS} text={text} />;
 }

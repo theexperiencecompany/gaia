@@ -83,7 +83,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
     # GAIA is paid-only: these read as what Pro includes, never as a step up
     # from a free tier. Re-run this script after editing so the live rows match.
     pro_features = [
-        "Chat on iMessage, WhatsApp and Telegram",
+        "Chat on iMessage, WhatsApp, Telegram, Slack and Discord",
         "The strongest models",
         "Unlimited daily chat",
         "Workflows that run without you",

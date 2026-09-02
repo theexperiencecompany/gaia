@@ -70,7 +70,6 @@ export const TAX_NOTE_COPY = "Local taxes may apply.";
  * two cards stay level. */
 export const ENTERPRISE_PRICE_SUB_LINE = "Priced around your team";
 export const ENTERPRISE_CTA_COPY = "Talk to the team";
-export const ENTERPRISE_CTA_NOTE = "Volume pricing and invoicing.";
 
 /**
  * The words every paid-only surface uses for a non-subscriber. Two audiences

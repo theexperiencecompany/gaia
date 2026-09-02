@@ -7,7 +7,8 @@ export interface Message {
 
 export interface Question {
   id: string;
-  question: string;
+  /** GAIA's side of the turn, one bubble per line. */
+  lines: string[];
   fieldName: string;
 }
 

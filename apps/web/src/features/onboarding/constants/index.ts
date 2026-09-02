@@ -39,12 +39,18 @@ export const FIELD_NAMES = {
 export const questions: Question[] = [
   {
     id: "1",
-    question: "Hi, I'm GAIA. Before anything else: what do you do?",
+    lines: [
+      "Hey, I'm GAIA. I run your inbox, your calendar and the small stuff that piles up, so it stops landing on you.",
+      "First, what do you do?",
+    ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
     id: "2",
-    question: "And what should I take on first?",
+    lines: [
+      "Noted.",
+      "What do you want help with? Pick everything that applies.",
+    ],
     fieldName: FIELD_NAMES.NEEDS,
   },
 ];

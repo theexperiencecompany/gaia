@@ -1,7 +1,7 @@
 /**
  * `questions` stage. Active until Q1 (profession) and Q2 (needs) are both
- * answered. The transcript renders in `MessagesRegion`; this file only owns
- * the active question's composer.
+ * answered. The transcript renders in `MessagesRegion`; this file owns the
+ * user's reply to the active question, rendered in the thread on their side.
  */
 
 "use client";
@@ -18,7 +18,7 @@ interface QuestionsProps {
   dispatch: Dispatch<Action>;
 }
 
-export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
+export function QuestionsReply({ state, dispatch }: QuestionsProps) {
   const currentQuestion = questions[state.questionIndex];
 
   const handleSelectProfession = useCallback(

@@ -1,6 +1,7 @@
 /**
- * The bottom composer for the two onboarding questions. Both questions render
- * the same pill row of emoji chips; two modes via a discriminated union:
+ * The user's side of the two onboarding questions: a right-aligned row of
+ * emoji chips where their reply bubble will land, plus Continue. Two modes
+ * via a discriminated union:
  * - `profession`: Q1's single-select (picking one replaces the current pick).
  * - `needs`: Q2's multi-select.
  * Either way the answer is only committed when Continue is pressed.
@@ -45,7 +46,7 @@ function ProfessionInput({
   onContinue,
 }: ProfessionModeProps) {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4">
+    <div className="flex w-full flex-col items-end gap-3 pt-3">
       <OptionChips
         label="What do you do?"
         options={professionOptions}
@@ -68,9 +69,9 @@ function NeedsInput({
   const selected = new Set(selectedNeeds);
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4">
+    <div className="flex w-full flex-col items-end gap-3 pt-3">
       <OptionChips
-        label="How can GAIA help?"
+        label="What do you want help with?"
         options={needOptions}
         isSelected={(value) => selected.has(value)}
         onSelect={onToggleNeed}
@@ -101,7 +102,7 @@ function OptionChips({
     // `min-inline-size: min-content`, which would otherwise stop the pills wrapping.
     <fieldset
       aria-label={label}
-      className="flex w-full min-w-0 flex-wrap justify-center gap-2"
+      className="flex w-full min-w-0 flex-wrap justify-end gap-2"
     >
       {options.map((option) => {
         const selected = isSelected(option.value);
@@ -116,9 +117,7 @@ function OptionChips({
             color={selected ? "primary" : "default"}
             aria-pressed={selected}
             onClick={() => onSelect(option.value)}
-            // Founder asked for large, obviously tappable pills — HeroUI's `lg`
-            // chip is 32px tall, which is too small for a primary choice target.
-            className="h-11 cursor-pointer px-4"
+            className="cursor-pointer"
             startContent={
               <Image
                 src={OPTION_EMOJI[option.value]}

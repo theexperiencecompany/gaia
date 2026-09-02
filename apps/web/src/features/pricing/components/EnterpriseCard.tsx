@@ -4,11 +4,7 @@ import { useRouter } from "next/navigation";
 import { RaisedButton } from "@/components/ui/raised-button";
 
 import type { Plan } from "../api/pricingApi";
-import {
-  ENTERPRISE_CTA_COPY,
-  ENTERPRISE_CTA_NOTE,
-  ENTERPRISE_PRICE_SUB_LINE,
-} from "../constants";
+import { ENTERPRISE_CTA_COPY, ENTERPRISE_PRICE_SUB_LINE } from "../constants";
 import { PricingCardFeatures } from "./PricingCardFeatures";
 import { PricingCardHeader } from "./PricingCardHeader";
 import { PRICE_HEADLINE_ROW_CLASS } from "./PricingCardPrice";
@@ -31,7 +27,6 @@ export function EnterpriseCard({ plan, ctaHref }: EnterpriseCardProps) {
       <PricingCardHeader
         title={plan.name}
         description={plan.description}
-        isPro={false}
         isCurrentPlan={false}
       />
 
@@ -48,7 +43,7 @@ export function EnterpriseCard({ plan, ctaHref }: EnterpriseCardProps) {
         </div>
       </div>
 
-      <div className="px-6 pb-5">
+      <div className="px-6 pb-4">
         <RaisedButton
           className="w-full text-black!"
           color="#00bbff"
@@ -56,9 +51,6 @@ export function EnterpriseCard({ plan, ctaHref }: EnterpriseCardProps) {
         >
           {ENTERPRISE_CTA_COPY}
         </RaisedButton>
-        <p className="mt-2 text-center text-xs font-light text-zinc-500">
-          {ENTERPRISE_CTA_NOTE}
-        </p>
       </div>
 
       <PricingCardFeatures

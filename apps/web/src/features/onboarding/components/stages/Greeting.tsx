@@ -9,12 +9,12 @@
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useUserStore } from "@/stores/userStore";
-import { greetingMessage } from "../../constants/messages";
+import { greetingLines } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { Action } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { OnboardingBotBubble } from "../OnboardingMessages";
+import { OnboardingBotBubbles } from "../OnboardingMessages";
 
 export function Greeting() {
   const name = useUserStore((s) => s.name);
@@ -22,7 +22,7 @@ export function Greeting() {
 
   return (
     <m.div className="mt-4" {...MOTION_FADE_UP}>
-      <OnboardingBotBubble text={greetingMessage(firstName)} />
+      <OnboardingBotBubbles lines={greetingLines(firstName)} />
     </m.div>
   );
 }

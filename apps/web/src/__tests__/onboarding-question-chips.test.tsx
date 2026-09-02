@@ -17,7 +17,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
-import { QuestionsComposer } from "@/features/onboarding/components/stages/Questions";
+import { QuestionsReply } from "@/features/onboarding/components/stages/Questions";
 import { questions } from "@/features/onboarding/constants";
 import { initialState } from "@/features/onboarding/state/initial";
 import { reducer } from "@/features/onboarding/state/reducer";
@@ -30,7 +30,7 @@ function renderComposer(start: OnboardingState = initialState) {
   function Harness() {
     const [state, dispatch] = useReducer(reducer, start);
     seen.state = state;
-    return <QuestionsComposer state={state} dispatch={dispatch} />;
+    return <QuestionsReply state={state} dispatch={dispatch} />;
   }
 
   render(<Harness />);

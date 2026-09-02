@@ -75,7 +75,6 @@ export function PricingCard({
       <PricingCardHeader
         title={title}
         description={description}
-        isPro={isPro}
         isCurrentPlan={planViewerState === "current"}
       />
       <PricingCardPrice list={list} offer={offer} />

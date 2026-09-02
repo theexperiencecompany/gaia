@@ -14,7 +14,7 @@ export function PricingCardFeatures({
   isPro,
 }: PricingCardFeaturesProps) {
   return (
-    <div className="flex flex-1 flex-col gap-2.5 px-6 py-5">
+    <div className="flex flex-1 flex-col gap-2.5 px-6 pt-2 pb-5">
       {!!featuresHeading && (
         <span className="mb-1 text-sm font-medium text-zinc-500">
           {featuresHeading}

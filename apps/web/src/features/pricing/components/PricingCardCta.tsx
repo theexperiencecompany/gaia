@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { RaisedButton } from "@/components/ui/raised-button";
 
-import { REFUND_WINDOW_COPY, TAX_NOTE_COPY } from "../constants";
 import { usePricingCardCta } from "../hooks/usePricingCardCta";
 import type { PlanViewerState } from "../types";
 import { CheckoutConfirming } from "./CheckoutConfirming";
@@ -41,7 +40,7 @@ export function PricingCardCta({
   });
 
   return (
-    <div className="px-6 pb-5">
+    <div className="px-6 pb-4">
       {paymentError && (
         <div className="mb-3 rounded-xl bg-red-500/10 p-3">
           <p className="text-sm text-red-400">{paymentError}</p>
@@ -80,19 +79,14 @@ function PaidPlanCta({
   if (isConfirmingPayment)
     return <CheckoutConfirming isLate={isCheckoutLate} />;
   return (
-    <>
-      <RaisedButton
-        className="w-full text-black!"
-        color="#00bbff"
-        onClick={onGetStarted}
-        disabled={isCtaDisabled}
-      >
-        {buttonText}
-      </RaisedButton>
-      <p className="mt-2 text-center text-xs font-light text-zinc-500">
-        {REFUND_WINDOW_COPY} {TAX_NOTE_COPY}
-      </p>
-    </>
+    <RaisedButton
+      className="w-full text-black!"
+      color="#00bbff"
+      onClick={onGetStarted}
+      disabled={isCtaDisabled}
+    >
+      {buttonText}
+    </RaisedButton>
   );
 }
 

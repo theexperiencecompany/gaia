@@ -43,7 +43,9 @@ export function getMessages(state: TranscriptInputs): Message[] {
 
   for (let i = 0; i < upTo; i++) {
     const q = questions[i];
-    messages.push({ id: q.id, type: "bot", content: q.question });
+    q.lines.forEach((line, n) => {
+      messages.push({ id: `${q.id}-${n}`, type: "bot", content: line });
+    });
 
     const answer = answerFor(q.fieldName, state);
     if (answer != null) {

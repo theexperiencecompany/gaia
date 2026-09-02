@@ -14,14 +14,14 @@ import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import { BOT_PLATFORM_LABELS } from "@/config/botPlatforms";
 import { useUserStore } from "@/stores/userStore";
 import { FIELD_NAMES } from "../../constants";
-import { PLATFORM_INTRO } from "../../constants/messages";
+import { PLATFORM_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMessages";
 import { useConnectPlatform } from "../../hooks/useConnectPlatform";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { OnboardingBotBubble } from "../OnboardingMessages";
+import { OnboardingBotBubbles } from "../OnboardingMessages";
 import { OnboardingPlatformConnect } from "../OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 
@@ -58,7 +58,7 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
           userAvatar={userAvatar}
         />
       )}
-      <OnboardingBotBubble text={PLATFORM_INTRO} />
+      <OnboardingBotBubbles lines={PLATFORM_INTRO_LINES} />
       <OnboardingPlatformConnect
         onConnect={connect}
         onSkip={skip}

@@ -10,7 +10,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
-import { cn } from "@/lib/utils";
 import { getProgress, PROGRESS_TOTAL_STEPS } from "../state/derive";
 import type { OnboardingState, Stage } from "../state/types";
 import { DevSkipOnboarding } from "./DevSkipOnboarding";
@@ -128,11 +127,7 @@ export function OnboardingShell({
       {composer && (
         <div
           ref={composerRef}
-          // The Q2 chip grid needs more room than a single-line input.
-          className={cn(
-            "fixed inset-x-0 bottom-0 z-30 mx-auto w-full pb-3",
-            stage === "questions" ? "max-w-2xl" : "max-w-lg",
-          )}
+          className="fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-lg pb-3"
         >
           {composer}
         </div>

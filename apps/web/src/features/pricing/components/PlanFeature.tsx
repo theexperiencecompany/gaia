@@ -93,13 +93,13 @@ function PlatformIcons({ platforms }: PlatformIconsProps) {
       {platforms.map((platform, index) => (
         <span
           key={platform}
-          className={`relative block size-4 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
+          className={`relative block size-5 ${FAN_ROTATIONS[platforms.length]?.[index] ?? "rotate-0"} ${STACK_ORDER[index] ?? "z-0"}`}
         >
           <Image
             src={BOT_PLATFORM_ICONS[platform]}
             alt=""
             fill
-            sizes="16px"
+            sizes="48px"
             aria-hidden
             className="object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)] transition hover:-translate-y-0.5 hover:scale-110"
           />
