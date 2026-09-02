@@ -17,6 +17,7 @@ import { useUserActions } from "@/features/auth/hooks/useUser";
 import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { toast } from "@/lib/toast";
+import { useUserStore } from "@/stores/userStore";
 
 import { resetOnboarding } from "../api/onboardingApi";
 import { useOnboardingAnalytics } from "../effects/useOnboardingAnalytics";
@@ -38,11 +39,12 @@ interface UseOnboardingReturn {
 
 export function useOnboarding(): UseOnboardingReturn {
   const { setUser, updateUser } = useUserActions();
+  const userId = useUserStore((s) => s.userId);
   const [state, dispatch] = useReducer(reducer, initialState);
   const { isPaid } = useIsPaid();
   const stage = getStage(state, isPaid);
 
-  useOnboardingPersistence(state, dispatch);
+  useOnboardingPersistence(userId, state, dispatch);
   useOnboardingPreferences(state, dispatch);
 
   const handleSubmissionSuccess = useCallback(
@@ -58,7 +60,7 @@ export function useOnboarding(): UseOnboardingReturn {
   const restart = useCallback(async () => {
     if (state.isRestarting) return;
 
-    clearPersisted();
+    clearPersisted(userId);
     dispatch({ type: "restartStart" });
     updateUser({ onboarding: undefined });
 
@@ -72,7 +74,7 @@ export function useOnboarding(): UseOnboardingReturn {
     } finally {
       dispatch({ type: "restartDone" });
     }
-  }, [state.isRestarting, updateUser]);
+  }, [state.isRestarting, userId, updateUser]);
 
   return { state, stage, dispatch, restart };
 }

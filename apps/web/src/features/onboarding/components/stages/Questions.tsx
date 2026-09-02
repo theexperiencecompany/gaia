@@ -21,23 +21,20 @@ interface QuestionsProps {
 export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   const currentQuestion = questions[state.questionIndex];
 
-  const handleProfessionInputChange = useCallback(
-    (value: string) => {
-      dispatch({ type: "draftProfession", value: value || null });
-    },
+  const handleSelectProfession = useCallback(
+    (value: string) => dispatch({ type: "draftProfession", value }),
     [dispatch],
   );
 
-  const handleProfessionSelect = useCallback(
-    (key: React.Key | null) => {
-      const value = key != null ? String(key) : null;
-      dispatch({ type: "draftProfession", value });
-      if (value) {
-        dispatch({ type: "answer", field: FIELD_NAMES.PROFESSION, value });
-      }
-    },
-    [dispatch],
-  );
+  const { draftProfession } = state;
+  const handleSubmitProfession = useCallback(() => {
+    if (!draftProfession) return;
+    dispatch({
+      type: "answer",
+      field: FIELD_NAMES.PROFESSION,
+      value: draftProfession,
+    });
+  }, [dispatch, draftProfession]);
 
   const handleToggleNeed = useCallback(
     (value: string) => dispatch({ type: "toggleNeed", value }),
@@ -66,9 +63,9 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   return (
     <OnboardingInput
       mode="profession"
-      draftProfession={state.draftProfession}
-      onProfessionSelect={handleProfessionSelect}
-      onProfessionInputChange={handleProfessionInputChange}
+      draftProfession={draftProfession}
+      onSelectProfession={handleSelectProfession}
+      onContinue={handleSubmitProfession}
     />
   );
 }

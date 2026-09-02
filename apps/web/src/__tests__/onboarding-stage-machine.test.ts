@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   FIELD_NAMES,
   needOptions,
+  professionOptions,
   questions,
 } from "@/features/onboarding/constants";
+import { OPTION_EMOJI } from "@/features/onboarding/constants/optionEmoji";
 import { canSubmitNeeds, getStage } from "@/features/onboarding/state/derive";
 import { initialState } from "@/features/onboarding/state/initial";
 import { getMessages } from "@/features/onboarding/state/messages";
@@ -118,6 +120,16 @@ describe("Q2 multi-select", () => {
     expect(state.selectedNeeds).toEqual(["automation", "reach"]);
     for (const need of state.selectedNeeds) {
       expect(needOptions.some((o) => o.value === need)).toBe(true);
+    }
+  });
+
+  it("has an Apple emoji asset for every option the chips render", () => {
+    // The chips render `OPTION_EMOJI[value]` unconditionally — a missing entry
+    // is a broken <Image src>, and only this assertion catches it.
+    for (const option of [...professionOptions, ...needOptions]) {
+      expect(OPTION_EMOJI[option.value]).toMatch(
+        /^\/images\/emoji\/apple\/[0-9a-f-]+\.png$/,
+      );
     }
   });
 

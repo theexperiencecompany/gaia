@@ -1,25 +1,25 @@
 /**
- * The bottom composer for the two onboarding questions. Two modes via a
- * discriminated union:
- * - `profession`: Q1's single-select Autocomplete.
- * - `needs`: Q2's multi-select chip grid plus its Continue button.
- * Auto-focuses the right element via rAF when the active question changes.
+ * The bottom composer for the two onboarding questions. Both questions render
+ * the same pill row of emoji chips; two modes via a discriminated union:
+ * - `profession`: Q1's single-select (picking one replaces the current pick).
+ * - `needs`: Q2's multi-select.
+ * Either way the answer is only committed when Continue is pressed.
  */
 
-import { Autocomplete, AutocompleteItem } from "@heroui/autocomplete";
-import { memo, useEffect } from "react";
-import { RaisedButton } from "@/components/ui/raised-button";
-import { cn } from "@/lib/utils";
+import { Chip } from "@heroui/chip";
+import Image from "next/image";
+import { memo } from "react";
 
 import { needOptions, professionOptions } from "../constants";
 import { NEEDS_HINT } from "../constants/messages";
+import { OPTION_EMOJI } from "../constants/optionEmoji";
 import { OnboardingCTAButton } from "./OnboardingCTAButton";
 
 interface ProfessionModeProps {
   mode: "profession";
   draftProfession: string | null;
-  onProfessionSelect: (key: React.Key | null) => void;
-  onProfessionInputChange: (value: string) => void;
+  onSelectProfession: (value: string) => void;
+  onContinue: () => void;
 }
 
 interface NeedsModeProps {
@@ -41,30 +41,20 @@ export const OnboardingInput = memo(OnboardingInputImpl);
 
 function ProfessionInput({
   draftProfession,
-  onProfessionSelect,
-  onProfessionInputChange,
+  onSelectProfession,
+  onContinue,
 }: ProfessionModeProps) {
-  useAutofocusAutocomplete();
-
   return (
-    <div className="mx-auto w-full max-w-2xl">
-      <Autocomplete
-        inputValue={draftProfession ?? ""}
-        onInputChange={onProfessionInputChange}
-        onSelectionChange={onProfessionSelect}
-        placeholder="Select what you do..."
-        aria-label="What do you do?"
-        variant="faded"
-        size="lg"
-        radius="full"
-        classNames={{ base: "w-full" }}
-      >
-        {professionOptions.map((profession) => (
-          <AutocompleteItem key={profession.value}>
-            {profession.label}
-          </AutocompleteItem>
-        ))}
-      </Autocomplete>
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4">
+      <OptionChips
+        label="What do you do?"
+        options={professionOptions}
+        isSelected={(value) => value === draftProfession}
+        onSelect={onSelectProfession}
+      />
+      <OnboardingCTAButton disabled={!draftProfession} onClick={onContinue}>
+        Continue
+      </OnboardingCTAButton>
     </div>
   );
 }
@@ -76,35 +66,15 @@ function NeedsInput({
   onContinue,
 }: NeedsModeProps) {
   const selected = new Set(selectedNeeds);
+
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3">
-      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
-        {needOptions.map((option) => {
-          const isSelected = selected.has(option.value);
-          return (
-            <RaisedButton
-              key={option.value}
-              color={isSelected ? "#00bbff" : "black"}
-              aria-pressed={isSelected}
-              onClick={() => onToggleNeed(option.value)}
-              className={cn(
-                "h-auto w-full flex-col items-start gap-0 px-3 py-2 text-left",
-                isSelected && "text-black!",
-              )}
-            >
-              <span className="font-medium text-sm">{option.label}</span>
-              <span
-                className={cn(
-                  "text-xs",
-                  isSelected ? "text-black/70" : "text-zinc-400",
-                )}
-              >
-                {option.sub}
-              </span>
-            </RaisedButton>
-          );
-        })}
-      </div>
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4">
+      <OptionChips
+        label="How can GAIA help?"
+        options={needOptions}
+        isSelected={(value) => selected.has(value)}
+        onSelect={onToggleNeed}
+      />
       <p className="text-xs text-zinc-400">{NEEDS_HINT}</p>
       <OnboardingCTAButton disabled={!canContinue} onClick={onContinue}>
         Continue
@@ -113,14 +83,55 @@ function NeedsInput({
   );
 }
 
-function useAutofocusAutocomplete() {
-  useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const el = document.querySelector(
-        '[data-slot="input"]',
-      ) as HTMLInputElement | null;
-      el?.focus();
-    });
-    return () => cancelAnimationFrame(id);
-  }, []);
+interface OptionChipsProps {
+  label: string;
+  options: { value: string; label: string }[];
+  isSelected: (value: string) => boolean;
+  onSelect: (value: string) => void;
+}
+
+function OptionChips({
+  label,
+  options,
+  isSelected,
+  onSelect,
+}: OptionChipsProps) {
+  return (
+    // <fieldset> is the semantic grouping element; `min-w-0` defeats its UA
+    // `min-inline-size: min-content`, which would otherwise stop the pills wrapping.
+    <fieldset
+      aria-label={label}
+      className="flex w-full min-w-0 flex-wrap justify-center gap-2"
+    >
+      {options.map((option) => {
+        const selected = isSelected(option.value);
+        return (
+          <Chip
+            key={option.value}
+            as="button"
+            type="button"
+            size="lg"
+            radius="full"
+            variant={selected ? "solid" : "flat"}
+            color={selected ? "primary" : "default"}
+            aria-pressed={selected}
+            onClick={() => onSelect(option.value)}
+            // Founder asked for large, obviously tappable pills — HeroUI's `lg`
+            // chip is 32px tall, which is too small for a primary choice target.
+            className="h-11 cursor-pointer px-4"
+            startContent={
+              <Image
+                src={OPTION_EMOJI[option.value]}
+                alt=""
+                width={22}
+                height={22}
+              />
+            }
+          >
+            {option.label}
+          </Chip>
+        );
+      })}
+    </fieldset>
+  );
 }

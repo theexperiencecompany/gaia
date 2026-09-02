@@ -2,8 +2,12 @@ import type { OnboardingState } from "./types";
 
 // v3 = the paid-first flow. A bumped key is what stops a half-finished v2
 // run (clarify answers, reveal acks) from rehydrating into a state shape
-// that no longer has those stages.
-const STORAGE_KEY = "gaia-onboarding-state-v3";
+// that no longer has those stages. The user id is part of the key: the cache
+// is one account's progress, and a second account on the same browser must
+// start from question one rather than inherit it.
+const STORAGE_KEY_PREFIX = "gaia-onboarding-state-v3";
+
+const storageKey = (userId: string) => `${STORAGE_KEY_PREFIX}:${userId}`;
 
 interface PersistedShape {
   responses: Record<string, string>;
@@ -29,10 +33,10 @@ function pick(state: OnboardingState): PersistedShape {
   };
 }
 
-export function loadPersisted(): Partial<OnboardingState> | null {
+export function loadPersisted(userId: string): Partial<OnboardingState> | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedShape>;
     return {
@@ -51,19 +55,19 @@ export function loadPersisted(): Partial<OnboardingState> | null {
   }
 }
 
-export function savePersisted(state: OnboardingState): void {
+export function savePersisted(userId: string, state: OnboardingState): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
+    localStorage.setItem(storageKey(userId), JSON.stringify(pick(state)));
   } catch {
     // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
   }
 }
 
-export function clearPersisted(): void {
+export function clearPersisted(userId: string): void {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey(userId));
   } catch {
     // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
   }

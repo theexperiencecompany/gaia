@@ -19,38 +19,14 @@ export const professionOptions: ProfessionOption[] = [
  * anything outside that set, so the two lists must stay in lockstep.
  */
 export const needOptions: NeedOption[] = [
-  {
-    value: "inbox",
-    label: "Manage my inbox",
-    sub: "Triage, label, draft replies",
-  },
-  {
-    value: "calendar",
-    label: "Handle my calendar",
-    sub: "Schedule and prep meetings",
-  },
-  {
-    value: "briefings",
-    label: "Daily briefings",
-    sub: "Morning summary of what matters",
-  },
-  { value: "todos", label: "Track my todos", sub: "Capture tasks, remind me" },
-  {
-    value: "memory",
-    label: "Remember everything",
-    sub: "People, context, notes",
-  },
-  { value: "research", label: "Do research", sub: "Search, read, summarize" },
-  {
-    value: "automation",
-    label: "Automate routines",
-    sub: "Workflows that run without me",
-  },
-  {
-    value: "reach",
-    label: "Reach me anywhere",
-    sub: "WhatsApp, Telegram, voice",
-  },
+  { value: "inbox", label: "Manage my inbox" },
+  { value: "calendar", label: "Handle my calendar" },
+  { value: "briefings", label: "Daily briefings" },
+  { value: "todos", label: "Track my todos" },
+  { value: "memory", label: "Remember everything" },
+  { value: "research", label: "Do research" },
+  { value: "automation", label: "Automate routines" },
+  { value: "reach", label: "Reach me anywhere" },
 ];
 
 export const NEEDS_MIN_SELECTION = 1;
@@ -63,12 +39,12 @@ export const FIELD_NAMES = {
 export const questions: Question[] = [
   {
     id: "1",
-    question: "What do you do?",
+    question: "Hi, I'm GAIA. Before anything else: what do you do?",
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
     id: "2",
-    question: "How can GAIA help?",
+    question: "And what should I take on first?",
     fieldName: FIELD_NAMES.NEEDS,
   },
 ];

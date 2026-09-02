@@ -20,5 +20,4 @@ export interface ProfessionOption {
 export interface NeedOption {
   value: string;
   label: string;
-  sub: string;
 }
