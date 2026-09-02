@@ -810,7 +810,9 @@ class TestResyncSubscriptions:
             composio_trigger_ids=[],
         )
         target = _paused_sub(trigger_name=INSTANCE_TRIGGER, composio_trigger_ids=["ti_old"])
-        todo = _todo(id="todo-multi", labels=[BLOCKING_LABEL], trigger_subscriptions=[other, target])
+        todo = _todo(
+            id="todo-multi", labels=[BLOCKING_LABEL], trigger_subscriptions=[other, target]
+        )
         with _ResyncHarness([todo], ["ti_new"]) as h:
             resynced = await resync_subscriptions_for_trigger_names(USER_ID, {INSTANCE_TRIGGER})
 
