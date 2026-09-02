@@ -34,8 +34,7 @@ from app.models.workflow_models import (
     WorkflowDocument,
 )
 from app.services.notification_service import NotificationService
-from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
-from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
+from app.services.system_workflows.definitions import SYSTEM_WORKFLOWS_BY_INTEGRATION
 from app.services.user_service import get_user_by_id
 from app.services.workflow.scheduler import workflow_scheduler
 from app.services.workflow.service import WorkflowService
@@ -44,13 +43,6 @@ from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
 # Maps integration_id -> list of (system_workflow_key, factory)
-SYSTEM_WORKFLOWS_BY_INTEGRATION: dict[
-    str, list[tuple[str, Callable[[], CreateWorkflowRequest]]]
-] = {
-    "gmail": GMAIL_SYSTEM_WORKFLOWS,
-    "googlecalendar": CALENDAR_SYSTEM_WORKFLOWS,
-}
-
 # Flat registry: system_workflow_key -> factory (for reset-to-default)
 SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
     key: factory for entries in SYSTEM_WORKFLOWS_BY_INTEGRATION.values() for key, factory in entries
