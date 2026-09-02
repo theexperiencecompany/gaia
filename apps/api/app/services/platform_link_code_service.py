@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from app.config.settings import settings
 from app.constants.auth import PLATFORM_LINK_CODE_BYTES
 from app.constants.cache import PLATFORM_LINK_CODE_PREFIX, PLATFORM_LINK_CODE_TTL
-from app.db.redis import get_and_delete_cache, set_cache
+from app.db.redis import delete_cache, get_cache, set_cache
 from app.services.platform_link_service import Platform
 from app.utils.errors import create_error
 
@@ -85,10 +85,18 @@ async def mint_platform_link_code(user_id: str, first_message: str) -> str:
     return code
 
 
-async def consume_platform_link_code(code: str) -> PlatformLinkCodePayload | None:
-    """Atomically consume ``code``, returning its binding or None if it is not live.
+async def peek_platform_link_code(code: str) -> PlatformLinkCodePayload | None:
+    """The binding behind ``code``, or None if it is not live.
 
-    ``GETDEL`` enforces single-use: a replay, a second tap, or a brute-force hit
-    racing the real user all get nothing.
+    Reading does not spend the code: the redeem endpoint checks the plan and
+    the platform-account conflict first and only ``discard``s after the link
+    is written, so a refused tap ("already connected to someone else") leaves
+    the code usable for the retry the refusal asks for. A second successful
+    tap in the same window links the same user again, which is a no-op.
     """
-    return await get_and_delete_cache(_code_key(code), PlatformLinkCodePayload)
+    return await get_cache(_code_key(code), PlatformLinkCodePayload)
+
+
+async def discard_platform_link_code(code: str) -> None:
+    """Spend ``code`` once the link it authorised has been written."""
+    await delete_cache(_code_key(code))

@@ -16,8 +16,9 @@ import app.services.platform_link_code_service as svc
 from app.services.platform_link_code_service import (
     build_handoff_links,
     build_handoff_text,
-    consume_platform_link_code,
+    discard_platform_link_code,
     mint_platform_link_code,
+    peek_platform_link_code,
 )
 from app.utils.errors import AppError
 
@@ -33,41 +34,54 @@ def fake_store() -> Generator[dict[str, tuple[object, int | None]], None, None]:
         store[key] = (value, ttl)
         return True
 
-    async def _getdel(key: str, model: type | None = None) -> object | None:
-        entry = store.pop(key, None)
+    async def _get(key: str, model: type | None = None) -> object | None:
+        entry = store.get(key)
         if entry is None:
             return None
         value, _ttl = entry
         return model.model_validate(value) if model else value
 
+    async def _delete(key: str) -> None:
+        store.pop(key, None)
+
     with (
         patch.object(svc, "set_cache", AsyncMock(side_effect=_set)),
-        patch.object(svc, "get_and_delete_cache", AsyncMock(side_effect=_getdel)),
+        patch.object(svc, "get_cache", AsyncMock(side_effect=_get)),
+        patch.object(svc, "delete_cache", AsyncMock(side_effect=_delete)),
     ):
         yield store
 
 
-class TestMintAndConsume:
-    async def test_mint_then_consume_returns_the_binding(
+class TestMintPeekDiscard:
+    async def test_mint_then_peek_returns_the_binding(
         self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
-        payload = await consume_platform_link_code(code)
+        payload = await peek_platform_link_code(code)
         assert payload is not None
         assert payload.user_id == "user1"
         assert payload.first_message == FIRST_MESSAGE
 
-    async def test_single_use_second_consume_is_none(
+    async def test_peeking_does_not_spend_the_code(
+        self, fake_store: dict[str, tuple[object, int | None]]
+    ) -> None:
+        """A refused redemption (plan wall, account linked elsewhere) must leave
+        the code live for the retry the refusal asks for."""
+        code = await mint_platform_link_code("user1", FIRST_MESSAGE)
+        assert await peek_platform_link_code(code) is not None
+        assert await peek_platform_link_code(code) is not None
+
+    async def test_discard_makes_the_code_single_use(
         self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
-        assert await consume_platform_link_code(code) is not None
-        assert await consume_platform_link_code(code) is None
+        await discard_platform_link_code(code)
+        assert await peek_platform_link_code(code) is None
 
     async def test_unknown_code_is_none(
         self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
-        assert await consume_platform_link_code("not-a-real-code") is None
+        assert await peek_platform_link_code("not-a-real-code") is None
 
     async def test_two_mints_have_distinct_codes(
         self, fake_store: dict[str, tuple[object, int | None]]

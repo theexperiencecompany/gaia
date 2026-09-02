@@ -85,8 +85,14 @@ export default function PaymentSuccessPage() {
     };
   }, [status]);
 
-  // Restart checkout for the plan the user last tried, falling back to pricing.
+  // Restart checkout for the plan the user last tried. A user who has not
+  // finished onboarding pays inside the wizard, so send them back to it; a
+  // wall-hit for anyone else restarts the same plan, or falls back to pricing.
   const handleTryAgain = () => {
+    if (isOnboardingIncomplete) {
+      router.push("/onboarding");
+      return;
+    }
     const productId = localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY);
     if (productId)
       createSubscriptionAndRedirect(productId, { source: "payment_retry" });

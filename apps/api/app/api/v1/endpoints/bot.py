@@ -57,7 +57,10 @@ from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.payments.payment_service import payment_service
-from app.services.platform_link_code_service import consume_platform_link_code
+from app.services.platform_link_code_service import (
+    discard_platform_link_code,
+    peek_platform_link_code,
+)
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import (
     Platform,
@@ -441,7 +444,7 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
             status_code=403,
         )
 
-    payload = await consume_platform_link_code(body.code)
+    payload = await peek_platform_link_code(body.code)
     if payload is None:
         # Never log the code — it is the credential. The platform account that
         # presented it and the outcome are what make a probe findable.
@@ -466,6 +469,7 @@ async def redeem_link_code(request: Request, body: RedeemLinkCodeRequest) -> Red
     result = await complete_platform_link(
         payload.user_id, body.platform, body.platform_user_id, profile=profile
     )
+    await discard_platform_link_code(body.code)
     log.audit(
         "platform account linked via one-tap code",
         actor=payload.user_id,

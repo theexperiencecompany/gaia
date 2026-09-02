@@ -131,6 +131,17 @@ describe("PaymentSuccessPage", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
   });
 
+  it("sends an unfinished user back to the wizard to retry, not to pricing", async () => {
+    onboarding = { completed: false };
+    verifyPayment.mockResolvedValue({ payment_completed: false });
+    render(<PaymentSuccessPage />);
+
+    const retry = await screen.findByRole("button", { name: /try again/i });
+    retry.click();
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
+    expect(createSubscriptionAndRedirect).not.toHaveBeenCalled();
+  });
+
   it("sends a finished user to chat", async () => {
     render(<PaymentSuccessPage />);
 
