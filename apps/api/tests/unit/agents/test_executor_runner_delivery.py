@@ -2078,3 +2078,82 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
         fields = await self._boundary_fields({"user_id": "u1"})
 
         assert fields["conversation_source"] is None
+
+
+@pytest.mark.regression
+class TestRunBoundaryCarriesWorkflowExecution:
+    """``run_executor_background`` opens its own wide-event boundary. The
+    workflow task stamped ``workflow.execution_id`` on ITS boundary, so unless
+    the run carries it across, every model call inside the executor lands in
+    the ledger with a workflow but no execution — which is exactly what
+    happened: $8 of a $10 workflow day was attributed to no run at all."""
+
+    async def test_executor_calls_see_the_workflow_execution(self) -> None:
+        from app.agents.core.background.executor_runner import _ExecutorResult
+        from shared.py.wide_events import log
+
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.LIVE,
+            task_id="task-1",
+            user_message_id=None,
+            workflow_id="wf-9",
+            workflow_execution_id="exec-42",
+        )
+        seen: dict[str, object] = {}
+
+        async def capture(*_args: object, **_kwargs: object) -> _ExecutorResult:
+            seen["workflow"] = log.get().get("workflow")
+            return _ExecutorResult("done", "final")
+
+        with (
+            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch.object(er, "_execute_executor", side_effect=capture),
+            patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
+        ):
+            await er.run_executor_background(
+                run, "do things", {"user_id": "user-1", "workflow_id": "wf-9"}
+            )
+
+        assert seen["workflow"] == {"id": "wf-9", "execution_id": "exec-42"}
+
+    @pytest.mark.parametrize(
+        ("workflow_id", "execution_id"),
+        [("wf-9", None), (None, "exec-42"), (None, None)],
+        ids=["workflow-without-execution", "execution-without-workflow", "plain-run"],
+    )
+    async def test_a_run_missing_either_id_stamps_no_workflow(
+        self, workflow_id: str | None, execution_id: str | None
+    ) -> None:
+        """Half an identity is worse than none: a boundary stamped with only a
+        workflow id would attribute the run's calls to a workflow's *unknown*
+        execution, which is the very gap this fix closes."""
+        from app.agents.core.background.executor_runner import _ExecutorResult
+        from shared.py.wide_events import log
+
+        run = ExecutorRun(
+            stream_id="stream-1",
+            conversation_id="conv-1",
+            user={"user_id": "user-1"},
+            kind=RunKind.LIVE,
+            task_id="task-1",
+            user_message_id=None,
+            workflow_id=workflow_id,
+            workflow_execution_id=execution_id,
+        )
+        seen: dict[str, object] = {}
+
+        async def capture(*_args: object, **_kwargs: object) -> _ExecutorResult:
+            seen["workflow"] = log.get().get("workflow")
+            return _ExecutorResult("done", "final")
+
+        with (
+            patch("app.agents.core.background.executor_runner.capture_event"),
+            patch.object(er, "_execute_executor", side_effect=capture),
+            patch.object(er, "_finalize_executor_run", new_callable=AsyncMock),
+        ):
+            await er.run_executor_background(run, "do things", {"user_id": "user-1"})
+
+        assert seen["workflow"] is None

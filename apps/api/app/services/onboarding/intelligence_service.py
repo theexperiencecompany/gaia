@@ -252,7 +252,10 @@ class _FocusTodoList(BaseModel):
 class _WorkflowSpec(BaseModel):
     title: str = Field(description="Workflow title — under 60 chars, starts with a verb or noun")
     description: str = Field(
-        description="1-2 sentences: what triggers it, what it does, what output it produces"
+        description=(
+            "1-2 sentences: what it does and what output it produces, not when it runs "
+            "or what triggers it"
+        )
     )
     categories: list[str] = Field(
         description=(
@@ -1832,12 +1835,17 @@ async def _create_fallback_workflow(
     integration_ids: list[str] | None = None,
 ) -> list[OnboardingWorkflowSummary]:
     title = "Daily Briefing"
-    description = (
-        f"Every morning, summarize unread emails by priority, today's meetings, and open todos. "
-        f"Focus: {focus[:100]}."
-        if focus
-        else "Every morning at 9am, summarize unread emails by priority, today's meetings, and open todos."
+    description = "Summarizes unread emails by priority, today's meetings, and open todos."
+    if focus:
+        description += f" Focus: {focus[:100]}."
+    prompt = (
+        "1. Summarize my unread emails, most in need of attention first\n"
+        "2. List today's meetings with their times\n"
+        "3. List my open todos\n\n"
+        "Expected output: one short briefing I can read in under a minute."
     )
+    if focus:
+        prompt += f"\n\nWeight everything toward what matters for: {focus[:100]}."
     try:
         trigger_config = TriggerConfig(
             type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON
@@ -1845,7 +1853,7 @@ async def _create_fallback_workflow(
         request = CreateWorkflowRequest(
             title=title,
             description=description,
-            prompt=description,
+            prompt=prompt,
             trigger_config=trigger_config,
             generate_immediately=True,
             integration_ids=integration_ids,

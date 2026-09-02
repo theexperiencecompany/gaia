@@ -25,7 +25,7 @@ from app.agents.core.background.executor_queue import (
     release_lock_if_owned,
     safe_configurable,
 )
-from app.agents.core.background.session import RunKind, get_session
+from app.agents.core.background.session import RunIdentity, RunKind, get_session
 from app.constants.cache import EXECUTOR_BUSY_TTL, EXECUTOR_QUEUE_TTL
 from app.models.agent_models import AgentConfigurable
 
@@ -257,20 +257,26 @@ class TestEnqueueTask:
             redis.client.expire = AsyncMock()
 
             await enqueue_task(
-                queue_key="executor:queue:conv-1",
-                task="do it",
-                task_id="task-1",
-                configurable={
-                    "user_id": "u1",
-                    "workflow_id": "wf-1",
-                    # Not declared on AgentConfigurable — LangGraph's own runtime
-                    # keys look like this and must never reach the queue item.
-                    "not_owned": "dropped",
-                    # Declared, but holding something JSON cannot carry.
-                    "model_kwargs": {"provider": object()},
-                },
-                conversation_id="conv-1",
-                user_message_id="msg-1",
+                "executor:queue:conv-1",
+                build_run_item(
+                    task="do it",
+                    configurable={
+                        "user_id": "u1",
+                        "workflow_id": "wf-1",
+                        # Not declared on AgentConfigurable — LangGraph's own runtime
+                        # keys look like this and must never reach the queue item.
+                        "not_owned": "dropped",
+                        # Declared, but holding something JSON cannot carry.
+                        "model_kwargs": {"provider": object()},
+                    },
+                    identity=RunIdentity(
+                        stream_id="",
+                        conversation_id="conv-1",
+                        kind=RunKind.QUEUED,
+                        task_id="task-1",
+                        user_message_id="msg-1",
+                    ),
+                ),
             )
 
             payload = json.loads(redis.client.rpush.await_args.args[1])
@@ -290,21 +296,29 @@ class TestBuildRunItem:
     def test_omits_bot_message_id_by_default(self) -> None:
         item = build_run_item(
             task="do it",
-            task_id="task-1",
             configurable={"user_id": "u1"},
-            conversation_id="conv-1",
-            user_message_id="msg-1",
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id="msg-1",
+            ),
         )
         assert item["bot_message_id"] is None
 
     def test_carries_bot_message_id_when_a_pause_supplies_it(self) -> None:
         item = build_run_item(
             task="do it",
-            task_id="task-1",
             configurable={"user_id": "u1"},
-            conversation_id="conv-1",
-            user_message_id="msg-1",
-            bot_message_id="orig-msg-1",
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id="msg-1",
+                bot_message_id="orig-msg-1",
+            ),
         )
         assert item["bot_message_id"] == "orig-msg-1"
 
@@ -317,11 +331,15 @@ class TestPrepareRunFromItemResumeIdentity:
     async def test_bot_message_id_threads_into_the_resumed_run(self) -> None:
         item = build_run_item(
             task="continue the task",
-            task_id="task-1",
             configurable={"user_id": "u1"},
-            conversation_id="conv-1",
-            user_message_id="msg-1",
-            bot_message_id="orig-msg-1",
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id="msg-1",
+                bot_message_id="orig-msg-1",
+            ),
         )
         with (
             patch.object(eq, "redis_cache") as redis,
@@ -347,10 +365,14 @@ class TestPrepareRunFromItemResumeIdentity:
     async def test_plain_queued_item_has_no_bot_message_id(self) -> None:
         item = build_run_item(
             task="do it",
-            task_id="task-1",
             configurable={"user_id": "u1"},
-            conversation_id="conv-1",
-            user_message_id="msg-1",
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id="msg-1",
+            ),
         )
         with (
             patch.object(eq, "redis_cache") as redis,
@@ -436,3 +458,76 @@ class TestSafeConfigurable:
         assert kept == {"thread_id": "t"}
         assert warn.call_count == 1
         assert warn.call_args.kwargs["configurable_key"] == "model_kwargs"
+
+
+@pytest.mark.regression
+class TestRunItemCarriesWorkflowExecution:
+    """The execution id exists only on the workflow task's wide event. A HIL
+    resume and a queue pop both rebuild the run in some OTHER context (the
+    approval request, the previous run's finalize), so the stored item has to
+    carry it or the resumed run's calls are unattributable to the run."""
+
+    async def test_the_item_records_the_execution_in_flight(self) -> None:
+        from shared.py.wide_events import WorkflowContext, log, wide_task
+
+        async with wide_task("workflow_execution"):
+            log.set(workflow=WorkflowContext(id="wf-9", execution_id="exec-42"))
+            item = build_run_item(
+                task="do it",
+                configurable={"user_id": "u1", "workflow_id": "wf-9"},
+                identity=RunIdentity(
+                    stream_id="",
+                    conversation_id="conv-1",
+                    kind=RunKind.QUEUED,
+                    task_id="task-1",
+                    user_message_id=None,
+                ),
+            )
+
+        assert item["workflow_execution_id"] == "exec-42"
+
+    def test_a_run_supplies_its_own_execution_id_when_pausing(self) -> None:
+        item = build_run_item(
+            task="do it",
+            configurable={"user_id": "u1", "workflow_id": "wf-9"},
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
+            workflow_execution_id="exec-42",
+        )
+
+        assert item["workflow_execution_id"] == "exec-42"
+
+    async def test_a_resume_outside_any_boundary_still_knows_its_execution(self) -> None:
+        item = build_run_item(
+            task="continue the task",
+            configurable={"user_id": "u1", "workflow_id": "wf-9"},
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id=None,
+            ),
+            workflow_execution_id="exec-42",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            # No wide-event boundary here on purpose: this is the approval
+            # request's context, where the workflow task's stamp never existed.
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.workflow_id == "wf-9"
+        assert prepared.run.workflow_execution_id == "exec-42"

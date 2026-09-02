@@ -651,11 +651,15 @@ class TestBuildRunItem:
     def test_every_field_survives_the_round_trip_shape(self) -> None:
         item = build_run_item(
             task="triage my inbox",
-            task_id="task-1",
             configurable={"user_id": "user-1", "thread_id": "conv-1"},
-            conversation_id="conv-1",
-            user_message_id="user-msg-1",
-            bot_message_id="bot-msg-1",
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id="task-1",
+                user_message_id="user-msg-1",
+                bot_message_id="bot-msg-1",
+            ),
         )
 
         assert item["task"] == "triage my inbox"
@@ -669,10 +673,14 @@ class TestBuildRunItem:
         ``prepare_run_from_item`` reads it unconditionally."""
         item = build_run_item(
             task="t",
-            task_id=None,
             configurable={"user_id": "user-1"},
-            conversation_id="conv-1",
-            user_message_id=None,
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id="conv-1",
+                kind=RunKind.QUEUED,
+                task_id=None,
+                user_message_id=None,
+            ),
         )
 
         assert item["bot_message_id"] is None
