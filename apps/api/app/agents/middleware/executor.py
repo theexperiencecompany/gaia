@@ -406,7 +406,9 @@ class MiddlewareExecutor:
                 capture_event(
                     tool_user_id,
                     AnalyticsEvents.TOOL_USED,
-                    {"tool_name": tool_name},
+                    # via segments the bound path from the execute path so the
+                    # migration's before/after cuts stay computable in PostHog.
+                    {"tool_name": tool_name, "via": "bound"},
                 )
             return tool_result
 

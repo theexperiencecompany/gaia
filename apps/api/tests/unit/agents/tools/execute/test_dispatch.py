@@ -40,7 +40,12 @@ class TestDispatchTool:
         assert result.ok is False
         assert result.error is not None
         assert result.error.kind is DispatchErrorKind.UNKNOWN_TOOL
-        capture.assert_not_called()
+        # Failure is its own event, attributed to the user, with the reason.
+        capture.assert_called_once_with(
+            "u1",
+            AnalyticsEvents.EXECUTE_TOOL_FAILED,
+            {"tool_name": "NOPE_TOOL", "reason": "unknown_tool"},
+        )
 
     async def test_invalid_args_fail_loud_with_pydantic_detail_and_never_invoke(self) -> None:
         tool = _tool()
@@ -59,7 +64,12 @@ class TestDispatchTool:
         assert result.error.kind is DispatchErrorKind.INVALID_ARGS
         assert "subject" in result.error.detail
         tool.ainvoke.assert_not_awaited()
-        capture.assert_not_called()
+        # The retry-ratio numerator: every validation failure is captured.
+        capture.assert_called_once_with(
+            "u1",
+            AnalyticsEvents.EXECUTE_TOOL_FAILED,
+            {"tool_name": "GMAIL_SEND_EMAIL", "reason": "invalid_args"},
+        )
 
     async def test_valid_args_invoke_with_coerced_supplied_fields_only(self) -> None:
         tool = _tool()
@@ -80,7 +90,9 @@ class TestDispatchTool:
             {"recipient": "a@b.c", "subject": "hi"}, config=CONFIG
         )
         capture.assert_called_once_with(
-            "u1", AnalyticsEvents.TOOL_USED, {"tool_name": "GMAIL_SEND_EMAIL"}
+            "u1",
+            AnalyticsEvents.TOOL_USED,
+            {"tool_name": "GMAIL_SEND_EMAIL", "via": "execute"},
         )
 
     async def test_dict_schema_tool_invokes_with_raw_data(self) -> None:

@@ -16,12 +16,28 @@ import json
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
+from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError
 
 from app.agents.tools.execute.resolver import resolve_tool
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.storage.metrics import _register_once
 from shared.py.wide_events import log
+
+# THE health metric of the proxy migration: bind_tools gave provider-constrained
+# args (a malformed call was structurally impossible); execute moves that check
+# to runtime, so invalid_args/ok is the retries-per-successful-action ratio that
+# says whether the trade is paying. Charted in Grafana; labels are the closed
+# outcome set below, never tool names (unbounded cardinality).
+_EXECUTE_DISPATCH_TOTAL = _register_once(
+    "gaia_execute_dispatch_total",
+    lambda: Counter(
+        "gaia_execute_dispatch_total",
+        "Proxied tool dispatches by outcome",
+        ["outcome"],
+    ),
+)
 
 
 class DispatchErrorKind(StrEnum):
@@ -56,10 +72,10 @@ async def dispatch_tool(
     resolved = await resolve_tool(user_id, tool_name)
     if resolved is None:
         log.warning(f"{LogTag.TOOL} execute: unknown tool", tool_name=tool_name)
-        return ToolExecutionResult(
-            ok=False,
-            resolved_name=tool_name,
-            error=DispatchError(
+        return _failure(
+            user_id,
+            tool_name,
+            DispatchError(
                 kind=DispatchErrorKind.UNKNOWN_TOOL,
                 detail=f"Unknown tool '{tool_name}'.",
                 hint=(
@@ -76,18 +92,41 @@ async def dispatch_tool(
             f"{LogTag.TOOL} execute: args failed schema validation",
             tool_name=resolved_name,
         )
-        return ToolExecutionResult(ok=False, resolved_name=resolved_name, error=validated)
+        return _failure(user_id, resolved_name, validated)
 
-    log.set_ns("execute", tool=resolved_name)
+    log.set_ns("execute", tool=resolved_name, outcome="ok")
     output = await tool.ainvoke(validated, config=config)
 
+    _EXECUTE_DISPATCH_TOTAL.labels(outcome="ok").inc()
     if user_id:
-        # The one TOOL_USED per proxied run, attributed to the REAL tool. The
+        # The one TOOL_USED per proxied run, attributed to the REAL tool with
+        # via="execute" so it can be ratioed against execute failures. The
         # middleware emitter skips calls named `execute` for exactly this reason
         # (root CLAUDE.md: one action, one event, one emitter).
-        capture_event(user_id, AnalyticsEvents.TOOL_USED, {"tool_name": resolved_name})
+        capture_event(
+            user_id,
+            AnalyticsEvents.TOOL_USED,
+            {"tool_name": resolved_name, "via": "execute"},
+        )
 
     return ToolExecutionResult(ok=True, resolved_name=resolved_name, output=output)
+
+
+def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolExecutionResult:
+    """A predictable dispatch failure — counted, captured, then returned.
+
+    Failure is its own event, never a missing one: retries-per-success is only
+    computable if the numerator is recorded as reliably as the denominator.
+    """
+    _EXECUTE_DISPATCH_TOTAL.labels(outcome=str(error.kind)).inc()
+    log.set_ns("execute", tool=tool_name, outcome=str(error.kind))
+    if user_id:
+        capture_event(
+            user_id,
+            AnalyticsEvents.EXECUTE_TOOL_FAILED,
+            {"tool_name": tool_name, "reason": str(error.kind)},
+        )
+    return ToolExecutionResult(ok=False, resolved_name=tool_name, error=error)
 
 
 def _validate_args(tool: Any, data: dict[str, Any]) -> dict[str, Any] | DispatchError:
