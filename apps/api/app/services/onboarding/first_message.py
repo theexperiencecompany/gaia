@@ -42,6 +42,9 @@ def _join(phrases: list[str]) -> str:
     return f"{', '.join(phrases[:-1])}, and {phrases[-1]}"
 
 
+_VOWELS = frozenset("aeiou")
+
+
 def _profession_phrase(profession: str | None) -> str | None:
     if not profession:
         return None
@@ -53,7 +56,7 @@ def _profession_phrase(profession: str | None) -> str | None:
         return None
     # Free-form professions: users onboarded before the fixed Q1 list, and the
     # settings page, both store arbitrary text here.
-    article = "an" if key[0] in "aeiou" else "a"
+    article = "an" if key[0] in _VOWELS else "a"
     return f"{article} {cleaned}"
 
 

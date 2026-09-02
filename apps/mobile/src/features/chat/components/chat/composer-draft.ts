@@ -1,6 +1,6 @@
 import type { ReplyToMessageData } from "../../types";
 
-export interface SelectedTool {
+interface SelectedTool {
   name: string;
   category: string;
 }

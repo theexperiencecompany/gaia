@@ -783,6 +783,24 @@ class TestRunHoloCard:
         assert emit.await_args.args[0] == USER
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
+    async def test_done_line_reports_each_phase_duration(self, holo_stack: Any) -> None:
+        """The durations are the only trace of where holo-card time goes, so
+        each one is the rounded difference of its own bracket."""
+        clock = [0.0, 10.0, 10.5, 20.0, 21.2345, 30.0, 30.75, 31.0]
+        with (
+            patch(f"{MODULE}.time.monotonic", side_effect=clock),
+            patch(f"{MODULE}.log") as log,
+        ):
+            assert await _run_holo_card(_ctx(), UserDocument(id=USER), []) is True
+
+        done = [c for c in log.info.call_args_list if "holo_card done" in c.args[0]]
+        assert len(done) == 1
+        kwargs = done[0].kwargs
+        assert kwargs["meta_duration_s"] == 0.5
+        assert kwargs["phrase_bio_duration_s"] == 1.23
+        assert kwargs["save_duration_s"] == 0.75
+        assert kwargs["duration_s"] == 31.0
+
     async def test_context_summary_gathers_every_available_signal(self, holo_stack: Any) -> None:
         content, _, _ = holo_stack
         await _run_holo_card(

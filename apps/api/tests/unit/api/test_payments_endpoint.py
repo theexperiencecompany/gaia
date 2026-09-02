@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.models.payment_models import (
+    CheckoutSource,
     CreateSubscriptionResponse,
     PaymentVerificationResponse,
     PlanDuration,
@@ -348,6 +349,75 @@ class TestCreateCheckoutSession:
         response = await unauthed_client.post(CHECKOUT_SESSION_URL, json={"source": "pricing_card"})
         assert response.status_code in (401, 403)
 
+    async def test_wide_event_carries_the_checkout_request_before_dodo_is_called(
+        self, client: AsyncClient
+    ):
+        """The request context is stamped up front, so a checkout that fails
+        inside Dodo still shows who asked for which cycle from where."""
+        with (
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+            patch(
+                "app.services.payments.payment_service.payment_service.create_pro_checkout",
+                new_callable=AsyncMock,
+                return_value=ProCheckout(
+                    plan=PlanResponse(**_make_plan()),
+                    checkout=CreateSubscriptionResponse(
+                        subscription_id="sess_overlay",
+                        payment_link="https://checkout.dodopayments.com/sess_overlay",
+                        status="payment_link_created",
+                    ),
+                ),
+            ),
+        ):
+            response = await client.post(
+                CHECKOUT_SESSION_URL,
+                json={"billing_cycle": "yearly", "source": "pricing_card"},
+            )
+
+        assert response.status_code == 200
+        mock_log.set.assert_called_once_with(
+            user={"id": "507f1f77bcf86cd799439011"},
+            payment={
+                "operation": "create_checkout_session",
+                "billing_cycle": PlanDuration.YEARLY,
+                "source": CheckoutSource.PRICING_CARD,
+            },
+        )
+
+    async def test_audits_the_minted_session_against_the_plan_it_was_priced_from(
+        self, client: AsyncClient
+    ):
+        """Money moves here: the audit trail has to name the caller, the Dodo
+        product they were charged for, and the session id support can look up."""
+        with (
+            patch("app.api.v1.endpoints.payments.log") as mock_log,
+            patch(
+                "app.services.payments.payment_service.payment_service.create_pro_checkout",
+                new_callable=AsyncMock,
+                return_value=ProCheckout(
+                    plan=PlanResponse(**_make_plan(dodo_product_id="prod_yearly")),
+                    checkout=CreateSubscriptionResponse(
+                        subscription_id="sess_overlay",
+                        payment_link="https://checkout.dodopayments.com/sess_overlay",
+                        status="payment_link_created",
+                    ),
+                ),
+            ),
+        ):
+            response = await client.post(
+                CHECKOUT_SESSION_URL,
+                json={"billing_cycle": "monthly", "source": "paywall_modal"},
+            )
+
+        assert response.status_code == 200
+        mock_log.set_ns.assert_called_once_with("payment", session_id="sess_overlay")
+        mock_log.audit.assert_called_once_with(
+            "overlay checkout session created",
+            actor="507f1f77bcf86cd799439011",
+            resource="prod_yearly",
+            provider="dodo",
+        )
+
 
 # ---------------------------------------------------------------------------
 # POST /subscriptions/cancel
@@ -446,6 +516,46 @@ class TestVerifyPayment:
         assert response.status_code == 200
         data = response.json()
         assert data["payment_completed"] is False
+
+    async def test_verify_payment_hands_the_returned_subscription_to_its_own_user(
+        self, client: AsyncClient
+    ):
+        """The id off Dodo's return URL is forwarded for reconciliation, scoped
+        to the authenticated caller — never to whoever the id belongs to."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.verify_payment_completion",
+            new_callable=AsyncMock,
+            return_value=PaymentVerificationResponse(
+                payment_completed=True,
+                subscription_id="sub_returned",
+                message="Payment verified",
+            ),
+        ) as mock_verify:
+            response = await client.post(
+                VERIFY_PAYMENT_URL, json={"subscription_id": "sub_returned"}
+            )
+
+        assert response.status_code == 200
+        mock_verify.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", subscription_id="sub_returned"
+        )
+
+    async def test_verify_payment_without_a_body_reconciles_nothing(self, client: AsyncClient):
+        """A poll with no returned id is the plain webhook-landed check — the
+        service is still told there is nothing to reconcile against."""
+        with patch(
+            "app.services.payments.payment_service.payment_service.verify_payment_completion",
+            new_callable=AsyncMock,
+            return_value=PaymentVerificationResponse(
+                payment_completed=False,
+                subscription_id=None,
+                message="No payment found",
+            ),
+        ) as mock_verify:
+            response = await client.post(VERIFY_PAYMENT_URL)
+
+        assert response.status_code == 200
+        mock_verify.assert_awaited_once_with("507f1f77bcf86cd799439011", subscription_id=None)
 
     async def test_verify_payment_service_error_returns_500(self, client: AsyncClient):
         """Endpoint catches exceptions and returns 500."""

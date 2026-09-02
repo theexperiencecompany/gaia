@@ -19,8 +19,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from dodopayments import NotFoundError
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.models.payment_models import SubscriptionDocument
 from app.services.payments.payment_service import DodoPaymentService
+from tests.helpers import captured_wide_event
 
 SERVICE_MODULE = "app.services.payments.payment_service"
 ACTIVATION_MODULE = "app.services.payments.subscription_activation"
@@ -35,6 +37,9 @@ def _remote_subscription(**overrides: Any) -> MagicMock:
 
     Only ``model_dump`` matters: the service revalidates whatever the SDK hands
     back into ``DodoSubscriptionData`` rather than trusting attribute access.
+    The dump is mode-aware like the SDK's own — ``mode="json"`` yields the wire
+    shape the webhook schema is built for, while the default python mode yields
+    real ``datetime`` objects that a ``created_at: str`` field refuses.
     """
     payload: dict[str, Any] = {
         "subscription_id": DODO_SUBSCRIPTION_ID,
@@ -57,8 +62,14 @@ def _remote_subscription(**overrides: Any) -> MagicMock:
         "metadata": {"user_id": USER_ID},
     }
     payload.update(overrides)
+
+    def _model_dump(*, mode: str | None = None) -> dict[str, Any]:
+        if mode == "json":
+            return payload
+        return {**payload, "created_at": datetime(2026, 9, 1, tzinfo=UTC)}
+
     remote = MagicMock()
-    remote.model_dump.return_value = payload
+    remote.model_dump.side_effect = _model_dump
     return remote
 
 
@@ -113,6 +124,14 @@ class TestVerifyPaymentReconcilesWithDodo:
 
         assert result.payment_completed is True
         assert result.subscription_id == DODO_SUBSCRIPTION_ID
+        # Dodo is asked about the subscription the caller named, and the
+        # recovered row is read back for that caller — both reads scoped, or a
+        # user could be handed someone else's subscription.
+        service.client.subscriptions.retrieve.assert_called_once_with(DODO_SUBSCRIPTION_ID)
+        assert [call.args for call in service_repo.get_latest_active_for_user.await_args_list] == [
+            (USER_ID,),
+            (USER_ID,),
+        ]
         # The row was written by the shared activation, not by a second
         # implementation living in the verification path.
         created = activation_repo.create.await_args.args[0]
@@ -131,12 +150,23 @@ class TestVerifyPaymentReconcilesWithDodo:
             service_repo.get_latest_active_for_user = AsyncMock(return_value=None)
             activation_repo.create = AsyncMock()
 
-            result = await service.verify_payment_completion(
-                USER_ID, subscription_id=DODO_SUBSCRIPTION_ID
-            )
+            async with captured_wide_event() as event:
+                result = await service.verify_payment_completion(
+                    USER_ID, subscription_id=DODO_SUBSCRIPTION_ID
+                )
 
         assert result.payment_completed is False
         activation_repo.create.assert_not_awaited()
+        # A refusal to hand a subscription to a stranger is the audit trail's
+        # whole reason to exist — it names who asked and why they were refused.
+        assert event["audit"] == [
+            {
+                "msg": "payment verification refused",
+                "actor": USER_ID,
+                "provider": "dodo",
+                "reason": "subscription_owner_mismatch",
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_does_not_verify_a_subscription_dodo_has_never_heard_of(self) -> None:
@@ -151,10 +181,23 @@ class TestVerifyPaymentReconcilesWithDodo:
             service_repo.get_latest_active_for_user = AsyncMock(return_value=None)
             activation_repo.create = AsyncMock()
 
-            result = await service.verify_payment_completion(USER_ID, subscription_id="sub_forged")
+            async with captured_wide_event() as event:
+                result = await service.verify_payment_completion(
+                    USER_ID, subscription_id="sub_forged"
+                )
 
         assert result.payment_completed is False
         activation_repo.create.assert_not_awaited()
+        service.client.subscriptions.retrieve.assert_called_once_with("sub_forged")
+        # An id Dodo has never seen is the forged-hint case: the wide event has
+        # to say which user tried it and why nothing was reconciled.
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.PAYMENT} Dodo has no such subscription to reconcile",
+                "failure_reason": "subscription_not_found",
+                "user_id": USER_ID,
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_does_not_verify_a_subscription_dodo_reports_inactive(self) -> None:
@@ -167,12 +210,23 @@ class TestVerifyPaymentReconcilesWithDodo:
             service_repo.get_latest_active_for_user = AsyncMock(return_value=None)
             activation_repo.create = AsyncMock()
 
-            result = await service.verify_payment_completion(
-                USER_ID, subscription_id=DODO_SUBSCRIPTION_ID
-            )
+            async with captured_wide_event() as event:
+                result = await service.verify_payment_completion(
+                    USER_ID, subscription_id=DODO_SUBSCRIPTION_ID
+                )
 
         assert result.payment_completed is False
         activation_repo.create.assert_not_awaited()
+        # The status Dodo actually reported is what makes this triageable —
+        # "failed" and "on_hold" need very different follow-ups.
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.PAYMENT} Dodo subscription is not active; nothing to reconcile",
+                "failure_reason": "subscription_not_active",
+                "subscription_status": "failed",
+                "user_id": USER_ID,
+            }
+        ]
 
     @pytest.mark.asyncio
     async def test_never_calls_dodo_without_a_subscription_id(self) -> None:

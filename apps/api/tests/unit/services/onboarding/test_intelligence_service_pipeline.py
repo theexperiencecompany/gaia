@@ -16,14 +16,17 @@ from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.constants.notifications import MEMORY_SETTINGS_URL
 from app.constants.onboarding import (
     GMAIL_PERSONALIZATION_MARKER,
     LEGACY_PERSONALIZATION_MARKER,
 )
 from app.models.notification.notification_models import (
+    ActionStyle,
     ActionType,
     NotificationSourceEnum,
+    NotificationType,
 )
 from app.models.onboarding_models import (
     EmailSummary,
@@ -258,6 +261,40 @@ class TestProcessOnboardingIntelligenceGuards:
 
         assert pipeline_stack["scan"].await_count == 0
 
+    async def test_an_already_personalized_user_is_logged_as_skipped_not_failed(
+        self, pipeline_stack: Any
+    ) -> None:
+        """Three no-op exits look identical from outside the job; `outcome` and
+        `reason` are the only things that tell a skipped reconnect apart from a
+        user whose Gmail fell off, and the second needs chasing."""
+        user = _user(onboarding={GMAIL_PERSONALIZATION_MARKER: "2026-08-01T00:00:00Z"})
+        pipeline_stack["repo"].get = AsyncMock(return_value=user)
+
+        await process_onboarding_intelligence(USER)
+
+        intelligence_service.log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} pipeline skipped",
+            user_id=USER,
+            outcome="skipped",
+            reason="already_ran",
+        )
+
+    async def test_a_disconnected_gmail_is_logged_as_aborted_with_its_reason(
+        self, pipeline_stack: Any
+    ) -> None:
+        pipeline_stack["composio"].check_connection_status = AsyncMock(
+            return_value={"gmail": False}
+        )
+
+        await process_onboarding_intelligence(USER)
+
+        intelligence_service.log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} pipeline aborted — gmail not connected",
+            user_id=USER,
+            outcome="aborted",
+            reason="no_gmail",
+        )
+
     async def test_the_connection_check_names_gmail_and_the_user(self, pipeline_stack: Any) -> None:
         await process_onboarding_intelligence(USER)
 
@@ -287,7 +324,53 @@ class TestProcessOnboardingIntelligenceHappyPath:
 
         scanned_ctx = pipeline_stack["scan"].await_args.args[1]
         assert isinstance(scanned_ctx, InboxScanContext)
+        # The scan runs detached, so a lost user id reads nobody's mailbox and
+        # nothing downstream notices — the DAG still completes, empty.
+        assert pipeline_stack["scan"].await_args.args[0] == USER
         assert pipeline_stack["triage"].await_args.args[1] is scanned_ctx
+
+    async def test_the_pipeline_brackets_itself_with_a_start_and_a_done_line(
+        self, pipeline_stack: Any
+    ) -> None:
+        """A personalization run has no other trace: `phase` is what pairs the
+        two lines into a duration, and the counts are the only record of what a
+        given user actually got out of it."""
+        triage = _triage()
+        pipeline_stack["triage"].return_value = triage
+        pipeline_stack["style"].return_value = _style()
+        pipeline_stack["social"].return_value = [SocialProfile(platform="x", url="u1")]
+
+        await process_onboarding_intelligence(USER)
+
+        intelligence_service.log.info.assert_any_call(
+            f"{LogTag.ONBOARDING} pipeline start", user_id=USER, phase="start"
+        )
+        done = next(
+            call
+            for call in intelligence_service.log.info.call_args_list
+            if call.kwargs.get("phase") == "done"
+        )
+        assert done.args == (f"{LogTag.ONBOARDING} pipeline done",)
+        assert done.kwargs["user_id"] == USER
+        assert done.kwargs["writing_style_learned"] is True
+        assert done.kwargs["triage_important_count"] == len(triage.important_emails)
+        assert done.kwargs["social_profiles_count"] == 1
+        assert done.kwargs["conversation_seeded"] is True
+        assert done.kwargs["outcome"] == "ok"
+
+    async def test_a_run_that_found_nothing_reports_zero_not_one(self, pipeline_stack: Any) -> None:
+        """`triage_important_count` is the volume metric for the whole feature —
+        a floor of 1 on empty runs invents inbox findings that never existed."""
+        await process_onboarding_intelligence(USER)
+
+        done = next(
+            call
+            for call in intelligence_service.log.info.call_args_list
+            if call.kwargs.get("phase") == "done"
+        )
+        assert done.kwargs["triage_important_count"] == 0
+        assert done.kwargs["writing_style_learned"] is False
+        assert done.kwargs["social_profiles_count"] == 0
 
     async def test_the_context_is_threaded_into_every_node(self, pipeline_stack: Any) -> None:
         """Every node reads its inputs off one context built from the user
@@ -479,12 +562,29 @@ class TestHoloCardUrl:
         with patch(f"{MODULE}.settings", frontend):
             assert holo_card_url(USER) == CARD_URL
 
+    def test_only_the_trailing_separator_is_trimmed(self) -> None:
+        """`rstrip("/")` takes a character SET, so a widened set would eat real
+        characters off the end of a deployment URL and 404 the card page."""
+        frontend = MagicMock()
+        frontend.FRONTEND_URL = "https://app.example.test/X/"
+        with patch(f"{MODULE}.settings", frontend):
+            assert holo_card_url(USER) == "https://app.example.test/X/profile/user-42"
+
 
 class TestHoloCardMessage:
     def test_the_card_travels_as_its_public_link(self) -> None:
         # Chat has no holo-card renderer, so a payload the client would drop is
         # not an option — the link has to be in the message body.
         assert CARD_URL in _holo_card_message(CARD_URL)
+
+    def test_the_message_is_the_whole_reward_the_user_reads(self) -> None:
+        """This text is the entire hand-off after a Gmail connect — it is seeded
+        as GAIA's own turn, so it is prose a user reads, not a log line."""
+        assert _holo_card_message(CARD_URL) == (
+            "Your holo card is ready — I built it from what I learned in your inbox.\n\n"
+            f"{CARD_URL}\n\n"
+            "I also added a lot to your memories while I was in there."
+        )
 
 
 class TestAnnouncePersonalization:
@@ -551,3 +651,68 @@ class TestAnnouncePersonalization:
     async def test_a_failed_seed_reports_no_conversation(self, announce_stack: Any) -> None:
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
             assert await _announce_personalization(USER, card_ready=True) is None
+
+    async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
+        """Every field here is rendered or acted on by the client: the labels are
+        the buttons, the styles decide which one is primary, `open_in_new_tab`
+        and `close_notification` decide whether the user loses the notification
+        on the way to their memories, and `metadata.source` is what attributes
+        the notification to this pipeline in analytics."""
+        notifications, _ = announce_stack
+
+        await _announce_personalization(USER, card_ready=True)
+
+        request = notifications.create_notification.await_args.args[0]
+        assert request.type is NotificationType.SUCCESS
+        assert request.priority == 2
+        assert request.metadata == {"source": "gmail_personalization"}
+        memories, card = request.content.actions
+        assert memories.label == "View memories"
+        assert memories.style is ActionStyle.PRIMARY
+        assert memories.config.redirect.url == MEMORY_SETTINGS_URL
+        assert memories.config.redirect.open_in_new_tab is False
+        assert memories.config.redirect.close_notification is True
+        assert card.label == "See your holo card"
+        assert card.style is ActionStyle.SECONDARY
+        assert card.config.redirect.url == CARD_URL
+        assert card.config.redirect.open_in_new_tab is True
+
+    async def test_an_undeliverable_notification_is_visible_in_the_wide_event(
+        self, announce_stack: Any
+    ) -> None:
+        """Delivery is swallowed on purpose, so the warning is the ONLY evidence
+        a user was never told their personalization finished."""
+        notifications, _ = announce_stack
+        # Long on purpose: a provider stack trace is what actually lands here,
+        # and the 200-char cap is what keeps one failure from flooding the event.
+        blurb = "channel down: " + "x" * 500
+        notifications.create_notification = AsyncMock(side_effect=RuntimeError(blurb))
+
+        await _announce_personalization(USER, card_ready=True)
+
+        intelligence_service.log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} personalization notification failed",
+            user_id=USER,
+            step="announce",
+            error=blurb[:200],
+            error_type="RuntimeError",
+        )
+
+    @pytest.mark.parametrize(("seeded", "outcome"), [("conv-1", "ok"), (None, "partial")])
+    async def test_the_announce_line_reports_which_half_landed(
+        self, announce_stack: Any, seeded: str | None, outcome: str
+    ) -> None:
+        """`outcome` is what separates a user who got their card handed over from
+        one who got only a notification — the two are indistinguishable
+        otherwise, and only this line records which happened."""
+        with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=seeded)):
+            await _announce_personalization(USER, card_ready=True)
+
+        intelligence_service.log.info.assert_called_once_with(
+            f"{LogTag.ONBOARDING} announce done",
+            user_id=USER,
+            step="announce",
+            card_ready=True,
+            outcome=outcome,
+            conversation_id=seeded,
+        )

@@ -138,6 +138,27 @@ class TestCompleteOnboarding:
         assert data["success"] is True
         assert data["message"] == "Onboarding completed successfully"
 
+    async def test_complete_onboarding_stores_the_callers_own_answers(self, client: AsyncClient):
+        """The submission is written for THIS user, carrying THIS body's answers.
+
+        Both arguments are load-bearing: a dropped user id writes the answers
+        nowhere (or onto a null row), and a dropped payload stores an empty
+        onboarding while still reporting success to the client.
+        """
+        with patch(
+            _COMPLETE_ONBOARDING,
+            new_callable=AsyncMock,
+            return_value={"user_id": FAKE_USER_ID},
+        ) as mock_complete:
+            response = await client.post(BASE_URL, json=_make_onboarding_request())
+
+        assert response.status_code == 200
+        user_id, submitted = mock_complete.await_args.args
+        assert user_id == FAKE_USER_ID
+        assert submitted.profession == "Developer"
+        assert [need.value for need in submitted.needs] == ["inbox", "todos"]
+        assert submitted.timezone == "UTC"
+
 
 class TestOnboardingAnalytics:
     """Analytics captures on onboarding endpoints."""
@@ -225,6 +246,7 @@ class TestOnboardingAnalytics:
 
         assert response.status_code == 200
         submitted = mock_complete.call_args.args[1]
+        assert submitted.profession == "Developer"
         assert not hasattr(submitted, "name")
 
     async def test_complete_onboarding_service_error_returns_500(self, client: AsyncClient):

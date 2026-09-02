@@ -16,6 +16,7 @@ from app.services.analytics_service import (
     track_signup,
     track_subscription_event,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -330,6 +331,24 @@ class TestTrackSubscriptionEvent:
         assert props["plan_name"] == "pro"
         assert props["amount"] == pytest.approx(9.99)
         assert props["currency"] == "USD"
+
+    async def test_the_wide_event_names_the_plan_that_was_billed(self, mock_posthog):
+        """Billing support reads the request's wide event, not PostHog — a
+        subscription field under the wrong key is invisible to every query."""
+        async with captured_wide_event() as event:
+            track_subscription_event(
+                "user1",
+                AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+                subscription_id="sub123",
+                plan=SubscriptionPlan(name="pro", amount=9.99, currency="USD"),
+            )
+
+        assert event["subscription"] == {
+            "user_id": "user1",
+            "event_type": AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+            "plan_name": "pro",
+            "subscription_id": "sub123",
+        }
 
     def test_removes_none_values(self, mock_posthog):
         track_subscription_event(

@@ -1076,6 +1076,9 @@ class TestGetUserSubscriptionStatus:
 
         assert status.is_subscribed is False
         assert status.has_ever_subscribed is True
+        # Scoped to this user: an unscoped history read would show the "your
+        # subscription ended" copy to everyone the moment anyone had ever paid.
+        mock_subscription_repository.has_any_for_user.assert_awaited_once_with(FAKE_USER_ID)
 
     async def test_active_subscription_returns_pro_status(
         self,

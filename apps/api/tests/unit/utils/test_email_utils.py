@@ -31,6 +31,21 @@ class TestDeriveNameFromEmail:
     @pytest.mark.parametrize(
         ("email", "expected"),
         [
+            # Only the FIRST "@" ends the local part: a stray second "@" belongs
+            # to the domain, never to the derived name.
+            ("john.doe@sub@example.com", "John Doe"),
+            # Only the FIRST "+" starts the plus-tag: everything after it is
+            # dropped, including further "+" segments.
+            ("john.doe+gaia+signup@example.com", "John Doe"),
+            ("john.doe+a+b+c@example.com", "John Doe"),
+        ],
+    )
+    def test_only_the_first_delimiter_bounds_the_name(self, email: str, expected: str) -> None:
+        assert derive_name_from_email(email) == expected
+
+    @pytest.mark.parametrize(
+        ("email", "expected"),
+        [
             ("12345@example.com", "12345"),
             ("...@example.com", "..."),
             ("@example.com", ""),

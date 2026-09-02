@@ -500,6 +500,26 @@ class TestNewUserGuidanceBlock:
             )
         assert NEED_PLAYBOOKS[OnboardingNeed.TODOS] in block
 
+    async def test_a_skipped_need_names_itself_in_the_wide_event(self) -> None:
+        """Silently dropping a need would look identical to never picking it —
+        the warning is the only trace that a rename left users unserved."""
+        async with captured_wide_event() as event:
+            with self._patch_count(self._count(1)):
+                await build_new_user_guidance_block(
+                    ctx(user_preferences={"profession": "Founder", "needs": ["telepathy", "todos"]})
+                )
+
+        assert event["warnings"] == [
+            {"msg": "Unknown onboarding need in preferences", "need": "telepathy"}
+        ]
+
+    async def test_a_user_with_no_profession_still_gets_their_playbooks(self) -> None:
+        """The profession is optional; its absence must leave the guidance clean
+        rather than leak a placeholder into the prompt."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
+        assert block == build_new_user_guidance("", [OnboardingNeed.INBOX])
+
     async def test_a_failed_count_yields_no_block(self) -> None:
         with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
             assert (
@@ -509,8 +529,66 @@ class TestNewUserGuidanceBlock:
                 == ""
             )
 
+    async def test_a_failed_count_is_visible_in_the_wide_event(self) -> None:
+        async with captured_wide_event() as event:
+            with self._patch_count(AsyncMock(side_effect=RuntimeError("mongo down"))):
+                await build_new_user_guidance_block(
+                    ctx(
+                        user_id="user-9",
+                        user_preferences={"profession": "Founder", "needs": ["inbox"]},
+                    )
+                )
+
+        assert event["warnings"] == [
+            {
+                "msg": "Error counting conversations for new-user guidance",
+                "error": "mongo down",
+                "error_type": "RuntimeError",
+                "user_id": "user-9",
+            }
+        ]
+
+    async def test_the_conversation_count_is_scoped_to_this_user(self) -> None:
+        """Counting someone else's conversations would keep the block alive long
+        past the point the user stopped being new."""
+        counter = self._count(1)
+        with self._patch_count(counter):
+            await build_new_user_guidance_block(
+                ctx(
+                    user_id="user-9", user_preferences={"profession": "Founder", "needs": ["inbox"]}
+                )
+            )
+        counter.assert_awaited_once_with("user-9")
+
     async def test_every_need_has_a_playbook(self) -> None:
         assert set(NEED_PLAYBOOKS) == set(OnboardingNeed)
+
+    async def test_each_playbook_is_its_own_bullet_line(self) -> None:
+        """Two needs are two lines. Run them together and the model reads one
+        malformed bullet instead of two instructions."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox", "todos"]})
+            )
+        assert (
+            f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}\n- {NEED_PLAYBOOKS[OnboardingNeed.TODOS]}"
+            in block
+        )
+
+    async def test_a_user_who_skipped_the_profession_is_addressed_as_a_person(self) -> None:
+        """The template interpolates the profession three times; an unset Q1
+        must render a plain noun, never an empty hole the model reads around."""
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
+        assert block.startswith("FIRST CONVERSATIONS (you just met this person)")
+        assert "person's plate" in block
+        assert "the way a person talks" in block
+
+    async def test_no_needs_renders_nothing_rather_than_a_headerless_block(self) -> None:
+        """The guard behind the fetcher's own check: a block with an empty
+        playbook list is the generic coaching this whole section exists to
+        replace, so it must be empty string, not an empty shell."""
+        assert build_new_user_guidance("Founder", []) == ""
 
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
         """Every need at once is the largest this can ever be."""

@@ -10,9 +10,8 @@ import Composer from "@/features/chat/components/composer/Composer";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { FounderLetter } from "@/features/chat/components/interface/founder-letter/FounderLetter";
 import { useActiveConversation } from "@/features/chat/components/interface/hooks/useActiveConversation";
+import { useAutoSendPendingPrompt } from "@/features/chat/components/interface/hooks/useAutoSendPendingPrompt";
 import { useChatLayout } from "@/features/chat/components/interface/hooks/useChatLayout";
-import { usePendingPromptDelivery } from "@/features/chat/components/interface/hooks/usePendingPromptDelivery";
-import { useQueryParamPrompt } from "@/features/chat/components/interface/hooks/useQueryParamPrompt";
 import { useVoiceModeControls } from "@/features/chat/components/interface/hooks/useVoiceModeControls";
 import { useWorkflowAutoSend } from "@/features/chat/components/interface/hooks/useWorkflowAutoSend";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
@@ -40,7 +39,6 @@ const MainChat = React.memo(function MainChat() {
     dummySectionRef,
     inputRef,
     fileUploadRef,
-    appendToInputRef,
     convoIdParam,
   } = useChatLayout();
 
@@ -72,8 +70,7 @@ const MainChat = React.memo(function MainChat() {
     multiple: true,
   });
 
-  usePendingPromptDelivery(appendToInputRef);
-  useQueryParamPrompt(appendToInputRef);
+  useAutoSendPendingPrompt();
 
   const { voiceModeActive, onVoiceModeHover, startVoiceMode, endVoiceCall } =
     useVoiceModeControls(convoIdParam);
@@ -82,7 +79,6 @@ const MainChat = React.memo(function MainChat() {
     inputRef,
     scrollToBottom,
     fileUploadRef,
-    appendToInputRef,
     hasMessages,
     onVoiceModeHover,
     voiceModeActive: startVoiceMode,

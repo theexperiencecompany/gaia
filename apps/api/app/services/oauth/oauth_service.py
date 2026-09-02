@@ -391,7 +391,7 @@ async def _refresh_bio_status_for_reconnect(user_id: str, user_doc: UserDocument
     """Bump a bio generated without Gmail back to processing so the UI re-runs."""
     try:
         current_bio_status = (user_doc.onboarding or {}).get("bio_status")
-        if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
+        if current_bio_status == BioStatus.NO_GMAIL:
             await user_repository.set_bio_status(user_id, BioStatus.PROCESSING)
             log.info(
                 f"{LogTag.OAUTH} Updated bio_status to processing",
@@ -440,12 +440,12 @@ async def _handle_gmail_connection(user_id: str) -> None:
             exc_info=True,
         )
 
-    onboarding = (user_doc.onboarding if user_doc else None) or {}
+    onboarding = (user_doc.onboarding if user_doc is not None else None) or {}
     onboarding_completed = bool(onboarding.get("completed"))
 
     # If bio was generated without Gmail (post-onboarding reconnect),
     # bump bio_status back to processing so the UI re-runs.
-    if onboarding_completed and user_doc:
+    if onboarding_completed and user_doc is not None:
         await _refresh_bio_status_for_reconnect(user_id, user_doc)
 
     # Connecting Gmail is what earns the personalization pipeline: inbox scan,

@@ -97,6 +97,13 @@ class TestMintAndConsume:
             with pytest.raises(AppError) as excinfo:
                 await mint_platform_link_code("user1", FIRST_MESSAGE)
         assert excinfo.value.status_code == 503
+        # The whole payload the client renders — a blank or garbled why/fix
+        # leaves the user with a dead end instead of a retry.
+        assert excinfo.value.to_dict() == {
+            "message": "Could not start platform linking. Please retry.",
+            "why": "the link code could not be stored (Redis unavailable)",
+            "fix": "retry in a moment, or connect the platform from settings with /auth",
+        }
 
 
 class TestHandoffLinks:

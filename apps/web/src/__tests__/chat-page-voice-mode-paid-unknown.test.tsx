@@ -61,7 +61,6 @@ vi.mock("@/features/chat/components/interface/hooks/useChatLayout", () => ({
     dummySectionRef: { current: null },
     inputRef: { current: null },
     fileUploadRef: { current: null },
-    appendToInputRef: { current: null },
     convoIdParam: null,
   }),
 }));

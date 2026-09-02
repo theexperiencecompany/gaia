@@ -12,7 +12,6 @@ interface NewChatSectionProps {
     fileUploadRef: React.RefObject<{
       attachFiles: (files: File[]) => Promise<void>;
     } | null>;
-    appendToInputRef: React.RefObject<((text: string) => void) | null>;
     hasMessages: boolean;
     voiceModeActive: () => void;
   };

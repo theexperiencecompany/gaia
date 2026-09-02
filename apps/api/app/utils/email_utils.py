@@ -33,10 +33,10 @@ def derive_name_from_email(email: str) -> str:
     nothing presentable survives (all digits, empty local part) the raw local
     part is returned rather than an empty string.
     """
-    local_part = email.split("@", 1)[0].strip()
+    local_part = email.partition("@")[0].strip()
     words = [
         stripped.capitalize()
-        for word in _LOCAL_PART_WORD_SPLIT.split(local_part.split("+", 1)[0])
+        for word in _LOCAL_PART_WORD_SPLIT.split(local_part.partition("+")[0])
         if (stripped := _TRAILING_DIGITS.sub("", word))
     ]
     return " ".join(words) if words else local_part

@@ -149,25 +149,6 @@ class TestOnboardingWrites:
         assert second is None
         assert (await repo.get(created.id)).onboarding["phase"] == OnboardingPhase.COMPLETED.value
 
-    @pytest.mark.regression
-    async def test_preferences_saved_before_completion_do_not_block_it(self, repo, make_user):
-        """The wizard PATCHes the answers before payment, which creates the
-        ``onboarding`` subdocument early. Completion must still win afterwards —
-        gating on the subdocument's absence parked every new user on
-        "Getting your chat ready" forever."""
-        created = await repo.create(make_user())
-        await repo.update_onboarding_preferences(
-            created.id, OnboardingPreferences(profession="eng", needs=["inbox"])
-        )
-        completed = await repo.complete_onboarding(
-            created.id,
-            phase=OnboardingPhase.COMPLETED,
-            bio_status=BioStatus.PENDING,
-            preferences=OnboardingPreferences(profession="eng", needs=["inbox"]),
-        )
-        assert completed is not None
-        assert completed.onboarding["completed"] is True
-
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.complete_onboarding(

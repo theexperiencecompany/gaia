@@ -14,10 +14,15 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
-from app.api.v1.endpoints.bot import _bot_rate_limit_notice, bot_chat_stream
+from app.api.v1.endpoints.bot import (
+    _bot_rate_limit_notice,
+    bot_chat_stream,
+    redeem_link_code,
+)
+from app.constants.auth import AUDIT_ACTOR_BOT_API
 from app.core.stream_manager import with_heartbeat
 from app.db.redis import redis_cache
-from app.models.bot_models import BotChatRequest
+from app.models.bot_models import BotChatRequest, RedeemLinkCodeRequest
 from app.models.payment_models import (
     CreateSubscriptionResponse,
     PlanDuration,
@@ -248,6 +253,11 @@ class TestRedeemLinkCode:
             f"{BOT_BASE}/redeem-link-code", json={**REDEEM_BODY, "platform": "myspace"}
         )
         assert response.status_code == 422
+        # The rejection names the offending platform — a bot operator sending a
+        # typo'd platform has to be able to tell what was wrong from the body.
+        errors = response.json()["detail"]
+        assert [err["loc"] for err in errors] == [["body", "platform"]]
+        assert "myspace" in errors[0]["msg"]
 
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_header_mismatch_is_rejected_before_the_code_is_consumed(
@@ -270,6 +280,206 @@ class TestRedeemLinkCode:
 
         assert response.status_code == 403
         mock_consume.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_a_platform_mismatch_alone_is_enough_to_reject(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """The two halves of the guard are independent: a Discord key redeeming a
+        Telegram code carries the SAME handle it is authenticated for, so only
+        the platform half can catch it."""
+
+        async def _wrong_platform(request):
+            request.state.bot_platform = "discord"
+            request.state.bot_platform_user_id = "TG42"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_wrong_platform),
+            ),
+            patch(CONSUME_PATCH, new_callable=AsyncMock) as mock_consume,
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        mock_consume.assert_not_awaited()
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_expired_code_body_tells_the_user_what_to_do_next(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        """This body is the whole reply a bot user sees when a one-tap link goes
+        stale — the why/fix pair is what turns a dead end into a retry."""
+        with patch(CONSUME_PATCH, new_callable=AsyncMock, return_value=None):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "message": "This link has expired or was already used.",
+            "why": "the one-tap code is single-use and short-lived",
+            "fix": "head back to GAIA on the web and pick your platform again",
+        }
+
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_header_mismatch_body_names_the_mismatch(
+        self, _auth: AsyncMock, client: AsyncClient
+    ):
+        async def _mismatched_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "SOMEONE_ELSE"
+
+        with patch(
+            "app.api.v1.endpoints.bot.require_bot_api_key",
+            new=AsyncMock(side_effect=_mismatched_request),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 403
+        assert response.json() == {
+            "message": "Request body does not match the authenticated bot headers"
+        }
+
+    async def test_a_matching_header_is_not_treated_as_a_mismatch(self, client: AsyncClient):
+        """The guard compares for INEQUALITY: flipped to `==`, the ordinary case
+        where the bot's own headers match the body would 403 every redemption."""
+
+        async def _matching_request(request):
+            request.state.bot_platform = "telegram"
+            request.state.bot_platform_user_id = "TG42"
+
+        with (
+            patch(
+                "app.api.v1.endpoints.bot.require_bot_api_key",
+                new=AsyncMock(side_effect=_matching_request),
+            ),
+            patch(
+                CONSUME_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 200
+
+    async def test_the_presented_code_is_the_one_redeemed_and_the_plan_is_checked(
+        self, client: AsyncClient
+    ):
+        """The code is the credential and the plan check is the paywall: a call
+        that loses either argument links the wrong person, or nobody's plan."""
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(
+                CONSUME_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ) as mock_consume,
+            patch(
+                "app.api.v1.endpoints.bot.require_platform_plan", new_callable=AsyncMock
+            ) as mock_plan,
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            response = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
+
+        assert response.status_code == 200
+        mock_consume.assert_awaited_once_with("CODE123")
+        mock_plan.assert_awaited_once_with("user1", "telegram")
+
+    async def test_a_successful_redemption_stamps_the_wide_event_and_the_audit_trail(self):
+        """Linking a platform account is an auth-grade event: the audit entry is
+        the only record of which GAIA user claimed which handle, and the wide
+        event is what makes the redemption findable at all."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request()
+
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(
+                CONSUME_PATCH,
+                new_callable=AsyncMock,
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
+            ),
+            patch("app.api.v1.endpoints.bot.require_platform_plan", new=AsyncMock()),
+            patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
+        ):
+            async with log_context("redeem_link_code_test"):
+                result = await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert result.linked is True
+        assert event["operation"] == "redeem_link_code"
+        assert event["platform"] == "telegram"
+        assert event["user"] == {"id": "user1"}
+        assert event["outcome"] == "success"
+        assert event["is_new_link"] is True
+        assert event["audit"] == [
+            {
+                "msg": "platform account linked via one-tap code",
+                "actor": "user1",
+                "resource": "TG42",
+                "provider": "telegram",
+            }
+        ]
+
+    async def test_a_rejected_code_is_audited_with_its_reason_and_never_the_code(self):
+        """A probe hammering codes has to be findable, and the audit entry is the
+        only place that records it — never carrying the code, which is the
+        credential being guessed."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request()
+
+        with (
+            patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()),
+            patch(CONSUME_PATCH, new_callable=AsyncMock, return_value=None),
+        ):
+            async with log_context("redeem_link_code_test"):
+                with pytest.raises(AppError) as exc_info:
+                    await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert exc_info.value.status_code == 400
+        assert event["audit"] == [
+            {
+                "msg": "platform link code rejected",
+                "actor": AUDIT_ACTOR_BOT_API,
+                "resource": "TG42",
+                "provider": "telegram",
+                "reason": "unknown_or_expired_code",
+            }
+        ]
+        assert "CODE123" not in str(event)
+
+    async def test_a_header_mismatch_is_audited_as_a_mismatch_not_a_bad_code(self):
+        """Two rejections share one audit message, so `reason` is the only thing
+        separating an expired link from an API key reaching for someone else's
+        handle — the second is an attack, the first is a Tuesday."""
+        body = RedeemLinkCodeRequest(platform="telegram", platform_user_id="TG42", code="CODE123")
+        request = MagicMock()
+        request.state = _make_request(bot_platform="telegram", bot_platform_user_id="SOMEONE_ELSE")
+
+        with patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock()):
+            async with log_context("redeem_link_code_test"):
+                with pytest.raises(AppError) as exc_info:
+                    await redeem_link_code(request, body)
+                event = dict(log.get())
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.message == "Request body does not match the authenticated bot headers"
+        assert event["operation"] == "redeem_link_code"
+        assert event["platform"] == "telegram"
+        assert event["audit"] == [
+            {
+                "msg": "platform link code rejected",
+                "actor": AUDIT_ACTOR_BOT_API,
+                "resource": "TG42",
+                "provider": "telegram",
+                "reason": "platform_header_mismatch",
+            }
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -1560,6 +1770,33 @@ class TestBotTranscribe:
         assert response.status_code == 402
         assert response.json()["detail"]["code"] == "subscription_required"
         mock_transcribe.assert_not_called()
+
+    @patch(
+        "app.api.v1.endpoints.bot.transcribe_audio",
+        new_callable=AsyncMock,
+        return_value="hello there",
+    )
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
+    async def test_the_gate_is_asked_about_this_caller_and_this_feature(
+        self,
+        mock_auth: AsyncMock,
+        mock_transcribe: AsyncMock,
+        client: AsyncClient,
+        fake_user: dict,
+    ):
+        """The user id is what makes the gate a gate — asked about nobody, every
+        caller passes — and `feature` is what the 402 and its metrics are keyed
+        on, so a wrong one turns transcription refusals into someone else's."""
+        with patch(
+            "app.api.v1.endpoints.bot.require_active_subscription", new_callable=AsyncMock
+        ) as mock_gate:
+            response = await client.post(
+                f"{BOT_BASE}/transcribe",
+                files={"file": ("voice.ogg", b"fake-audio-bytes", "audio/ogg")},
+            )
+
+        assert response.status_code == 200
+        mock_gate.assert_awaited_once_with(str(fake_user["user_id"]), feature="bot_transcribe")
 
     @patch("app.api.v1.endpoints.bot.capture_event")
     @patch(

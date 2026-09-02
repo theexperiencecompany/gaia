@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.services.payments.payment_service import payment_service
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -48,6 +50,32 @@ def _make_subscription_mock(plan_type: PlanType | None = None) -> MagicMock:
     # behavior is covered separately by TestChatStreamPaywall.
     sub.plan_type = plan_type or PlanType.PRO
     return sub
+
+
+@pytest.fixture(autouse=True)
+def fresh_redis_client():
+    """Every test runs on its own event loop, and a connection the previous
+    test opened stays bound to a loop that no longer runs: the cost-budget
+    read uses the raw client and dies on it with a RuntimeError the fail-open
+    handler does not cover. Start each test from a lazily-created client."""
+    redis_cache.redis = None
+    yield
+    redis_cache.redis = None
+
+
+@pytest.fixture(autouse=True)
+def bypass_plan_cache():
+    """The paid-only gate reads the plan through a Redis cache. A value left
+    there by another test — or by a previous run against the same Redis —
+    would override the subscription mock every test below relies on, so the
+    lookup is answered straight from that mock."""
+
+    async def _uncached(user_id: str) -> PlanType:
+        status = await payment_service.get_user_subscription_status(user_id)
+        return PlanType(status.plan_type)
+
+    with patch.object(payment_service, "get_cached_plan_type", side_effect=_uncached):
+        yield
 
 
 # ---------------------------------------------------------------------------

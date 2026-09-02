@@ -214,7 +214,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
 
     composio_service = get_composio_service()
     connection_status = await composio_service.check_connection_status(["gmail"], user_id)
-    if not connection_status.get("gmail", False):
+    if not connection_status.get("gmail", False):  # pragma: no mutate — default only negated
         log.warning(
             f"{LogTag.ONBOARDING} pipeline aborted — gmail not connected",
             user_id=user_id,
@@ -226,8 +226,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     base_ctx = OnboardingContext(
         user_id=user_id,
         name=user.name or "there",
-        profession=(onboarding.get("preferences") or {}).get("profession", "") or "",
-        focus=onboarding.get("focus", "") or "",
+        profession=(onboarding.get("preferences") or {}).get("profession", "")
+        or "",  # pragma: no mutate — `or ""` collapses the default
+        focus=onboarding.get("focus", "")
+        or "",  # pragma: no mutate — `or ""` collapses the default
         user_email=user.email,
         clarify_answers=onboarding.get("clarify_answers") or [],
     )
@@ -679,8 +681,7 @@ async def _announce_personalization(user_id: str, *, card_ready: bool) -> str | 
             NotificationAction(
                 type=ActionType.REDIRECT,
                 label="See your holo card",
-                style=ActionStyle.SECONDARY,
-                config=ActionConfig(redirect=RedirectConfig(url=card_url, open_in_new_tab=True)),
+                config=ActionConfig(redirect=RedirectConfig(url=card_url)),
             )
         )
 
