@@ -91,7 +91,6 @@ apps/api/app/services/workflow/generation_service.py	PLR0915
 apps/api/app/utils/auth_utils.py	PLR0911
 apps/api/app/utils/auth_utils.py	PLR0912
 apps/api/app/utils/chat_utils.py	PLR0913
-apps/api/app/utils/composio_hooks/gmail_hooks.py	PLR0912
 apps/api/app/utils/composio_hooks/reddit_hooks.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0912
 apps/api/app/utils/crawl4ai_utils.py	PLR0913

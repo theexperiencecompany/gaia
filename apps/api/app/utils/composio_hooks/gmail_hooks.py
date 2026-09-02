@@ -329,6 +329,79 @@ def _resolve_compose_attachments(
     return [{"name": a["name"], "mimetype": a["mimetype"]} for a in resolved]
 
 
+def _normalize_compose_body(arguments: dict[str, Any]) -> None:
+    """Convert the Markdown body to HTML in place and flag it (idempotent).
+
+    The agent writes Markdown; Gmail renders Markdown literally as plain text.
+    """
+    for body_key in _GMAIL_BODY_KEYS:
+        raw_body = arguments.get(body_key)
+        if isinstance(raw_body, str) and raw_body:
+            arguments[body_key] = normalize_email_body_to_html(raw_body)
+    arguments["is_html"] = True
+
+
+def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
+    """Map ``to`` -> ``recipient_email`` and confirm a SEND/DRAFT call is streamable.
+
+    Non-compose tools (reply/forward) are always ready. Returns False (and logs) when
+    a SEND/DRAFT call is missing a recipient or any content, so streaming is skipped.
+    """
+    if tool not in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"):
+        return True
+    if "to" in arguments and "recipient_email" not in arguments:
+        arguments["recipient_email"] = arguments["to"]
+        log.info(f"{LogTag.COMPOSIO} Mapped 'to' argument to 'recipient_email' for", tool=tool)
+    has_recipient = bool(
+        arguments.get("recipient_email")
+        or arguments.get("to")
+        or arguments.get("cc")
+        or arguments.get("bcc")
+    )
+    has_content = bool(arguments.get("subject") or arguments.get("body"))
+    if not has_recipient or not has_content:
+        log.warning(
+            f"{LogTag.COMPOSIO} Skipping streaming: missing required fields",
+            tool_name=tool,
+            has_recipient=has_recipient,
+            has_content=has_content,
+        )
+        return False
+    return True
+
+
+def _compose_recipients(tool: str, arguments: dict[str, Any]) -> list[str]:
+    """Flatten the recipient set for the compose card, per tool."""
+    if tool == "GMAIL_FORWARD_MESSAGE":
+        recipients = arguments.get("to_recipients", [])
+        return [recipients] if isinstance(recipients, str) else recipients
+    extra_recipients = arguments.get("extra_recipients", [])
+    if not isinstance(extra_recipients, list):
+        extra_recipients = []
+    return [arguments.get("recipient_email", ""), *extra_recipients]
+
+
+def _stream_compose_preview(
+    tool: str, arguments: dict[str, Any], attachment_display: list[_AttachmentDisplay]
+) -> None:
+    """Stream the compose (draft) or sent card payload to the chat."""
+    writer = get_stream_writer()
+    emails_data = [
+        {
+            "to": _compose_recipients(tool, arguments),
+            "subject": arguments.get("subject", ""),
+            "body": arguments.get("body", ""),
+            "thread_id": arguments.get("thread_id", ""),
+            "bcc": arguments.get("bcc", []),
+            "cc": arguments.get("cc", []),
+            "is_html": arguments.get("is_html", False),
+            "attachments": attachment_display,
+        }
+    ]
+    key = "email_compose_data" if tool == "GMAIL_CREATE_EMAIL_DRAFT" else "email_sent_data"
+    writer({key: emails_data})
+
+
 @register_before_hook(
     tools=[
         "GMAIL_SEND_EMAIL",
@@ -340,109 +413,19 @@ def _resolve_compose_attachments(
 def gmail_compose_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
-    """Handle email composition response and streaming data."""
-
+    """Resolve attachments, normalise the body, and stream the compose/sent card."""
     log.set(gmail_tool=tool, toolkit=toolkit)
     try:
         arguments = params.get("arguments", {})
-
-        # Resolve any file references the agent supplied into real Composio uploads
-        # BEFORE the tool runs. Raises HookAbortError (propagated below) if a file
-        # can't be attached, so we never send mail missing a requested attachment.
+        # Resolve file references into real Composio uploads BEFORE the tool runs.
+        # Raises HookAbortError (propagated below) if a file can't be attached, so
+        # we never send mail missing a requested attachment.
         attachment_display = _resolve_compose_attachments(tool, toolkit, params)
-
-        # Always normalise the body to HTML before it reaches Gmail. The agent
-        # writes Markdown; Gmail renders Markdown literally as plain text. The
-        # normaliser is idempotent on already-HTML bodies so callers that hand
-        # us HTML are unaffected.
-        for body_key in _GMAIL_BODY_KEYS:
-            raw_body = arguments.get(body_key)
-            if isinstance(raw_body, str) and raw_body:
-                arguments[body_key] = normalize_email_body_to_html(raw_body)
-        arguments["is_html"] = True
+        _normalize_compose_body(arguments)
         params["arguments"] = arguments
-
-        if tool in ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"]:
-            # Auto-convert 'to' to 'recipient_email' if needed
-            if "to" in arguments and "recipient_email" not in arguments:
-                arguments["recipient_email"] = arguments["to"]
-                params["arguments"] = arguments
-                log.info(
-                    f"{LogTag.COMPOSIO} Mapped 'to' argument to 'recipient_email' for", tool=tool
-                )
-
-            # Check if at least one recipient type is provided
-            recipient = arguments.get("recipient_email") or arguments.get("to")
-            cc = arguments.get("cc", [])
-            bcc = arguments.get("bcc", [])
-
-            has_recipient = bool(recipient) or bool(cc) or bool(bcc)
-
-            # Check if at least one of subject or body is provided
-            subject = arguments.get("subject")
-            body = arguments.get("body")
-
-            has_content = bool(subject) or bool(body)
-
-            # If validation fails, return params immediately to skip streaming
-            if not has_recipient or not has_content:
-                log.warning(
-                    f"{LogTag.COMPOSIO} Skipping streaming: missing required fields",
-                    tool_name=tool,
-                    has_recipient=has_recipient,
-                    has_content=has_content,
-                )
-                return params
-
-        writer = get_stream_writer()
-
-        # Handle different recipient formats based on tool
-        if tool == "GMAIL_FORWARD_MESSAGE":
-            recipients = arguments.get("to_recipients", [])
-            if isinstance(recipients, str):
-                recipients = [recipients]
-        else:
-            extra_recipients = arguments.get("extra_recipients", [])
-            if not isinstance(extra_recipients, list):
-                extra_recipients = []
-            recipients = [
-                arguments.get("recipient_email", ""),
-                *extra_recipients,
-            ]
-
-        # Build the email compose data
-        emails_data = [
-            {
-                "to": recipients,
-                "subject": arguments.get("subject", ""),
-                "body": arguments.get("body", ""),
-                "thread_id": arguments.get("thread_id", ""),
-                "bcc": arguments.get("bcc", []),
-                "cc": arguments.get("cc", []),
-                "is_html": arguments.get("is_html", False),
-                "attachments": attachment_display,
-            }
-        ]
-
-        # Check if the operation was successful and send appropriate payload
-        if tool == "GMAIL_CREATE_EMAIL_DRAFT":
-            # Send compose data to frontend with draft_id
-            payload = {
-                "email_compose_data": emails_data,
-            }
-            writer(payload)
-
-        elif tool in [
-            "GMAIL_SEND_EMAIL",
-            "GMAIL_REPLY_TO_THREAD",
-            "GMAIL_FORWARD_MESSAGE",
-        ]:
-            # Send email sent data to frontend
-            payload = {"email_sent_data": emails_data}
-            writer(payload)
-
+        if _compose_recipient_ready(tool, arguments):
+            _stream_compose_preview(tool, arguments, attachment_display)
         return params
-
     except HookAbortError:
         # Attachment resolution failed: propagate so the compose tool aborts
         # instead of sending mail without the file the user asked to attach.
