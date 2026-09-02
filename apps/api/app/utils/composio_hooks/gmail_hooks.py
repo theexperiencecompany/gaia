@@ -7,10 +7,11 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
-from typing import Any, TypeVar
+from typing import Any, TypedDict, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
+from pydantic import BaseModel, ValidationError
 
 from app.agents.templates.mail_templates import (
     detailed_message_template,
@@ -28,10 +29,17 @@ from app.models.composio_schemas.google_people import (
     GooglePersonName,
     GooglePersonValue,
 )
+from app.services.composio.attachments import (
+    AttachmentReference,
+    ComposioAttachment,
+    resolve_attachments_sync,
+)
+from app.utils.errors import AppError
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
 from .registry import (
+    HookAbortError,
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
@@ -175,6 +183,57 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
     return schema
 
 
+_ATTACHMENTS_PARAM_SCHEMA: dict[str, Any] = {
+    "type": "array",
+    "description": (
+        "Files to attach to the email. Each item references ONE file by EITHER "
+        "'workspace_path' (a file in the current session workspace, e.g. one the user "
+        "uploaded or an agent saved there) OR 'url' (a fetchable link). To attach a "
+        "Google Drive file, first call GOOGLEDRIVE_DOWNLOAD_FILE and pass the download "
+        "URL it returns as 'url'. Total message size must stay under 25 MB."
+    ),
+    "items": {
+        "type": "object",
+        "properties": {
+            "workspace_path": {
+                "type": "string",
+                "description": "Path to a file in the current session workspace (relative to /workspace).",
+            },
+            "url": {
+                "type": "string",
+                "description": "A fetchable URL to the file, e.g. a GOOGLEDRIVE_DOWNLOAD_FILE download URL.",
+            },
+            "name": {
+                "type": "string",
+                "description": "Optional filename to use for the attachment.",
+            },
+        },
+    },
+}
+
+
+@register_schema_modifier(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
+def gmail_compose_attachments_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
+    """Expose a friendly ``attachments`` param instead of Composio's raw ``attachment``.
+
+    Composio's native ``attachment`` takes a pre-uploaded ``{name, mimetype, s3key}``,
+    which an agent cannot produce. We swap it for ``attachments`` — a list of file
+    references (workspace path or URL) — that ``gmail_compose_before_hook`` resolves to
+    real Composio uploads before the tool runs.
+    """
+    input_params: object = schema.input_parameters
+    if not isinstance(input_params, dict):
+        return schema
+    props = input_params.get("properties")
+    if isinstance(props, dict):
+        props.pop("attachment", None)
+        props["attachments"] = _ATTACHMENTS_PARAM_SCHEMA
+    required = input_params.get("required")
+    if isinstance(required, list) and "attachment" in required:
+        required.remove("attachment")
+    return schema
+
+
 @register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
@@ -213,6 +272,63 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 # These hooks send progress/streaming data to frontend before tool execution
 
 
+class _AttachmentDisplay(TypedDict):
+    """The per-attachment metadata streamed to the compose card (never the s3key)."""
+
+    name: str
+    mimetype: str
+
+
+def _resolve_compose_attachments(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> list[_AttachmentDisplay]:
+    """Turn the agent's ``attachments`` references into Composio's ``attachment`` arg.
+
+    Uploads each referenced file to Composio and rewrites ``arguments`` in place.
+    Raises ``HookAbortError`` on any failure so the compose tool does NOT run with a
+    missing file (a silently attachment-less draft would be a data-loss bug).
+    """
+    arguments = params.get("arguments", {})
+    raw = arguments.get("attachments")
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        raise HookAbortError("`attachments` must be a list of file references.")
+
+    user_id = params.get("user_id")
+    if not user_id:
+        raise HookAbortError("Cannot resolve email attachments without a user context.")
+
+    try:
+        # Items arrive as dicts (REST) or as Composio's schema-generated Pydantic
+        # models (agent path, where langchain coerces the tool args) — normalise
+        # both to a plain mapping before validating into our reference model.
+        references = [
+            AttachmentReference.model_validate(
+                item.model_dump() if isinstance(item, BaseModel) else item
+            )
+            for item in raw
+        ]
+    except ValidationError as exc:
+        raise HookAbortError(f"Invalid attachment reference: {exc}") from exc
+
+    try:
+        resolved: list[ComposioAttachment] = resolve_attachments_sync(
+            user_id, references, tool=tool, toolkit=toolkit
+        )
+    except AppError as exc:
+        raise HookAbortError(exc.message) from exc
+
+    # Composio's Gmail ``attachment`` is a single FileUploadable OR a list. The
+    # pinned toolkit version only accepts the single-object form for one file, so
+    # send a bare object when there is exactly one and reserve the list for many.
+    arguments["attachment"] = resolved[0] if len(resolved) == 1 else resolved
+    del arguments["attachments"]
+    params["arguments"] = arguments
+    log.set(gmail_attachment_count=len(resolved))
+    return [{"name": a["name"], "mimetype": a["mimetype"]} for a in resolved]
+
+
 @register_before_hook(
     tools=[
         "GMAIL_SEND_EMAIL",
@@ -229,6 +345,11 @@ def gmail_compose_before_hook(
     log.set(gmail_tool=tool, toolkit=toolkit)
     try:
         arguments = params.get("arguments", {})
+
+        # Resolve any file references the agent supplied into real Composio uploads
+        # BEFORE the tool runs. Raises HookAbortError (propagated below) if a file
+        # can't be attached, so we never send mail missing a requested attachment.
+        attachment_display = _resolve_compose_attachments(tool, toolkit, params)
 
         # Always normalise the body to HTML before it reaches Gmail. The agent
         # writes Markdown; Gmail renders Markdown literally as plain text. The
@@ -299,6 +420,7 @@ def gmail_compose_before_hook(
                 "bcc": arguments.get("bcc", []),
                 "cc": arguments.get("cc", []),
                 "is_html": arguments.get("is_html", False),
+                "attachments": attachment_display,
             }
         ]
 
@@ -321,6 +443,10 @@ def gmail_compose_before_hook(
 
         return params
 
+    except HookAbortError:
+        # Attachment resolution failed: propagate so the compose tool aborts
+        # instead of sending mail without the file the user asked to attach.
+        raise
     except Exception as e:
         log.error(
             f"{LogTag.COMPOSIO} Error in gmail_compose_before_hook",

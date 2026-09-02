@@ -24,6 +24,18 @@ GOOGLEDOCS_DESTRUCTIVE_TOOLS: list[str] = [
     "GOOGLEDOCS_DELETE_TAB",
 ]
 
+# Only permanent, trash-bypassing deletes gate. TRASH_FILE / UNTRASH_FILE are
+# reversible (recoverable from Drive trash) and are NOT listed; permission
+# changes are reversible too. DELETE_REVISION permanently drops a file version.
+GOOGLEDRIVE_DESTRUCTIVE_TOOLS: list[str] = [
+    "GOOGLEDRIVE_DELETE_DRIVE",
+    "GOOGLEDRIVE_DELETE_FILE",
+    "GOOGLEDRIVE_DELETE_REVISION",
+    "GOOGLEDRIVE_DELETE_TEAM_DRIVE",
+    "GOOGLEDRIVE_EMPTY_TRASH",
+    "GOOGLEDRIVE_GOOGLE_DRIVE_DELETE_FOLDER_OR_FILE_ACTION",
+]
+
 # GMAIL_DELETE_DRAFT is intentionally NOT gated: a draft is an unsent, agent-managed
 # artifact, and revising a draft means deleting the old one and creating a new one
 # (Gmail has no in-place edit). Gating it would prompt on every draft edit — routine

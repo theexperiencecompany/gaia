@@ -8,7 +8,6 @@ from langchain_core.tools import StructuredTool
 
 from app.constants.log_tags import LogTag
 from app.models.mail_models import (
-    GmailAttachmentPayload,
     GmailDraftsResponse,
     GmailEmailResult,
     GmailFetchEmailsData,
@@ -17,6 +16,7 @@ from app.models.mail_models import (
     GmailMessagesResponse,
     GmailToolResult,
 )
+from app.services.composio.attachments import ComposioAttachment, upload_bytes_sync
 from app.services.composio.composio_service import (
     get_composio_service,
 )
@@ -73,19 +73,26 @@ async def invoke_gmail_tool(
         return GmailToolResult(error=str(e), successful=False)
 
 
-def _process_attachments(attachments: list[UploadFile]) -> list[GmailAttachmentPayload]:
-    """Process UploadFile objects into format expected by Composio."""
-    processed: list[GmailAttachmentPayload] = [
-        {
-            "filename": att.filename,
-            "content": att.file.read(),
-            "content_type": att.content_type,
-        }
-        for att in attachments
-    ]
-    # Reset file pointers
+def _process_attachments(attachments: list[UploadFile], tool_name: str) -> list[ComposioAttachment]:
+    """Upload each multipart file to Composio, returning its ``{name, mimetype, s3key}``.
+
+    Composio's compose tools take files already uploaded to their store, not raw
+    bytes; ``upload_bytes_sync`` does that upload. Runs sync (called via
+    ``asyncio.to_thread``) because the Composio upload client is synchronous.
+    """
+    processed: list[ComposioAttachment] = []
     for att in attachments:
-        att.file.seek(0)
+        content = att.file.read()
+        att.file.seek(0)  # reset so a later reader sees the whole file
+        processed.append(
+            upload_bytes_sync(
+                content,
+                att.filename or "attachment",
+                att.content_type,
+                tool=tool_name,
+                toolkit="gmail",
+            )
+        )
     return processed
 
 
@@ -165,7 +172,9 @@ async def send_email(
         if content.bcc_list:
             parameters["bcc"] = content.bcc_list
         if attachments:
-            parameters["attachments"] = await asyncio.to_thread(_process_attachments, attachments)
+            processed = await asyncio.to_thread(_process_attachments, attachments, tool_name)
+            # Single object for one file, list for many — see gmail_compose_before_hook.
+            parameters["attachment"] = processed[0] if len(processed) == 1 else processed
 
         log.info(
             f"{LogTag.MAIL} Sending email via Gmail tool",

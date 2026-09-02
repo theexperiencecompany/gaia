@@ -155,7 +155,7 @@ class TestInvokeGmailTool:
 
 
 class TestProcessAttachments:
-    def test_converts_upload_files_to_dicts(self):
+    def test_uploads_upload_files_to_composio(self):
         import io
 
         upload = MagicMock()
@@ -163,12 +163,17 @@ class TestProcessAttachments:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"PDF content")
 
-        result = _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            result = _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
-        assert len(result) == 1
-        assert result[0]["filename"] == "report.pdf"
-        assert result[0]["content"] == b"PDF content"
-        assert result[0]["content_type"] == "application/pdf"
+        # Raw bytes + filename + content-type are handed to the Composio uploader,
+        # scoped to the invoking tool/toolkit.
+        assert mock_upload.call_args.args == (b"PDF content", "report.pdf", "application/pdf")
+        assert mock_upload.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+        assert result == [{"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
 
     def test_resets_file_pointer_after_read(self):
         upload = MagicMock()
@@ -177,13 +182,17 @@ class TestProcessAttachments:
         upload.file = MagicMock()
         upload.file.read.return_value = b"hello"
 
-        _process_attachments([upload])
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "file.txt", "mimetype": "text/plain", "s3key": "k/2"},
+        ):
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
 
         # seek(0) should have been called on the mock's file attribute
         upload.file.seek.assert_called_once_with(0)
 
     def test_handles_empty_list(self):
-        result = _process_attachments([])
+        result = _process_attachments([], "GMAIL_SEND_EMAIL")
         assert result == []
 
 
@@ -279,16 +288,32 @@ class TestSendEmail:
         upload.content_type = "application/pdf"
         upload.file = io.BytesIO(b"data")
 
-        await send_email(
-            user_id=USER_ID,
-            to="bob@example.com",
-            content=EmailContent(subject="Hi", body="Body"),
-            attachments=[upload],
-        )
+        # Mock the Composio upload one layer down so the REAL shaping runs: the
+        # bug this guards is the parameter Composio actually receives. Composio's
+        # Gmail tools take a singular ``attachment`` of ``{name, mimetype, s3key}``
+        # (a pre-uploaded file), NOT a plural ``attachments`` of raw bytes.
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={"name": "doc.pdf", "mimetype": "application/pdf", "s3key": "k/1"},
+        ) as mock_upload:
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=[upload],
+            )
 
+        # The bytes read off the UploadFile are handed to the Composio uploader.
+        assert mock_upload.call_args.args[0] == b"data"
         params = mock_invoke_gmail_tool.call_args[0][2]
-        assert "attachments" in params
-        assert len(params["attachments"]) == 1
+        assert "attachments" not in params
+        # One file -> a single FileUploadable object (the pinned Gmail toolkit
+        # version rejects a list), not a one-element list.
+        assert params["attachment"] == {
+            "name": "doc.pdf",
+            "mimetype": "application/pdf",
+            "s3key": "k/1",
+        }
 
 
 # ---------------------------------------------------------------------------

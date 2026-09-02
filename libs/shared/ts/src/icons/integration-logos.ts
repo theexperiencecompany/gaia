@@ -13,6 +13,7 @@
 export const INTEGRATION_LOGO_FILES: Record<string, string> = {
   gmail: "gmail.webp",
   googledocs: "googledocs.webp",
+  googledrive: "googledrive.webp",
   googlesheets: "googlesheets.webp",
   search: "google.webp",
   weather: "weather.webp",

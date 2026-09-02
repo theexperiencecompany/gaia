@@ -26,6 +26,22 @@ AfterHookFn = Callable[[str, str, ToolExecutionResponse], AfterHookResponse]
 SchemaModifierFn = Callable[[str, str, Tool], Tool]
 
 
+class HookAbortError(Exception):
+    """A before-hook signal that the tool call MUST NOT proceed.
+
+    Ordinary before-hook exceptions are swallowed (a hook is enrichment: a bug in
+    one must not fail the tool). This one is different — it means the hook found a
+    condition that makes executing the tool wrong (e.g. a requested attachment
+    could not be resolved), so letting the call run would produce a silently
+    incorrect result. ``execute_before_hooks`` re-raises it so it propagates
+    through Composio's executor and fails the tool loudly.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class ComposioHookRegistry:
     """
     Enhanced registry for managing before_execute, after_execute hooks,
@@ -68,6 +84,11 @@ class ComposioHookRegistry:
         for hook_func in self._before_hooks:
             try:
                 modified_params = hook_func(tool, toolkit, modified_params)
+            except HookAbortError:
+                # An explicit "do not run this tool" signal — propagate so the
+                # executor fails the call instead of running it with a wrong /
+                # missing argument (see HookAbortError).
+                raise
             except Exception as e:
                 log.error(
                     f"{LogTag.COMPOSIO} Error executing before_execute hook for",

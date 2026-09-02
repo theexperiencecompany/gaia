@@ -6,7 +6,12 @@ import { Divider } from "@heroui/divider";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
+import {
+  AttachmentIcon,
+  Cancel01Icon,
+  PencilEdit01Icon,
+  PlusSignIcon,
+} from "@icons";
 import DOMPurify from "dompurify";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -17,6 +22,7 @@ import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
 import { toast } from "@/lib/toast";
+import type { EmailAttachmentMeta } from "@/types/features/mailTypes";
 
 // Email validation schema
 const emailComposeSchema = z.object({
@@ -77,6 +83,7 @@ interface EmailData {
   thread_id?: string;
   bcc?: string[];
   cc?: string[];
+  attachments?: EmailAttachmentMeta[];
 }
 
 interface EmailComposeCardProps {
@@ -157,6 +164,33 @@ function EmailBodyPreview({
 }
 
 /**
+ * Read-only chips listing the email's attachments (filename + type icon).
+ */
+function AttachmentsRow({
+  attachments,
+}: {
+  attachments: EmailAttachmentMeta[];
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {attachments.map((attachment) => (
+        <Chip
+          key={attachment.name}
+          size="sm"
+          variant="flat"
+          startContent={
+            <AttachmentIcon className="h-3.5 w-3.5 text-zinc-400" />
+          }
+          className="max-w-full text-xs text-zinc-200"
+        >
+          <span className="truncate">{attachment.name}</span>
+        </Chip>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Recipient rows, subject summary and body preview of an expanded compose card.
  */
 function ComposeFields({
@@ -164,12 +198,14 @@ function ComposeFields({
   onEditField,
   subject,
   body,
+  attachments,
   onEdit,
 }: {
   recipients: RecipientMap;
   onEditField: (field: RecipientField) => void;
   subject: string;
   body: string;
+  attachments?: EmailAttachmentMeta[];
   onEdit: () => void;
 }) {
   return (
@@ -198,6 +234,10 @@ function ComposeFields({
       <Separator className="my-1.5 bg-zinc-700" />
 
       <EmailBodyPreview html={body} onEdit={onEdit} />
+
+      {attachments && attachments.length > 0 && (
+        <AttachmentsRow attachments={attachments} />
+      )}
     </div>
   );
 }
@@ -681,6 +721,7 @@ export default function EmailComposeCard({
                 onEditField={openRecipientModal}
                 subject={editData.subject}
                 body={editData.body}
+                attachments={editData.attachments}
                 onEdit={handleEditClick}
               />
               <div className="flex justify-end px-6 pb-5">

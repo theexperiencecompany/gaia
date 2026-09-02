@@ -777,6 +777,51 @@ EXPORT PREFERENCES:
 
 
 # =============================================================================
+# GOOGLE DRIVE MEMORY PROMPT
+# =============================================================================
+
+GOOGLE_DRIVE_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Google Drive",
+    entity_instructions="""
+## GOOGLE DRIVE-SPECIFIC IDENTITY EXTRACTION:
+
+1. FILE ID MAPPINGS (CRITICAL):
+   - File ID <-> Name <-> Purpose
+   - "file_abc123 is 'Q4 Board Deck.pdf'"
+   - "file_xyz789 is 'Brand Assets.zip'"
+
+2. FOLDER STRUCTURE:
+   - Folder IDs and hierarchy
+   - "folder_123 is 'Contracts' under 'Legal'"
+
+3. SHARED DRIVES:
+   - Shared drive IDs and their team/purpose
+   - "drive_456 is the 'Design Team' shared drive"
+
+4. COLLABORATOR EMAILS:
+   - Who has access to which files/folders
+   - "finance@company.com has editor access to the Budgets folder"
+""",
+    provider_specific_instructions="""
+## GOOGLE DRIVE-SPECIFIC MEMORIES:
+
+FILE ORGANIZATION:
+- Where different kinds of files live
+- Naming and foldering conventions
+- "Signed contracts go in Legal/Signed"
+
+SHARING DEFAULTS:
+- Typical permission role (viewer/commenter/editor)
+- Whether links are shared org-wide or per person
+
+RETRIEVAL PATTERNS:
+- Files the user references often
+- Which folder a recurring deliverable belongs to
+""",
+)
+
+
+# =============================================================================
 # GOOGLE SHEETS MEMORY PROMPT
 # =============================================================================
 

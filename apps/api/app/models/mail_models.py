@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
@@ -168,14 +168,6 @@ class BulkEmailImportanceSummariesResponse(BaseModel):
 # Google owns those schemas and ``transform_gmail_message`` spreads the raw
 # Composio message before adding its derived keys, so the field set varies per
 # message. Only the envelopes the API builds itself are modelled here.
-
-
-class GmailAttachmentPayload(TypedDict):
-    """One entry of the ``attachments`` parameter Composio's Gmail compose tools take."""
-
-    filename: str | None
-    content: bytes
-    content_type: str | None
 
 
 class GmailToolResult(BaseModel):
