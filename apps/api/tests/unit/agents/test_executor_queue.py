@@ -436,3 +436,64 @@ class TestSafeConfigurable:
         assert kept == {"thread_id": "t"}
         assert warn.call_count == 1
         assert warn.call_args.kwargs["configurable_key"] == "model_kwargs"
+
+
+@pytest.mark.regression
+class TestRunItemCarriesWorkflowExecution:
+    """The execution id exists only on the workflow task's wide event. A HIL
+    resume and a queue pop both rebuild the run in some OTHER context (the
+    approval request, the previous run's finalize), so the stored item has to
+    carry it or the resumed run's calls are unattributable to the run."""
+
+    async def test_the_item_records_the_execution_in_flight(self) -> None:
+        from shared.py.wide_events import WorkflowContext, log, wide_task
+
+        async with wide_task("workflow_execution"):
+            log.set(workflow=WorkflowContext(id="wf-9", execution_id="exec-42"))
+            item = build_run_item(
+                task="do it",
+                task_id="task-1",
+                configurable={"user_id": "u1", "workflow_id": "wf-9"},
+                conversation_id="conv-1",
+                user_message_id=None,
+            )
+
+        assert item["workflow_execution_id"] == "exec-42"
+
+    def test_a_run_supplies_its_own_execution_id_when_pausing(self) -> None:
+        item = build_run_item(
+            task="do it",
+            task_id="task-1",
+            configurable={"user_id": "u1", "workflow_id": "wf-9"},
+            conversation_id="conv-1",
+            user_message_id=None,
+            workflow_execution_id="exec-42",
+        )
+
+        assert item["workflow_execution_id"] == "exec-42"
+
+    async def test_a_resume_outside_any_boundary_still_knows_its_execution(self) -> None:
+        item = build_run_item(
+            task="continue the task",
+            task_id="task-1",
+            configurable={"user_id": "u1", "workflow_id": "wf-9"},
+            conversation_id="conv-1",
+            user_message_id=None,
+            workflow_execution_id="exec-42",
+        )
+        with (
+            patch.object(eq, "redis_cache") as redis,
+            patch.object(eq, "StreamManager") as sm,
+            patch.object(eq, "websocket_manager") as ws,
+        ):
+            redis.client.set = AsyncMock()
+            sm.start_stream = AsyncMock()
+            ws.broadcast_to_user = AsyncMock()
+
+            # No wide-event boundary here on purpose: this is the approval
+            # request's context, where the workflow task's stamp never existed.
+            prepared = await prepare_run_from_item("conv-1", item)
+
+        assert prepared is not None
+        assert prepared.run.workflow_id == "wf-9"
+        assert prepared.run.workflow_execution_id == "exec-42"

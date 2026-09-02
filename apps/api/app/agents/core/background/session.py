@@ -136,8 +136,15 @@ class ExecutorRun:
         configurable: AgentConfigurable,
         *,
         identity: RunIdentity,
+        workflow_execution_id: str | None = None,
     ) -> "ExecutorRun":
-        """Build the run context from a LangGraph ``configurable`` dict."""
+        """Build the run context from a LangGraph ``configurable`` dict.
+
+        ``workflow_execution_id`` is the stored one when rebuilding from a queue
+        item or HIL resume record (those rebuild in a context with no workflow
+        boundary); a live dispatch leaves it unset and reads the execution in
+        flight off the boundary it is being built in.
+        """
         return cls(
             stream_id=identity.stream_id,
             conversation_id=identity.conversation_id,
@@ -155,7 +162,7 @@ class ExecutorRun:
             user_message_id=identity.user_message_id,
             bot_message_id=identity.bot_message_id,
             workflow_id=configurable.get("workflow_id"),
-            workflow_execution_id=current_workflow_execution_id(),
+            workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
             active_todo_id=configurable.get("active_todo_id"),

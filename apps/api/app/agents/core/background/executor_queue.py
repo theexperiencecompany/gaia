@@ -44,7 +44,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
 from app.utils.general_utils import is_json_safe
-from shared.py.wide_events import log
+from shared.py.wide_events import current_workflow_execution_id, log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
 # The run kind is carried explicitly on ExecutorRun, never parsed from the id.
@@ -71,6 +71,12 @@ class ExecutorRunItem(TypedDict, total=False):
     #: written by a HIL pause (``_record_pause``) — a plain queue enqueue never
     #: sets it. Read back by ``prepare_run_from_item`` into ``ExecutorRun``.
     bot_message_id: str | None
+    #: The workflow execution the run belongs to. It exists only on the workflow
+    #: task's wide event, and a queue pop or HIL resume rebuilds the run in some
+    #: other context (the previous run's finalize, the approval request), so the
+    #: item is the only thing that can carry it across. Read back into
+    #: ``ExecutorRun`` so the resumed run's model calls stay attributable.
+    workflow_execution_id: str | None
 
 
 @dataclass(frozen=True)
@@ -239,6 +245,7 @@ async def enqueue_task(
     configurable: AgentConfigurable,
     conversation_id: str,
     user_message_id: str | None,
+    workflow_execution_id: str | None = None,
 ) -> None:
     """Push a task to the executor queue for deferred execution."""
     queue_item = json.dumps(
@@ -248,6 +255,7 @@ async def enqueue_task(
             configurable=configurable,
             conversation_id=conversation_id,
             user_message_id=user_message_id,
+            workflow_execution_id=workflow_execution_id,
         )
     )
     if redis_cache.client:
@@ -256,7 +264,9 @@ async def enqueue_task(
 
 
 async def enqueue_collection_run(
-    conversation_id: str, base_configurable: AgentConfigurable
+    conversation_id: str,
+    base_configurable: AgentConfigurable,
+    workflow_execution_id: str | None = None,
 ) -> bool:
     """Queue a wake-up turn to collect landed background-subagent work.
 
@@ -289,6 +299,7 @@ async def enqueue_collection_run(
         configurable=configurable,
         conversation_id=conversation_id,
         user_message_id=None,
+        workflow_execution_id=workflow_execution_id,
     )
     log.info(
         f"{LogTag.AGENT} Queued background-subagent collection turn",
@@ -357,10 +368,15 @@ def build_run_item(
     conversation_id: str,
     user_message_id: str | None,
     bot_message_id: str | None = None,
+    workflow_execution_id: str | None = None,
 ) -> ExecutorRunItem:
     """The one serialized run-context shape: written by the queue and the HIL
     resume store, read back by ``prepare_run_from_item``. Add fields here, not
-    at the write sites, or a resumed run silently drops what a queued run keeps."""
+    at the write sites, or a resumed run silently drops what a queued run keeps.
+
+    ``workflow_execution_id`` defaults to the execution in flight on the caller's
+    wide event — a run that already knows its own passes it explicitly, since a
+    pause is recorded from inside the run's boundary, not the workflow task's."""
     return {
         "task": task,
         "task_id": task_id,
@@ -368,6 +384,7 @@ def build_run_item(
         "conversation_id": conversation_id,
         "user_message_id": user_message_id,
         "bot_message_id": bot_message_id,
+        "workflow_execution_id": workflow_execution_id or current_workflow_execution_id(),
     }
 
 
@@ -463,5 +480,6 @@ async def prepare_run_from_item(
             user_message_id=queued_user_message_id,
             bot_message_id=queued_bot_message_id,
         ),
+        workflow_execution_id=item.get("workflow_execution_id"),
     )
     return PreparedQueuedTask(run=run, task=task, configurable=configurable)

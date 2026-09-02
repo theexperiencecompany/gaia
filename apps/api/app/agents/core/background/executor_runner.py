@@ -194,6 +194,7 @@ async def _record_pause(
             conversation_id=run.conversation_id,
             user_message_id=run.user_message_id,
             bot_message_id=run.bot_message_id,
+            workflow_execution_id=run.workflow_execution_id,
         )
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)
@@ -397,6 +398,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_name": run.user.get("name", ""),
                     "user_timezone": run.user.get("timezone"),
                 },
+                workflow_execution_id=run.workflow_execution_id,
             )
     except Exception as e:  # a failed wake must not strand the queue handoff
         log.error(
