@@ -69,6 +69,7 @@
       "fast-xml-parser@<4.5.5": "4.5.5",
       "fast-xml-parser@>=5.0.0 <5.7.0": "5.7.0",
       "node-forge@<1.4.0": "1.4.0",
+      "browserslist@<4.28.7": "4.28.7",
       "minimatch@<3.1.4": "3.1.4",
       "minimatch@>=8.0.0 <8.0.6": "8.0.6",
       "minimatch@>=9.0.0 <9.0.7": "9.0.7",
