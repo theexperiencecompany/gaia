@@ -122,6 +122,15 @@ BROWSER_REPLAY_CODE_TTL_SECONDS = 7 * 24 * 3600
 # Bytes of entropy for the code (token_urlsafe → ~1.3 chars/byte, so ~12 chars).
 BROWSER_LIVE_CODE_ENTROPY_BYTES = 9
 
+
+# Session-import handoff: a short-lived, single-use code minted for a signed-in
+# web user that the local `gaia connect` CLI presents to upload the browser
+# profile it extracted. Short TTL because it is redeemed within seconds of being
+# shown; single-use because it authorises writing the user's whole login state.
+BROWSER_IMPORT_TOKEN_KEY_PREFIX = "browser:import:"
+BROWSER_IMPORT_TOKEN_TTL_SECONDS = 600
+BROWSER_IMPORT_TOKEN_ENTROPY_BYTES = 32
+
 # Saved-site session data (browser_profiles) auto-expires this long after last use.
 # A Mongo TTL index on ``updated_at`` reclaims it; every use refreshes the clock.
 BROWSER_PROFILE_TTL_DAYS = 90

@@ -14,23 +14,31 @@ API) and opens the cross-origin live-view socket with it.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from playwright.sync_api import StorageState
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.config.settings import settings
+from app.constants.browser import BROWSER_IMPORT_TOKEN_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
+    BrowserImportRequest,
+    BrowserImportResponse,
     BrowserLoginResponse,
     BrowserTaskResponse,
     HandoffDecisionRequest,
     HandoffDecisionResponse,
+    ImportTokenResponse,
     LiveViewTokenResponse,
 )
 from app.services.browser import registry
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import get_handoff, resolve_handoff
+from app.services.browser.import_token import consume_import_token, mint_import_token
 from app.services.browser.profiles import forget_saved_login, list_saved_logins
+from app.services.browser.storage_persistence import import_browser_profile
 from app.services.browser.takeover_token import (
     create_takeover_token,
     takeover_token_ttl_seconds,
@@ -181,4 +189,57 @@ async def clear_browser_logins_endpoint(
         "browser logins cleared",
         actor=user_id,
         resource="browser/logins",
+    )
+
+
+@router.post("/import/token", response_model=ImportTokenResponse)
+async def mint_browser_import_token(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> ImportTokenResponse:
+    """Mint the short-lived, single-use code the local ``gaia connect`` CLI
+    presents to upload this user's browser profile. Authorised by the web
+    session; the CLI, which has no cookie, authenticates with the returned code."""
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User id required")
+    token = await mint_import_token(str(user_id))
+    log.info(f"{LogTag.BROWSER} Minted browser import token", user={"id": user_id})
+    return ImportTokenResponse(
+        token=token, expires_in_seconds=BROWSER_IMPORT_TOKEN_TTL_SECONDS
+    )
+
+
+@router.post("/import", response_model=BrowserImportResponse)
+async def import_browser_sessions(payload: BrowserImportRequest) -> BrowserImportResponse:
+    """Receive a browser profile from the local CLI and store it as saved logins.
+
+    Authenticated by the single-use import code, not a session cookie — the CLI
+    runs outside the browser. The uploaded storage_state is split per host and
+    encrypted at rest by the same store that seeds every future task."""
+    user_id = await consume_import_token(payload.token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Import code invalid, expired, or already used",
+        )
+    if not settings.BROWSER_PERSIST_LOGINS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Browser login persistence is disabled",
+        )
+    log.set(user={"id": user_id})
+    state = cast(
+        StorageState,
+        {
+            "cookies": [c.model_dump(by_alias=True) for c in payload.cookies],
+            "origins": [o.model_dump(by_alias=True) for o in payload.origins],
+        },
+    )
+    imported = await import_browser_profile(user_id, state)
+    return BrowserImportResponse(
+        imported=[
+            BrowserLoginResponse(domain=host, updated_at=None) for host, _ in imported
+        ],
+        host_count=len(imported),
+        cookie_count=len(payload.cookies),
     )

@@ -120,3 +120,69 @@ async def forget_browser_logins(user_id: str, domain: str | None = None) -> int:
     deleted = await browser_profile_repository.delete_for_user(user_id, domain)
     log.info(f"{LogTag.BROWSER} Forgot browser logins", domain=domain, deleted_count=deleted)
     return deleted
+
+
+def _cookie_applies_to_host(cookie_domain: str, host: str) -> bool:
+    """Playwright/browser cookie-domain semantics: a leading-dot domain
+    (``.google.com``) applies to that registrable host and every subdomain; a
+    host-only domain applies only to the exact host."""
+    cookie_domain = cookie_domain.lower()
+    host = host.lower()
+    if cookie_domain.startswith("."):
+        suffix = cookie_domain[1:]
+        return host == suffix or host.endswith(f".{suffix}")
+    return cookie_domain == host
+
+
+def split_storage_state_by_host(state: StorageState) -> dict[str, StorageState]:
+    """Split one browser export into per-host slices keyed the way reuse loads them.
+
+    The store keys on the exact hostname a task starts at (``domain_of``), so an
+    export that mixes many sites' cookies must be split to that grain. Each host
+    that appears — as an origin, a host-only cookie, or a leading-dot cookie's
+    registrable host — gets a slice carrying every cookie that applies to it
+    (shared ``.example.com`` cookies land in each of ``example.com`` and its
+    subdomains) plus its own localStorage. A host with no cookies or origins is
+    dropped rather than saved empty.
+    """
+    cookies = state.get("cookies", [])
+    origins = state.get("origins", [])
+
+    hosts: set[str] = set()
+    for origin in origins:
+        host = urlparse(origin.get("origin", "")).hostname
+        if host:
+            hosts.add(host.lower())
+    for cookie in cookies:
+        domain = cookie.get("domain", "").lower()
+        hosts.add(domain.removeprefix("."))
+    hosts.discard("")
+
+    slices: dict[str, StorageState] = {}
+    for host in hosts:
+        host_cookies = [c for c in cookies if _cookie_applies_to_host(c.get("domain", ""), host)]
+        host_origins = [
+            o for o in origins if (urlparse(o.get("origin", "")).hostname or "").lower() == host
+        ]
+        if host_cookies or host_origins:
+            slices[host] = StorageState(cookies=host_cookies, origins=host_origins)
+    return slices
+
+
+async def import_browser_profile(user_id: str, state: StorageState) -> list[tuple[str, int]]:
+    """Split an uploaded profile per host and persist each slice as a saved login.
+
+    Returns ``(host, cookie_count)`` for every host actually stored, so the caller
+    can report what landed. Honours the same ``BROWSER_PERSIST_LOGINS`` opt-out as
+    ``save_storage_state`` (each call no-ops when it is off)."""
+    slices = split_storage_state_by_host(state)
+    imported: list[tuple[str, int]] = []
+    for host, host_state in slices.items():
+        await save_storage_state(user_id, host, host_state)
+        imported.append((host, len(host_state.get("cookies", []))))
+    log.info(
+        f"{LogTag.BROWSER} Imported browser profile",
+        host_count=len(imported),
+        cookie_count=len(state.get("cookies", [])),
+    )
+    return imported

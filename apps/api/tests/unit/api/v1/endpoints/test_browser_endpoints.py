@@ -313,3 +313,59 @@ class TestRouterRegistration:
         assert "/browser/tasks/{task_id}" in paths
         assert "/browser/logins" in paths
         assert "/browser/logins/{domain}" in paths
+
+
+class TestMintBrowserImportToken:
+    async def test_owner_gets_a_token(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "mint_import_token", AsyncMock(return_value="tok-123"))
+        resp = await browser_ep.mint_browser_import_token({"user_id": "u1"})
+        assert resp.token == "tok-123"
+        assert resp.expires_in_seconds > 0
+
+    async def test_missing_user_id_400(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "mint_import_token", AsyncMock())
+        with pytest.raises(HTTPException) as exc:
+            await browser_ep.mint_browser_import_token({})
+        assert exc.value.status_code == 400
+
+
+class TestImportBrowserSessions:
+    def _payload(self, token="tok"):
+        from app.schemas.browser import BrowserImportRequest
+
+        return BrowserImportRequest(
+            token=token,
+            cookies=[{"name": "s", "value": "1", "domain": ".github.com"}],
+        )
+
+    async def test_valid_token_imports_and_reports_hosts(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", True)
+        imp = AsyncMock(return_value=[("github.com", 1)])
+        monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
+
+        resp = await browser_ep.import_browser_sessions(self._payload())
+
+        assert resp.host_count == 1
+        assert resp.imported[0].domain == "github.com"
+        # The route must hand the service a real user id from the consumed token.
+        assert imp.await_args.args[0] == "u1"
+
+    async def test_bad_token_401(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=None))
+        imp = AsyncMock()
+        monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
+        with pytest.raises(HTTPException) as exc:
+            await browser_ep.import_browser_sessions(self._payload("expired"))
+        assert exc.value.status_code == 401
+        imp.assert_not_awaited()  # never touch storage on a bad code
+
+    async def test_persistence_disabled_409(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", False)
+        imp = AsyncMock()
+        monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
+        with pytest.raises(HTTPException) as exc:
+            await browser_ep.import_browser_sessions(self._payload())
+        assert exc.value.status_code == 409
+        imp.assert_not_awaited()

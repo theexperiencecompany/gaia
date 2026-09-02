@@ -219,3 +219,64 @@ class BrowserLoginResponse(BaseModel):
     domain: str
     updated_at: datetime | None
     expires_at: datetime | None = None
+
+
+class ImportTokenRecord(BaseModel):
+    """What a session-import code resolves to: the user authorised to upload."""
+
+    user_id: str
+
+
+class ImportTokenResponse(BaseModel):
+    """The short-lived code the CLI presents, and how long it lives."""
+
+    token: str
+    expires_in_seconds: int
+
+
+class ImportedCookie(BaseModel):
+    """One cookie in a Playwright storage_state. Field aliases match Playwright's
+    camelCase exactly, so a dump ``by_alias`` re-emits the shape the browser host
+    seeds — this is an external schema boundary, not our own."""
+
+    name: str
+    value: str
+    domain: str
+    path: str = "/"
+    expires: float = -1
+    http_only: bool = Field(default=False, alias="httpOnly")
+    secure: bool = False
+    same_site: Literal["Strict", "Lax", "None"] = Field(default="Lax", alias="sameSite")
+
+    model_config = {"populate_by_name": True}
+
+
+class ImportedLocalStorageItem(BaseModel):
+    name: str
+    value: str
+
+
+class ImportedOrigin(BaseModel):
+    origin: str
+    local_storage: list[ImportedLocalStorageItem] = Field(
+        default_factory=list, alias="localStorage"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class BrowserImportRequest(BaseModel):
+    """A profile upload from the local CLI: the mint code plus a Playwright
+    storage_state (cookies + localStorage), split per host on the server."""
+
+    token: str
+    cookies: list[ImportedCookie] = Field(default_factory=list)
+    origins: list[ImportedOrigin] = Field(default_factory=list)
+
+
+class BrowserImportResponse(BaseModel):
+    """What landed: the hosts now seeded and how many cookies each carries."""
+
+    imported: list[BrowserLoginResponse] = Field(default_factory=list)
+    host_count: int
+    cookie_count: int
