@@ -26,7 +26,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
-from shared.py.wide_events import log
+from shared.py.wide_events import current_workflow_execution_id, log
 
 
 class RunKind(StrEnum):
@@ -118,6 +118,10 @@ class ExecutorRun:
     #: mints a fresh message keyed on ``task_id``.
     bot_message_id: str | None = None
     workflow_id: str | None = None
+    #: The workflow execution this run belongs to. Read off the workflow task's
+    #: wide event at construction (it exists nowhere else), so the executor's
+    #: own boundary can carry it and the ledger can attribute its calls to the run.
+    workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
@@ -151,6 +155,7 @@ class ExecutorRun:
             user_message_id=identity.user_message_id,
             bot_message_id=identity.bot_message_id,
             workflow_id=configurable.get("workflow_id"),
+            workflow_execution_id=current_workflow_execution_id(),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
             active_todo_id=configurable.get("active_todo_id"),
