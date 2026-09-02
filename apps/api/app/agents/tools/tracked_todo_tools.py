@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
+from app.models.agent_models import agent_configurable
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
@@ -613,8 +614,10 @@ async def create_tracked_todo(
     if not user_id:
         return _ERR_NO_USER_ID
     # The chat this tracked todo was created in, captured for a later push back
-    # into it. None for a non-chat root (onboarding/REST).
-    source_conversation_id = metadata.get("conversation_id")
+    # into it. build_agent_config puts conversation_id in `configurable` (not
+    # `metadata`), so read it there — matching reminder_tool. None for a non-chat
+    # root (onboarding/REST).
+    source_conversation_id = agent_configurable(config).get("conversation_id")
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)

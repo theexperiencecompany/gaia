@@ -1269,16 +1269,22 @@ class TestCreateTrackedTodoSuccess:
         assert "Tracked todo created: t1" in result
         assert "update_tracked_todo_canvas(todo_id='t1'" in result
 
-    async def test_source_conversation_id_is_read_from_metadata_and_passed_through(self):
-        # The chat the todo was created in is captured from config metadata and
-        # handed to the service so a later fire can be pushed back into that chat.
+    async def test_source_conversation_id_is_read_from_configurable_and_passed_through(self):
+        # The chat the todo was created in is captured and handed to the service so
+        # a later fire can be pushed back into that chat. build_agent_config puts
+        # conversation_id in `configurable` (not `metadata`, which only carries
+        # user_id/langfuse fields), so the tool must read it from there — matching
+        # reminder_tool. Reading metadata yields None in production.
         with patch(
             "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
             new_callable=AsyncMock,
             return_value=self._response(),
         ) as create:
             await create_tracked_todo.coroutine(
-                config={"metadata": {"user_id": "user-1", "conversation_id": "conv-9"}},
+                config={
+                    "configurable": {"conversation_id": "conv-9"},
+                    "metadata": {"user_id": "user-1"},
+                },
                 title="t",
             )
         assert create.await_args.kwargs["source_conversation_id"] == "conv-9"
