@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.repositories.base import MongoDocument
+from app.db.repositories.base import MongoDocument, UserScopedDocument
 
 
 class PlanType(str, Enum):
@@ -232,6 +232,20 @@ class SubscriptionUpdate(BaseModel):
     previous_billing_date: str | None = None
     cancelled_at: str | None = None
     cancel_at_next_billing_date: bool | None = None
+
+
+class CheckoutSessionDocument(UserScopedDocument):
+    """A Dodo checkout session created for a user, recorded at checkout time.
+
+    The result page resolves what a user bought through this record when the
+    ``subscription.active`` webhook has not landed yet (the
+    webhook-vs-redirect race): the Dodo session id is the stable reference
+    Dodo can answer for before a subscription row exists.
+    """
+
+    session_id: str
+    product_id: str | None = None
+    created_at: datetime | None = None
 
 
 class ProcessedWebhookDocument(MongoDocument):

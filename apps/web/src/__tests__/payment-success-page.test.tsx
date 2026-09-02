@@ -39,10 +39,18 @@ vi.mock("@/features/auth/hooks/useUser", () => ({
 
 vi.mock("@/features/pricing/hooks/usePricing", () => ({
   usePricing: () => ({
+    plans: [],
+    subscriptionStatus: null,
     verifyPayment: unstableVerifyIdentity
       ? (...args: unknown[]) => verifyPayment(...args)
       : verifyPayment,
   }),
+}));
+
+// The retry wrapper waits with growing delays between attempts; the page's
+// own behaviour is what these tests pin, so verification resolves in one call.
+vi.mock("@/features/pricing/utils/verifyPaymentWithRetry", () => ({
+  verifyPaymentWithRetry: (verify: () => Promise<unknown>) => verify(),
 }));
 
 vi.mock("@/features/pricing/hooks/useDodoPayments", () => ({
@@ -58,6 +66,10 @@ vi.mock("@/features/pricing/components/PaymentBackdrop", () => ({
 
 vi.mock("@/hooks/ui/useCreateConfetti", () => ({
   default: () => null,
+}));
+
+vi.mock("@/features/pricing/components/PostPaymentReceipt", () => ({
+  PostPaymentReceipt: () => <div>Receipt printed</div>,
 }));
 
 import PaymentSuccessPage from "@/app/[locale]/(landing)/payment/success/page";
@@ -80,7 +92,7 @@ describe("PaymentSuccessPage", () => {
       </StrictMode>,
     );
 
-    expect(await screen.findByText("Welcome to GAIA Pro!")).toBeDefined();
+    expect(await screen.findByText("Receipt printed")).toBeDefined();
     expect(screen.queryByText("Verifying payment")).toBeNull();
     // The ref guard exists so the charge is only ever verified once, and the
     // subscription from the return URL rides along so the server can
@@ -105,7 +117,7 @@ describe("PaymentSuccessPage", () => {
     rerender(<PaymentSuccessPage />);
     resolveVerify({ payment_completed: true, subscription_id: "sub_123" });
 
-    expect(await screen.findByText("Welcome to GAIA Pro!")).toBeDefined();
+    expect(await screen.findByText("Receipt printed")).toBeDefined();
     expect(verifyPayment).toHaveBeenCalledTimes(1);
   });
 
@@ -125,7 +137,7 @@ describe("PaymentSuccessPage", () => {
     render(<PaymentSuccessPage />);
 
     const cta = await screen.findByRole("button", {
-      name: /finish setting up/i,
+      name: /continue to chat/i,
     });
     cta.click();
     await waitFor(() => expect(push).toHaveBeenCalledWith("/onboarding"));
