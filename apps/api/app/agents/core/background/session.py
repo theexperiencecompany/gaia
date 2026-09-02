@@ -172,6 +172,18 @@ class ExecutorRun:
         )
 
     @property
+    def identity(self) -> RunIdentity:
+        """This run's identity, in the shape a stored run item is written from."""
+        return RunIdentity(
+            stream_id=self.stream_id,
+            conversation_id=self.conversation_id,
+            kind=self.kind,
+            task_id=self.task_id,
+            user_message_id=self.user_message_id,
+            bot_message_id=self.bot_message_id,
+        )
+
+    @property
     def is_queued(self) -> bool:
         return self.kind is RunKind.QUEUED
 

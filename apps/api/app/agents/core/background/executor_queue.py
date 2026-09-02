@@ -238,26 +238,13 @@ async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | No
 # ── Enqueue ──────────────────────────────────────────────────────────
 
 
-async def enqueue_task(
-    queue_key: str,
-    task: str,
-    task_id: str,
-    configurable: AgentConfigurable,
-    conversation_id: str,
-    user_message_id: str | None,
-    workflow_execution_id: str | None = None,
-) -> None:
-    """Push a task to the executor queue for deferred execution."""
-    queue_item = json.dumps(
-        build_run_item(
-            task=task,
-            task_id=task_id,
-            configurable=configurable,
-            conversation_id=conversation_id,
-            user_message_id=user_message_id,
-            workflow_execution_id=workflow_execution_id,
-        )
-    )
+async def enqueue_task(queue_key: str, item: ExecutorRunItem) -> None:
+    """Push a run item (see :func:`build_run_item`) to the executor queue.
+
+    Takes the built item rather than its fields: the item is the one shape a
+    queued run is rebuilt from, so the fields it carries belong in one place.
+    """
+    queue_item = json.dumps(item)
     if redis_cache.client:
         await redis_cache.client.rpush(queue_key, queue_item)
         await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
@@ -293,13 +280,20 @@ async def enqueue_collection_run(
     }
     configurable.pop("subagent_id", None)
     await enqueue_task(
-        queue_key=f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
-        task=EXECUTOR_COLLECTION_TASK,
-        task_id=str(uuid4()),
-        configurable=configurable,
-        conversation_id=conversation_id,
-        user_message_id=None,
-        workflow_execution_id=workflow_execution_id,
+        f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
+        build_run_item(
+            task=EXECUTOR_COLLECTION_TASK,
+            configurable=configurable,
+            # The stream is minted at dequeue; a collection turn is a queued run.
+            identity=RunIdentity(
+                stream_id="",
+                conversation_id=conversation_id,
+                kind=RunKind.QUEUED,
+                task_id=str(uuid4()),
+                user_message_id=None,
+            ),
+            workflow_execution_id=workflow_execution_id,
+        ),
     )
     log.info(
         f"{LogTag.AGENT} Queued background-subagent collection turn",
@@ -363,11 +357,8 @@ async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None
 def build_run_item(
     *,
     task: str,
-    task_id: str | None,
     configurable: AgentConfigurable,
-    conversation_id: str,
-    user_message_id: str | None,
-    bot_message_id: str | None = None,
+    identity: RunIdentity,
     workflow_execution_id: str | None = None,
 ) -> ExecutorRunItem:
     """The one serialized run-context shape: written by the queue and the HIL
@@ -379,11 +370,11 @@ def build_run_item(
     pause is recorded from inside the run's boundary, not the workflow task's."""
     return {
         "task": task,
-        "task_id": task_id,
+        "task_id": identity.task_id,
         "configurable": safe_configurable(configurable),
-        "conversation_id": conversation_id,
-        "user_message_id": user_message_id,
-        "bot_message_id": bot_message_id,
+        "conversation_id": identity.conversation_id,
+        "user_message_id": identity.user_message_id,
+        "bot_message_id": identity.bot_message_id,
         "workflow_execution_id": workflow_execution_id or current_workflow_execution_id(),
     }
 

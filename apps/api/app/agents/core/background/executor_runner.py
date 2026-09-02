@@ -189,11 +189,8 @@ async def _record_pause(
     try:
         item = build_run_item(
             task=task,
-            task_id=run.task_id,
             configurable=configurable,
-            conversation_id=run.conversation_id,
-            user_message_id=run.user_message_id,
-            bot_message_id=run.bot_message_id,
+            identity=run.identity,
             workflow_execution_id=run.workflow_execution_id,
         )
         for approval_id in approval_ids:
