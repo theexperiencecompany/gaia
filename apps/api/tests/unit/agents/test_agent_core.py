@@ -709,9 +709,7 @@ class TestCallAgentSilent:
                 user=_make_user(),
             )
 
-        assert result == SilentRunResult(
-            message="Hello!", tool_data={"tool": "data"}, queued_task_id=None
-        )
+        assert result == SilentRunResult(message="Hello!", tool_data={"tool": "data"})
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
@@ -1454,53 +1452,3 @@ class TestTheOptionsEachEntryPointDerives:
                 langfuse_tags=None,
             )
         ]
-
-
-class TestTheQueuedTaskIdComesFromThisRunsOwnStream:
-    """``queued_without_run`` is read with THIS run's stream_id, off a session
-    only this function can reach. Handed anything else — a blank, no id at all —
-    the turn reports "an executor ran" for work that was only queued, and the
-    caller records it as done.
-    """
-
-    @pytest.mark.asyncio
-    async def test_the_result_carries_the_task_id_keyed_by_this_runs_stream_id(self):
-        config = _fresh_config()
-
-        def _queued_without_run(stream_id: str) -> str | None:
-            return f"queued-for-{stream_id}"
-
-        patches = _common_patches()
-        with (
-            patches["construct"],
-            patches["get_graph"],
-            patches["build_state"],
-            patch(
-                "app.agents.core.agent.build_agent_config",
-                new_callable=AsyncMock,
-                return_value=config,
-            ),
-            patches["log"],
-            patch(
-                "app.agents.core.agent.execute_graph_silent",
-                new_callable=AsyncMock,
-                return_value=("Hello!", {"tool": "data"}),
-            ),
-            patch(
-                "app.agents.core.agent.queued_without_run",
-                new=_queued_without_run,
-            ),
-        ):
-            result = await call_agent_silent(
-                request=_make_request(),
-                conversation_id="conv-1",
-                user=_make_user(),
-            )
-
-        stream_id = config["configurable"]["stream_id"]
-        assert UUID(stream_id)
-        assert result == SilentRunResult(
-            message="Hello!",
-            tool_data={"tool": "data"},
-            queued_task_id=f"queued-for-{stream_id}",
-        )

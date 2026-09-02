@@ -20,6 +20,7 @@ import pytest
 from app.agents.core.background.subagent_runner import BackgroundHandoff, run_subagent_background
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.tools.wait_for_subagents_tool import _resolve_parked_batch
+from app.constants.executor import EXECUTOR_COLLECTION_TASK
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
 from app.models.hil_models import HILApprovalStatus
 
@@ -214,12 +215,13 @@ class TestBackgroundParking:
 
     @pytest.fixture(autouse=True)
     def _live_executor(self):
-        """Wake seam: a busy executor means landing work queues nothing."""
+        """Wake seam: a busy executor means landing work wakes nothing."""
         with (
             patch(f"{RUNNER}.is_executor_busy", AsyncMock(return_value=True)),
-            patch(f"{RUNNER}.enqueue_collection_run", AsyncMock()) as enqueue,
+            patch(f"{RUNNER}.claim_collection_wake", AsyncMock(return_value=True)),
+            patch(f"{RUNNER}.deliver_to_executor", AsyncMock()) as deliver,
         ):
-            self.enqueue = enqueue
+            self.deliver = deliver
             yield
 
     async def test_a_paused_subagent_parks_durably_instead_of_raising(self) -> None:
@@ -260,7 +262,7 @@ class TestBackgroundParking:
         assert "unresumable" in append.await_args.args[2]
         decrement.assert_called_once()
 
-    async def test_a_landing_with_no_live_executor_queues_a_collection_turn(self) -> None:
+    async def test_a_landing_with_no_live_executor_wakes_a_collection_turn(self) -> None:
         # The "rest" contract: the executor answered and moved on; this landing
         # must wake a collection turn or its result (or park) is stranded.
         done = SubagentOutcome(text="done")
@@ -270,13 +272,32 @@ class TestBackgroundParking:
             patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
             patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
             patch(f"{RUNNER}.is_executor_busy", AsyncMock(return_value=False)),
-            patch(f"{RUNNER}.enqueue_collection_run", AsyncMock()) as enqueue,
+            patch(f"{RUNNER}.claim_collection_wake", AsyncMock(return_value=True)),
+            patch(f"{RUNNER}.deliver_to_executor", AsyncMock()) as deliver,
         ):
             await run_subagent_background(self._ctx(), STREAM)
 
-        enqueue.assert_awaited_once()
+        deliver.assert_awaited_once_with(CONV, self._ctx().configurable, EXECUTOR_COLLECTION_TASK)
 
-    async def test_a_landing_with_a_live_executor_queues_nothing(self) -> None:
+    async def test_a_second_landing_that_loses_the_wake_claim_wakes_nothing(self) -> None:
+        """The marker is what keeps N landings from producing N collection turns:
+        only the landing that claims it may wake one."""
+        done = SubagentOutcome(text="done")
+        with (
+            patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
+            patch(f"{RUNNER}.execute_subagent_stream", AsyncMock(return_value=done)),
+            patch(f"{RUNNER}.append_bg_subagent_result", AsyncMock()),
+            patch(f"{RUNNER}.decrement_pending_subagents", MagicMock()),
+            patch(f"{RUNNER}.is_executor_busy", AsyncMock(return_value=False)),
+            patch(f"{RUNNER}.claim_collection_wake", AsyncMock(return_value=False)),
+            patch(f"{RUNNER}.deliver_to_executor", AsyncMock()) as deliver,
+        ):
+            await run_subagent_background(self._ctx(), STREAM)
+
+        assert deliver.await_count == 0
+
+    async def test_a_landing_with_a_live_executor_wakes_nothing(self) -> None:
+        """A busy executor collects on its own — a wake would be a second run."""
         done = SubagentOutcome(text="done")
         with (
             patch(f"{RUNNER}.make_redis_stream_writer", MagicMock()),
@@ -286,7 +307,7 @@ class TestBackgroundParking:
         ):
             await run_subagent_background(self._ctx(), STREAM)
 
-        assert self.enqueue.await_count == 0
+        assert self.deliver.await_count == 0
 
     async def test_the_start_card_carries_the_handoffs_whole_presentation(self) -> None:
         """The card the UI renders for a background handoff. Its fields come off

@@ -9,6 +9,7 @@ spelled out at three separate call sites.
 
 from typing import cast
 
+from app.agents.core.background.executor_channel import drain_inbox_hook
 from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
@@ -27,7 +28,9 @@ def comms_pre_model_hooks() -> list[HookType]:
     ]
 
 
-def worker_pre_model_hooks(todo_hook: HookType | None = None) -> list[HookType]:
+def worker_pre_model_hooks(
+    todo_hook: HookType | None = None, *, drains_inbox: bool = False
+) -> list[HookType]:
     """Executor, provider subagents and spawned subagents.
 
     ``todo_hook`` is ``None`` for spawn (no todo channel) and for authoring-only
@@ -35,10 +38,15 @@ def worker_pre_model_hooks(todo_hook: HookType | None = None) -> list[HookType]:
     it runs BEFORE ``manage_system_prompts_node``, so the message it appends is
     placed by the canonical slot order rather than by its own insert position —
     which otherwise varied with whichever other slots the turn happened to fill.
+
+    ``drains_inbox`` is the EXECUTOR only. Work handed over mid-run addresses the
+    executor, so a subagent must not absorb it: it would answer out of its own
+    narrow scope and the executor would never learn the user had spoken.
     """
     return [
         cast(HookType, filter_messages_node),
         cast(HookType, adapt_media_node),
         *([todo_hook] if todo_hook is not None else []),
+        *([cast(HookType, drain_inbox_hook)] if drains_inbox else []),
         manage_system_prompts_node,
     ]

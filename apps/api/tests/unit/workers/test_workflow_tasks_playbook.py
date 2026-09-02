@@ -42,7 +42,6 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
-from app.services.workflow.execution_service import WorkflowFireQueued
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.runner import PlaybookRunResult
 from app.services.workflow.playbook.workflow_hash import workflow_hash
@@ -2087,32 +2086,6 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         )
         assert harness.playbook_event()["disabled"] is True
         harness.increment_heal_attempts.assert_not_awaited()
-
-    async def test_a_fallback_that_is_queued_keeps_the_replays_calls_on_the_record(
-        self,
-    ) -> None:
-        """The replay's calls happened; the queued task will read this record as
-        its history, so losing them replays every side effect a second time."""
-        workflow = _workflow()
-        harness = _Harness(workflow)
-        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
-        harness.playbook_run = AsyncMock(return_value=_stopped_replay())
-        harness.chat = AsyncMock(
-            side_effect=WorkflowFireQueued(
-                task_id="task_9",
-                user_id="u_1",
-                conversation_id="conv_1",
-                trace=[RecordedCall(tool_name="call_executor")],
-            )
-        )
-
-        await _fire(harness)
-
-        trace = harness.complete_execution.await_args.kwargs["trace"]
-        assert [recorded.tool_name for recorded in trace] == [
-            "list_events",
-            "call_executor",
-        ]
 
 
 @pytest.mark.asyncio

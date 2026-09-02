@@ -201,6 +201,10 @@ class AsyncRedisCommands(Protocol):
         """LTRIM — keep only [start, end]; negative indexes count from the tail."""
         ...
 
+    async def lrem(self, name: str, count: int, value: str) -> int:
+        """LREM — remove matching elements; ``count=0`` removes every copy."""
+        ...
+
     async def rpush(self, name: str, *values: str) -> int:
         """RPUSH — returns the list length after the push."""
         ...

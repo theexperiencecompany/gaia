@@ -71,7 +71,7 @@ The worker tier. Has access to **everything** that does work.
 
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_executor_graph()` / `build_executor_agent()`. Built with retry policy `EXECUTOR_RETRY_POLICY`.
 - `apps/api/app/agents/tools/executor_tool.py` — `call_executor` and `cancel_executor` LangChain tools.
-- `apps/api/app/agents/core/subagents/subagent_runner.py` — `prepare_executor_execution()` and `execute_subagent_stream()`. Each executor call gets a **fresh ephemeral thread** (`executor_{thread_id}_{uuid}`) while VFS session stays pinned to the parent conversation.
+- `apps/api/app/agents/core/subagents/subagent_runner.py` — `prepare_executor_execution()` and `execute_subagent_stream()`. Each executor call runs on a **deterministic per-conversation thread** (`EXECUTOR_THREAD_PREFIX + thread_id`, `subagent_runner.py:773`) — it is NOT ephemeral, so its history persists across runs and a cancelled task stays in it until something says otherwise (see Live channel → Interrupts). VFS session stays pinned to the parent conversation.
 
 ### Initial tool IDs (comms → executor handoff)
 
@@ -80,16 +80,30 @@ The worker tier. Has access to **everything** that does work.
 ### Handoff lifecycle (background, async)
 
 1. Comms invokes `call_executor` → `executor_tool.py`.
-2. `executor_tool.py` acquires Redis `executor:busy` lock (or enqueues if busy) and fires `asyncio.create_task(run_executor_background(...))`. Returns immediately.
-3. `apps/api/app/agents/core/background/executor_runner.py` — `run_executor_background()` runs the executor graph via `_execute_executor` → `execute_subagent_stream`, then `_finalize_executor_run` signals done → `deliver_result` / `persist_cancelled_run` → close stream → release queue lock.
+2. `executor_tool.py` acquires the Redis `executor:busy` lock and fires `asyncio.create_task(run_executor_background(...))`. Returns immediately. If the lock is already held, the task is **not** deferred — it goes to the conversation's inbox and the run in flight absorbs it (see Live channel below).
+3. `apps/api/app/agents/core/background/executor_runner.py` — `run_executor_background()` runs the executor graph via `_execute_executor` → `execute_subagent_stream`, then `_finalize_executor_run` signals done → `deliver_result` / `persist_cancelled_run` → close stream → release the busy lock.
 4. Inherits `langfuse_trace_id` from the comms call for unified tracing.
+
+### Live channel — work reaching an executor that is already running
+
+One rule governs it:
+
+> An inbox entry always becomes a message inside an executor run. It never becomes a run of its own with its own separate answer.
+
+- **Where:** `executor_channel.py`. Redis list at `executor:inbox:{conversation_id}`; an entry is `{id, text, tag}` and carries no run context, because every writer already holds the context needed to start a run.
+- **Read side:** `drain_inbox_hook` is a pre-model hook on the **executor only** (`worker_pre_model_hooks(..., drains_inbox=True)` from `build_executor_graph`). It runs before every model call, so work handed over mid-run lands on the next reasoning step.
+- **Committing:** a pre-model hook's return shapes the model input and is **never checkpointed**. The hook therefore stages under `INJECTED_MESSAGES_KEY` and the model node commits it (`pop_injected_messages`), exactly as `manage_system_prompts_node` stages `PRUNED_MESSAGE_IDS_KEY` for tombstoning. Without this the message reaches one LLM call and is silently lost.
+- **Idempotency:** reads are non-destructive. An entry is retired only once it is seen committed in the thread (stamped `additional_kwargs[INBOX_ENTRY_ID]`), so a run that dies mid-drain loses nothing. A separate delivered-marker set lets finalize tell "nobody saw this" from "seen, not yet retired" — without it, a run injecting on its last model call would be carried into a duplicate run.
+- **Write side:** `executor_runner.deliver_to_executor()` is the one way to give the executor work from outside a comms turn — busy → inbox, idle → start a run. `call_executor` writes directly when it finds the lock held. `_carry_pending_into_new_run` at finalize picks up anything that arrived after the run's last model call.
+- **Interrupts:** the executor thread is per-conversation and persists (`EXECUTOR_THREAD_PREFIX + conversation_id`), so a cancelled task stays in that history as unfinished business. `cancel_executor(task_ids, message=...)` calls `announce_interruption`, which records the stop — and any redirect — into the same thread, so the next run does not resume what the user just stopped.
 
 ### Supporting background modules
 
 - `apps/api/app/agents/core/background/executor_capture.py` — per-stream collector for executor tool events so background/workflow runs render identically to live chat.
-- `apps/api/app/agents/core/background/executor_queue.py` — per-conversation FIFO queue with `busy` Redis lock. `pop_next_queued_run`, `reclaim_stranded_task`, `try_acquire_lock` (SET NX), `enqueue_task`.
+- `apps/api/app/agents/core/background/executor_channel.py` — **the live channel.** `ExecutorInbox` (per-conversation pending messages), the `decide_drain` rule, the `<user_interjection>` / `<executor_interrupted>` framing, and `drain_inbox_hook`. See "Live channel" below.
+- `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`, `is_executor_busy`) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. HIL approval resume is their main consumer. There is no queue of pending runs.
 - `apps/api/app/agents/core/background/result_delivery.py` — `deliver_result()` and `persist_cancelled_run()`. Finished text → narrate and deliver as new bot message; cancelled → persist `tool_data` only if `executor_owns_tool_data`.
-- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE/QUEUED). **One session per `stream_id`** replaces the old module-level dict soup.
+- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE shares comms' stream / QUEUED owns its own). **One session per `stream_id`** replaces the old module-level dict soup.
 - `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` routes executor tool events back to the SSE consumer.
 - `apps/api/app/agents/core/background/comms_narrator.py` — comm-side re-narration of the executor's terminal message.
 

@@ -21,7 +21,6 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
-from app.agents.core.background.session import queued_without_run
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
@@ -438,7 +437,6 @@ async def call_agent_silent(
         return SilentRunResult(
             message=complete_message,
             tool_data=tool_data,
-            queued_task_id=queued_without_run(stream_id),
         )
 
     except Exception as exc:

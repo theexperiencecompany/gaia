@@ -5,9 +5,9 @@ every (cancelled? × kind × workflow) combination must route to exactly the
 right terminal action. If a future change reintroduces an early-return on
 cancellation, or flips ownership, these fail.
 
-Boundaries mocked: Redis (StreamManager, redis_cache), queue pop, and the two
-delivery entry points (each pinned by its own test file). Session state and
-the routing logic under test are real.
+Boundaries mocked: Redis (StreamManager, redis_cache), the conversation's
+inbox, and the two delivery entry points (each pinned by its own test file).
+Session state and the routing logic under test are real.
 """
 
 import asyncio
@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import (
+    executor_channel as ec,
     executor_queue as eq,
     executor_runner as er,
     result_delivery as rd,
@@ -27,6 +28,7 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     teardown_executor_capture,
 )
+from app.agents.core.background.executor_channel import InboxEntry
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
@@ -43,6 +45,8 @@ from app.agents.core.background.session import (
 from app.agents.core.nodes import executor_status
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.executor import EXECUTOR_PAUSED
+from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.models.chat_models import SourceCategory
 from shared.py.wide_events import log, log_context
 
@@ -88,8 +92,14 @@ class _Boundaries:
         self.release = stack.enter_context(
             patch.object(er, "release_lock_if_owned", new_callable=AsyncMock)
         )
-        self.reclaim = stack.enter_context(
-            patch.object(er, "reclaim_stranded_task", new_callable=AsyncMock, return_value=None)
+        #: What the conversation's inbox still holds when finalize asks — work
+        #: handed over too late for this run's last model call. Empty by default.
+        self.pending: list[InboxEntry] = []
+        self.inbox_cls = stack.enter_context(patch.object(er, "ExecutorInbox"))
+        self.take_undelivered = AsyncMock(side_effect=lambda: list(self.pending))
+        self.inbox_cls.return_value.take_undelivered = self.take_undelivered
+        self.prepare = stack.enter_context(
+            patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
         )
         self.deliver = stack.enter_context(
             patch.object(er, "deliver_result", new_callable=AsyncMock, return_value=(None, None))
@@ -127,10 +137,10 @@ class TestCancelledRouting:
         boundaries.stream_manager.publish_chunk.assert_not_awaited()
         boundaries.stream_manager.complete_stream.assert_not_awaited()
         # A cancel targets the RUNNING task only — the lock is still released
-        # and the queue still rechecked (cancel-all clears the queue itself
+        # and the inbox still rechecked (cancel-all clears the inbox itself
         # before this runs).
         boundaries.release.assert_awaited_once()
-        boundaries.reclaim.assert_awaited_once()
+        boundaries.take_undelivered.assert_awaited_once()
         # Queued sessions are torn down by finalize.
         assert get_session("s1") is None
 
@@ -256,8 +266,8 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         )
         stack.enter_context(patch.object(er, "release_lock_if_owned", new_callable=AsyncMock))
         stack.enter_context(
-            patch.object(er, "reclaim_stranded_task", new_callable=AsyncMock, return_value=None)
-        )
+            patch.object(er, "ExecutorInbox")
+        ).return_value.take_undelivered = AsyncMock(return_value=[])
         stack.enter_context(
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done")
         )
@@ -300,23 +310,20 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         assert [entry["tool_name"] for entry in (saved.tool_data or [])] == ["tool_calls_data"]
 
 
-class TestQueueLockBugs:
-    """Adversarial tests for the lock/queue lifecycle.
+class TestCancelStillCarriesHandedOverWork:
+    """Adversarial test for the lock/hand-off lifecycle, written red-first."""
 
-    Written red-first: each pins a real defect in the handoff protocol.
-    """
-
-    async def test_stop_does_not_strand_queued_tasks(self, boundaries) -> None:
-        """BUG B: user queues a second task while one runs, then presses Stop.
-        The cancelled run's finalize must still hand the queue off — otherwise
-        the acknowledged ('queued, I'll handle it right after') task silently
-        never runs and expires in Redis."""
+    async def test_stop_does_not_strand_work_handed_over_mid_run(self, boundaries) -> None:
+        """BUG B: the user hands the running executor a second thing, then presses
+        Stop. A Stop targets the RUNNING task, not the work added after it — so
+        the cancelled run's finalize must still carry that inbox entry into a
+        fresh run, or the acknowledged ask silently never runs and expires."""
         boundaries.stream_manager.is_cancelled.return_value = True
         create_session("s1", RunKind.QUEUED)
-        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
-        boundaries.reclaim.return_value = PreparedQueuedTask(
-            run=next_run,
-            task="the queued ask",
+        boundaries.pending = [InboxEntry(id="e1", text="the handed-over ask")]
+        boundaries.prepare.return_value = PreparedQueuedTask(
+            run=_run(RunKind.QUEUED, stream_id="queued_next"),
+            task="the handed-over ask",
             configurable={"stream_id": "queued_next"},
         )
 
@@ -324,26 +331,8 @@ class TestQueueLockBugs:
             await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "partial", "final")
             await asyncio.sleep(0)
 
-        boundaries.reclaim.assert_awaited_once_with("conv-1")
-        spawn.assert_awaited_once()
-
-    async def test_a_stranded_queue_is_claimed_and_spawned(self, boundaries) -> None:
-        """BUG A: a task enqueued while the finished run still held the lock (or
-        left behind a cancel-freed lock) must be claimed and spawned, not left to
-        expire silently with the queue TTL."""
-        create_session("s1", RunKind.QUEUED)
-        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
-        boundaries.reclaim.return_value = PreparedQueuedTask(
-            run=next_run,
-            task="stranded ask",
-            configurable={"stream_id": "queued_next"},
-        )
-
-        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
-            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
-            await asyncio.sleep(0)
-
-        boundaries.reclaim.assert_awaited_once_with("conv-1")
+        boundaries.inbox_cls.assert_called_with("conv-1")
+        assert boundaries.prepare.await_args.args[1]["task"] == "the handed-over ask"
         spawn.assert_awaited_once()
 
 
@@ -378,19 +367,20 @@ class TestRecordPause:
         assert set_item.await_count == 2  # every approval id in the batch gets stamped
 
 
-class TestFinalizeDeliveryFailureDoesNotStrandQueue:
-    """A delivery/close failure inside finalize must not skip the queue handoff
-    below it — otherwise queued work strands and the busy lock leaks until its
-    TTL (see the comment on the guarding except in _finalize_executor_run)."""
+class TestFinalizeDeliveryFailureDoesNotStrandTheHandoff:
+    """A delivery/close failure inside finalize must not skip the lock release and
+    inbox hand-off below it — otherwise handed-over work strands and the busy lock
+    leaks until its TTL (see the comment on the guarding except in
+    _finalize_executor_run)."""
 
-    async def test_delivery_blowing_up_still_hands_off_the_queue(self, boundaries) -> None:
+    async def test_delivery_blowing_up_still_carries_the_handed_over_work(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
         create_session("s1", RunKind.QUEUED)
         boundaries.deliver.side_effect = RuntimeError("delivery blew up")
-        next_run = _run(RunKind.QUEUED, stream_id="queued_next")
-        boundaries.reclaim.return_value = PreparedQueuedTask(
-            run=next_run,
-            task="the queued ask",
+        boundaries.pending = [InboxEntry(id="e1", text="the handed-over ask")]
+        boundaries.prepare.return_value = PreparedQueuedTask(
+            run=_run(RunKind.QUEUED, stream_id="queued_next"),
+            task="the handed-over ask",
             configurable={"stream_id": "queued_next"},
         )
 
@@ -399,8 +389,8 @@ class TestFinalizeDeliveryFailureDoesNotStrandQueue:
             await asyncio.sleep(0)
 
         boundaries.release.assert_awaited_once()  # and the lock still goes
-        boundaries.reclaim.assert_awaited_once_with("conv-1")
-        spawn.assert_awaited_once()  # the queued task still gets spawned
+        boundaries.take_undelivered.assert_awaited_once()
+        spawn.assert_awaited_once()  # the handed-over work still gets a run
 
     async def test_a_swallowed_delivery_failure_is_named_in_the_wide_event(
         self, boundaries
@@ -442,19 +432,21 @@ class TestFinalizeDeliveryFailureDoesNotStrandQueue:
         ), event["errors"]
 
 
-class TestQueueLockHandoff:
-    async def test_the_lock_is_released_then_the_queue_is_rechecked(self, boundaries) -> None:
+class TestLockThenInboxHandoff:
+    async def test_the_lock_is_released_then_the_inbox_is_rechecked(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
 
         await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
 
         boundaries.release.assert_awaited_once()
-        boundaries.reclaim.assert_awaited_once_with("conv-1")
+        boundaries.inbox_cls.assert_called_with("conv-1")
+        boundaries.take_undelivered.assert_awaited_once()
 
-    async def test_a_claimed_next_task_is_spawned(self, boundaries) -> None:
+    async def test_carried_work_is_spawned_as_a_fresh_run(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
+        boundaries.pending = [InboxEntry(id="e1", text="do the thing")]
         next_run = _run(RunKind.QUEUED, stream_id="queued_next")
-        boundaries.reclaim.return_value = PreparedQueuedTask(
+        boundaries.prepare.return_value = PreparedQueuedTask(
             run=next_run,
             task="do the thing",
             configurable={"stream_id": "queued_next"},
@@ -469,6 +461,43 @@ class TestQueueLockHandoff:
             task="do the thing",
             configurable={"stream_id": "queued_next"},
         )
+
+    async def test_an_empty_inbox_starts_no_second_run(self, boundaries) -> None:
+        """Nothing was handed over, so nothing is carried — otherwise every run
+        would spawn a successor with an empty task, forever."""
+        create_session("s1", RunKind.QUEUED)
+
+        with patch.object(er, "run_executor_background", new_callable=AsyncMock) as spawn:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "result", "final")
+            await asyncio.sleep(0)
+
+        boundaries.prepare.assert_not_awaited()
+        spawn.assert_not_awaited()
+
+
+class TestThePausedRunKeepsItsLock:
+    """A run parked on a HIL approval is NOT over: its thread is checkpointed with
+    pending work, so no other run may take it. Releasing the lock — or letting its
+    TTL lapse while the user takes hours to answer — lets the next run take that
+    thread and discard the interrupt."""
+
+    async def test_a_pause_re_arms_the_lock_instead_of_releasing_it(self, boundaries) -> None:
+        session = create_session("s1", RunKind.QUEUED)
+
+        with patch.object(
+            er, "extend_lock_if_owned", new_callable=AsyncMock, return_value=True
+        ) as extend:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "", EXECUTOR_PAUSED)
+
+        extend.assert_awaited_once_with("conv-1", "s1", "task-1", HIL_PAUSED_LOCK_TTL_SECONDS)
+        boundaries.release.assert_not_awaited()
+        # Nothing to deliver, and nothing may be carried into a second run — this
+        # thread still holds the work the approval is gating.
+        boundaries.deliver.assert_not_awaited()
+        boundaries.take_undelivered.assert_not_awaited()
+        # The turn's SSE must still close, or the user watches a spinner instead
+        # of the approval card.
+        assert session.done_event.is_set()
 
 
 class _FakeRedisClient:
@@ -485,9 +514,6 @@ class _FakeRedisClient:
             return None
         self.store[key] = value
         return True
-
-    async def llen(self, key: str) -> int:
-        return 0
 
     async def delete(self, key: str) -> None:
         self.store.pop(key, None)
@@ -518,6 +544,9 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
         stack.enter_context(
             patch.object(er, "_queue_collection_if_uncollected", new_callable=AsyncMock)
         )
+        stack.enter_context(
+            patch.object(er, "ExecutorInbox")
+        ).return_value.take_undelivered = AsyncMock(return_value=[])
         yield
 
 
@@ -545,7 +574,7 @@ class TestTheBusyLockDoesNotOutliveTheResult:
             await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "8 todos created", "final")
             assert await _status_frames("conv-1") == []
 
-    async def test_the_lock_is_released_even_when_the_queue_handoff_blows_up(self) -> None:
+    async def test_the_lock_is_released_even_when_the_handoff_blows_up(self) -> None:
         cache = _FakeRedisCache()
         lock_key = f"{EXECUTOR_BUSY_PREFIX}conv-1"
         cache.client.store[lock_key] = build_lock_value("s1", "task-1")
@@ -554,7 +583,7 @@ class TestTheBusyLockDoesNotOutliveTheResult:
         with _real_lock_lifecycle(cache):
             with patch.object(
                 er,
-                "reclaim_stranded_task",
+                "_carry_pending_into_new_run",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ):
@@ -576,6 +605,78 @@ class TestTheBusyLockDoesNotOutliveTheResult:
             await er._finalize_executor_run(_run(RunKind.QUEUED), TASK, "done", "final")
 
         assert cache.client.store[lock_key] == build_lock_value("newer-stream", "task-9")
+
+
+class _FakeInboxRedisClient:
+    """Just enough of the raw Redis list surface to run a real ExecutorInbox."""
+
+    def __init__(self) -> None:
+        self.lists: dict[str, list[str]] = {}
+
+    async def rpush(self, key: str, *values: str) -> int:
+        self.lists.setdefault(key, []).extend(values)
+        return len(self.lists[key])
+
+    async def lrange(self, key: str, start: int, end: int) -> list[str]:
+        items = self.lists.get(key, [])
+        return items[start:] if end == -1 else items[start : end + 1]
+
+    async def lrem(self, key: str, count: int, value: str) -> int:
+        items = self.lists.get(key, [])
+        limit = len(items) if count == 0 else count
+        removed, kept = 0, []
+        for item in items:
+            if item == value and removed < limit:
+                removed += 1
+                continue
+            kept.append(item)
+        self.lists[key] = kept
+        return removed
+
+    async def expire(self, key: str, ttl: int) -> bool:
+        return True
+
+    async def delete(self, *keys: str) -> None:
+        for key in keys:
+            self.lists.pop(key, None)
+
+
+class _FakeInboxCache:
+    def __init__(self) -> None:
+        self.client = _FakeInboxRedisClient()
+
+
+class TestFinalizeCarriesOnlyWorkNoRunHasSeen:
+    """The duplicate-run bug the ``delivered`` marker exists to stop.
+
+    An entry stays on the inbox until a LATER drain pass sees it committed to the
+    thread — so a hand-off injected on a run's FINAL model call still looks
+    pending at finalize. Carrying everything pending therefore started a second
+    run answering a request the finishing run had already answered. Only work no
+    run has put in front of the model may be carried.
+    """
+
+    async def test_injected_work_is_not_re_run_but_late_work_is(self) -> None:
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            injected = await inbox.append("e1", "also check my calendar")
+            await inbox.mark_delivered([injected])  # the run showed the model this one
+            await inbox.append("e2", "and book the flight")  # landed after the last model call
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED))
+            still_pending = [entry.id for entry in await inbox.read()]
+
+        prepare.assert_awaited_once()
+        assert prepare.await_args.args[1]["task"] == "and book the flight"
+        # The carried entry leaves the inbox; the injected one stays for the drain
+        # hook to retire once it sees it in the thread.
+        assert still_pending == ["e1"]
 
 
 class TestTheCardNoteOnlyGoesWhereCardsRender:

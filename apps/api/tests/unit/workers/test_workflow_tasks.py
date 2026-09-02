@@ -1,7 +1,8 @@
 """Unit tests for workflow_tasks ARQ worker."""
 
+import asyncio
 from contextlib import ExitStack
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID, uuid4
 
@@ -15,16 +16,18 @@ from app.models.notification.notification_models import (
     ActionType,
     NotificationSourceEnum,
 )
+from app.models.playbook_models import PlaybookRunStatus
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import AnalyticsEvents
 from app.services.workflow.conversation_service import build_selected_workflow_data
-from app.services.workflow.execution_service import WorkflowFireQueued
+from app.services.workflow.execution_service import WorkflowFireTimedOut
 from app.services.workflow.notifications import (
     send_workflow_completion_notification,
     send_workflow_failure_notification,
 )
 from app.utils.errors import AppError
+from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
 from app.workers.tasks.workflow_tasks import (
     AGENT_RUN_SUMMARY,
     execute_workflow_as_chat,
@@ -1975,6 +1978,15 @@ class TestRegenerateWorkflowStepsAdditional:
 
 MODULE = "app.workers.tasks.workflow_tasks"
 
+#: A fixed occurrence stamp, so the claim a scheduled fire makes is assertable.
+SCHEDULED_FOR = datetime(2026, 5, 1, 9, 0, tzinfo=UTC)
+
+#: The trigger context of a fire the scheduler armed.
+SCHEDULED_FIRE = {
+    "trigger_type": TriggerType.SCHEDULE.value,
+    "scheduled_for": SCHEDULED_FOR.timestamp(),
+}
+
 
 class _FirePatches:
     """Every I/O edge one ``execute_workflow_by_id`` fire touches, mocked.
@@ -1998,6 +2010,8 @@ class _FirePatches:
         self.reschedule = AsyncMock()
         self.coalesce = MagicMock(return_value=30)
         self.distrust = AsyncMock()
+        self.record_run_outcome = AsyncMock(return_value=None)
+        self.notify = AsyncMock()
         self.log = MagicMock()
 
     def enter(self, stack) -> None:
@@ -2015,6 +2029,8 @@ class _FirePatches:
             patch(f"{MODULE}.reschedule_if_refilled", self.reschedule),
             patch(f"{MODULE}.coalesce_window_seconds", self.coalesce),
             patch(f"{MODULE}.distrust_fresh_playbook", self.distrust),
+            patch(f"{MODULE}.playbook_repository.record_run_outcome", self.record_run_outcome),
+            patch(f"{MODULE}.notification_service.create_notification", self.notify),
             patch(f"{MODULE}.log", self.log),
         ):
             stack.enter_context(patcher)
@@ -2110,6 +2126,39 @@ class TestTheByIdTaskThreadsItsIdsThrough:
         ]
         assert AnalyticsEvents.WORKFLOW_EXECUTED not in captured
 
+    async def test_a_scheduled_fire_claims_the_occurrence_it_was_armed_for(self):
+        """ARQ cannot cancel a deferred job, so the claim is pinned to the
+        occurrence — an unpinned claim runs a workflow at a time it was
+        rescheduled away from."""
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            await execute_workflow_by_id({}, workflow.id, SCHEDULED_FIRE)
+
+        assert seams.scheduler.claim_task_for_execution.await_args_list == [
+            call(workflow.id, expected_occurrence=SCHEDULED_FOR)
+        ]
+
+    async def test_a_fire_far_off_its_scheduled_time_is_warned_about_with_its_drift(self):
+        workflow = _make_workflow()
+        workflow.scheduled_at = datetime.now(UTC) - timedelta(hours=1)
+        seams = _FirePatches(workflow)
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            await execute_workflow_by_id({}, workflow.id)
+
+        drift = [
+            entry
+            for entry in seams.log.warning.call_args_list
+            if entry.args and "fired off schedule" in str(entry.args[0])
+        ]
+        assert len(drift) == 1
+        assert drift[0].kwargs["workflow_id"] == workflow.id
+        assert drift[0].kwargs["drift"] >= 3600
+
     async def test_a_webhook_payload_without_a_stamp_reads_as_an_integration_fire(
         self, _no_real_analytics
     ):
@@ -2183,35 +2232,6 @@ class TestTheByIdExceptPathsNameTheirCause:
     """The except blocks are where a fire explains itself; a blanked message
     or a dropped id there is a silent fire nobody can find in the logs."""
 
-    async def test_a_queued_fire_is_logged_and_booked_with_its_own_signal(self):
-        workflow = _make_workflow()
-        seams = _FirePatches(workflow)
-        queued = WorkflowFireQueued(
-            task_id=workflow.id, user_id=workflow.user_id, conversation_id="conv_q", trace=[]
-        )
-        seams.chat.side_effect = queued
-        never_ran = AsyncMock(return_value="queued instead")
-
-        with ExitStack() as stack:
-            seams.enter(stack)
-            stack.enter_context(patch(f"{MODULE}._record_fire_that_never_ran", never_ran))
-            result = await execute_workflow_by_id({}, workflow.id)
-
-        assert result == "queued instead"
-        seams.log.warning.assert_any_call(
-            "[WORKER] Workflow fire did not run",
-            workflow_id=workflow.id,
-            reason=str(queued),
-            error_type="WorkflowFireQueued",
-        )
-        assert never_ran.await_args.args == (
-            queued,
-            workflow,
-            workflow.id,
-            seams.execution.execution_id,
-            None,
-        )
-
     async def test_a_crashed_fire_is_logged_with_its_unwrapped_cause(self):
         workflow = _make_workflow()
         seams = _FirePatches(workflow)
@@ -2256,6 +2276,79 @@ class TestTheByIdExceptPathsNameTheirCause:
             error=str(capped),
             error_type="RateLimitExceededException",
         )
+
+
+class TestAFireCutOffByTheJobTimeoutIsBookedAgainstTheRightIds:
+    """ARQ cancels the job rather than raising into it, so this is the only
+    place the fire can be closed — and it has to close the right record.
+
+    Fired on a schedule throughout: only a scheduler-originated fire advances
+    the schedule, so that is the fire whose re-arm is worth asserting.
+    """
+
+    async def test_the_timeout_is_named_recorded_counted_and_rearmed(self):
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+        seams.chat.side_effect = asyncio.CancelledError()
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            with pytest.raises(asyncio.CancelledError):
+                await execute_workflow_by_id({}, workflow.id, SCHEDULED_FIRE)
+
+        reason = str(WorkflowFireTimedOut(WORKER_JOB_TIMEOUT_SECONDS))
+        seams.log.error.assert_any_call(
+            "[WORKER] Workflow fire cut off by the job timeout",
+            workflow_id=workflow.id,
+            error=reason,
+            error_type="WorkflowFireTimedOut",
+        )
+        assert seams.complete_execution.await_args_list == [
+            call(
+                execution_id="exec_1",
+                status="failed",
+                error_message=reason,
+                conversation_id=None,
+                trace=None,
+            )
+        ]
+        assert seams.increment.await_args_list == [
+            call(workflow.id, workflow.user_id, is_successful=False)
+        ]
+        seams.scheduler.handle_recurring_task.assert_awaited_once()
+
+    async def test_the_shortcut_is_marked_failed_for_this_workflow_and_user(self):
+        """Whatever the replay was doing may have run its side effects before
+        the cut, so the next fire must heal rather than replay them again."""
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+        seams.chat.side_effect = asyncio.CancelledError()
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            with pytest.raises(asyncio.CancelledError):
+                await execute_workflow_by_id({}, workflow.id, SCHEDULED_FIRE)
+
+        seams.record_run_outcome.assert_awaited_once()
+        recorded = seams.record_run_outcome.await_args
+        assert recorded.args[0] == workflow.id
+        assert recorded.args[1] == workflow.user_id
+        assert recorded.args[2].status is PlaybookRunStatus.FAILED
+        assert recorded.args[2].reason == str(WorkflowFireTimedOut(WORKER_JOB_TIMEOUT_SECONDS))
+
+    async def test_a_rearm_failure_after_a_timeout_names_the_workflow(self):
+        workflow = _make_workflow()
+        seams = _FirePatches(workflow)
+        seams.chat.side_effect = asyncio.CancelledError()
+        seams.scheduler.handle_recurring_task = AsyncMock(side_effect=RuntimeError("redis away"))
+
+        with ExitStack() as stack:
+            seams.enter(stack)
+            with pytest.raises(asyncio.CancelledError):
+                await execute_workflow_by_id({}, workflow.id, SCHEDULED_FIRE)
+
+        logged = [str(entry.args[0]) for entry in seams.log.error.call_args_list if entry.args]
+        assert any(workflow.id in line for line in logged), logged
 
 
 class TestTheWorkflowCardBothRunPathsAttach:

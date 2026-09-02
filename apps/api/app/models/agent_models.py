@@ -262,15 +262,7 @@ class AgentRunnableConfig(RunnableConfig):
 
 @dataclass(frozen=True)
 class SilentRunResult:
-    """What one ``call_agent_silent`` turn produced.
-
-    ``queued_task_id`` is set when the turn's comms agent delegated to the
-    executor and that dispatch was QUEUED behind an in-flight run for the same
-    conversation instead of running. The ``message`` is then an acknowledgement
-    of work that has not started, so a caller must not record the turn as work
-    done. It is ``None`` whenever an executor actually ran.
-    """
+    """What one ``call_agent_silent`` turn produced."""
 
     message: str
     tool_data: dict[str, Any]
-    queued_task_id: str | None = None

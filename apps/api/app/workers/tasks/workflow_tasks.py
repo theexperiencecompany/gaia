@@ -88,7 +88,6 @@ from app.services.workflow.conversation_service import (
 from app.services.workflow.execution_service import (
     PlaybookFallbackFailed,
     WorkflowFireOverlapped,
-    WorkflowFireQueued,
     WorkflowFireTimedOut,
     complete_execution,
     create_execution,
@@ -572,10 +571,6 @@ REPLAY_FLAGGED_SUMMARY = (
 OVERLAPPED_SUMMARY = (
     "Skipped: a previous run of this workflow was still going, and that run delivered the result"
 )
-QUEUED_MESSAGE = (
-    "This run started while the previous one was still going, so it waited and ran after "
-    "it. If this keeps happening, give the workflow a longer interval than one run takes."
-)
 SHORTCUT_DISCARDED_SUMMARY = (
     "Ran the full workflow; the saved shortcut was discarded because the workflow changed"
 )
@@ -733,9 +728,6 @@ async def _run_workflow(
             conversation_id,
             result,
         )
-    except WorkflowFireQueued as queued:
-        queued.trace = [*result.trace, *queued.trace]
-        raise
     except Exception as exc:
         raise PlaybookFallbackFailed(
             exc, conversation_id=conversation_id, trace=result.trace
@@ -1140,49 +1132,6 @@ async def _reschedule_refill_safe(
         )
 
 
-async def _record_queued_fire(
-    queued: WorkflowFireQueued,
-    workflow: Workflow | None,
-    workflow_id: str,
-    execution_id: str | None,
-    context: dict[str, Any] | None,
-) -> str:
-    # This fire never ran: one executor runs per conversation, and the
-    # workflow's previous fire still held the lock, so this one went on the
-    # queue. Completing it as "success" is what made every fire after the
-    # first look like work on a workflow whose run outlasts its own cron
-    # period, and the fake record then became the "last run" the NEXT fire
-    # reads as its history. It is not a failure to notify about either: the
-    # queued task runs on its own and delivers its own result, so this path
-    # sends neither the completion nor the failure notification.
-    log.set_ns(
-        "workflow",
-        queued=True,
-        queued_task_id=queued.task_id,
-        outcome="queued_behind_in_flight_run",
-    )
-    log.warning(
-        f"{LogTag.WORKER} Workflow fire queued behind its previous run — nothing executed",
-        workflow_id=workflow_id,
-        queued_task_id=queued.task_id,
-    )
-    if execution_id:
-        await complete_execution(
-            execution_id=execution_id,
-            status="failed",
-            error_message=QUEUED_MESSAGE,
-            conversation_id=queued.conversation_id,
-            trace=queued.trace,
-        )
-    # Counted like any other fire that produced no result, so the workflow's
-    # success ratio reflects what actually happened.
-    await WorkflowService.increment_execution_count(
-        workflow_id, queued.user_id, is_successful=False
-    )
-    await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
-    return f"Workflow {workflow_id} did not run — queued behind its previous run"
-
-
 async def _record_overlapped_fire(
     overlapped: WorkflowFireOverlapped,
     workflow: Workflow | None,
@@ -1219,18 +1168,6 @@ async def _record_overlapped_fire(
     )
     await _rearm_quietly(workflow_scheduler, workflow, context, workflow_id)
     return f"Workflow {workflow_id} did not run — overlapped an in-flight run"
-
-
-async def _record_fire_that_never_ran(
-    never_ran: WorkflowFireQueued | WorkflowFireOverlapped,
-    workflow: Workflow | None,
-    workflow_id: str,
-    execution_id: str | None,
-    context: dict[str, Any] | None,
-) -> str:
-    if isinstance(never_ran, WorkflowFireQueued):
-        return await _record_queued_fire(never_ran, workflow, workflow_id, execution_id, context)
-    return await _record_overlapped_fire(never_ran, workflow, workflow_id, execution_id, context)
 
 
 async def _record_timed_out_fire(
@@ -1345,7 +1282,7 @@ async def execute_workflow_by_id(
             workflow, workflow_id, trigger_type, context, execution_id
         )
 
-    except (WorkflowFireQueued, WorkflowFireOverlapped) as never_ran:
+    except WorkflowFireOverlapped as never_ran:
         # Recorded on the wide event from the block that caught it; the helper
         # below is bookkeeping only. Neither is a failure to alert on.
         log.warning(
@@ -1354,7 +1291,7 @@ async def execute_workflow_by_id(
             reason=str(never_ran),
             error_type=type(never_ran).__name__,
         )
-        return await _record_fire_that_never_ran(
+        return await _record_overlapped_fire(
             never_ran, workflow, workflow_id, execution_id, context
         )
     except asyncio.CancelledError:
@@ -1607,24 +1544,8 @@ async def execute_workflow_as_chat(
         entries = cast(list[ToolDataEntry], result.tool_data.get("tool_data") or [])
         trace = build_trace(entries)
 
-        # Comms delegated, and the delegation was queued behind the workflow's
-        # PREVIOUS fire, which still holds this conversation's executor lock. The
-        # comms reply is an acknowledgement of work that has not started, so this
-        # fire produced nothing and must not come back as a normal result.
-        if result.queued_task_id:
-            raise WorkflowFireQueued(
-                task_id=result.queued_task_id,
-                user_id=user_id,
-                conversation_id=conversation_id,
-                trace=trace,
-            )
-
         return conversation_id, trace
 
-    except WorkflowFireQueued:
-        # Not an agent error — a fire that never started. Straight past the
-        # error logging below, to the caller's own terminal handling.
-        raise
     except Exception as e:
         # Re-raise so caller marks execution as failed instead of fake-success.
         log.error(

@@ -54,7 +54,7 @@ class SubagentJoinMiddleware(AgentMiddleware):
             return None
         # Still-running subagents never force a join: the model may legitimately
         # rest ("dispatched — I'll report when it's done") and their landing
-        # queues a collection turn (see enqueue_collection_run). Forcing here
+        # wakes a collection turn (see deliver_to_executor). Forcing here
         # would trap the executor in a blocking-poll loop for long-running work.
         if get_pending_subagents(stream_id) > 0:
             return None

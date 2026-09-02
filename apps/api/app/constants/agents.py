@@ -36,6 +36,10 @@ class AgentTag(StrEnum):
     STYLE_CORRECTION = "style_correction"
     LAST_RUN = "last_run"
     PLAYBOOK_FALLBACK = "playbook_fallback"
+    #: The user speaking to an executor run that is already in flight.
+    USER_INTERJECTION = "user_interjection"
+    #: A run the user force-stopped, told to the run that follows it.
+    EXECUTOR_INTERRUPTED = "executor_interrupted"
 
 
 def wrap_agent_payload(tag: AgentTag, body: str, agent: str | None = None) -> str:

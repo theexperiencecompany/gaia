@@ -92,7 +92,7 @@ async def build_executor_graph(
         subagent_mw.set_store(store)
         subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
-    pre_model_hooks = worker_pre_model_hooks(todo_hook)
+    pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
     builder = create_agent(
         chat_llm,

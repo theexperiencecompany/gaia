@@ -58,7 +58,7 @@ import fakeredis.aioredis
 from langgraph.store.memory import InMemoryStore
 import pytest
 
-from app.agents.core.background.executor_runner import QUEUED_EXECUTOR_TASK_NAME
+from app.agents.core.background.executor_runner import DETACHED_EXECUTOR_TASK_NAME
 from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import teardown_session
 from app.agents.core.graph_builder import build_graph as build_graph_module
@@ -455,9 +455,9 @@ async def drain_background_runs() -> None:
     """Wait out every executor task still in flight, whatever spawned it.
 
     Two module-level keep-alive sets — the canonical ``spawn_background_task``
-    set (publishes and queued executor runs) and HIL's own resume set — and a run
+    set (publishes and detached executor runs) and HIL's own resume set — and a run
     in either can spawn into the other: a resume finalizes, hands the busy lock to
-    a queued task, and that task's own finalize can queue a collection turn.
+    a detached task, and that task's own finalize can wake a collection turn.
     Draining one set once is therefore not enough — this loops until both empty.
 
     Load-bearing for isolation, not tidiness. The patches installed by
@@ -467,7 +467,7 @@ async def drain_background_runs() -> None:
     test's turn produced no approval record at all.
     """
     while pending := [
-        *_tasks_named(STREAM_PUBLISH_TASK_NAME, QUEUED_EXECUTOR_TASK_NAME),
+        *_tasks_named(STREAM_PUBLISH_TASK_NAME, DETACHED_EXECUTOR_TASK_NAME),
         *resolution._resume_tasks,
     ]:
         await asyncio.gather(*pending, return_exceptions=True)

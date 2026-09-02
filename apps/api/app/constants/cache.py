@@ -168,8 +168,10 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 HIL_DECLINED_PREFIX = "hil:declined:"
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
-EXECUTOR_QUEUE_PREFIX = "executor:queue:"
-EXECUTOR_QUEUE_TTL = ONE_HOUR_TTL  # Tasks expire if not picked up within 1 hour
+# Pending messages for a conversation's executor (see executor_channel). Not a
+# queue of runs: an entry is text some executor run will read into its history.
+EXECUTOR_INBOX_PREFIX = "executor:inbox:"
+EXECUTOR_INBOX_TTL = ONE_HOUR_TTL  # Unread work expires after an hour
 # Max time a caller waits for a detached executor to finish before draining
 # whatever tool events were collected. Matches the busy lock TTL — the executor
 # cannot outlive its lock, so waiting longer would be pointless.

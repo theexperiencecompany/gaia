@@ -18,6 +18,7 @@ conversation. TTL of 30 minutes is a safety net — released explicitly.
 
 from dataclasses import dataclass
 from typing import Any, NamedTuple
+from uuid import uuid4
 
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
@@ -30,23 +31,31 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     teardown_executor_capture,
 )
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_run_item,
-    enqueue_collection_run,
+    claim_collection_wake,
     extend_lock_if_owned,
-    reclaim_stranded_task,
+    is_executor_busy,
+    prepare_run_from_item,
     release_lock_if_owned,
 )
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.result_delivery import deliver_result, persist_cancelled_run
-from app.agents.core.background.session import ExecutorRun, get_session, signal_executor_done
+from app.agents.core.background.session import (
+    ExecutorRun,
+    RunIdentity,
+    get_session,
+    signal_executor_done,
+)
 from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.constants.executor import (
     EXECUTOR_APPROVAL_LOST_MESSAGE,
+    EXECUTOR_COLLECTION_TASK,
     EXECUTOR_PAUSED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
     MESSAGE_ID_KEY,
@@ -69,7 +78,7 @@ from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
-QUEUED_EXECUTOR_TASK_NAME = "queued-executor-run"
+DETACHED_EXECUTOR_TASK_NAME = "detached-executor-run"
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -366,15 +375,13 @@ async def _finalize_executor_run(
     # and decisions on it would be refused in the meantime.
     await _queue_collection_if_uncollected(run, task)
 
-    # Hand the conversation on. The lock is already free, so this is always an
-    # NX re-acquire: it runs on EVERY terminal path, cancelled included (a Stop
-    # targets the running task only — queued tasks were acknowledged with "I'll
-    # handle it right after" and must still run), and it claims nothing when a
-    # concurrent call_executor got the lock first — that run's own finalize
-    # drains the queue instead.
-    prepared = await reclaim_stranded_task(run.conversation_id)
-    if prepared is not None:
-        _spawn_queued_run(run, prepared)
+    # Work handed over mid-run is normally absorbed by the run itself. The one
+    # case it cannot be is a hand-off that lands after this run's LAST model
+    # call — there is no further reasoning step to read it. Carry that into a
+    # fresh run rather than leaving it to sit. Runs on EVERY terminal path,
+    # cancelled included: a Stop targets the running task, not work the user
+    # added afterwards.
+    await _carry_pending_into_new_run(run)
 
 
 async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
@@ -386,8 +393,8 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
         uncollected = await has_bg_subagent_results(run.conversation_id) or bool(
             await list_parked_subagents_for_conversation(run.conversation_id)
         )
-        if uncollected:
-            await enqueue_collection_run(
+        if uncollected and await claim_collection_wake(run.conversation_id):
+            await deliver_to_executor(
                 run.conversation_id,
                 {
                     "user_id": run.user.get("user_id", ""),
@@ -395,6 +402,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_name": run.user.get("name", ""),
                     "user_timezone": run.user.get("timezone"),
                 },
+                EXECUTOR_COLLECTION_TASK,
                 workflow_execution_id=run.workflow_execution_id,
             )
     except Exception as e:  # a failed wake must not strand the queue handoff
@@ -535,20 +543,102 @@ async def _close_queued_stream(run: ExecutorRun, was_cancelled: bool) -> None:
         await StreamManager.complete_stream(run.stream_id)
 
 
-def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
-    """Spawn the next queued run as a GC-tracked background task."""
+def _spawn_detached_run(prepared: PreparedQueuedTask, conversation_id: str) -> None:
+    """Spawn a run that owns its own stream, as a GC-tracked background task."""
     spawn_background_task(
         run_executor_background(
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
         ),
-        name=QUEUED_EXECUTOR_TASK_NAME,
+        name=DETACHED_EXECUTOR_TASK_NAME,
     )
 
     log.info(
-        f"{LogTag.AGENT} Queued executor task spawned",
+        f"{LogTag.AGENT} Detached executor run spawned",
         task_id=prepared.run.task_id,
-        conversation_id=run.conversation_id,
+        conversation_id=conversation_id,
         stream_id=prepared.run.stream_id,
     )
+
+
+async def deliver_to_executor(
+    conversation_id: str,
+    configurable: AgentConfigurable,
+    task: str,
+    *,
+    workflow_execution_id: str | None = None,
+) -> None:
+    """Give the executor work from outside a comms turn — the one way to do it.
+
+    Whether a run already exists is an implementation detail of delivery, not two
+    different behaviours: a live run absorbs the task through its inbox, and an
+    idle conversation gets a run started to carry it. Either way the task ends up
+    as a message in an executor thread, never as a second parallel answer.
+    """
+    if await is_executor_busy(conversation_id):
+        await ExecutorInbox(conversation_id).append(str(uuid4()), task)
+        log.info(
+            f"{LogTag.AGENT} Work handed to the live executor run",
+            conversation_id=conversation_id,
+        )
+        return
+    await _start_executor_run(
+        conversation_id, configurable, task, workflow_execution_id=workflow_execution_id
+    )
+
+
+async def _start_executor_run(
+    conversation_id: str,
+    configurable: AgentConfigurable,
+    task: str,
+    *,
+    workflow_execution_id: str | None = None,
+) -> bool:
+    """Materialize and spawn a detached run for ``task``. Returns whether it started."""
+    prepared = await prepare_run_from_item(
+        conversation_id,
+        build_run_item(
+            task=task,
+            configurable={
+                **configurable,
+                "thread_id": conversation_id,
+                "execution_mode": "interactive",
+            },
+            identity=RunIdentity(
+                conversation_id=conversation_id,
+                task_id=str(uuid4()),
+                user_message_id=None,
+            ),
+            workflow_execution_id=workflow_execution_id,
+        ),
+    )
+    if prepared is None:
+        return False
+    _spawn_detached_run(prepared, conversation_id)
+    return True
+
+
+async def _carry_pending_into_new_run(run: ExecutorRun) -> None:
+    """Start a run for work this one finished too early to absorb."""
+    try:
+        pending = await ExecutorInbox(run.conversation_id).take_undelivered()
+        if not pending:
+            return
+        await _start_executor_run(
+            run.conversation_id,
+            {
+                "user_id": run.user.get("user_id", ""),
+                "email": run.user.get("email", ""),
+                "user_name": run.user.get("name", ""),
+                "user_timezone": run.user.get("timezone"),
+            },
+            "\n".join(entry.text for entry in pending),
+            workflow_execution_id=run.workflow_execution_id,
+        )
+    except Exception as e:  # a failed carry must not break finalize
+        log.error(
+            f"{LogTag.AGENT} Could not carry pending work into a new run",
+            conversation_id=run.conversation_id,
+            error_type=type(e).__name__,
+        )

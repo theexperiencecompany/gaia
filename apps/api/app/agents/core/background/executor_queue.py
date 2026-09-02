@@ -1,21 +1,19 @@
-"""Per-conversation executor queue and busy-lock mechanics.
+"""Per-conversation executor busy-lock mechanics and detached-run materialization.
 
 One executor runs per conversation at a time, guarded by the
-``executor:busy:{conversation_id}`` Redis lock. While the lock is held,
-``call_executor`` enqueues additional tasks onto
-``executor:queue:{conversation_id}``; when a run finishes, its finalize step
-pops the next task here and spawns it.
+``executor:busy:{conversation_id}`` Redis lock. Work that arrives while the lock
+is held is not deferred — it goes to the conversation's inbox and the live run
+absorbs it (see ``executor_channel``). There is no queue of pending runs.
 
-This module owns the Redis mechanics only — enqueue, pop/prepare, and lock
-value handling. ``pop_next_queued_run`` PREPARES the next run (lock overwrite,
-session registration, stream start, ``executor.stream_started`` WS event) and
-returns it; the runner spawns it. That one-way dependency (runner → queue)
-keeps the import graph acyclic.
+What remains here is the lock itself and :func:`prepare_run_from_item`, which
+materializes a DETACHED run — one that owns its own stream rather than sharing a
+comms turn's. HIL approval resume is its main consumer; the collection wake-up is
+the other. Preparing is this module's job, spawning the runner's, which is the
+one-way dependency (runner → queue) that keeps the import graph acyclic.
 """
 
 from dataclasses import dataclass
 from enum import StrEnum
-import json
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
@@ -25,18 +23,12 @@ from app.agents.core.background.session import (
     RunKind,
     create_session,
 )
-from app.constants.cache import (
-    EXECUTOR_BUSY_PREFIX,
-    EXECUTOR_BUSY_TTL,
-    EXECUTOR_QUEUE_PREFIX,
-    EXECUTOR_QUEUE_TTL,
-)
+from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.constants.executor import (
     CONFIGURABLE_OWNED_KEYS,
     CONFIGURABLE_RUN_SCOPED_KEYS,
     EXECUTOR_COLLECT_MARKER_PREFIX,
     EXECUTOR_COLLECT_MARKER_TTL,
-    EXECUTOR_COLLECTION_TASK,
 )
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
@@ -205,98 +197,18 @@ async def extend_lock_if_owned(
     )
 
 
-async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | None:
-    """Claim a free lock and pop a task that would otherwise strand.
-
-    Two ways a queued task ends up with no lock holder to drain it:
-      - a call_executor enqueued in the race window between finalize's empty
-        pop and its lock release;
-      - cancel_executor freed the lock while tasks remained queued.
-    Without a reclaim pass the task sits in Redis until the next executor run
-    for that conversation — or silently expires with the queue TTL.
-
-    NX-claims the lock with a sentinel first, so a concurrent call_executor
-    acquirer always wins cleanly (their finalize will drain the queue instead).
-    The sentinel parses as a harmless no-op for cancel_executor. A task
-    enqueued after this pass's empty pop re-enters the same (vanishingly
-    rare) race; the next executor run drains it.
-    """
-    if not redis_cache.client:
-        return None
-    if await redis_cache.client.llen(f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}") == 0:
-        return None
-    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
-    if not await try_acquire_lock(lock_key, build_lock_value("reclaim", str(uuid4()))):
-        return None
-    prepared = await pop_next_queued_run(conversation_id)
-    if prepared is None:
-        # We hold only the sentinel — free it so call_executor isn't blocked.
-        await redis_cache.delete(lock_key)
-    return prepared
-
-
-# ── Enqueue ──────────────────────────────────────────────────────────
-
-
-async def enqueue_task(queue_key: str, item: ExecutorRunItem) -> None:
-    """Push a run item (see :func:`build_run_item`) to the executor queue.
-
-    Takes the built item rather than its fields: the item is the one shape a
-    queued run is rebuilt from, so the fields it carries belong in one place.
-    """
-    queue_item = json.dumps(item)
-    if redis_cache.client:
-        await redis_cache.client.rpush(queue_key, queue_item)
-        await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
-
-
-async def enqueue_collection_run(
-    conversation_id: str,
-    base_configurable: AgentConfigurable,
-    workflow_execution_id: str | None = None,
-) -> bool:
-    """Queue a wake-up turn to collect landed background-subagent work.
+async def claim_collection_wake(conversation_id: str) -> bool:
+    """Claim the right to wake the executor for landed background-subagent work.
 
     The "rest" contract: an executor may end its turn while background subagents
-    are still running; when their work lands (result or HIL park) with no
-    executor alive to collect it, this queues a fresh turn whose task is to join
-    and report. The SETNX marker keeps it to one queued collection at a time —
-    the join clears it when it actually runs. Returns whether a run was queued.
-
-    ``thread_id`` is forced back to the conversation id: a subagent's
-    configurable carries the SUBAGENT thread, and the collection turn must run
-    on the executor's own thread.
+    are still running. When their work lands, someone has to make sure an
+    executor sees it. The SETNX marker keeps that to one wake at a time — the
+    join clears it when it actually runs — so N landings do not produce N wakes.
     """
     if not redis_cache.client:
         return False
     marker = f"{EXECUTOR_COLLECT_MARKER_PREFIX}{conversation_id}"
-    claimed = await redis_cache.client.set(marker, "1", nx=True, ex=EXECUTOR_COLLECT_MARKER_TTL)
-    if not claimed:
-        return False
-    configurable: AgentConfigurable = {
-        **safe_configurable(base_configurable),
-        "thread_id": conversation_id,
-        "execution_mode": "interactive",
-    }
-    configurable.pop("subagent_id", None)
-    await enqueue_task(
-        f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}",
-        build_run_item(
-            task=EXECUTOR_COLLECTION_TASK,
-            configurable=configurable,
-            identity=RunIdentity(
-                conversation_id=conversation_id,
-                task_id=str(uuid4()),
-                user_message_id=None,
-            ),
-            workflow_execution_id=workflow_execution_id,
-        ),
-    )
-    log.info(
-        f"{LogTag.AGENT} Queued background-subagent collection turn",
-        conversation_id=conversation_id,
-    )
-    return True
+    return bool(await redis_cache.client.set(marker, "1", nx=True, ex=EXECUTOR_COLLECT_MARKER_TTL))
 
 
 async def clear_collection_marker(conversation_id: str) -> None:
@@ -313,42 +225,6 @@ def decode_raw_item(raw: bytes | memoryview | str) -> str:
 
 
 # ── Pop + prepare ────────────────────────────────────────────────────
-
-
-async def pop_next_queued_run(conversation_id: str) -> PreparedQueuedTask | None:
-    """Pop the next queued task for this conversation and prepare it for spawning.
-
-    Called from the runner's finalize step. Overwrites the executor busy lock
-    with the next task's value (no intervening delete) before returning, so the
-    queued run inherits the lock atomically and a concurrent call_executor
-    cannot acquire it via SET NX in a delete→re-set gap.
-
-    Registers the QUEUED session (with the executor pre-marked spawned — queued
-    runs have no chat_service to register for them), starts stream progress
-    tracking, and broadcasts ``executor.stream_started`` so the frontend opens a
-    live SSE subscription. Spawning is the caller's job.
-
-    Returns None if the queue was empty or unparseable (caller releases the lock).
-    """
-    if not redis_cache.client:
-        return None
-
-    queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
-    raw = await redis_cache.client.lpop(queue_key)
-    if not raw:
-        return None
-
-    try:
-        item: ExecutorRunItem = json.loads(raw)
-    except (json.JSONDecodeError, ValueError) as e:
-        log.error(
-            f"{LogTag.AGENT} Failed to parse queued executor task",
-            conversation_id=conversation_id,
-            error=str(e),
-        )
-        return None
-
-    return await prepare_run_from_item(conversation_id, item)
 
 
 def build_run_item(
