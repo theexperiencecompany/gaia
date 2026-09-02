@@ -21,6 +21,7 @@ from typing import (
 )
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 from pydantic import Field
@@ -67,10 +68,30 @@ def _is_execute_routed(tool_registry: ToolRegistry, name: str, mcp_tool_names: s
     return category is not None and category.require_integration
 
 
+async def _resolve_for_retrieval(user_id: str | None, name: str) -> tuple[str, BaseTool] | None:
+    """resolve_tool, degraded to a miss on infra failure.
+
+    Retrieval's resolution is opportunistic (rescue an unmaterialized catalog
+    slug, render a doc); an unreachable Composio/MCP must make the NAME come
+    back unknown, not crash the select_tools node — observed live, the escaped
+    exception retry-looped the graph to its recursion limit. Dispatch keeps the
+    loud path: there the failure belongs to the actual call.
+    """
+    try:
+        return await resolve_tool(user_id, name)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools: resolver unavailable; treating as unknown",
+            tool_name=name,
+            error_type=type(e).__name__,
+        )
+        return None
+
+
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
     docs: list[str] = []
     for name in names:
-        resolved = await resolve_tool(user_id, name)
+        resolved = await _resolve_for_retrieval(user_id, name)
         if resolved is None:
             log.warning(
                 f"{LogTag.TOOL} retrieve_tools: proxied tool vanished between "
@@ -876,7 +897,7 @@ def get_retrieve_tools_function(
             # catalog HAS as unknown.
             still_unknown: list[str] = []
             for name in unknown_tool_names:
-                if name.replace("_", "").isupper() and await resolve_tool(user_id, name):
+                if name.replace("_", "").isupper() and await _resolve_for_retrieval(user_id, name):
                     validated_tool_names.append(name)
                 else:
                     still_unknown.append(name)

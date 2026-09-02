@@ -101,3 +101,26 @@ class TestSchemaModeCutover:
         result = await _call(["definitely_not_real"], None)
         assert result["tools_to_bind"] == []
         assert "Not found" in result["response_text"]
+
+
+@pytest.mark.unit
+class TestResolverOutageDegradation:
+    async def test_resolver_infra_failure_degrades_to_unknown_not_crash(self) -> None:
+        """Observed live: with Composio unreachable, the rescue path let the
+        resolver's exception escape into select_tools, which retry-looped the
+        graph to its recursion limit. An unreachable catalog must degrade the
+        name to unknown, never wedge the whole retrieval turn."""
+        fn = get_retrieve_tools_function()
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
+            patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(side_effect=RuntimeError("composio unreachable")),
+            ),
+        ):
+            result = await fn(
+                store=MagicMock(), config=CONFIG, exact_tool_names=["ASANA_CREATE_TASK"]
+            )
+        assert result["tools_to_bind"] == []
+        assert "Not found" in result["response_text"]
