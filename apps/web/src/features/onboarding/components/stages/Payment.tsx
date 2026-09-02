@@ -21,7 +21,7 @@ import { PAYMENT_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { useAwaitPaidStatus } from "../../hooks/useAwaitPaidStatus";
 import { useCheckoutReturn } from "../../hooks/useCheckoutReturn";
-import { OnboardingBotBubbles } from "../OnboardingMessages";
+import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
 
 export function Payment() {
   const [isYearly, setIsYearly] = useState(false);

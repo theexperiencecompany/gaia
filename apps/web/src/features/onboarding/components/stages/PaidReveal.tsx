@@ -20,8 +20,8 @@ import { PAID_REVEAL_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { Action } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
+import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { OnboardingBotBubbles } from "../OnboardingMessages";
 
 const CONFETTI_DURATION_MS = 3500;
 

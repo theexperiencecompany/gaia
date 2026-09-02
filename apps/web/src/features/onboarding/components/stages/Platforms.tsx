@@ -20,8 +20,8 @@ import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMes
 import { useConnectPlatform } from "../../hooks/useConnectPlatform";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
+import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
-import { OnboardingBotBubbles } from "../OnboardingMessages";
 import { OnboardingPlatformConnect } from "../OnboardingPlatformConnect";
 import { OnboardingPlatformPreview } from "../OnboardingPlatformPreview";
 

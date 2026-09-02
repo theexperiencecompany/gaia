@@ -72,7 +72,9 @@ def _describe_trigger(trigger: TriggerConfig) -> str:
 def _describe_workflow(integration_name: str, workflow: CreateWorkflowRequest) -> str:
     steps = ", ".join(step.title.rstrip(".") for step in workflow.steps or [])
     description = (workflow.description or "").rstrip(".")
-    line = f"- {integration_name}: {workflow.title}, {_describe_trigger(workflow.trigger_config)}. {description}."
+    line = f"- {integration_name}: {workflow.title}, {_describe_trigger(workflow.trigger_config)}."
+    if description:
+        line = f"{line} {description}."
     return f"{line} Steps: {steps}." if steps else line
 
 

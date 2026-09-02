@@ -103,6 +103,12 @@ class TestComposeFirstMessage:
             == "Hey. I'm drowning in email. Also, chasing invoices. Where do we start?"
         )
 
+    def test_typed_need_keeps_its_last_letter(self) -> None:
+        assert (
+            compose_first_message(_prefs(None, [OnboardingNeed.INBOX], other_need="plan X"))
+            == "Hey. I'm drowning in email. Also, plan X. Where do we start?"
+        )
+
     def test_blank_typed_need_is_dropped_by_the_model(self) -> None:
         assert (
             compose_first_message(_prefs("founder", [OnboardingNeed.INBOX], other_need="   "))
@@ -135,6 +141,13 @@ class TestComposeFirstMessage:
             ("I am a nurse.", "Hey. I am a nurse. Where do we start?"),
             ("I run a bakery", "Hey. I run a bakery. Where do we start?"),
             ("We make climbing shoes", "Hey. We make climbing shoes. Where do we start?"),
+            # Curly apostrophes come from phone keyboards.
+            ("I’m a nurse", "Hey. I’m a nurse. Where do we start?"),
+            ("We're a two-person studio", "Hey. We're a two-person studio. Where do we start?"),
+            ("We’re a two-person studio", "Hey. We’re a two-person studio. Where do we start?"),
+            ("I'm a nurse!", "Hey. I'm a nurse. Where do we start?"),
+            # Only sentence punctuation is trimmed, never the last letter.
+            ("I'm on team X", "Hey. I'm on team X. Where do we start?"),
             ("a freelance designer", "Hey. I'm a freelance designer. Where do we start?"),
             ("an ops lead", "Hey. I'm an ops lead. Where do we start?"),
             ("the CFO", "Hey. I'm the CFO. Where do we start?"),

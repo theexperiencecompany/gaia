@@ -11,7 +11,7 @@ import { Spinner } from "@heroui/spinner";
 import * as m from "motion/react-m";
 import { FINISHING_MESSAGE } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
-import { OnboardingBotBubble } from "../OnboardingMessages";
+import { OnboardingBotBubble } from "../OnboardingBotBubbles";
 
 export function Chat() {
   return (
