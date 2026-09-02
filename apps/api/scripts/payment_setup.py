@@ -84,19 +84,19 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
     # from a free tier. Re-run this script after editing so the live rows match.
     pro_features = [
         "Chat on iMessage, WhatsApp, Telegram, Slack and Discord",
-        "The strongest models",
-        "Unlimited daily chat",
+        "Inbox triage and drafted replies every morning",
+        "Meeting briefs and reminders from your calendar",
+        "Todos GAIA works on, not just tracks",
         "Workflows that run without you",
-        "Unlimited memory",
+        "Remembers what you tell it, once",
         "Priority support",
-        "Early access to new features",
     ]
 
     return [
         PlanDocument(
             dodo_product_id=monthly_product_id,
             name="Pro",
-            description="For serious users who want to save time.",
+            description="Everything GAIA does, in one plan.",
             amount=3000,  # $30.00 in cents
             currency="USD",
             duration="monthly",
@@ -109,7 +109,7 @@ def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> lis
         PlanDocument(
             dodo_product_id=yearly_product_id,
             name="Pro",
-            description="For serious users who want to save time.",
+            description="Everything GAIA does, in one plan.",
             amount=30000,  # $300.00 in cents (2 months free, ~16.7% discount)
             currency="USD",
             duration="yearly",

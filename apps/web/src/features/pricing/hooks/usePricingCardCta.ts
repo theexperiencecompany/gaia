@@ -8,6 +8,7 @@ import type { CheckoutSource } from "../api/pricingApi";
 import { writePendingCheckout } from "../lib/pendingCheckout";
 import type { CheckoutPhase } from "../stores/checkoutOverlayStore";
 import type { PlanViewerState } from "../types";
+import { PLAN_DISPLAY_NAME } from "../utils/planPredicates";
 import { useDodoPayments } from "./useDodoPayments";
 
 interface PricingCardCtaInput {
@@ -151,5 +152,6 @@ function getButtonText({
   if (isSubscriptionStatusUnknown) return "Checking your plan...";
   if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
   if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
-  return `Get GAIA ${title}`;
+  // The card already says "GAIA"; "Get GAIA GAIA" is not a sentence.
+  return title === PLAN_DISPLAY_NAME ? `Get ${title}` : `Get GAIA ${title}`;
 }

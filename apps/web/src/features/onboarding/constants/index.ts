@@ -29,6 +29,17 @@ export const needOptions: NeedOption[] = [
   { value: "reach", label: "Reach me anywhere" },
 ];
 
+/** The catch-all chip; picking it opens a free-text field whose value replaces
+ * this marker as the draft. Anything not in `professionOptions` is a typed job. */
+export const OTHER_PROFESSION = "other";
+
+export function isListedProfession(value: string): boolean {
+  return (
+    value !== OTHER_PROFESSION &&
+    professionOptions.some((option) => option.value === value)
+  );
+}
+
 export const NEEDS_MIN_SELECTION = 1;
 
 /** Query key Dodo's return URL carries back into the wizard after checkout.
@@ -44,17 +55,14 @@ export const questions: Question[] = [
   {
     id: "1",
     lines: [
-      "Hey, I'm GAIA. I run your inbox, your calendar and the small stuff that piles up, so it stops landing on you.",
+      "Hey, I'm GAIA. I read your inbox, keep your calendar and chase your todos, in whatever app you already text in.",
       "First, what do you do?",
     ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
     id: "2",
-    lines: [
-      "Noted.",
-      "What do you want help with? Pick everything that applies.",
-    ],
+    lines: ["What do you want help with? Pick everything that applies."],
     fieldName: FIELD_NAMES.NEEDS,
   },
 ];

@@ -11,7 +11,11 @@ import {
 } from "../hooks/usePricing";
 import { getPlanViewerState } from "../types";
 import { convertToUSDCents } from "../utils/currencyConverter";
-import { isEnterprisePlan, isProPlan } from "../utils/planPredicates";
+import {
+  displayPlanName,
+  isEnterprisePlan,
+  isProPlan,
+} from "../utils/planPredicates";
 import { EnterpriseCard } from "./EnterpriseCard";
 import { PricingCard } from "./PricingCard";
 
@@ -207,7 +211,7 @@ export function PricingCards({
               description={plan.description} // Pass the description from backend
               price={priceInUSDCents} // Always in USD cents
               originalPrice={originalPriceInUSDCents}
-              title={plan.name}
+              title={displayPlanName(plan)}
               isPro={isPro}
               planViewerState={planViewerState}
               checkoutSource={checkoutSource}

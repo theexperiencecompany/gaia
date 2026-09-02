@@ -110,7 +110,7 @@ describe("PricingCards paid-only rendering", () => {
     mockPlans = [PRO_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);
 
-    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.getByText("GAIA")).not.toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
   });
 
@@ -118,15 +118,15 @@ describe("PricingCards paid-only rendering", () => {
     mockPlans = [FREE_PLAN, PRO_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);
 
-    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.getByText("GAIA")).not.toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
   });
 
-  it("renders Enterprise as a card beside Pro, with its contact CTA", () => {
+  it("renders Enterprise as a card beside the GAIA plan, with its contact CTA", () => {
     mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
     render(<PricingCards durationIsMonth />);
 
-    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.getByText("GAIA")).not.toBeNull();
     expect(screen.getByText("Enterprise")).not.toBeNull();
     expect(screen.getByText("Talk to the team")).not.toBeNull();
     expect(screen.getByText("SSO, SCIM & audit logs")).not.toBeNull();
@@ -136,7 +136,7 @@ describe("PricingCards paid-only rendering", () => {
     mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
     render(<PricingCards durationIsMonth hideEnterprise />);
 
-    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.getByText("GAIA")).not.toBeNull();
     expect(screen.queryByText("Enterprise")).toBeNull();
     expect(screen.queryByText("Talk to the team")).toBeNull();
   });

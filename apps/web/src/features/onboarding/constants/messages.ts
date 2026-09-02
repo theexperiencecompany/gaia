@@ -3,8 +3,8 @@
 export const NEEDS_HINT = "You can always add more later.";
 
 export const PAYMENT_INTRO_LINES = [
-  "GAIA is one plan with everything in it.",
-  "Pick monthly or yearly and we can get going.",
+  "One plan with everything in it: your inbox, calendar and todos handled every day, on every app GAIA is on.",
+  "Cancel any time. Pick monthly or yearly to start.",
 ];
 
 export const PAID_REVEAL_LINES = [
@@ -14,7 +14,9 @@ export const PAID_REVEAL_LINES = [
 
 export const PLATFORM_INTRO_LINES = [
   "I work best where you already text.",
-  "Pick one and I'll reach you there when something needs you: the morning brief, an email that can't wait, a meeting about to start.",
+  "A brief every morning before your first meeting.",
+  "A heads-up when an email actually needs you, and a nudge before a meeting starts.",
+  "Pick one and I'll reach you there.",
 ];
 
 export const FINISHING_MESSAGE = "Getting your chat ready…";

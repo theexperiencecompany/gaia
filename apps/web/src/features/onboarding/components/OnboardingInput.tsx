@@ -8,9 +8,15 @@
  */
 
 import { Chip } from "@heroui/chip";
+import { Input } from "@heroui/input";
 import { memo } from "react";
 
-import { needOptions, professionOptions } from "../constants";
+import {
+  isListedProfession,
+  needOptions,
+  OTHER_PROFESSION,
+  professionOptions,
+} from "../constants";
 import { NEEDS_HINT } from "../constants/messages";
 import { OPTION_STYLE } from "../constants/optionStyle";
 import { OnboardingCTAButton } from "./OnboardingCTAButton";
@@ -44,14 +50,39 @@ function ProfessionInput({
   onSelectProfession,
   onContinue,
 }: ProfessionModeProps) {
+  // "Other" is a chip and a text field: the chip opens the field, and whatever
+  // is typed becomes the draft, so a job the list does not have is still
+  // their own words rather than a compromise chip.
+  const isOther =
+    draftProfession !== null && !isListedProfession(draftProfession);
+  const customText =
+    isOther && draftProfession !== OTHER_PROFESSION ? draftProfession : "";
+
   return (
     <div className="flex w-full flex-col items-end gap-3 pt-3">
       <OptionChips
         label="What do you do?"
         options={professionOptions}
-        isSelected={(value) => value === draftProfession}
+        isSelected={(value) =>
+          value === OTHER_PROFESSION ? isOther : value === draftProfession
+        }
         onSelect={onSelectProfession}
       />
+      {isOther && (
+        <Input
+          aria-label="Your job, in your words"
+          placeholder="What do you do?"
+          value={customText}
+          onValueChange={(text) =>
+            onSelectProfession(text.trim() ? text : OTHER_PROFESSION)
+          }
+          variant="flat"
+          size="lg"
+          radius="full"
+          className="max-w-xs"
+          autoFocus
+        />
+      )}
       <OnboardingCTAButton disabled={!draftProfession} onClick={onContinue}>
         Continue
       </OnboardingCTAButton>

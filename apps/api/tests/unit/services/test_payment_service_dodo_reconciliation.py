@@ -95,6 +95,16 @@ def _service(remote: MagicMock | Exception) -> DodoPaymentService:
     return service
 
 
+@pytest.fixture(autouse=True)
+def _no_recorded_checkout_session():
+    """These tests exercise the subscription-id hint. The other recovery path
+    (the checkout session recorded at mint time) finds nothing, so the hint
+    is the only route to Dodo and the assertions stay about that route."""
+    with patch(f"{SERVICE_MODULE}.checkout_session_repository") as repo:
+        repo.get_latest_for_user = AsyncMock(return_value=None)
+        yield
+
+
 @pytest.mark.unit
 class TestVerifyPaymentReconcilesWithDodo:
     @pytest.mark.asyncio
