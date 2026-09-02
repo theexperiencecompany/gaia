@@ -100,22 +100,13 @@ function OnboardingProgressImpl({
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>Restart onboarding?</ModalHeader>
+              <ModalHeader>Start over?</ModalHeader>
               <ModalBody>
                 <p className="text-sm text-zinc-400">
-                  This wipes everything GAIA set up for you so far and starts
-                  you over from question one. The following will be cleared:
+                  This clears your answers, the platforms you linked, any
+                  connected integrations and everything GAIA has learned so far.
+                  You go back to the first question.
                 </p>
-                <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-400">
-                  <li>
-                    Connected integrations (Gmail, Calendar, Slack, and any
-                    others) will be{" "}
-                    <span className="text-zinc-200">disconnected</span> — you'll
-                    need to reconnect them.
-                  </li>
-                  <li>Everything GAIA learned about you, including memories</li>
-                  <li>Your answers and the platforms you linked</li>
-                </ul>
               </ModalBody>
               <ModalFooter>
                 <Button variant="flat" onPress={onClose}>

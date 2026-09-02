@@ -59,7 +59,7 @@ function ProfessionInput({
     isOther && draftProfession !== OTHER_PROFESSION ? draftProfession : "";
 
   return (
-    <div className="flex w-full flex-col items-end gap-3 pt-3">
+    <div className="ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3">
       <OptionChips
         label="What do you do?"
         options={professionOptions}
@@ -76,10 +76,13 @@ function ProfessionInput({
           onValueChange={(text) =>
             onSelectProfession(text.trim() ? text : OTHER_PROFESSION)
           }
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && draftProfession) onContinue();
+          }}
           variant="flat"
-          size="lg"
-          radius="full"
-          className="max-w-xs"
+          size="sm"
+          radius="lg"
+          className="max-w-56"
           autoFocus
         />
       )}
@@ -99,7 +102,7 @@ function NeedsInput({
   const selected = new Set(selectedNeeds);
 
   return (
-    <div className="flex w-full flex-col items-end gap-3 pt-3">
+    <div className="ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3">
       <OptionChips
         label="What do you want help with?"
         options={needOptions}

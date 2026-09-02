@@ -31,6 +31,9 @@ interface PricingCardProps {
    * card with no plan context) shows an actionable CTA. */
   planViewerState?: PlanViewerState;
   checkoutSource?: CheckoutSource;
+  /** The onboarding wizard introduces the plan in GAIA's own bubbles, so the
+   * card there carries no name or tagline of its own. */
+  hideHeader?: boolean;
 }
 
 export function PricingCard({
@@ -46,6 +49,7 @@ export function PricingCard({
   isPro = false,
   planViewerState = "available",
   checkoutSource,
+  hideHeader = false,
 }: PricingCardProps) {
   const { list, offer } = usePricingCardPrice({
     price,
@@ -75,11 +79,15 @@ export function PricingCard({
       {isPro && (
         <ShineBorder borderWidth={1} shineColor={["#00bbff", "#A7F3FF"]} />
       )}
-      <PricingCardHeader
-        title={title}
-        description={description}
-        isCurrentPlan={planViewerState === "current"}
-      />
+      {hideHeader ? (
+        <div className="pt-6" />
+      ) : (
+        <PricingCardHeader
+          title={title}
+          description={description}
+          isCurrentPlan={planViewerState === "current"}
+        />
+      )}
       <PricingCardPrice list={list} offer={offer} />
       <PricingCardCta
         title={title}

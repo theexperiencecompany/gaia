@@ -53,6 +53,8 @@ interface PricingCardsProps {
   hideEnterprise?: boolean;
   /** Forwarded to every priced card's checkout. */
   checkoutSource?: CheckoutSource;
+  /** Forwarded to every priced card; see PricingCard. */
+  hideHeader?: boolean;
 }
 
 export function PricingCards({
@@ -60,6 +62,7 @@ export function PricingCards({
   initialPlans = [],
   hideEnterprise = false,
   checkoutSource,
+  hideHeader = false,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -215,6 +218,7 @@ export function PricingCards({
               isPro={isPro}
               planViewerState={planViewerState}
               checkoutSource={checkoutSource}
+              hideHeader={hideHeader}
             />
           );
         })}

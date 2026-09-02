@@ -55,14 +55,15 @@ export const questions: Question[] = [
   {
     id: "1",
     lines: [
-      "Hey, I'm GAIA. I read your inbox, keep your calendar and chase your todos, in whatever app you already text in.",
-      "First, what do you do?",
+      "Hey, I'm GAIA.",
+      "I handle your inbox, calendar and todos, in whatever app you already text in.",
+      "First up, what do you do?",
     ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
   {
     id: "2",
-    lines: ["What do you want help with? Pick everything that applies."],
+    lines: ["And what do you want off your hands? Pick as many as you like."],
     fieldName: FIELD_NAMES.NEEDS,
   },
 ];

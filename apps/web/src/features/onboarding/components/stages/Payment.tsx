@@ -54,6 +54,7 @@ export function Payment() {
             durationIsMonth={!isYearly}
             hideEnterprise
             checkoutSource="onboarding"
+            hideHeader
           />
         </div>
       )}
