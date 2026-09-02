@@ -1,6 +1,6 @@
 """/sandbox/execute — token-only auth, dispatch pass-through."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -49,7 +49,10 @@ class TestSandboxExecuteRoute:
         result = ToolExecutionResult(
             ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[{"id": "m1"}]
         )
-        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)) as dispatch:
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)) as dispatch,
+        ):
             response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
         assert response.ok is True
         assert response.output == [{"id": "m1"}]
@@ -65,8 +68,71 @@ class TestSandboxExecuteRoute:
             resolved_name="GMAIL_FETCH_EMAILS",
             error=DispatchError(kind=DispatchErrorKind.INVALID_ARGS, detail="bad", hint="fix data"),
         )
-        with patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)):
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
+        ):
             response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
         assert response.ok is False
         assert response.error is not None
         assert response.error.kind is DispatchErrorKind.INVALID_ARGS
+
+
+def _redis_with_counts(total: int, rate: int) -> MagicMock:
+    client = MagicMock()
+    client.incr = AsyncMock(side_effect=[total, rate])
+    client.expire = AsyncMock()
+    redis = MagicMock()
+    redis.client = client
+    return redis
+
+
+@pytest.mark.unit
+class TestSandboxExecuteBudget:
+    """The wall a runaway or injected script hits — no approval gate exists here."""
+
+    async def test_within_budget_dispatches(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=2, rate=2)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
+        ):
+            response = await sandbox_execute(_payload(), authorization=f"Bearer {token}")
+        assert response.ok is True
+
+    async def test_token_budget_exhaustion_is_429_and_never_dispatches(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=301, rate=1)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
+        ):
+            with pytest.raises(AppError) as err:
+                await sandbox_execute(_payload(), authorization=f"Bearer {token}")
+        assert err.value.status_code == 429
+        dispatch.assert_not_awaited()
+
+    async def test_per_minute_rate_limit_is_429_and_never_dispatches(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=5, rate=61)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock()) as dispatch,
+        ):
+            with pytest.raises(AppError) as err:
+                await sandbox_execute(_payload(), authorization=f"Bearer {token}")
+        assert err.value.status_code == 429
+        dispatch.assert_not_awaited()
+
+    async def test_every_dispatched_call_is_audited(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        result = ToolExecutionResult(ok=True, resolved_name="GMAIL_FETCH_EMAILS", output=[])
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{MODULE}.dispatch_tool", new=AsyncMock(return_value=result)),
+            patch(f"{MODULE}.log") as mocked_log,
+        ):
+            await sandbox_execute(_payload(), authorization=f"Bearer {token}")
+        audit_kwargs = mocked_log.audit.call_args.kwargs
+        assert audit_kwargs["actor"] == "u1"
+        assert audit_kwargs["tool"] == "GMAIL_FETCH_EMAILS"
+        assert audit_kwargs["run_id"] == "run-1"

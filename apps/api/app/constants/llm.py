@@ -129,9 +129,6 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
         "handoff",
         "wait_for_subagents",
         "deep_research",
-        # Scripts own their budget (RUN_CODE_TIMEOUT_SECONDS on the sandbox
-        # command); the generic per-call timeout would kill long legitimate runs.
-        "run_code",
     }
 )
 

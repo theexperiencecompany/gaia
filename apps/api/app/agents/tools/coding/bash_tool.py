@@ -44,6 +44,11 @@ from app.services.sandbox import (
     SandboxAcquisitionError,
     acquire_sandbox,
 )
+from app.services.sandbox.execute_client import (
+    mint_execute_env,
+    sandbox_execute_enabled,
+    seed_execute_client,
+)
 from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
@@ -213,9 +218,26 @@ async def bash(
                 # guarantees a non-empty cwd is inside the workspace.
                 with contextlib.suppress(Exception):
                     await sbx.files.make_dir(cwd)
+            # Code mode: every bash command may run scripts that call GAIA
+            # tools via `from gaia import execute`. The token is per-invocation
+            # and process-scoped (envd env, unreadable to other processes under
+            # the hardened template), TTL-bound to this command's own timeout —
+            # see app/services/sandbox/execute_client.py for the threat model.
+            execute_env: dict[str, str] | None = None
+            if sandbox_execute_enabled():
+                await seed_execute_client(sbx)
+                execute_env = mint_execute_env(
+                    user_id=user_id,
+                    run_id=run_id,
+                    config=config,
+                    sandbox_id=getattr(sbx, "sandbox_id", None),
+                    command_timeout_seconds=BASH_MAX_TIMEOUT_SECONDS if background else timeout,
+                )
             if background:
-                return await _run_background(sbx, run_id, command, cwd, session_id)
-            result = await _run_foreground(sbx, run_id, command, cwd, timeout, session_id)
+                return await _run_background(sbx, run_id, command, cwd, session_id, execute_env)
+            result = await _run_foreground(
+                sbx, run_id, command, cwd, timeout, session_id, execute_env
+            )
             # A bash command can create artifacts any number of ways (cat,
             # python, mv, curl -o, …), not just the write tool. Enumerate the
             # session's artifacts/ from the sandbox itself (it sees its
@@ -330,6 +352,7 @@ async def _run_foreground(
     cwd: str,
     timeout: int,
     session_id: str | None,
+    envs: dict[str, str] | None = None,
 ) -> str:
     """Run a command synchronously and stream stdout/stderr chunks."""
 
@@ -367,6 +390,7 @@ async def _run_foreground(
         result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b SDK ships no stubs  # NOSONAR python:S7483
             command,
             cwd=cwd or WORKSPACE_ROOT,
+            envs=envs or {},
             on_stdout=_on_stdout,
             on_stderr=_on_stderr,
             timeout=timeout,
@@ -415,8 +439,14 @@ async def _run_background(
     command: str,
     cwd: str,
     session_id: str | None,
+    envs: dict[str, str] | None = None,
 ) -> str:
-    """Detach a long-running command and return its pid + log path."""
+    """Detach a long-running command and return its pid + log path.
+
+    The nohup child inherits ``envs``, so background scripts can call GAIA
+    tools too, until the token's TTL (bounded by BASH_MAX_TIMEOUT_SECONDS)
+    runs out; after that calls fail with 401 rather than living forever.
+    """
     log_path = f"{runs_log_dir()}/{run_id}.log"
     wrapped = (
         f"mkdir -p {sh_quote(runs_log_dir())} && "
@@ -424,7 +454,7 @@ async def _run_background(
         "& echo $!"
     )
     result = await sbx.commands.run(  # type: ignore[attr-defined]  # e2b sandbox SDK ships no type stubs
-        wrapped, cwd=cwd or WORKSPACE_ROOT, timeout=10
+        wrapped, cwd=cwd or WORKSPACE_ROOT, envs=envs or {}, timeout=10
     )
     pid = (getattr(result, "stdout", "") or "").strip()
     if not pid:

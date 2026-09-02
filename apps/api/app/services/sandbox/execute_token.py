@@ -1,9 +1,10 @@
 """Short-lived HMAC tokens that let sandbox code call the execute route.
 
-Minted by run_code AFTER the whole-script approval gate clears, so possession
-of a valid token IS the approval record for that run — the route needs no
-separate approval state. The sandbox never holds user credentials; the token
-only names whose tools the host may run, for a bounded window.
+Minted per bash invocation and delivered only into that command's process
+env. The sandbox never holds user credentials; a token only names whose tools
+the host may run, for a window bounded by the command's own timeout. Layered
+limits on the route (budget, rate, audit) stand in for an approval gate — see
+execute_client.py for the threat model.
 """
 
 import base64
@@ -21,6 +22,9 @@ class SandboxExecuteClaims(BaseModel):
     user_id: str
     run_id: str
     stream_id: str | None = None
+    # Which sandbox instance the token was minted for — audit correlation; the
+    # route cannot verify network origin, so this is a record, not a check.
+    sandbox_id: str | None = None
     exp: int
 
 
@@ -45,12 +49,14 @@ def mint_execute_token(
     run_id: str,
     *,
     stream_id: str | None = None,
+    sandbox_id: str | None = None,
     ttl_seconds: int,
 ) -> str:
     claims = SandboxExecuteClaims(
         user_id=user_id,
         run_id=run_id,
         stream_id=stream_id,
+        sandbox_id=sandbox_id,
         exp=int(datetime.now(UTC).timestamp()) + ttl_seconds,
     )
     payload = base64.urlsafe_b64encode(claims.model_dump_json().encode()).decode()
@@ -62,7 +68,7 @@ def verify_execute_token(token: str) -> SandboxExecuteClaims:
     invalid = AppError(
         message="Invalid sandbox execute token",
         why="signature mismatch, malformed payload, or expired",
-        fix="Mint a fresh token via run_code; tokens are single-run and short-lived",
+        fix="Re-run the bash command; each run mints a fresh short-lived token",
         status_code=401,
     )
     payload, _, signature = token.partition(".")

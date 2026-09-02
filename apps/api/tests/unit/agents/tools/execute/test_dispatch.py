@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 import pytest
 
 from app.agents.tools.execute.dispatch import DispatchErrorKind, dispatch_tool
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.services.analytics_service import AnalyticsEvents
 
 MODULE = "app.agents.tools.execute.dispatch"
@@ -50,7 +51,7 @@ class TestDispatchTool:
     async def test_invalid_args_fail_loud_with_pydantic_detail_and_never_invoke(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=(tool.name, tool))),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -74,7 +75,7 @@ class TestDispatchTool:
     async def test_valid_args_invoke_with_coerced_supplied_fields_only(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=(tool.name, tool))),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -98,7 +99,7 @@ class TestDispatchTool:
     async def test_dict_schema_tool_invokes_with_raw_data(self) -> None:
         tool = _tool(name="MCP_DICT_TOOL", schema={"type": "object"})
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=(tool.name, tool))),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
             patch(f"{MODULE}.capture_event"),
         ):
             result = await dispatch_tool(
@@ -110,7 +111,7 @@ class TestDispatchTool:
     async def test_personless_run_skips_analytics_but_still_executes(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=(tool.name, tool))),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -121,3 +122,44 @@ class TestDispatchTool:
             )
         assert result.ok is True
         capture.assert_not_called()
+
+
+@pytest.mark.unit
+class TestIntegrationOnlySurface:
+    async def test_internal_tool_is_refused_and_never_invoked(self) -> None:
+        tool = _tool(name="create_todo")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="create_todo",
+                data={"recipient": "x", "subject": "y"},
+                config=CONFIG,
+                integration_only=True,
+            )
+        assert result.ok is False
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.INTERNAL_TOOL
+        tool.ainvoke.assert_not_awaited()
+
+    async def test_internal_tool_still_runs_on_the_graph_surface(self) -> None:
+        tool = _tool(name="create_todo")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="create_todo",
+                data={"recipient": "x", "subject": "y"},
+                config=CONFIG,
+            )
+        assert result.ok is True

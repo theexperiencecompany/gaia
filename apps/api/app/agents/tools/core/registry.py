@@ -512,18 +512,15 @@ class ToolRegistry:
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
-        from app.agents.tools.coding.run_code_tool import run_code
         from app.agents.tools.execute import execute_tool
 
         # The execute proxy is never classified by its own name: the HIL gate
         # unwraps args["tool_name"] and classifies the REAL tool (hil/utils).
-        # run_code is forced-ask in every HIL mode — that stamp IS the
-        # whole-script approval for code mode.
         self._add_category(
             "execute",
-            tools=[execute_tool.execute, run_code],
+            tools=[execute_tool.execute],
             options=CategoryOptions(internal=True),
-            risk=CategoryRisk(destructive_tools=set(), always_gate_tools={run_code.name}),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "creative",

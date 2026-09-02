@@ -21,7 +21,6 @@ from typing import (
 )
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 from pydantic import Field
@@ -33,7 +32,7 @@ from app.agents.tools.core.registry import (
     ToolRegistry,
     get_tool_registry,
 )
-from app.agents.tools.execute.resolver import resolve_tool
+from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
 from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
@@ -68,7 +67,7 @@ def _is_execute_routed(tool_registry: ToolRegistry, name: str, mcp_tool_names: s
     return category is not None and category.require_integration
 
 
-async def _resolve_for_retrieval(user_id: str | None, name: str) -> tuple[str, BaseTool] | None:
+async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool | None:
     """resolve_tool, degraded to a miss on infra failure.
 
     Retrieval's resolution is opportunistic (rescue an unmaterialized catalog
@@ -99,7 +98,7 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        docs.append(render_tool_doc(resolved[1]))
+        docs.append(render_tool_doc(resolved.tool))
     return docs
 
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 import pytest
 
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.agents.tools.execute.resolver import ResolvedTool
 
 MODULE = "app.agents.tools.core.retrieval"
 CONFIG: dict[str, Any] = {"configurable": {"user_id": "u1"}}
@@ -52,7 +53,7 @@ def _registry() -> MagicMock:
     return registry
 
 
-async def _call(exact: list[str], resolver_result: tuple[str, Any] | None) -> Any:
+async def _call(exact: list[str], resolver_result: ResolvedTool | None) -> Any:
     fn = get_retrieve_tools_function()
     with (
         patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
@@ -66,7 +67,7 @@ async def _call(exact: list[str], resolver_result: tuple[str, Any] | None) -> An
 class TestSchemaModeCutover:
     async def test_integration_tool_returns_schema_and_is_not_bound(self) -> None:
         tool = _gmail_tool()
-        result = await _call(["GMAIL_SEND_EMAIL"], ("GMAIL_SEND_EMAIL", tool))
+        result = await _call(["GMAIL_SEND_EMAIL"], ResolvedTool("GMAIL_SEND_EMAIL", tool, True))
         assert result["tools_to_bind"] == []
         assert "GMAIL_SEND_EMAIL" in result["response"]
         text = result["response_text"]
@@ -82,7 +83,9 @@ class TestSchemaModeCutover:
 
     async def test_mixed_request_partitions_correctly(self) -> None:
         tool = _gmail_tool()
-        result = await _call(["read", "GMAIL_SEND_EMAIL"], ("GMAIL_SEND_EMAIL", tool))
+        result = await _call(
+            ["read", "GMAIL_SEND_EMAIL"], ResolvedTool("GMAIL_SEND_EMAIL", tool, True)
+        )
         assert result["tools_to_bind"] == ["read"]
         assert "## GMAIL_SEND_EMAIL" in result["response_text"]
 
@@ -93,7 +96,9 @@ class TestSchemaModeCutover:
             description="Create a task.",
             args_schema=_GmailSendArgs,
         )
-        result = await _call(["ASANA_CREATE_TASK"], ("ASANA_CREATE_TASK", catalog_tool))
+        result = await _call(
+            ["ASANA_CREATE_TASK"], ResolvedTool("ASANA_CREATE_TASK", catalog_tool, True)
+        )
         assert result["tools_to_bind"] == []
         assert "## ASANA_CREATE_TASK" in result["response_text"]
 

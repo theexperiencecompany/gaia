@@ -5,11 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools.execute import resolver
+from app.agents.tools.execute.resolver import ResolvedTool
 
 MODULE = "app.agents.tools.execute.resolver"
 
 
-def _registry_with(names_to_tools: dict[str, MagicMock]) -> MagicMock:
+def _registry_with(
+    names_to_tools: dict[str, MagicMock], require_integration: bool = True
+) -> MagicMock:
     registry = MagicMock()
     registry.get_tool_names.return_value = list(names_to_tools)
 
@@ -23,6 +26,9 @@ def _registry_with(names_to_tools: dict[str, MagicMock]) -> MagicMock:
         return meta
 
     registry.get_tool_meta.side_effect = _meta
+    category = MagicMock()
+    category.require_integration = require_integration
+    registry.get_category.return_value = category
     return registry
 
 
@@ -46,7 +52,7 @@ class TestResolveTool:
             patch(f"{MODULE}.get_composio_service") as composio,
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL_SEND_EMAIL")
-        assert resolved == ("GMAIL_SEND_EMAIL", tool)
+        assert resolved == ResolvedTool("GMAIL_SEND_EMAIL", tool, is_integration=True)
         mcp.assert_not_awaited()
         composio.assert_not_called()
 
@@ -57,7 +63,7 @@ class TestResolveTool:
             new=AsyncMock(return_value=_registry_with({"GMAIL_SEND_EMAIL": tool})),
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL-SEND-EMAIL")
-        assert resolved == ("GMAIL_SEND_EMAIL", tool)
+        assert resolved == ResolvedTool("GMAIL_SEND_EMAIL", tool, is_integration=True)
 
     async def test_mcp_fallback_when_registry_misses(self) -> None:
         mcp_tool = MagicMock()
@@ -72,7 +78,7 @@ class TestResolveTool:
             patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
         ):
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
-        assert resolved == ("NOTION_MCP_SEARCH", mcp_tool)
+        assert resolved == ResolvedTool("NOTION_MCP_SEARCH", mcp_tool, is_integration=True)
 
     async def test_composio_materialization_for_catalog_slug_and_cached(self) -> None:
         catalog_tool = MagicMock()
@@ -88,8 +94,8 @@ class TestResolveTool:
         ):
             first = await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")
             second = await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")
-        assert first == ("ASANA_CREATE_TASK", catalog_tool)
-        assert second == ("ASANA_CREATE_TASK", catalog_tool)
+        assert first == ResolvedTool("ASANA_CREATE_TASK", catalog_tool, is_integration=True)
+        assert second == ResolvedTool("ASANA_CREATE_TASK", catalog_tool, is_integration=True)
         service.get_tools_by_name.assert_awaited_once()
 
     async def test_non_catalog_shaped_unknown_never_hits_composio(self) -> None:

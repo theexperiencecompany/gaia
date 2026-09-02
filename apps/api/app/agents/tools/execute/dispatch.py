@@ -44,6 +44,9 @@ _EXECUTE_DISPATCH_TOTAL = _register_once(
 class DispatchErrorKind(StrEnum):
     UNKNOWN_TOOL = "unknown_tool"
     INVALID_ARGS = "invalid_args"
+    # An internal tool reached a surface (the sandbox route) that only runs
+    # integration tools — internal tools need graph runtime and stay in-graph.
+    INTERNAL_TOOL = "internal_tool"
 
 
 class DispatchError(BaseModel):
@@ -69,7 +72,11 @@ async def dispatch_tool(
     tool_name: str,
     data: dict[str, Any],
     config: RunnableConfig,
+    integration_only: bool = False,
 ) -> ToolExecutionResult:
+    """Run one proxied tool. ``integration_only`` is the sandbox route's scope:
+    internal tools need graph runtime the route doesn't have, and excluding
+    them narrows what a leaked token can reach."""
     resolved = await resolve_tool(user_id, tool_name)
     if resolved is None:
         log.warning(f"{LogTag.TOOL} execute: unknown tool", tool_name=tool_name)
@@ -85,7 +92,25 @@ async def dispatch_tool(
                 ),
             ),
         )
-    resolved_name, tool = resolved
+    resolved_name, tool = resolved.name, resolved.tool
+
+    if integration_only and not resolved.is_integration:
+        log.warning(
+            f"{LogTag.TOOL} execute: internal tool refused on integration-only surface",
+            tool_name=resolved_name,
+        )
+        return _failure(
+            user_id,
+            resolved_name,
+            DispatchError(
+                kind=DispatchErrorKind.INTERNAL_TOOL,
+                detail=f"'{resolved_name}' is an internal tool, not an integration tool.",
+                hint=(
+                    "Sandbox scripts can only call integration tools (Gmail, GitHub, "
+                    "Notion, MCP, ...). Use internal tools from the conversation instead."
+                ),
+            ),
+        )
 
     validated = _validate_args(tool, data)
     if isinstance(validated, DispatchError):

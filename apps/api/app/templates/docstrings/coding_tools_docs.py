@@ -34,6 +34,19 @@ USE FOR:
 - Git operations: `git clone …`, `git status`, `git diff`
 - Quick one-liners and pipelines that don't fit `read`/`write`/`edit`
 
+GAIA TOOLS FROM SCRIPTS (code mode):
+Python scripts you run here can call GAIA integration tools directly:
+    from gaia import execute
+    emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
+`execute(tool_name, data)` returns the tool's parsed JSON output, or raises
+GaiaToolError whose message carries the exact validation errors: fix `data`
+and rerun. Get a tool's args schema from retrieve_tools first. Prefer ONE
+script that fetches, filters/computes in Python, acts, and prints a concise
+summary; large payloads stay in variables instead of the conversation. Calls
+are budgeted per bash run; batch work rather than looping one call at a time.
+If the import fails with "No module named 'gaia'", code mode is not configured
+on this deployment; use the execute tool from the conversation instead.
+
 DO NOT USE FOR:
 - Reading a single file when you just want to see it (use `read`)
 - Writing a whole file (use `write`)
