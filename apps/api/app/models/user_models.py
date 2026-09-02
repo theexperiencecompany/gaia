@@ -12,7 +12,10 @@ _RESPONSE_MESSAGE_DESC = "Response message"
 
 #: Onboarding Q2 "Something else": one short line, sent verbatim in the first message.
 OTHER_NEED_MAX_LENGTH = 120
-PROFESSION_MAX_LENGTH = 50
+#: Q1 is answered in sentences, not job titles, so this is a "one line" cap,
+#: not a "job title" one. Mirrored by PROFESSION_MAX_LENGTH in the web
+#: onboarding constants — the field's maxLength must match or typing goes dead.
+PROFESSION_MAX_LENGTH = 80
 
 
 def clean_profession(value: str) -> str:

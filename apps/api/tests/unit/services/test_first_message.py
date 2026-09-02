@@ -40,14 +40,14 @@ class TestComposeFirstMessage:
                 [OnboardingNeed.CALENDAR, OnboardingNeed.BRIEFINGS, OnboardingNeed.MEMORY],
             )
         ) == (
-            "Hey. I'm in sales. My week is back-to-back meetings, I start every day behind, "
-            "and I repeat myself a lot. Where do we start?"
+            "Hey. I'm in sales. My week is back-to-back meetings, I wake up already behind, "
+            "and I keep re-explaining myself. Where do we start?"
         )
 
     def test_all_needs(self) -> None:
         assert compose_first_message(_prefs("student", list(OnboardingNeed))) == (
             "Hey. I'm a student. I'm drowning in email, my week is back-to-back meetings, "
-            "I start every day behind, follow-ups slip through, I repeat myself a lot, "
+            "I wake up already behind, follow-ups slip through, I keep re-explaining myself, "
             "research eats my evenings, I do the same chores every single day, "
             "and I want you wherever I am. Where do we start?"
         )

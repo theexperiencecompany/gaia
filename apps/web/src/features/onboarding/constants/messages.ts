@@ -18,9 +18,5 @@ export const FINISHING_MESSAGE = "Getting your chat ready…";
 /** Static greeting — no LLM call anywhere in onboarding. */
 export function greetingLines(firstName: string | undefined): string[] {
   const salutation = firstName ? `Hey ${firstName}.` : "Hey.";
-  return [
-    salutation,
-    "From here I keep your inbox, calendar, reminders and follow-ups moving.",
-    "One last thing to set up.",
-  ];
+  return [salutation, "You're all set. One last thing before we start."];
 }

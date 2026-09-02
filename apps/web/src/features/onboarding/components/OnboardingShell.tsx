@@ -104,7 +104,7 @@ export function OnboardingShell({
 
       <div
         ref={scrollRef}
-        className="relative z-10 flex-1 overflow-y-auto px-4 pt-36"
+        className="relative z-10 flex-1 overflow-y-auto px-4 pt-20 sm:pt-36"
       >
         <div
           className="relative mx-auto w-full max-w-3xl"

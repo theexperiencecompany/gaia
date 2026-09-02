@@ -24,9 +24,9 @@ export const professionOptions: ProfessionOption[] = [
 export const needOptions: NeedOption[] = [
   { value: "inbox", label: "Drowning in email" },
   { value: "calendar", label: "Back-to-back meetings" },
-  { value: "briefings", label: "I start the day behind" },
+  { value: "briefings", label: "I wake up already behind" },
   { value: "todos", label: "Follow-ups slip through" },
-  { value: "memory", label: "I repeat myself a lot" },
+  { value: "memory", label: "I keep re-explaining myself" },
   { value: "research", label: "Research eats my evenings" },
   { value: "automation", label: "Same chores every single day" },
 ];
@@ -53,8 +53,10 @@ export const OTHER_NEED_OPTION: NeedOption = {
 export const NEEDS_MIN_SELECTION = 1;
 
 /** Mirror `OnboardingPreferences` in apps/api user_models.py: the profession
- * validator caps at 50 and `OTHER_NEED_MAX_LENGTH` at 120; longer text 422s. */
-export const PROFESSION_MAX_LENGTH = 50;
+ * validator caps at 80 and `OTHER_NEED_MAX_LENGTH` at 120; longer text 422s.
+ * 80, not 50, because Q1 asks "What do you do?" and people answer in a
+ * sentence — "I'm a founder and designer building a startup" is already 46. */
+export const PROFESSION_MAX_LENGTH = 80;
 export const OTHER_NEED_MAX_LENGTH = 120;
 
 /** Query key Dodo's return URL carries back into the wizard after checkout.

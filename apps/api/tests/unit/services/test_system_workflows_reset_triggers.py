@@ -60,7 +60,7 @@ class TestReregisterTriggersForReset:
         assert result == ["trig-1", "trig-2"]
         register.assert_awaited_once_with(
             user_id="user-1",
-            workflow_id="wf-1",
+            owner_id="wf-1",
             trigger_name="gmail_new_email",
             trigger_config=trigger_config,
             raise_on_failure=False,

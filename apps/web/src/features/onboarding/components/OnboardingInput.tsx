@@ -161,6 +161,11 @@ interface OwnWordsInputProps {
   onSubmit: () => void;
 }
 
+/** How close to the cap the text has to get before we start counting out loud.
+ * Showing "0/50" from the first keystroke turns a free-text answer into a form
+ * field; showing nothing at all is why the cap felt like a broken keyboard. */
+const COUNTER_REVEAL_WINDOW = 10;
+
 /** The small free-text field a catch-all chip opens. Enter submits the turn. */
 function OwnWordsInput({
   label,
@@ -170,6 +175,12 @@ function OwnWordsInput({
   onValueChange,
   onSubmit,
 }: OwnWordsInputProps) {
+  // `maxLength` stops the keystroke silently, so the only way a user learns
+  // the cap exists is if we say so — quietly near the end, plainly at it.
+  const remaining = maxLength - value.length;
+  const isAtLimit = remaining <= 0;
+  const showsCounter = remaining <= COUNTER_REVEAL_WINDOW;
+
   return (
     <Input
       aria-label={label}
@@ -177,6 +188,16 @@ function OwnWordsInput({
       maxLength={maxLength}
       value={value}
       onValueChange={onValueChange}
+      isInvalid={isAtLimit}
+      description={
+        showsCounter && !isAtLimit ? `${value.length}/${maxLength}` : undefined
+      }
+      errorMessage={
+        isAtLimit ? `Keep it under ${maxLength} characters` : undefined
+      }
+      // The counter and message sit under the field, so the row can grow taller
+      // but never wider — `max-w-56` above stays the field's whole width.
+      classNames={{ description: "text-tiny", errorMessage: "text-tiny" }}
       onKeyDown={(event) => {
         // Enter also confirms a candidate in CJK input methods; submitting
         // then would send half a word.

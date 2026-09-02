@@ -138,11 +138,10 @@ export default function PaymentSuccessPage() {
               <>
                 <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
                 <h1 className="mb-2 text-2xl font-semibold text-white">
-                  Welcome to GAIA Pro!
+                  Welcome to GAIA
                 </h1>
                 <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-                  You're all set. Every Pro feature is unlocked. Let's get to
-                  work.
+                  You're all set. Everything is unlocked. Let's get to work.
                 </p>
                 <RaisedButton
                   color="#00bbff"

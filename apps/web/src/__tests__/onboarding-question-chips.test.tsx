@@ -20,7 +20,10 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import { QuestionsReply } from "@/features/onboarding/components/stages/Questions";
-import { questions } from "@/features/onboarding/constants";
+import {
+  OTHER_NEED_MAX_LENGTH,
+  questions,
+} from "@/features/onboarding/constants";
 import { initialState } from "@/features/onboarding/state/initial";
 import { reducer } from "@/features/onboarding/state/reducer";
 import type { OnboardingState } from "@/features/onboarding/state/types";
@@ -149,6 +152,37 @@ describe("Q2 needs chips", () => {
     expect(seen.state.otherNeed).toBe("");
     expect(seen.state.selectedNeeds).toEqual([]);
     expect(continueButton().disabled).toBe(true);
+  });
+
+  it("stays quiet until the cap is near, then counts, then says why typing stopped", () => {
+    renderComposer(atQ2);
+
+    fireEvent.click(chip("Something else"));
+    const field = screen.getByRole("textbox");
+    expect(field.getAttribute("maxlength")).toBe(String(OTHER_NEED_MAX_LENGTH));
+
+    // Plenty of room left: a counter here would turn an answer into a form.
+    fireEvent.change(field, { target: { value: "a" } });
+    expect(screen.queryByText(/\/120/)).toBeNull();
+    expect(field.getAttribute("aria-invalid")).not.toBe("true");
+
+    // Within the last 10 characters the count appears, still a valid answer.
+    const nearCap = "a".repeat(OTHER_NEED_MAX_LENGTH - 5);
+    fireEvent.change(field, { target: { value: nearCap } });
+    expect(
+      screen.getByText(`${nearCap.length}/${OTHER_NEED_MAX_LENGTH}`),
+    ).toBeTruthy();
+    expect(field.getAttribute("aria-invalid")).not.toBe("true");
+
+    // At the cap the keystrokes stop, so the field has to say so out loud.
+    fireEvent.change(field, {
+      target: { value: "a".repeat(OTHER_NEED_MAX_LENGTH) },
+    });
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(
+      screen.getByText(`Keep it under ${OTHER_NEED_MAX_LENGTH} characters`),
+    ).toBeTruthy();
+    expect(screen.queryByText(/\/120$/)).toBeNull();
   });
 
   it("Enter does nothing while the field is blank", () => {

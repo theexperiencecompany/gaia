@@ -26,6 +26,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.user_models import (
+    PROFESSION_MAX_LENGTH,
     OnboardingNeed,
     OnboardingPreferences,
     OnboardingRequest,
@@ -244,13 +245,19 @@ class TestOnboardingRequest:
         assert r.profession == "Engineer"
 
     def test_profession_at_max_length_accepted(self):
-        profession_50 = "Engineer" + " " * (50 - len("Engineer"))
-        r = OnboardingRequest(profession=profession_50, needs=["inbox"])
-        assert len(r.profession) <= 50
+        profession = "Engineer" + " " * (PROFESSION_MAX_LENGTH - len("Engineer"))
+        r = OnboardingRequest(profession=profession, needs=["inbox"])
+        assert len(r.profession) <= PROFESSION_MAX_LENGTH
 
     def test_profession_exceeds_max_length_rejected(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(profession="E" * 51, needs=["inbox"])
+            OnboardingRequest(profession="E" * (PROFESSION_MAX_LENGTH + 1), needs=["inbox"])
+
+    def test_a_sentence_answer_fits(self):
+        """Q1 asks "What do you do?", so the cap has to clear a real sentence."""
+        sentence = "I'm a founder and designer building a startup"
+        r = OnboardingRequest(profession=sentence, needs=["inbox"])
+        assert r.profession == sentence
 
     # --- needs (Q2) ---
 
@@ -311,7 +318,7 @@ class TestOnboardingPreferences:
 
     def test_profession_too_long(self):
         with pytest.raises(ValidationError):
-            OnboardingPreferences(profession="x" * 51)
+            OnboardingPreferences(profession="x" * (PROFESSION_MAX_LENGTH + 1))
 
     def test_custom_instructions_too_long(self):
         with pytest.raises(ValidationError):

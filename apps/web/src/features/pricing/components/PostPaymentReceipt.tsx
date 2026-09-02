@@ -209,8 +209,8 @@ export function PostPaymentReceipt({
             </dl>
             <hr className="my-3 border-dashed border-zinc-300" />
             <p className="text-xs leading-relaxed opacity-70">
-              Thanks for subscribing to {displayName}. Every Pro feature is now
-              unlocked — welcome aboard.
+              Thanks for subscribing to {displayName}. Everything is unlocked.
+              Welcome aboard.
             </p>
             {subscriptionRef && (
               <div

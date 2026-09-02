@@ -28,9 +28,9 @@ PROFESSION_PHRASES: dict[str, str] = {
 NEED_PHRASES: dict[OnboardingNeed, str] = {
     OnboardingNeed.INBOX: "I'm drowning in email",
     OnboardingNeed.CALENDAR: "my week is back-to-back meetings",
-    OnboardingNeed.BRIEFINGS: "I start every day behind",
+    OnboardingNeed.BRIEFINGS: "I wake up already behind",
     OnboardingNeed.TODOS: "follow-ups slip through",
-    OnboardingNeed.MEMORY: "I repeat myself a lot",
+    OnboardingNeed.MEMORY: "I keep re-explaining myself",
     OnboardingNeed.RESEARCH: "research eats my evenings",
     OnboardingNeed.AUTOMATION: "I do the same chores every single day",
     OnboardingNeed.REACH: "I want you wherever I am",

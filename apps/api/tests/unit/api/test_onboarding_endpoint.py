@@ -23,6 +23,7 @@ from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.models.payment_models import PlanType
 from app.models.user_models import (
     OTHER_NEED_MAX_LENGTH,
+    PROFESSION_MAX_LENGTH,
     AuthenticatedUser,
     OnboardingPreferences,
     OnboardingStatusResponse,
@@ -249,6 +250,28 @@ class TestOnboardingAnalytics:
 
         assert response.status_code == 200
         assert mock_complete.await_args.args[1].profession == "I'm a founder, designer & dad"
+
+    async def test_complete_onboarding_accepts_profession_at_the_cap(self, client: AsyncClient):
+        """The cap the web field's maxLength mirrors — 80, not the old 50."""
+        at_cap = "E" * PROFESSION_MAX_LENGTH
+        with patch(
+            _COMPLETE_ONBOARDING,
+            new_callable=AsyncMock,
+            return_value={"user_id": FAKE_USER_ID},
+        ) as mock_complete:
+            response = await client.post(BASE_URL, json={"profession": at_cap, "needs": ["inbox"]})
+
+        assert response.status_code == 200
+        assert mock_complete.await_args.args[1].profession == at_cap
+
+    async def test_complete_onboarding_profession_over_the_cap_returns_422(
+        self, client: AsyncClient
+    ):
+        response = await client.post(
+            BASE_URL,
+            json={"profession": "E" * (PROFESSION_MAX_LENGTH + 1), "needs": ["inbox"]},
+        )
+        assert response.status_code == 422
 
     async def test_complete_onboarding_typed_need_alone_answers_q2(self, client: AsyncClient):
         with patch(
