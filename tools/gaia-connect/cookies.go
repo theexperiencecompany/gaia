@@ -39,8 +39,8 @@ type rawCookie struct {
 
 // readCookieRows copies the (locked) Cookies DB and returns every row. The copy
 // is required because the browser holds a write lock on the live file.
-func readCookieRows(userDataDir string) ([]rawCookie, error) {
-	src := filepath.Join(userDataDir, "Default", "Cookies")
+func readCookieRows(profileDir string) ([]rawCookie, error) {
+	src := filepath.Join(profileDir, "Cookies")
 	tmp, err := os.CreateTemp("", "gaia-cookies-*")
 	if err != nil {
 		return nil, err

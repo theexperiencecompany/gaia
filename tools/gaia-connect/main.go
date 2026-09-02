@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
@@ -20,12 +21,14 @@ import (
 const (
 	sessionListHeight = 15
 	browserListHeight = 8
+	profileListHeight = 8
 )
 
 type options struct {
 	api      string
 	token    string
 	browser  string
+	profile  string
 	sites    string
 	jsonMode bool
 	list     bool
@@ -36,6 +39,7 @@ type result struct {
 	OK          bool          `json:"ok"`
 	Error       string        `json:"error,omitempty"`
 	Browsers    []string      `json:"browsers,omitempty"`
+	Profiles    []Profile     `json:"profiles,omitempty"`
 	Sessions    []HostSummary `json:"sessions,omitempty"`
 	Imported    []string      `json:"imported,omitempty"`
 	HostCount   int           `json:"host_count,omitempty"`
@@ -78,12 +82,25 @@ func runRobot(o options) result {
 	if err != nil {
 		return result{Error: err.Error(), Browsers: browserNames(browsers)}
 	}
-	cookies, err := ExtractCookies(b)
+	profiles := ListProfiles(b.UserDataDir)
+	if len(profiles) == 0 {
+		return result{Error: fmt.Sprintf("no profiles with cookies found for %s", b.Name)}
+	}
+	p, err := pickProfileByName(profiles, o.profile)
+	if err != nil {
+		// In list mode an ambiguous profile isn't fatal: hand back the profiles
+		// so the caller can pick one and re-run with --profile.
+		if o.list {
+			return result{OK: true, Profiles: profiles}
+		}
+		return result{Error: err.Error(), Profiles: profiles}
+	}
+	cookies, err := ExtractCookies(b, p)
 	if err != nil {
 		return result{Error: err.Error()}
 	}
 	if o.list {
-		return result{OK: true, Sessions: summarizeSites(cookies)}
+		return result{OK: true, Profiles: profiles, Sessions: summarizeSites(cookies)}
 	}
 	if o.sites != "" {
 		cookies = filterBySites(cookies, splitCSV(o.sites))
@@ -95,7 +112,7 @@ func runRobot(o options) result {
 	if err != nil {
 		return result{Error: err.Error()}
 	}
-	resp, err := Upload(o.api, token, cookies)
+	resp, err := Upload(o.api, token, b.Name, cookies)
 	if err != nil {
 		return result{Error: err.Error()}
 	}
@@ -117,8 +134,16 @@ func runInteractive(o options) error {
 	if err != nil {
 		return err
 	}
+	profiles := ListProfiles(b.UserDataDir)
+	if len(profiles) == 0 {
+		return fmt.Errorf("no profiles with cookies found in %s", b.Name)
+	}
+	p, err := selectProfile(profiles)
+	if err != nil {
+		return err
+	}
 	fmt.Printf("Reading %s — approve the keychain prompt to continue…\n", b.Name)
-	cookies, err := ExtractCookies(b)
+	cookies, err := ExtractCookies(b, p)
 	if err != nil {
 		return err
 	}
@@ -141,7 +166,7 @@ func runInteractive(o options) error {
 	if err != nil {
 		return err
 	}
-	resp, err := Upload(o.api, token, cookies)
+	resp, err := Upload(o.api, token, b.Name, cookies)
 	if err != nil {
 		return err
 	}
@@ -165,6 +190,29 @@ func selectBrowser(browsers []Browser) (Browser, error) {
 		return Browser{}, err
 	}
 	return pickBrowserByName(browsers, choice)
+}
+
+func selectProfile(profiles []Profile) (Profile, error) {
+	if len(profiles) == 1 {
+		return profiles[0], nil
+	}
+	options := make([]huh.Option[string], len(profiles))
+	for i, p := range profiles {
+		options[i] = huh.NewOption(p.Name, p.Dir) // key on Dir — display names can repeat
+	}
+	var choice string
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewSelect[string]().Title("Which profile?").Options(options...).Height(profileListHeight).Value(&choice),
+	)).WithAccessible(os.Getenv("ACCESSIBLE") != "")
+	if err := form.Run(); err != nil {
+		return Profile{}, err
+	}
+	for _, p := range profiles {
+		if p.Dir == choice {
+			return p, nil
+		}
+	}
+	return Profile{}, fmt.Errorf("selected profile not found")
 }
 
 func selectSites(sites []HostSummary) ([]string, error) {
@@ -213,6 +261,29 @@ func pickBrowserByName(browsers []Browser, name string) (Browser, error) {
 		}
 	}
 	return Browser{}, fmt.Errorf("browser %q not found among %s", name, strings.Join(browserNames(browsers), ", "))
+}
+
+func pickProfileByName(profiles []Profile, name string) (Profile, error) {
+	if name == "" {
+		if len(profiles) == 1 {
+			return profiles[0], nil
+		}
+		return Profile{}, fmt.Errorf("multiple profiles found; pass --profile (%s)", strings.Join(profileNames(profiles), ", "))
+	}
+	for _, p := range profiles {
+		if strings.EqualFold(p.Name, name) || strings.EqualFold(filepath.Base(p.Dir), name) {
+			return p, nil
+		}
+	}
+	return Profile{}, fmt.Errorf("profile %q not found among %s", name, strings.Join(profileNames(profiles), ", "))
+}
+
+func profileNames(profiles []Profile) []string {
+	out := make([]string, len(profiles))
+	for i, p := range profiles {
+		out[i] = p.Name
+	}
+	return out
 }
 
 func browserNames(browsers []Browser) []string {

@@ -10,9 +10,10 @@ import (
 )
 
 type importRequest struct {
-	Token   string   `json:"token"`
-	Cookies []Cookie `json:"cookies"`
-	Origins []any    `json:"origins"`
+	Token         string   `json:"token"`
+	Cookies       []Cookie `json:"cookies"`
+	Origins       []any    `json:"origins"`
+	SourceBrowser string   `json:"source_browser"`
 }
 
 type importedHost struct {
@@ -47,8 +48,8 @@ func MintToken(apiBase string) (string, error) {
 }
 
 // Upload posts the selected cookies to GAIA's import endpoint.
-func Upload(apiBase, token string, cookies []Cookie) (importResponse, error) {
-	body, err := json.Marshal(importRequest{Token: token, Cookies: cookies, Origins: []any{}})
+func Upload(apiBase, token, sourceBrowser string, cookies []Cookie) (importResponse, error) {
+	body, err := json.Marshal(importRequest{Token: token, Cookies: cookies, Origins: []any{}, SourceBrowser: sourceBrowser})
 	if err != nil {
 		return importResponse{}, err
 	}

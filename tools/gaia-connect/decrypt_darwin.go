@@ -27,7 +27,7 @@ const pbkdf2Iterations = 1003
 
 // ExtractCookies reads and decrypts every cookie for a browser. The Keychain
 // read prompts the user once — that prompt is the consent for this sync.
-func ExtractCookies(b Browser) ([]Cookie, error) {
+func ExtractCookies(b Browser, p Profile) ([]Cookie, error) {
 	secret, err := keychainSecret(b.KeychainService, b.KeychainAccount)
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func ExtractCookies(b Browser) ([]Cookie, error) {
 		return nil, err
 	}
 
-	rows, err := readCookieRows(b.UserDataDir)
+	rows, err := readCookieRows(p.Dir)
 	if err != nil {
 		return nil, err
 	}

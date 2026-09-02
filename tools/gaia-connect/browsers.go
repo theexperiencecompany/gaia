@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,6 +51,54 @@ func DetectBrowsers() []Browser {
 		})
 	}
 	return out
+}
+
+// Profile is one browser profile under a user-data dir (Chrome's "Default",
+// "Profile 1", …). Dir is the absolute path to that profile's directory; Name
+// is its display name from Preferences, falling back to the directory name.
+type Profile struct {
+	Dir  string `json:"dir"`
+	Name string `json:"name"`
+}
+
+// ListProfiles returns every profile under a browser's user-data dir that has a
+// Cookies database, each with its display name. os.ReadDir sorts by filename,
+// so "Default" comes first and the order is stable for pickers and robots.
+func ListProfiles(userDataDir string) []Profile {
+	entries, err := os.ReadDir(userDataDir)
+	if err != nil {
+		return nil
+	}
+	var out []Profile
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(userDataDir, e.Name())
+		if _, err := os.Stat(filepath.Join(dir, "Cookies")); err != nil {
+			continue
+		}
+		out = append(out, Profile{Dir: dir, Name: profileDisplayName(dir, e.Name())})
+	}
+	return out
+}
+
+// profileDisplayName reads profile.name from a profile's Preferences JSON,
+// falling back to the directory name when it's absent or unparseable.
+func profileDisplayName(profileDir, dirName string) string {
+	data, err := os.ReadFile(filepath.Join(profileDir, "Preferences"))
+	if err != nil {
+		return dirName
+	}
+	var prefs struct {
+		Profile struct {
+			Name string `json:"name"`
+		} `json:"profile"`
+	}
+	if err := json.Unmarshal(data, &prefs); err != nil || prefs.Profile.Name == "" {
+		return dirName
+	}
+	return prefs.Profile.Name
 }
 
 func userDataDir(home string, c candidate) string {
