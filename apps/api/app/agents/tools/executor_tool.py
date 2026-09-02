@@ -260,9 +260,7 @@ async def _dispatch_executor(
                     task=task,
                     configurable=configurable,
                     identity=RunIdentity(
-                        stream_id=stream_id or "",
                         conversation_id=conversation_id,
-                        kind=RunKind.QUEUED,
                         task_id=task_id,
                         user_message_id=user_message_id,
                     ),

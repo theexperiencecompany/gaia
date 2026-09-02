@@ -284,11 +284,8 @@ async def enqueue_collection_run(
         build_run_item(
             task=EXECUTOR_COLLECTION_TASK,
             configurable=configurable,
-            # The stream is minted at dequeue; a collection turn is a queued run.
             identity=RunIdentity(
-                stream_id="",
                 conversation_id=conversation_id,
-                kind=RunKind.QUEUED,
                 task_id=str(uuid4()),
                 user_message_id=None,
             ),

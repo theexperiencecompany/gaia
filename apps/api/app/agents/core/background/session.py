@@ -93,11 +93,14 @@ class RunIdentity:
     object beside the LangGraph ``configurable`` it reads the rest from.
     """
 
-    stream_id: str
     conversation_id: str
-    kind: RunKind
     task_id: str | None
     user_message_id: str | None
+    #: Empty until the run is dispatched: a queued item is written before its
+    #: stream exists (``prepare_run_from_item`` mints one at dequeue), and a
+    #: run with no stream yet is by definition a queued one.
+    stream_id: str = ""
+    kind: RunKind = RunKind.QUEUED
     #: The ORIGINAL live turn's bot message id — see ``ExecutorRun.bot_message_id``.
     bot_message_id: str | None = None
 
