@@ -62,7 +62,7 @@ def _profession_phrase(profession: str | None) -> str | None:
 
 def compose_first_message(preferences: OnboardingPreferences) -> str:
     """The opening line the user sends GAIA, built from Q1 (profession) and Q2 (needs)."""
-    parts = ["Hi!"]
+    parts = ["Hey."]
 
     profession = _profession_phrase(preferences.profession)
     if profession:
@@ -70,7 +70,9 @@ def compose_first_message(preferences: OnboardingPreferences) -> str:
 
     needs = [NEED_PHRASES[need] for need in preferences.needs or []]
     if needs:
-        parts.append(f"I could use help with {_join(needs)}.")
+        parts.append(f"Mostly need help with {_join(needs)}.")
 
-    parts.append("Who are you?")
+    # Not "who are you": that asks for a self-description, and the reply it gets
+    # back is a persona blurb. Asking where to start gets a first real move.
+    parts.append("Where do we start?")
     return " ".join(parts)

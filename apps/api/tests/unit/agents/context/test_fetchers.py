@@ -581,7 +581,7 @@ class TestNewUserGuidanceBlock:
         with self._patch_count(self._count(1)):
             block = await build_new_user_guidance_block(ctx(user_preferences={"needs": ["inbox"]}))
         assert block.startswith("FIRST CONVERSATIONS (you just met this person)")
-        assert "person's plate" in block
+        assert "do for a person" in block
         assert "the way a person talks" in block
 
     async def test_no_needs_renders_nothing_rather_than_a_headerless_block(self) -> None:

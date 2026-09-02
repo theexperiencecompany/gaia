@@ -19,13 +19,13 @@ class TestComposeFirstMessage:
     def test_founder_with_two_needs(self) -> None:
         assert (
             compose_first_message(_prefs("founder", [OnboardingNeed.INBOX, OnboardingNeed.TODOS]))
-            == "Hi! I'm a founder. I could use help with my inbox and my todos. Who are you?"
+            == "Hey. I'm a founder. Mostly need help with my inbox and my todos. Where do we start?"
         )
 
     def test_single_need_has_no_conjunction(self) -> None:
         assert (
             compose_first_message(_prefs("engineering", [OnboardingNeed.RESEARCH]))
-            == "Hi! I'm an engineer. I could use help with research. Who are you?"
+            == "Hey. I'm an engineer. Mostly need help with research. Where do we start?"
         )
 
     def test_three_needs_use_an_oxford_comma(self) -> None:
@@ -35,47 +35,50 @@ class TestComposeFirstMessage:
                 [OnboardingNeed.CALENDAR, OnboardingNeed.BRIEFINGS, OnboardingNeed.MEMORY],
             )
         ) == (
-            "Hi! I'm in sales. I could use help with my calendar, my daily briefings, "
-            "and remembering everything. Who are you?"
+            "Hey. I'm in sales. Mostly need help with my calendar, my daily briefings, "
+            "and remembering everything. Where do we start?"
         )
 
     def test_all_needs(self) -> None:
         assert compose_first_message(_prefs("student", list(OnboardingNeed))) == (
-            "Hi! I'm a student. I could use help with my inbox, my calendar, "
+            "Hey. I'm a student. Mostly need help with my inbox, my calendar, "
             "my daily briefings, my todos, remembering everything, research, "
-            "automating my routines, and reaching me wherever I am. Who are you?"
+            "automating my routines, and reaching me wherever I am. Where do we start?"
         )
 
     def test_selection_order_is_preserved(self) -> None:
         """The user's tap order is the sentence order — not the enum's."""
         assert compose_first_message(
             _prefs("founder", [OnboardingNeed.TODOS, OnboardingNeed.INBOX])
-        ) == ("Hi! I'm a founder. I could use help with my todos and my inbox. Who are you?")
+        ) == ("Hey. I'm a founder. Mostly need help with my todos and my inbox. Where do we start?")
 
     def test_other_profession_is_omitted_rather_than_invented(self) -> None:
         assert (
             compose_first_message(_prefs("other", [OnboardingNeed.INBOX]))
-            == "Hi! I could use help with my inbox. Who are you?"
+            == "Hey. Mostly need help with my inbox. Where do we start?"
         )
 
     def test_missing_profession_is_omitted(self) -> None:
         assert (
             compose_first_message(_prefs(None, [OnboardingNeed.INBOX]))
-            == "Hi! I could use help with my inbox. Who are you?"
+            == "Hey. Mostly need help with my inbox. Where do we start?"
         )
 
     def test_no_needs_leaves_only_the_greeting(self) -> None:
-        assert compose_first_message(_prefs("founder", None)) == "Hi! I'm a founder. Who are you?"
+        assert (
+            compose_first_message(_prefs("founder", None))
+            == "Hey. I'm a founder. Where do we start?"
+        )
 
     def test_empty_preferences(self) -> None:
-        assert compose_first_message(_prefs(None, None)) == "Hi! Who are you?"
+        assert compose_first_message(_prefs(None, None)) == "Hey. Where do we start?"
 
     @pytest.mark.parametrize(
         ("profession", "expected"),
         [
-            ("architect", "Hi! I'm an architect. Who are you?"),
-            ("chef", "Hi! I'm a chef. Who are you?"),
-            ("Founder", "Hi! I'm a founder. Who are you?"),
+            ("architect", "Hey. I'm an architect. Where do we start?"),
+            ("chef", "Hey. I'm a chef. Where do we start?"),
+            ("Founder", "Hey. I'm a founder. Where do we start?"),
         ],
     )
     def test_free_form_profession_gets_the_right_article(
