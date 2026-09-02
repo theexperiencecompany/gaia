@@ -293,7 +293,7 @@ Also leave out step-by-step procedures: the system generates the steps separatel
 The user's description is raw input: distill it to intent. Strip away the WHEN (trigger) and focus on the WHAT (action). Examples:
 - "10 mins before every meeting check my inbox" → intent is "show me relevant emails for an upcoming meeting", NOT "check calendar then fetch emails"
 - "when I get an email, summarize it" → intent is "summarize the incoming email"
-- "extract sender, subject, first 200 chars, store as JSON" → intent is "summarize new emails"
+- "extract sender, subject, first 200 chars, store as JSON" → intent is "record each new email as JSON with its sender, subject and first 200 characters" (the fields and the format are the deliverable, so they stay; only the WHEN is stripped)
 
 Write 80-150 words of plain prose. No bullets, no headers, no code fences. Name the integrations and describe what the user should receive. One sentence for fallback behavior.
 
