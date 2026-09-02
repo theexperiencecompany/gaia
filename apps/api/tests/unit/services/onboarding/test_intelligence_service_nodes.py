@@ -32,7 +32,7 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import BioStatus, UserDocument
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
     OnboardingContext,
@@ -755,9 +755,9 @@ def holo_stack() -> Any:
         ),
         patch(
             f"{MODULE}.generate_holo_card_content",
-            AsyncMock(return_value=("a phrase", "a bio", "ok")),
+            AsyncMock(return_value=("a phrase", "a bio", BioStatus.COMPLETED)),
         ) as content,
-        patch(f"{MODULE}.save_personalization_data", AsyncMock()) as save,
+        patch(f"{MODULE}.user_repository.save_personalization", AsyncMock()) as save,
         patch(f"{MODULE}._emit_stage", AsyncMock()) as emit,
     ):
         yield content, save, emit
@@ -775,8 +775,8 @@ class TestRunHoloCard:
 
         args = save.await_args.args
         assert args[0] == USER
-        assert args[1] == "mistgrove"
-        assert args[2] == "a phrase"
+        assert args[1].house == "mistgrove"
+        assert args[1].personality_phrase == "a phrase"
         # Both the id and the already-loaded document: without the document the
         # lookup re-reads Mongo, without the id it reads the wrong person.
         metadata.assert_awaited_once_with(USER, user=user)
@@ -875,6 +875,7 @@ class TestRunHoloCard:
     async def test_a_failed_save_reports_itself_as_not_viewable(self, holo_stack: Any) -> None:
         # The card only becomes viewable once its content lands in Mongo.
         with patch(
-            f"{MODULE}.save_personalization_data", AsyncMock(side_effect=RuntimeError("mongo"))
+            f"{MODULE}.user_repository.save_personalization",
+            AsyncMock(side_effect=RuntimeError("mongo")),
         ):
             assert await _run_holo_card(_ctx(focus=""), UserDocument(id=USER), []) is False

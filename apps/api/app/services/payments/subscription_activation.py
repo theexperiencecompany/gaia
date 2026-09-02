@@ -15,7 +15,11 @@ from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import DodoSubscriptionData
-from app.services.analytics_service import AnalyticsEvents, track_subscription_event
+from app.services.analytics_service import (
+    AnalyticsEvents,
+    SubscriptionPlan,
+    track_subscription_event,
+)
 from app.services.email import send_pro_subscription_email
 from shared.py.wide_events import log
 
@@ -38,7 +42,7 @@ async def reactivate_workflows_safely(user_id: str) -> None:
     # imports `payment_service`, which imports this module; a top-level import of
     # `subscription_pause` would drag the whole workflow/triggers/composio stack
     # into that chain, and it reaches back into `app.decorators`.
-    from app.services.workflow.subscription_pause import (  # noqa: PLC0415
+    from app.services.workflow.subscription_pause import (  # noqa: PLC0415  # real cycle through app.decorators, see above
         reactivate_workflows_for_restored_subscription,
     )
 
@@ -142,11 +146,13 @@ async def activate_subscription(sub_data: DodoSubscriptionData) -> SubscriptionA
         user_id=user_id,
         event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
         subscription_id=sub_data.subscription_id,
-        plan_name="Pro",
-        amount=sub_data.recurring_pre_tax_amount / CENTS_PER_UNIT
-        if sub_data.recurring_pre_tax_amount
-        else None,
-        currency=sub_data.currency,
+        plan=SubscriptionPlan(
+            name="Pro",
+            amount=sub_data.recurring_pre_tax_amount / CENTS_PER_UNIT
+            if sub_data.recurring_pre_tax_amount
+            else None,
+            currency=sub_data.currency,
+        ),
     )
 
     await send_welcome_email_safely(user_id)

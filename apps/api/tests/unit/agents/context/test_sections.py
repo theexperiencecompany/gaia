@@ -11,7 +11,8 @@ behind them against un-mocked production code; this file covers the branching,
 the ordering, and the failure paths that never reach a service at all.
 """
 
-from typing import Any
+from dataclasses import replace
+from typing import Any, TypedDict, Unpack
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -38,27 +39,20 @@ def section(section_id: str) -> Section:
     return next(s for s in SECTIONS if s.id == section_id)
 
 
-def ctx(
-    tier: AgentTier = AgentTier.COMMS,
-    *,
-    user_id: str | None = "user1",
-    user_name: str | None = None,
-    user_timezone: str | None = None,
-    user_preferences: dict[str, Any] | None = None,
-    writing_style: dict[str, Any] | None = None,
-    subagent_id: str | None = None,
-    integration_id: str | None = None,
-) -> SectionContext:
-    return SectionContext(
-        tier=tier,
-        user_id=user_id,
-        user_name=user_name,
-        user_timezone=user_timezone,
-        user_preferences=user_preferences,
-        writing_style=writing_style,
-        subagent_id=subagent_id,
-        integration_id=integration_id,
-    )
+class _CtxOverrides(TypedDict, total=False):
+    """The ``SectionContext`` fields these tests vary, mirrored so ``ctx`` stays typed."""
+
+    user_id: str | None
+    user_name: str | None
+    user_timezone: str | None
+    user_preferences: dict[str, Any] | None
+    writing_style: dict[str, Any] | None
+    subagent_id: str | None
+    integration_id: str | None
+
+
+def ctx(tier: AgentTier = AgentTier.COMMS, **overrides: Unpack[_CtxOverrides]) -> SectionContext:
+    return replace(SectionContext(tier=tier, user_id="user1"), **overrides)
 
 
 @pytest.mark.unit

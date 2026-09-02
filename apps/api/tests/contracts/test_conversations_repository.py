@@ -641,15 +641,14 @@ class TestWorkflowAndOnboarding:
         )
         assert await repo.get_source(cid, user_id=uid) is None
 
-    async def test_mark_and_probe_onboarding(self, repo):
-        doc = _doc()
+    async def test_probe_onboarding(self, repo):
+        doc = _doc(is_onboarding_conversation=True)
         await repo.create(doc)
         await repo.append_messages(
             doc.conversation_id,
             user_id=doc.user_id,
             messages=[MessageModel(type="user", response="hey")],
         )
-        assert await repo.mark_onboarding_conversation(doc.conversation_id, user_id=doc.user_id)
         probe = await repo.get_onboarding_probe(doc.conversation_id)
         assert probe is not None
         assert probe.is_onboarding_conversation is True and probe.message_count == 1

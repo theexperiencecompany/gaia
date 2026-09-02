@@ -55,7 +55,6 @@ apps/api/app/api/v1/endpoints/platform_auth.py	PLR0913
 apps/api/app/api/v1/endpoints/todos.py	PLR0912
 apps/api/app/api/v1/endpoints/todos.py	PLR0913
 apps/api/app/api/v1/middleware/auth.py	PLR0912
-apps/api/app/config/rate_limits.py	PLR0912
 apps/api/app/config/settings_validator.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
 apps/api/app/core/lazy_loader.py	PLR0913
@@ -64,7 +63,6 @@ apps/api/app/db/repositories/base.py	PLR0913
 apps/api/app/db/repositories/e2b_sandboxes.py	PLR0913
 apps/api/app/db/repositories/notifications.py	PLR0913
 apps/api/app/db/repositories/todos.py	PLR0912
-apps/api/app/db/repositories/users.py	PLR0913
 apps/api/app/memory/extraction.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0913
 apps/api/app/memory/ingestion.py	PLR0915
@@ -72,7 +70,6 @@ apps/api/app/memory/pg_store/graph.py	PLR0912
 apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
 apps/api/app/services/_vfs_scheduler.py	PLR0913
-apps/api/app/services/analytics_service.py	PLR0913
 apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
@@ -86,10 +83,6 @@ apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
 apps/api/app/services/mcp/token_management.py	PLR0912
 apps/api/app/services/notification_service.py	PLR0913
-apps/api/app/services/oauth/oauth_service.py	PLR0912
-apps/api/app/services/oauth/oauth_service.py	PLR0915
-apps/api/app/services/onboarding/first_message_service.py	PLR0913
-apps/api/app/services/onboarding/post_onboarding_service.py	PLR0913
 apps/api/app/services/onboarding/social_profile_service.py	PLR0912
 apps/api/app/services/onboarding/social_profile_service.py	PLR0915
 apps/api/app/services/outbound_delivery.py	PLR0913
@@ -146,13 +139,10 @@ apps/api/scripts/sync_composio_tools.py	PLR0913
 apps/api/scripts/sync_composio_tools.py	PLR0915
 apps/api/scripts/test_tracked_todos.py	PLR0912
 apps/api/scripts/verify_sandbox_mounts.py	PLR0915
-apps/api/tests/e2e/test_onboarding.py	PLR0913
-apps/api/tests/e2e/test_onboarding.py	PLR0915
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0913
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913
 apps/api/tests/integration/real/test_schemathesis.py	PLR0912
-apps/api/tests/unit/agents/context/test_sections.py	PLR0913
 apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913
 apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
@@ -185,4 +175,3 @@ tools/evlog_map/__main__.py	PLR0912
 tools/evlog_map/facts.py	PLR0912
 tools/evlog_map/report.py	PLR0912
 tools/lints/check_ignore_whys.py	PLR0912
-tools/lints/repository_boundaries.py	PLR0912

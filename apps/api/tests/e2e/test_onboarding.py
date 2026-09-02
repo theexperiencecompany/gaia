@@ -67,7 +67,7 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleOutput,
 )
-from app.models.user_models import OnboardingPhase, UserDocument
+from app.models.user_models import OnboardingPhase, PersonalizationBundle, UserDocument
 from app.services.oauth.oauth_service import handle_oauth_connection
 from app.services.onboarding.intelligence_service import OnboardingStage, holo_card_url
 from app.utils.redis_utils import RedisPoolManager
@@ -77,6 +77,9 @@ from tests.conftest import FAKE_USER
 pytestmark = pytest.mark.e2e
 
 USER_ID: str = FAKE_USER["user_id"]
+
+#: Patch-target prefix for the onboarding service package.
+SVC = "app.services.onboarding"
 
 #: The sender the triage LLM reports as important.
 REAL_SENDER = "priya@client.com"
@@ -239,10 +242,10 @@ class _UserStore:
         if triage_summary is not None:
             sub["triage_summary"] = triage_summary.model_dump()
 
-    async def save_personalization(self, user_id: str, **fields: Any) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         sub = self._sub(user_id)
         if sub is not None:
-            sub.update(fields)
+            sub.update(bundle.model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -392,48 +395,8 @@ def stages() -> _StageSink:
     return _StageSink()
 
 
-@pytest.fixture(autouse=True)
-def world(
-    users: _UserStore,
-    stages: _StageSink,
-    externals: _Externals,
-    arq_pool: ArqRedis,
-) -> Iterator[None]:
-    """Wire the store, the socket and every external service into the real flow."""
-    svc = "app.services.onboarding"
-
-    async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
-        return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
-
-    composio = AsyncMock()
-    composio.check_connection_status.side_effect = _check_connection
-
-    async def _fetch_emails(
-        user_id: str,
-        months: int = 1,
-        max_total: int = 100,
-        on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
-        into: list[dict[str, Any]] | None = None,
-        options: Any = None,
-    ) -> list[dict[str, Any]]:
-        batch = list(externals.inbox)
-        if into is not None:
-            into.extend(batch)
-        if on_batch is not None:
-            await on_batch(len(batch), batch[0]["sender"] if batch else None)
-        return batch
-
-    async def _structured(schema: type, prompt: Any, *, label: str, **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(prompt)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return _structured_result(schema)
-
-    async def _search_messages(**_: Any) -> Any:
-        result = AsyncMock()
-        result.messages = externals.sent_emails
-        return result
+def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _Externals) -> None:
+    """Every write the flow makes, routed into ``users``/``externals`` instead of Mongo."""
 
     async def _create_conversation(conversation: Any, _user: Any) -> Any:
         if externals.seeding_fails:
@@ -448,9 +411,6 @@ def world(
     ) -> list[str]:
         externals.seeded_messages.extend(m.response for m in messages)
         return [f"msg-{i}" for i, _ in enumerate(messages)]
-
-    async def _create_notification(request: Any) -> None:
-        externals.notifications.append(request.content.title)
 
     async def _list_user_integrations(_user_id: str) -> list[Any]:
         out = []
@@ -487,55 +447,116 @@ def world(
     memory = AsyncMock()
     memory.delete_all.side_effect = lambda _uid: externals.memories_cleared
 
-    notifications = AsyncMock()
-    notifications.create_notification.side_effect = _create_notification
-
-    patches = [
-        # --- persistence -------------------------------------------------
-        patch(f"{svc}.onboarding_service.user_repository", users),
-        patch(f"{svc}.intelligence_job.user_repository", users),
-        patch(f"{svc}.intelligence_service.user_repository", users),
-        patch(f"{svc}.post_onboarding_service.user_repository", users),
+    for patcher in (
+        patch(f"{SVC}.onboarding_service.user_repository", users),
+        patch(f"{SVC}.intelligence_job.user_repository", users),
+        patch(f"{SVC}.intelligence_service.user_repository", users),
         patch("app.api.v1.endpoints.onboarding.user_repository", users),
         patch("app.services.oauth.oauth_service.user_repository", users),
         patch("app.utils.profile_card.user_repository", users),
-        patch(f"{svc}.onboarding_service.todo_repository", todo_repo),
+        patch(f"{SVC}.onboarding_service.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
-        patch(f"{svc}.onboarding_service.conversation_repository", conversation_repo),
+        patch(f"{SVC}.onboarding_service.conversation_repository", conversation_repo),
         patch("app.utils.seeding_utils.conversation_repository", seeding_conversations),
         patch("app.utils.seeding_utils.create_conversation_service", _create_conversation),
-        patch(f"{svc}.onboarding_service.user_integration_repository", integrations_repo),
-        patch(f"{svc}.onboarding_service.memory_engine", memory),
-        patch(f"{svc}.onboarding_service.disconnect_integration", _disconnect),
-        # --- transport ---------------------------------------------------
-        patch(f"{svc}.intelligence_service.websocket_manager", stages),
-        patch(f"{svc}.intelligence_service.notification_service", notifications),
+        patch(f"{SVC}.onboarding_service.user_integration_repository", integrations_repo),
+        patch(f"{SVC}.onboarding_service.memory_engine", memory),
+        patch(f"{SVC}.onboarding_service.disconnect_integration", _disconnect),
+    ):
+        stack.enter_context(patcher)
+
+
+def _enter_transport_patches(stack: ExitStack, stages: _StageSink, externals: _Externals) -> None:
+    """The socket and the notification service, recorded rather than delivered."""
+
+    async def _create_notification(request: Any) -> None:
+        externals.notifications.append(request.content.title)
+
+    notifications = AsyncMock()
+    notifications.create_notification.side_effect = _create_notification
+
+    for patcher in (
+        patch(f"{SVC}.intelligence_service.websocket_manager", stages),
+        patch(f"{SVC}.intelligence_service.notification_service", notifications),
+    ):
+        stack.enter_context(patcher)
+
+
+def _enter_external_service_patches(stack: ExitStack, externals: _Externals) -> None:
+    """Composio, Gmail, the LLM and the OAuth status write — the only real I/O left."""
+
+    async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
+        return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
+
+    composio = AsyncMock()
+    composio.check_connection_status.side_effect = _check_connection
+
+    async def _fetch_emails(
+        user_id: str,
+        months: int = 1,
+        max_total: int = 100,
+        on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
+        into: list[dict[str, Any]] | None = None,
+        options: Any = None,
+    ) -> list[dict[str, Any]]:
+        batch = list(externals.inbox)
+        if into is not None:
+            into.extend(batch)
+        if on_batch is not None:
+            await on_batch(len(batch), batch[0]["sender"] if batch else None)
+        return batch
+
+    async def _structured(schema: type, prompt: Any, *, label: str, **_: Any) -> Any:
+        externals.llm_labels.append(label)
+        externals.llm_prompts[label] = str(prompt)
+        if label in externals.llm_failures:
+            raise RuntimeError(f"model refused: {label}")
+        return _structured_result(schema)
+
+    async def _search_messages(**_: Any) -> Any:
+        result = AsyncMock()
+        result.messages = externals.sent_emails
+        return result
+
+    for patcher in (
         # --- composio ----------------------------------------------------
-        patch(f"{svc}.intelligence_service.get_composio_service", lambda: composio),
+        patch(f"{SVC}.intelligence_service.get_composio_service", lambda: composio),
         patch("app.api.v1.endpoints.onboarding.get_composio_service", lambda: composio),
         # --- gmail -------------------------------------------------------
-        patch(f"{svc}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
-        patch(f"{svc}.writing_style_service.search_messages", _search_messages),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
-        patch(f"{svc}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
+        patch(f"{SVC}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
+        patch(f"{SVC}.writing_style_service.search_messages", _search_messages),
+        patch(f"{SVC}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
+        patch(f"{SVC}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
         patch(
-            f"{svc}.intelligence_service.extract_social_profiles_from_emails",
+            f"{SVC}.intelligence_service.extract_social_profiles_from_emails",
             AsyncMock(return_value=[SocialProfile(platform="linkedin", url="https://li/x")]),
         ),
         # --- llm ---------------------------------------------------------
-        patch(f"{svc}.writing_style_service.ainvoke_structured", _structured),
-        patch(f"{svc}.inbox_triage_service.ainvoke_structured", _structured),
+        patch(f"{SVC}.writing_style_service.ainvoke_structured", _structured),
+        patch(f"{SVC}.inbox_triage_service.ainvoke_structured", _structured),
         patch("app.utils.profile_card.ainvoke_structured", _structured),
         # --- oauth connect side effects ----------------------------------
         patch(
             "app.services.oauth.oauth_service.update_user_integration_status",
             new_callable=AsyncMock,
         ),
-    ]
+    ):
+        stack.enter_context(patcher)
+
+
+@pytest.fixture(autouse=True)
+def world(
+    users: _UserStore,
+    stages: _StageSink,
+    externals: _Externals,
+    arq_pool: ArqRedis,
+) -> Iterator[None]:
+    """Wire the store, the socket and every external service into the real flow."""
     with ExitStack() as stack:
-        for patcher in patches:
-            stack.enter_context(patcher)
+        _enter_persistence_patches(stack, users, externals)
+        _enter_transport_patches(stack, stages, externals)
+        _enter_external_service_patches(stack, externals)
         yield
 
 

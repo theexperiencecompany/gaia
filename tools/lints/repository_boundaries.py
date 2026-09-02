@@ -211,6 +211,37 @@ def _arg_issue(
     return []
 
 
+def _method_issues(
+    where: str, item: ast.FunctionDef | ast.AsyncFunctionDef
+) -> list[tuple[int, str, str]]:
+    hits: list[tuple[int, str, str]] = []
+    args = item.args
+    for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
+        if arg.arg in ("self", "cls"):
+            continue
+        hits.extend(_arg_issue(item.lineno, where, arg.arg, arg.annotation))
+    for special in (args.vararg, args.kwarg):
+        if special is not None:
+            hits.extend(_arg_issue(item.lineno, where, special.arg, special.annotation))
+    if item.returns is None:
+        hits.append(
+            (
+                item.lineno,
+                f"public method '{where}' has no return type annotation",
+                "annotate the return type — the repository boundary is fully typed",
+            )
+        )
+    elif _annotation_has_any(item.returns):
+        hits.append(
+            (
+                item.lineno,
+                f"public method '{where}' returns Any",
+                "return a typed document/result model, not Any",
+            )
+        )
+    return hits
+
+
 def _signature_violations(tree: ast.Module) -> list[tuple[int, str, str]]:
     """(line, detail, fix) for public repository methods that leak Any or lack annotations."""
     hits: list[tuple[int, str, str]] = []
@@ -222,32 +253,57 @@ def _signature_violations(tree: ast.Module) -> list[tuple[int, str, str]]:
                 continue
             if item.name.startswith("_"):
                 continue  # underscore = internal subclass seam, exempt
-            where = f"{cls.name}.{item.name}"
-            args = item.args
-            for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs]:
-                if arg.arg in ("self", "cls"):
-                    continue
-                hits.extend(_arg_issue(item.lineno, where, arg.arg, arg.annotation))
-            for special in (args.vararg, args.kwarg):
-                if special is not None:
-                    hits.extend(_arg_issue(item.lineno, where, special.arg, special.annotation))
-            if item.returns is None:
-                hits.append(
-                    (
-                        item.lineno,
-                        f"public method '{where}' has no return type annotation",
-                        "annotate the return type — the repository boundary is fully typed",
-                    )
-                )
-            elif _annotation_has_any(item.returns):
-                hits.append(
-                    (
-                        item.lineno,
-                        f"public method '{where}' returns Any",
-                        "return a typed document/result model, not Any",
-                    )
-                )
+            hits.extend(_method_issues(f"{cls.name}.{item.name}", item))
     return hits
+
+
+def _collections_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
+    if any(app_rel.startswith(d) for d in _COLLECTIONS_ALLOWED_DIRS):
+        return []
+    if app_rel in COLLECTIONS_IMPORT_ALLOWLIST:
+        return []
+    return [
+        Violation(
+            path=path,
+            line=line,
+            detail=f"imports collections outside the repository layer ({detail})",
+            fix="call the domain repository in app.db.repositories instead of the collection",
+        )
+        for line, detail in _collections_imports(tree)
+    ]
+
+
+def _bson_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
+    if any(app_rel.startswith(d) for d in _BSON_ALLOWED_DIRS):
+        return []
+    if app_rel in BSON_IMPORT_ALLOWLIST:
+        return []
+    return [
+        Violation(
+            path=path,
+            line=line,
+            detail=f"imports bson/ObjectId outside app/db/ ({detail})",
+            fix="keep ObjectId conversion inside the repository (ids are str above it)",
+        )
+        for line, detail in _bson_imports(tree)
+    ]
+
+
+def _cache_violations(path: Path, app_rel: str, tree: ast.Module) -> list[Violation]:
+    if any(app_rel.startswith(d) for d in _CACHE_ALLOWED_DIRS):
+        return []
+    if app_rel in CACHE_CALL_ALLOWLIST:
+        return []
+    return [
+        Violation(
+            path=path,
+            line=line,
+            detail=f"hand-calls the entity-cache helpers outside the cache layers ({detail})",
+            fix="cache repository-managed entities via the repository CachePolicy or the "
+            "@Cacheable/@CacheInvalidator decorators, not raw get_cache/set_cache/delete_cache",
+        )
+        for line, detail in _cache_imports(tree)
+    ]
 
 
 def check(files: list[Path]) -> list[Violation]:
@@ -259,48 +315,13 @@ def check(files: list[Path]) -> list[Violation]:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
 
-        if not any(app_rel.startswith(d) for d in _COLLECTIONS_ALLOWED_DIRS):
-            for line, detail in _collections_imports(tree):
-                if app_rel in COLLECTIONS_IMPORT_ALLOWLIST:
-                    continue
-                violations.append(
-                    Violation(
-                        path=path,
-                        line=line,
-                        detail=f"imports collections outside the repository layer ({detail})",
-                        fix="call the domain repository in app.db.repositories instead of the collection",
-                    )
-                )
-
-        if not any(app_rel.startswith(d) for d in _BSON_ALLOWED_DIRS):
-            for line, detail in _bson_imports(tree):
-                if app_rel in BSON_IMPORT_ALLOWLIST:
-                    continue
-                violations.append(
-                    Violation(
-                        path=path,
-                        line=line,
-                        detail=f"imports bson/ObjectId outside app/db/ ({detail})",
-                        fix="keep ObjectId conversion inside the repository (ids are str above it)",
-                    )
-                )
+        violations.extend(_collections_violations(path, app_rel, tree))
+        violations.extend(_bson_violations(path, app_rel, tree))
 
         if app_rel.startswith("db/repositories/"):
             for line, detail, fix in _signature_violations(tree):
                 violations.append(Violation(path=path, line=line, detail=detail, fix=fix))
 
-        if not any(app_rel.startswith(d) for d in _CACHE_ALLOWED_DIRS):
-            for line, detail in _cache_imports(tree):
-                if app_rel in CACHE_CALL_ALLOWLIST:
-                    continue
-                violations.append(
-                    Violation(
-                        path=path,
-                        line=line,
-                        detail=f"hand-calls the entity-cache helpers outside the cache layers ({detail})",
-                        fix="cache repository-managed entities via the repository CachePolicy or the "
-                        "@Cacheable/@CacheInvalidator decorators, not raw get_cache/set_cache/delete_cache",
-                    )
-                )
+        violations.extend(_cache_violations(path, app_rel, tree))
 
     return violations

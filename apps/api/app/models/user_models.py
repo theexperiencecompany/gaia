@@ -413,6 +413,19 @@ class HoloCardOnboardingFields(BaseModel):
     overlay_opacity: int = 40
 
 
+class PersonalizationBundle(BaseModel):
+    """The holo-card fields the Gmail pipeline generates and persists in one write."""
+
+    house: str
+    personality_phrase: str
+    user_bio: str
+    bio_status: BioStatus
+    account_number: int
+    member_since: str
+    overlay_color: str
+    overlay_opacity: int
+
+
 class UpdateHoloCardColorsResponse(BaseModel):
     """Response for a holo-card overlay colour update, echoing the stored values."""
 

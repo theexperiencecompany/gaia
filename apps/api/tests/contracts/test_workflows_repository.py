@@ -124,15 +124,6 @@ class TestWorkflowsOwnedCrud:
         assert await repo.delete_for_user(created.id, "owner") is True
         assert await repo.get(created.id) is None
 
-    async def test_delete_many_for_user(self, repo):
-        owner = _uid("owner")
-        a = await repo.create(_workflow(user_id=owner))
-        b = await repo.create(_workflow(user_id=owner))
-        other = await repo.create(_workflow(user_id=_uid("other")))
-        deleted = await repo.delete_many_for_user([a.id, b.id, other.id], owner)
-        assert deleted == 2  # other user's row is not touched
-        assert await repo.get(other.id) is not None
-
     async def test_list_for_user_newest_first_excludes_todo(self, repo):
         owner = _uid("owner")
         older = await repo.create(

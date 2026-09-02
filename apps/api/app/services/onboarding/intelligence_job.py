@@ -129,9 +129,7 @@ async def enqueue_gmail_personalization(user_id: str) -> str | None:
     pool = await RedisPoolManager.get_pool()
     job = await enqueue_worker_job(pool, INTELLIGENCE_TASK, user_id)
     if job is None:
-        log.error(
-            f"{LogTag.ONBOARDING} personalization enqueue returned no job", user_id=user_id
-        )
+        log.error(f"{LogTag.ONBOARDING} personalization enqueue returned no job", user_id=user_id)
         return None
 
     await user_repository.set_active_job(user_id, INTELLIGENCE_JOB_FIELD, job.job_id)

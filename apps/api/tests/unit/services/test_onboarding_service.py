@@ -41,7 +41,6 @@ from app.services.onboarding.onboarding_service import (
     reset_onboarding,
     update_onboarding_preferences,
 )
-from app.services.onboarding.post_onboarding_service import save_personalization_data
 from app.utils.redis_utils import RedisPoolManager
 
 SERVICE = "app.services.onboarding.onboarding_service"
@@ -52,19 +51,9 @@ def mock_repo() -> Iterator[MagicMock]:
     with patch(f"{SERVICE}.user_repository") as repo:
         repo.complete_onboarding = AsyncMock()
         repo.get = AsyncMock()
-        repo.clear_onboarding = AsyncMock()
         repo.reset_onboarding = AsyncMock()
         repo.update_onboarding_preferences = AsyncMock()
         yield repo
-
-
-@pytest.fixture
-def mock_save_personalization() -> Iterator[AsyncMock]:
-    with patch(
-        "app.services.onboarding.post_onboarding_service.user_repository.save_personalization",
-        new_callable=AsyncMock,
-    ) as mock_save:
-        yield mock_save
 
 
 @pytest.fixture
@@ -612,53 +601,6 @@ class TestUpdateOnboardingPreferences:
                 sample_user_id, OnboardingPreferences(profession="Engineer")
             )
         assert exc_info.value.status_code == 500
-
-
-class TestSavePersonalizationData:
-    async def test_saves_data(
-        self, mock_save_personalization: AsyncMock, sample_user_id: str
-    ) -> None:
-        await save_personalization_data(
-            sample_user_id,
-            house="explorer",
-            personality_phrase="Creative thinker",
-            user_bio="A passionate engineer.",
-            bio_status=BioStatus.COMPLETED,
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
-        )
-
-        mock_save_personalization.assert_awaited_once()
-        kwargs = mock_save_personalization.call_args.kwargs
-        assert kwargs["house"] == "explorer"
-        assert kwargs["personality_phrase"] == "Creative thinker"
-        assert kwargs["user_bio"] == "A passionate engineer."
-        assert kwargs["bio_status"] == BioStatus.COMPLETED
-        assert kwargs["account_number"] == 42
-        assert kwargs["member_since"] == "Mar 2024"
-        assert kwargs["overlay_color"] == "#ff0000"
-        assert kwargs["overlay_opacity"] == 80
-        # Workflows are no longer generated at personalization time.
-        assert "workflow_ids" not in kwargs
-
-    async def test_handles_exception(
-        self, mock_save_personalization: AsyncMock, sample_user_id: str
-    ) -> None:
-        mock_save_personalization.side_effect = Exception("DB error")
-
-        await save_personalization_data(
-            sample_user_id,
-            house="explorer",
-            personality_phrase="phrase",
-            user_bio="bio",
-            bio_status=BioStatus.COMPLETED,
-            account_number=1,
-            member_since="Jan 2024",
-            overlay_color="#000",
-            overlay_opacity=50,
-        )
 
 
 class TestOnboardingServiceLogPins:

@@ -167,9 +167,7 @@ class TestRedeemLinkCode:
             patch(
                 CONSUME_PATCH,
                 new_callable=AsyncMock,
-                return_value=PlatformLinkCodePayload(
-                    user_id="user1", first_message=FIRST_MESSAGE
-                ),
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
             ),
             patch(
                 COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()
@@ -211,9 +209,7 @@ class TestRedeemLinkCode:
         """Single-use: the store hands the binding over exactly once."""
         payload = PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE)
         with (
-            patch(
-                CONSUME_PATCH, new_callable=AsyncMock, side_effect=[payload, None]
-            ),
+            patch(CONSUME_PATCH, new_callable=AsyncMock, side_effect=[payload, None]),
             patch(COMPLETE_PATCH, new_callable=AsyncMock, return_value=_link_result()),
         ):
             first = await client.post(f"{BOT_BASE}/redeem-link-code", json=REDEEM_BODY)
@@ -230,9 +226,7 @@ class TestRedeemLinkCode:
             patch(
                 CONSUME_PATCH,
                 new_callable=AsyncMock,
-                return_value=PlatformLinkCodePayload(
-                    user_id="user1", first_message=FIRST_MESSAGE
-                ),
+                return_value=PlatformLinkCodePayload(user_id="user1", first_message=FIRST_MESSAGE),
             ),
             patch(
                 COMPLETE_PATCH,

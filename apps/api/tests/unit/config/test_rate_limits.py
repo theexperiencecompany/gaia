@@ -160,6 +160,7 @@ class TestFeatureLimits:
         "deep_research",
         "document_generation",
         "onboarding_generation",
+        "platform_link_code",
         "web_search",
         "webpage_fetch",
         "download",

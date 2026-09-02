@@ -47,6 +47,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     PlatformLinkRecord,
     UserDocument,
     UserUpdate,
@@ -258,15 +259,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             extra_filter={"onboarding": {"$exists": False}},
         )
 
-    async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
-        """Persist the user's selected integrations (onboarding)."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.selected_integrations": integrations}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
     async def update_onboarding_preferences(
         self, user_id: str, preferences: OnboardingPreferences
     ) -> UserDocument | None:
@@ -289,15 +281,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def clear_onboarding(self, user_id: str) -> None:
-        """Roll back a partially-created onboarding subdocument."""
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$unset": {"onboarding": ""}},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
-
     # ---------------------------------------------------- intelligence writes
 
     async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
@@ -309,20 +292,6 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
         return updated is not None
-
-    async def set_pipeline_completion(
-        self, user_id: str, *, phase: OnboardingPhase, conversation_id: str | None = None
-    ) -> None:
-        """Advance the onboarding pipeline phase (optionally tying the first conversation)."""
-        set_fields: dict[str, object] = {"onboarding.phase": phase}
-        if conversation_id is not None:
-            set_fields["onboarding.first_message_conversation_id"] = conversation_id
-        await self._apply_raw_update(
-            {"_id": self._id_value(user_id)},
-            {"$set": set_fields},
-            scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
-        )
 
     async def mark_gmail_personalization_done(
         self, user_id: str, *, conversation_id: str | None = None
@@ -475,32 +444,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def save_personalization(
-        self,
-        user_id: str,
-        *,
-        house: str,
-        personality_phrase: str,
-        user_bio: str,
-        bio_status: BioStatus,
-        account_number: int,
-        member_since: str,
-        overlay_color: str,
-        overlay_opacity: int,
-    ) -> None:
+    async def save_personalization(self, user_id: str, bundle: PersonalizationBundle) -> None:
         """Persist the generated personalization bundle and advance the phase to
         personalization-complete."""
         set_fields: dict[str, object] = {
-            "onboarding.house": house,
-            "onboarding.personality_phrase": personality_phrase,
-            "onboarding.user_bio": user_bio,
-            "onboarding.bio_status": bio_status,
-            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
-            "onboarding.account_number": account_number,
-            "onboarding.member_since": member_since,
-            "onboarding.overlay_color": overlay_color,
-            "onboarding.overlay_opacity": overlay_opacity,
+            f"onboarding.{field}": value for field, value in bundle.model_dump().items()
         }
+        set_fields["onboarding.phase"] = OnboardingPhase.PERSONALIZATION_COMPLETE.value
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},

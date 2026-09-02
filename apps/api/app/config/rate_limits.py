@@ -499,6 +499,58 @@ def _free_pro_delta(feature_key: str) -> dict[str, str] | None:
     return None
 
 
+def _hit_feature_benefit(hit_feature: str, seen: set[str]) -> list[dict[str, str]]:
+    delta = _free_pro_delta(hit_feature) if hit_feature in FEATURE_LIMITS else None
+    if not delta:
+        return []
+    seen.add(hit_feature)
+    return [delta]
+
+
+def _pro_only_benefits(seen: set[str]) -> list[dict[str, str]]:
+    benefits: list[dict[str, str]] = []
+    for key, limits in FEATURE_LIMITS.items():
+        free_gated = limits.free.day <= 0 and limits.free.month <= 0
+        pro_has_access = limits.pro.day > 0 or limits.pro.month > 0
+        if key not in seen and free_gated and pro_has_access:
+            benefits.append({"title": limits.info.title, "detail": "included with Pro"})
+            seen.add(key)
+    return benefits
+
+
+def _uncapped_daily_benefits(seen: set[str]) -> list[dict[str, str]]:
+    """Features whose daily use is uncapped on Pro (pro.day == 0).
+
+    The strongest non-gated pitch, but the multiplier section can't reach them
+    (division by pro.day). Covers both free-capped-daily features and cost-walled
+    ones (chat: day 0 on both tiers), so a wall on any feature still advertises
+    e.g. unlimited chat messages.
+    """
+    benefits: list[dict[str, str]] = []
+    for key, limits in FEATURE_LIMITS.items():
+        if key in seen or limits.pro.day > 0:
+            continue
+        delta = _free_pro_delta(key) if limits.free.day > 0 or _is_cost_walled(limits) else None
+        if delta:
+            benefits.append(delta)
+            seen.add(key)
+    return benefits
+
+
+def _largest_multiplier_benefits(seen: set[str], max_other: int) -> list[dict[str, str]]:
+    multipliers = sorted(
+        (
+            (limits.pro.day / limits.free.day, key)
+            for key, limits in FEATURE_LIMITS.items()
+            if key not in seen and limits.free.day > 0 and limits.pro.day > 0
+        ),
+        reverse=True,
+    )
+    return [
+        delta for _, key in multipliers[:max_other] if (delta := _free_pro_delta(key)) is not None
+    ]
+
+
 def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, str]]:
     """Build upsell bullets from FEATURE_LIMITS — the same config that enforces
     the limits, so the promised benefits can never drift from reality.
@@ -508,49 +560,10 @@ def derive_pro_benefits(hit_feature: str, max_other: int = 3) -> list[dict[str, 
     either free-capped daily with no pro cap, or cost-walled (day 0 on both
     tiers, e.g. chat messages), (4) the largest free->pro daily multipliers.
     """
-    benefits: list[dict[str, str]] = []
     seen: set[str] = set()
-
-    if hit_feature in FEATURE_LIMITS:
-        delta = _free_pro_delta(hit_feature)
-        if delta:
-            benefits.append(delta)
-            seen.add(hit_feature)
-
-    for key, limits in FEATURE_LIMITS.items():
-        if key in seen:
-            continue
-        free_gated = limits.free.day <= 0 and limits.free.month <= 0
-        pro_has_access = limits.pro.day > 0 or limits.pro.month > 0
-        if free_gated and pro_has_access:
-            benefits.append({"title": limits.info.title, "detail": "included with Pro"})
-            seen.add(key)
-
-    # Features whose daily use is uncapped on Pro (pro.day == 0) are the
-    # strongest non-gated pitch, but the multiplier section below can't reach
-    # them (division by pro.day). This covers both free-capped-daily features
-    # and cost-walled ones (chat: day 0 on both tiers). Surface them explicitly
-    # so a wall on any feature still advertises e.g. unlimited chat messages.
-    for key, limits in FEATURE_LIMITS.items():
-        if key in seen:
-            continue
-        if limits.pro.day <= 0 and (limits.free.day > 0 or _is_cost_walled(limits)):
-            delta = _free_pro_delta(key)
-            if delta:
-                benefits.append(delta)
-                seen.add(key)
-
-    multipliers = sorted(
-        (
-            (limits.pro.day / limits.free.day, key)
-            for key, limits in FEATURE_LIMITS.items()
-            if key not in seen and limits.free.day > 0 and limits.pro.day > 0
-        ),
-        reverse=True,
-    )
-    for _, key in multipliers[:max_other]:
-        delta = _free_pro_delta(key)
-        if delta:
-            benefits.append(delta)
-
-    return benefits
+    return [
+        *_hit_feature_benefit(hit_feature, seen),
+        *_pro_only_benefits(seen),
+        *_uncapped_daily_benefits(seen),
+        *_largest_multiplier_benefits(seen, max_other),
+    ]

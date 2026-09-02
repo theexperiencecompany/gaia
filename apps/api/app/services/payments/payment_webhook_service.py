@@ -20,6 +20,7 @@ from app.models.webhook_models import (
 from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import (
     AnalyticsEvents,
+    SubscriptionPlan,
     track_payment_event,
     track_subscription_event,
 )
@@ -382,7 +383,7 @@ class PaymentWebhookService:
                     user_id=user_id,
                     event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
                     subscription_id=sub_data.subscription_id,
-                    currency=sub_data.currency,
+                    plan=SubscriptionPlan(currency=sub_data.currency),
                 )
                 await reactivate_workflows_safely(user_id)
 

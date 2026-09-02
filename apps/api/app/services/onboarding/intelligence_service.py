@@ -57,13 +57,12 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
     WritingStyleReadyPayload,
 )
-from app.models.user_models import UserDocument
+from app.models.user_models import PersonalizationBundle, UserDocument
 from app.services.composio.composio_service import get_composio_service
 from app.services.notification_service import notification_service
 from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.intelligence_job import personalization_already_ran
-from app.services.onboarding.post_onboarding_service import save_personalization_data
 from app.services.onboarding.social_profile_service import (
     dedup_profiles_by_platform,
     extract_social_profiles_from_emails,
@@ -254,9 +253,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     card_ready = await _run_holo_card(ctx, user, social_profiles)
 
     conversation_id = await _announce_personalization(user_id, card_ready=card_ready)
-    await user_repository.mark_gmail_personalization_done(
-        user_id, conversation_id=conversation_id
-    )
+    await user_repository.mark_gmail_personalization_done(user_id, conversation_id=conversation_id)
 
     log.info(
         f"{LogTag.ONBOARDING} pipeline done",
@@ -584,16 +581,18 @@ async def _run_holo_card(
         )
         phrase_bio_duration_s = round(time.monotonic() - t_phrase_bio, 2)
         t_save = time.monotonic()
-        await save_personalization_data(
+        await user_repository.save_personalization(
             ctx.user_id,
-            card_design.house,
-            phrase,
-            user_bio,
-            bio_status,
-            metadata.account_number,
-            metadata.member_since,
-            card_design.overlay_color,
-            card_design.overlay_opacity,
+            PersonalizationBundle(
+                house=card_design.house,
+                personality_phrase=phrase,
+                user_bio=user_bio,
+                bio_status=bio_status,
+                account_number=metadata.account_number,
+                member_since=metadata.member_since,
+                overlay_color=card_design.overlay_color,
+                overlay_opacity=card_design.overlay_opacity,
+            ),
         )
         card_ready = True
         log.info(

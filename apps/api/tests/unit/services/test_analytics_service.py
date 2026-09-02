@@ -8,6 +8,7 @@ import pytest
 
 from app.services.analytics_service import (
     AnalyticsEvents,
+    SubscriptionPlan,
     capture_context_event,
     capture_event,
     identify_user,
@@ -319,9 +320,7 @@ class TestTrackSubscriptionEvent:
             "user1",
             AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id="sub123",
-            plan_name="pro",
-            amount=9.99,
-            currency="USD",
+            plan=SubscriptionPlan(name="pro", amount=9.99, currency="USD"),
         )
 
         mock_posthog.capture.assert_called_once()
@@ -349,7 +348,7 @@ class TestTrackSubscriptionEvent:
         track_subscription_event(
             "user1",
             AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            plan_name="pro",
+            plan=SubscriptionPlan(name="pro"),
         )
 
         # Should call identify to update user properties
@@ -390,7 +389,7 @@ class TestTrackSubscriptionEvent:
         track_subscription_event(
             "user1",
             AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
-            plan_name="pro",
+            plan=SubscriptionPlan(name="pro"),
         )
 
     def test_skips_when_no_client(self, mock_posthog_none):

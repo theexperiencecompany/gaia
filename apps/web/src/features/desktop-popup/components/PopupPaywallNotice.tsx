@@ -28,8 +28,11 @@ export default function PopupPaywallNotice() {
   // The backend mints a personal checkout link into the 402 body. When Dodo is
   // unreachable it deliberately sends none — the block still stands, so fall
   // back to the pricing page rather than leaving the user with no way out.
-  const target =
-    offer?.checkoutUrl ?? `${window.location.origin}${PRICING_PATH}`;
+  // Resolved on press, not in render: the popup is server-rendered first.
+  const openCheckout = () =>
+    openExternal(
+      offer?.checkoutUrl ?? `${window.location.origin}${PRICING_PATH}`,
+    );
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-zinc-800 p-4">
@@ -53,7 +56,7 @@ export default function PopupPaywallNotice() {
         color="primary"
         radius="full"
         className="font-medium text-black"
-        onPress={() => openExternal(target)}
+        onPress={openCheckout}
       >
         Subscribe in your browser
       </Button>

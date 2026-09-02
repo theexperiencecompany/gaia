@@ -628,15 +628,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Delete the user's workflow. Returns whether a document was removed."""
         return await self._remove(workflow_id, REPO_GLOBAL_SCOPE, {"user_id": user_id})
 
-    async def delete_many_for_user(self, workflow_ids: list[str], user_id: str) -> int:
-        """Delete many of the user's workflows in one round trip (idempotency purge
-        of stale suggestions). Returns the count deleted."""
-        if not workflow_ids:
-            return 0
-        return await self._delete_many(
-            {"_id": {"$in": workflow_ids}, "user_id": user_id}, scope=REPO_GLOBAL_SCOPE
-        )
-
     async def distinct_users_with_activated_workflows(self) -> list[str]:
         """Every user id that owns at least one activated workflow — the paid-only
         migration's candidate pool, checked one by one against subscription status."""

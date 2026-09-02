@@ -20,6 +20,7 @@ from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
     OnboardingPreferences,
+    PersonalizationBundle,
     UserDocument,
     UserUpdate,
 )
@@ -131,13 +132,11 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         first = await repo.complete_onboarding(
             created.id,
-            name="New Name",
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.COMPLETED,
             preferences=OnboardingPreferences(profession="eng"),
         )
         assert first is not None
-        assert first.name == "New Name"
         assert first.onboarding["completed"] is True
         assert first.onboarding["phase"] == OnboardingPhase.COMPLETED.value
         # Gate misses on replay (onboarding already exists) → None, original untouched.
@@ -171,14 +170,16 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.save_personalization(
             created.id,
-            house="explorer",
-            personality_phrase="Creative",
-            user_bio="Bio",
-            bio_status="completed",
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
+            PersonalizationBundle(
+                house="explorer",
+                personality_phrase="Creative",
+                user_bio="Bio",
+                bio_status=BioStatus.COMPLETED,
+                account_number=42,
+                member_since="Mar 2024",
+                overlay_color="#ff0000",
+                overlay_opacity=80,
+            ),
         )
         onboarding = (await repo.get(created.id)).onboarding
         assert onboarding["house"] == "explorer"

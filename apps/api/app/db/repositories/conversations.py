@@ -199,18 +199,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    async def mark_onboarding_conversation(self, conversation_id: str, *, user_id: str) -> bool:
-        """Flag a freshly seeded conversation as the onboarding demo. Matches the
-        legacy write, which does not advance ``updatedAt``."""
-        matched = await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$set": {"is_onboarding_conversation": True}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
-        return matched > 0
-
     # ---- message-array writes ----
 
     async def append_messages(

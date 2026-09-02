@@ -25,9 +25,9 @@ FIRST_MESSAGE = "Hi! I'm a founder. I could use help with my inbox and my todos.
 
 
 @pytest.fixture
-def fake_store() -> Generator[dict[str, object], None, None]:
+def fake_store() -> Generator[dict[str, tuple[object, int | None]], None, None]:
     """In-memory stand-in for the Redis single-use store."""
-    store: dict[str, object] = {}
+    store: dict[str, tuple[object, int | None]] = {}
 
     async def _set(key: str, value: object, ttl: int | None = None) -> bool:
         store[key] = (value, ttl)
@@ -49,7 +49,7 @@ def fake_store() -> Generator[dict[str, object], None, None]:
 
 class TestMintAndConsume:
     async def test_mint_then_consume_returns_the_binding(
-        self, fake_store: dict[str, object]
+        self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
         payload = await consume_platform_link_code(code)
@@ -57,28 +57,34 @@ class TestMintAndConsume:
         assert payload.user_id == "user1"
         assert payload.first_message == FIRST_MESSAGE
 
-    async def test_single_use_second_consume_is_none(self, fake_store: dict[str, object]) -> None:
+    async def test_single_use_second_consume_is_none(
+        self, fake_store: dict[str, tuple[object, int | None]]
+    ) -> None:
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
         assert await consume_platform_link_code(code) is not None
         assert await consume_platform_link_code(code) is None
 
-    async def test_unknown_code_is_none(self, fake_store: dict[str, object]) -> None:
+    async def test_unknown_code_is_none(
+        self, fake_store: dict[str, tuple[object, int | None]]
+    ) -> None:
         assert await consume_platform_link_code("not-a-real-code") is None
 
-    async def test_two_mints_have_distinct_codes(self, fake_store: dict[str, object]) -> None:
+    async def test_two_mints_have_distinct_codes(
+        self, fake_store: dict[str, tuple[object, int | None]]
+    ) -> None:
         assert await mint_platform_link_code("u", FIRST_MESSAGE) != await mint_platform_link_code(
             "u", FIRST_MESSAGE
         )
 
     async def test_code_is_stored_with_the_thirty_minute_ttl(
-        self, fake_store: dict[str, object]
+        self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
-        _value, ttl = fake_store[f"platform_link_code:{code}"]  # type: ignore[misc]
+        _value, ttl = fake_store[f"platform_link_code:{code}"]
         assert ttl == PLATFORM_LINK_CODE_TTL == 1_800
 
     async def test_code_length_matches_the_adapters_regex(
-        self, fake_store: dict[str, object]
+        self, fake_store: dict[str, tuple[object, int | None]]
     ) -> None:
         """22 urlsafe chars — the exact width the bots' #code pattern accepts."""
         code = await mint_platform_link_code("user1", FIRST_MESSAGE)
