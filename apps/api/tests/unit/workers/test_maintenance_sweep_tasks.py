@@ -301,6 +301,7 @@ class TestHealthCheckExpired:
         assert request.type == NotificationType.WARNING
         assert request.content.title == "Expired: Ship the report"
         assert request.content.body == "Your todo expired and needs a decision."
+        assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == "/todos?todoId=todo-1"
         assert request.metadata == {"todo_id": "todo-1"}
 

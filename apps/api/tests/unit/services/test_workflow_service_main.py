@@ -2370,6 +2370,12 @@ class TestTriggerService:
             USER_ID, WORKFLOW_ID, "calendar_event", trigger
         )
         assert result == ["tid_1", "tid_2"]
+        # The handler must receive user_id, owner_id, trigger_name and trigger_config
+        # in exactly that positional order — dropping, nulling, or shuffling any of
+        # them hands the provider the wrong owner or a null config.
+        mock_handler.register.assert_awaited_once_with(
+            USER_ID, WORKFLOW_ID, "calendar_event", trigger
+        )
 
     @patch("app.services.workflow.trigger_service.get_handler_by_name")
     async def test_register_triggers_empty_result_raise_on_failure(self, mock_get_handler):

@@ -10,9 +10,15 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
+from app.models.notification.notification_models import (
+    NotificationSourceEnum,
+    NotificationType,
+)
 from app.models.todo_models import TodoDocument
 from app.models.trigger_subscription_models import (
+    ConditionMatch,
     ConditionOperator,
     SubscriptionAction,
     SubscriptionCondition,
@@ -21,7 +27,10 @@ from app.models.trigger_subscription_models import (
     TriggerOrigin,
     TriggerSubscription,
 )
-from app.services.triggers.subscription_dispatch import dispatch_to_subscribed_todos
+from app.services.triggers.subscription_dispatch import (
+    dispatch_to_subscribed_todos,
+)
+from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit
 
@@ -62,7 +71,7 @@ def deps():
         patch(f"{_MOD}.todo_repository") as repo,
         patch(f"{_MOD}.redis_cache") as redis,
         patch(f"{_MOD}.enqueue_worker_job", new_callable=AsyncMock) as enqueue,
-        patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock),
+        patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as get_pool,
         patch(f"{_MOD}.notification_service.create_notification", new_callable=AsyncMock) as notify,
         patch(f"{_MOD}.tracked_todo_service.complete_tracked_todo", new_callable=AsyncMock) as done,
         patch(f"{_MOD}.capture_event") as capture,
@@ -78,6 +87,7 @@ def deps():
             notify=notify,
             complete=done,
             capture=capture,
+            pool=get_pool.return_value,
         )
 
 
@@ -109,6 +119,9 @@ class TestResolution:
         fired = await dispatch_to_subscribed_todos(SLACK, "ti_1", None, {"channel": "C1"})
 
         assert fired == 1
+        # The instance id on the wire is the lookup key; passing anything else
+        # (e.g. None) finds nothing for a per-resource trigger.
+        deps.repo.find_active_by_composio_trigger.assert_awaited_once_with("ti_1")
         deps.repo.find_active_by_user_and_trigger.assert_not_awaited()
 
     async def test_a_todo_found_by_both_strategies_fires_once(self, deps) -> None:
@@ -119,6 +132,41 @@ class TestResolution:
         fired = await dispatch_to_subscribed_todos(GMAIL, "ti_1", USER_ID, {"thread_id": "t-1"})
 
         assert fired == 1
+
+    async def test_a_duplicate_from_one_strategy_does_not_drop_later_todos(self, deps) -> None:
+        # The dedupe must SKIP the repeat and keep scanning — stopping at the
+        # first duplicate would silently drop every todo behind it.
+        todo_a = _todo(
+            id="todo-a", trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)]
+        )
+        todo_b = _todo(
+            id="todo-b", trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)]
+        )
+        deps.repo.find_active_by_composio_trigger.return_value = [todo_a]
+        deps.repo.find_active_by_user_and_trigger.return_value = [todo_a, todo_b]
+
+        # Combined order is [a, a, b]: the second `a` is the duplicate to skip.
+        assert await dispatch_to_subscribed_todos(GMAIL, "ti_1", USER_ID, {}) == 2
+        assert deps.notify.await_count == 2
+
+    async def test_two_subscriptions_on_one_todo_each_fire_and_stamp_the_counts(self, deps) -> None:
+        # Two firing subscriptions on one todo: `fired` must accumulate to 2, and
+        # the wide event must carry one subscriber but two actions.
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(action=SubscriptionAction.NOTIFY),
+                    _subscription(action=SubscriptionAction.NOTIFY),
+                ]
+            )
+        ]
+
+        async with captured_wide_event() as event:
+            fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert fired == 2
+        assert event["trigger"] == {"todo_subscribers": 1, "todo_actions_fired": 2}
+        assert deps.notify.await_count == 2
 
     async def test_no_subscribers_is_a_clean_zero(self, deps) -> None:
         assert await dispatch_to_subscribed_todos(GMAIL, "ti_1", USER_ID, {}) == 0
@@ -159,6 +207,38 @@ class TestGating:
 
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {"thread_id": "t-2"}) == 0
 
+    async def test_match_any_fires_when_one_condition_holds_against_the_payload(self, deps) -> None:
+        # Pins that conditions_match receives the real payload AND the match mode:
+        # under ANY the matching thread_id fires it; under ALL (or a dropped
+        # match arg) the failing sender would veto it.
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(
+                        action=SubscriptionAction.NOTIFY,
+                        match=ConditionMatch.ANY,
+                        conditions=[
+                            SubscriptionCondition(
+                                field_name="thread_id",
+                                operator=ConditionOperator.EQUALS,
+                                value="t-1",
+                            ),
+                            SubscriptionCondition(
+                                field_name="sender",
+                                operator=ConditionOperator.EQUALS,
+                                value="never@example.com",
+                            ),
+                        ],
+                    )
+                ]
+            )
+        ]
+
+        fired = await dispatch_to_subscribed_todos(
+            GMAIL, None, USER_ID, {"thread_id": "t-1", "sender": "real@acme.com"}
+        )
+        assert fired == 1
+
     async def test_a_held_cooldown_suppresses_the_repeat(self, deps) -> None:
         deps.redis.redis.set = AsyncMock(return_value=None)  # NX lost the race
         deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
@@ -168,11 +248,18 @@ class TestGating:
 
     async def test_the_cooldown_is_claimed_with_set_if_absent(self, deps) -> None:
         # Read-then-write would let two events in the same second both through.
-        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+        sub = _subscription(cooldown_seconds=900)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
-        assert deps.redis.redis.set.await_args.kwargs["nx"] is True
+        call = deps.redis.redis.set.await_args
+        assert call.args[0] == f"todo_subscription_cooldown:{sub.id}"
+        assert call.args[1] == "1"
+        assert call.kwargs["nx"] is True
+        assert call.kwargs["ex"] == 900
 
     async def test_a_zero_cooldown_never_touches_redis(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
@@ -182,16 +269,73 @@ class TestGating:
         assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 1
         deps.redis.redis.set.assert_not_awaited()
 
-    async def test_redis_down_fires_rather_than_suppresses(self, deps) -> None:
-        # A duplicate action is recoverable; a missed reply-watch is the failure
-        # this whole feature exists to prevent.
-        deps.redis.redis = None
-        deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
+    async def test_a_positive_cooldown_does_claim_the_slot(self, deps) -> None:
+        # The guard is `<= 0`: a one-second cooldown must still reach Redis, or a
+        # duplicate in that second is never suppressed.
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(cooldown_seconds=1)])
+        ]
 
-        assert await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {}) == 1
+        await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+        assert deps.redis.redis.set.await_args.kwargs["ex"] == 1
+
+    async def test_redis_down_fires_and_records_the_warning(self, deps) -> None:
+        # A duplicate action is recoverable; a missed reply-watch is the failure
+        # this whole feature exists to prevent — but the degradation must be
+        # visible on the wide event, not silent.
+        deps.redis.redis = None
+        sub = _subscription()
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        async with captured_wide_event() as event:
+            fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert fired == 1
+        (warning,) = event["warnings"]
+        assert warning["msg"] == "todo_subscription.cooldown_unavailable"
+        assert warning["subscription_id"] == sub.id
+
+    async def test_a_redis_error_fires_and_records_the_error(self, deps) -> None:
+        # The set can raise mid-flight (connection dropped); the same fire-rather-
+        # than-suppress rule holds, and the error surfaces on the wide event.
+        deps.redis.redis.set = AsyncMock(side_effect=RedisError("connection reset"))
+        sub = _subscription()
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        async with captured_wide_event() as event:
+            fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert fired == 1
+        (warning,) = event["warnings"]
+        assert warning["msg"] == "todo_subscription.cooldown_unavailable"
+        assert warning["subscription_id"] == sub.id
+        assert warning["error"] == "connection reset"
+        assert warning["error_type"] == "RedisError"
 
 
 class TestActions:
+    async def test_the_fire_is_stamped_onto_the_wide_event(self, deps) -> None:
+        # Every field the action is dispatched under must land on the event, so a
+        # fired subscription is attributable after the fact.
+        sub = _subscription(action=SubscriptionAction.EXECUTE)
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[sub])
+        ]
+
+        async with captured_wide_event() as event:
+            await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert event["component"] == "trigger_subscription"
+        assert event["operation"] == "fire"
+        assert event["todo_id"] == TODO_ID
+        assert event["subscription_id"] == sub.id
+        assert event["trigger_name"] == GMAIL
+        assert event["subscription_action"] == "execute"
+
     async def test_execute_enqueues_with_the_origin_and_payload(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [_todo()]
         payload = {"thread_id": "t-1", "sender": "alice@acme.com"}
@@ -199,6 +343,8 @@ class TestActions:
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, payload)
 
         args = deps.enqueue.await_args.args
+        # arg[0] is the live pool, not None — enqueueing against None loses the job.
+        assert args[0] is deps.pool
         assert args[1] == "execute_tracked_todo"
         assert args[2] == TODO_ID
         origin = args[3]
@@ -208,15 +354,22 @@ class TestActions:
         assert origin.defer_attempts == 0
 
     async def test_notify_sends_a_deep_link_and_changes_nothing(self, deps) -> None:
+        sub = _subscription(action=SubscriptionAction.NOTIFY)
         deps.repo.find_active_by_user_and_trigger.return_value = [
-            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+            _todo(trigger_subscriptions=[sub])
         ]
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
         request = deps.notify.await_args.args[0]
         assert request.user_id == USER_ID
+        assert request.source == NotificationSourceEnum.TODO_TRIGGER
+        assert request.type == NotificationType.INFO
+        assert request.content.title == "Update on: Chase Acme"
+        assert request.content.body == f"An event you were watching ({GMAIL}) just fired."
+        assert request.content.actions[0].label == "View todo"
         assert request.content.actions[0].config.redirect.url == f"/todos?todoId={TODO_ID}"
+        assert request.metadata == {"todo_id": TODO_ID, "subscription_id": sub.id}
         deps.enqueue.assert_not_awaited()
         deps.repo.update.assert_not_awaited()
 
@@ -231,6 +384,9 @@ class TestActions:
 
         deps.complete.assert_awaited_once()
         assert deps.complete.await_args.args[:2] == (TODO_ID, USER_ID)
+        assert (
+            deps.complete.await_args.kwargs["summary"] == f"Completed automatically: {GMAIL} fired."
+        )
 
     async def test_unblock_removes_only_the_blocking_labels(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
@@ -242,8 +398,10 @@ class TestActions:
 
         await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
 
-        update = deps.repo.update.await_args.kwargs["update"]
-        assert update.labels == ["gaia-tracked", "work"]
+        call = deps.repo.update.await_args
+        assert call.args[0] == TODO_ID
+        assert call.kwargs["user_id"] == USER_ID
+        assert call.kwargs["update"].labels == ["gaia-tracked", "work"]
         deps.notify.assert_not_awaited()
 
     async def test_unblock_with_no_blocking_label_degrades_to_notify(self, deps) -> None:

@@ -24,7 +24,6 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
-    NotificationType,
 )
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -207,7 +206,6 @@ async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None
         NotificationRequest(
             user_id=todo.user_id,
             source=NotificationSourceEnum.TODO_TRIGGER,
-            type=NotificationType.INFO,
             content=NotificationContent(
                 title=f"Update on: {todo.title}",
                 body=f"An event you were watching ({subscription.trigger_name}) just fired.",

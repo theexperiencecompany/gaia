@@ -50,7 +50,11 @@ class TestGetTriggersSafeToDelete:
                 ["ti_1"], excluding_workflow_id="wf-1", excluding_todo_id="todo-1"
             )
 
+        # Each repository is asked about the same concrete trigger id positionally —
+        # dropping or nulling it would count references for the wrong (or no) trigger.
+        assert workflow_count.await_args.args == ("ti_1",)
         assert workflow_count.await_args.kwargs == {"excluding_workflow_id": "wf-1"}
+        assert todo_count.await_args.args == ("ti_1",)
         assert todo_count.await_args.kwargs == {"excluding_todo_id": "todo-1"}
 
     async def test_only_unreferenced_ids_come_back(self) -> None:

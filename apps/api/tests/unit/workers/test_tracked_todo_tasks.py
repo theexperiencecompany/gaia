@@ -16,6 +16,7 @@ Recurrence/timezone resolution itself is covered by test_tracked_todo_recurrence
 """
 
 from datetime import UTC, datetime, timedelta
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
@@ -88,15 +89,23 @@ def _updates(repo: MagicMock) -> list[dict]:
 class TestExecuteTrackedTodoLock:
     async def test_acquires_lock_with_nx_and_ttl_then_releases_it(self):
         pool = _pool()
+        inner = AsyncMock(return_value="success:todo-1")
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
-            patch(f"{MODULE}._execute_todo_with_retry", AsyncMock(return_value="success:todo-1")),
+            patch(f"{MODULE}._execute_todo_with_retry", inner),
+            patch(f"{MODULE}.log") as log_mock,
         ):
             result = await execute_tracked_todo({}, "todo-1")
 
         assert result == "success:todo-1"
         pool.set.assert_awaited_once_with("gaia_todo_exec:todo-1", "1", nx=True, ex=1800)
         pool.delete.assert_awaited_once_with("gaia_todo_exec:todo-1")
+        # The retry helper gets the real todo id and the acquired pool, positionally —
+        # a None slipped into either would run the wrong todo or lose the lock handle.
+        assert inner.await_args.args[0] == "todo-1"
+        assert inner.await_args.args[1] is pool
+        # The wide event is stamped with this todo; a scheduled run has no origin.
+        log_mock.set.assert_any_call(todo_id="todo-1", trigger_origin=None)
 
     async def test_lock_already_held_skips_and_does_not_release_the_other_holders_lock(self):
         """Deleting a lock this run never acquired would break mutual exclusion."""
@@ -147,15 +156,37 @@ class TestTriggeredExecutionLock:
         pool = _pool()
         pool.set = AsyncMock(return_value=None)
         enqueue = AsyncMock()
+        before = datetime.now(UTC)
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.log") as log_mock,
         ):
             result = await execute_tracked_todo({}, "todo-1", self._origin())
+        after = datetime.now(UTC)
 
         assert result == "deferred:todo-1 (lock held)"
-        assert enqueue.await_args.args[1] == "execute_tracked_todo"
-        assert enqueue.await_args.args[3].defer_attempts == 1
+        # The re-enqueue targets the same task + todo, carries the acquired pool,
+        # and rides the *first* backoff step, one attempt further along.
+        args = enqueue.await_args.args
+        assert args[0] is pool
+        assert args[1] == "execute_tracked_todo"
+        assert args[2] == "todo-1"
+        assert args[3].defer_attempts == 1
+        retry_at = enqueue.await_args.kwargs["_defer_until"]
+        assert before + LOCK_DEFER_BACKOFF[0] <= retry_at <= after + LOCK_DEFER_BACKOFF[0]
+        # UTC-aware: a naive datetime.now() would read as a different instant
+        # to the worker that later dequeues it.
+        assert retry_at.utcoffset() == timedelta(0)
+        # The deferral is logged verbatim — the operator's only trail that a fire
+        # was parked rather than lost, with the advanced attempt count.
+        log_mock.info.assert_any_call(
+            "tracked_todo.trigger_fire_deferred",
+            todo_id="todo-1",
+            trigger_name="gmail_new_message",
+            defer_attempts=1,
+            retry_at=retry_at.isoformat(),
+        )
 
     async def test_each_deferral_advances_the_backoff(self):
         pool = _pool()
@@ -177,6 +208,7 @@ class TestTriggeredExecutionLock:
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.log") as log_mock,
         ):
             result = await execute_tracked_todo(
                 {}, "todo-1", self._origin(defer_attempts=exhausted)
@@ -184,6 +216,16 @@ class TestTriggeredExecutionLock:
 
         assert result.startswith("dropped:todo-1")
         enqueue.assert_not_awaited()
+        # A dropped fire is an error, logged with every field an operator needs to
+        # find the subscription that overran its defer budget. log.error also
+        # appends to the wide event's errors[], so a blanked field is a real loss.
+        log_mock.error.assert_called_once_with(
+            "tracked_todo.trigger_fire_dropped_lock_held",
+            todo_id="todo-1",
+            trigger_name="gmail_new_message",
+            subscription_id="sub-1",
+            defer_attempts=exhausted,
+        )
 
     async def test_a_scheduled_run_still_just_skips(self):
         pool = _pool()
@@ -192,11 +234,15 @@ class TestTriggeredExecutionLock:
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}.enqueue_worker_job", enqueue),
+            patch(f"{MODULE}.log") as log_mock,
         ):
             result = await execute_tracked_todo({}, "todo-1")
 
         assert result == "skipped:todo-1 (lock held)"
         enqueue.assert_not_awaited()
+        # The skip is logged against this todo — the trail that a scheduled run
+        # yielded the lock rather than crashing.
+        log_mock.info.assert_any_call("tracked_todo.execute_lock_held", todo_id="todo-1")
 
     async def test_the_origin_reaches_the_execution_helper(self):
         pool = _pool()
@@ -205,10 +251,14 @@ class TestTriggeredExecutionLock:
         with (
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}._execute_todo_with_retry", inner),
+            patch(f"{MODULE}.log") as log_mock,
         ):
             await execute_tracked_todo({}, "todo-1", origin)
 
         assert inner.await_args.args[2] is origin
+        # A triggered run stamps the wide event with the trigger's name, not None,
+        # so the run is attributable to the watch that woke it.
+        log_mock.set.assert_any_call(todo_id="todo-1", trigger_origin="gmail_new_message")
 
 
 class TestExecutionContext:
@@ -227,9 +277,15 @@ class TestExecutionContext:
 
         context = _execution_context("todo-1", origin)
 
-        assert context["trigger_type"] == TriggerType.TODO_TRIGGER.value
-        assert context["subscription_id"] == "sub-1"
-        assert context["trigger_data"] == {"thread_id": "t-1"}
+        # Exact shape: both consumers (workflow queue + agent trigger_context) key
+        # on these names, so a renamed key silently strands the value.
+        assert context == {
+            "trigger_type": TriggerType.TODO_TRIGGER.value,
+            "todo_id": "todo-1",
+            "trigger_name": "gmail_new_message",
+            "subscription_id": "sub-1",
+            "trigger_data": {"thread_id": "t-1"},
+        }
 
 
 class TestTriggeredExecutionPrompt:
@@ -270,6 +326,31 @@ class TestTriggeredExecutionPrompt:
         assert "gmail_new_message" in prompt
         assert "alice@acme.com" in prompt
         assert "t-1" in prompt
+        # The payload is embedded as pretty-printed JSON (2-space indent). Compact
+        # or differently-indented JSON is harder for the model to read, so the exact
+        # rendering is the contract, not just that the values appear somewhere.
+        assert json.dumps(origin.payload, indent=2, default=str) in prompt
+
+    def test_a_triggered_prompt_str_renders_non_json_payload_values(self):
+        """A payload value the JSON encoder can't serialise (e.g. a datetime) must
+        be coerced via ``default=str`` — without it json.dumps raises and the whole
+        run dies before the model is ever called."""
+        fired_at = datetime(2025, 3, 9, 12, 0, tzinfo=UTC)
+        origin = TriggerOrigin(
+            subscription_id="sub-1",
+            trigger_name="gmail_new_message",
+            payload={"fired_at": fired_at},
+        )
+
+        prompt = _build_execution_prompt(
+            title="Chase Acme",
+            description="",
+            canvas_content=None,
+            reference_context="",
+            origin=origin,
+        )
+
+        assert str(fired_at) in prompt
 
     def test_a_triggered_prompt_carries_the_tighten_on_noise_guidance(self):
         # A watch fire is a candidate, not proof: the woken run must be told to
@@ -324,6 +405,9 @@ class TestTriggeredExecutionGating:
         budget, _ = await self._run(self._origin())
 
         budget.assert_awaited_once()
+        # Charged to this user's trigger budget — a None or dropped user_id would
+        # wall the wrong account (or none).
+        assert budget.await_args.args[0] == "user-1"
         assert budget.await_args.kwargs["feature_key"] == TRIGGER_TODO_FEATURE_KEY
 
     async def test_a_scheduled_run_is_not_charged_to_the_trigger_budget(self):
@@ -335,6 +419,13 @@ class TestTriggeredExecutionGating:
         origin = self._origin()
         _, run_execution = await self._run(origin)
 
+        # The dispatch receives the fetched doc, the owning user, the loaded user
+        # record, and the origin — each positionally/by-name where the callee
+        # expects it. A swapped or dropped argument runs the wrong thing.
+        args = run_execution.await_args.args
+        assert args[0].id == "todo-1"
+        assert args[1] == "user-1"
+        assert run_execution.await_args.kwargs["user_data"]["user_id"] == "user-1"
         assert run_execution.await_args.kwargs["origin"] is origin
 
     async def test_a_triggered_retry_keeps_its_origin(self):
@@ -594,11 +685,37 @@ class TestRunExecution:
 
     async def test_todo_without_a_workflow_runs_the_agent(self):
         via_agent = AsyncMock(return_value="done")
+        doc = _doc()
+        origin = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
         with patch(f"{MODULE}._execute_via_agent", via_agent):
-            await _run_execution(_doc(), "user-1", user_data={"user_id": "user-1"})
+            await _run_execution(doc, "user-1", user_data={"user_id": "user-1"}, origin=origin)
 
         via_agent.assert_awaited_once()
+        # The doc, its owner, the loaded user record, and the origin all reach the
+        # agent path intact — a dropped or swapped argument runs the wrong todo or
+        # loses the trigger attribution.
+        assert via_agent.await_args.args[0] is doc
+        assert via_agent.await_args.args[1] == "user-1"
         assert via_agent.await_args.kwargs["user_data"] == {"user_id": "user-1"}
+        assert via_agent.await_args.kwargs["origin"] is origin
+
+    async def test_a_triggered_workflow_todo_stamps_the_trigger_origin_on_the_context(self):
+        """The workflow branch must build its context from the origin, not drop it —
+        otherwise a triggered workflow run is indistinguishable from a scheduled one."""
+        queue = AsyncMock(return_value=True)
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
+        )
+        with patch(
+            "app.services.workflow.queue_service.WorkflowQueueService.queue_workflow_execution",
+            queue,
+        ):
+            await _run_execution(_doc(workflow_id="wf-9"), "user-1", user_data={}, origin=origin)
+
+        context = queue.await_args.args[2]
+        assert context["trigger_type"] == TriggerType.TODO_TRIGGER.value
+        assert context["trigger_name"] == "gmail_new_message"
+        assert context["subscription_id"] == "sub-1"
 
 
 # ---------------------------------------------------------------------------
@@ -901,6 +1018,29 @@ class TestExecuteViaAgent:
         assert "Execute the following scheduled task: Check the deploy" in prompt
         assert "Details: verify staging" in prompt
         assert "Canvas context:\n## Current State\nblocked" in prompt
+        # The run's content rides in messages[-1] as a "user" turn — the exact role
+        # construct_langchain_messages reads. A mangled role would leave the run
+        # with no user content and raise before the model is called.
+        assert kwargs["request"].messages == [{"role": "user", "content": prompt}]
+
+    async def test_a_triggered_run_stamps_the_origin_on_the_trigger_context(self):
+        """A trigger fire must carry its origin into trigger_context — without it the
+        agent run is stamped as an ordinary scheduled todo and loses attribution."""
+        agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
+        origin = TriggerOrigin(
+            subscription_id="sub-1", trigger_name="gmail_new_message", payload={"thread_id": "t-1"}
+        )
+        p1, p2, p3, p4 = self._patches(agent=agent)
+        with p1, p2, p3, p4:
+            await _execute_via_agent(
+                _doc(), "user-1", user_data={"user_id": "user-1"}, origin=origin
+            )
+
+        context = agent.await_args.kwargs["options"].trigger_context
+        assert context["trigger_type"] == TriggerType.TODO_TRIGGER.value
+        assert context["trigger_name"] == "gmail_new_message"
+        assert context["subscription_id"] == "sub-1"
+        assert context["trigger_data"] == {"thread_id": "t-1"}
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
         agent = AsyncMock(return_value=SilentRunResult(message="ok", tool_data={}))
