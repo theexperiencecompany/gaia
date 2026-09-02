@@ -3,6 +3,8 @@
  * entirely from the answered questions so it can be memoised cheaply.
  */
 
+import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
+
 import {
   FIELD_NAMES,
   needOptions,
@@ -43,8 +45,10 @@ export function getMessages(state: TranscriptInputs): Message[] {
 
   for (let i = 0; i < upTo; i++) {
     const q = questions[i];
-    q.lines.forEach((line, n) => {
-      messages.push({ id: `${q.id}-${n}`, type: "bot", content: line });
+    messages.push({
+      id: q.id,
+      type: "bot",
+      content: q.lines.join(NEW_MESSAGE_BREAK_TOKEN),
     });
 
     const answer = answerFor(q.fieldName, state);
