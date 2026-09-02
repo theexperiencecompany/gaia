@@ -13,7 +13,7 @@ step, a per-task policy decides whether to hand off to the user (live-view),
 proceed autonomously (e.g. a configured agent card), or abort.
 """
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 # ---------------------------------------------------------------------------
 # Tool identity
@@ -82,6 +82,13 @@ class HandoffDecision(str, Enum):
 
     CONTINUE = "continue"
     CANCEL = "cancel"
+
+
+class BrowserLoginSource(StrEnum):
+    """Where a saved login came from. Absent for logins acquired by browsing;
+    stamped on the per-host docs the ``gaia connect`` CLI import writes."""
+
+    IMPORT = "import"
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,23 @@ class BrowserProfileDocument(UserScopedDocument):
     storage_state_blob: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Provenance — only set on the CLI import path; None for logins GAIA acquired
+    # by browsing. ``source`` is a ``BrowserLoginSource`` value ("import").
+    source: str | None = None
+    source_browser: str | None = None
+    source_ip: str | None = None
+
+
+class BrowserLoginProvenance(BaseModel):
+    """Where a saved login came from — recorded only on the CLI import path.
+
+    Passed to the store as an optional slice so the generic task-end save path
+    (which never sets it) can't clobber a previously-imported doc's provenance.
+    """
+
+    source: str
+    source_browser: str | None = None
+    source_ip: str | None = None
 
 
 class BrowserProfileUpdate(BaseModel):

@@ -28,6 +28,9 @@ async def list_saved_logins(user_id: str) -> list[BrowserLoginResponse]:
                 if doc.updated_at
                 else None
             ),
+            source=doc.source,
+            source_browser=doc.source_browser,
+            source_ip=doc.source_ip,
         )
         for doc in docs
     ]

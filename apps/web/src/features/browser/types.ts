@@ -30,4 +30,10 @@ export interface SavedBrowserLogin {
   updated_at: string | null;
   /** When this session data auto-expires (last use + TTL). */
   expires_at: string | null;
+  /** Where the login came from — "import" for CLI imports, null when browsing-acquired. */
+  source: string | null;
+  /** The browser the CLI read the login from ("Arc", "Chrome", …). */
+  source_browser: string | null;
+  /** Client IP the import was uploaded from. */
+  source_ip: string | null;
 }

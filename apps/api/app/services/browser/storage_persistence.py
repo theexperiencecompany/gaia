@@ -19,8 +19,10 @@ from cryptography.fernet import Fernet
 from playwright.sync_api import StorageState
 
 from app.config.settings import settings
+from app.constants.browser import BrowserLoginSource
 from app.constants.log_tags import LogTag
 from app.db.repositories.browser_profiles import browser_profile_repository
+from app.models.browser_models import BrowserLoginProvenance
 from shared.py.wide_events import log
 
 _cipher: Fernet | None = None
@@ -86,11 +88,17 @@ async def load_storage_state(user_id: str, domain: str | None) -> StorageState |
     return state
 
 
-async def save_storage_state(user_id: str, domain: str | None, state: StorageState) -> None:
+async def save_storage_state(
+    user_id: str,
+    domain: str | None,
+    state: StorageState,
+    provenance: BrowserLoginProvenance | None = None,
+) -> None:
     """Encrypt and persist ``state`` for ``user_id``+``domain`` (upsert).
 
     No-op when there's no user/domain to key on, or when the user has opted
-    out of login persistence (``settings.BROWSER_PERSIST_LOGINS``).
+    out of login persistence (``settings.BROWSER_PERSIST_LOGINS``). ``provenance``
+    is recorded only on the import path; the task-end save leaves it ``None``.
     """
     if not user_id or not domain:
         return
@@ -98,7 +106,7 @@ async def save_storage_state(user_id: str, domain: str | None, state: StorageSta
     if not persist_logins:
         return
     blob = _encrypt_state(state)
-    await browser_profile_repository.upsert_storage_state_blob(user_id, domain, blob)
+    await browser_profile_repository.upsert_storage_state_blob(user_id, domain, blob, provenance)
     log.info(
         f"{LogTag.BROWSER} Saved browser login",
         domain=domain,
@@ -169,16 +177,27 @@ def split_storage_state_by_host(state: StorageState) -> dict[str, StorageState]:
     return slices
 
 
-async def import_browser_profile(user_id: str, state: StorageState) -> list[tuple[str, int]]:
+async def import_browser_profile(
+    user_id: str,
+    state: StorageState,
+    source_browser: str | None = None,
+    source_ip: str | None = None,
+) -> list[tuple[str, int]]:
     """Split an uploaded profile per host and persist each slice as a saved login.
 
     Returns ``(host, cookie_count)`` for every host actually stored, so the caller
-    can report what landed. Honours the same ``BROWSER_PERSIST_LOGINS`` opt-out as
-    ``save_storage_state`` (each call no-ops when it is off)."""
+    can report what landed. Records provenance (source "import" plus the browser
+    and client IP) on each per-host doc. Honours the same ``BROWSER_PERSIST_LOGINS``
+    opt-out as ``save_storage_state`` (each call no-ops when it is off)."""
+    provenance = BrowserLoginProvenance(
+        source=BrowserLoginSource.IMPORT,
+        source_browser=source_browser,
+        source_ip=source_ip,
+    )
     slices = split_storage_state_by_host(state)
     imported: list[tuple[str, int]] = []
     for host, host_state in slices.items():
-        await save_storage_state(user_id, host, host_state)
+        await save_storage_state(user_id, host, host_state, provenance)
         imported.append((host, len(host_state.get("cookies", []))))
     log.info(
         f"{LogTag.BROWSER} Imported browser profile",

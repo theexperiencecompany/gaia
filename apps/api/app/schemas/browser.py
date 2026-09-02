@@ -219,6 +219,11 @@ class BrowserLoginResponse(BaseModel):
     domain: str
     updated_at: datetime | None
     expires_at: datetime | None = None
+    # Provenance — present only for logins the CLI imported. ``source`` is a
+    # ``BrowserLoginSource`` value ("import"); the time comes from ``updated_at``.
+    source: str | None = None
+    source_browser: str | None = None
+    source_ip: str | None = None
 
 
 class ImportTokenRecord(BaseModel):
@@ -272,6 +277,9 @@ class BrowserImportRequest(BaseModel):
     token: str
     cookies: list[ImportedCookie] = Field(default_factory=list)
     origins: list[ImportedOrigin] = Field(default_factory=list)
+    # The browser the CLI read these from ("Arc", "Chrome", …). Recorded as
+    # provenance so Settings can show where a saved login was imported from.
+    source_browser: str | None = None
 
 
 class BrowserImportResponse(BaseModel):

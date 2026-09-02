@@ -330,13 +330,25 @@ class TestMintBrowserImportToken:
 
 
 class TestImportBrowserSessions:
-    def _payload(self, token="tok"):
+    def _payload(self, token="tok", source_browser=None):
         from app.schemas.browser import BrowserImportRequest
 
         return BrowserImportRequest(
             token=token,
             cookies=[{"name": "s", "value": "1", "domain": ".github.com"}],
+            source_browser=source_browser,
         )
+
+    def _request(self, forwarded=None, client_host="198.51.100.9"):
+        from starlette.requests import Request
+
+        headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+        scope = {
+            "type": "http",
+            "headers": headers,
+            "client": (client_host, 12345) if client_host else None,
+        }
+        return Request(scope)
 
     async def test_valid_token_imports_and_reports_hosts(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
@@ -344,19 +356,35 @@ class TestImportBrowserSessions:
         imp = AsyncMock(return_value=[("github.com", 1)])
         monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
 
-        resp = await browser_ep.import_browser_sessions(self._payload())
+        resp = await browser_ep.import_browser_sessions(
+            self._payload(source_browser="Arc"),
+            self._request(forwarded="203.0.113.7, 10.0.0.1"),
+        )
 
         assert resp.host_count == 1
         assert resp.imported[0].domain == "github.com"
-        # The route must hand the service a real user id from the consumed token.
+        # The route must hand the service a real user id from the consumed token,
+        # the browser it came from, and the first-hop client IP.
         assert imp.await_args.args[0] == "u1"
+        assert imp.await_args.kwargs["source_browser"] == "Arc"
+        assert imp.await_args.kwargs["source_ip"] == "203.0.113.7"
+
+    async def test_client_ip_falls_back_to_peer(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value="u1"))
+        monkeypatch.setattr(browser_ep.settings, "BROWSER_PERSIST_LOGINS", True)
+        imp = AsyncMock(return_value=[("github.com", 1)])
+        monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
+
+        await browser_ep.import_browser_sessions(self._payload(), self._request())
+
+        assert imp.await_args.kwargs["source_ip"] == "198.51.100.9"
 
     async def test_bad_token_401(self, monkeypatch):
         monkeypatch.setattr(browser_ep, "consume_import_token", AsyncMock(return_value=None))
         imp = AsyncMock()
         monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
         with pytest.raises(HTTPException) as exc:
-            await browser_ep.import_browser_sessions(self._payload("expired"))
+            await browser_ep.import_browser_sessions(self._payload("expired"), self._request())
         assert exc.value.status_code == 401
         imp.assert_not_awaited()  # never touch storage on a bad code
 
@@ -366,7 +394,7 @@ class TestImportBrowserSessions:
         imp = AsyncMock()
         monkeypatch.setattr(browser_ep, "import_browser_profile", imp)
         with pytest.raises(HTTPException) as exc:
-            await browser_ep.import_browser_sessions(self._payload())
+            await browser_ep.import_browser_sessions(self._payload(), self._request())
         assert exc.value.status_code == 409
         imp.assert_not_awaited()
 

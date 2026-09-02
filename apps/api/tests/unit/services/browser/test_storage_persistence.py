@@ -49,7 +49,7 @@ async def test_save_then_load_round_trips_encrypted(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         sp.browser_profile_repository,
         "upsert_storage_state_blob",
-        AsyncMock(side_effect=lambda u, d, b: store.__setitem__((u, d), b)),
+        AsyncMock(side_effect=lambda u, d, b, prov=None: store.__setitem__((u, d), b)),
     )
     monkeypatch.setattr(
         sp.browser_profile_repository,
@@ -209,7 +209,7 @@ class TestImportBrowserProfile:
         monkeypatch.setattr(
             sp.browser_profile_repository,
             "upsert_storage_state_blob",
-            AsyncMock(side_effect=lambda u, d, b: saved.__setitem__((u, d), b)),
+            AsyncMock(side_effect=lambda u, d, b, prov=None: saved.__setitem__((u, d), b)),
         )
         state = {
             "cookies": [
@@ -230,3 +230,26 @@ class TestImportBrowserProfile:
         state = {"cookies": [{"name": "a", "value": "1", "domain": ".github.com"}], "origins": []}
         await sp.import_browser_profile("user-1", state)  # type: ignore[arg-type]
         upsert.assert_not_awaited()
+
+    async def test_records_provenance_on_each_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        upsert = AsyncMock()
+        monkeypatch.setattr(sp.browser_profile_repository, "upsert_storage_state_blob", upsert)
+        state = {
+            "cookies": [
+                {"name": "a", "value": "1", "domain": ".github.com"},
+                {"name": "b", "value": "2", "domain": ".x.com"},
+            ],
+            "origins": [],
+        }
+        await sp.import_browser_profile(
+            "user-1",
+            state,  # type: ignore[arg-type]
+            source_browser="Arc",
+            source_ip="203.0.113.7",
+        )
+        provenances = {call.args[1]: call.args[3] for call in upsert.await_args_list}
+        assert set(provenances) == {"github.com", "x.com"}
+        for prov in provenances.values():
+            assert prov.source == "import"
+            assert prov.source_browser == "Arc"
+            assert prov.source_ip == "203.0.113.7"

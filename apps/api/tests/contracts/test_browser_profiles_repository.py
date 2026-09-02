@@ -9,6 +9,7 @@ import pytest
 
 from app.config.settings import settings
 from app.db.repositories.browser_profiles import BrowserProfilesRepository
+from app.models.browser_models import BrowserLoginProvenance
 from app.services.browser import storage_persistence
 
 
@@ -74,6 +75,39 @@ class TestBrowserProfilesRepository:
         assert deleted == 2
         assert await repo.get_for_domain(user, "example.com") is None
         assert await repo.get_for_domain(user, "other.com") is None
+
+    async def test_upsert_records_provenance_when_given(self, repo):
+        user = f"u-{uuid.uuid4().hex}"
+        await repo.upsert_storage_state_blob(
+            user,
+            "example.com",
+            "blob-1",
+            BrowserLoginProvenance(source="import", source_browser="Arc", source_ip="203.0.113.7"),
+        )
+        doc = await repo.get_for_domain(user, "example.com")
+        assert doc is not None
+        assert doc.source == "import"
+        assert doc.source_browser == "Arc"
+        assert doc.source_ip == "203.0.113.7"
+
+    async def test_task_end_save_does_not_clobber_import_provenance(self, repo):
+        # A later browsing-acquired save (provenance=None) must not wipe the
+        # provenance an earlier import stamped on the same host.
+        user = f"u-{uuid.uuid4().hex}"
+        await repo.upsert_storage_state_blob(
+            user,
+            "example.com",
+            "blob-1",
+            BrowserLoginProvenance(source="import", source_browser="Arc", source_ip="203.0.113.7"),
+        )
+        await repo.upsert_storage_state_blob(user, "example.com", "blob-2")
+
+        doc = await repo.get_for_domain(user, "example.com")
+        assert doc is not None
+        assert doc.storage_state_blob == "blob-2"
+        assert doc.source == "import"
+        assert doc.source_browser == "Arc"
+        assert doc.source_ip == "203.0.113.7"
 
 
 class TestStoragePersistence:

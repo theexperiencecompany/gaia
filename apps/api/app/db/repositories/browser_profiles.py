@@ -7,7 +7,11 @@ created, and written once when a task ends with a fresh storage_state.
 from datetime import UTC, datetime
 
 from app.db.repositories.base import UserScopedRepository
-from app.models.browser_models import BrowserProfileDocument, BrowserProfileUpdate
+from app.models.browser_models import (
+    BrowserLoginProvenance,
+    BrowserProfileDocument,
+    BrowserProfileUpdate,
+)
 
 
 class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, BrowserProfileUpdate]):
@@ -24,14 +28,25 @@ class BrowserProfilesRepository(UserScopedRepository[BrowserProfileDocument, Bro
         return await self._find_one({"user_id": user_id, "domain": domain})
 
     async def upsert_storage_state_blob(
-        self, user_id: str, domain: str, storage_state_blob: str
+        self,
+        user_id: str,
+        domain: str,
+        storage_state_blob: str,
+        provenance: BrowserLoginProvenance | None = None,
     ) -> None:
-        """Set the user's encrypted storage_state for ``domain``, creating the record on first use."""
+        """Set the user's encrypted storage_state for ``domain``, creating the record on first use.
+
+        ``provenance`` is written only on the CLI import path; the generic
+        task-end save passes ``None`` and leaves any existing provenance intact.
+        """
         now = datetime.now(UTC)
+        set_fields: dict[str, object] = {"storage_state_blob": storage_state_blob}
+        if provenance is not None:
+            set_fields.update(provenance.model_dump())
         await self._apply_raw_update_unfetched(
             {"user_id": user_id, "domain": domain},
             {
-                "$set": {"storage_state_blob": storage_state_blob},
+                "$set": set_fields,
                 "$setOnInsert": {"user_id": user_id, "domain": domain, "created_at": now},
             },
             scope=user_id,

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from playwright.sync_api import StorageState
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
@@ -171,9 +171,7 @@ async def forget_all_browser_logins_endpoint(
     """Forget every saved login for the user — the settings 'Clear all'."""
     log.set(user={"id": user_id}, browser={"operation": "forget_all_logins"})
     count = await forget_saved_login(user_id, None)
-    log.audit(
-        "all browser logins forgotten", actor=user_id, resource="browser/logins", count=count
-    )
+    log.audit("all browser logins forgotten", actor=user_id, resource="browser/logins", count=count)
     return BrowserForgetAllResponse(forgotten=count)
 
 
@@ -218,13 +216,22 @@ async def mint_browser_import_token(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User id required")
     token = await mint_import_token(str(user_id))
     log.info(f"{LogTag.BROWSER} Minted browser import token", user={"id": user_id})
-    return ImportTokenResponse(
-        token=token, expires_in_seconds=BROWSER_IMPORT_TOKEN_TTL_SECONDS
-    )
+    return ImportTokenResponse(token=token, expires_in_seconds=BROWSER_IMPORT_TOKEN_TTL_SECONDS)
+
+
+def _client_ip(request: Request) -> str | None:
+    """Best-effort client IP: the first hop of ``X-Forwarded-For`` when set by the
+    proxy, else the direct peer. None when neither is available."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip() or None
+    return request.client.host if request.client else None
 
 
 @router.post("/import", response_model=BrowserImportResponse)
-async def import_browser_sessions(payload: BrowserImportRequest) -> BrowserImportResponse:
+async def import_browser_sessions(
+    payload: BrowserImportRequest, request: Request
+) -> BrowserImportResponse:
     """Receive a browser profile from the local CLI and store it as saved logins.
 
     Authenticated by the single-use import code, not a session cookie — the CLI
@@ -249,11 +256,14 @@ async def import_browser_sessions(payload: BrowserImportRequest) -> BrowserImpor
             "origins": [o.model_dump(by_alias=True) for o in payload.origins],
         },
     )
-    imported = await import_browser_profile(user_id, state)
+    imported = await import_browser_profile(
+        user_id,
+        state,
+        source_browser=payload.source_browser,
+        source_ip=_client_ip(request),
+    )
     return BrowserImportResponse(
-        imported=[
-            BrowserLoginResponse(domain=host, updated_at=None) for host, _ in imported
-        ],
+        imported=[BrowserLoginResponse(domain=host, updated_at=None) for host, _ in imported],
         host_count=len(imported),
         cookie_count=len(payload.cookies),
     )

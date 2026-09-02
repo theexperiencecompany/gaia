@@ -1,16 +1,119 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
-import { Delete02Icon, GlobalIcon, Search01Icon } from "@icons";
+import {
+  ArcBrowserIcon,
+  ChromeIcon,
+  Clock01Icon,
+  Delete02Icon,
+  EdgeStyleIcon,
+  GlobalIcon,
+  Location01Icon,
+  SafariIcon,
+  Search01Icon,
+} from "@icons";
 import Image from "next/image";
-import { useState } from "react";
+import { type ComponentType, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
+import { formatRelativeDate } from "../utils";
+
+/** Source value stamped on logins the `gaia connect` CLI imported. */
+const IMPORT_SOURCE = "import";
+
+/** Real browser logo for a source name, falling back to a globe. */
+function browserIcon(
+  name: string | null,
+): ComponentType<{ className?: string }> {
+  switch (name?.toLowerCase()) {
+    case "arc":
+      return ArcBrowserIcon;
+    case "chrome":
+      return ChromeIcon;
+    case "edge":
+      return EdgeStyleIcon;
+    case "safari":
+      return SafariIcon;
+    default:
+      return GlobalIcon;
+  }
+}
+
+function ProvenanceFact({
+  icon: Icon,
+  heading,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  heading: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-800">
+        <Icon className="size-4 text-zinc-400" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-zinc-500">{heading}</p>
+        <p className="truncate text-sm text-zinc-200">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+/** "Imported" chip that reveals where/when the login was imported on hover. */
+function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
+  const [open, setOpen] = useState(false);
+  const BrowserLogo = browserIcon(login.source_browser);
+
+  return (
+    <Popover isOpen={open} onOpenChange={setOpen} placement="top" showArrow>
+      <PopoverTrigger>
+        <button
+          type="button"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+        >
+          <Chip size="sm" variant="flat" className="bg-zinc-800 text-zinc-300">
+            Imported
+          </Chip>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="rounded-2xl bg-zinc-900 p-3">
+        <div className="flex flex-col gap-3">
+          {login.source_browser && (
+            <ProvenanceFact
+              icon={BrowserLogo}
+              heading="Browser"
+              value={login.source_browser}
+            />
+          )}
+          {login.source_ip && (
+            <ProvenanceFact
+              icon={Location01Icon}
+              heading="IP address"
+              value={login.source_ip}
+            />
+          )}
+          {login.updated_at && (
+            <ProvenanceFact
+              icon={Clock01Icon}
+              heading="Imported"
+              value={formatRelativeDate(login.updated_at)}
+            />
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 /** "Expires in 42 days" countdown to the TTL; `soon` flags the last week. */
 function expiresIn(
@@ -57,6 +160,7 @@ function LoginRow({
           <span className="truncate text-sm font-medium text-zinc-100">
             {login.domain}
           </span>
+          {login.source === IMPORT_SOURCE && <ImportedBadge login={login} />}
         </div>
         {exp && (
           <p
