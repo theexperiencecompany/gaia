@@ -10,8 +10,10 @@ name: Quality Checks
 # (build.yml). `workflow_dispatch` additionally exposes the runner probe.
 
 on:
+  # Every PR, whatever its base: a PR stacked on another PR's branch (gh stack)
+  # needs the gate as much as one targeting master, and GitHub runs nothing for
+  # it otherwise. Deploys stay on push to master below.
   pull_request:
-    branches: [master]
   push:
     branches: [master]
   workflow_dispatch:
@@ -762,7 +764,7 @@ jobs:
           ignore-unfixed: false
 
   # --- Regression-proof: changed tests must FAIL on base -------------------
-  # FastAPI's lesson: run the PR's changed test files against origin/master
+  # FastAPI's lesson: run the PR's changed test files against the PR's base
   # and report any that PASS there (the fix may no longer be needed).
   # Scoped to tests that opt in with `@pytest.mark.regression`, which only a
   # test claiming to pin a bug carries: a diff with no such tests passes
@@ -783,7 +785,7 @@ jobs:
       - uses: ./.github/actions/setup-python-test-env
       - name: Changed test files must fail on base
         working-directory: apps/api
-        run: bash ../../scripts/ci/pytest.sh regression-proof origin/master
+        run: bash ../../scripts/ci/pytest.sh regression-proof "origin/${{ github.base_ref }}"
       # setup-python-test-env brings up services + the embedding sidecar; on the
       # shared box that namespace must be released like every other lane does.
       - name: Release the test services

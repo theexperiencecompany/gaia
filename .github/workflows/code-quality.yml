@@ -14,9 +14,8 @@ name: Code Quality
 # correctness (build, type-check, tests). This workflow enforces code
 # hygiene to prevent low-quality / LLM-generated code from accumulating.
 on:
+  # Every PR, whatever its base (stacked PRs included); see main.yml.
   pull_request:
-    branches:
-      - master
   push:
     branches:
       - master
