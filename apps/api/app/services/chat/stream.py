@@ -109,6 +109,7 @@ class _StreamState:
     """
 
     __slots__ = (
+        "attached",
         "bot_message_id",
         "complete_message",
         "error",
@@ -137,6 +138,11 @@ class _StreamState:
         # Whether the turn was persisted in the try block (early save). When
         # False, the finally block does a fallback save.
         self.saved: bool = False
+        # Whether the executor tool_data (browser cards etc.) was attached to
+        # the saved message. SEPARATE from `saved`: the early save sets saved=True
+        # before the executor wait, so a turn cut short DURING that wait would
+        # otherwise skip the attach backstop and lose every executor card.
+        self.attached: bool = False
         # The client's send id IS the user message id (single identity — the
         # client's optimistic record and the persisted message share one key,
         # so there is nothing to reconcile after a reload or sync). Clients
@@ -799,6 +805,9 @@ async def _attach_executor_tool_data(
     """
     timeout = VOICE_EXECUTOR_RESULT_TIMEOUT_S if body.voice_mode else EXECUTOR_WAIT_TIMEOUT
     await await_executor_done(stream_id, timeout=timeout)
+    # Past the one interruptible await: the drain + append below are sync /
+    # best-effort, so mark attached now — the finally backstop must not re-run.
+    state.attached = True
     executor_td = drain_executor_tool_data(stream_id)
     if not executor_td:
         return
@@ -852,18 +861,30 @@ async def _finalize_stream(
     if not state.saved:
         try:
             await _persist_turn(stream_id, body, user, conversation_id, state)
-            # The try block errored before reaching the normal attach call
-            # (line in _stream_orchestration), so the executor cards were never
-            # pushed onto the saved message. Attach them here as a backstop.
-            # Gated on ``not state.saved`` so this never double-attaches with the
-            # happy/cancel path, which always runs the attach itself.
-            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         except Exception as save_err:  # best-effort fallback save
             log.error(
                 f"{LogTag.CHAT} Fallback save failed for stream",
                 stream_id=stream_id,
                 error=str(save_err),
                 error_type=type(save_err).__name__,
+                conversation_id=conversation_id,
+            )
+
+    # Independent backstop for the executor cards. Gated on ``attached`` (NOT
+    # ``saved``): the early save sets saved=True before the executor wait, so a
+    # turn cut short during that wait leaves saved=True but attached=False — and
+    # the old ``not saved`` gate skipped the attach, dropping every executor card
+    # (browser task steps/recap) from the reloaded turn. ``attached`` is set once
+    # the attach passes its interruptible await, so this runs exactly once.
+    if not state.attached:
+        try:
+            await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
+        except Exception as attach_err:  # best-effort backstop
+            log.error(
+                f"{LogTag.CHAT} Backstop executor tool_data attach failed",
+                stream_id=stream_id,
+                error=str(attach_err),
+                error_type=type(attach_err).__name__,
                 conversation_id=conversation_id,
             )
 

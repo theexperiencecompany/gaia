@@ -45,10 +45,11 @@ def _ready_session_with_cards(stream_id: str) -> None:
     )
 
 
-def _state(*, cancelled: bool, saved: bool = False) -> _StreamState:
+def _state(*, cancelled: bool, saved: bool = False, attached: bool = False) -> _StreamState:
     state = _StreamState()
     state.is_cancelled = cancelled
     state.saved = saved
+    state.attached = attached
     return state
 
 
@@ -170,17 +171,32 @@ class TestFinalizeStreamBackstop:
         repo.append_message_tool_data.assert_awaited_once()  # cards drained and pushed
         assert get_session("s1") is None  # session torn down afterwards
 
-    async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
-        """The happy path saved early and attached already — the backstop must
+    async def test_saved_and_attached_turn_is_not_resaved_or_reattached(self) -> None:
+        """The happy path saved early AND finished attaching — the backstop must
         never double-persist or double-attach."""
         _ready_session_with_cards("s1")
-        state = _state(cancelled=False, saved=True)
+        state = _state(cancelled=False, saved=True, attached=True)
 
         persist, repo = await self._finalize(state)
 
         persist.assert_not_awaited()
         repo.append_message_tool_data.assert_not_awaited()
         assert get_session("s1") is None  # cleanup still happens
+
+    async def test_saved_but_interrupted_attach_still_attaches_cards(self) -> None:
+        """The bug the user hit: a turn cut short DURING the executor wait has
+        saved=True (early save ran) but attached=False (attach never finished).
+        The backstop must still drain and persist the executor cards, or the
+        reloaded turn loses its whole browser card. Gating the attach on `saved`
+        (the old behavior) skipped it here — this is the regression pin."""
+        _ready_session_with_cards("s1")
+        state = _state(cancelled=True, saved=True, attached=False)
+
+        persist, repo = await self._finalize(state)
+
+        persist.assert_not_awaited()  # already saved — no double save
+        repo.append_message_tool_data.assert_awaited_once()  # cards STILL attached
+        assert get_session("s1") is None
 
 
 class TestResolvePendingApprovalTurnDegradesOnFailure:
