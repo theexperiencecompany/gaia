@@ -22,15 +22,18 @@ PROFESSION_PHRASES: dict[str, str] = {
     "student": "a student",
 }
 
+# Q2 chips describe the user's week (needOptions in apps/web onboarding
+# constants), so each phrase is that statement in the first person. Together
+# they read as one sentence: "I'm drowning in email and follow-ups slip through."
 NEED_PHRASES: dict[OnboardingNeed, str] = {
-    OnboardingNeed.INBOX: "my inbox",
-    OnboardingNeed.CALENDAR: "my calendar",
-    OnboardingNeed.BRIEFINGS: "my daily briefings",
-    OnboardingNeed.TODOS: "my todos",
-    OnboardingNeed.MEMORY: "remembering everything",
-    OnboardingNeed.RESEARCH: "research",
-    OnboardingNeed.AUTOMATION: "automating my routines",
-    OnboardingNeed.REACH: "reaching me wherever I am",
+    OnboardingNeed.INBOX: "I'm drowning in email",
+    OnboardingNeed.CALENDAR: "my week is back-to-back meetings",
+    OnboardingNeed.BRIEFINGS: "I start every day behind",
+    OnboardingNeed.TODOS: "follow-ups slip through",
+    OnboardingNeed.MEMORY: "I repeat myself a lot",
+    OnboardingNeed.RESEARCH: "research eats my evenings",
+    OnboardingNeed.AUTOMATION: "I do the same chores every single day",
+    OnboardingNeed.REACH: "I want you wherever I am",
 }
 
 
@@ -42,35 +45,56 @@ def _join(phrases: list[str]) -> str:
     return f"{', '.join(phrases[:-1])}, and {phrases[-1]}"
 
 
+def _sentence(text: str) -> str:
+    body = text.rstrip(".!")
+    return f"{body[0].upper()}{body[1:]}."
+
+
 _VOWELS = frozenset("aeiou")
 
+#: A typed job that already opens like a sentence ("I'm a...", "I run...",
+#: "We make...") is kept whole; anything else gets "I'm" in front.
+_SENTENCE_OPENERS = ("i'm ", "i’m ", "i am ", "i ", "we ", "we're ", "we’re ")
+_ARTICLES = ("a ", "an ", "the ")
 
-def _profession_phrase(profession: str | None) -> str | None:
+
+def _profession_sentence(profession: str | None) -> str | None:
     if not profession:
         return None
     cleaned = profession.strip()
     key = cleaned.lower()
     if key in PROFESSION_PHRASES:
-        return PROFESSION_PHRASES[key]
+        return f"I'm {PROFESSION_PHRASES[key]}."
     if key == "other":
         return None
-    # Free-form professions: users onboarded before the fixed Q1 list, and the
-    # settings page, both store arbitrary text here.
+    # Free-form professions: the "Other" field, users onboarded before the fixed
+    # Q1 list, and the settings page all store arbitrary text here.
+    if key.startswith(_SENTENCE_OPENERS):
+        return _sentence(cleaned)
+    if key.startswith(_ARTICLES):
+        return _sentence(f"I'm {cleaned}")
     article = "an" if key[0] in _VOWELS else "a"
-    return f"{article} {cleaned}"
+    return _sentence(f"I'm {article} {cleaned}")
 
 
 def compose_first_message(preferences: OnboardingPreferences) -> str:
     """The opening line the user sends GAIA, built from Q1 (profession) and Q2 (needs)."""
     parts = ["Hey."]
 
-    profession = _profession_phrase(preferences.profession)
+    profession = _profession_sentence(preferences.profession)
     if profession:
-        parts.append(f"I'm {profession}.")
+        parts.append(profession)
 
     needs = [NEED_PHRASES[need] for need in preferences.needs or []]
+    # "Something else" is their own words, so it stays its own sentence rather
+    # than being bent into the list's grammar.
+    other = preferences.other_need
     if needs:
-        parts.append(f"Mostly need help with {_join(needs)}.")
+        parts.append(_sentence(_join(needs)))
+        if other:
+            parts.append(f"Also, {other.rstrip('.!')}.")
+    elif other:
+        parts.append(_sentence(other))
 
     # Not "who are you": that asks for a self-description, and the reply it gets
     # back is a persona blurb. Asking where to start gets a first real move.

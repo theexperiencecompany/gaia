@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   FIELD_NAMES,
   needOptions,
+  OTHER_NEED_OPTION,
   professionOptions,
   questions,
 } from "@/features/onboarding/constants";
@@ -114,10 +115,10 @@ describe("Q2 multi-select", () => {
     const state = apply(
       initialState,
       { type: "toggleNeed", value: "automation" },
-      { type: "toggleNeed", value: "reach" },
+      { type: "toggleNeed", value: "memory" },
     );
     // Order is selection order, and every value is a known option.
-    expect(state.selectedNeeds).toEqual(["automation", "reach"]);
+    expect(state.selectedNeeds).toEqual(["automation", "memory"]);
     for (const need of state.selectedNeeds) {
       expect(needOptions.some((o) => o.value === need)).toBe(true);
     }
@@ -126,7 +127,11 @@ describe("Q2 multi-select", () => {
   it("has an icon and a tint for every option the chips render", () => {
     // The chips destructure `OPTION_STYLE[value]` unconditionally — a missing
     // entry is a render crash, not a blank chip.
-    for (const option of [...professionOptions, ...needOptions]) {
+    for (const option of [
+      ...professionOptions,
+      ...needOptions,
+      OTHER_NEED_OPTION,
+    ]) {
       const style = OPTION_STYLE[option.value];
       expect(style?.icon).toBeTypeOf("function");
       expect(style?.tint.idle).toMatch(/^bg-\S+ text-\S+$/);
@@ -134,7 +139,9 @@ describe("Q2 multi-select", () => {
     }
   });
 
-  it("offers exactly the eight backend needs", () => {
+  it("offers seven backend needs and never the catch-all", () => {
+    // `reach` stays in the backend enum for users who picked it before the
+    // platform step took it over; it is no longer a chip.
     expect(needOptions.map((o) => o.value)).toEqual([
       "inbox",
       "calendar",
@@ -143,8 +150,19 @@ describe("Q2 multi-select", () => {
       "memory",
       "research",
       "automation",
-      "reach",
     ]);
+    expect(needOptions.some((o) => o.value === OTHER_NEED_OPTION.value)).toBe(
+      false,
+    );
+  });
+
+  it("can submit on typed words alone, but not on blank ones", () => {
+    const typed = apply(initialState, {
+      type: "setOtherNeed",
+      value: "chasing invoices",
+    });
+    expect(canSubmitNeeds(typed)).toBe(true);
+    expect(canSubmitNeeds({ ...typed, otherNeed: "   " })).toBe(false);
   });
 });
 
@@ -154,10 +172,22 @@ describe("transcript", () => {
       responses: answeredQuestions.responses,
       questionIndex: answeredQuestions.questionIndex,
       selectedNeeds: answeredQuestions.selectedNeeds,
+      otherNeed: "",
     });
     const contents = messages.map((m) => m.content);
     expect(contents).toContain("Founder / CEO");
-    expect(contents).toContain("Manage my inbox");
+    expect(contents).toContain("Drowning in email");
+  });
+
+  it("acknowledges the job in Q2's opener and appends the typed need", () => {
+    const contents = getMessages({
+      responses: answeredQuestions.responses,
+      questionIndex: answeredQuestions.questionIndex,
+      selectedNeeds: answeredQuestions.selectedNeeds,
+      otherNeed: "chasing invoices",
+    }).map((m) => m.content);
+    expect(contents.some((c) => c.startsWith("Founder, got it."))).toBe(true);
+    expect(contents).toContain("Drowning in email, chasing invoices");
   });
 
   it("does not render the Q2 answer before it is submitted", () => {
@@ -170,7 +200,8 @@ describe("transcript", () => {
       responses: state.responses,
       questionIndex: state.questionIndex,
       selectedNeeds: state.selectedNeeds,
+      otherNeed: "",
     }).map((m) => m.content);
-    expect(contents).not.toContain("Manage my inbox");
+    expect(contents).not.toContain("Drowning in email");
   });
 });

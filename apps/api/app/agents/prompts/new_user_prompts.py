@@ -78,13 +78,29 @@ What they asked for:
 {playbooks}"""
 
 
-def build_new_user_guidance(profession: str, needs: list[OnboardingNeed]) -> str:
+#: The line for what they typed under "Something else". No playbook exists for
+#: it, so the move is whichever real primitive fits their words.
+OTHER_NEED_PLAYBOOK = (
+    'in their own words: "{other_need}". No playbook for this one: take it literally and '
+    "offer the nearest real move (a todo you hold, a chore that becomes a scheduled workflow, "
+    "a reminder, a connect link for the tool involved). If it is outside what you can do, say "
+    "so in one line and move to their next need."
+)
+
+
+def build_new_user_guidance(
+    profession: str, needs: list[OnboardingNeed], other_need: str | None = None
+) -> str:
     """The guidance block for a user with these onboarding answers, or ``""``.
 
-    Empty when the user picked no needs: with nothing to anchor on, the block
+    Empty when the user picked nothing: with nothing to anchor on, the block
     would be the generic coaching it exists to prevent.
     """
-    playbooks = "\n".join(f"- {NEED_PLAYBOOKS[need]}" for need in needs if need in NEED_PLAYBOOKS)
-    if not playbooks:
+    lines = [f"- {NEED_PLAYBOOKS[need]}" for need in needs if need in NEED_PLAYBOOKS]
+    if other_need:
+        lines.append(f"- {OTHER_NEED_PLAYBOOK.format(other_need=other_need)}")
+    if not lines:
         return ""
-    return NEW_USER_GUIDANCE_TEMPLATE.format(profession=profession or "person", playbooks=playbooks)
+    return NEW_USER_GUIDANCE_TEMPLATE.format(
+        profession=profession or "person", playbooks="\n".join(lines)
+    )

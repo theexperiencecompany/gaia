@@ -19,6 +19,8 @@ export interface OnboardingState {
   questionIndex: number;
   draftProfession: string | null;
   selectedNeeds: string[];
+  /** Q2 "Something else", in the user's words. Empty when not used. */
+  otherNeed: string;
   /**
    * Whether Q1 + Q2 have reached the server (`PATCH /onboarding/preferences`).
    * The link-code mint composes its opener from those two fields server-side,
@@ -38,6 +40,7 @@ export type Action =
   | { type: "draftProfession"; value: string | null }
   | { type: "answer"; field: string; value: string }
   | { type: "toggleNeed"; value: string }
+  | { type: "setOtherNeed"; value: string }
   | { type: "submitNeeds" }
   | { type: "preferencesPersisted" }
   | { type: "ackPaidReveal" }

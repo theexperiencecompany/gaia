@@ -463,6 +463,34 @@ class TestNewUserGuidanceBlock:
                 ctx(user_preferences={"profession": "Founder", "needs": ["automation"]})
             )
 
+    async def test_the_typed_need_reaches_the_model_in_their_words(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(
+                    user_preferences={
+                        "profession": "Founder",
+                        "needs": ["inbox"],
+                        "other_need": "chasing invoices",
+                    }
+                )
+            )
+        assert '"chasing invoices"' in block
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+
+    async def test_a_typed_need_alone_is_enough_to_render(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "other_need": "chasing invoices"})
+            )
+        assert block == build_new_user_guidance("Founder", [], "chasing invoices")
+
+    async def test_a_non_string_typed_need_is_ignored(self) -> None:
+        with self._patch_count(self._count(1)):
+            block = await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
+            )
+        assert block == build_new_user_guidance("Founder", [OnboardingNeed.INBOX])
+
     async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
         with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
             assert (

@@ -5,6 +5,7 @@ export const initialState: OnboardingState = {
   questionIndex: 0,
   draftProfession: null,
   selectedNeeds: [],
+  otherNeed: "",
   preferencesPersisted: false,
 
   paidRevealAcked: false,

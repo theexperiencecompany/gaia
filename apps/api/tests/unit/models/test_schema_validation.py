@@ -207,9 +207,33 @@ class TestOnboardingRequest:
         assert r.profession == "Engineer"
         assert [n.value for n in r.needs] == ["inbox", "calendar"]
 
-    def test_invalid_profession(self):
+    def test_multiline_profession_rejected(self):
         with pytest.raises(ValidationError):
-            OnboardingRequest(profession="Eng1neer!", needs=["inbox"])
+            OnboardingRequest(profession="Eng\nineer", needs=["inbox"])
+
+    def test_profession_without_a_letter_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(profession="12345", needs=["inbox"])
+
+    def test_profession_written_as_a_sentence_accepted(self):
+        r = OnboardingRequest(profession="I'm a founder, designer & dad", needs=["inbox"])
+        assert r.profession == "I'm a founder, designer & dad"
+
+    def test_preferences_and_request_share_the_profession_rule(self):
+        """The two models once disagreed and the wizard hung on the stricter one."""
+        typed = "I'm a founder, designer & dad"
+        assert OnboardingPreferences(profession=typed).profession == typed
+        with pytest.raises(ValidationError):
+            OnboardingPreferences(profession="Eng\nineer")
+
+    def test_typed_need_alone_answers_q2(self):
+        r = OnboardingRequest(profession="Founder", other_need=" chasing invoices ")
+        assert r.needs == []
+        assert r.other_need == "chasing invoices"
+
+    def test_no_q2_answer_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(profession="Founder", needs=[], other_need="  ")
 
     def test_empty_profession(self):
         with pytest.raises(ValidationError):

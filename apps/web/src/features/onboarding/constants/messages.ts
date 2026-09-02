@@ -1,7 +1,5 @@
 // ── Stage copy ────────────────────────────────────────────────────────────────
 
-export const NEEDS_HINT = "you can always add more later";
-
 export const PAYMENT_INTRO_LINES = [
   "It's one plan, everything included.",
   "Cancel whenever. Monthly or yearly?",

@@ -22,6 +22,7 @@ from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.models.payment_models import PlanType
 from app.models.user_models import (
+    OTHER_NEED_MAX_LENGTH,
     AuthenticatedUser,
     OnboardingPreferences,
     OnboardingStatusResponse,
@@ -227,10 +228,48 @@ class TestOnboardingAnalytics:
         response = await client.post(BASE_URL, json={"needs": ["inbox"]})
         assert response.status_code == 422
 
-    async def test_complete_onboarding_invalid_profession_characters_returns_422(
+    async def test_complete_onboarding_multiline_profession_returns_422(self, client: AsyncClient):
+        response = await client.post(BASE_URL, json={"profession": "Dev\nOps", "needs": ["inbox"]})
+        assert response.status_code == 422
+
+    async def test_complete_onboarding_accepts_a_typed_job_written_as_a_sentence(
         self, client: AsyncClient
     ):
-        response = await client.post(BASE_URL, json={"profession": "Dev123!", "needs": ["inbox"]})
+        """Q1's "Other" field takes sentences; the completion rule must match the
+        preferences rule, or the wizard 422s on its last step (it did)."""
+        with patch(
+            _COMPLETE_ONBOARDING,
+            new_callable=AsyncMock,
+            return_value={"user_id": FAKE_USER_ID},
+        ) as mock_complete:
+            response = await client.post(
+                BASE_URL,
+                json={"profession": "I'm a founder, designer & dad", "needs": ["inbox"]},
+            )
+
+        assert response.status_code == 200
+        assert mock_complete.await_args.args[1].profession == "I'm a founder, designer & dad"
+
+    async def test_complete_onboarding_typed_need_alone_answers_q2(self, client: AsyncClient):
+        with patch(
+            _COMPLETE_ONBOARDING,
+            new_callable=AsyncMock,
+            return_value={"user_id": FAKE_USER_ID},
+        ) as mock_complete:
+            response = await client.post(
+                BASE_URL,
+                json={"profession": "Founder", "needs": [], "other_need": " chasing invoices "},
+            )
+
+        assert response.status_code == 200
+        submitted = mock_complete.await_args.args[1]
+        assert submitted.needs == []
+        assert submitted.other_need == "chasing invoices"
+
+    async def test_complete_onboarding_with_no_q2_answer_returns_422(self, client: AsyncClient):
+        response = await client.post(
+            BASE_URL, json={"profession": "Founder", "needs": [], "other_need": "   "}
+        )
         assert response.status_code == 422
 
     async def test_a_name_in_the_body_is_not_accepted(self, client: AsyncClient):
@@ -437,6 +476,34 @@ class TestUpdatePreferences:
             json={"custom_instructions": "a" * 501},
         )
         assert response.status_code == 422
+
+    async def test_update_preferences_other_need_too_long_returns_422(self, client: AsyncClient):
+        response = await client.patch(
+            PREFERENCES_URL,
+            json={"other_need": "a" * (OTHER_NEED_MAX_LENGTH + 1)},
+        )
+        assert response.status_code == 422
+
+    async def test_update_preferences_other_need_is_stored_trimmed(self, client: AsyncClient):
+        """The typed Q2 answer is a real field the writer receives, not a dropped extra."""
+        with patch(
+            _UPDATE_PREFERENCES,
+            new_callable=AsyncMock,
+            return_value={"user_id": "507f1f77bcf86cd799439011"},
+        ) as mock_update:
+            response = await client.patch(
+                PREFERENCES_URL,
+                json={
+                    "profession": "founder",
+                    "needs": ["inbox"],
+                    "other_need": "  chasing invoices ",
+                },
+            )
+
+        assert response.status_code == 200
+        sent = mock_update.await_args.args[1]
+        assert sent.other_need == "chasing invoices"
+        assert "other_need" in sent.model_fields_set
 
     async def test_update_preferences_service_error_returns_500(self, client: AsyncClient):
         with patch(

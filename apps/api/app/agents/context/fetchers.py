@@ -232,7 +232,10 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     if not (ctx.user_id and ctx.user_preferences):
         return ""
     needs = _selected_needs(ctx.user_preferences)
-    if not needs:
+    other_need = ctx.user_preferences.get("other_need")
+    if not isinstance(other_need, str):
+        other_need = None
+    if not needs and not other_need:
         return ""
     try:
         conversations = await conversation_repository.count_non_onboarding(ctx.user_id)
@@ -247,7 +250,7 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     if conversations > NEW_USER_CONVERSATION_LIMIT:
         return ""
     profession = ctx.user_preferences.get("profession")
-    return build_new_user_guidance(str(profession) if profession else "", needs)
+    return build_new_user_guidance(str(profession) if profession else "", needs, other_need)
 
 
 async def build_background_banner(ctx: SectionContext) -> str:

@@ -21,6 +21,7 @@ export interface TranscriptInputs {
   responses: Record<string, string>;
   questionIndex: number;
   selectedNeeds: string[];
+  otherNeed: string;
 }
 
 function answerFor(fieldName: string, state: TranscriptInputs): string | null {
@@ -29,6 +30,8 @@ function answerFor(fieldName: string, state: TranscriptInputs): string | null {
     const labels = state.selectedNeeds
       .map((need) => needOptions.find((o) => o.value === need)?.label)
       .filter((label): label is string => !!label);
+    const other = state.otherNeed.trim();
+    if (other) labels.push(other);
     return labels.length > 0 ? labels.join(", ") : null;
   }
   const raw = state.responses[fieldName];
@@ -48,7 +51,7 @@ export function getMessages(state: TranscriptInputs): Message[] {
     messages.push({
       id: q.id,
       type: "bot",
-      content: q.lines.join(NEW_MESSAGE_BREAK_TOKEN),
+      content: q.lines(state.responses).join(NEW_MESSAGE_BREAK_TOKEN),
     });
 
     const answer = answerFor(q.fieldName, state);

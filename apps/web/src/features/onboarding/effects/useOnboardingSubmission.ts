@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 
 import type { UserInfo } from "@/features/auth/api/authApi";
 import { getBrowserTimezone } from "@/lib/timezone";
+import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
 
 import { completeOnboarding } from "../api/onboardingApi";
@@ -19,6 +20,9 @@ import type { OnboardingState, Stage } from "../state/types";
  *
  * Idempotency needs both the in-flight ref AND the persisted `completed`
  * flag — a remount creates a fresh ref.
+ *
+ * A failure is said out loud: the stage shows "Getting your chat ready…"
+ * with nothing else on screen, so a swallowed error is a wizard that hangs.
  */
 export function useOnboardingSubmission(
   state: OnboardingState,
@@ -29,6 +33,7 @@ export function useOnboardingSubmission(
   const alreadyCompleted = useUserStore(
     (s) => s.onboarding?.completed === true,
   );
+  const otherNeed = state.otherNeed.trim();
 
   useEffect(() => {
     if (stage !== "chat") return;
@@ -40,20 +45,25 @@ export function useOnboardingSubmission(
     completeOnboarding({
       profession: state.responses[FIELD_NAMES.PROFESSION] ?? "",
       needs: state.selectedNeeds,
+      ...(otherNeed ? { other_need: otherNeed } : {}),
       timezone: getBrowserTimezone(),
     })
       .then((response) => {
         if (response?.success && response.user) onSuccess?.(response.user);
       })
-      .catch((error) => {
-        console.error("[onboarding:submit] completion request failed:", error);
+      .catch((error: unknown) => {
         inFlightRef.current = false;
+        console.error("[onboarding:submit] completion request failed:", error);
+        toast.error(
+          "We couldn't finish setting up your chat. Reload the page to try again.",
+        );
       });
   }, [
     stage,
     state.isRestarting,
     state.responses,
     state.selectedNeeds,
+    otherNeed,
     alreadyCompleted,
     onSuccess,
   ]);

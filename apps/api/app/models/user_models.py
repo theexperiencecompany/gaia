@@ -1,15 +1,44 @@
 from datetime import datetime
 from enum import Enum, StrEnum
-import re
 from typing import Any, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.repositories.base import MongoDocument
 from app.utils.timezone import is_valid_timezone
 
 # Shared field doc for the `message` field on the success/message response models.
 _RESPONSE_MESSAGE_DESC = "Response message"
+
+#: Onboarding Q2 "Something else": one short line, sent verbatim in the first message.
+OTHER_NEED_MAX_LENGTH = 120
+PROFESSION_MAX_LENGTH = 50
+
+
+def clean_profession(value: str) -> str:
+    """One rule for every surface that stores a job title.
+
+    Q1's "Other" field asks "What do you do?", and people answer in sentences
+    ("I'm a founder, building a startup"), so punctuation and digits are fine.
+    What is not fine is a second line: the text is spoken back inside GAIA's
+    first message. The completion request and the preferences PATCH once had
+    different rules here, and the wizard hung on the stricter one.
+    """
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("Profession cannot be empty")
+    if len(cleaned) > PROFESSION_MAX_LENGTH:
+        raise ValueError(f"Profession must be {PROFESSION_MAX_LENGTH} characters or less")
+    if any(ch.isspace() and ch != " " for ch in cleaned) or not any(ch.isalpha() for ch in cleaned):
+        raise ValueError("Profession must be one line of words")
+    return cleaned
+
+
+def clean_other_need(value: str | None) -> str | None:
+    """Whitespace-only is "nothing typed", not a need."""
+    if value is None:
+        return None
+    return value.strip() or None
 
 
 class OnboardingPhase(str, Enum):
@@ -71,23 +100,28 @@ class OnboardingPreferences(BaseModel):
         None,
         description="Preferred communication style: brief, detailed, casual, professional",
     )
+    other_need: str | None = Field(
+        None,
+        max_length=OTHER_NEED_MAX_LENGTH,
+        description="What the user typed under 'Something else' in onboarding Q2, verbatim",
+    )
     custom_instructions: str | None = Field(
         None, max_length=500, description="Custom instructions for the AI assistant"
     )
     # Removed timezone field - now only stored at user.timezone root level
 
+    @field_validator("other_need")
+    @classmethod
+    def validate_other_need(cls, v: str | None) -> str | None:
+        return clean_other_need(v)
+
     @field_validator("profession")
     @classmethod
     def validate_profession(cls, v: str | None) -> str | None:
-        if v is not None and v != "":
-            v = v.strip()
-            if not v:
-                raise ValueError("Profession cannot be empty")
-            if len(v) > 50:
-                raise ValueError("Profession must be 50 characters or less")
-            return v
-        # Return None for empty strings to normalize the data
-        return None if v == "" else v
+        # Empty string normalises to None: "unset", not "set to nothing".
+        if v is None or v == "":
+            return None
+        return clean_profession(v)
 
     @field_validator("response_style")
     @classmethod
@@ -121,11 +155,17 @@ class OnboardingRequest(BaseModel):
     nothing else is generated at onboarding, so nothing else is collected.
     """
 
-    profession: str = Field(..., min_length=1, max_length=50, description="User's profession")
+    profession: str = Field(
+        ..., min_length=1, max_length=PROFESSION_MAX_LENGTH, description="User's profession"
+    )
     needs: list[OnboardingNeed] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         description="What the user wants GAIA to help with (onboarding Q2)",
+    )
+    other_need: str | None = Field(
+        None,
+        max_length=OTHER_NEED_MAX_LENGTH,
+        description="What the user typed under 'Something else' in Q2, verbatim",
     )
     timezone: str | None = Field(
         None, description="User's detected timezone (e.g., 'America/New_York', 'UTC')"
@@ -141,12 +181,20 @@ class OnboardingRequest(BaseModel):
     @field_validator("profession")
     @classmethod
     def validate_profession(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("Profession cannot be empty")
-        if not re.match(r"^[a-zA-Z\s\-\.]+$", v):
-            raise ValueError("Profession can only contain letters, spaces, hyphens, and periods")
-        return v
+        return clean_profession(v)
+
+    @field_validator("other_need")
+    @classmethod
+    def validate_other_need(cls, v: str | None) -> str | None:
+        return clean_other_need(v)
+
+    @model_validator(mode="after")
+    def require_an_answer_to_q2(self) -> "OnboardingRequest":
+        # Q2 is answered by a pick or by typed words; an empty Q2 leaves the
+        # first message with nothing to ask about.
+        if not self.needs and not self.other_need:
+            raise ValueError("Pick at least one need or say it in your own words")
+        return self
 
     @field_validator("timezone")
     @classmethod

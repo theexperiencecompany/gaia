@@ -59,6 +59,7 @@ async def complete_onboarding(
         preferences = OnboardingPreferences(
             profession=onboarding_data.profession,
             needs=onboarding_data.needs,
+            other_need=onboarding_data.other_need,
             response_style="casual",  # Default response style
             custom_instructions=None,
         )

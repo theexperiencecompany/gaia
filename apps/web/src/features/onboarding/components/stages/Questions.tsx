@@ -41,6 +41,11 @@ export function QuestionsReply({ state, dispatch }: QuestionsProps) {
     [dispatch],
   );
 
+  const handleOtherNeedChange = useCallback(
+    (value: string) => dispatch({ type: "setOtherNeed", value }),
+    [dispatch],
+  );
+
   const handleSubmitNeeds = useCallback(
     () => dispatch({ type: "submitNeeds" }),
     [dispatch],
@@ -51,8 +56,10 @@ export function QuestionsReply({ state, dispatch }: QuestionsProps) {
       <OnboardingInput
         mode="needs"
         selectedNeeds={state.selectedNeeds}
+        otherNeed={state.otherNeed}
         canContinue={canSubmitNeeds(state)}
         onToggleNeed={handleToggleNeed}
+        onOtherNeedChange={handleOtherNeedChange}
         onContinue={handleSubmitNeeds}
       />
     );

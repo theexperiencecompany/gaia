@@ -14,10 +14,10 @@ import {
   Megaphone01Icon,
   Mortarboard01Icon,
   PaintBoardIcon,
+  PencilEdit01Icon,
   PuzzleIcon,
   Rocket01Icon,
   Search01Icon,
-  SmartPhone01Icon,
   SparklesIcon,
   SunriseIcon,
   TaskDone01Icon,
@@ -102,5 +102,5 @@ export const OPTION_STYLE: Record<string, OptionStyle> = {
   memory: { icon: Brain01Icon, tint: TINTS.pink },
   research: { icon: Search01Icon, tint: TINTS.teal },
   automation: { icon: WorkflowSquare01Icon, tint: TINTS.orange },
-  reach: { icon: SmartPhone01Icon, tint: TINTS.indigo },
+  something_else: { icon: PencilEdit01Icon, tint: TINTS.indigo },
 };

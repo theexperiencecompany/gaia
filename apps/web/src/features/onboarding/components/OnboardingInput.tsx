@@ -1,23 +1,30 @@
 /**
  * The user's side of the two onboarding questions: a right-aligned row of
- * emoji chips where their reply bubble will land, plus Continue. Two modes
- * via a discriminated union:
+ * tinted icon chips where their reply bubble will land, plus Continue. Two
+ * modes via a discriminated union:
  * - `profession`: Q1's single-select (picking one replaces the current pick).
  * - `needs`: Q2's multi-select.
- * Either way the answer is only committed when Continue is pressed.
+ * Either way the answer is only committed when Continue is pressed. Both
+ * questions end in a catch-all chip that opens a small text field, so an
+ * answer the list does not have is still their own words.
  */
 
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
-import { memo } from "react";
+import * as m from "motion/react-m";
+import { memo, useState } from "react";
 
 import {
   isListedProfession,
   needOptions,
+  OTHER_NEED,
+  OTHER_NEED_MAX_LENGTH,
+  OTHER_NEED_OPTION,
   OTHER_PROFESSION,
+  PROFESSION_MAX_LENGTH,
   professionOptions,
 } from "../constants";
-import { NEEDS_HINT } from "../constants/messages";
+import { EASE_OUT_QUART } from "../constants/motion";
 import { OPTION_STYLE } from "../constants/optionStyle";
 import { OnboardingCTAButton } from "./OnboardingCTAButton";
 
@@ -31,8 +38,10 @@ interface ProfessionModeProps {
 interface NeedsModeProps {
   mode: "needs";
   selectedNeeds: string[];
+  otherNeed: string;
   canContinue: boolean;
   onToggleNeed: (value: string) => void;
+  onOtherNeedChange: (value: string) => void;
   onContinue: () => void;
 }
 
@@ -44,6 +53,9 @@ function OnboardingInputImpl(props: OnboardingInputProps) {
 }
 
 export const OnboardingInput = memo(OnboardingInputImpl);
+
+const REPLY_WRAPPER_CLASS =
+  "ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3";
 
 function ProfessionInput({
   draftProfession,
@@ -59,7 +71,7 @@ function ProfessionInput({
     isOther && draftProfession !== OTHER_PROFESSION ? draftProfession : "";
 
   return (
-    <div className="ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3">
+    <div className={REPLY_WRAPPER_CLASS}>
       <OptionChips
         label="What do you do?"
         options={professionOptions}
@@ -69,21 +81,17 @@ function ProfessionInput({
         onSelect={onSelectProfession}
       />
       {isOther && (
-        <Input
-          aria-label="Your job, in your words"
+        <OwnWordsInput
+          label="Your job, in your words"
           placeholder="What do you do?"
+          maxLength={PROFESSION_MAX_LENGTH}
           value={customText}
           onValueChange={(text) =>
             onSelectProfession(text.trim() ? text : OTHER_PROFESSION)
           }
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && draftProfession) onContinue();
+          onSubmit={() => {
+            if (draftProfession) onContinue();
           }}
-          variant="flat"
-          size="sm"
-          radius="lg"
-          className="max-w-56"
-          autoFocus
         />
       )}
       <OnboardingCTAButton disabled={!draftProfession} onClick={onContinue}>
@@ -95,25 +103,92 @@ function ProfessionInput({
 
 function NeedsInput({
   selectedNeeds,
+  otherNeed,
   canContinue,
   onToggleNeed,
+  onOtherNeedChange,
   onContinue,
 }: NeedsModeProps) {
   const selected = new Set(selectedNeeds);
+  // The field stays open while they type; un-picking the chip also clears the
+  // text, so a closed field never submits words they can no longer see.
+  const [otherOpen, setOtherOpen] = useState(otherNeed !== "");
+
+  const handleSelect = (value: string) => {
+    if (value !== OTHER_NEED) {
+      onToggleNeed(value);
+      return;
+    }
+    if (otherOpen) onOtherNeedChange("");
+    setOtherOpen(!otherOpen);
+  };
 
   return (
-    <div className="ml-auto flex w-full max-w-xl flex-col items-end gap-3 pt-3">
+    <div className={REPLY_WRAPPER_CLASS}>
       <OptionChips
-        label="What do you want help with?"
-        options={needOptions}
-        isSelected={(value) => selected.has(value)}
-        onSelect={onToggleNeed}
+        label="What does a normal week look like?"
+        options={[...needOptions, OTHER_NEED_OPTION]}
+        isSelected={(value) =>
+          value === OTHER_NEED ? otherOpen : selected.has(value)
+        }
+        onSelect={handleSelect}
       />
-      <p className="text-xs text-zinc-400">{NEEDS_HINT}</p>
+      {otherOpen && (
+        <OwnWordsInput
+          label="Something else, in your words"
+          placeholder="Say it in a few words"
+          maxLength={OTHER_NEED_MAX_LENGTH}
+          value={otherNeed}
+          onValueChange={onOtherNeedChange}
+          onSubmit={() => {
+            if (canContinue) onContinue();
+          }}
+        />
+      )}
       <OnboardingCTAButton disabled={!canContinue} onClick={onContinue}>
         Continue
       </OnboardingCTAButton>
     </div>
+  );
+}
+
+interface OwnWordsInputProps {
+  label: string;
+  placeholder: string;
+  maxLength: number;
+  value: string;
+  onValueChange: (value: string) => void;
+  onSubmit: () => void;
+}
+
+/** The small free-text field a catch-all chip opens. Enter submits the turn. */
+function OwnWordsInput({
+  label,
+  placeholder,
+  maxLength,
+  value,
+  onValueChange,
+  onSubmit,
+}: OwnWordsInputProps) {
+  return (
+    <Input
+      aria-label={label}
+      placeholder={placeholder}
+      maxLength={maxLength}
+      value={value}
+      onValueChange={onValueChange}
+      onKeyDown={(event) => {
+        // Enter also confirms a candidate in CJK input methods; submitting
+        // then would send half a word.
+        if (event.nativeEvent.isComposing) return;
+        if (event.key === "Enter") onSubmit();
+      }}
+      variant="flat"
+      size="sm"
+      radius="lg"
+      className="max-w-56"
+      autoFocus
+    />
   );
 }
 
@@ -123,6 +198,8 @@ interface OptionChipsProps {
   isSelected: (value: string) => boolean;
   onSelect: (value: string) => void;
 }
+
+const CHIP_STAGGER_SECONDS = 0.035;
 
 function OptionChips({
   label,
@@ -137,29 +214,42 @@ function OptionChips({
       aria-label={label}
       className="flex w-full min-w-0 flex-wrap justify-end gap-2"
     >
-      {options.map((option) => {
+      {options.map((option, index) => {
         const selected = isSelected(option.value);
         const { icon: Icon, tint } = OPTION_STYLE[option.value];
         return (
-          <Chip
+          // Chips arrive one after another, like a reply being typed out, and
+          // give a little under the finger when pressed.
+          <m.div
             key={option.value}
-            as="button"
-            type="button"
-            size="lg"
-            radius="full"
-            variant="flat"
-            aria-pressed={selected}
-            onClick={() => onSelect(option.value)}
-            // One pastel per option, on the fill, the text and the icon; the
-            // fill goes solid when picked. Founder's call, not a theme override.
-            classNames={{
-              base: `cursor-pointer ${selected ? tint.active : tint.idle}`,
-              content: "font-medium",
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            whileTap={{ scale: 0.95 }}
+            transition={{
+              delay: index * CHIP_STAGGER_SECONDS,
+              duration: 0.3,
+              ease: EASE_OUT_QUART,
             }}
-            startContent={<Icon className="size-4 shrink-0" />}
           >
-            {option.label}
-          </Chip>
+            <Chip
+              as="button"
+              type="button"
+              size="lg"
+              radius="full"
+              variant="flat"
+              aria-pressed={selected}
+              onClick={() => onSelect(option.value)}
+              // One pastel per option, on the fill, the text and the icon; the
+              // fill goes solid when picked. Founder's call, not a theme override.
+              classNames={{
+                base: `cursor-pointer ${selected ? tint.active : tint.idle}`,
+                content: "font-medium",
+              }}
+              startContent={<Icon className="size-4 shrink-0" />}
+            >
+              {option.label}
+            </Chip>
+          </m.div>
         );
       })}
     </fieldset>

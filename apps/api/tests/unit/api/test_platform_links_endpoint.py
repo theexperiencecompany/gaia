@@ -127,7 +127,8 @@ class TestMintLinkCode:
         assert resp.status_code == 200
         body = resp.json()
         expected_message = (
-            "Hey. I'm a founder. Mostly need help with my inbox and my todos. Where do we start?"
+            "Hey. I'm a founder. I'm drowning in email and follow-ups slip through. "
+            "Where do we start?"
         )
         assert body["code"] == "CODE123"
         assert body["first_message"] == expected_message
@@ -166,8 +167,8 @@ class TestMintLinkCode:
         # from it, so a dropped or wrong first message ships an empty opener
         # while the prefix and the trailing code still look right.
         assert links["whatsapp"] == (
-            "https://wa.me/15551234567?text=Hey.%20I%27m%20a%20founder.%20Mostly%20need%20help%20with%20my%20i"
-            "nbox%20and%20my%20todos.%20Where%20do%20we%20start%3F%20%23CODE123"
+            "https://wa.me/15551234567?text=Hey.%20I%27m%20a%20founder.%20I%27m%20drowning%20in%20email"
+            "%20and%20follow-ups%20slip%20through.%20Where%20do%20we%20start%3F%20%23CODE123"
         )
 
     @pytest.mark.asyncio

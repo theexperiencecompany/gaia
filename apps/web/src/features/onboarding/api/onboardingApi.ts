@@ -10,6 +10,8 @@ export interface CompleteOnboardingArgs {
   profession: string;
   /** Must be `OnboardingNeed` values; the API rejects anything else. */
   needs: string[];
+  /** Q2 "Something else", verbatim. Omitted when the user typed nothing. */
+  other_need?: string;
   timezone: string;
 }
 
@@ -31,6 +33,8 @@ export interface OnboardingPreferencesArgs {
   profession: string;
   /** Must be `OnboardingNeed` values; the API rejects anything else. */
   needs: string[];
+  /** Q2 "Something else", verbatim. Omitted when the user typed nothing. */
+  other_need?: string;
 }
 
 /**

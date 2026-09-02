@@ -34,6 +34,9 @@ export function reducer(
       return { ...state, selectedNeeds: selected };
     }
 
+    case "setOtherNeed":
+      return { ...state, otherNeed: action.value };
+
     // Min-selection is enforced here, not only in the composer: the gate is
     // what the backend contract requires, so it lives with the transition.
     case "submitNeeds":

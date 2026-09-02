@@ -17,10 +17,10 @@ interface MessagesRegionProps {
 function MessagesRegionImpl({ state }: MessagesRegionProps) {
   // Narrowed to exactly the fields the transcript derives from so the memo
   // skips recompute on unrelated updates (e.g. typing a draft).
-  const { responses, questionIndex, selectedNeeds } = state;
+  const { responses, questionIndex, selectedNeeds, otherNeed } = state;
   const messages = useMemo(
-    () => getMessages({ responses, questionIndex, selectedNeeds }),
-    [responses, questionIndex, selectedNeeds],
+    () => getMessages({ responses, questionIndex, selectedNeeds, otherNeed }),
+    [responses, questionIndex, selectedNeeds, otherNeed],
   );
 
   return <OnboardingMessages messages={messages} />;

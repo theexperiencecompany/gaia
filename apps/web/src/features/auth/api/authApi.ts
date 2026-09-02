@@ -87,6 +87,7 @@ export const authApi = {
   completeOnboarding: async (onboardingData: {
     profession: string;
     needs: string[];
+    other_need?: string;
     timezone?: string;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {

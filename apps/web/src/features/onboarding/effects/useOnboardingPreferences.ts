@@ -30,16 +30,21 @@ export function useOnboardingPreferences(
   const questionsComplete = state.questionIndex >= questions.length;
   const profession = state.responses[FIELD_NAMES.PROFESSION];
   const { selectedNeeds, preferencesPersisted, isRestarting } = state;
+  const otherNeed = state.otherNeed.trim();
 
   useEffect(() => {
     if (!questionsComplete) return;
     if (preferencesPersisted) return;
     if (isRestarting) return;
     if (inFlightRef.current) return;
-    if (!profession || selectedNeeds.length === 0) return;
+    if (!profession || (selectedNeeds.length === 0 && !otherNeed)) return;
 
     inFlightRef.current = true;
-    saveOnboardingPreferences({ profession, needs: selectedNeeds })
+    saveOnboardingPreferences({
+      profession,
+      needs: selectedNeeds,
+      ...(otherNeed ? { other_need: otherNeed } : {}),
+    })
       .then(() => dispatch({ type: "preferencesPersisted" }))
       .catch((error: unknown) => {
         inFlightRef.current = false;
@@ -54,6 +59,7 @@ export function useOnboardingPreferences(
     isRestarting,
     profession,
     selectedNeeds,
+    otherNeed,
     dispatch,
   ]);
 }

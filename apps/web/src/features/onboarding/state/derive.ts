@@ -22,7 +22,9 @@ function isQuestionsComplete(s: OnboardingState): boolean {
 }
 
 export function canSubmitNeeds(s: OnboardingState): boolean {
-  return s.selectedNeeds.length >= NEEDS_MIN_SELECTION;
+  return (
+    s.selectedNeeds.length >= NEEDS_MIN_SELECTION || s.otherNeed.trim() !== ""
+  );
 }
 
 export function getStage(s: OnboardingState, isPaid: boolean): Stage {

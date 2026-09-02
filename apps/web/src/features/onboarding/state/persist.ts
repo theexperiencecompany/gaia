@@ -13,6 +13,7 @@ interface PersistedShape {
   responses: Record<string, string>;
   questionIndex: number;
   selectedNeeds: string[];
+  otherNeed: string;
   preferencesPersisted: boolean;
   paidRevealAcked: boolean;
   greetingAcked: boolean;
@@ -25,6 +26,7 @@ function pick(state: OnboardingState): PersistedShape {
     responses: state.responses,
     questionIndex: state.questionIndex,
     selectedNeeds: state.selectedNeeds,
+    otherNeed: state.otherNeed,
     preferencesPersisted: state.preferencesPersisted,
     paidRevealAcked: state.paidRevealAcked,
     greetingAcked: state.greetingAcked,
@@ -43,6 +45,7 @@ export function loadPersisted(userId: string): Partial<OnboardingState> | null {
       responses: parsed.responses ?? {},
       questionIndex: parsed.questionIndex ?? 0,
       selectedNeeds: parsed.selectedNeeds ?? [],
+      otherNeed: parsed.otherNeed ?? "",
       preferencesPersisted: parsed.preferencesPersisted ?? false,
       paidRevealAcked: parsed.paidRevealAcked ?? false,
       greetingAcked: parsed.greetingAcked ?? false,
