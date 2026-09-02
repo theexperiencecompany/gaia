@@ -332,7 +332,6 @@ class TestTriggeredExecutionPrompt:
         # rendering is the contract, not just that the values appear somewhere.
         assert json.dumps(origin.payload, indent=2, default=str) in prompt
 
-    @pytest.mark.regression
     def test_a_triggered_prompt_fences_the_untrusted_payload(self):
         # origin.payload is external, attacker-influenceable content (the body of
         # the event that fired the trigger). It must be wrapped in a per-call random
