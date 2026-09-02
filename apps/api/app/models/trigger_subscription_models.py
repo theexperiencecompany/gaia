@@ -181,6 +181,14 @@ class TriggerSubscription(BaseModel):
         default_factory=list,
         description="Empty for account-level triggers, which register no instance",
     )
+    trigger_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Registration-time knobs the payload cannot express (a calendar's "
+            "minutes_before_start). Persisted so a resync rebuilds the trigger "
+            "with the user's original config instead of resetting to defaults."
+        ),
+    )
     status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

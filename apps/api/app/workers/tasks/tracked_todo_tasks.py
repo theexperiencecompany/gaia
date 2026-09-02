@@ -80,7 +80,9 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
 
 
 async def execute_tracked_todo(
-    _ctx: dict[str, Any], todo_id: str, origin: TriggerOrigin | None = None
+    ctx: dict[str, Any],  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    todo_id: str,
+    origin: TriggerOrigin | None = None,
 ) -> str:
     """
     ARQ task: execute a single tracked todo, on its schedule or on a trigger.

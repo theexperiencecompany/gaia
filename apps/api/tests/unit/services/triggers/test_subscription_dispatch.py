@@ -124,6 +124,82 @@ class TestResolution:
         deps.repo.find_active_by_composio_trigger.assert_awaited_once_with("ti_1")
         deps.repo.find_active_by_user_and_trigger.assert_not_awaited()
 
+    async def test_a_resource_scoped_sub_ignores_another_instances_event(self, deps) -> None:
+        # Two repo-scoped subs share a trigger name but watch different Composio
+        # instances. The account lookup returns both; an event from instance ti_A
+        # must NOT fire the sub that only watches ti_B.
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(
+                        trigger_name=SLACK,
+                        resolution=SubscriptionResolution.TRIGGER_ID,
+                        composio_trigger_ids=["ti_B"],
+                    )
+                ]
+            )
+        ]
+
+        assert await dispatch_to_subscribed_todos(SLACK, "ti_A", USER_ID, {}) == 0
+        deps.enqueue.assert_not_awaited()
+
+    async def test_a_resource_scoped_sub_fires_on_its_own_instances_event(self, deps) -> None:
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(
+                trigger_subscriptions=[
+                    _subscription(
+                        trigger_name=SLACK,
+                        resolution=SubscriptionResolution.TRIGGER_ID,
+                        composio_trigger_ids=["ti_B"],
+                    )
+                ]
+            )
+        ]
+
+        assert await dispatch_to_subscribed_todos(SLACK, "ti_B", USER_ID, {}) == 1
+
+    async def test_one_failing_subscription_does_not_strand_the_rest(self, deps) -> None:
+        # A queue/notification/repository failure on one todo must not skip the
+        # remaining matching todos in the same fan-out, and must surface as an
+        # error on the wide event carrying every field needed to attribute it:
+        # which todo, which subscription, which trigger, and the failure itself.
+        deps.notify.side_effect = [RuntimeError("notify boom"), None]
+        sub_a = _subscription(action=SubscriptionAction.NOTIFY)
+        todo_a = _todo(id="todo-a", trigger_subscriptions=[sub_a])
+        todo_b = _todo(
+            id="todo-b", trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)]
+        )
+        deps.repo.find_active_by_user_and_trigger.return_value = [todo_a, todo_b]
+
+        async with captured_wide_event() as event:
+            fired = await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        assert fired == 1  # todo-b still fired despite todo-a raising
+        assert deps.notify.await_count == 2
+        (error,) = event["errors"]
+        assert error["msg"] == "todo_subscription.fire_failed"
+        assert error["todo_id"] == "todo-a"
+        assert error["subscription_id"] == sub_a.id
+        assert error["trigger_name"] == GMAIL
+        assert error["error"] == "notify boom"
+        assert error["error_type"] == "RuntimeError"
+
+    async def test_the_fire_failure_is_logged_with_a_traceback(self, deps) -> None:
+        # exc_info is popped before the wide event's errors[] entry is built, so
+        # it can never be asserted through captured_wide_event — but dropping it
+        # strips the stack trace an operator needs to locate the failing seam.
+        # Assert it reaches the logger as True.
+        deps.notify.side_effect = RuntimeError("notify boom")
+        deps.repo.find_active_by_user_and_trigger.return_value = [
+            _todo(trigger_subscriptions=[_subscription(action=SubscriptionAction.NOTIFY)])
+        ]
+
+        with patch(f"{_MOD}.log") as log:
+            await dispatch_to_subscribed_todos(GMAIL, None, USER_ID, {})
+
+        log.error.assert_called_once()
+        assert log.error.call_args.kwargs["exc_info"] is True
+
     async def test_a_todo_found_by_both_strategies_fires_once(self, deps) -> None:
         todo = _todo()
         deps.repo.find_active_by_composio_trigger.return_value = [todo]

@@ -152,6 +152,7 @@ async def register_subscription(
             else SubscriptionResolution.ACCOUNT
         ),
         composio_trigger_ids=trigger_ids,
+        trigger_data=trigger_data or {},
     )
 
     await todo_repository.update(
@@ -366,7 +367,7 @@ async def _resync_one(
             user_id,
             todo_id,
             trigger_name,
-            build_trigger_config(trigger_name, None),
+            build_trigger_config(trigger_name, subscription.trigger_data),
             raise_on_failure=True,
         )
         stale = [i for i in subscription.composio_trigger_ids if i not in new_ids]

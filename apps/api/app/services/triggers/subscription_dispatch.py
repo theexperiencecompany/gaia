@@ -58,8 +58,21 @@ async def dispatch_to_subscribed_todos(
     fired = 0
     for todo in todos:
         for subscription in todo.trigger_subscriptions:
-            if await _fire_if_matching(todo, subscription, trigger_name, payload):
-                fired += 1
+            try:
+                if await _fire_if_matching(todo, subscription, trigger_name, trigger_id, payload):
+                    fired += 1
+            except Exception as e:
+                # One subscription's queue/notification/repository failure must not
+                # strand the other matching todos in the same fan-out.
+                log.error(
+                    "todo_subscription.fire_failed",
+                    todo_id=todo.id,
+                    subscription_id=subscription.id,
+                    trigger_name=trigger_name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
 
     log.set_ns("trigger", todo_subscribers=len(todos), todo_actions_fired=fired)
     return fired
@@ -90,10 +103,18 @@ async def _fire_if_matching(
     todo: TodoDocument,
     subscription: TriggerSubscription,
     trigger_name: str,
+    trigger_id: str | None,
     payload: dict[str, Any],
 ) -> bool:
-    """Gate one subscription on trigger, status, conditions and cooldown, then act."""
+    """Gate one subscription on trigger, instance, status, conditions and cooldown, then act."""
     if subscription.trigger_name != trigger_name:
+        return False
+    # Instance isolation: a resource-scoped subscription must only fire for one of
+    # the instances it registered. The account-level lookup returns every todo on
+    # this trigger name for the user, so without this gate an event from one
+    # resource would fire a todo subscribed to a different one. Account-level
+    # subscriptions register no instance and match on user + trigger name alone.
+    if subscription.composio_trigger_ids and trigger_id not in subscription.composio_trigger_ids:
         return False
     if subscription.status is not SubscriptionStatus.ACTIVE:
         return False
