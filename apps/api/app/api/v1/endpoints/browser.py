@@ -24,6 +24,7 @@ from app.config.settings import settings
 from app.constants.browser import BROWSER_IMPORT_TOKEN_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
+    BrowserForgetAllResponse,
     BrowserImportRequest,
     BrowserImportResponse,
     BrowserLoginResponse,
@@ -161,6 +162,19 @@ async def list_browser_logins_endpoint(
         count=len(logins),
     )
     return logins
+
+
+@router.delete("/logins", response_model=BrowserForgetAllResponse)
+async def forget_all_browser_logins_endpoint(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> BrowserForgetAllResponse:
+    """Forget every saved login for the user — the settings 'Clear all'."""
+    log.set(user={"id": user_id}, browser={"operation": "forget_all_logins"})
+    count = await forget_saved_login(user_id, None)
+    log.audit(
+        "all browser logins forgotten", actor=user_id, resource="browser/logins", count=count
+    )
+    return BrowserForgetAllResponse(forgotten=count)
 
 
 @router.delete("/logins/{domain}", status_code=204)

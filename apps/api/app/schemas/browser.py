@@ -280,3 +280,9 @@ class BrowserImportResponse(BaseModel):
     imported: list[BrowserLoginResponse] = Field(default_factory=list)
     host_count: int
     cookie_count: int
+
+
+class BrowserForgetAllResponse(BaseModel):
+    """How many saved logins a clear-all removed."""
+
+    forgotten: int

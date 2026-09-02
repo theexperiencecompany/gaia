@@ -369,3 +369,17 @@ class TestImportBrowserSessions:
             await browser_ep.import_browser_sessions(self._payload())
         assert exc.value.status_code == 409
         imp.assert_not_awaited()
+
+
+class TestForgetAllBrowserLogins:
+    async def test_returns_the_count_forgotten(self, monkeypatch):
+        monkeypatch.setattr(browser_ep, "forget_saved_login", AsyncMock(return_value=7))
+        resp = await browser_ep.forget_all_browser_logins_endpoint("u1")
+        assert resp.forgotten == 7
+
+    async def test_forgets_everything_not_one_domain(self, monkeypatch):
+        forget = AsyncMock(return_value=0)
+        monkeypatch.setattr(browser_ep, "forget_saved_login", forget)
+        await browser_ep.forget_all_browser_logins_endpoint("u1")
+        # domain=None is what makes it clear ALL, not a single site.
+        assert forget.await_args.args == ("u1", None)

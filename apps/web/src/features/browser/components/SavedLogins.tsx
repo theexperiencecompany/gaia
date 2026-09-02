@@ -1,9 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
-import { Delete02Icon, GlobalIcon } from "@icons";
+import { Delete02Icon, GlobalIcon, Search01Icon } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
@@ -92,6 +93,10 @@ export function SavedLogins() {
     isClearingAll,
   } = useBrowserLogins();
   const { confirm, confirmationProps } = useConfirmation();
+  const [query, setQuery] = useState("");
+  const filtered = query.trim()
+    ? logins.filter((l) => l.domain.includes(query.trim().toLowerCase()))
+    : logins;
 
   const handleClearAll = async () => {
     const confirmed = await confirm({
@@ -139,6 +144,21 @@ export function SavedLogins() {
         )}
       </div>
 
+      {logins.length > 0 && (
+        <Input
+          size="sm"
+          radius="lg"
+          value={query}
+          onValueChange={setQuery}
+          isClearable
+          onClear={() => setQuery("")}
+          placeholder="Search saved sites…"
+          startContent={<Search01Icon className="size-4 text-zinc-500" />}
+          className="mb-2"
+          classNames={{ inputWrapper: "bg-zinc-800" }}
+        />
+      )}
+
       {isLoading ? (
         <div className="flex flex-col gap-2">
           <Skeleton className="h-14 w-full rounded-2xl" />
@@ -165,7 +185,12 @@ export function SavedLogins() {
       ) : (
         <ScrollShadow className="max-h-[540px]">
           <div className="flex flex-col gap-2 pr-1">
-            {logins.map((login) => (
+            {filtered.length === 0 ? (
+              <p className="py-6 text-center text-xs text-zinc-500">
+                No saved sites match &ldquo;{query}&rdquo;.
+              </p>
+            ) : null}
+            {filtered.map((login) => (
               <LoginRow
                 key={login.domain}
                 login={login}
