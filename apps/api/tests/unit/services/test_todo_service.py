@@ -513,13 +513,14 @@ class TestDeleteTodo:
             return True
 
         mock_todo_repo.delete = AsyncMock(side_effect=_delete)
-        with patch(
-            "app.services.todos.todo_service.teardown_subscriptions",
-            AsyncMock(side_effect=_teardown),
-        ):
+        teardown = AsyncMock(side_effect=_teardown)
+        with patch("app.services.todos.todo_service.teardown_subscriptions", teardown):
             await TodoService.delete_todo(FAKE_TODO_ID, FAKE_USER_ID)
 
         assert order == ["teardown", "delete"]
+        # The teardown must name this doc's own id/user and the delete reason —
+        # a wrong id or reason unregisters nothing and leaks the trigger.
+        teardown.assert_awaited_once_with(FAKE_TODO_ID, FAKE_USER_ID, reason="deleted")
 
     async def test_an_unsubscribed_todo_skips_teardown(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -824,3 +825,25 @@ class TestBulkServiceDelete:
         with pytest.raises(HTTPException) as exc:
             await bulk_service_delete_todos(["a"], FAKE_USER_ID)
         assert exc.value.status_code == 404
+
+    async def test_subscribed_todo_tears_down_before_delete(self, mock_bulk_repos):
+        """A subscribed todo must unregister its Composio trigger with the
+        deleted-doc's own id/user and the bulk-delete reason — once the document
+        is gone nothing names the trigger, so a wrong id or reason leaks it."""
+        todo_repo, _ = mock_bulk_repos
+        subscribed = _make_todo_doc(todo_id="a")
+        subscribed.trigger_subscriptions = [
+            TriggerSubscription(
+                trigger_name="gmail_new_message",
+                action=SubscriptionAction.EXECUTE,
+                resolution=SubscriptionResolution.ACCOUNT,
+            )
+        ]
+        plain = _make_todo_doc(todo_id="b")
+        todo_repo.find_by_ids = AsyncMock(return_value=[subscribed, plain])
+        todo_repo.bulk_delete = AsyncMock(return_value=2)
+        teardown = AsyncMock(return_value=1)
+        with patch("app.services.todos.todo_bulk_service.teardown_subscriptions", teardown):
+            await bulk_service_delete_todos(["a", "b"], FAKE_USER_ID)
+        # Only the subscribed doc tears down, and with its exact id/user/reason.
+        teardown.assert_awaited_once_with("a", FAKE_USER_ID, reason="bulk_deleted")

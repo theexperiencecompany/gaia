@@ -11,6 +11,7 @@ import pytest
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.services.triggers.base import TriggerHandler
+from tests.helpers import captured_wide_event
 
 
 class _StubHandler(TriggerHandler):
@@ -330,3 +331,68 @@ class TestTodoDispatchHandoff:
 
         assert result["status"] == "success"
         assert "Queued 1 workflows" in result["message"]
+
+    async def test_the_handoff_enqueues_on_the_real_pool_and_reports_queued(self):
+        # The job must ride the pool `get_pool` returned, not some other value,
+        # and a successful enqueue reports True back to process_event.
+        handler = self._handler()
+        pool = object()
+        enqueue = AsyncMock()
+        with (
+            patch(
+                "app.services.triggers.base.RedisPoolManager.get_pool",
+                AsyncMock(return_value=pool),
+            ),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            queued = await handler._queue_todo_dispatch("EVT", "tid-1", "user-1", {"id": "e1"})
+
+        assert queued is True
+        enqueue.assert_awaited_once_with(
+            pool,
+            "dispatch_todo_subscriptions",
+            handler.trigger_names,
+            "tid-1",
+            "user-1",
+            {"id": "e1"},
+        )
+
+    async def test_a_failed_enqueue_reports_not_queued_and_logs_the_context(self):
+        # The swallow is only justified if the failure is visible on the wide
+        # event with enough context to debug it — and it must return False.
+        handler = self._handler()
+        enqueue = AsyncMock(side_effect=RuntimeError("redis boom"))
+        with (
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            async with captured_wide_event() as event:
+                queued = await handler._queue_todo_dispatch("EVT", "tid-1", "user-1", {"id": "e1"})
+
+        assert queued is False
+        (error,) = event["errors"]
+        assert error["msg"] == "trigger_todo_dispatch_enqueue_failed"
+        assert error["event_type"] == "EVT"
+        assert error["trigger_id"] == "tid-1"
+        assert error["error"] == "redis boom"
+        assert error["error_type"] == "RuntimeError"
+
+    async def test_process_event_hands_the_real_event_type_to_the_dispatch(self):
+        # process_event must pass its own event_type down — a None there would
+        # strand the dispatch failure log with no way to tell which event broke.
+        handler = self._handler()
+        handler.find_workflows = AsyncMock(return_value=[])
+        enqueue = AsyncMock(side_effect=RuntimeError("redis down"))
+        with (
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await handler.process_event("TEST_EVENT", "tid-1", "user-1", {"id": "e1"})
+
+        (error,) = event["errors"]
+        assert error["event_type"] == "TEST_EVENT"

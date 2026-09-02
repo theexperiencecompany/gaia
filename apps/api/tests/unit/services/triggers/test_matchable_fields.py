@@ -17,9 +17,14 @@ from app.models.trigger_subscription_models import (
     MatchableFieldType,
     MatchableTrigger,
 )
+from app.services.triggers import matchable_fields as mf
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 
 pytestmark = pytest.mark.unit
+
+
+class _DummyPayload(BaseModel):
+    """Stand-in payload model — the factories only store it, never introspect it."""
 
 
 def _offered_trigger_names() -> set[str]:
@@ -180,3 +185,78 @@ class TestLookup:
     def test_field_lookup_misses_an_excluded_field(self) -> None:
         entry = MATCHABLE_TRIGGERS["gmail_new_message"]
         assert entry.field("payload") is None
+
+
+_STRING = MatchableFieldType.STRING
+
+
+class TestFactoryHelpers:
+    """Exercise the field builder and the three shared-envelope factories directly.
+
+    ``MATCHABLE_TRIGGERS`` is frozen at import, so a mutation to a literal inside
+    ``_f`` / ``_google_doc`` / ``_notion`` / ``_linear`` is invisible through the
+    catalog — the description and example text the agent is shown before writing a
+    condition would silently drift with nothing to catch it. These pin every name,
+    type, description and example the factories emit.
+    """
+
+    def test_f_carries_every_attribute_through(self) -> None:
+        field = mf._f("thread_id", _STRING, "Gmail thread the message belongs to", "18c9f0a1")
+        assert field.name == "thread_id"
+        assert field.type is _STRING
+        assert field.description == "Gmail thread the message belongs to"
+        assert field.example == "18c9f0a1"
+
+    def test_google_doc_factory_builds_the_full_field_set(self) -> None:
+        entry = mf._google_doc(_DummyPayload, "Id of the sentinel document")
+
+        assert [(f.name, f.type, f.description, f.example) for f in entry.fields] == [
+            ("document.id", _STRING, "Id of the sentinel document", "1AbCdEfGhIjKlMnOpQ"),
+            ("document.name", _STRING, "Document title", "Q3 Planning"),
+            (
+                "document.mimeType",
+                _STRING,
+                "MIME type of the document",
+                "application/vnd.google-apps.document",
+            ),
+            ("document.createdTime", _STRING, "Creation time, ISO 8601", "2026-08-27T10:15:00Z"),
+            (
+                "document.modifiedTime",
+                _STRING,
+                "Last modification time, ISO 8601",
+                "2026-08-27T11:02:00Z",
+            ),
+            ("event_type", _STRING, "Type of document event", "document.updated"),
+        ]
+        assert dict(entry.excluded) == {
+            "document.owners": mf._OBJECT_LIST,
+            "document.lastModifyingUser": mf._NESTED_BLOB,
+        }
+
+    def test_notion_factory_builds_the_full_field_set(self) -> None:
+        entry = mf._notion(_DummyPayload, "Id of the sentinel page")
+
+        assert [(f.name, f.type, f.description, f.example) for f in entry.fields] == [
+            ("page_id", _STRING, "Id of the sentinel page", "1f2e3d4c5b6a7890"),
+            ("event_id", _STRING, "Unique id of this webhook event", "evt_01H8X"),
+            ("event_type", _STRING, "Notion webhook event type", "page.created"),
+            ("timestamp", _STRING, "ISO 8601 event timestamp", "2026-08-27T10:15:00Z"),
+            ("workspace_id", _STRING, "Workspace the event came from", "ws_9f8e7d"),
+            ("workspace_name", _STRING, "Workspace name", "Acme HQ"),
+        ]
+        assert dict(entry.excluded) == {"data": mf._NESTED_BLOB, "authors": mf._OBJECT_LIST}
+
+    def test_linear_factory_builds_the_full_field_set(self) -> None:
+        entry = mf._linear(_DummyPayload, "create")
+
+        assert [(f.name, f.type, f.description, f.example) for f in entry.fields] == [
+            ("action", _STRING, "What happened to the resource", "create"),
+            ("type", _STRING, "Linear resource type", "Issue"),
+            (
+                "url",
+                _STRING,
+                "Link to the resource in Linear",
+                "https://linear.app/x/issue/ENG-1",
+            ),
+        ]
+        assert dict(entry.excluded) == {"data": mf._NESTED_BLOB}

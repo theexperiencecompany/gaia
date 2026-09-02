@@ -10,9 +10,14 @@ import pytest
 from app.models.trigger_subscription_models import (
     ConditionMatch,
     ConditionOperator,
+    MatchableFieldType,
     SubscriptionCondition,
 )
-from app.services.triggers.condition_matching import conditions_match, resolve_payload_value
+from app.services.triggers.condition_matching import (
+    conditions_match,
+    evaluate_condition,
+    resolve_payload_value,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -109,6 +114,15 @@ class TestNumericConditions:
             is False
         )
 
+    def test_less_than_is_strict_at_the_boundary(self) -> None:
+        # actual == expected must NOT satisfy LESS_THAN (a `<=` here fires the
+        # subscription on the exact boundary value it was meant to exclude).
+        payload = {"row_number": 42}
+        assert (
+            conditions_match(SHEETS, [_c("row_number", ConditionOperator.LESS_THAN, 42)], payload)
+            is False
+        )
+
 
 class TestListConditions:
     def test_contains_is_membership_not_substring(self) -> None:
@@ -131,6 +145,15 @@ class TestListConditions:
         payload = {"label_ids": "INBOX"}
         assert (
             conditions_match(GMAIL, [_c("label_ids", ConditionOperator.CONTAINS, "INBOX")], payload)
+            is False
+        )
+
+    def test_a_non_membership_operator_never_matches_a_list(self) -> None:
+        # Only CONTAINS / NOT_CONTAINS have meaning on a list; anything else
+        # (here EQUALS) must fall through to no-match, not accidentally fire.
+        payload = {"label_ids": ["INBOX"]}
+        assert (
+            conditions_match(GMAIL, [_c("label_ids", ConditionOperator.EQUALS, "INBOX")], payload)
             is False
         )
 
@@ -229,3 +252,23 @@ class TestAnyMatch:
             )
             is False
         )
+
+
+class TestComparatorFallthrough:
+    """An operator no comparator branch handles must return exactly ``False`` —
+    never ``None`` or ``True``.
+
+    A ``None`` collapses to falsy in the AND/OR chain, so ``conditions_match``
+    alone cannot tell it apart from a real no-match; asserting on
+    ``evaluate_condition`` directly is what pins the wildcard default. A ``True``
+    default would fire a subscription on an operator that was never meant to
+    apply to the field's type.
+    """
+
+    def test_a_string_field_with_a_numeric_operator_is_exactly_false(self) -> None:
+        cond = _c("subject", ConditionOperator.GREATER_THAN, "x")
+        assert evaluate_condition(cond, {"subject": "hello"}, MatchableFieldType.STRING) is False
+
+    def test_a_numeric_field_with_a_membership_operator_is_exactly_false(self) -> None:
+        cond = _c("row_number", ConditionOperator.CONTAINS, 42)
+        assert evaluate_condition(cond, {"row_number": 42}, MatchableFieldType.INTEGER) is False

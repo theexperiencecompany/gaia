@@ -321,6 +321,22 @@ class TestSubscriptions:
     """A todo subscription on a dead integration is as broken as a workflow, and
     less visible — nothing about the todo shows the watch has stopped working."""
 
+    @staticmethod
+    def _lookup_only(expected_id: str, slug: str):
+        """``get_integration_by_id`` that answers from its argument: the
+        trigger-bearing integration only for ``expected_id``, ``None`` for
+        anything else. A lookup keyed on the wrong id (or a nulled one) resolves
+        no triggers, so the subscription call changes instead of going unnoticed."""
+
+        def _get(integration_id: str) -> MagicMock | None:
+            if integration_id != expected_id:
+                return None
+            return MagicMock(
+                associated_triggers=[MagicMock(workflow_trigger_schema=MagicMock(slug=slug))]
+            )
+
+        return _get
+
     async def test_expiry_pauses_the_integrations_todo_subscriptions(
         self, subscription_side
     ) -> None:
@@ -328,14 +344,12 @@ class TestSubscriptions:
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.compute_required_integrations", return_value=set()),
             patch(f"{MODULE}.WorkflowService"),
-            patch(f"{MODULE}.get_integration_by_id") as get_integration,
+            patch(
+                f"{MODULE}.get_integration_by_id",
+                side_effect=self._lookup_only("gmail", "gmail_new_message"),
+            ),
         ):
             repo.find_activated_for_user = AsyncMock(return_value=[])
-            get_integration.return_value = MagicMock(
-                associated_triggers=[
-                    MagicMock(workflow_trigger_schema=MagicMock(slug="gmail_new_message"))
-                ]
-            )
 
             await pause_workflows_for_expired_integration(USER_ID, "gmail")
 
@@ -348,14 +362,12 @@ class TestSubscriptions:
             patch(f"{MODULE}.workflow_repository") as repo,
             patch(f"{MODULE}.compute_required_integrations", return_value=set()),
             patch(f"{MODULE}.WorkflowService"),
-            patch(f"{MODULE}.get_integration_by_id") as get_integration,
+            patch(
+                f"{MODULE}.get_integration_by_id",
+                side_effect=self._lookup_only("gmail", "gmail_new_message"),
+            ),
         ):
             repo.find_paused_for_reason = AsyncMock(return_value=[])
-            get_integration.return_value = MagicMock(
-                associated_triggers=[
-                    MagicMock(workflow_trigger_schema=MagicMock(slug="gmail_new_message"))
-                ]
-            )
 
             await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
 

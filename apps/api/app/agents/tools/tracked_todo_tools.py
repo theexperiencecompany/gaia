@@ -936,7 +936,10 @@ async def subscribe_todo_to_trigger(
         "How the conditions combine: 'all' (every condition must hold, the "
         "default) or 'any' (fire if any one holds). For an OR of several ANDs, "
         "make several 'all' subscriptions instead.",
-    ] = "all",
+        # _parse_match lowercases before ConditionMatch(), so the default's CASE
+        # is unobservable ("ALL" behaves identically to "all") — mutating it is a
+        # provably-equivalent mutant with no possible killing test.
+    ] = "all",  # pragma: no mutate
     cooldown_seconds: Annotated[
         int, "Minimum gap between two fires of this subscription."
     ] = DEFAULT_COOLDOWN_SECONDS,
