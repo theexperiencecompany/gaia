@@ -501,13 +501,13 @@ class TestGetPlans:
 class TestCreateSubscription:
     """Tests for DodoPaymentService.create_subscription."""
 
+    @pytest.mark.usefixtures("mock_redis_cache")
     async def test_success_returns_payment_link(
         self,
         payment_service,
         mock_users_collection,
         mock_subscription_repository,
         mock_plan_repository,
-        mock_redis_cache,
         mock_dodo_client,
         mock_checkout_session_repository,
     ):
@@ -541,13 +541,13 @@ class TestCreateSubscription:
         assert recorded.created_at is not None
         assert recorded.created_at.tzinfo is not None
 
+    @pytest.mark.usefixtures("mock_redis_cache")
     async def test_checkout_record_failure_does_not_block_checkout(
         self,
         payment_service,
         mock_users_collection,
         mock_subscription_repository,
         mock_plan_repository,
-        mock_redis_cache,
         mock_dodo_client,
         mock_checkout_session_repository,
     ):
@@ -866,11 +866,30 @@ class TestVerifyPaymentCompletion:
         with patch("app.services.payments.payment_service.track_subscription_event") as mock_fn:
             yield mock_fn
 
+    @pytest.fixture
+    def materialize_mocks(
+        self,
+        mock_subscription_repository,
+        mock_checkout_session_repository,
+        mock_dodo_client,
+        mock_users_collection,
+        mock_send_email,
+        mock_track_activation,
+    ):
+        """Every seam the Dodo materialization path touches, as one bundle."""
+        return SimpleNamespace(
+            subscriptions=mock_subscription_repository,
+            checkouts=mock_checkout_session_repository,
+            dodo=mock_dodo_client,
+            users=mock_users_collection,
+            send_email=mock_send_email,
+            track_activation=mock_track_activation,
+        )
+
     @staticmethod
     def _dodo_subscription(
         user_id: str | None = FAKE_USER_ID,
         status: str = "active",
-        recurring_pre_tax_amount: int = 30000,
     ) -> SimpleNamespace:
         """A Dodo SDK subscription object for the materialization path.
 
@@ -885,7 +904,7 @@ class TestVerifyPaymentCompletion:
             status=status,
             quantity=1,
             currency="USD",
-            recurring_pre_tax_amount=recurring_pre_tax_amount,
+            recurring_pre_tax_amount=30000,
             payment_frequency_count=1,
             payment_frequency_interval="Year",
             subscription_period_count=1,
@@ -920,14 +939,13 @@ class TestVerifyPaymentCompletion:
         payment_status: str | None = "succeeded",
         subscription_id: str | None = "sub_from_checkout",
         subscription_status: str = "active",
-        recurring_pre_tax_amount: int = 30000,
     ) -> SimpleNamespace:
         """checkout_sessions.retrieve -> payments.retrieve -> subscriptions.retrieve,
         each answering only the id the previous hop produced."""
         checkout_status = SimpleNamespace(payment_id=payment_id, payment_status=payment_status)
         payment = SimpleNamespace(subscription_id=subscription_id)
         subscription = TestVerifyPaymentCompletion._dodo_subscription(
-            user_id, status=subscription_status, recurring_pre_tax_amount=recurring_pre_tax_amount
+            user_id, status=subscription_status
         )
         mock_dodo_client.checkout_sessions = SimpleNamespace(
             retrieve=TestVerifyPaymentCompletion._exact_retrieve("ches_123", checkout_status)
@@ -968,37 +986,32 @@ class TestVerifyPaymentCompletion:
     async def test_materializes_subscription_from_dodo_when_webhook_not_landed(
         self,
         payment_service,
-        mock_subscription_repository,
-        mock_checkout_session_repository,
-        mock_dodo_client,
-        mock_users_collection,
-        mock_send_email,
-        mock_track_activation,
+        materialize_mocks,
     ):
         """The webhook-vs-redirect race: no local row yet, but Dodo reports the
         checkout as paid+active — materialize it and return completed."""
-        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
-        mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
-        mock_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_latest_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_by_dodo_id = AsyncMock(return_value=None)
         created = SubscriptionDocument.model_validate(
             {**SAMPLE_SUBSCRIPTION_DOC, "dodo_subscription_id": "sub_from_checkout"}
         )
-        mock_subscription_repository.create = AsyncMock(return_value=created)
-        mock_checkout_session_repository.get_latest_for_user = AsyncMock(
+        materialize_mocks.subscriptions.create = AsyncMock(return_value=created)
+        materialize_mocks.checkouts.get_latest_for_user = AsyncMock(
             return_value=self._pending_checkout()
         )
-        self._wire_dodo_checkout_chain(mock_dodo_client, FAKE_USER_ID)
-        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        self._wire_dodo_checkout_chain(materialize_mocks.dodo, FAKE_USER_ID)
+        _set_user(materialize_mocks.users, SAMPLE_USER_DOC)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
         assert result.payment_completed is True
         assert result.subscription_id == "sub_from_checkout"
-        mock_checkout_session_repository.get_latest_for_user.assert_awaited_once_with(FAKE_USER_ID)
-        mock_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_from_checkout")
+        materialize_mocks.checkouts.get_latest_for_user.assert_awaited_once_with(FAKE_USER_ID)
+        materialize_mocks.subscriptions.get_by_dodo_id.assert_awaited_once_with("sub_from_checkout")
         # The materialized row must carry the Dodo subscription verbatim — a
         # drifted field here prints a wrong receipt.
-        doc = mock_subscription_repository.create.call_args.args[0]
+        doc = materialize_mocks.subscriptions.create.call_args.args[0]
         assert doc.dodo_subscription_id == "sub_from_checkout"
         assert doc.user_id == FAKE_USER_ID
         assert doc.product_id == "prod_abc123"
@@ -1016,7 +1029,7 @@ class TestVerifyPaymentCompletion:
         assert doc.created_at is not None
         assert doc.created_at.tzinfo is not None
         assert doc.updated_at == doc.created_at
-        mock_track_activation.assert_called_once_with(
+        materialize_mocks.track_activation.assert_called_once_with(
             user_id=FAKE_USER_ID,
             event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
             subscription_id="sub_from_checkout",
@@ -1024,37 +1037,32 @@ class TestVerifyPaymentCompletion:
             amount=300.0,
             currency="USD",
         )
-        mock_send_email.assert_awaited_once()
+        materialize_mocks.send_email.assert_awaited_once()
 
     async def test_materialization_is_idempotent_with_webhook_row(
         self,
         payment_service,
-        mock_subscription_repository,
-        mock_checkout_session_repository,
-        mock_dodo_client,
-        mock_users_collection,
-        mock_send_email,
-        mock_track_activation,
+        materialize_mocks,
     ):
         """If the webhook landed while we were asking Dodo, its row wins and
         nothing new is created."""
-        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
-        mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_latest_active_for_user = AsyncMock(return_value=None)
         existing = SubscriptionDocument.model_validate(SAMPLE_SUBSCRIPTION_DOC)
-        mock_subscription_repository.get_by_dodo_id = AsyncMock(return_value=existing)
-        mock_subscription_repository.create = AsyncMock()
-        mock_checkout_session_repository.get_latest_for_user = AsyncMock(
+        materialize_mocks.subscriptions.get_by_dodo_id = AsyncMock(return_value=existing)
+        materialize_mocks.subscriptions.create = AsyncMock()
+        materialize_mocks.checkouts.get_latest_for_user = AsyncMock(
             return_value=self._pending_checkout()
         )
-        self._wire_dodo_checkout_chain(mock_dodo_client, FAKE_USER_ID)
-        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        self._wire_dodo_checkout_chain(materialize_mocks.dodo, FAKE_USER_ID)
+        _set_user(materialize_mocks.users, SAMPLE_USER_DOC)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
         assert result.payment_completed is True
-        mock_subscription_repository.get_by_dodo_id.assert_awaited_once_with("sub_from_checkout")
-        mock_subscription_repository.create.assert_not_called()
-        mock_track_activation.assert_not_called()
+        materialize_mocks.subscriptions.get_by_dodo_id.assert_awaited_once_with("sub_from_checkout")
+        materialize_mocks.subscriptions.create.assert_not_called()
+        materialize_mocks.track_activation.assert_not_called()
 
     async def test_no_pending_checkout_returns_not_completed(
         self,
@@ -1166,32 +1174,27 @@ class TestVerifyPaymentCompletion:
     async def test_materializes_when_metadata_has_no_user_id(
         self,
         payment_service,
-        mock_subscription_repository,
-        mock_checkout_session_repository,
-        mock_dodo_client,
-        mock_users_collection,
-        mock_send_email,
-        mock_track_activation,
+        materialize_mocks,
     ):
         """Metadata without a user id is not a mismatch — our own checkout
         record already binds the session to this user."""
-        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
-        mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
-        mock_subscription_repository.get_by_dodo_id = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_latest_active_for_user = AsyncMock(return_value=None)
+        materialize_mocks.subscriptions.get_by_dodo_id = AsyncMock(return_value=None)
         created = SubscriptionDocument.model_validate(
             {**SAMPLE_SUBSCRIPTION_DOC, "dodo_subscription_id": "sub_from_checkout"}
         )
-        mock_subscription_repository.create = AsyncMock(return_value=created)
-        mock_checkout_session_repository.get_latest_for_user = AsyncMock(
+        materialize_mocks.subscriptions.create = AsyncMock(return_value=created)
+        materialize_mocks.checkouts.get_latest_for_user = AsyncMock(
             return_value=self._pending_checkout()
         )
-        self._wire_dodo_checkout_chain(mock_dodo_client, None)
-        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        self._wire_dodo_checkout_chain(materialize_mocks.dodo, None)
+        _set_user(materialize_mocks.users, SAMPLE_USER_DOC)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
         assert result.payment_completed is True
-        assert mock_subscription_repository.create.call_args.args[0].user_id == FAKE_USER_ID
+        assert materialize_mocks.subscriptions.create.call_args.args[0].user_id == FAKE_USER_ID
 
     async def test_ignores_subscription_owned_by_other_user(
         self,

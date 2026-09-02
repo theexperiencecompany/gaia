@@ -4,7 +4,7 @@ import { Spinner } from "@heroui/spinner";
 import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
 import type {
   ReceiptFeedMotion,
   ReceiptPrinterHeaderProps,
@@ -107,12 +107,15 @@ function ReceiptPrinterRoot({
   ...props
 }: ReceiptPrinterRootProps) {
   const shouldReduceMotion = useReducedMotion();
-  const context = {
-    animate,
-    feedMotion,
-    shouldMove: animate && !shouldReduceMotion,
-    stage,
-  };
+  const context = useMemo(
+    () => ({
+      animate,
+      feedMotion,
+      shouldMove: animate && !shouldReduceMotion,
+      stage,
+    }),
+    [animate, feedMotion, shouldReduceMotion, stage],
+  );
 
   return (
     <ReceiptPrinterContext.Provider value={context}>
@@ -360,7 +363,10 @@ function ReceiptPrinterOutput({
   );
 }
 
-export const ReceiptPrinter = {
+// Object.assign keeps the export a real component (the Root) while hanging
+// the composable parts off it — `<ReceiptPrinter.Root>` and friends read the
+// same at every call site.
+export const ReceiptPrinter = Object.assign(ReceiptPrinterRoot, {
   Header: ReceiptPrinterHeader,
   Machine: ReceiptPrinterMachine,
   Output: ReceiptPrinterOutput,
@@ -368,4 +374,4 @@ export const ReceiptPrinter = {
   Root: ReceiptPrinterRoot,
   Screen: ReceiptPrinterScreen,
   Status: ReceiptPrinterStatus,
-};
+});
