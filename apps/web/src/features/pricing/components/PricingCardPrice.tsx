@@ -12,6 +12,13 @@ interface PricingCardPriceProps {
   offer: PriceDisplay | null;
 }
 
+/**
+ * NumberFlow pads its line box to 1.5em for the digit-roll mask, so the row is
+ * pinned to that height and a plain-text headline (Enterprise's "Custom")
+ * lands on the same baseline.
+ */
+export const PRICE_HEADLINE_ROW_CLASS = "flex min-h-18 items-baseline gap-2";
+
 /** Headline price, billing sub-line and the annual savings chip. */
 export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
   const { perMonthDollars, yearlyTotalDollars, priceSubLine, showSavings } =
@@ -20,7 +27,7 @@ export function PricingCardPrice({ list, offer }: PricingCardPriceProps) {
 
   return (
     <div className="px-6 pb-5">
-      <div className="flex items-baseline gap-2">
+      <div className={PRICE_HEADLINE_ROW_CLASS}>
         {offerPerMonthDollars !== null && (
           <span className="text-2xl font-normal text-zinc-500 line-through">
             ${perMonthDollars.toLocaleString()}

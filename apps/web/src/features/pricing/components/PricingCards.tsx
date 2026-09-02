@@ -11,8 +11,8 @@ import {
 } from "../hooks/usePricing";
 import { getPlanViewerState } from "../types";
 import { convertToUSDCents } from "../utils/currencyConverter";
-import { isProPlan } from "../utils/planPredicates";
-import { EnterpriseBar } from "./EnterpriseBar";
+import { isEnterprisePlan, isProPlan } from "../utils/planPredicates";
+import { EnterpriseCard } from "./EnterpriseCard";
 import { PricingCard } from "./PricingCard";
 
 const ENTERPRISE_CONTACT_TEMPLATE = `Hey GAIA team,
@@ -40,15 +40,12 @@ const ENTERPRISE_CONTACT_HREF =
   "&description=" +
   encodeURIComponent(ENTERPRISE_CONTACT_TEMPLATE);
 
-// Enterprise is shown as a full-width bar below the grid, never as a priced card.
-const isEnterprise = (plan: Plan) =>
-  plan.name.toLowerCase().includes("enterprise");
-
 interface PricingCardsProps {
   durationIsMonth?: boolean;
   initialPlans?: Plan[];
-  /** Hide the Enterprise bar: the landing section and the upgrade modal both
-   * sell the priced tiers, and Enterprise lives on the pricing page. */
+  /** Hide the Enterprise card: the upgrade modal and the onboarding payment
+   * stage sell the one plan the viewer can buy right now, with nothing else
+   * competing for the decision. */
   hideEnterprise?: boolean;
 }
 
@@ -110,14 +107,16 @@ export function PricingCards({
     );
   }
 
-  // Enterprise is shown as a full-width bar below the grid, not as a card.
-  const enterprisePlan = hideEnterprise ? undefined : plans.find(isEnterprise);
+  // Enterprise sits in the grid as a card of its own, beside the priced tiers.
+  const enterprisePlan = hideEnterprise
+    ? undefined
+    : plans.find(isEnterprisePlan);
 
   // Priced tiers in the grid for the chosen billing period. GAIA is paid-only,
   // so any $0 row is filtered out client-side as a safety net even if one
   // slips through from the backend.
   const cardPlans = plans.filter((plan: Plan) => {
-    if (isEnterprise(plan)) return false;
+    if (isEnterprisePlan(plan)) return false;
     if (plan.amount === 0) return false;
     if (durationIsMonth) return plan.duration === "monthly";
     return plan.duration === "yearly";
@@ -128,11 +127,11 @@ export function PricingCards({
     (a: Plan, b: Plan) => a.amount - b.amount,
   );
 
-  // Size the whole block (cards + Enterprise bar) so each tier keeps the width
-  // it would have in a 3-column layout: a 2-tier lineup uses a 2-column grid in
-  // a ~2xl block, a 3-tier lineup the full 5xl. The Enterprise bar is w-full, so
-  // it always spans the exact width of the cards above it.
-  const tierCount = sortedPlans.length;
+  // Size the block so each tier keeps the width it would have in a 3-column
+  // layout: a 2-tier lineup uses a 2-column grid in a ~2xl block, a 3-tier
+  // lineup the full 5xl. Enterprise is a tier in that count — it is a card in
+  // the same grid, equal height, stacking under Pro on mobile.
+  const tierCount = sortedPlans.length + (enterprisePlan ? 1 : 0);
   let blockWidthClass = "max-w-sm";
   let gridColsClass = "sm:grid-cols-1";
   if (tierCount >= 3) {
@@ -144,7 +143,7 @@ export function PricingCards({
   }
 
   return (
-    <div className={`mx-auto flex w-full flex-col gap-3 ${blockWidthClass}`}>
+    <div className={`mx-auto w-full ${blockWidthClass}`}>
       <div className={`grid grid-cols-1 items-stretch gap-3 ${gridColsClass}`}>
         {sortedPlans.map((plan: Plan, index: number) => {
           const isPro = isProPlan(plan);
@@ -211,14 +210,14 @@ export function PricingCards({
             />
           );
         })}
-      </div>
 
-      {enterprisePlan && !hideEnterprise && (
-        <EnterpriseBar
-          plan={enterprisePlan}
-          ctaHref={ENTERPRISE_CONTACT_HREF}
-        />
-      )}
+        {enterprisePlan && (
+          <EnterpriseCard
+            plan={enterprisePlan}
+            ctaHref={ENTERPRISE_CONTACT_HREF}
+          />
+        )}
+      </div>
     </div>
   );
 }

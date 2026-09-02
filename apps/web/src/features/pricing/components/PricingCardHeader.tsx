@@ -38,7 +38,7 @@ export function PricingCardHeader({
       </div>
 
       {/* Description — always reserve two lines to keep cards aligned */}
-      <p className="line-clamp-2 min-h-10 text-sm font-light leading-relaxed text-zinc-400">
+      <p className="line-clamp-2 min-h-[2lh] text-sm font-light leading-relaxed text-zinc-400">
         {description ?? "\u00A0"}
       </p>
     </div>

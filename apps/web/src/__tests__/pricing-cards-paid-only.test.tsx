@@ -54,6 +54,19 @@ const PRO_PLAN: Plan = {
   updated_at: "",
 };
 
+const ENTERPRISE_PLAN: Plan = {
+  id: "plan_enterprise",
+  dodo_product_id: "",
+  name: "Enterprise",
+  amount: 0,
+  currency: "USD",
+  duration: "monthly",
+  features: ["Everything in Pro", "SSO, SCIM & audit logs"],
+  is_active: true,
+  created_at: "",
+  updated_at: "",
+};
+
 let mockPlans: Plan[] = [];
 
 vi.mock("@/features/pricing/hooks/usePricing", () => ({
@@ -107,6 +120,25 @@ describe("PricingCards paid-only rendering", () => {
 
     expect(screen.getByText("Pro")).not.toBeNull();
     expect(screen.queryByText("Free")).toBeNull();
+  });
+
+  it("renders Enterprise as a card beside Pro, with its contact CTA", () => {
+    mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
+    render(<PricingCards durationIsMonth />);
+
+    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.getByText("Enterprise")).not.toBeNull();
+    expect(screen.getByText("Talk to the team")).not.toBeNull();
+    expect(screen.getByText("SSO, SCIM & audit logs")).not.toBeNull();
+  });
+
+  it("hides Enterprise where only the buyable plan belongs", () => {
+    mockPlans = [PRO_PLAN, ENTERPRISE_PLAN];
+    render(<PricingCards durationIsMonth hideEnterprise />);
+
+    expect(screen.getByText("Pro")).not.toBeNull();
+    expect(screen.queryByText("Enterprise")).toBeNull();
+    expect(screen.queryByText("Talk to the team")).toBeNull();
   });
 });
 

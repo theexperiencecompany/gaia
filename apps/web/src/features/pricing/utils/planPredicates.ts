@@ -1,6 +1,12 @@
 import type { Plan } from "../api/pricingApi";
 
 const PRO_PLAN_NAME = "pro";
+const ENTERPRISE_PLAN_NAME = "enterprise";
+
+/** Whether a `Plan` row is the contact-sales tier — quoted, never checked out. */
+export function isEnterprisePlan(plan: Plan): boolean {
+  return plan.name.toLowerCase().includes(ENTERPRISE_PLAN_NAME);
+}
 
 /**
  * Whether a `Plan` row is GAIA's paid (Pro) tier. `PlanResponse` on the
@@ -19,5 +25,5 @@ const PRO_PLAN_NAME = "pro";
 export function isProPlan(plan: Plan): boolean {
   const name = plan.name.trim().toLowerCase();
   if (name === PRO_PLAN_NAME) return true;
-  return plan.amount > 0 && !name.includes("enterprise");
+  return plan.amount > 0 && !isEnterprisePlan(plan);
 }

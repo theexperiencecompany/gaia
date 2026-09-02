@@ -80,15 +80,15 @@ Outcome = Literal["created", "updated", "unchanged"]
 def build_plan_catalogue(monthly_product_id: str, yearly_product_id: str) -> list[PlanDocument]:
     """The subscription plans GAIA offers, as they should exist in the database."""
     now = datetime.now(UTC)
-    # Ordered to line up row-for-row with the Free card's list below, so each
-    # upgrade sits on the same line as the limit it replaces.
+    # GAIA is paid-only: these read as what Pro includes, never as a step up
+    # from a free tier. Re-run this script after editing so the live rows match.
     pro_features = [
-        "Chat on iMessage",
-        "More powerful models",
-        "Much higher usage limits",
-        "Unlimited memories",
+        "Chat on iMessage, WhatsApp and Telegram",
+        "The strongest models",
+        "Unlimited daily chat",
+        "Workflows that run without you",
+        "Unlimited memory",
         "Priority support",
-        "Long running tasks",
         "Early access to new features",
     ]
 

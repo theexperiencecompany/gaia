@@ -65,6 +65,13 @@ export const REFUND_WINDOW_COPY = "Cancel within 7 days.";
  */
 export const TAX_NOTE_COPY = "Local taxes may apply.";
 
+/** Enterprise is quoted, not sold self-serve: the card carries a contact CTA
+ * where Pro carries checkout, with a sub-line in each slot Pro fills so the
+ * two cards stay level. */
+export const ENTERPRISE_PRICE_SUB_LINE = "Priced around your team";
+export const ENTERPRISE_CTA_COPY = "Talk to the team";
+export const ENTERPRISE_CTA_NOTE = "Volume pricing and invoicing.";
+
 /**
  * The words every paid-only surface uses for a non-subscriber. Two audiences
  * hit the same wall for different reasons: someone whose subscription ran out
