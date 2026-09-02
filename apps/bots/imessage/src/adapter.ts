@@ -677,7 +677,10 @@ export class ImessageAdapter extends BaseBotAdapter {
   protected async deliverOutbound(
     destinationId: string,
     text: string,
+    _isChannel: boolean,
   ): Promise<void> {
+    // iMessage is DM-only here (group spaces are ignored inbound), so
+    // _isChannel is never set — destinationId is always a handle/space.
     const space = await this.im.space.create(destinationId);
     await space.send(text);
   }

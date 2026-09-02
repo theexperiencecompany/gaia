@@ -862,3 +862,63 @@ describe("SlackAdapter - dispatchCommand unknown command", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// deliverOutbound — channel vs DM routing (backend-originated proactive sends)
+// ---------------------------------------------------------------------------
+
+describe("SlackAdapter - deliverOutbound channel routing", () => {
+  type Deliverer = {
+    deliverOutbound: (
+      destinationId: string,
+      text: string,
+      isChannel: boolean,
+    ) => Promise<void>;
+    app: unknown;
+  };
+
+  function makeApp() {
+    return {
+      client: {
+        chat: { postMessage: vi.fn().mockResolvedValue({ ts: "1.1" }) },
+        conversations: {
+          open: vi.fn().mockResolvedValue({ channel: { id: "D-dm" } }),
+        },
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("posts directly to the channel id and skips DM resolution when isChannel", async () => {
+    const adapter = new SlackAdapter() as unknown as Deliverer;
+    const app = makeApp();
+    adapter.app = app;
+
+    await adapter.deliverOutbound("C-group", "hi", true);
+
+    expect(app.client.conversations.open).not.toHaveBeenCalled();
+    expect(app.client.chat.postMessage).toHaveBeenCalledWith({
+      channel: "C-group",
+      text: "hi",
+    });
+  });
+
+  it("resolves the user's DM channel before posting when not a channel", async () => {
+    const adapter = new SlackAdapter() as unknown as Deliverer;
+    const app = makeApp();
+    adapter.app = app;
+
+    await adapter.deliverOutbound("U-user", "hi", false);
+
+    expect(app.client.conversations.open).toHaveBeenCalledWith({
+      users: "U-user",
+    });
+    expect(app.client.chat.postMessage).toHaveBeenCalledWith({
+      channel: "D-dm",
+      text: "hi",
+    });
+  });
+});

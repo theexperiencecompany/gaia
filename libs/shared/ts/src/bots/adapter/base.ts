@@ -266,7 +266,7 @@ export abstract class BaseBotAdapter {
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
-      (id, text) => this.deliverOutbound(id, text),
+      (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
       (id, attachment) => this.deliverOutboundFile(id, attachment),
     );
     void this._outboundConsumer.start();
@@ -321,10 +321,15 @@ export abstract class BaseBotAdapter {
    * platform. Called by the outbound RabbitMQ consumer for backend-originated
    * messages. The text has already been run through `renderForPlatform` — do
    * not convert it again; just hand it to the platform SDK.
+   *
+   * `isChannel` is true when `destinationId` is a channel/group id (send to the
+   * channel) and false when it is a user id (open/use the DM). Platforms that
+   * address a channel and a user identically (Telegram) may ignore it.
    */
   protected abstract deliverOutbound(
     destinationId: string,
     text: string,
+    isChannel: boolean,
   ): Promise<void>;
 
   /**
@@ -373,6 +378,7 @@ export abstract class BaseBotAdapter {
           `I generated *${attachment.filename}*, but it's too large to send on ${this.platform} (max ${Math.floor(limit / (1024 * 1024))} MB).`,
           this.platform,
         ),
+        false, // the file path only ever targets a DM
       );
       return null;
     }
@@ -404,6 +410,7 @@ export abstract class BaseBotAdapter {
     await this.deliverOutbound(
       destinationId,
       `I created *${attachment.filename}*, but I can't send files on ${this.platform} yet.`,
+      false, // the file path only ever targets a DM
     );
   }
 

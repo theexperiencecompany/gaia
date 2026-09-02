@@ -88,10 +88,29 @@ describe("OutboundConsumer message handling", () => {
     await deliverMessage(handle, msg);
 
     // renderForPlatform("whatsapp") converts CommonMark **hi** → WhatsApp *hi*.
+    // No is_channel on the envelope → a DM (false).
     expect(deliver).toHaveBeenCalledTimes(1);
-    expect(deliver).toHaveBeenCalledWith("1555", "*hi*");
+    expect(deliver).toHaveBeenCalledWith("1555", "*hi*", false);
     expect(channel.ack).toHaveBeenCalledWith(msg);
     expect(channel.nack).not.toHaveBeenCalled();
+  });
+
+  it("passes is_channel through to the deliverer for a channel send", async () => {
+    const deliver = vi.fn().mockResolvedValue(undefined);
+    const handle = await startAndCaptureHandler("discord", deliver);
+    const msg = msgFor({
+      id: "1",
+      platform: "discord",
+      destination_id: "chan-1",
+      is_channel: true,
+      text: "hi",
+      enqueued_at: "2026-01-01T00:00:00Z",
+    });
+
+    await deliverMessage(handle, msg);
+
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver).toHaveBeenCalledWith("chan-1", expect.any(String), true);
   });
 
   it("dead-letters unparseable JSON without delivering", async () => {

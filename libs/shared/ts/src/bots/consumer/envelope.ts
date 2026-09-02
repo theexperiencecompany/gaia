@@ -41,8 +41,16 @@ export const outboundMessageEnvelopeSchema = z
     id: z.string().min(1),
     /** Target platform — informational; each queue is already platform-specific. */
     platform: z.string().min(1),
-    /** Platform-native destination id (wa_id, Discord/Telegram/Slack user id). */
+    /**
+     * Platform-native destination id. A user DM target (wa_id, Discord/Telegram/
+     * Slack user id) by default; a channel/group id when `is_channel` is true.
+     */
     destination_id: z.string().min(1),
+    /**
+     * When true, `destination_id` is a channel/group id and the bot must send to
+     * the channel rather than opening the user's DM. Defaults false (DM).
+     */
+    is_channel: z.boolean().default(false),
     /** Raw CommonMark message body. Optional when an attachment is present. */
     text: z.string().min(1).nullish(),
     /**
