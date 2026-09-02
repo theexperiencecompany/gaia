@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 import pytest
 
 from app.agents.tools.execute.schema_docs import render_tool_doc
-from app.constants.execute import SCHEMA_DOC_MAX_CHARS
+from app.constants.execute import RESPONSE_SCHEMA_MAX_CHARS, SCHEMA_DOC_MAX_CHARS
 
 
 class _Args(BaseModel):
@@ -57,6 +57,44 @@ class TestRenderToolDoc:
         assert "Returns:" in with_returns
         assert '"id"' in with_returns
 
+    def test_large_response_schema_degrades_to_top_levels_not_wholesale(self) -> None:
+        deep = {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        f"field_{i}": {
+                            "type": "object",
+                            "properties": {"leaf": {"type": "string", "description": "y" * 200}},
+                        }
+                        for i in range(50)
+                    },
+                }
+            },
+        }
+        doc = render_tool_doc(_tool(metadata={"output_parameters": deep}))
+        returns = doc.split("Returns:")[1]
+        assert '"data"' in returns  # the top-level shape survives
+        assert '"leaf"' not in returns  # deep detail is pruned, not injected
+        assert '"..."' in returns  # truncation is visible to the model, not silent
+        assert len(returns) <= RESPONSE_SCHEMA_MAX_CHARS + 200  # truncation-note allowance
+
+    def test_unprunable_response_schema_floors_at_field_names(self) -> None:
+        # Hundreds of top-level fields: no depth level fits, so the render
+        # floors at a names-only listing instead of dropping Returns entirely.
+        wide = {
+            "type": "object",
+            "properties": {
+                f"field_{i}": {"type": "string", "description": "x" * 80} for i in range(400)
+            },
+        }
+        doc = render_tool_doc(_tool(metadata={"output_parameters": wide}))
+        returns = doc.split("Returns:")[1]
+        assert '"fields"' in returns
+        assert '"field_0"' in returns
+        assert len(returns) <= RESPONSE_SCHEMA_MAX_CHARS + 200
+
     def test_huge_schema_is_capped(self) -> None:
         huge = {
             "type": "object",
@@ -68,3 +106,23 @@ class TestRenderToolDoc:
         tool.args_schema = huge
         doc = render_tool_doc(tool)
         assert len(doc) <= SCHEMA_DOC_MAX_CHARS + 50  # clip marker allowance
+
+    def test_huge_args_schema_never_starves_the_rest_of_the_doc(self) -> None:
+        # Real case: GOOGLECALENDAR_EVENTS_LIST's args schema alone exceeded the
+        # doc cap, clipping away Returns and the usage line mid-JSON.
+        deep_args = {
+            "type": "object",
+            "properties": {
+                f"arg_{i}": {
+                    "type": "object",
+                    "properties": {"nested": {"type": "string", "description": "z" * 200}},
+                }
+                for i in range(60)
+            },
+        }
+        tool = _tool(metadata={"output_parameters": {"properties": {"id": {"type": "string"}}}})
+        tool.args_schema = deep_args
+        doc = render_tool_doc(tool)
+        assert "Returns:" in doc and '"id"' in doc  # response shape survives
+        assert 'tool_name="GMAIL_FETCH_EMAILS"' in doc  # usage line survives
+        assert '"..."' in doc  # args pruned visibly, not clipped mid-JSON

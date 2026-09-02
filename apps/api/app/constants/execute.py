@@ -12,6 +12,15 @@ EXECUTE_TOOL_NAME = "execute"
 # tokens — cap the doc, never inject a huge schema wholesale.
 SCHEMA_DOC_MAX_CHARS = 6000
 
+# Each schema section has its own budget inside the doc cap: an oversized
+# schema degrades to shallower levels (nested detail collapses to a "..."
+# marker) instead of eating the whole doc or being clipped mid-JSON. Args gets
+# the larger share — the model must construct valid arguments from it; the
+# response shape only guides how the result is consumed. The budgets plus
+# description and boilerplate stay under SCHEMA_DOC_MAX_CHARS by construction.
+ARGS_SCHEMA_MAX_CHARS = 3000
+RESPONSE_SCHEMA_MAX_CHARS = 2000
+
 # Keys under which a tool's metadata may carry a provider-supplied response
 # schema. Rendered only when present — most tools do not document their output
 # shape, and the doc must not pretend otherwise.

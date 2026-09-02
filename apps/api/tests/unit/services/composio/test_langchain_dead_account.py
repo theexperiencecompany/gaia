@@ -19,7 +19,6 @@ from contextlib import contextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from composio.types import Tool
 import composio_client
 import httpx
 import pytest
@@ -28,6 +27,7 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.integrations.integration_expiry import ExpiryOptions
+from tests.factories import make_composio_tool
 
 MODULE = "app.services.composio.langchain_composio_service"
 CHECKER = "app.utils.integration_checker"
@@ -60,39 +60,6 @@ def _returns(result: dict[str, Any]) -> Any:
         return result
 
     return execute_tool
-
-
-def _composio_tool(slug: str = "GMAIL_FETCH_MESSAGES") -> Tool:
-    """The minimum Composio tool descriptor `wrap_tool` needs."""
-    return Tool(
-        slug=slug,
-        name=slug,
-        description="Fetch messages.",
-        # `title` is load-bearing: the wrapper builds a pydantic model class from
-        # each schema and uses it as the class name.
-        input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
-        output_parameters={
-            "type": "object",
-            "title": "GmailFetchMessagesResponse",
-            "properties": {},
-        },
-        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
-        tags=[],
-        scopes=[],
-        version="latest",
-        available_versions=["latest"],
-        # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
-        # siblings are not.
-        deprecated={
-            "available_versions": ["latest"],
-            "displayName": "Fetch messages",
-            "is_deprecated": False,
-            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
-            "version": "latest",
-        },
-        is_deprecated=False,
-        no_auth=False,
-    )
 
 
 def _action_func(provider: LangchainProvider, execute_tool: Any, toolkit: str = "GMAIL") -> Any:
@@ -412,7 +379,7 @@ class TestTheProviderCapturesItsLoop:
         provider = await asyncio.to_thread(LangchainProvider)
         assert provider._loop is None
 
-        provider.wrap_tool(_composio_tool(), _returns({"successful": True}))
+        provider.wrap_tool(make_composio_tool(), _returns({"successful": True}))
 
         assert provider._loop is asyncio.get_running_loop()
 
@@ -421,7 +388,7 @@ class TestTheProviderCapturesItsLoop:
         captured = provider._loop
 
         await asyncio.to_thread(
-            provider.wrap_tool, _composio_tool(), _returns({"successful": True})
+            provider.wrap_tool, make_composio_tool(), _returns({"successful": True})
         )
 
         assert provider._loop is captured

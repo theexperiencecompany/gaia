@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from composio.types import Tool
+
 
 def make_user(**overrides) -> dict:
     defaults = {
@@ -49,6 +51,39 @@ def make_state(**overrides) -> dict:
     }
     defaults.update(overrides)
     return defaults
+
+
+def make_composio_tool(
+    slug: str = "GMAIL_FETCH_MESSAGES",
+    output_parameters: dict | None = None,
+) -> Tool:
+    """The minimum Composio tool descriptor `wrap_tool` needs."""
+    return Tool(
+        slug=slug,
+        name=slug,
+        description="Fetch messages.",
+        # `title` is load-bearing: the wrapper builds a pydantic model class from
+        # each schema and uses it as the class name.
+        input_parameters={"type": "object", "title": "GmailFetchMessagesRequest", "properties": {}},
+        output_parameters=output_parameters
+        or {"type": "object", "title": "GmailFetchMessagesResponse", "properties": {}},
+        toolkit={"slug": "gmail", "name": "Gmail", "logo": ""},
+        tags=[],
+        scopes=[],
+        version="latest",
+        available_versions=["latest"],
+        # Mixed casing is the SDK's, not a typo: `displayName` is aliased while its
+        # siblings are not.
+        deprecated={
+            "available_versions": ["latest"],
+            "displayName": "Fetch messages",
+            "is_deprecated": False,
+            "toolkit": {"slug": "gmail", "name": "Gmail", "logo": ""},
+            "version": "latest",
+        },
+        is_deprecated=False,
+        no_auth=False,
+    )
 
 
 def make_tool_call(name: str, args: dict | None = None, call_id: str | None = None) -> dict:
