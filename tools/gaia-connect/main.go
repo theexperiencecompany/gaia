@@ -15,6 +15,13 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
+// Fixed viewport heights so a long list scrolls in place instead of
+// flooding the terminal — hundreds of sites is normal.
+const (
+	sessionListHeight = 15
+	browserListHeight = 8
+)
+
 type options struct {
 	api      string
 	token    string
@@ -152,7 +159,7 @@ func selectBrowser(browsers []Browser) (Browser, error) {
 	}
 	var choice string
 	form := huh.NewForm(huh.NewGroup(
-		huh.NewSelect[string]().Title("Which browser's logins?").Options(options...).Value(&choice),
+		huh.NewSelect[string]().Title("Which browser's logins?").Options(options...).Height(browserListHeight).Value(&choice),
 	)).WithAccessible(os.Getenv("ACCESSIBLE") != "")
 	if err := form.Run(); err != nil {
 		return Browser{}, err
@@ -170,7 +177,10 @@ func selectSites(sites []HostSummary) ([]string, error) {
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewMultiSelect[string]().
 			Title("Sync which logins? (all selected — type to search, space to toggle)").
-			Options(options...).Filterable(true).Value(&picked),
+			Options(options...).
+			Filterable(true).
+			Height(sessionListHeight).
+			Value(&picked),
 	)).WithAccessible(os.Getenv("ACCESSIBLE") != "")
 	if err := form.Run(); err != nil {
 		return nil, err
