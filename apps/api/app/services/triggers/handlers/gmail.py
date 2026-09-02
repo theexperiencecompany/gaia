@@ -35,10 +35,16 @@ class GmailTriggerHandler(TriggerHandler):
     def event_types(self) -> set[str]:
         return self.SUPPORTED_EVENTS
 
+    @property
+    def registers_instances(self) -> bool:
+        # Composio fires GMAIL_NEW_GMAIL_MESSAGE on the connected account, not on a
+        # per-owner instance — register() has no ids to return, and never has.
+        return False
+
     async def register(
         self,
         _user_id: str,
-        workflow_id: str,
+        owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -55,7 +61,7 @@ class GmailTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__}"
             )
 
-        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled for workflow", workflow_id=workflow_id)
+        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled", owner_id=owner_id)
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(

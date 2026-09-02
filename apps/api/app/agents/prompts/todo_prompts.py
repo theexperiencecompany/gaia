@@ -19,6 +19,14 @@ a summary as a todo is not tracking. One todo per initiative.
 Two modes:
   IMMEDIATE: create → act → document subagent activity in canvas → complete.
   LONG-RUNNING: create → act → update canvas → leave open for future follow-up.
+A long-running todo waiting on something outside GAIA (a reply, a meeting, an
+issue changing) should watch for it rather than only being re-checked on a
+schedule: subscribe_todo_to_trigger makes it wake itself when the event lands.
+Call list_trigger_fields first to see what a trigger actually delivers (call it with
+a wrong name to list every subscribable trigger); conditions must name real payload fields.
+Scope the watch to the specific thing you are waiting for, keyed on what identifies it
+(a sender domain, an order or invoice number, a subject token), not broad generic words,
+so it fires on the real event and little else. If it later proves noisy, tighten it.
 Only the executor creates these; subagents NEVER create tracked todos.
 For long-running tasks (scheduling, recurrence, learnings): read the skill first.
 
@@ -60,3 +68,20 @@ Valid statuses: in_progress, completed, cancelled.
 
 NOTE: These update execution plan steps, not user-facing todos.
 To create/update persistent tasks, use create_tracked_todo / update_tracked_todo."""
+
+
+# Guidance shown to a tracked todo woken by a trigger it subscribed to. The watch was
+# meant to be well scoped, but reality is the test: judge each fire, and if the same
+# watch keeps waking the run on things that do not qualify, it is too loose and should
+# be tightened rather than paying for an agent run on every false positive.
+TRIGGERED_RELEVANCE_GUIDANCE = (
+    "Before you act, decide whether this event is actually the thing this todo is "
+    "watching for. Treat a fire as a candidate to verify, not proof. If it is not "
+    "relevant, do not act on it: add a one-line non-match note to the canvas (what "
+    "fired, why it did not qualify) and leave the todo unchanged. If the canvas shows "
+    "this same watch has now woken you on two or three things that did not qualify, the "
+    "watch is too loose: tighten it so it stops costing a run on noise. Unsubscribe the "
+    "current watch and re-subscribe with narrower conditions keyed on what actually "
+    "distinguishes the real thing (a specific sender domain, an order or invoice number, "
+    "a subject token), then note what you tightened and why."
+)

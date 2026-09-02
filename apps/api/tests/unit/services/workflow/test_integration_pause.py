@@ -8,6 +8,8 @@ workflow's Composio trigger follows the workflow's state upstream.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models.workflow_models import DeactivationReason
 from app.services.workflow.integration_pause import (
     pause_workflows_for_expired_integration,
@@ -17,6 +19,17 @@ from app.services.workflow.integration_pause import (
 MODULE = "app.services.workflow.integration_pause"
 
 USER_ID = "507f1f77bcf86cd799439011"
+
+
+@pytest.fixture(autouse=True)
+def subscription_side():
+    """Todo subscriptions ride along on both halves; most tests only care about
+    workflows, so the calls are stubbed here and asserted in TestSubscriptions."""
+    with (
+        patch(f"{MODULE}.pause_subscriptions_for_trigger_names", new_callable=AsyncMock) as pause,
+        patch(f"{MODULE}.resync_subscriptions_for_trigger_names", new_callable=AsyncMock) as resync,
+    ):
+        yield MagicMock(pause=pause, resync=resync)
 
 
 def _workflow(workflow_id: str, title: str, *, activated: bool = True) -> MagicMock:
@@ -302,3 +315,73 @@ class TestScanUsesItsArguments:
             service.activate_workflow = AsyncMock()
 
             assert await resume_workflows_for_reconnected_integration(USER_ID, "gmail") == 2
+
+
+class TestSubscriptions:
+    """A todo subscription on a dead integration is as broken as a workflow, and
+    less visible — nothing about the todo shows the watch has stopped working."""
+
+    @staticmethod
+    def _lookup_only(expected_id: str, slug: str):
+        """``get_integration_by_id`` that answers from its argument: the
+        trigger-bearing integration only for ``expected_id``, ``None`` for
+        anything else. A lookup keyed on the wrong id (or a nulled one) resolves
+        no triggers, so the subscription call changes instead of going unnoticed."""
+
+        def _get(integration_id: str) -> MagicMock | None:
+            if integration_id != expected_id:
+                return None
+            return MagicMock(
+                associated_triggers=[MagicMock(workflow_trigger_schema=MagicMock(slug=slug))]
+            )
+
+        return _get
+
+    async def test_expiry_pauses_the_integrations_todo_subscriptions(
+        self, subscription_side
+    ) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
+            patch(f"{MODULE}.WorkflowService"),
+            patch(
+                f"{MODULE}.get_integration_by_id",
+                side_effect=self._lookup_only("gmail", "gmail_new_message"),
+            ),
+        ):
+            repo.find_activated_for_user = AsyncMock(return_value=[])
+
+            await pause_workflows_for_expired_integration(USER_ID, "gmail")
+
+        subscription_side.pause.assert_awaited_once_with(USER_ID, {"gmail_new_message"})
+
+    async def test_reconnect_resyncs_the_integrations_todo_subscriptions(
+        self, subscription_side
+    ) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
+            patch(f"{MODULE}.WorkflowService"),
+            patch(
+                f"{MODULE}.get_integration_by_id",
+                side_effect=self._lookup_only("gmail", "gmail_new_message"),
+            ),
+        ):
+            repo.find_paused_for_reason = AsyncMock(return_value=[])
+
+            await resume_workflows_for_reconnected_integration(USER_ID, "gmail")
+
+        subscription_side.resync.assert_awaited_once_with(USER_ID, {"gmail_new_message"})
+
+    async def test_an_unknown_integration_touches_no_subscriptions(self, subscription_side) -> None:
+        with (
+            patch(f"{MODULE}.workflow_repository") as repo,
+            patch(f"{MODULE}.compute_required_integrations", return_value=set()),
+            patch(f"{MODULE}.WorkflowService"),
+            patch(f"{MODULE}.get_integration_by_id", return_value=None),
+        ):
+            repo.find_activated_for_user = AsyncMock(return_value=[])
+
+            await pause_workflows_for_expired_integration(USER_ID, "nope")
+
+        subscription_side.pause.assert_awaited_once_with(USER_ID, set())

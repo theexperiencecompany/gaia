@@ -302,7 +302,7 @@ class TestResetSystemWorkflowToDefault:
 
         # The workflow id and user id must flow through to both trigger calls.
         assert mock_trigger_svc.register_triggers.await_args.kwargs["user_id"] == "user-1"
-        assert mock_trigger_svc.register_triggers.await_args.kwargs["workflow_id"] == "wf-1"
+        assert mock_trigger_svc.register_triggers.await_args.kwargs["owner_id"] == "wf-1"
         assert mock_trigger_svc.unregister_triggers.await_args.kwargs["user_id"] == "user-1"
         assert mock_trigger_svc.unregister_triggers.await_args.kwargs["workflow_id"] == "wf-1"
         assert mock_trigger_svc.unregister_triggers.await_args.kwargs["trigger_ids"] == ["old-t1"]
@@ -745,7 +745,7 @@ class TestReregisterIntegrationTriggers:
         assert result == ["new-t1"]
         mock_trigger_svc.register_triggers.assert_awaited_once_with(
             user_id="user-1",
-            workflow_id="wf-1",
+            owner_id="wf-1",
             trigger_name="gmail_new_email",
             trigger_config=cfg,
             raise_on_failure=False,

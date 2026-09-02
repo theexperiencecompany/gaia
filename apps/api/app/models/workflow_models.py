@@ -27,16 +27,23 @@ from shared.py.wide_events import log
 
 
 class TriggerType(str, Enum):
-    """Type of workflow trigger.
+    """What caused a run.
 
     - MANUAL: Triggered by user action
     - SCHEDULE: Triggered by cron schedule
     - INTEGRATION: Triggered by external service (calendar, email, github, etc.)
+    - SCHEDULED_TODO: A tracked todo firing on its own schedule
+    - TODO_TRIGGER: A tracked todo woken by an integration event it subscribed to
+
+    The last two were bare strings written at one site and read at another, which
+    is exactly the drift an enum exists to stop.
     """
 
     MANUAL = "manual"
     SCHEDULE = "schedule"
     INTEGRATION = "integration"
+    SCHEDULED_TODO = "scheduled_todo"
+    TODO_TRIGGER = "todo_trigger"
 
 
 class DeactivationReason(str, Enum):
