@@ -185,9 +185,10 @@
     The executor reads these instructions after the trigger has
     already fired and handed over its data, so they say only WHAT TO DO. Leave out when the run
     happens (cron, clock times, "every morning"), what started it ("when a new email arrives"), and
-    mechanics the executor handles itself (field extraction, storage format, retries, error logging).
-    A time window the work needs ("emails from the last 24 hours") stays; a statement of when the run
-    happens does not.
+    mechanics nobody asked for (field extraction, storage format, retries, error logging).
+    What the user did ask for is the deliverable, not a mechanic: keep the fields, columns and format
+    they named. A time window the work needs ("emails from the last 24 hours") stays too; a statement
+    of when the run happens does not.
     
       WRONG: "Every morning at 9am: 1. Fetch unread Gmail and summarize it"
       RIGHT: "1. Fetch unread Gmail and summarize it"
