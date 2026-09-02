@@ -65,7 +65,7 @@ from app.db.repositories.llm_calls import (
 from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
 from app.utils.background_tasks import spawn_background_task
-from shared.py.wide_events import log
+from shared.py.wide_events import current_workflow_execution_id, log
 
 # Exception types per :func:`classify_error_family`. Curated tuples rather than
 # message matching, and ordered most-specific-first at the call site.
@@ -194,10 +194,8 @@ def _ambient_worker_context() -> dict[str, str | None]:
     request, a test), which reads back as ``None`` rather than a fabricated id.
     """
     fields = log.get()
-    workflow = fields.get("workflow")
-    execution_id = workflow.get("execution_id") if isinstance(workflow, dict) else None
     return {
-        "workflow_execution_id": str(execution_id) if execution_id else None,
+        "workflow_execution_id": current_workflow_execution_id(),
         "job_id": str(fields["job_id"]) if fields.get("job_id") else None,
         "task_name": str(fields["task"]) if fields.get("task") else None,
     }

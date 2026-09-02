@@ -49,6 +49,14 @@ class ReminderModel(BaseScheduledTask):
     """Reminder document model for MongoDB (one-time or recurring)."""
 
     agent: AgentType = Field(..., description="Agent responsible for this reminder task")
+    source_conversation_id: str | None = Field(
+        default=None,
+        description=(
+            "The chat that created this reminder. When it fires, the reminder is "
+            "delivered back into this conversation (on its own surface) and recorded "
+            "in its langgraph thread. None for reminders created outside a chat."
+        ),
+    )
     timezone: str | None = Field(
         default=None,
         description=(
@@ -87,6 +95,9 @@ class CreateReminderRequest(BaseModel):
             "IANA name or ±HH:MM offset the schedule runs in (the recurrence "
             "wall-clock zone). None falls back to UTC."
         ),
+    )
+    source_conversation_id: str | None = Field(
+        None, description="The chat that created the reminder; delivery target when it fires."
     )
 
     @field_validator("timezone")
@@ -198,6 +209,9 @@ class CreateReminderToolRequest(BaseModel):
             "are interpreted in and the recurrence runs in. None falls back to UTC."
         ),
     )
+    source_conversation_id: str | None = Field(
+        None, description="The chat that created the reminder; delivery target when it fires."
+    )
 
     @field_validator("repeat")
     @classmethod
@@ -286,6 +300,7 @@ class CreateReminderToolRequest(BaseModel):
             max_occurrences=self.max_occurrences,
             stop_after=processed_stop_after,
             timezone=reminder_timezone,
+            source_conversation_id=self.source_conversation_id,
         )
 
 

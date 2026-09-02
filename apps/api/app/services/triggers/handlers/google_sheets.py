@@ -210,7 +210,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        _workflow_id: str,
+        _owner_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -228,7 +228,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 f"{LogTag.TRIGGER} Unknown Google Sheets trigger",
                 trigger_name=trigger_name,
                 user_id=user_id,
-                workflow_id=_workflow_id,
+                owner_id=_owner_id,
             )
             raise TriggerRegistrationError(
                 f"Unknown Google Sheets trigger: {trigger_name}",

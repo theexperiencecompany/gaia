@@ -283,3 +283,42 @@ class TestToolOutputOwnership:
     def test_ownership_for_missing_session_is_safe(self) -> None:
         note_tool_output_owner("missing", "tc_fetch", "row-1")  # must not raise
         assert claim_tool_output("missing", "tc_fetch", None) is True
+
+
+@pytest.mark.regression
+class TestExecutorRunCarriesWorkflowExecution:
+    """The execution id lives only on the workflow task's wide event, never in
+    ``configurable``; the run built inside that boundary has to pick it up or
+    every executor call it makes is unattributable to the run in the ledger."""
+
+    async def test_from_configurable_reads_the_execution_id_off_the_boundary(self) -> None:
+        from shared.py.wide_events import WorkflowContext, log, wide_task
+
+        async with wide_task("workflow_execution"):
+            log.set(workflow=WorkflowContext(id="wf-9", execution_id="exec-42"))
+            run = ExecutorRun.from_configurable(
+                {"workflow_id": "wf-9"},
+                identity=RunIdentity(
+                    stream_id="s1",
+                    conversation_id="conv-1",
+                    kind=RunKind.LIVE,
+                    task_id=None,
+                    user_message_id=None,
+                ),
+            )
+
+        assert run.workflow_execution_id == "exec-42"
+
+    def test_no_boundary_means_no_execution_id(self) -> None:
+        run = ExecutorRun.from_configurable(
+            {},
+            identity=RunIdentity(
+                stream_id="s1",
+                conversation_id="conv-1",
+                kind=RunKind.LIVE,
+                task_id=None,
+                user_message_id=None,
+            ),
+        )
+
+        assert run.workflow_execution_id is None

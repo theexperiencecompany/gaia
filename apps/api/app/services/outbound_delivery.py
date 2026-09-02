@@ -42,10 +42,17 @@ async def _resolve_destination(platform: ConversationSource, user_id: str) -> st
 
 
 async def _prepare(
-    platform: ConversationSource, user_id: str, log_label: str
+    platform: ConversationSource,
+    user_id: str,
+    log_label: str,
+    destination_override: str | None = None,
 ) -> tuple[str, str, RabbitMQPublisher] | OutboundResult:
     """Resolve the queue, destination, and publisher shared by every outbound
     publish.
+
+    ``destination_override`` sends to an explicit platform-native id (a group's
+    channel id) instead of resolving the user's DM from the platform link — used
+    to deliver a proactive message back into the group conversation it came from.
 
     Returns ``(queue_name, destination_id, publisher)`` on success, or the
     :class:`OutboundResult` to report when the message can't be enqueued
@@ -55,7 +62,7 @@ async def _prepare(
     if queue_name is None:
         return OutboundResult.SKIPPED
 
-    destination_id = await _resolve_destination(platform, user_id)
+    destination_id = destination_override or await _resolve_destination(platform, user_id)
     if not destination_id:
         log.warning(
             ": account not linked", log_label=log_label, user_id=user_id, platform=platform.value
@@ -74,10 +81,20 @@ async def _prepare(
 
 
 async def publish_outbound_message(
-    platform: ConversationSource, user_id: str, text_parts: list[str]
+    platform: ConversationSource,
+    user_id: str,
+    text_parts: list[str],
+    *,
+    destination_override: str | None = None,
+    is_channel: bool = False,
 ) -> OutboundResult:
     """Resolve ``user_id`` to its ``platform`` id and enqueue the ordered text
     parts as a SINGLE envelope.
+
+    ``destination_override`` + ``is_channel`` deliver to a specific channel/group
+    (the conversation the message came from) instead of the user's DM; the flag
+    tells the bot to address a channel rather than open a DM. Defaults keep the
+    DM behavior every existing caller relies on.
 
     The parts of one logical message (e.g. a workflow completion's header,
     result bubbles, and footer) are published together so the consumer delivers
@@ -98,7 +115,7 @@ async def publish_outbound_message(
     if not parts:
         return OutboundResult.SKIPPED
 
-    prep = await _prepare(platform, user_id, "publish_outbound_message")
+    prep = await _prepare(platform, user_id, "publish_outbound_message", destination_override)
     if isinstance(prep, OutboundResult):
         return prep
     queue_name, destination_id, publisher = prep
@@ -108,11 +125,17 @@ async def publish_outbound_message(
     # consumer's responsibility within one message, not the broker's across many.
     if len(parts) == 1:
         envelope = OutboundMessageEnvelope(
-            platform=platform.value, destination_id=destination_id, text=parts[0]
+            platform=platform.value,
+            destination_id=destination_id,
+            text=parts[0],
+            is_channel=is_channel,
         )
     else:
         envelope = OutboundMessageEnvelope(
-            platform=platform.value, destination_id=destination_id, text_parts=parts
+            platform=platform.value,
+            destination_id=destination_id,
+            text_parts=parts,
+            is_channel=is_channel,
         )
 
     try:

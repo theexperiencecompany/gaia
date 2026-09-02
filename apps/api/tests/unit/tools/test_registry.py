@@ -764,11 +764,7 @@ class TestInitializedCategoryContract:
         "account": {},
         "tracked_todos": {"space": "tasks"},
         "todos": {"space": "todos", "integration_name": "todos", "is_delegated": True},
-        "reminders": {
-            "space": "reminders",
-            "integration_name": "reminders",
-            "is_delegated": True,
-        },
+        "reminders": {},
         "skills": {"space": "skills", "integration_name": "skills", "is_delegated": True},
         "workflows": {},
         "playbooks": {},

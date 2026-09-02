@@ -114,6 +114,9 @@ async def build_executor_graph(
                 "complete_tracked_todo",
                 "search_todo_context",
                 "list_tracked_todos",
+                "list_trigger_fields",
+                "subscribe_todo_to_trigger",
+                "unsubscribe_todo_from_trigger",
                 "save_learned_skill",
                 # Bound statically, not left to retrieve_tools: the <playbook_check>
                 # and heal briefs name these directly, so a run whose semantic

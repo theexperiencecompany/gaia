@@ -848,6 +848,21 @@ async def _wide_event_boundary(
         _trace_id.set(outer_trace_id)
 
 
+def current_workflow_execution_id() -> str | None:
+    """The workflow execution the code in flight belongs to, if any.
+
+    The workflow task stamps ``workflow.execution_id`` on its boundary and
+    nothing else carries it — it is not in ``config.configurable``. Anything
+    that needs to attribute work to a run (the ledger, a run spawned from
+    inside the workflow) reads it from here, so the two can never disagree.
+    """
+    workflow = log.get().get("workflow")
+    if not isinstance(workflow, dict):
+        return None
+    execution_id = workflow.get("execution_id")
+    return str(execution_id) if execution_id else None
+
+
 def wide_task(
     task_name: str, *, trace_id: str | None = None, **initial_context: Any
 ) -> contextlib.AbstractAsyncContextManager[WideEventLogger]:

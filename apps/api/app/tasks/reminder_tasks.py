@@ -4,7 +4,9 @@ Reminder task handlers for static reminders only.
 
 from typing import cast
 
+from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.models.chat_models import ConversationSource
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -58,8 +60,9 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
 
 async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
-    """Push a fired reminder into the user's linked chat platforms and record it
-    into the conversation thread. Best-effort — never fails the reminder.
+    """Deliver a fired reminder into the chat that created it (on its own surface)
+    AND the user's other linked chat platforms, each recorded into that
+    conversation's langgraph thread. Best-effort — never fails the reminder.
 
     This is a supplementary side channel; the in-app badge is the primary
     delivery and has already succeeded by the time we get here. So every failure
@@ -83,15 +86,27 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> None:
         # stamp it — the same normalization the tracked-todo worker does.
         user_data["user_id"] = reminder.user_id
         user = cast(AuthenticatedUser, user_data)
+        text = _reminder_result_text(reminder.payload)
         title = reminder.payload.title
         origin = (
             f'reminder "{title}" (id {reminder.id})' if title else f"reminder (id {reminder.id})"
         )
+
+        delivered_source: ConversationSource | None = None
+        if reminder.source_conversation_id:
+            delivered_source = await deliver_message_to_conversation(
+                conversation_id=reminder.source_conversation_id,
+                user=user,
+                text=text,
+                origin=origin,
+            )
+
         await deliver_result_to_platforms(
             user=user,
             user_id=reminder.user_id,
-            notification_text=_reminder_result_text(reminder.payload),
+            notification_text=text,
             origin=origin,
+            exclude_source=delivered_source,
         )
     except Exception as e:  # side channel; the in-app badge already delivered
         log.error(

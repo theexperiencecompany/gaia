@@ -16,6 +16,7 @@ from langchain_core.tools import tool
 
 from app.agents.core.background.executor_queue import (
     build_lock_value,
+    build_run_item,
     decode_raw_item,
     enqueue_task,
     parse_lock_value,
@@ -254,12 +255,16 @@ async def _dispatch_executor(
             # Executor is busy with a different turn — queue for later execution
             queue_key = f"{EXECUTOR_QUEUE_PREFIX}{conversation_id}"
             await enqueue_task(
-                queue_key=queue_key,
-                task=task,
-                task_id=task_id,
-                configurable=configurable,
-                conversation_id=conversation_id,
-                user_message_id=user_message_id,
+                queue_key,
+                build_run_item(
+                    task=task,
+                    configurable=configurable,
+                    identity=RunIdentity(
+                        conversation_id=conversation_id,
+                        task_id=task_id,
+                        user_message_id=user_message_id,
+                    ),
+                ),
             )
             # The only record that this dispatch deferred rather than ran. The
             # returned prose below is written for the comms model, so a caller

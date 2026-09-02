@@ -17,6 +17,7 @@ from app.utils.workflow_utils import (
     _edited_trigger,
     _regenerated_after_prompt_edit,
     apply_workflow_edit,
+    create_workflow_directly,
     get_user_id,
     get_workflow_id,
 )
@@ -288,3 +289,59 @@ class TestApplyWorkflowEdit:
                 "the user to adjust the trigger there."
             ),
         }
+
+
+@pytest.mark.unit
+class TestCreateWorkflowDirectly:
+    async def test_the_card_description_is_not_the_execution_prompt(self) -> None:
+        """description is card copy, prompt is the executor's goal. Writing the
+        prompt into both put the whole numbered instruction blob, schedule
+        preamble and all, on every chat-created workflow card."""
+        draft = _draft(
+            description="Priority-ordered digest of my unread Gmail",
+            prompt=(
+                "1. Use Gmail to fetch all unread emails\n"
+                "2. Group them by how much they need my attention\n\n"
+                "Expected output: a digest I can scan quickly."
+            ),
+            cron_expression="0 9 * * *",
+        )
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _workflow(
+                TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+            )
+            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+
+        request = mock_create.await_args.kwargs["request"]
+        assert request.description == "Priority-ordered digest of my unread Gmail"
+        assert request.prompt == draft.prompt
+        assert request.description != request.prompt
+
+    async def test_a_draft_with_no_description_falls_back_to_the_title(self) -> None:
+        draft = _draft(description="", prompt="Summarize my inbox")
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
+            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+
+        request = mock_create.await_args.kwargs["request"]
+        assert request.description == "Morning digest"
+        assert request.prompt == "Summarize my inbox"
+
+    async def test_a_draft_with_no_prompt_falls_back_to_the_description(self) -> None:
+        """The description is the closest thing to instructions the assistant
+        produced, so it beats the title. Only a draft missing both lands on the
+        title."""
+        draft = _draft(description="Summarize my unread Gmail", prompt="")
+        writer = MagicMock()
+
+        with patch(f"{SERVICE}.create_workflow", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _workflow(TriggerConfig(type=TriggerType.MANUAL))
+            await create_workflow_directly(draft=draft, user_id=USER_ID, writer=writer)
+
+        request = mock_create.await_args.kwargs["request"]
+        assert request.prompt == "Summarize my unread Gmail"
+        assert request.description == "Summarize my unread Gmail"

@@ -97,6 +97,7 @@ class TestOutboundEnvelopeRoundTrip:
             "id",
             "platform",
             "destination_id",
+            "is_channel",
             "text",
             "text_parts",
             "attachment",
@@ -104,6 +105,13 @@ class TestOutboundEnvelopeRoundTrip:
         }
         assert payload["text"] == envelope.text
         assert payload["text_parts"] == envelope.text_parts
+        assert payload["is_channel"] == envelope.is_channel
+
+    def test_is_channel_defaults_to_false(self) -> None:
+        # A message with no explicit target is a DM, never a channel send — the
+        # default the whole outbound path relies on to preserve existing behavior.
+        env = OutboundMessageEnvelope(platform="telegram", destination_id="123", text="hi")
+        assert env.is_channel is False
 
     def test_default_enqueued_at_is_aware_utc(self) -> None:
         envelope = OutboundMessageEnvelope(platform="telegram", destination_id="42", text="hi")
