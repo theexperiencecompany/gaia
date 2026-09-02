@@ -46,6 +46,22 @@ async def test_injects_status_when_lock_held_on_interactive_turn() -> None:
     assert "task-123" in injected.content
 
 
+async def test_injects_status_when_state_has_no_messages_key() -> None:
+    # A state with no "messages" key must still get the status frame: the hook
+    # defaults it to [] so the [*messages, status] spread stays a list. A None
+    # default (the obvious mistake) makes that spread raise, which the hook's
+    # own except would swallow into a silent no-op.
+    state: dict = {}
+    cache = _redis_holding(build_lock_value("s1", "task-9"))
+    with patch(f"{MODULE}.redis_cache", cache):
+        out = await executor_status_hook(state, _config(), MagicMock())
+
+    msgs = out.get("messages")
+    assert msgs is not None and len(msgs) == 1
+    assert msgs[0].additional_kwargs.get(EXECUTOR_STATUS_MARKER) is True
+    assert "task-9" in msgs[0].content
+
+
 async def test_skips_status_during_result_narration() -> None:
     # The last message is the narration trigger (name=BACKGROUND_EXECUTOR_NAME) and
     # the same task's lock is still held; the hook must skip before it ever reads

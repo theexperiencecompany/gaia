@@ -5,6 +5,7 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -318,6 +319,51 @@ async def _build_recurrence_update(
     update_fields["recurrence"] = recurrence
     if _is_cron_expression(recurrence):
         return await _apply_cron_first_fire(recurrence, scheduled_at, user_id, update_fields, notes)
+    return None
+
+
+@dataclass(frozen=True)
+class _UpdateFieldInputs:
+    """The raw agent-supplied field values for update_tracked_todo, bundled so the
+    validator chain that consumes them is one small helper instead of six inline
+    guards on the tool body."""
+
+    labels: list[str] | None
+    due_date: str | None
+    priority: str | None
+    scheduled_at: str | None
+    recurrence: str | None
+    expires_at: str | None
+
+
+async def _apply_field_updates(
+    inputs: _UpdateFieldInputs,
+    user_id: str,
+    update_fields: dict[str, object],
+    notes: list[str],
+) -> str | None:
+    """Run each field validator in order, short-circuiting on the first error so the
+    async _get_user_tz Mongo lookup in the recurrence validator never runs after an
+    earlier field already failed. Populates update_fields/notes in place.
+
+    _build_labels_update can never actually return an error today (there is no label
+    validation yet); the check is kept for the same shape as the others so adding one
+    later needs no restructuring.
+    """
+    if error := _build_labels_update(inputs.labels, update_fields):  # pragma: no cover
+        return error
+    if error := _build_clearable_datetime_update(inputs.due_date, "due_date", update_fields):
+        return error
+    if error := _build_priority_update(inputs.priority, update_fields):
+        return error
+    if error := _build_scheduled_at_update(inputs.scheduled_at, update_fields):
+        return error
+    if error := await _build_recurrence_update(
+        inputs.recurrence, inputs.scheduled_at, user_id, update_fields, notes
+    ):
+        return error
+    if error := _build_clearable_datetime_update(inputs.expires_at, "expires_at", update_fields):
+        return error
     return None
 
 
@@ -748,27 +794,15 @@ async def update_tracked_todo(
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
-
-    # Validate each field sequentially with short-circuit so we don't keep doing
-    # work (in particular the async _get_user_tz Mongo lookup inside the
-    # recurrence validator) after an earlier field has already failed.
-    # _build_labels_update can never actually return an error today (there is
-    # no label validation yet) — the check-and-return is kept for the same
-    # shape as every other field below, so adding label validation later
-    # doesn't require restoring this line.
-    if error := _build_labels_update(labels, update_fields):  # pragma: no cover
-        return error
-    if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
-        return error
-    if error := _build_priority_update(priority, update_fields):
-        return error
-    if error := _build_scheduled_at_update(scheduled_at, update_fields):
-        return error
-    if error := await _build_recurrence_update(
-        recurrence, scheduled_at, user_id, update_fields, notes
-    ):
-        return error
-    if error := _build_clearable_datetime_update(expires_at, "expires_at", update_fields):
+    inputs = _UpdateFieldInputs(
+        labels=labels,
+        due_date=due_date,
+        priority=priority,
+        scheduled_at=scheduled_at,
+        recurrence=recurrence,
+        expires_at=expires_at,
+    )
+    if error := await _apply_field_updates(inputs, user_id, update_fields, notes):
         return error
 
     if not update_fields:

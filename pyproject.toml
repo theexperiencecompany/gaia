@@ -350,6 +350,20 @@ unfixable = [
 # keep the exact parameter name `input`. The two integration tests that used
 # to carry their own copies now import this one, so they need no exemption.
 "apps/api/app/db/chroma/noop_embedding.py" = ["A002"]  # chromadb's EmbeddingFunction protocol passes `input=` by keyword
+# PLR0913: these are LangChain @tool functions, so each argument is a field the
+# model fills when it calls the tool -- the arg list IS the tool's schema.
+# Collapsing them into a grouped object would change the model-facing contract
+# (LangChain renders a Pydantic-typed param as a nested $ref object, not flat
+# fields), so the arg count is the interface here, not avoidable complexity. An
+# inline `# noqa: PLR0913` can't express this: PLR0913 sits in the global ignore
+# so the main ruff lane treats such a noqa as unused (RUF100). PLR0911/0912 are
+# reducible and stay enforced (update_tracked_todo was refactored to satisfy them).
+"apps/api/app/agents/tools/reminder_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
+"apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
+# PLR0913: create_tracked_todo takes one independent optional argument per
+# persisted TodoDocument field (title, project, due date, priority, labels,
+# canvas, source chat); a params object would relocate the same fields with no gain.
+"apps/api/app/services/tracked_todo_service.py" = ["PLR0913"]  # per-field creation args map 1:1 to TodoDocument columns
 "apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate

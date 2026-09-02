@@ -272,6 +272,9 @@ class TestDeliverReminderToPlatforms:
 
         deliver_conv.assert_awaited_once()
         assert deliver_conv.await_args.kwargs["conversation_id"] == "conv-42"
+        # The resolved owner is delivered to the source conversation, not some
+        # other id — the stamped user_id keys the langgraph record to this user.
+        assert deliver_conv.await_args.kwargs["user"]["user_id"] == "user-1"
         assert deliver_conv.await_args.kwargs["text"] == "**Water the plants**\nNow"
         assert deliver_conv.await_args.kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
         assert deliver.await_args.kwargs["exclude_source"] == ConversationSource.TELEGRAM
