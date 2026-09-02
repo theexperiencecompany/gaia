@@ -526,14 +526,16 @@ def _uncapped_daily_benefits(seen: set[str]) -> list[dict[str, str]]:
     ones (chat: day 0 on both tiers), so a wall on any feature still advertises
     e.g. unlimited chat messages.
     """
+    # With no Pro daily cap, _free_pro_delta is non-empty exactly for the
+    # free-capped-daily and cost-walled cases; nothing here can reach the
+    # multiplier section (it needs a Pro daily cap), so ``seen`` is read-only.
     benefits: list[dict[str, str]] = []
     for key, limits in FEATURE_LIMITS.items():
         if key in seen or limits.pro.day > 0:
             continue
-        delta = _free_pro_delta(key) if limits.free.day > 0 or _is_cost_walled(limits) else None
+        delta = _free_pro_delta(key)
         if delta:
             benefits.append(delta)
-            seen.add(key)
     return benefits
 
 
