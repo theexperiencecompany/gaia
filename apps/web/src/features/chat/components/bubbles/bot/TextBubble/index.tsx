@@ -9,7 +9,13 @@ import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+import type { Components } from "streamdown";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import {
+  applyCitationLinks,
+  type CitationRef,
+  citationRefsFromWebResults,
+} from "@/features/chat/utils/citationUtils";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   MESSAGE_BREAK_DURATION_SECONDS,
@@ -20,14 +26,21 @@ import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils"
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import type { SearchResults } from "@/types/features/searchTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import {
   ApprovalResolveProvider,
   type ApprovalResolver,
 } from "../ApprovalResolveContext";
+import { CitationsFooter, createCitationAComponent } from "../InlineCitations";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
-import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
+import {
+  getTypedData,
+  mergeSearchResults,
+  renderTool,
+  type ToolDataUnion,
+} from "./ToolRenderers";
 import {
   deriveProcessedToolKeys,
   useSubagentSynthesis,
@@ -166,15 +179,23 @@ function BubbleContent({
   showDisclaimer,
   disclaimer,
   isStreaming,
+  citations,
+  citationComponents,
 }: Readonly<{
   content: string;
   showDisclaimer: boolean;
   disclaimer: ChatBubbleBotProps["disclaimer"];
   isStreaming: ChatBubbleBotProps["loading"];
+  citations: readonly CitationRef[];
+  citationComponents: Components | undefined;
 }>) {
   return (
     <div className="flex flex-col gap-3">
-      <MarkdownRenderer content={content} isStreaming={isStreaming} />
+      <MarkdownRenderer
+        content={applyCitationLinks(content, citations).text}
+        components={citationComponents}
+        isStreaming={isStreaming}
+      />
       {!!disclaimer && showDisclaimer && (
         <Chip
           className="text-xs font-medium text-warning-500"
@@ -244,6 +265,8 @@ interface TextPartProps {
   disclaimer: ChatBubbleBotProps["disclaimer"];
   replyToMessage: ChatBubbleBotProps["replyToMessage"];
   partTransition: PartTransition;
+  citations: readonly CitationRef[];
+  citationComponents: Components | undefined;
 }
 
 /** Pure-markdown part — normal iMessage bubble. */
@@ -256,6 +279,8 @@ function MarkdownPartBubble({
   disclaimer,
   replyToMessage,
   partTransition,
+  citations,
+  citationComponents,
 }: Readonly<TextPartProps & { part: string }>) {
   const isEmojiOnly = isOnlyEmojis(part);
   const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
@@ -282,6 +307,8 @@ function MarkdownPartBubble({
       <div className={textClass}>
         <BubbleContent
           content={part}
+          citations={citations}
+          citationComponents={citationComponents}
           showDisclaimer={isLast}
           disclaimer={disclaimer}
           isStreaming={loading}
@@ -302,6 +329,8 @@ function MixedPart({
   disclaimer,
   replyToMessage,
   partTransition,
+  citations,
+  citationComponents,
 }: Readonly<
   TextPartProps & { segments: ReturnType<typeof parseOpenUISegments> }
 >) {
@@ -340,6 +369,8 @@ function MixedPart({
             )}
             <BubbleContent
               content={seg.content}
+              citations={citations}
+              citationComponents={citationComponents}
               showDisclaimer={isLastMdInLastPart}
               disclaimer={disclaimer}
               isStreaming={loading}
@@ -392,6 +423,34 @@ export default function TextBubble({
   // Single ordered timeline of tool calls + subagent groups (emission order)
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
   const { timeline, processedTools } = useSubagentSynthesis(tool_data);
+
+  // Inline citations: refs derive from this message's web search results so
+  // `[n]` markers the model writes map to the sources it actually received.
+  const citationRefs = React.useMemo(() => {
+    const searchEntry = processedTools.find(
+      (entry) => entry.tool_name === "search_results",
+    );
+    if (!searchEntry) return [];
+    const batches = (
+      Array.isArray(searchEntry.data) ? searchEntry.data : [searchEntry.data]
+    ) as SearchResults[];
+    return citationRefsFromWebResults(mergeSearchResults(batches).web);
+  }, [processedTools]);
+
+  // `[n]` markers are injected as `[n](url)` links; this `a` override turns
+  // exactly those links into numbered chips and leaves every other link with
+  // the normal preview anchor. Memoized on the refs' identity (stable per
+  // tool_data snapshot) so streamdown's per-block memoization survives.
+  const citationComponents = React.useMemo<Components | undefined>(() => {
+    if (citationRefs.length === 0) return undefined;
+    return { a: createCitationAComponent(citationRefs, loading) };
+  }, [citationRefs, loading]);
+
+  // Sources actually cited, in first-appearance order — drives the footer.
+  const citedRefs = React.useMemo(
+    () => applyCitationLinks(parsedContent.cleanText, citationRefs).used,
+    [parsedContent.cleanText, citationRefs],
+  );
 
   // One stable React key per processedTools entry. Derived from stream-stable
   // structure (ids / tool name / creation timestamp), never payload content,
@@ -526,6 +585,8 @@ export default function TextBubble({
                     disclaimer={disclaimer}
                     replyToMessage={replyToMessage}
                     partTransition={partTransition}
+                    citations={citationRefs}
+                    citationComponents={citationComponents}
                   />
                 ) : (
                   <MarkdownPartBubble
@@ -540,9 +601,12 @@ export default function TextBubble({
                     disclaimer={disclaimer}
                     replyToMessage={replyToMessage}
                     partTransition={partTransition}
+                    citations={citationRefs}
+                    citationComponents={citationComponents}
                   />
                 );
               })}
+              {citedRefs.length > 0 && <CitationsFooter refs={citedRefs} />}
             </div>
           );
         })()}

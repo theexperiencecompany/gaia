@@ -102,8 +102,11 @@ function dedupePush<T>(
 
 // When the search_results tool was grouped (LLM emitted it multiple times in one
 // turn), merge the batches into a single result set, deduping by URL across web /
-// images / news.
-function mergeSearchResults(items: readonly SearchResults[]): SearchResults {
+// images / news. Exported so TextBubble and the search card share one order —
+// inline citation numbers must match the sources popover numbering.
+export function mergeSearchResults(
+  items: readonly SearchResults[],
+): SearchResults {
   const seenUrls = new Set<string>();
   const merged: SearchResults = { web: [], images: [], news: [] };
   for (const item of items) {
