@@ -228,7 +228,6 @@ class TestRedeemLinkCode:
         assert first.status_code == 200
         assert second.status_code == 400
 
-    @pytest.mark.regression
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_account_linked_elsewhere_returns_409(
         self, _auth: AsyncMock, client: AsyncClient
@@ -403,7 +402,6 @@ class TestRedeemLinkCode:
         # Spent exactly once, and only after the link was written.
         mock_discard.assert_awaited_once_with("CODE123")
 
-    @pytest.mark.regression
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_a_plan_wall_leaves_the_code_live_for_the_retry(
         self, _auth: AsyncMock, client: AsyncClient
