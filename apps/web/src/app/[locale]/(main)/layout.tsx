@@ -83,10 +83,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
     else setDefaultOpen(true);
   }, [isMobile]);
 
-  function closeOnTouch(): void {
-    if (isMobile && (isMobileOpen || isOpen)) setMobileOpen(false);
-  }
-
   function handleOpenChange(open: boolean): void {
     if (isMobile) {
       setMobileOpen(open);
@@ -139,10 +135,10 @@ export default function MainLayout({ children }: { children: ReactNode }) {
 
             <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
               <StatusBanner />
-              <header
-                className="flex shrink-0 items-center justify-between p-2"
-                onClick={closeOnTouch}
-              >
+              {/* Tapping anywhere outside the mobile sidebar dismisses it via
+                  the Sheet's own modal overlay (see ui/sidebar), so the shell
+                  needs no click handler of its own here. */}
+              <header className="flex shrink-0 items-center justify-between p-2">
                 <HeaderSidebarTrigger />
                 <HeaderManager />
               </header>

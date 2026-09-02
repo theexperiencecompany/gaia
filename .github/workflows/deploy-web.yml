@@ -28,8 +28,8 @@ name: Deploy Web (Cloudflare)
 #   scope + endpoint is dashboard-only for some plans). A best-effort API
 #   probe is included in the `preflight` step and logged to the job summary.
 #   If the probe reports "connected", perform the manual step above. See
-#   scripts/ci/disable-cf-builds.sh for a local manual API attempt:
-#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/disable-cf-builds.sh
+#   scripts/ci/release.sh disable-cf-builds for a local manual API attempt:
+#     CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=d65fe... bash scripts/ci/release.sh disable-cf-builds
 #
 # After disabling, pushes to master deploy ONLY via this workflow (visible
 # duration + failure in GitHub). PRs deploy a preview version alias.
@@ -168,7 +168,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler deploy --config apps/web/wrangler.jsonc
+          # wrangler is a dependency of apps/web; under the isolated linker its
+          # bin only exists in that package's node_modules, not the repo root.
+          pnpm --filter ./apps/web exec wrangler deploy --config wrangler.jsonc
 
       - name: Report deploy duration
         if: always()
@@ -193,7 +195,15 @@ jobs:
   preview:
     name: preview (PR pr-${{ github.event.number }})
     needs: build
-    if: github.event_name == 'pull_request'
+    # Preview uploads need CLOUDFLARE_API_TOKEN, and Actions secrets are not
+    # exposed to Dependabot PRs or to PRs from forks. Without this guard the
+    # job still runs, wrangler exits 1 on an empty token, and the PR shows a
+    # red check that has nothing to do with the change under review. The build
+    # job above still runs everywhere, so the bundle is always validated.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.actor != 'dependabot[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: preview
@@ -226,7 +236,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config apps/web/wrangler.jsonc
+          pnpm --filter ./apps/web exec wrangler versions upload --preview-alias pr-${{ github.event.number }} --config wrangler.jsonc
 
       - name: Report preview duration
         if: always()
@@ -264,7 +274,7 @@ jobs:
 
       - name: Comment PR with preview URL
         if: success()
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.cf_app_token.outputs.token || secrets.GITHUB_TOKEN }}
           script: |

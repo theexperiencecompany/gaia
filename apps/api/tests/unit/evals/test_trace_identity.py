@@ -12,6 +12,7 @@ checked by reading the writer rather than the result:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -22,6 +23,8 @@ from scripts.evals.core.opiksink import span_id_for, trace_id_for
 from scripts.evals.core.types import CaseTrace, ProviderPrice
 
 PRICES = {"nous": ProviderPrice(price_in_per_1m=1.0, price_out_per_1m=2.0)}
+RUN_ID = "capability-20260808-093921-98a7ac"
+APP_VERSION = "api-v0.17.0-299-gc32f2f973"
 
 RECORD = {
     "case_id": "cap-todo-create",
@@ -42,11 +45,7 @@ RECORD = {
 def _trace(**overrides: object) -> CaseTrace:
     record = {**RECORD, **overrides}
     return CaseTrace.from_record(
-        "capability-20260808-093921-98a7ac",
-        record,
-        PRICES,
-        suite="capability",
-        app_version="api-v0.17.0-299-gc32f2f973",
+        RUN_ID, record, PRICES, suite="capability", app_version=APP_VERSION
     )
 
 
@@ -131,10 +130,19 @@ def test_ids_are_stable_across_processes() -> None:
     every time, so the id has to survive one — this computes it in a subprocess
     and compares. If it did not hold, every re-seed would duplicate everything.
     """
+    # The child builds the trace from the same literals rather than importing
+    # this module: importing it would pull pytest, ingest_check and litellm into
+    # a process whose only job is one hash, and the SDK-free ``trace_id_for``
+    # is exactly what seeding relies on.
     source = (
+        "import json;"
         "from scripts.evals.core.opiksink import trace_id_for;"
-        "from tests.unit.evals.test_trace_identity import _trace;"
-        "print(trace_id_for('gaia-capability', _trace()))"
+        "from scripts.evals.core.types import CaseTrace, ProviderPrice;"
+        f"record = json.loads({json.dumps(json.dumps(RECORD))});"
+        "prices = {'nous': ProviderPrice(price_in_per_1m=1.0, price_out_per_1m=2.0)};"
+        f"trace = CaseTrace.from_record({RUN_ID!r}, record, prices, suite='capability', "
+        f"app_version={APP_VERSION!r});"
+        "print(trace_id_for('gaia-capability', trace))"
     )
     result = subprocess.run(
         [sys.executable, "-c", source],
@@ -144,3 +152,17 @@ def test_ids_are_stable_across_processes() -> None:
         check=True,
     )
     assert result.stdout.strip() == trace_id_for("gaia-capability", _trace())
+
+
+def test_uuid7_derivation_matches_the_sdk() -> None:
+    """``_uuid4_to_uuid7`` is a copy of the SDK's; a drift would re-key every trace."""
+    from datetime import UTC, datetime
+    import uuid
+
+    from opik import id_helpers
+    from scripts.evals.core.opiksink import _uuid4_to_uuid7
+
+    when = datetime(2026, 8, 8, 9, 39, 21, tzinfo=UTC)
+    for _ in range(20):
+        seed = uuid.uuid4()
+        assert _uuid4_to_uuid7(when, seed) == id_helpers.uuid4_to_uuid7(when, str(seed))

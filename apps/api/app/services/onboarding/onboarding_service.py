@@ -145,7 +145,7 @@ async def complete_onboarding(
             raise HTTPException(
                 status_code=503,
                 detail="Could not start onboarding. Please retry.",
-            )
+            ) from e
 
         background_tasks.add_task(seed_initial_user_data, user_id)
 
@@ -162,7 +162,7 @@ async def complete_onboarding(
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+        raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
 async def submit_onboarding_integrations(
@@ -239,7 +239,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="An internal error occurred")
+        raise HTTPException(status_code=500, detail="An internal error occurred") from e
 
 
 async def update_onboarding_preferences(
@@ -287,7 +287,7 @@ async def update_onboarding_preferences(
             error_type=type(e).__name__,
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update preferences")
+        raise HTTPException(status_code=500, detail="Failed to update preferences") from e
 
 
 async def reset_onboarding(user_id: str) -> OnboardingResetCounts:

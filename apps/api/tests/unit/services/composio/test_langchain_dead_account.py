@@ -27,6 +27,7 @@ import pytest
 from app.db.repositories.user_integrations import user_integration_repository
 from app.services.composio import langchain_composio_service as wrapper
 from app.services.composio.langchain_composio_service import LangchainProvider
+from app.services.integrations.integration_expiry import ExpiryOptions
 
 MODULE = "app.services.composio.langchain_composio_service"
 CHECKER = "app.utils.integration_checker"
@@ -225,7 +226,9 @@ class TestDeadAccountReconciles:
             )
 
         expire.assert_awaited_once_with(
-            "user-1", "gmail", reason="no account", trigger="tool_execution", notify=False
+            "user-1",
+            "gmail",
+            ExpiryOptions(reason="no account", trigger="tool_execution", notify=False),
         )
 
         # The transition runs in this very turn, so the card and the agent copy
@@ -280,7 +283,9 @@ class TestDeadAccountReconciles:
             await wrapper._expire_with_log_boundary("user-1", "gmail", "no account")
 
         expire.assert_called_once_with(
-            "user-1", "gmail", reason="no account", trigger="tool_execution", notify=False
+            "user-1",
+            "gmail",
+            ExpiryOptions(reason="no account", trigger="tool_execution", notify=False),
         )
 
     async def test_the_transition_runs_under_its_own_named_wide_event_boundary(self) -> None:

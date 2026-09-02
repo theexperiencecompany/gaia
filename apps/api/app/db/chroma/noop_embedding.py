@@ -56,6 +56,8 @@ class NoOpEmbeddingFunction(EmbeddingFunction[EmbeddingInput]):
         return NoOpEmbeddingFunction()
 
     def __call__(self, input: EmbeddingInput) -> Embeddings:
+        # `input` must keep this exact name: chromadb calls embedding functions
+        # as `self._embedding_function(input=input)` (keyword), not positionally.
         # chromadb's own EmbeddingFunction.__call__ contract declares
         # list[numpy.ndarray], but ChromaDB accepts plain float lists at
         # runtime just fine — do NOT convert this to numpy arrays; that broke

@@ -25,6 +25,7 @@ import {
 } from "@icons";
 import { useRouter } from "next/navigation";
 import {
+  type KeyboardEvent,
   type ReactNode,
   type SetStateAction,
   useCallback,
@@ -250,7 +251,8 @@ export default function ChatOptionsDropdown({
               onChange={(e: { target: { value: SetStateAction<string> } }) =>
                 setNewName(e.target.value)
               }
-              onKeyDown={(e: { key: string }) => {
+              onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                if (e.nativeEvent.isComposing) return;
                 if (e.key === "Enter") handleEdit();
               }}
             />

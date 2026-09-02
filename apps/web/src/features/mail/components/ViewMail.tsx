@@ -163,6 +163,134 @@ function AISummary({
   );
 }
 
+interface ThreadMessagesProps {
+  messages: EmailData[];
+  currentEmailId: string | null;
+  onReply: (email: EmailData) => void;
+}
+
+/** Chronological list of thread messages with per-message reply buttons. */
+function ThreadMessages({
+  messages,
+  currentEmailId,
+  onReply,
+}: ThreadMessagesProps) {
+  return (
+    <div className="mt-4 space-y-6">
+      {messages.map((message) => {
+        const { name: messageSenderName, email: messageSenderEmail } =
+          parseEmail(message.from);
+        const isCurrentEmail = currentEmailId === message.id;
+
+        return (
+          <div
+            key={message.id}
+            className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
+          >
+            <div className="mb-2 flex items-start justify-between">
+              <User
+                avatarProps={{
+                  src: "/images/avatars/default.webp",
+                  size: "sm",
+                }}
+                description={messageSenderEmail}
+                name={messageSenderName}
+                classNames={{
+                  name: "font-medium",
+                  description: "text-gray-400",
+                }}
+              />
+              <div className="text-xs text-gray-400" suppressHydrationWarning>
+                {new Date(message.time).toLocaleString()}
+              </div>
+            </div>
+
+            {message.snippet && (
+              <div className="text-muted-foreground mb-2 text-sm">
+                {he.decode(message.snippet)}
+              </div>
+            )}
+
+            <div className="mt-2">
+              <GmailBody email={message} />
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <Button
+                size="sm"
+                color="primary"
+                variant="flat"
+                startContent={<ArrowTurnBackwardIcon size={14} />}
+                onPress={() => onReply(message)}
+              >
+                Reply
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ReplyEditorProps {
+  replyTo: EmailData;
+  editor: ReturnType<typeof useEditor>;
+  isSending: boolean;
+  onSend: () => void;
+  onCancel: () => void;
+}
+
+/** Reply composer shown under the thread when replying to a message. */
+function ReplyEditor({
+  replyTo,
+  editor,
+  isSending,
+  onSend,
+  onCancel,
+}: ReplyEditorProps) {
+  return (
+    <div className="mt-4 border-t-2 border-zinc-700 pt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-sm">
+          <span className="font-medium">Reply to: </span>
+          <span className="text-gray-400">
+            {parseEmail(replyTo.from).name || parseEmail(replyTo.from).email}
+          </span>
+        </div>
+        <Button
+          size="sm"
+          color="danger"
+          variant="light"
+          isIconOnly
+          onPress={onCancel}
+        >
+          <Cancel01Icon size={16} />
+        </Button>
+      </div>
+
+      <div className="mail-editor rounded-lg border border-zinc-700 bg-zinc-800">
+        {/* <MenuBar editor={editor} /> */}
+        <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+
+      <div className="mt-2 flex justify-end">
+        <Button
+          color="primary"
+          startContent={<SentIcon size={16} />}
+          onPress={onSend}
+          isLoading={isSending}
+          isDisabled={isSending}
+        >
+          {isSending ? "Sending..." : "Send Reply"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function ViewEmail({
   mailId,
   onOpenChange,
@@ -265,7 +393,7 @@ export default function ViewEmail({
       //   body: content,
       // });
 
-      toast.error("ArrowTurnBackwardIcon functionality is not yet implemented");
+      toast.error("Reply functionality is not yet implemented");
       setShowReplyEditor(false);
       editor.commands.setContent("<p></p>");
     } catch (error) {
@@ -344,7 +472,7 @@ export default function ViewEmail({
                   startContent={<ArrowTurnBackwardIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  ArrowTurnBackwardIcon
+                  Reply
                 </Button>
                 <Button
                   color="primary"
@@ -352,7 +480,7 @@ export default function ViewEmail({
                   startContent={<ArrowLeftDoubleIcon size={16} />}
                   onPress={() => mail && handleReply(mail)}
                 >
-                  ArrowTurnBackwardIcon All
+                  Reply All
                 </Button>
               </div>
             </header>
@@ -384,65 +512,11 @@ export default function ViewEmail({
 
               {/* Thread messages */}
               {sortedThreadMessages.length > 0 ? (
-                <div className="mt-4 space-y-6">
-                  {sortedThreadMessages.map((message) => {
-                    const {
-                      name: messageSenderName,
-                      email: messageSenderEmail,
-                    } = parseEmail(message.from);
-                    const isCurrentEmail = mailId === message.id;
-
-                    return (
-                      <div
-                        key={message.id}
-                        className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
-                      >
-                        <div className="mb-2 flex items-start justify-between">
-                          <User
-                            avatarProps={{
-                              src: "/images/avatars/default.webp",
-                              size: "sm",
-                            }}
-                            description={messageSenderEmail}
-                            name={messageSenderName}
-                            classNames={{
-                              name: "font-medium",
-                              description: "text-gray-400",
-                            }}
-                          />
-                          <div
-                            className="text-xs text-gray-400"
-                            suppressHydrationWarning
-                          >
-                            {new Date(message.time).toLocaleString()}
-                          </div>
-                        </div>
-
-                        {message.snippet && (
-                          <div className="text-muted-foreground mb-2 text-sm">
-                            {he.decode(message.snippet)}
-                          </div>
-                        )}
-
-                        <div className="mt-2">
-                          <GmailBody email={message} />
-                        </div>
-
-                        <div className="mt-4 flex justify-end">
-                          <Button
-                            size="sm"
-                            color="primary"
-                            variant="flat"
-                            startContent={<ArrowTurnBackwardIcon size={14} />}
-                            onPress={() => handleReply(message)}
-                          >
-                            ArrowTurnBackwardIcon
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <ThreadMessages
+                  messages={sortedThreadMessages}
+                  currentEmailId={mailId}
+                  onReply={handleReply}
+                />
               ) : mail ? (
                 <>
                   {mail?.snippet && (
@@ -469,49 +543,15 @@ export default function ViewEmail({
                 </>
               ) : null}
 
-              {/* ArrowTurnBackwardIcon editor */}
+              {/* Reply editor */}
               {showReplyEditor && replyTo && (
-                <div className="mt-4 border-t-2 border-zinc-700 pt-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm">
-                      <span className="font-medium">
-                        ArrowTurnBackwardIcon to:{" "}
-                      </span>
-                      <span className="text-gray-400">
-                        {parseEmail(replyTo.from).name ||
-                          parseEmail(replyTo.from).email}
-                      </span>
-                    </div>
-                    <Button
-                      size="sm"
-                      color="danger"
-                      variant="light"
-                      isIconOnly
-                      onPress={handleCancelReply}
-                    >
-                      <Cancel01Icon size={16} />
-                    </Button>
-                  </div>
-
-                  <div className="mail-editor rounded-lg border border-zinc-700 bg-zinc-800">
-                    {/* <MenuBar editor={editor} /> */}
-                    <div className="max-h-[250px] min-h-[150px] overflow-y-auto px-4 py-2">
-                      <EditorContent editor={editor} />
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex justify-end">
-                    <Button
-                      color="primary"
-                      startContent={<SentIcon size={16} />}
-                      onPress={handleSendReply}
-                      isLoading={isSending}
-                      isDisabled={isSending}
-                    >
-                      {isSending ? "Sending..." : "SentIcon Reply"}
-                    </Button>
-                  </div>
-                </div>
+                <ReplyEditor
+                  replyTo={replyTo}
+                  editor={editor}
+                  isSending={isSending}
+                  onSend={handleSendReply}
+                  onCancel={handleCancelReply}
+                />
               )}
             </Drawer.Description>
           </div>

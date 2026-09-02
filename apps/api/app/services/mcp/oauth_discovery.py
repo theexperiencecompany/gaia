@@ -139,7 +139,7 @@ async def discover_oauth_config(
             f"OAuth discovery failed for {integration_id}. "
             f"RFC 9728 PRM: {prm_error or 'no authorization_servers'}. "
             f"Direct OAuth (RFC 8414): {direct_error}"
-        )
+        ) from direct_error
 
 
 async def probe_mcp_connection(server_url: str) -> McpProbeResult:

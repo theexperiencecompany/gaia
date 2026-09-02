@@ -487,10 +487,16 @@ export function upsertTodoProgressToolData<T extends StreamToolDataEntry>(
     [source]: snapshot,
   };
 
+  // Preserve the FIRST tick's timestamp on replacement: the entry identity
+  // (and any key anchored to its creation time) must stay stable while the
+  // snapshot content updates, or the card remounts every streamed frame.
   const nextEntry = {
     tool_name: "todo_progress",
     data: nextData,
-    timestamp: new Date().toISOString(),
+    timestamp:
+      existingIndex >= 0
+        ? (entries[existingIndex].timestamp ?? new Date().toISOString())
+        : new Date().toISOString(),
   } as T;
 
   if (existingIndex >= 0) {

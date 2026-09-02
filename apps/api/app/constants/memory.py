@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 import os
 
+from app.constants.chroma import CHROMA_COLLECTION_SUFFIX
+
 # Local ONNX models (fastembed). Memory must work offline and fast —
 # do NOT swap these for cloud models.
 # mxbai-embed-large (1024-dim, ~0.7GB, ~14ms/query CPU) ranks the gold fact
@@ -15,8 +17,10 @@ import os
 EMBEDDING_MODEL_NAME = os.getenv("GAIA_EMBEDDING_MODEL", "mixedbread-ai/mxbai-embed-large-v1")
 EMBEDDING_DIM = int(os.getenv("GAIA_EMBEDDING_DIM", "1024"))
 # Appended to the Chroma collection names so runs with different embedding
-# dimensions never collide in the same collection (empty = prod default).
-_COLLECTION_SUFFIX = os.getenv("GAIA_CHROMA_COLLECTION_SUFFIX", "")
+# dimensions — and concurrent CI lanes sharing one Chroma — never collide in
+# the same collection (empty = prod default). Defined once in constants/chroma.py
+# so every GAIA collection, not just the memory ones, carries the same namespace.
+_COLLECTION_SUFFIX = CHROMA_COLLECTION_SUFFIX
 # jina-reranker-v1-turbo-en (~150MB) measurably beats ms-marco-MiniLM on
 # implicit conversational queries ("what do I do for a living" -> the job
 # fact): top-3 gold rank 4/6 vs 2/6 on our probe set at the same ~30ms.
@@ -152,11 +156,10 @@ RECENCY_BOOST_DECAY_DAYS = 30
 IMPORTANCE_BOOST_BASE = 0.8
 IMPORTANCE_BOOST_WEIGHT = 0.4
 
-# Optional 1-hop graph expansion after reranking: entities on the top
-# results pull in sibling memories at a low fixed score.
+# Optional 1-hop graph expansion: entities on the top results pull in
+# sibling memories, which are then reranked alongside the base pool.
 GRAPH_EXPANSION_SOURCE_RESULTS = 3
 GRAPH_EXPANSION_MAX_SIBLINGS = 3
-GRAPH_EXPANSION_SCORE = 0.05
 
 # Episode (journal) search: verbatim entry matching looks back this many
 # days; query tokens shorter than the minimum are noise and dropped.
@@ -212,6 +215,14 @@ RECONCILE_CANDIDATES = 15
 
 # How many recent facts are shown to the extractor as "do NOT re-extract".
 RECENT_FACTS_LIMIT = 10
+
+# Near-duplicate gate for journal entries (difflib ratio on normalized text).
+# The extractor's "do NOT repeat" instruction cannot stop a paraphrase, and
+# back-to-back retains race past the journal read — one production day carried
+# the same discussion five times, reworded. Calibrated on those real pairs:
+# true rewordings score 0.91-0.95, genuinely distinct same-day events 0.40 and
+# below, so 0.85 drops the spam with a wide margin over real events.
+EPISODE_ENTRY_DEDUPE_RATIO = 0.85
 
 # Per-thread high-water mark for passive ingestion: the id of the last message
 # already extracted from. Without it the whole thread was re-sent to the
@@ -326,10 +337,15 @@ MEMORY_EPISODES_DEFAULT_DAYS = 14
 MEMORY_EPISODES_MAX_RANGE_DAYS = 90
 
 # Relevance cutoff applied to every recall: drop the long tail of weak matches
-# by keeping only results scoring at least this fraction of the top hit. Hybrid
-# recall returns a sharp relevance cliff (strong matches ~1.0+, noise <0.1), so
-# a relative floor cleanly separates the two without a brittle absolute one.
-# This keeps both prompt-injected context and the search UI free of noise.
+# by keeping only candidates whose PRE-boost blended relevance is at least this
+# fraction of the pool's best pre-boost relevance (boosts reorder results but
+# never decide survival). The blended base is 0.6 * sigmoid(rerank logit)
+# + 0.4 * (cosine / best cosine) — both terms absolute-preserving, so real
+# matches cluster near the top (~0.85-1.0 of the best) while faintly-related
+# tail facts land well below 0.4 of it, and a hair-thin gap between two real
+# answers stays hair-thin instead of being stretched to 1.0-vs-0.0 as the old
+# min-max scaling did. This keeps prompt-injected context and the search UI
+# free of noise without deleting close runner-up facts.
 RELEVANCE_DROPOFF_RATIO = 0.4
 
 # Request-body length caps. A memory is one atomic fact, so it stays short;

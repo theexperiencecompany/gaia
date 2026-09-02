@@ -19,6 +19,7 @@ from app.services.analytics_service import AnalyticsEvents
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 
 USER_BASE = "/api/v1/user"
+FAKE_USER_ID = "507f1f77bcf86cd799439011"
 
 FAKE_USER_UPDATE = {
     "user_id": "507f1f77bcf86cd799439011",
@@ -190,7 +191,10 @@ class TestUpdateTimezone:
     @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
     async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
         mock_update.return_value = UserDocument(timezone="America/New_York")
-        with patch("app.api.v1.endpoints.user.capture_context_event") as mock_capture:
+        with (
+            patch("app.api.v1.endpoints.user.capture_context_event") as mock_capture,
+            patch("app.api.v1.endpoints.user.schedule_account_sync") as mock_schedule_sync,
+        ):
             response = await client.patch(
                 f"{USER_BASE}/timezone",
                 data={"timezone": "America/New_York"},
@@ -199,6 +203,7 @@ class TestUpdateTimezone:
         data = response.json()
         assert data["success"] is True
         assert data["timezone"] == "America/New_York"
+        mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
         mock_capture.assert_called_once_with(
             AnalyticsEvents.PROFILE_UPDATED, {"changed_field_count": 1}
         )

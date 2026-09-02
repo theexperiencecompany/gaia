@@ -89,6 +89,9 @@ _AGENDA_EMPTY_BODY = "- (nothing open)"
 # memory_node background-task set). A process restart during the sleep loses
 # the pending debounce — acceptable: the next ingestion reschedules it and
 # the documents converge.
+#
+# Across replicas each keeps its own waiter, but the pending set is in Redis and
+# claimed with an atomic GETDEL, so exactly one replica gets the payload.
 _waiters: dict[str, asyncio.Task] = {}
 
 
@@ -149,6 +152,12 @@ async def cancel_consolidation(user_id: str) -> None:
     await delete_cache(CONSOLIDATION_PENDING_KEY.format(user_id=user_id))
 
 
+async def _debounce_wait() -> None:
+    """The debounce window; a module-level seam so the integration suite can
+    release the waiter on demand instead of sleeping out a wall-clock window."""
+    await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+
+
 async def _debounce_waiter(user_id: str) -> None:
     """Sleep out the debounce window, then consume the pending set and consolidate.
 
@@ -162,7 +171,7 @@ async def _debounce_waiter(user_id: str) -> None:
         # stays quiet (it must not crash the event loop).
         with contextlib.suppress(Exception):
             async with wide_task("memory_consolidation", user=UserContext(id=user_id)):
-                await asyncio.sleep(CONSOLIDATION_DEBOUNCE_SECONDS)
+                await _debounce_wait()
                 pending = await get_and_delete_cache(
                     CONSOLIDATION_PENDING_KEY.format(user_id=user_id)
                 )
@@ -293,6 +302,16 @@ async def _rewrite_within_cap(
     return None
 
 
+# Whitespace the verifier may tidy while striking nothing: blank lines it
+# collapses, trailing spaces. Proportional, because a flat allowance is only
+# small relative to a long document — 200 characters is nothing against a 3,000
+# character profile and the whole thing against a 168 character one, which is
+# exactly the size of document that was replaced by "Let me process what's new
+# from" in production.
+_SHRINK_TOLERANCE = 0.05
+_MIN_SHRINK_TOLERANCE_CHARS = 16
+
+
 async def _strike_unsupported(
     user_id: str, doc_type: MemoryDocType, content: str, facts: list[MemoryRecord]
 ) -> str:
@@ -318,6 +337,30 @@ async def _strike_unsupported(
             error_type="llm_returned_empty",
         )
         return content
+    # The verifier only ever removes whole lines, so what the document loses has
+    # to be the lines it says it struck. When the arithmetic does not add up the
+    # model did something else entirely: a run of this returned the placeholder
+    # "## Document\n...document body..." with nothing struck, which is neither
+    # None nor empty, so it was written verbatim over a 3,077-character profile.
+    original = content.strip()
+    kept = verified.content.strip()
+    # Only a line the document actually contained can explain its loss. Counting
+    # the reported strings unchecked would let a model claim any budget it liked
+    # by inventing them.
+    explained = sum(len(line) + 1 for line in verified.struck if line in original)
+    tolerance = max(_MIN_SHRINK_TOLERANCE_CHARS, int(len(original) * _SHRINK_TOLERANCE))
+    lost = len(original) - len(kept)
+    if lost > explained + tolerance:
+        log.warning(
+            "memory_consolidation_verification_failed",
+            user_id=user_id,
+            doc_type=doc_type.value,
+            error_type="unexplained_document_shrink",
+            lost_chars=lost,
+            explained_chars=explained + tolerance,
+            struck_count=len(verified.struck),
+        )
+        return content
     if verified.struck:
         log.warning(
             "memory_consolidation_struck_unsupported",
@@ -326,7 +369,27 @@ async def _strike_unsupported(
             error_type="unsupported_document_lines",
             struck_count=len(verified.struck),
         )
-    return verified.content.strip()
+    # Master's shrink guard above validates that the model's own copy only
+    # lost what the struck list explains; this then enforces the strikes
+    # mechanically, because the model also desyncs the other way — probed
+    # live, it listed the corrupted partner line as struck while returning
+    # the document with the line still present. The strike list is the
+    # verdict either way. Headings are structure, not claims, so a struck
+    # heading is a model error this must not amplify.
+    return _apply_strikes(kept, verified.struck)
+
+
+def _apply_strikes(content: str, struck: list[str]) -> str:
+    """Remove every struck line from the document, mechanically."""
+    struck_lines = {line.strip() for line in struck}
+    if not struck_lines:
+        return content.strip()
+    kept = [
+        line
+        for line in content.splitlines()
+        if line.lstrip().startswith("#") or line.strip() not in struck_lines
+    ]
+    return "\n".join(kept).strip()
 
 
 def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:

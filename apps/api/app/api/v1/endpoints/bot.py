@@ -355,7 +355,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     )
 
     conversation_id = await BotService.get_or_create_session(
-        body.platform, body.platform_user_id, body.channel_id, user
+        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
 
     raw_history = await BotService.load_conversation_history(conversation_id, user_id)
@@ -580,7 +580,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSes
     log.set(user={"id": user_id}, platform=body.platform)
 
     new_conversation_id = await BotService.reset_session(
-        body.platform, body.platform_user_id, body.channel_id, user
+        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
     )
     # Explicit id: bot routes are auth-excluded, so the request context has
     # nobody to attribute to (see apps/api/CLAUDE.md, Analytics).

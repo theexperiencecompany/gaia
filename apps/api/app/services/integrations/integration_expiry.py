@@ -16,6 +16,7 @@ tool wrapper, so importing the workflow layer here would close an import cycle
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
@@ -49,15 +50,25 @@ ExpiryTrigger = Literal["webhook", "tool_execution"]
 INTEGRATION_STATUS_UPDATE_EVENT = "integration_status_update"
 
 
+@dataclass(frozen=True)
+class ExpiryOptions:
+    """Why the connection is being expired, and what the expiry should trigger."""
+
+    # Required, not defaulted: every caller passes both explicitly. A default
+    # `trigger` silently decides which detection path an expiry reads as, and a
+    # default `notify` silently decides whether the user hears about it — both
+    # are the caller's call, and neither should be inherited by omission.
+    trigger: ExpiryTrigger
+    notify: bool
+    reason: str | None = None
+    connected_account_id: str | None = None
+    paused_workflows: Sequence[str] = ()
+
+
 async def expire_user_integration(
     user_id: str,
     integration_id: str,
-    *,
-    reason: str | None,
-    trigger: ExpiryTrigger,
-    notify: bool,
-    connected_account_id: str | None = None,
-    paused_workflows: Sequence[str] = (),
+    options: ExpiryOptions,
 ) -> bool:
     """Mark a user's integration connection dead and stop the rest of GAIA treating it as usable.
 
@@ -66,6 +77,12 @@ async def expire_user_integration(
     (idempotent, so a flapping account cannot notify twice without a real
     reconnect in between).
     """
+    reason = options.reason
+    trigger = options.trigger
+    notify = options.notify
+    connected_account_id = options.connected_account_id
+    paused_workflows = options.paused_workflows
+
     integration = get_integration_by_id(integration_id)
     toolkit = (
         integration.composio_config.toolkit if integration and integration.composio_config else None

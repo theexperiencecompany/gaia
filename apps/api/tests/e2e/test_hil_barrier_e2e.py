@@ -27,6 +27,7 @@ test rather than split into steps that would each have to re-run the setup.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -48,7 +49,7 @@ from app.agents.core.background.session import (
     create_session,
     increment_pending_subagents,
 )
-from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.background.subagent_runner import BackgroundHandoff, run_subagent_background
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     interrupt_payload,
@@ -91,6 +92,206 @@ async def gated_user(mongo_db):
     await mongo_db["users"].delete_one({"_id": user_oid})
 
 
+def _make_subagent_graph(name: str, conv: str, side_effects: dict[str, int], saver: Any):
+    """A subagent whose node runs the REAL gate around a real side effect."""
+    tool_name = f"SEND_{name.upper()}"
+
+    async def act(state: MessagesState, config: RunnableConfig) -> dict:
+        call = {"id": f"tc-{name}-{conv}", "name": tool_name, "args": {"to": name}}
+        request = ToolCallRequest(
+            tool_call=call,
+            tool=None,
+            state={"messages": [AIMessage(content="", tool_calls=[call])]},
+            runtime=SimpleNamespace(config=config),
+        )
+
+        async def handler(_req: Any) -> ToolMessage:
+            side_effects[name] += 1
+            return ToolMessage(
+                content=f"{name} message delivered",
+                tool_call_id=call["id"],
+                name=tool_name,
+            )
+
+        # The gate decides and never executes, so the node runs the tool
+        # itself — the same two lines every real adapter uses.
+        blocked = await decide_tool_call(request)
+        return {"messages": [blocked or await handler(request)]}
+
+    g = StateGraph(MessagesState)
+    g.add_node("act", act)
+    g.add_edge(START, "act")
+    g.add_edge("act", END)
+    return g.compile(checkpointer=saver)
+
+
+def _subagent_ctx(
+    name: str, graphs: dict[str, Any], conv: str, user_id: str, stream: str
+) -> SubagentExecutionContext:
+    configurable = {
+        "thread_id": f"{name}_executor_{conv}",
+        "conversation_id": conv,
+        "user_id": user_id,
+        "stream_id": stream,
+        "user_messages": ["send the updates"],
+    }
+    return SubagentExecutionContext(
+        subagent_graph=graphs[name],
+        agent_name=name,
+        config={"configurable": configurable},
+        configurable=configurable,
+        integration_id=name,
+        initial_state={"messages": [HumanMessage(content=f"send via {name}")]},
+        user_id=user_id,
+        stream_id=stream,
+    )
+
+
+async def _executor_node(state: MessagesState, config: RunnableConfig) -> dict:
+    """The executor's node runs the REAL barrier tool."""
+    return {"messages": [AIMessage(content=await wait_for_subagents.coroutine(config, 30))]}
+
+
+def _build_executor_graph(saver: Any):
+    eg = StateGraph(MessagesState)
+    eg.add_node("join", _executor_node)
+    eg.add_edge(START, "join")
+    eg.add_edge("join", END)
+    return eg.compile(checkpointer=saver)
+
+
+@dataclass(frozen=True)
+class _Journey:
+    """The one run's fixed context, shared by every phase of the journey."""
+
+    conv: str
+    stream: str
+    user_id: str
+    graphs: dict[str, Any]
+    side_effects: dict[str, int]
+    executor_graph: Any
+    executor_config: dict[str, Any]
+    approvals: Any
+
+
+async def _park_both_subagents(j: _Journey) -> dict[str, Any]:
+    """Both background subagents run concurrently and PARK on the gate."""
+    increment_pending_subagents(j.stream)
+    increment_pending_subagents(j.stream)
+    await asyncio.gather(
+        run_subagent_background(
+            _subagent_ctx(GMAIL, j.graphs, j.conv, j.user_id, j.stream),
+            j.stream,
+            handoff=BackgroundHandoff(integration_id=GMAIL),
+        ),
+        run_subagent_background(
+            _subagent_ctx(SLACK, j.graphs, j.conv, j.user_id, j.stream),
+            j.stream,
+            handoff=BackgroundHandoff(integration_id=SLACK),
+        ),
+    )
+
+    records = await j.approvals.find({"conversation_id": j.conv}).to_list(10)
+    assert len(records) == 2, (
+        "both gated subagents must file a pending approval; bucket="
+        f"{await drain_bg_subagent_results(j.conv)}"
+    )
+    assert sorted(r.get("subagent_thread_id") or "" for r in records) == sorted(
+        [f"{GMAIL}_executor_{j.conv}", f"{SLACK}_executor_{j.conv}"]
+    ), "each record must carry its parked subagent's checkpoint thread"
+    assert j.side_effects == {GMAIL: 0, SLACK: 0}, "nothing may run before approval"
+    return {r["subagent_agent_name"]: r for r in records}
+
+
+async def _pause_executor_on_batch(j: _Journey, by_agent: dict[str, Any]) -> dict:
+    """The barrier pauses the executor ONCE, with the whole batch."""
+    await j.executor_graph.ainvoke(
+        {"messages": [HumanMessage(content="collect")]}, j.executor_config
+    )
+    snapshot = await j.executor_graph.aget_state(j.executor_config)
+    payload = interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+    assert snapshot.next, "the executor thread must be parked"
+    assert sorted(payload.get("approval_ids", [])) == sorted(
+        [by_agent[GMAIL]["_id"], by_agent[SLACK]["_id"]]
+    ), f"one interrupt must carry both approvals, got type={payload.get('type')}"
+    return payload
+
+
+async def _approve_gmail_and_repark(
+    j: _Journey, by_agent: dict[str, Any], captured: list[Command], run: ExecutorRun
+) -> None:
+    """Approve gmail: resume, collect exactly once, re-park for slack."""
+    await resolution.resolve_approval(
+        approval_id=by_agent[GMAIL]["_id"], user_id=j.user_id, kind="approve"
+    )
+    assert len(captured) == 1, "one decision dispatches exactly one resume"
+
+    await j.executor_graph.ainvoke(captured[0], j.executor_config)
+    assert j.side_effects[GMAIL] == 1, "the approved action runs exactly once"
+    assert j.side_effects[SLACK] == 0, "the undecided sibling stays put"
+
+    snapshot = await j.executor_graph.aget_state(j.executor_config)
+    payload = interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+    assert payload.get("approval_ids") == [by_agent[SLACK]["_id"]], (
+        "the executor re-parks for the remaining approval only"
+    )
+    gmail_record = await j.approvals.find_one({"_id": by_agent[GMAIL]["_id"]})
+    assert gmail_record.get("subagent_collected_at") is not None, (
+        "a collected subagent must be stamped so the join never redoes it"
+    )
+
+    assert await _record_pause(
+        run,
+        "collect subagents",
+        j.executor_config["configurable"],
+        tuple(payload.get("approval_ids", [])),
+    ), "the second round needs its own resume context"
+
+
+async def _deny_slack_and_finish(
+    j: _Journey, by_agent: dict[str, Any], captured: list[Command]
+) -> None:
+    """Deny slack: the executor finishes, the action never runs."""
+    await resolution.resolve_approval(
+        approval_id=by_agent[SLACK]["_id"],
+        user_id=j.user_id,
+        kind="deny",
+        feedback="don't post this",
+    )
+    assert len(captured) == 2, "the second decision dispatches its own resume"
+
+    final_state = await j.executor_graph.ainvoke(captured[1], j.executor_config)
+    snapshot = await j.executor_graph.aget_state(j.executor_config)
+    assert not snapshot.next, "the executor thread is finished"
+
+    # outcome.text accumulates from streamed LLM tokens and these toy
+    # graphs have no LLM, so the join's own output is asserted
+    # structurally; each subagent's real content is read from its
+    # checkpointed thread below.
+    final_text = final_state["messages"][-1].content
+    assert (
+        f'<subagent_result agent="{GMAIL}">' in final_text
+        and f'<subagent_result agent="{SLACK}">' in final_text
+    ), f"the join returns both sections in one output, got: {final_text[:160]}"
+
+    gmail_thread = await j.graphs[GMAIL].aget_state(
+        {"configurable": {"thread_id": f"{GMAIL}_executor_{j.conv}"}}
+    )
+    assert "gmail message delivered" in str(gmail_thread.values["messages"][-1].content), (
+        "the approved subagent's thread holds the delivered result"
+    )
+
+    slack_thread = await j.graphs[SLACK].aget_state(
+        {"configurable": {"thread_id": f"{SLACK}_executor_{j.conv}"}}
+    )
+    slack_last = str(slack_thread.values["messages"][-1].content)
+    assert "NOT performed" in slack_last and "don't post this" in slack_last, (
+        f"the denied subagent is told, with the user's words: {slack_last[:120]}"
+    )
+    assert j.side_effects[SLACK] == 0, "a denied action never runs"
+    assert j.side_effects[GMAIL] == 1, "the approved action ran exactly once overall"
+
+
 class TestCoalescedApprovalBarrier:
     async def test_batch_pause_approve_deny_journey(
         self,
@@ -110,70 +311,11 @@ class TestCoalescedApprovalBarrier:
         async with AsyncPostgresSaver.from_conn_string(postgres_url) as saver:
             await saver.setup()
 
-            def make_subagent_graph(name: str):
-                """A subagent whose node runs the REAL gate around a real side effect."""
-                tool_name = f"SEND_{name.upper()}"
-
-                async def act(state: MessagesState, config: RunnableConfig) -> dict:
-                    call = {"id": f"tc-{name}-{conv}", "name": tool_name, "args": {"to": name}}
-                    request = ToolCallRequest(
-                        tool_call=call,
-                        tool=None,
-                        state={"messages": [AIMessage(content="", tool_calls=[call])]},
-                        runtime=SimpleNamespace(config=config),
-                    )
-
-                    async def handler(_req: Any) -> ToolMessage:
-                        side_effects[name] += 1
-                        return ToolMessage(
-                            content=f"{name} message delivered",
-                            tool_call_id=call["id"],
-                            name=tool_name,
-                        )
-
-                    # The gate decides and never executes, so the node runs the tool
-                    # itself — the same two lines every real adapter uses.
-                    blocked = await decide_tool_call(request)
-                    return {"messages": [blocked or await handler(request)]}
-
-                g = StateGraph(MessagesState)
-                g.add_node("act", act)
-                g.add_edge(START, "act")
-                g.add_edge("act", END)
-                return g.compile(checkpointer=saver)
-
-            graphs = {GMAIL: make_subagent_graph(GMAIL), SLACK: make_subagent_graph(SLACK)}
-
-            def subagent_ctx(name: str) -> SubagentExecutionContext:
-                configurable = {
-                    "thread_id": f"{name}_executor_{conv}",
-                    "conversation_id": conv,
-                    "user_id": user_id,
-                    "stream_id": stream,
-                    "user_messages": ["send the updates"],
-                }
-                return SubagentExecutionContext(
-                    subagent_graph=graphs[name],
-                    agent_name=name,
-                    config={"configurable": configurable},
-                    configurable=configurable,
-                    integration_id=name,
-                    initial_state={"messages": [HumanMessage(content=f"send via {name}")]},
-                    user_id=user_id,
-                    stream_id=stream,
-                )
-
-            async def executor_node(state: MessagesState, config: RunnableConfig) -> dict:
-                """The executor's node runs the REAL barrier tool."""
-                return {
-                    "messages": [AIMessage(content=await wait_for_subagents.coroutine(config, 30))]
-                }
-
-            eg = StateGraph(MessagesState)
-            eg.add_node("join", executor_node)
-            eg.add_edge(START, "join")
-            eg.add_edge("join", END)
-            executor_graph = eg.compile(checkpointer=saver)
+            graphs = {
+                GMAIL: _make_subagent_graph(GMAIL, conv, side_effects, saver),
+                SLACK: _make_subagent_graph(SLACK, conv, side_effects, saver),
+            }
+            executor_graph = _build_executor_graph(saver)
             executor_config = {
                 "configurable": {
                     "thread_id": f"executor_{conv}",
@@ -182,6 +324,16 @@ class TestCoalescedApprovalBarrier:
                     "stream_id": stream,
                 }
             }
+            journey = _Journey(
+                conv=conv,
+                stream=stream,
+                user_id=user_id,
+                graphs=graphs,
+                side_effects=side_effects,
+                executor_graph=executor_graph,
+                executor_config=executor_config,
+                approvals=hil_approvals_collection,
+            )
 
             async def resolve_stub(agent_ref: str, _user_id: str):
                 return graphs[agent_ref], agent_ref, agent_ref, False
@@ -196,35 +348,8 @@ class TestCoalescedApprovalBarrier:
                     new=AsyncMock(side_effect=resolve_stub),
                 ),
             ):
-                # -- both background subagents run concurrently and PARK on the gate --
-                increment_pending_subagents(stream)
-                increment_pending_subagents(stream)
-                await asyncio.gather(
-                    run_subagent_background(subagent_ctx(GMAIL), stream, integration_id=GMAIL),
-                    run_subagent_background(subagent_ctx(SLACK), stream, integration_id=SLACK),
-                )
-
-                records = await hil_approvals_collection.find({"conversation_id": conv}).to_list(10)
-                assert len(records) == 2, (
-                    "both gated subagents must file a pending approval; bucket="
-                    f"{await drain_bg_subagent_results(conv)}"
-                )
-                assert sorted(r.get("subagent_thread_id") or "" for r in records) == sorted(
-                    [f"{GMAIL}_executor_{conv}", f"{SLACK}_executor_{conv}"]
-                ), "each record must carry its parked subagent's checkpoint thread"
-                assert side_effects == {GMAIL: 0, SLACK: 0}, "nothing may run before approval"
-                by_agent = {r["subagent_agent_name"]: r for r in records}
-
-                # -- the barrier pauses the executor ONCE, with the whole batch -------
-                await executor_graph.ainvoke(
-                    {"messages": [HumanMessage(content="collect")]}, executor_config
-                )
-                snapshot = await executor_graph.aget_state(executor_config)
-                payload = interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
-                assert snapshot.next, "the executor thread must be parked"
-                assert sorted(payload.get("approval_ids", [])) == sorted(
-                    [by_agent[GMAIL]["_id"], by_agent[SLACK]["_id"]]
-                ), f"one interrupt must carry both approvals, got type={payload.get('type')}"
+                by_agent = await _park_both_subagents(journey)
+                payload = await _pause_executor_on_batch(journey, by_agent)
 
                 # The real dataclass, not a SimpleNamespace: _record_pause reads
                 # the run field by field, so a hand-rolled stand-in silently
@@ -246,7 +371,6 @@ class TestCoalescedApprovalBarrier:
                     tuple(payload.get("approval_ids", [])),
                 ), "every approval in the batch needs its resume context"
 
-                # -- approve gmail: resume, collect exactly once, re-park for slack ---
                 captured: list[Command] = []
 
                 async def fake_runner(
@@ -263,73 +387,8 @@ class TestCoalescedApprovalBarrier:
                     ),
                     patch.object(resolution, "run_executor_background", fake_runner),
                 ):
-                    await resolution.resolve_approval(
-                        approval_id=by_agent[GMAIL]["_id"], user_id=user_id, kind="approve"
-                    )
-                    assert len(captured) == 1, "one decision dispatches exactly one resume"
-
-                    await executor_graph.ainvoke(captured[0], executor_config)
-                    assert side_effects[GMAIL] == 1, "the approved action runs exactly once"
-                    assert side_effects[SLACK] == 0, "the undecided sibling stays put"
-
-                    snapshot = await executor_graph.aget_state(executor_config)
-                    payload = interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
-                    assert payload.get("approval_ids") == [by_agent[SLACK]["_id"]], (
-                        "the executor re-parks for the remaining approval only"
-                    )
-                    gmail_record = await hil_approvals_collection.find_one(
-                        {"_id": by_agent[GMAIL]["_id"]}
-                    )
-                    assert gmail_record.get("subagent_collected_at") is not None, (
-                        "a collected subagent must be stamped so the join never redoes it"
-                    )
-
-                    assert await _record_pause(
-                        run,
-                        "collect subagents",
-                        executor_config["configurable"],
-                        tuple(payload.get("approval_ids", [])),
-                    ), "the second round needs its own resume context"
-
-                    # -- deny slack: the executor finishes, the action never runs -----
-                    await resolution.resolve_approval(
-                        approval_id=by_agent[SLACK]["_id"],
-                        user_id=user_id,
-                        kind="deny",
-                        feedback="don't post this",
-                    )
-                    assert len(captured) == 2, "the second decision dispatches its own resume"
-
-                    final_state = await executor_graph.ainvoke(captured[1], executor_config)
-                    snapshot = await executor_graph.aget_state(executor_config)
-                    assert not snapshot.next, "the executor thread is finished"
-
-                    # outcome.text accumulates from streamed LLM tokens and these toy
-                    # graphs have no LLM, so the join's own output is asserted
-                    # structurally; each subagent's real content is read from its
-                    # checkpointed thread below.
-                    final_text = final_state["messages"][-1].content
-                    assert (
-                        f'<subagent_result agent="{GMAIL}">' in final_text
-                        and f'<subagent_result agent="{SLACK}">' in final_text
-                    ), f"the join returns both sections in one output, got: {final_text[:160]}"
-
-                    gmail_thread = await graphs[GMAIL].aget_state(
-                        {"configurable": {"thread_id": f"{GMAIL}_executor_{conv}"}}
-                    )
-                    assert "gmail message delivered" in str(
-                        gmail_thread.values["messages"][-1].content
-                    ), "the approved subagent's thread holds the delivered result"
-
-                    slack_thread = await graphs[SLACK].aget_state(
-                        {"configurable": {"thread_id": f"{SLACK}_executor_{conv}"}}
-                    )
-                    slack_last = str(slack_thread.values["messages"][-1].content)
-                    assert "NOT performed" in slack_last and "don't post this" in slack_last, (
-                        f"the denied subagent is told, with the user's words: {slack_last[:120]}"
-                    )
-                    assert side_effects[SLACK] == 0, "a denied action never runs"
-                    assert side_effects[GMAIL] == 1, "the approved action ran exactly once overall"
+                    await _approve_gmail_and_repark(journey, by_agent, captured, run)
+                    await _deny_slack_and_finish(journey, by_agent, captured)
 
                 assert (
                     await hil_approvals_collection.count_documents(

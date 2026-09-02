@@ -11,6 +11,7 @@ import pytest
 
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.llm.lane import AgentRole
+from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn
 from app.services.dev_agent_service import _dev_base_configurable, _reject_pause
 from app.utils.errors import AppError
 
@@ -66,12 +67,13 @@ class TestTheParentConfigurableADirectRunBuilds:
         build_config, _, cid = await self._build("conv-1")
 
         assert build_config.call_args.kwargs == {
-            "conversation_id": cid,
-            "user": {"user_id": "u1", "email": "dev@gaia.local", "name": "Dev"},
-            "agent_name": "executor_agent",
-            "role": AgentRole.EXECUTOR,
-            "user_preferences": None,
-            "writing_style": None,
+            "identity": AgentIdentity(
+                conversation_id=cid,
+                user={"user_id": "u1", "email": "dev@gaia.local", "name": "Dev"},
+                agent_name="executor_agent",
+            ),
+            "lane": AgentLane(role=AgentRole.EXECUTOR),
+            "turn": AgentTurn(user_preferences=None, writing_style=None),
         }
 
     async def test_a_passed_conversation_id_is_reused_so_turns_share_a_thread(self) -> None:

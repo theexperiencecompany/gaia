@@ -30,6 +30,103 @@ interface EmailPreviewModalProps {
   actionId?: string; // Action ID for marking action as executed
 }
 
+type EmailChip = { email: string; isValid: boolean };
+
+// Email validation function
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const isValidEmail = (email: string): boolean => EMAIL_REGEX.test(email.trim());
+
+/**
+ * The "To" field of the review modal: selected email chips plus an inline
+ * input that commits chips on Enter/comma/space, blur and paste.
+ */
+function RecipientsField({
+  chips,
+  mode,
+  error,
+  currentInput,
+  onCurrentInputChange,
+  onAddChip,
+  onRemoveChip,
+  onInputKeyDown,
+  onInputPaste,
+}: {
+  chips: EmailChip[];
+  mode: "view" | "edit";
+  error?: string;
+  currentInput: string;
+  onCurrentInputChange: (value: string) => void;
+  onAddChip: (email: string) => void;
+  onRemoveChip: (email: string) => void;
+  onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onInputPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-foreground">
+        To <span className="text-danger">*</span>
+      </div>
+      <div
+        className={`min-h-[56px] rounded-xl border-2 bg-default-100 p-3 transition-colors focus-within:border-primary ${error ? "border-danger" : "border-default-200"}`}
+      >
+        <div className="flex flex-wrap gap-2">
+          {/* Email Chips */}
+          {chips.map((chip) => (
+            <Chip
+              key={chip.email}
+              variant="flat"
+              color={chip.isValid ? "primary" : "danger"}
+              size="sm"
+              endContent={
+                mode === "edit" && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveChip(chip.email)}
+                    className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
+                  >
+                    <Cancel01Icon size={12} />
+                  </button>
+                )
+              }
+              className="max-w-[200px]"
+            >
+              <span className="truncate text-xs">{chip.email}</span>
+            </Chip>
+          ))}
+
+          {/* Input Field */}
+          {mode === "edit" && (
+            <input
+              type="text"
+              value={currentInput}
+              onChange={(e) => onCurrentInputChange(e.target.value)}
+              onKeyDown={onInputKeyDown}
+              onPaste={onInputPaste}
+              onBlur={() => {
+                if (currentInput.trim()) {
+                  onAddChip(currentInput);
+                }
+              }}
+              placeholder={
+                chips.length === 0
+                  ? "Enter email addresses..."
+                  : "Add more emails..."
+              }
+              className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-default-400"
+            />
+          )}
+        </div>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <p className="text-xs text-default-500">
+        Press Enter, comma, or space to add emails. Use Backspace to remove the
+        last email.
+      </p>
+    </div>
+  );
+}
+
 export function EmailPreviewModal({
   isOpen,
   onClose,
@@ -44,9 +141,9 @@ export function EmailPreviewModal({
 }: EmailPreviewModalProps) {
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
-  const [emailChips, setEmailChips] = useState<
-    Array<{ email: string; isValid: boolean }>
-  >(initialRecipients.map((email) => ({ email, isValid: true })));
+  const [emailChips, setEmailChips] = useState<EmailChip[]>(() =>
+    initialRecipients.map((email) => ({ email, isValid: true })),
+  );
   const [currentInput, setCurrentInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [errors, setErrors] = useState<{
@@ -62,12 +159,6 @@ export function EmailPreviewModal({
     }
   }, [emailChips, errors.recipients]);
 
-  // Email validation function
-  const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
-  };
-
   // Add email chip
   const addEmailChip = (email: string) => {
     const trimmedEmail = email.trim();
@@ -75,7 +166,7 @@ export function EmailPreviewModal({
       trimmedEmail &&
       !emailChips.some((chip) => chip.email === trimmedEmail)
     ) {
-      const newChip = {
+      const newChip: EmailChip = {
         email: trimmedEmail,
         isValid: isValidEmail(trimmedEmail),
       };
@@ -205,69 +296,17 @@ export function EmailPreviewModal({
         <ModalBody className="py-6">
           <div className="space-y-6">
             {/* Recipients */}
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground">
-                To <span className="text-danger">*</span>
-              </div>
-              <div
-                className={`min-h-[56px] rounded-xl border-2 bg-default-100 p-3 transition-colors focus-within:border-primary ${errors.recipients ? "border-danger" : "border-default-200"}`}
-              >
-                <div className="flex flex-wrap gap-2">
-                  {/* Email Chips */}
-                  {emailChips.map((chip) => (
-                    <Chip
-                      key={chip.email}
-                      variant="flat"
-                      color={chip.isValid ? "primary" : "danger"}
-                      size="sm"
-                      endContent={
-                        mode === "edit" && (
-                          <button
-                            type="button"
-                            onClick={() => removeEmailChip(chip.email)}
-                            className="ml-1 rounded-full p-0.5 transition-colors hover:bg-white/20"
-                          >
-                            <Cancel01Icon size={12} />
-                          </button>
-                        )
-                      }
-                      className="max-w-[200px]"
-                    >
-                      <span className="truncate text-xs">{chip.email}</span>
-                    </Chip>
-                  ))}
-
-                  {/* Input Field */}
-                  {mode === "edit" && (
-                    <input
-                      type="text"
-                      value={currentInput}
-                      onChange={(e) => setCurrentInput(e.target.value)}
-                      onKeyDown={handleInputKeyDown}
-                      onPaste={handlePaste}
-                      onBlur={() => {
-                        if (currentInput.trim()) {
-                          addEmailChip(currentInput);
-                        }
-                      }}
-                      placeholder={
-                        emailChips.length === 0
-                          ? "Enter email addresses..."
-                          : "Add more emails..."
-                      }
-                      className="min-w-[120px] flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-default-400"
-                    />
-                  )}
-                </div>
-              </div>
-              {errors.recipients && (
-                <p className="text-sm text-danger">{errors.recipients}</p>
-              )}
-              <p className="text-xs text-default-500">
-                Press Enter, comma, or space to add emails. Use Backspace to
-                remove the last email.
-              </p>
-            </div>
+            <RecipientsField
+              chips={emailChips}
+              mode={mode}
+              error={errors.recipients}
+              currentInput={currentInput}
+              onCurrentInputChange={setCurrentInput}
+              onAddChip={addEmailChip}
+              onRemoveChip={removeEmailChip}
+              onInputKeyDown={handleInputKeyDown}
+              onInputPaste={handlePaste}
+            />
 
             {/* Subject */}
             <div className="space-y-2">

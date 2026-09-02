@@ -24,16 +24,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta, timezone as _timezone, tzinfo as _tzinfo
 from enum import Enum
 import re
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.runnables import RunnableConfig
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 # ``±HH:MM`` fixed-offset form (e.g. "+05:30", "-08:00").
-_OFFSET_RE = re.compile(r"^[+-]\d{2}:\d{2}$")
+_OFFSET_RE = re.compile(r"^(?P<sign>[+-])(?P<hours>\d{2}):(?P<minutes>\d{2})$")
 
 
 def _offset_value(total_seconds: int) -> str:
@@ -113,17 +112,29 @@ class Timezone:
             return None
         if candidate.upper() == "UTC":
             return cls.utc()
-        if _OFFSET_RE.match(candidate):
-            hours = int(candidate[1:3])
-            minutes = int(candidate[4:6])
-            if hours > 23 or minutes > 59:
-                return None
-            sign = 1 if candidate[0] == "+" else -1
-            delta = timedelta(hours=hours, minutes=minutes)
-            return cls(candidate, _timezone(sign * delta))
+        offset = _OFFSET_RE.match(candidate)
+        if offset:
+            return cls._from_offset(candidate, offset)
+        return cls._from_zone_name(candidate)
+
+    @classmethod
+    def _from_offset(cls, candidate: str, match: re.Match[str]) -> Timezone | None:
+        """``±HH:MM`` → fixed-offset zone; ``None`` when out of range."""
+        hours = int(match.group("hours"))
+        minutes = int(match.group("minutes"))
+        if hours > 23 or minutes > 59:
+            return None
+        sign = 1 if match.group("sign") == "+" else -1
+        return cls(candidate, _timezone(sign * timedelta(hours=hours, minutes=minutes)))
+
+    @classmethod
+    def _from_zone_name(cls, candidate: str) -> Timezone | None:
+        """IANA name → zone; ``None`` when the tz database does not know it."""
         try:
             return cls(candidate, ZoneInfo(candidate))
-        except Exception:
+        except (ZoneInfoNotFoundError, ValueError):
+            # Unknown key or a key with a bad shape ("../x"): the caller treats
+            # None as "no usable zone" and its own log line says which input.
             return None
 
     @property
@@ -214,6 +225,13 @@ def home_timezone_from_config(config: RunnableConfig) -> Timezone:
     Falls back to UTC with a loud warning — the silent-UTC drift that fires
     scheduled work at the wrong hour.
     """
+    # Lazy: app.models.agent_models pulls langchain's agent middleware, whose
+    # langchain_core import tries `transformers` (~1.5 s); this util is imported
+    # by user_models, i.e. by every test worker at collection time.
+    from app.models.agent_models import (  # noqa: PLC0415 -- keeps transformers out of every test worker's collection
+        agent_configurable,
+    )
+
     raw = agent_configurable(config).get("user_timezone")
     if raw:
         log.set(timezone_source=TimezoneSource.AGENT_CONFIG.value, user_timezone=raw)

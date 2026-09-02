@@ -110,6 +110,9 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                 <Input
                   defaultValue={todo.title}
                   onKeyDown={(e) => {
+                    // Don't commit while an IME composition is active (CJK
+                    // users press Enter to confirm candidates).
+                    if (e.nativeEvent.isComposing) return;
                     if (e.key === "Enter") {
                       handleTitleSave(e.currentTarget.value);
                     }
@@ -129,11 +132,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                 />
               ) : (
                 <h1
-                  onClick={() => setIsEditingTitle(true)}
                   style={{ wordBreak: "break-all" }}
-                  className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
+                  className={`text-2xl leading-tight font-medium ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
                 >
-                  {todo.title}
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTitle(true)}
+                    className="w-full cursor-pointer text-left transition-colors hover:text-zinc-200"
+                  >
+                    {todo.title}
+                  </button>
                 </h1>
               )}
             </div>
@@ -161,10 +169,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             />
           ) : (
             <p
-              onClick={() => setIsEditingDescription(true)}
-              className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${todo.completed ? "text-zinc-600" : "text-zinc-400"}`}
+              className={`text-sm leading-relaxed ${todo.completed ? "text-zinc-600" : "text-zinc-400"}`}
             >
-              {todo.description || "Add a description..."}
+              <button
+                type="button"
+                onClick={() => setIsEditingDescription(true)}
+                className="w-full cursor-pointer text-left transition-colors hover:text-zinc-300"
+              >
+                {todo.description || "Add a description..."}
+              </button>
             </p>
           )}
 

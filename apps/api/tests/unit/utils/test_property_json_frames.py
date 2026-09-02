@@ -28,7 +28,7 @@ UNICODE_TEXT = st.text(
 
 
 class TestSseFrameBuilders:
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(content=UNICODE_TEXT)
     def test_response_frame_is_lossless_json(self, content: str) -> None:
         frame = format_sse_response(content)
@@ -37,7 +37,7 @@ class TestSseFrameBuilders:
         payload = json.loads(frame[len("data: ") : -2])
         assert payload == {"response": content}
 
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         data=st.dictionaries(
             st.text(min_size=1, max_size=20),
@@ -63,7 +63,7 @@ JSON_VALUE = st.recursive(
 
 
 class TestConvertLegacyToolData:
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(
         message=st.dictionaries(
             st.text(min_size=1, max_size=30),

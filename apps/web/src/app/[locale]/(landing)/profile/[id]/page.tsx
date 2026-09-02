@@ -14,6 +14,13 @@ import {
 } from "@/features/onboarding/api/holoCardApi";
 import { toast } from "@/lib/toast";
 
+const handleShare = () => {
+  if (typeof window === "undefined") return;
+  const url = window.location.href;
+  navigator.clipboard.writeText(url);
+  toast.success("Profile link copied to clipboard!");
+};
+
 export default function ProfilePage() {
   const params = useParams();
   const cardId = params.id as string;
@@ -29,27 +36,30 @@ export default function ProfilePage() {
   }, [holoCardData]);
 
   useEffect(() => {
+    // `cancelled` is scoped to this effect run, so a re-run for a new cardId
+    // (or unmount) can never write a stale response into state.
+    let cancelled = false;
     const fetchProfile = async () => {
       try {
         const data = await holoCardApi.getPublicHoloCard(cardId);
+        if (cancelled) return;
         setHoloCardData(data);
       } catch (error) {
         console.error("Failed to fetch profile:", error);
+        if (cancelled) return;
         toast.error("Failed to load profile");
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchProfile();
+    return () => {
+      cancelled = true;
+    };
   }, [cardId]);
-
-  const handleShare = () => {
-    if (typeof window === "undefined") return;
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
-    toast.success("Profile link copied to clipboard!");
-  };
 
   const displayData: HoloCardDisplayData | null = holoCardData
     ? {

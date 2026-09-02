@@ -11,6 +11,7 @@ branch selection, wiring, ordering — is what is under test.
 """
 
 import asyncio
+from dataclasses import replace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,6 +28,7 @@ from app.models.user_models import OnboardingPhase
 from app.services.onboarding.first_message_service import default_first_message
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
+    OnboardingContext,
     OnboardingStage,
     _finalize_onboarding,
     _finish_early_phase,
@@ -79,6 +81,20 @@ def _user(**overrides: Any) -> MagicMock:
         setattr(user, key, value)
     user.model_dump.return_value = {"name": user.name, "timezone": user.timezone}
     return user
+
+
+def _expected_ctx() -> OnboardingContext:
+    """The context `_user()` must produce, field for field."""
+    return OnboardingContext(
+        user_id=USER,
+        name="Ann",
+        profession="lawyer",
+        focus="close Q3",
+        has_gmail=False,
+        user_timezone="UTC",
+        user_email="ann@x.com",
+        clarify_answers=[{"kind": "goal", "value": "grow"}],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -251,12 +267,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], True
+                OnboardingContext(
+                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=True
+                ),
+                {"_id": USER},
             )
 
         assert social.await_args.args == (USER, "Ann", "ann@x.com")
         # The extracted profiles must reach the card, not be recomputed.
-        assert holo.await_args.args[5] is profiles
+        assert holo.await_args.args[2] is profiles
 
     async def test_without_gmail_the_card_is_built_from_no_profiles(self) -> None:
         with (
@@ -264,11 +283,14 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], False
+                OnboardingContext(
+                    user_id=USER, name="Ann", user_email="ann@x.com", focus="focus", has_gmail=False
+                ),
+                {"_id": USER},
             )
 
         assert social.await_count == 0
-        assert holo.await_args.args[5] == []
+        assert holo.await_args.args[2] == []
 
 
 # ---------------------------------------------------------------------------
@@ -289,17 +311,21 @@ def finalize_stack() -> Any:
         yield message, repo, seed, emit
 
 
-def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {
+def _finalize_ctx(**overrides: Any) -> OnboardingContext:
+    defaults: dict[str, Any] = {
+        "user_id": USER,
         "name": "Ann",
         "profession": "lawyer",
-        "triage": None,
+        "focus": "close Q3",
+    }
+    defaults.update(overrides)
+    return OnboardingContext(**defaults)
+
+
+def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "todos": [],
         "workflows": [],
-        "writing_style": None,
-        "has_gmail": False,
-        "focus": "close Q3",
-        "clarify_answers": [],
         "provision_future": None,
     }
     payload.update(overrides)
@@ -308,7 +334,7 @@ def _finalize_kwargs(**overrides: Any) -> dict[str, Any]:
 
 class TestFinalizeOnboarding:
     async def test_returns_the_seeded_conversation_id(self, finalize_stack: Any) -> None:
-        assert await _finalize_onboarding(USER, **_finalize_kwargs()) == "conv-1"
+        assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) == "conv-1"
 
     async def test_first_message_is_persisted_before_anything_else_writes(
         self, finalize_stack: Any
@@ -330,14 +356,16 @@ class TestFinalizeOnboarding:
         async def side_work() -> None:
             order.append("side_work")
 
-        await _finalize_onboarding(USER, **_finalize_kwargs(), concurrent_tasks=(side_work(),))
+        await _finalize_onboarding(
+            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
+        )
 
         assert order[0] == "persist"
         assert order.index("persist") < order.index("side_work") < order.index("emit")
 
     async def test_complete_carries_the_conversation_id(self, finalize_stack: Any) -> None:
         _, _, _, emit = finalize_stack
-        await _finalize_onboarding(USER, **_finalize_kwargs())
+        await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
 
         stage, payload = emit.await_args.args[1], emit.await_args.args[2]
         assert stage is OnboardingStage.COMPLETE
@@ -347,13 +375,10 @@ class TestFinalizeOnboarding:
         message, _, _, _ = finalize_stack
         triage, style = _triage(), _style()
         await _finalize_onboarding(
-            USER,
+            _finalize_ctx(triage=triage, writing_style=style, has_gmail=True),
             **_finalize_kwargs(
-                triage=triage,
-                writing_style=style,
                 todos=[{"id": "t1"}],
                 workflows=[{"id": "w1"}],
-                has_gmail=True,
             ),
         )
 
@@ -364,12 +389,31 @@ class TestFinalizeOnboarding:
         assert kwargs["created_workflows"] == [{"id": "w1"}]
         assert kwargs["has_gmail"] is True
 
+    async def test_every_write_in_the_tail_is_scoped_to_this_user(
+        self, finalize_stack: Any
+    ) -> None:
+        """The tail writes the first message, seeds a conversation and flips the
+        phase. Each takes the user id separately, and losing it on any one of
+        them writes another user's record — or none at all — with no error."""
+        _, repo, seed, _ = finalize_stack
+        provision = MagicMock()
+        provision.done.return_value = True
+
+        with patch(f"{MODULE}._persist_completion", AsyncMock()) as persist:
+            await _finalize_onboarding(
+                _finalize_ctx(), **_finalize_kwargs(provision_future=provision)
+            )
+
+        repo.set_first_message.assert_awaited_once_with(USER, "Hi Ann!")
+        seed.assert_awaited_once_with(USER)
+        persist.assert_awaited_once_with(USER, "conv-1", provision)
+
     async def test_a_message_failure_falls_back_to_the_default_copy(
         self, finalize_stack: Any
     ) -> None:
         _, repo, _, _ = finalize_stack
         with patch(f"{MODULE}.generate_first_message", AsyncMock(side_effect=RuntimeError("llm"))):
-            await _finalize_onboarding(USER, **_finalize_kwargs())
+            await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs())
 
         assert repo.set_first_message.await_args.args[1] == default_first_message("Ann")
 
@@ -379,7 +423,9 @@ class TestFinalizeOnboarding:
         async def side_work() -> None:
             ran.set()
 
-        await _finalize_onboarding(USER, **_finalize_kwargs(), concurrent_tasks=(side_work(),))
+        await _finalize_onboarding(
+            _finalize_ctx(), **_finalize_kwargs(), concurrent_tasks=(side_work(),)
+        )
 
         assert ran.is_set()
 
@@ -389,7 +435,7 @@ class TestFinalizeOnboarding:
         # The user must still advance out of the personalization phase.
         _, repo, _, emit = finalize_stack
         with patch(f"{MODULE}._seed_conversation", AsyncMock(return_value=None)):
-            assert await _finalize_onboarding(USER, **_finalize_kwargs()) is None
+            assert await _finalize_onboarding(_finalize_ctx(), **_finalize_kwargs()) is None
 
         assert repo.set_pipeline_completion.await_count == 1
         assert emit.await_args.args[2] == CompletePayload(conversation_id=None)
@@ -508,7 +554,12 @@ class TestProcessOnboardingIntelligence:
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["persist"].await_count == 1
-        assert pipeline_stack["social_holo"].await_count == 1
+        # The card leg gets the resolved context AND the user document: the
+        # card is rendered from both, so either being dropped empties it.
+        assert pipeline_stack["social_holo"].call_args.args == (
+            replace(_expected_ctx(), triage=None, writing_style=None),
+            user,
+        )
 
     async def test_an_absent_pipeline_mode_defaults_to_full(self, pipeline_stack: Any) -> None:
         user = _user()
@@ -524,13 +575,50 @@ class TestProcessOnboardingIntelligence:
 
         concurrent = pipeline_stack["finalize"].await_args.kwargs["concurrent_tasks"]
         assert len(concurrent) == 2
+        # Built here, awaited by the tail — so this is call_args, not await_args.
+        assert pipeline_stack["social_holo"].call_args.args == (
+            replace(_expected_ctx(), triage=None, writing_style=None),
+            pipeline_stack["repo"].get.return_value,
+        )
 
     async def test_onboarding_context_is_threaded_into_the_nodes(self, pipeline_stack: Any) -> None:
+        """Every node downstream reads its inputs off one context object, so a
+        field dropped where it is built silently degrades every node at once —
+        todos with no focus, a card with no name, a schedule in the wrong zone.
+        Pin the whole object, not its type."""
         await process_onboarding_intelligence(USER)
 
         assert pipeline_stack["style"].await_args.args == (USER, False, "lawyer")
-        assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
-        assert pipeline_stack["workflows"].await_args.args[8] == ["slack"]
+        assert pipeline_stack["triage"].await_args.args == (USER, None, "lawyer", "close Q3")
+
+        base = _expected_ctx()
+        # _run_todos gets the base context plus the triage task it waits on.
+        todo_args = pipeline_stack["todos"].await_args.args
+        assert todo_args[0] == base
+        assert isinstance(todo_args[1], asyncio.Task)
+        # The workflows and finalize legs each get it with the resolved triage
+        # and writing style folded in — here both nodes returned None.
+        resolved = replace(base, triage=None, writing_style=None)
+        assert pipeline_stack["workflows"].await_args.args == (resolved, ["slack"])
+        assert pipeline_stack["finalize"].await_args.args == (resolved,)
+
+    async def test_the_resolved_triage_and_style_are_folded_into_the_context(
+        self, pipeline_stack: Any
+    ) -> None:
+        """The two slowest nodes land after the base context is built, so they
+        are folded in with `replace`. Losing either leaves the workflow and
+        first-message legs blind to the inbox the user just waited on."""
+        triage, style = _triage(), _style()
+        pipeline_stack["triage"].return_value = triage
+        pipeline_stack["style"].return_value = style
+        pipeline_stack["composio"].check_connection_status = AsyncMock(return_value={"gmail": True})
+
+        await process_onboarding_intelligence(USER)
+
+        expected = replace(_expected_ctx(), has_gmail=True, triage=triage, writing_style=style)
+        assert pipeline_stack["workflows"].await_args.args == (expected, ["slack"])
+        assert pipeline_stack["finalize"].await_args.args == (expected,)
+        assert pipeline_stack["social_holo"].call_args.args[0] == expected
 
     async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
         user = _user(name=None)
@@ -538,7 +626,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["finalize"].await_args.kwargs["name"] == "there"
+        assert pipeline_stack["finalize"].await_args.args[0].name == "there"
 
     @pytest.mark.parametrize("stored", [None, "", "   "])
     async def test_a_blank_timezone_falls_back_to_utc(
@@ -549,7 +637,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "UTC"
+        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "UTC"
 
     async def test_a_stored_timezone_is_used(self, pipeline_stack: Any) -> None:
         user = _user(timezone="Europe/London")
@@ -557,7 +645,7 @@ class TestProcessOnboardingIntelligence:
 
         await process_onboarding_intelligence(USER)
 
-        assert pipeline_stack["workflows"].await_args.args[4] == "Europe/London"
+        assert pipeline_stack["workflows"].await_args.args[0].user_timezone == "Europe/London"
 
     async def test_a_missing_onboarding_subdoc_does_not_crash_the_pipeline(
         self, pipeline_stack: Any
@@ -635,16 +723,48 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        triage = phase_stack["run"].await_args.args[5]
-        style = phase_stack["run"].await_args.args[6]
-        assert triage is not None and triage.total_scanned == 5
-        assert style is not None and style.summary == "Terse"
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.triage is not None and ctx.triage.total_scanned == 5
+        assert ctx.writing_style is not None and ctx.writing_style.summary == "Terse"
 
     async def test_absent_learnings_degrade_to_none(self, phase_stack: Any) -> None:
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[5] is None
-        assert phase_stack["run"].await_args.args[6] is None
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.triage is None
+        assert ctx.writing_style is None
+
+    async def test_the_second_job_rebuilds_the_whole_context_and_the_selection(
+        self, phase_stack: Any
+    ) -> None:
+        """This job re-derives the context from Mongo rather than inheriting the
+        early phase's, so a field missed here reaches only the workflow leg —
+        no other assertion in this pipeline would notice."""
+        await process_onboarding_workflows_phase(USER)
+
+        assert phase_stack["run"].await_args.args == (
+            OnboardingContext(
+                user_id=USER,
+                name="Ann",
+                profession="lawyer",
+                focus="close Q3",
+                # The fixture's composio stub reports gmail connected here.
+                has_gmail=True,
+                user_timezone="UTC",
+                clarify_answers=[{"kind": "goal", "value": "grow"}],
+            ),
+            ["slack"],
+        )
+
+    async def test_a_stored_timezone_reaches_the_workflow_leg(self, phase_stack: Any) -> None:
+        """Workflow schedules are written in this zone; defaulting to UTC fires
+        every onboarding automation at the wrong hour for most of the world."""
+        user = _user(timezone="Europe/London")
+        phase_stack["repo"].get = AsyncMock(return_value=user)
+
+        await process_onboarding_workflows_phase(USER)
+
+        assert phase_stack["run"].await_args.args[0].user_timezone == "Europe/London"
 
     async def test_a_retry_purges_the_previous_suggestions(self, phase_stack: Any) -> None:
         # Without this, a killed run that already created workflows doubles up.
@@ -689,8 +809,9 @@ class TestProcessOnboardingWorkflowsPhase:
         # The user may have connected or revoked Gmail while picking integrations.
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[2] is True
-        assert phase_stack["finalize"].await_args.kwargs["has_gmail"] is True
+        ctx = phase_stack["run"].await_args.args[0]
+        assert ctx.has_gmail is True
+        assert phase_stack["finalize"].await_args.args[0].has_gmail is True
 
     @pytest.mark.parametrize("stored", [None, "", "   "])
     async def test_a_blank_timezone_falls_back_to_utc(
@@ -701,7 +822,7 @@ class TestProcessOnboardingWorkflowsPhase:
 
         await process_onboarding_workflows_phase(USER)
 
-        assert phase_stack["run"].await_args.args[4] == "UTC"
+        assert phase_stack["run"].await_args.args[0].user_timezone == "UTC"
 
     async def test_no_provision_task_is_handed_to_the_tail(self, phase_stack: Any) -> None:
         # Provisioning belongs to the first job; this one has nothing to keep alive.

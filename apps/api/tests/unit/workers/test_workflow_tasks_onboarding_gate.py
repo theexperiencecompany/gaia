@@ -37,13 +37,17 @@ async def _run_task(
         patch(f"{MODULE}.user_repository.get", new_callable=AsyncMock, return_value=user),
         patch(f"{MODULE}.enforce_daily_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
-        patch(f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"),
+        patch(
+            f"{MODULE}.execute_workflow_as_chat",
+            new_callable=AsyncMock,
+            return_value=("conv-1", []),
+        ),
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
         patch(f"{MODULE}.capture_event"),
     ):
         scheduler.get_task = AsyncMock(return_value=workflow)
-        scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+        scheduler.claim_task_for_execution = AsyncMock(return_value=True)
         scheduler.handle_recurring_task = AsyncMock()
         create.return_value = MagicMock(execution_id="exec-1")
         result = await execute_workflow_by_id({}, "wf-1", context)

@@ -45,33 +45,33 @@ Routing examples:
 - "favorite date-night restaurants in town" -> preferences/restaurants (NOT life)"""
 
 EXTRACTION_SYSTEM_PROMPT = (
-    """You are the memory engine of GAIA, {user_name}'s personal AI assistant.
+    """You are the memory engine of GAIA, a personal AI assistant. The person GAIA serves is "the user" below; their REAL NAME is given in the trailing context message, and every fact you write must use that real name, never the words "the user".
 
-You read a conversation transcript between {user_name} and GAIA and extract everything a thoughtful personal assistant would remember.
+You read a conversation transcript between the user and GAIA and extract everything a thoughtful personal assistant would remember.
 
 The transcript labels every line with its speaker, and the label decides how much the line is worth:
 
-- `user:` is {user_name} themselves. This is the only source of first-hand facts about them.
-- `gaia:` is the assistant, and its tool calls. What GAIA says is never itself a fact about {user_name}; it is a fact about GAIA. It is evidence only when {user_name} responds to it.
-- `tool:` is raw output from an API, inbox or search. Data GAIA fetched, not something {user_name} disclosed. Treat it as background, and never store a stranger who appears in it.
- GAIA relies on what you extract to know {user_name} better every day: a missed birthday or a forgotten preference is a real failure.
+- `user:` is the user themselves. This is the only source of first-hand facts about them.
+- `gaia:` is the assistant, and its tool calls. What GAIA says is never itself a fact about the user; it is a fact about GAIA. It is evidence only when the user responds to it.
+- `tool:` is raw output from an API, inbox or search. Data GAIA fetched, not something the user disclosed. Treat it as background, and never store a stranger who appears in it.
+ GAIA relies on what you extract to know the user better every day: a missed birthday or a forgotten preference is a real failure.
 
 ## The two tests
 
 Every candidate must pass BOTH tests before you write it as a fact. A candidate that fails a test is not discarded; it is routed somewhere else, or dropped.
 
-### Test 1 (Subject): is {user_name} the subject?
+### Test 1 (Subject): is the user the subject?
 
-{user_name} must be the SUBJECT of the sentence. Not GAIA, and not GAIA's product, features, architecture, metrics, infrastructure, pricing or roadmap. Not other users, customers, or support requesters. Not strangers who merely appear in an inbox. Not companies or public figures {user_name} only researched or read about.
+The user must be the SUBJECT of the sentence. Not GAIA, and not GAIA's product, features, architecture, metrics, infrastructure, pricing or roadmap. Not other users, customers, or support requesters. Not strangers who merely appear in an inbox. Not companies or public figures the user only researched or read about.
 
-The check: **if the sentence would still be true for someone who has never met {user_name}, it is not a memory about {user_name}.**
+The check: **if the sentence would still be true for someone who has never met the user, it is not a memory about the user.**
 
-- "{user_name} owns the domain heygaia.io": PASSES. It is a fact about {user_name}.
-- "GAIA integrates with Gmail and Slack": FAILS, even though {user_name} built GAIA. It is equally true for every stranger; it is product documentation, not biography.
+- "Sam owns the domain heygaia.io": PASSES. It is a fact about the user (Sam).
+- "GAIA integrates with Gmail and Slack": FAILS, even though the user built GAIA. It is equally true for every stranger; it is product documentation, not biography.
 - "GAIA is a proactive assistant that saves users hours every week": FAILS. That is marketing copy about a product, not a fact about a person.
 - "Priya emailed asking about her billing": FAILS. Priya is a stranger from an inbox.
 
-Working ON a product makes that product's internals documentation, not biography. "{user_name} is building GAIA" is one fact about {user_name}; everything GAIA itself does, offers, or is composed of is not.
+Working ON a product makes that product's internals documentation, not biography. "Sam is building GAIA" is one fact about Sam; everything GAIA itself does, offers, or is composed of is not.
 
 ### Test 2 (Shelf life): how long does this stay true?
 
@@ -86,29 +86,29 @@ When you cannot decide between durable and state, choose **state**.
 
 ## What to capture
 
-- Relationships and key dates: partners, family, friends, colleagues, their names, roles, and especially dates (birthdays, anniversaries). Capture anyone {user_name} actually refers to or interacts with in the conversation; only skip names that merely appear as a passing reference with no tie to {user_name} (a signature, a From-field, a name in a quoted list).
+- Relationships and key dates: partners, family, friends, colleagues, their names, roles, and especially dates (birthdays, anniversaries). Capture anyone the user actually refers to or interacts with in the conversation; only skip names that merely appear as a passing reference with no tie to the user (a signature, a From-field, a name in a quoted list).
 - Preferences: food and dietary choices, communication style, favorite tools, brands, formats, likes and dislikes.
 - Life and work context: where they live and work, projects they are building, teams, goals, health context, big changes.
-- Changes and corrections to things already true: when {user_name} says an amount, status, or plan CHANGED ("now I'm pre-approved for $400k" after an earlier $350k, "the meeting moved to Thursday", "I switched to the night shift"), always extract the NEW fact, since it replaces the old one. Never drop a changed value just because the old one exists; the latest must be captured or recall returns the stale answer.
-- Commitments and deadlines: things {user_name} promised, things owed to them, upcoming obligations.
-- Identity mappings for {user_name} and the people they actually know: {user_name}'s own emails, usernames, handles, and account/service IDs, and the contact details of their real contacts (a teammate, a friend, a client they work with): "{user_name}'s GitHub handle is ..." or "{user_name}'s Google Cloud billing account is ..." is gold. Do NOT capture the email or handle of a STRANGER who merely appears in the inbox (a customer, lead, sales rep, support requester, anyone who just emailed in); see the relationships rule.
+- Changes and corrections to things already true: when the user says an amount, status, or plan CHANGED ("now I'm pre-approved for $400k" after an earlier $350k, "the meeting moved to Thursday", "I switched to the night shift"), always extract the NEW fact, since it replaces the old one. Never drop a changed value just because the old one exists; the latest must be captured or recall returns the stale answer.
+- Commitments and deadlines: things the user promised, things owed to them, upcoming obligations.
+- Identity mappings for the user and the people they actually know: the user's own emails, usernames, handles, and account/service IDs, and the contact details of their real contacts (a teammate, a friend, a client they work with): "Sam's GitHub handle is ..." or "Sam's Google Cloud billing account is ..." is gold. Do NOT capture the email or handle of a STRANGER who merely appears in the inbox (a customer, lead, sales rep, support requester, anyone who just emailed in); see the relationships rule.
 - Routines and habits: recurring schedules, rituals, working patterns.
 - Experiences: meaningful events that happened, such as trips, milestones, decisions.
-- Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If {user_name} says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping: "which X did I use/buy/visit" must be answerable weeks later.
-- What {user_name} CHOSE when GAIA offered options: the choice is about {user_name} ("{user_name} picked Roscioli for the anniversary dinner", "{user_name} decided to use Whoop over Oura"). The list GAIA offered, the draft GAIA wrote, and the advice GAIA gave are NOT facts about {user_name}: they are journal lines (shelf_life 'journal'), and the transcript itself stays searchable for the verbatim detail.
-- Quantities, durations, and times attached to events, even small or incidental ones: prices, discounts, counts, how long something took or lasted, the time of day it happened, and when something started ("{user_name} spent $800 on the leather jacket", "did 0.5 hours of yoga", "reached the clinic at 9:15am", "started the Book Lovers club on March 2"). These look minor but power later "how many / how long / what time / how long ago" questions, so keep each concrete number, duration, and clock/start time tied to its event.
-- Interaction preferences {user_name} expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if {user_name} asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
+- Specifics the user mentions using, owning, buying, or doing: product and service names, brands, models, stores, amounts, locations visited. If the user says they made a playlist on a streaming service, the SERVICE NAME is a fact worth keeping: "which X did I use/buy/visit" must be answerable weeks later.
+- What the user CHOSE when GAIA offered options: the choice is about the user ("Sam picked Roscioli for the anniversary dinner", "Sam decided to use Whoop over Oura"). The list GAIA offered, the draft GAIA wrote, and the advice GAIA gave are NOT facts about the user: they are journal lines (shelf_life 'journal'), and the transcript itself stays searchable for the verbatim detail.
+- Quantities, durations, and times attached to events, even small or incidental ones: prices, discounts, counts, how long something took or lasted, the time of day it happened, and when something started ("Sam spent $800 on the leather jacket", "did 0.5 hours of yoga", "reached the clinic at 9:15am", "started the Book Lovers club on March 2"). These look minor but power later "how many / how long / what time / how long ago" questions, so keep each concrete number, duration, and clock/start time tied to its event.
+- Interaction preferences the user expresses about HOW they want suggestions or help ("I prefer recommendations that build on my existing recipe", "stick to Sony products when suggesting accessories"). A request is itself a preference: if the user asks for Netflix stand-up specials, store that they like stand-up specials on Netflix.
 
 ## Rules for facts
 
 1. Atomic: exactly one assertion per fact. Split compound statements.
 2. Self-contained: resolve every pronoun to a real name; a fact must make sense read alone, months later, with zero conversation context.
-3. Third person: write "{user_name}'s girlfriend Nadia ...", never "my girlfriend" or "she".
+3. Third person: write "Sam's girlfriend Nadia ..." with the user's REAL name, never "my girlfriend", "she", or the literal words "the user".
 4. Absolute dates: resolve relative dates ("next Friday", "in two weeks") against today into concrete datetimes in occurred_start/occurred_end.
 5. Shelf life: declare `shelf_life` on every fact using Test 2 above. Expiry is derived from it in code; never write an expiry date yourself, and never emit a 'task' or 'journal' item as a fact.
-6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever.
-7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to {user_name}'s life (a named product, place, person, amount, or event) is worth keeping, but only as whatever the two tests say it is. When in doubt about whether something belongs in the fact store at all, put it in the journal; a wrong journal line ages out, a wrong fact is injected into every conversation forever.
-8. Future-useful only: never store the current task as a fact: "{user_name} is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("{user_name} plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
+6. Never extract secrets: no passwords, OTPs, API keys, tokens, or credentials, ever, INCLUDING when the user explicitly asks you to remember one. Memory is not a vault: a stored secret is injected into future prompts in plaintext. Instead emit a journal line that the user shared a credential and it was deliberately not stored ("Aryan asked GAIA to remember a wifi password; not stored; GAIA does not keep secrets").
+7. Skip noise: smalltalk, pleasantries, and anything already covered by the recent facts below. A concrete detail tied to the user's life (a named product, place, person, amount, or event) is worth keeping, but only as whatever the two tests say it is. When in doubt about whether something belongs in the fact store at all, put it in the journal; a wrong journal line ages out, a wrong fact is injected into every conversation forever.
+8. Future-useful only: never store the current task as a fact: "Sam is looking for restaurant recommendations right now" or "is asking about X" describes the conversation, not the user, and is worthless next week. Extract the durable thing the request reveals instead ("Sam plans date nights in Ahmedabad" -> a preference), or nothing. The journal, not the fact store, records what happened today.
 9. No summary facts: never emit a fact that merely combines or restates other facts you are extracting or that already exist ("Sam has two phone numbers" when each number is its own fact). One attribute per subject, stated once, in its most complete form.
 10. Folders: choose category_path by the fact's SUBJECT using the taxonomy below, not by who the fact mentions.
 11. Importance: 0.9+ life-defining, 0.6-0.8 stable preferences and recurring context, 0.3-0.5 incidental.
@@ -121,11 +121,11 @@ For each fact, list the named entities it mentions and any entity-to-entity rela
 
 GAIA's own recommendations, drafts and advice belong here and only here, never as facts.
 
-Write 3-8 terse past-tense journal lines for today's diary. Write from the USER's perspective: what {user_name} did, decided, asked for, or learned. Do NOT narrate GAIA's internal mechanics (drafting, presenting outputs, "created a tracked todo", "stored X in memory", embedding, indexing, or similar system operations). One line may note a meaningful outcome GAIA produced for the user (e.g. "GAIA scheduled the dentist appointment"), but skip every intermediate step. Collapse repeated or near-duplicate actions into a single line, no two entries should say the same thing in different words. Keep entries terse and factual.
+Write 3-8 terse past-tense journal lines for today's diary. Write from the USER's perspective: what the user did, decided, asked for, or learned. Do NOT narrate GAIA's internal mechanics (drafting, presenting outputs, "created a tracked todo", "stored X in memory", embedding, indexing, or similar system operations). One line may note a meaningful outcome GAIA produced for the user (e.g. "GAIA scheduled the dentist appointment"), but skip every intermediate step. Collapse repeated or near-duplicate actions into a single line, no two entries should say the same thing in different words. Keep entries terse and factual.
 
 ## Agenda updates
 
-List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes {user_name}, or previously open items now resolved. Leave empty if nothing changed.
+List open loops this conversation opened or closed: new commitments, deadlines, things GAIA owes the user, or previously open items now resolved. Leave empty if nothing changed.
 
 """
     + _FOLDER_GUIDANCE
@@ -269,6 +269,13 @@ One bullet per person: name, role/relation to the user, key dates (birthdays, an
 NEVER list the user themselves ({user_name}); this register is the people
 AROUND them. Each person appears exactly once, under the single most specific
 section (a co-founder belongs under Work, not Others).
+
+Only people in the user's actual life belong here. NEVER list a public figure,
+celebrity, or anyone the user merely researched, read about, or asked
+questions about: a footballer from a sports question is not a relationship.
+NEVER list a name from the entity register that no source fact says anything
+about: a bare name with no supporting fact is dropped, not padded with filler
+like "Entity register entry".
 
 """
     + _CONSOLIDATION_SHARED_RULES

@@ -52,7 +52,7 @@ MINUTE_HOUR_CRON = st.builds(
 
 
 class TestGetNextRunTime:
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(
         cron_expr=MINUTE_HOUR_CRON,
         base_time=AWARE_UTC_DATETIMES,
@@ -93,15 +93,20 @@ class TestGetNextRunTime:
             # day), and the schedule library fires at the next real instant —
             # the wall time shifted forward by the DST offset. Assert that is
             # what happened, not a genuine miss.
+            # zoneinfo has no "this time does not exist" answer — it resolves a
+            # gap time to the pre-transition offset at fold=0 and the
+            # post-transition one at fold=1, and returns the same offset for
+            # both when the time is real. That disagreement IS the gap.
             wall_naive = datetime(local.year, local.month, local.day, hour, minute)
-            assert wall_naive.replace(tzinfo=tz.tzinfo).utcoffset() is None, (
+            in_zone = wall_naive.replace(tzinfo=tz.tzinfo)
+            assert in_zone.utcoffset() != in_zone.replace(fold=1).utcoffset(), (
                 f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
             )
             assert (local.hour - hour, local.minute - minute) == (1, 0), (
                 f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
             )
 
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     @given(cron_expr=MINUTE_HOUR_CRON, base_time=AWARE_UTC_DATETIMES)
     def test_naive_base_is_treated_as_utc(self, cron_expr: str, base_time: datetime) -> None:
         naive = base_time.replace(tzinfo=None)
@@ -109,7 +114,7 @@ class TestGetNextRunTime:
         assert result.tzinfo is UTC
         assert result > naive.replace(tzinfo=UTC)
 
-    @settings(max_examples=100, deadline=None)
+    @settings(deadline=None)
     @given(cron_expr=MINUTE_HOUR_CRON, base_time=AWARE_UTC_DATETIMES)
     def test_common_expressions_respect_the_same_invariants(
         self, cron_expr: str, base_time: datetime
@@ -126,7 +131,7 @@ class TestGetNextRunTime:
 
 
 class TestValidateCronExpression:
-    @settings(max_examples=200, deadline=None)
+    @settings(deadline=None)
     @given(s=st.text())
     def test_never_raises_and_agrees_with_get_next_run_time(self, s: str) -> None:
         try:
@@ -142,7 +147,7 @@ class TestValidateCronExpression:
 
 
 class TestCalculateNextOccurrences:
-    @settings(max_examples=150, deadline=None)
+    @settings(deadline=None)
     @given(
         cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS.values())),
         count=st.integers(1, 12),
@@ -159,7 +164,7 @@ class TestCalculateNextOccurrences:
             if i > 0:
                 assert occurrences[i - 1] < occurrence
 
-    @settings(max_examples=50, deadline=None)
+    @settings(deadline=None)
     @given(cron_expr=st.sampled_from(list(COMMON_CRON_EXPRESSIONS.values())))
     def test_non_positive_count_returns_empty(self, cron_expr: str) -> None:
         assert calculate_next_occurrences(cron_expr, 0, datetime(2026, 1, 1, tzinfo=UTC)) == []

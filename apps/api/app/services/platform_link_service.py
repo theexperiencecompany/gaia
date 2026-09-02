@@ -12,22 +12,33 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
+from urllib.parse import quote
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.config.settings import settings
 from app.constants.platform_links import IMESSAGE_PENDING_REGISTRATION_TTL
+from app.db.redis import redis_cache
 from app.db.repositories.pending_platform_registrations import (
     pending_platform_registration_repository,
 )
 from app.db.repositories.users import user_repository
+from app.decorators import enforce_rate_limit
 from app.models.payment_models import PlanType
 from app.models.platform_models import (
     DisconnectPlatformResponse,
+    InitiatePlatformConnectResponse,
     PlatformLinkEntry,
     PlatformLinkResult,
 )
 from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
+from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.payments.payment_service import payment_service
-from app.services.photon.photon_client import unregister_shared_user
+from app.services.photon.photon_client import (
+    redirect_deep_link,
+    register_shared_user,
+    unregister_shared_user,
+)
 from app.utils.errors import AppError, create_error
 from shared.py.wide_events import log
 
@@ -190,6 +201,176 @@ async def require_platform_plan(user_id: str, platform: str) -> None:
             plan_required=PlanType.PRO.value,
             current_plan=PlanType.FREE.value,
         )
+
+
+async def start_platform_connect(
+    user_id: str,
+    platform: str,
+    phone: str | None = None,
+) -> InitiatePlatformConnectResponse:
+    """Build whatever ``platform``'s connect flow needs: an OAuth URL or manual
+    /auth instructions.
+
+    Shared by the settings-page endpoint and the agent's manage_linked_account
+    tool so both surfaces offer exactly the same flows. Raises AppError on an
+    unsupported platform, plan-gated platform, or missing iMessage phone.
+    """
+    if not Platform.is_valid(platform):
+        raise create_error(
+            message=f"Unsupported platform '{platform}'",
+            fix=f"Use one of: {', '.join(Platform.values())}",
+            status_code=400,
+        )
+    await require_platform_plan(user_id, platform)
+
+    # Discord OAuth flow
+    if platform == Platform.DISCORD.value and settings.DISCORD_OAUTH_CLIENT_ID:
+        state = await create_oauth_state(
+            user_id=user_id,
+            redirect_path="/settings?section=linked-accounts",
+            integration_id="discord",
+        )
+        auth_url = (
+            f"https://discord.com/api/oauth2/authorize"
+            f"?client_id={settings.DISCORD_OAUTH_CLIENT_ID}"
+            f"&redirect_uri={quote(settings.DISCORD_OAUTH_REDIRECT_URI)}"
+            f"&response_type=code"
+            f"&scope=identify"
+            f"&state={state}"
+        )
+        return InitiatePlatformConnectResponse(
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
+        )
+
+    # Slack OAuth flow
+    if platform == Platform.SLACK.value and settings.SLACK_OAUTH_CLIENT_ID:
+        state = await create_oauth_state(
+            user_id=user_id,
+            redirect_path="/settings?section=linked-accounts",
+            integration_id="slack",
+        )
+        auth_url = (
+            f"https://slack.com/oauth/v2/authorize"
+            f"?client_id={settings.SLACK_OAUTH_CLIENT_ID}"
+            f"&redirect_uri={quote(settings.SLACK_OAUTH_REDIRECT_URI)}"
+            f"&user_scope=identity.basic"
+            f"&state={state}"
+        )
+        return InitiatePlatformConnectResponse(
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
+        )
+
+    # Telegram manual flow (no OAuth)
+    if platform == Platform.TELEGRAM.value:
+        bot_username = settings.TELEGRAM_BOT_USERNAME or "gaia_bot"
+        return InitiatePlatformConnectResponse(
+            auth_url=None,
+            auth_type="manual",
+            instructions=(
+                f"Open Telegram and message @{bot_username} with /auth to link your account."
+            ),
+            action_link=f"https://t.me/{bot_username}",
+        )
+
+    # WhatsApp manual flow (no OAuth)
+    if platform == Platform.WHATSAPP.value:
+        whatsapp_number = settings.WHATSAPP_PHONE_NUMBER
+        return InitiatePlatformConnectResponse(
+            auth_url=None,
+            auth_type="manual",
+            instructions=(
+                "Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account."
+            ),
+            action_link=f"https://wa.me/{whatsapp_number}" if whatsapp_number else None,
+        )
+
+    # Only unconfigured-OAuth platforms (discord/slack without client ids) get here.
+    if platform in (Platform.DISCORD.value, Platform.SLACK.value):
+        raise create_error(
+            message=f"{platform} connect is not configured",
+            fix="Connect this platform from the GAIA settings page once OAuth is set up",
+            status_code=501,
+        )
+
+    # iMessage manual flow: Photon's shared pool only delivers to registered
+    # numbers, so the user's phone must be allowlisted before they can text.
+    if not phone:
+        raise create_error(
+            message="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
+            why="Photon's shared pool delivers only to allowlisted numbers",
+            fix="Pass a phone number in E.164 format (e.g. +15551234567)",
+            status_code=422,
+        )
+    await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
+    photon_user = await register_shared_user(phone)
+    # Recorded before the user is sent off to text /auth: an unrecorded
+    # registration that is never linked holds its pool seat with nothing
+    # left pointing at it.
+    await register_pending_imessage_number(user_id, phone)
+    log.audit(
+        "imessage number registered for linking",
+        actor=user_id,
+        provider=platform,
+    )
+    return InitiatePlatformConnectResponse(
+        auth_type="manual",
+        instructions=(
+            "Text /auth to your GAIA iMessage number from the phone you just registered."
+        ),
+        action_link=redirect_deep_link(photon_user.id),
+        contact_number=photon_user.assignedPhoneNumber,
+    )
+
+
+async def disconnect_platform_account(user_id: str, platform: str) -> DisconnectPlatformResponse:
+    """Unlink ``platform`` from the user and clear the bot auth cache entry.
+
+    Shared by the settings-page endpoint and the agent's manage_linked_account
+    tool so every unlink path gets the same cleanup. Raises AppError (404) when
+    the unlink fails.
+    """
+    # Read platform_user_id before unlinking so we can clear the bot auth cache
+    existing = await PlatformLinkService.get_linked_platforms(user_id)
+    entry = existing.get(platform)
+    if entry is None:
+        # A no-op "disconnected" would lie to the caller (the agent would tell
+        # the user something that was never linked is now gone).
+        raise create_error(
+            message=f"No {platform} account is linked",
+            fix="Check account/linked-accounts for what is actually connected",
+            status_code=404,
+        )
+    platform_user_id = entry["platformUserId"]
+
+    try:
+        result = await PlatformLinkService.unlink_account(user_id, platform)
+    except ValueError as e:
+        # No raw identifiers or provider error text in the audit — the actor
+        # and outcome are what make a rejected attempt findable.
+        log.audit(
+            "platform account unlink rejected",
+            actor=user_id,
+            provider=platform,
+            reason="unlink_failed",
+            error_type=type(e).__name__,
+        )
+        raise create_error(message=str(e), status_code=404) from e
+
+    log.audit(
+        "platform account unlinked",
+        actor=user_id,
+        provider=platform,
+    )
+    capture_context_event(
+        AnalyticsEvents.INTEGRATION_DISCONNECTED,
+        {"integration_id": platform},
+    )
+
+    if platform_user_id:
+        cache_key = f"bot_user:{platform}:{platform_user_id}"
+        await redis_cache.client.delete(cache_key)
+
+    return result
 
 
 class PlatformLinkService:

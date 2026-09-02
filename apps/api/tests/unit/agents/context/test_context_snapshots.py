@@ -11,6 +11,7 @@ import pytest
 from tests._harness.context_chain import (
     FIXED_NOW,
     AgentTier,
+    ContextSeed,
     HarnessUser,
     effective_context,
 )
@@ -67,7 +68,7 @@ class TestTierSnapshots:
     @pytest.mark.parametrize("tier", list(AgentTier))
     async def test_common_fixture(self, tier: AgentTier) -> None:
         messages = await effective_context(
-            tier, user=COMMON_USER, query=QUERY, sources=COMMON_SOURCES
+            tier, ContextSeed(user=COMMON_USER, query=QUERY, sources=COMMON_SOURCES)
         )
         assert_snapshot(f"tier_{tier.value}", messages)
 
@@ -77,13 +78,15 @@ class TestTierSnapshots:
         run-binding banners appear at once."""
         messages = await effective_context(
             tier,
-            user=COMMON_USER,
-            query=QUERY,
-            sources=BOUND_RUN_SOURCES,
-            configurable_overrides={
-                "active_todo_id": ACTIVE_TODO.id,
-                "execution_mode": "background",
-            },
+            ContextSeed(
+                user=COMMON_USER,
+                query=QUERY,
+                sources=BOUND_RUN_SOURCES,
+                configurable_overrides={
+                    "active_todo_id": ACTIVE_TODO.id,
+                    "execution_mode": "background",
+                },
+            ),
         )
         assert_snapshot(f"bound_background_{tier.value}", messages)
 
@@ -92,16 +95,17 @@ class TestTierSnapshots:
         'exactly one per slot, and it is the latest' behaviour end to end."""
         stale = await effective_context(
             AgentTier.EXECUTOR,
-            user=COMMON_USER,
-            query="an older question",
-            sources=COMMON_SOURCES,
-            now=FIXED_NOW.replace(hour=9),
+            ContextSeed(
+                user=COMMON_USER,
+                query="an older question",
+                sources=COMMON_SOURCES,
+                now=FIXED_NOW.replace(hour=9),
+            ),
         )
         messages = await effective_context(
             AgentTier.EXECUTOR,
-            user=COMMON_USER,
-            query=QUERY,
-            sources=COMMON_SOURCES,
-            prior_messages=stale,
+            ContextSeed(
+                user=COMMON_USER, query=QUERY, sources=COMMON_SOURCES, prior_messages=stale
+            ),
         )
         assert_snapshot("multi_turn_executor", messages)

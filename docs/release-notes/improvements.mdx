@@ -4,6 +4,17 @@ description: "All improvements and enhancements shipped across GAIA releases."
 icon: "arrow-up-right"
 ---
 
+<Update label="Aug 26, 2026" description="API, Web, Desktop, Mobile, Bots, CLI">
+
+## [API v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/api-v0.22.0)
+- **Model Failover That Holds Context**: Each turn resolves one model lane up front, so a provider failure now falls over cleanly without dropping your queued messages or a pending approval.
+- **Replies That Sound Less Like AI**: GAIA's writing is scored against a list of AI tells — em dashes, the "it's not X, it's Y" construction — and the prompt no longer models the habits it tells the model to avoid.
+- **Fresher Trigger Catalog**: Every app trigger's schema and slug is back in sync with the live Composio catalog, so event-based workflows fire on the right shape of data, and removing a trigger that's already gone no longer errors.
+- **Dormant Workflows Pause Themselves**: A daily sweep pauses active workflows for accounts that have gone quiet, so nothing keeps firing in the background months after you stopped using it. They resume automatically the next time you log in.
+- **New License**: GAIA is now licensed under PolyForm Noncommercial 1.0.0 instead of PolyForm Strict.
+
+</Update>
+
 <Update label="Jun 30, 2026" description="API, Web, Desktop, Mobile, Bots">
 
 ## [Web v0.22.0](https://github.com/theexperiencecompany/gaia/releases/tag/web-v0.22.0)

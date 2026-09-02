@@ -1,6 +1,6 @@
 {
   "name": "@gaia/bots-e2e",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "dependencies": {
@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@grammyjs/types": "^3.28.0",
+    "amqplib": "^0.10.9",
     "discord.js": "^14.26.5",
     "hono": "^4.12.29",
     "spectrum-ts": "^12.7.0",

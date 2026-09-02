@@ -43,6 +43,12 @@ export interface ChatRequest {
   /** Optional channel ID where the conversation is happening. */
   channelId?: string;
   /**
+   * Whether this conversation is a direct message. Discord and Slack DM
+   * channel ids differ from the user id, so the server cannot tell a DM from
+   * a channel without this.
+   */
+  isDm?: boolean;
+  /**
    * IDs of files the user has attached to this message. The agent loads each
    * file's metadata + content from MongoDB / ChromaDB and grounds its reply
    * in the file contents.
@@ -177,6 +183,7 @@ export interface BotUserContext {
 
 export type CommandContext = BotUserContext & {
   channelId?: string;
+  isDm?: boolean;
   /** Optional platform profile info, populated by the bot adapter when available. */
   profile?: { username?: string; displayName?: string };
 };
@@ -265,6 +272,12 @@ export interface MessageTarget {
   userId: string;
   /** The channel/conversation where the command was invoked (absent for some DM contexts). */
   channelId?: string;
+  /**
+   * Whether this conversation is a direct message. Discord and Slack DM
+   * channel ids differ from the user id, so the server cannot tell a DM from
+   * a channel without this.
+   */
+  isDm?: boolean;
   /** Optional platform profile info (username, display name) from the bot adapter. */
   profile?: { username?: string; displayName?: string };
 }

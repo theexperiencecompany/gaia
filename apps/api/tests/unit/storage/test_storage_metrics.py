@@ -157,8 +157,8 @@ def test_an_op_reporting_no_bytes_omits_the_bytes_key_rather_than_reporting_zero
 
 
 def test_bytes_from_repeated_writes_accumulate_into_one_total(op: str) -> None:
-    record_fs_op(op, duration_ms=1.0, bytes=100)
-    record_fs_op(op, duration_ms=1.0, bytes=23)
+    record_fs_op(op, duration_ms=1.0, byte_count=100)
+    record_fs_op(op, duration_ms=1.0, byte_count=23)
 
     assert peek_fs_metrics()[op]["bytes"] == 123
 
@@ -194,7 +194,7 @@ def test_a_prometheus_failure_still_leaves_the_op_recorded_on_the_wide_event(
     # entire fs={} field for that request.
     monkeypatch.setattr(m, "_FS_OP_DURATION_SECONDS", _BrokenCollector())
 
-    record_fs_op(op, duration_ms=7.0, bytes=5)
+    record_fs_op(op, duration_ms=7.0, byte_count=5)
 
     snap = peek_fs_metrics()[op]
     assert snap["count"] == 1
@@ -264,13 +264,13 @@ def test_durations_reach_prometheus_in_seconds_not_milliseconds(op: str) -> None
 
 
 def test_an_op_reporting_zero_bytes_never_creates_a_byte_series(op: str) -> None:
-    record_fs_op(op, duration_ms=1.0, bytes=0)
+    record_fs_op(op, duration_ms=1.0, byte_count=0)
 
     assert byte_total(op) is None
 
 
 def test_reported_bytes_are_added_to_the_byte_counter(op: str) -> None:
-    record_fs_op(op, duration_ms=1.0, bytes=4096)
+    record_fs_op(op, duration_ms=1.0, byte_count=4096)
 
     assert byte_total(op) == 4096.0
 
@@ -653,3 +653,21 @@ def test_a_registration_failure_for_an_unknown_collector_is_not_swallowed() -> N
 
     with pytest.raises(ValueError, match="bad bucket definition"):
         _register_once(f"never_registered_{uuid4().hex}", boom)
+
+
+def test_a_single_byte_is_recorded_on_both_surfaces(op: str) -> None:
+    # The smallest positive count: a `> 1` guard on either surface would drop
+    # it while every larger fixture in this file still passed.
+    record_fs_op(op, duration_ms=1.0, byte_count=1)
+
+    assert peek_fs_metrics()[op]["bytes"] == 1
+    assert byte_total(op) == 1.0
+
+
+def test_a_negative_byte_count_records_no_bytes(op: str) -> None:
+    # `if byte_count:` and `if byte_count > 0:` differ exactly here — a
+    # negative count must not touch either surface.
+    record_fs_op(op, duration_ms=1.0, byte_count=-5)
+
+    assert "bytes" not in peek_fs_metrics()[op]
+    assert byte_total(op) is None

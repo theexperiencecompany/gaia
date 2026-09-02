@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.constants.chroma import CHROMA_NOTES_COLLECTION
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.notes import note_repository
@@ -61,7 +62,7 @@ async def search_by_similarity(
 
         # Extract IDs for MongoDB lookup if needed
         result_items = []
-        id_field = "note_id" if collection_name == "notes" else "file_id"
+        id_field = "note_id" if collection_name == CHROMA_NOTES_COLLECTION else "file_id"
 
         # Build initial result data
         for item, score in chroma_results:
@@ -81,7 +82,7 @@ async def search_by_similarity(
         # Enrich note results with their stored timestamps. Only the notes path
         # requests enrichment (see search_notes_by_similarity, the sole caller);
         # the files-detail branch was unreachable and is intentionally dropped.
-        if fetch_mongo_details and collection_name == "notes":
+        if fetch_mongo_details and collection_name == CHROMA_NOTES_COLLECTION:
             note_ids = [str(d["id"]) for d in result_items]
             notes_by_id = {n.id: n for n in await note_repository.find_by_ids(user_id, note_ids)}
             for item_data in result_items:
@@ -116,6 +117,6 @@ async def search_notes_by_similarity(input_text: str, user_id: str) -> list[dict
     return await search_by_similarity(
         input_text=input_text,
         user_id=user_id,
-        collection_name="notes",
+        collection_name=CHROMA_NOTES_COLLECTION,
         fetch_mongo_details=True,
     )

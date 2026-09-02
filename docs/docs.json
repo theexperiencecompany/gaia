@@ -185,7 +185,9 @@
               "release-notes/features",
               "release-notes/bug-fixes",
               "release-notes/improvements",
-              "release-notes/performance"
+              "release-notes/performance",
+              "release-notes/infrastructure",
+              "release-notes/documentation"
             ]
           },
           {

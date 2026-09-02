@@ -12,11 +12,32 @@ from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.constants.chroma import (
+    TOOLS_INDEX_CACHE_TTL_SECONDS,
+    TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+    TOOLS_SEED_LOCK_KEY_PREFIX,
+    TOOLS_SEED_LOCK_LEASE_SECONDS,
+    TOOLS_SEED_LOCK_MAX_HOLD_SECONDS,
+    TOOLS_SEED_LOCK_RENEW_SECONDS,
+)
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
+from app.utils.redis_lock import DistributedLock
 from shared.py.wide_events import VectorContext, log
+
+
+def _tools_seed_lock(namespace: str) -> DistributedLock:
+    """The cross-replica seed lock for one indexing namespace."""
+    return DistributedLock(
+        f"{TOOLS_SEED_LOCK_KEY_PREFIX}{namespace}",
+        lease_seconds=TOOLS_SEED_LOCK_LEASE_SECONDS,
+        acquire_timeout_seconds=TOOLS_SEED_LOCK_ACQUIRE_TIMEOUT_SECONDS,
+        renew_seconds=TOOLS_SEED_LOCK_RENEW_SECONDS,
+        max_hold_seconds=TOOLS_SEED_LOCK_MAX_HOLD_SECONDS,
+    )
+
 
 from .chroma_store import ChromaStore
 
@@ -405,17 +426,11 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
         input_count=input_count,
     )
 
+    # Cheap, lock-free fast path. The Redis marker is only trustworthy when the
+    # docs are actually still in Chroma — trusting it alone made a wiped/recreated
+    # Chroma permanent: the guard hit forever, the namespace was never re-indexed,
+    # and tool discovery silently returned nothing. Require both before skipping.
     existing_tools = await _get_existing_tools_from_chroma(collection, {namespace})
-    log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: fetched existing docs for namespace",
-        existing_tools_count=len(existing_tools),
-        namespace=namespace,
-    )
-
-    # The Redis hash only proves some past process BELIEVED it indexed this
-    # namespace — never that ChromaDB still holds the docs. Trusting it alone made
-    # a wiped/recreated Chroma permanent: the guard hit forever, the namespace was
-    # never re-indexed, and tool discovery silently returned nothing. Require both.
     if cached_hash == tools_hash and existing_tools:
         log.info(
             f"{LogTag.CHROMA} index_tools_to_store: namespace cache HIT (verified against store), skipping reindex",
@@ -431,35 +446,41 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
             input_count=input_count,
         )
 
-    tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
-    log.set_ns("vector", embedded_count=len(tools_to_upsert))
+    async def _seed() -> None:
+        # Re-read existing inside the lease: a leader replica may have just
+        # finished indexing this namespace, in which case the diff is now empty
+        # and this follower embeds nothing.
+        existing = await _get_existing_tools_from_chroma(collection, {namespace})
+        tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing)
+        log.set_ns("vector", embedded_count=len(tools_to_upsert))
 
-    if not tools_to_upsert and not tools_to_delete:
+        if not tools_to_upsert and not tools_to_delete:
+            log.info(
+                f"{LogTag.CHROMA} index_tools_to_store: namespace is up-to-date (no diff)",
+                namespace=namespace,
+                current_tools_count=len(current_tools),
+            )
+            await set_cache(cache_key, tools_hash, ttl=TOOLS_INDEX_CACHE_TTL_SECONDS)
+            return
+
         log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace is up-to-date ( tools, no diff)",
+            f"{LogTag.CHROMA} index_tools_to_store: updating namespace",
             namespace=namespace,
-            current_tools_count=len(current_tools),
+            tools_to_upsert_count=len(tools_to_upsert),
+            tools_to_delete_count=len(tools_to_delete),
         )
-        # Cache the hash even if no changes (first time seeing this namespace)
-        await set_cache(cache_key, tools_hash, ttl=86400)
-        return
+        put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
+        await _execute_batch_operations(store, put_ops)
+        await set_cache(cache_key, tools_hash, ttl=TOOLS_INDEX_CACHE_TTL_SECONDS)
+        log.info(
+            f"{LogTag.CHROMA} index_tools_to_store: completed namespace, cache key set",
+            namespace=namespace,
+        )
 
-    log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: Updating namespace : to upsert, to delete",
-        namespace=namespace,
-        tools_to_upsert_count=len(tools_to_upsert),
-        tools_to_delete_count=len(tools_to_delete),
-    )
-
-    put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
-    await _execute_batch_operations(store, put_ops)
-
-    # Cache the hash after successful indexing (24 hour TTL)
-    await set_cache(cache_key, tools_hash, ttl=86400)
-    log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: completed namespace, cache key set",
-        namespace=namespace,
-    )
+    # Serialize the read-diff-write across replicas so a cold-start herd doesn't
+    # each embed the whole namespace; the diff keeps it correct if the lock can't
+    # be taken.
+    await _tools_seed_lock(namespace).run_idempotent(_seed)
 
 
 async def delete_tools_by_namespace(namespace: str) -> int:
@@ -543,28 +564,35 @@ async def initialize_chroma_tools_store() -> ChromaStore:
 
     collection = await store._get_collection()
 
-    current_tools = _get_current_tools_with_hashes(tool_registry)
+    async def _seed() -> None:
+        # Re-read existing inside the lease so a follower that waited out a leader
+        # replica's seed sees the leader's writes and embeds nothing.
+        current_tools = _get_current_tools_with_hashes(tool_registry)
+        managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
+        log.set(vector=VectorContext(operation="upsert", collection="langgraph_tools_store"))
+        log.info(
+            f"{LogTag.CHROMA} Managing namespaces at init", managed_namespaces=managed_namespaces
+        )
 
-    managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
-    log.set(vector=VectorContext(operation="upsert", collection="langgraph_tools_store"))
-    log.info(f"{LogTag.CHROMA} Managing namespaces at init", managed_namespaces=managed_namespaces)
+        existing_tools = await _get_existing_tools_from_chroma(collection, managed_namespaces)
+        tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
+        log.set_ns("vector", embedded_count=len(tools_to_upsert))
 
-    existing_tools = await _get_existing_tools_from_chroma(collection, managed_namespaces)
+        if not tools_to_upsert and not tools_to_delete:
+            log.info(f"{LogTag.CHROMA} ChromaDB tools store is up-to-date, no changes needed")
+            return
 
-    tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
-    log.set_ns("vector", embedded_count=len(tools_to_upsert))
+        log.info(
+            f"{LogTag.CHROMA} Updating ChromaDB tools store: to upsert, to delete",
+            tools_to_upsert_count=len(tools_to_upsert),
+            tools_to_delete_count=len(tools_to_delete),
+        )
+        put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
+        await _execute_batch_operations(store, put_ops)
 
-    if not tools_to_upsert and not tools_to_delete:
-        log.info(f"{LogTag.CHROMA} ChromaDB tools store is up-to-date, no changes needed")
-        return store
-
-    log.info(
-        f"{LogTag.CHROMA} Updating ChromaDB tools store: to upsert, to delete",
-        tools_to_upsert_count=len(tools_to_upsert),
-        tools_to_delete_count=len(tools_to_delete),
-    )
-
-    put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
-    await _execute_batch_operations(store, put_ops)
+    # Serialize seeding across replicas/workers so a cold-start herd doesn't each
+    # embed the full builtin tool + subagent set; the diff keeps it correct if the
+    # lock can't be taken.
+    await _tools_seed_lock("builtin").run_idempotent(_seed)
 
     return store

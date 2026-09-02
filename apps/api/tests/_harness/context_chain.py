@@ -8,7 +8,9 @@ is exactly the class of defect this harness exists to catch.
 ``execute_hooks`` is a plain async function over a plain dict, so the whole chain
 runs with no compiled graph, no checkpointer, no LLM and no network:
 
-    messages = await effective_context(AgentTier.PROVIDER_SUBAGENT, query="...")
+    messages = await effective_context(
+        AgentTier.PROVIDER_SUBAGENT, ContextSeed(query="...")
+    )
 
 Every external read the sections perform is pinned by ``fake_context_sources``
 and the clients beneath them are fenced, so a section that grows a new read
@@ -35,12 +37,17 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.subagent_helpers import create_subagent_system_message
-from app.agents.core.subagents.subagent_runner import build_initial_messages
+from app.agents.core.subagents.subagent_runner import ThreadSeed, build_initial_messages
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.agents.tools.todo_tools import create_todo_pre_model_hook
 from app.config.settings import settings
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import (
+    AgentIdentity,
+    AgentThread,
+    AgentTurn,
+    build_agent_config,
+)
 from app.helpers.message_helpers import build_current_time_message
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
 from app.models.message_models import MessageDict
@@ -179,14 +186,20 @@ async def build_configurable(
         "timezone": user.timezone,
     }
     config = await build_agent_config(
-        conversation_id="conv-1",
-        user=agent_user,
-        thread_id=f"{tier.value}-thread",
-        agent_name=_AGENT_NAMES[tier],
-        subagent_id=_AGENT_NAMES[tier],
-        vfs_session_id="conv-1",
-        user_preferences=user.preferences or None,
-        writing_style=user.writing_style or None,
+        identity=AgentIdentity(
+            conversation_id="conv-1",
+            user=agent_user,
+            agent_name=_AGENT_NAMES[tier],
+        ),
+        thread=AgentThread(
+            thread_id=f"{tier.value}-thread",
+            subagent_id=_AGENT_NAMES[tier],
+            vfs_session_id="conv-1",
+        ),
+        turn=AgentTurn(
+            user_preferences=user.preferences or None,
+            writing_style=user.writing_style or None,
+        ),
     )
     configurable: AgentConfigurable = {**agent_configurable(config), **(overrides or {})}
     runnable = cast(RunnableConfig, {**config, "configurable": configurable})
@@ -211,11 +224,11 @@ async def seed_context(
     if tier is AgentTier.EXECUTOR:
         return await build_initial_messages(
             system_message=SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE),
-            tier=AgentTier.EXECUTOR,
             agent_name="executor_agent",
-            configurable=configurable,
             task=query,
-            user_id=user.user_id,
+            seed=ThreadSeed(
+                tier=AgentTier.EXECUTOR, configurable=configurable, user_id=user.user_id
+            ),
         )
 
     if tier is AgentTier.PROVIDER_SUBAGENT:
@@ -223,24 +236,28 @@ async def seed_context(
             system_message=await create_subagent_system_message(
                 integration_id=PROVIDER_INTEGRATION_ID
             ),
-            tier=AgentTier.PROVIDER_SUBAGENT,
             agent_name=PROVIDER_AGENT_NAME,
-            configurable=configurable,
             task=query,
-            user_id=user.user_id,
-            subagent_id=PROVIDER_AGENT_NAME,
-            integration_id=PROVIDER_INTEGRATION_ID,
+            seed=ThreadSeed(
+                tier=AgentTier.PROVIDER_SUBAGENT,
+                configurable=configurable,
+                user_id=user.user_id,
+                subagent_id=PROVIDER_AGENT_NAME,
+                integration_id=PROVIDER_INTEGRATION_ID,
+            ),
         )
 
     if tier is AgentTier.SPAWN:
         return await build_initial_messages(
             system_message=SystemMessage(content=SPAWN_SYSTEM_PROMPT),
-            tier=AgentTier.SPAWN,
             agent_name="spawn_agent",
-            configurable=configurable,
             task=f"Task:\n{query}",
-            user_id=user.user_id,
-            retrieval_query=query,
+            seed=ThreadSeed(
+                tier=AgentTier.SPAWN,
+                configurable=configurable,
+                user_id=user.user_id,
+                retrieval_query=query,
+            ),
         )
 
     return await _seed_workflow(user=user, query=query, configurable=configurable)
@@ -304,34 +321,44 @@ def _with_onboarding(sources: ContextSources, prompt: str | None) -> ContextSour
     return sources if prompt is None else replace(sources, onboarding_prompt=prompt)
 
 
-async def effective_context(
-    tier: AgentTier,
-    *,
-    user: HarnessUser | None = None,
-    query: str = "what is on my plate today?",
-    sources: ContextSources | None = None,
-    configurable_overrides: AgentConfigurable | None = None,
-    now: datetime = FIXED_NOW,
-    prior_messages: list[AnyMessage] | None = None,
-    onboarding_prompt: str | None = None,
-) -> list[AnyMessage]:
+@dataclass(frozen=True)
+class ContextSeed:
+    """What a tier's context is seeded from, beyond the tier itself."""
+
+    user: HarnessUser | None = None
+    query: str = "what is on my plate today?"
+    sources: ContextSources | None = None
+    configurable_overrides: AgentConfigurable | None = None
+    now: datetime = FIXED_NOW
+    prior_messages: list[AnyMessage] | None = None
+    onboarding_prompt: str | None = None
+
+
+async def effective_context(tier: AgentTier, seed: ContextSeed | None = None) -> list[AnyMessage]:
     """Seed ``tier`` and run it through that tier's real pre-model hooks.
 
-    ``prior_messages`` are prepended to the seed to model a checkpointed thread —
-    the multi-turn shape, where stale copies of each slot accumulate and the hook
-    chain has to collapse them.
+    ``ContextSeed.prior_messages`` are prepended to the seed to model a
+    checkpointed thread — the multi-turn shape, where stale copies of each slot
+    accumulate and the hook chain has to collapse them.
     """
-    resolved_user = user or HarnessUser()
-    resolved_sources = _with_onboarding(sources or ContextSources(), onboarding_prompt)
+    spec = seed or ContextSeed()
+    resolved_user = spec.user or HarnessUser()
+    resolved_sources = _with_onboarding(spec.sources or ContextSources(), spec.onboarding_prompt)
 
     with (
-        time_machine.travel(now, tick=False),
+        time_machine.travel(spec.now, tick=False),
         patch.object(settings, "HOST", FIXED_HOST),
         fake_context_sources(resolved_sources),
     ):
-        config, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
-        seed = await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
-        state = cast(State, {"messages": [*(prior_messages or []), *seed], "todos": []})
+        config, configurable = await build_configurable(
+            tier, resolved_user, spec.configurable_overrides
+        )
+        seed_messages = await seed_context(
+            tier, user=resolved_user, query=spec.query, configurable=configurable
+        )
+        state = cast(
+            State, {"messages": [*(spec.prior_messages or []), *seed_messages], "todos": []}
+        )
         result = await execute_hooks(hooks_for(tier), state, config, InMemoryStore())
     return list(result["messages"])
 

@@ -1,6 +1,10 @@
 import asyncio
+from contextlib import suppress
+from dataclasses import dataclass, replace
 from functools import cache
-from typing import Any, TypeVar, cast
+import math
+import time
+from typing import Any, TypedDict, TypeVar, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
@@ -50,24 +54,29 @@ from app.constants.llm import (
     MODEL_KWARGS_FIELD_ID,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
+    OPENROUTER_DEV_APP_TITLE,
+    OPENROUTER_DEV_APP_URL,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
     REASONING_FIELD_ID,
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
-    STICKY_FLIP_RETRY_MIN_HIT,
-    STICKY_FLIP_RETRY_MIN_INPUT,
-    STICKY_ROUTING_PROVIDERS,
+    UNKNOWN_MODEL_NAME,
     VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import agent_configurable
 from app.services.llm_metering import (
-    extract_message_model,
-    extract_message_usage,
+    LLMCallContext,
+    TokenUsage,
+    extract_finish_reason,
+    extract_message_cost,
+    extract_message_provider,
+    record_failed_llm_call,
     record_llm_call,
+    resolve_channel,
 )
 from shared.py.wide_events import log
 
@@ -190,6 +199,38 @@ def init_gemini_llm() -> LanguageModelLike:
     return llm.configurable_fields(model=_MODEL_FIELD)
 
 
+class _AppAttribution(TypedDict):
+    """Keyword shape of ChatOpenRouter's attribution params, so ``**`` unpacking
+    stays precisely checked against the client's signature."""
+
+    app_url: str
+    app_title: str
+    app_categories: list[str]
+
+
+def _app_attribution() -> _AppAttribution:
+    """OpenRouter app-attribution params, for EVERY real OpenRouter client.
+
+    Production attributes to the public site; development sends a fixed
+    synthetic referer, because a localhost FRONTEND_URL lands the traffic in the
+    dashboard's "unknown app" bucket where it is indistinguishable from a
+    misconfigured caller. Shared by the graph lane and the aux lane — the aux
+    lane shipped without any attribution, so memory extraction, follow-ups and
+    onboarding were all reporting as "unknown" from production too.
+    """
+    if settings.ENV == "production":
+        return {
+            "app_url": settings.FRONTEND_URL,
+            "app_title": OPENROUTER_APP_TITLE,
+            "app_categories": OPENROUTER_APP_CATEGORIES,
+        }
+    return {
+        "app_url": OPENROUTER_DEV_APP_URL,
+        "app_title": OPENROUTER_DEV_APP_TITLE,
+        "app_categories": OPENROUTER_APP_CATEGORIES,
+    }
+
+
 @lazy_provider(
     name=LLMProviderKey.OPENROUTER,
     required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
@@ -221,9 +262,14 @@ def init_openrouter_llm() -> LanguageModelLike:
             # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
             # these as dedicated params (NOT `default_headers`, which it forwards to
             # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-            app_url=settings.FRONTEND_URL,
-            app_title=OPENROUTER_APP_TITLE,
-            app_categories=OPENROUTER_APP_CATEGORIES,
+            **_app_attribution(),
+            # The same routing preference the default/aux model carries. Without
+            # it this lane sat on OpenRouter's default rotation and drew twelve
+            # different upstreams in a month, at rates 10x apart. session_id
+            # sticky routing composes with `order` (measured: order + session
+            # lands on the ordered upstream every time), so the preference only
+            # decides which upstream a NEW conversation starts on.
+            **_provider_order_kwargs(),
             reasoning=OPENROUTER_REASONING,
         )
     )
@@ -252,10 +298,20 @@ def init_custom_llm() -> LanguageModelLike:
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    return _openrouter_wire_configurables(_build_custom_llm())
+
+
+def _build_custom_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
+    """The bare custom-endpoint chat model, before the configurable wiring.
+
+    Split out because a structured one-shot needs the model itself:
+    ``with_structured_output`` lives on the chat model, not on the configurable
+    wrapper ``init_custom_llm`` hands back.
+    """
     llm = without_sdk_retry(
         ChatOpenRouter(
             model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
-            temperature=DEFAULT_LLM_TEMPERATURE,
+            temperature=temperature,
             streaming=True,
             stream_usage=True,
             max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
@@ -269,7 +325,7 @@ def init_custom_llm() -> LanguageModelLike:
     # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
     # and has no curated registry entry, so pin the shared default window here.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return _openrouter_wire_configurables(llm)
+    return llm
 
 
 def init_llm(
@@ -451,21 +507,36 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
 def _provider_order_kwargs() -> dict[str, Any]:
     """OpenRouter provider-routing preference, from OPENROUTER_PROVIDER_ORDER.
 
-    The model's pool has ~30 upstreams and only some cache tool-carrying
-    requests; which one a request draws decides its cache fate. Measured in one
-    window: pinned ``coreweave/fp8`` read [1792x5,128]/[1792x4,0,128] while
-    unpinned read [0,0,0]. ``order`` with fallbacks (never ``only``) so an
-    upstream outage degrades to the rotation instead of failing the call.
+    This is what keeps a conversation's prompt cache ON THE LISTED providers —
+    not, as live-tested, on exactly one of them: concurrent calls in one
+    conversation can still land on different list members (measured on a real
+    6-turn session: comms split 6/4 across the first two slugs, and the calls
+    interleave within seconds, so it is in-turn concurrency, not expiry). Each
+    provider then warms its own chain, so the cost of a split is one cold read
+    per list member, once — bounded, because every slug on the list is chosen
+    for a real, working cache. The model's pool has ~30 upstreams that each
+    hold their own cache; a turn served by an UNLISTED upstream reads cold no
+    matter how warm the chain is. Measured: a thread that stays on one provider
+    reads 90-99% cached, and 49 of 114 production threads were split across
+    providers — nearly every cold read came from that scattering.
 
-    Opt-in and empty by default, deliberately: an earlier hard pin measured
-    worse and was reverted, so the preference is set from the per-provider
-    hit table (generation_id + the metadata endpoint), not baked in from one
-    night's probes."""
+    ``allow_fallbacks: False`` is what makes ``order`` binding rather than a
+    preference: OpenRouter still walks down the listed slugs on error, but it
+    can no longer silently hand the turn to an unlisted upstream and strand the
+    chain. If every listed provider is down the call raises, and the existing
+    ``with_llm_retry``/fallback-model path takes it from there — a failure we
+    can see, instead of a cache miss and a surprise bill we cannot.
+
+    Opt-in and empty by default, deliberately: the preference is set from the
+    per-provider hit table (generation_id + the metadata endpoint), not baked
+    in from one night's probes."""
     raw = settings.OPENROUTER_PROVIDER_ORDER
     if not raw:
         return {}
     order = [slug.strip() for slug in raw.split(",") if slug.strip()]
-    return {"model_kwargs": {"provider": {"order": order}}} if order else {}
+    if not order:
+        return {}
+    return {"model_kwargs": {"provider": {"order": order, "allow_fallbacks": False}}}
 
 
 @cache
@@ -483,6 +554,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
             stream_usage=True,
             max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
             api_key=settings.OPENROUTER_API_KEY,
+            **_app_attribution(),
             **_provider_order_kwargs(),
         )
     )
@@ -682,50 +754,106 @@ def _sticky_session_id(config: RunnableConfig | None, *, auxiliary: bool) -> str
     return f"{session_id}{AUX_SESSION_SUFFIX}" if auxiliary else str(session_id)
 
 
-async def _meter_discarded_replay(
-    discarded: Any,  # noqa: ANN401 -- framework contract
+def _requested_model(runnable: Any) -> str:  # noqa: ANN401 -- any Runnable shape
+    """The model id this runnable was going to ask for, or ``UNKNOWN_MODEL_NAME``.
+
+    A failed call has no reply to read the served model off, so the ledger's
+    ``model_requested`` is all there is. Read defensively: the bound runnable is
+    a chat model on the graph lane but a ``with_structured_output`` wrapper on
+    the auxiliary one, and neither shape is guaranteed to expose the name.
+    """
+    for attribute in ("model_name", "model"):
+        value = getattr(runnable, attribute, None)
+        if isinstance(value, str) and value:
+            return value
+    return UNKNOWN_MODEL_NAME
+
+
+def _invoke_context(
     config: RunnableConfig | None,
     label: str,
-) -> None:
-    """Meter the sticky-flip replay whose answer was thrown away — otherwise its
-    tokens miss the daily budget, the per-request ceiling and COGS entirely.
+    *,
+    background: bool,
+    duration_ms: float | None,
+) -> LLMCallContext:
+    """The ledger identity of a call made through this seam.
 
-    Graph-lane only by construction: the replay itself is gated on
-    ``not meter_auxiliary``, and the graph lane meters from the AIMessage that
-    lands in state — which is the FIRST answer's, never this discard's."""
-    if not isinstance(discarded, AIMessage):
-        return
+    Shared by the auxiliary success path and the failure path so a call that
+    fails is described the same way as one that succeeds — otherwise error rows
+    and ok rows could not be compared on the dimensions that matter (which
+    conversation, which surface, which workflow).
+    """
     configurable = agent_configurable(config)
-    usage = extract_message_usage(discarded)
-    # The provider's own account of what it served. This seam cannot resolve the
-    # lane the way accounting does — ``lane`` imports this module, so importing
-    # ModelLane back would close the cycle.
-    model_name = extract_message_model(discarded)
-    user_id = configurable.get("user_id")
-    root_request_id = configurable.get("root_request_id")
-    cost = await record_llm_call(
-        user_id=str(user_id) if user_id else None,
-        model_name=model_name,
-        input_tokens=usage["input_tokens"],
-        output_tokens=usage["output_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
-        root_request_id=str(root_request_id) if root_request_id else None,
-        charge_to_budget=True,
-    )
-    log.info(
-        "llm_call",
-        llm_event="llm_call",
-        sticky_flip_discarded=True,
+    conversation_id = configurable.get("conversation_id")
+    thread_id = configurable.get("thread_id")
+    workflow_id = configurable.get("workflow_id")
+    return LLMCallContext(
         agent_name=label,
-        model=model_name,
-        user_id=user_id,
-        input_tokens=usage["input_tokens"],
-        cached_tokens=usage["cached_tokens"],
-        output_tokens=usage["output_tokens"],
-        reasoning_tokens=usage["reasoning_tokens"],
-        cost_usd=cost,
+        background=background,
+        # Nothing reached the budget: the auxiliary route never charges, and a
+        # failed call has no spend to charge.
+        charge_to_budget=False,
+        conversation_id=str(conversation_id) if conversation_id else None,
+        thread_id=str(thread_id) if thread_id else None,
+        workflow_id=str(workflow_id) if workflow_id else None,
+        channel=resolve_channel(configurable, background=background),
+        duration_ms=duration_ms,
     )
+
+
+@dataclass(frozen=True)
+class LLMInvokeOptions:
+    """The rarely-tuned knobs of :func:`ainvoke_llm` (and, where noted,
+    :func:`invoke_llm`), grouped so the call signature stays under the repo's
+    argument-count ceiling.
+
+    Attributes:
+        max_attempts: Retry attempts before falling back to ``fallback``.
+            ``max_attempts=1`` disables retry for callers on a hard latency
+            budget. Honored by both ``ainvoke_llm`` and ``invoke_llm``.
+        timeout: A total wall-clock ceiling over the retries, their backoff
+            sleeps and the fallback attempt — the guarantee being that the
+            call cannot outlive it. Retry alone cannot cover a provider that
+            accepts the connection and then never answers, because nothing
+            is ever raised to retry on. The ceiling deliberately wraps the
+            fallback too: expiring mid-fallback raises ``TimeoutError``
+            rather than starting a second, unbounded attempt. ``None``
+            disables it. ``ainvoke_llm`` only — ``invoke_llm`` is sync and
+            does not honor this field.
+        meter_auxiliary: Routes the call through the one metering seam for
+            auxiliary spend when ``True``. The agent graph passes ``False``
+            because it is already metered by ``LLMAccountingMiddleware`` —
+            metering here too would book every graph call twice.
+            ``ainvoke_llm`` only — ``invoke_llm`` never meters.
+        fallback_config: The config the fallback runs under, when given.
+            Reusing ``config`` for the fallback is what made provider
+            failover a no-op: LangChain merges a passed config OVER a
+            ``with_config`` one, so the run's own configurable put the
+            just-failed provider straight back. Honored by both
+            ``ainvoke_llm`` and ``invoke_llm``.
+        sticky_session_id: The provider's sticky-routing key to bind the
+            fallback to, overriding what :func:`_sticky_session_id` would
+            derive from ``config``. Honored by both ``ainvoke_llm`` and
+            ``invoke_llm``.
+    """
+
+    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
+    meter_auxiliary: bool = True
+    fallback_config: RunnableConfig | None = None
+    sticky_session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class StructuredCallOptions:
+    """The optional settings of :func:`ainvoke_structured` and
+    :func:`ainvoke_structured_gemini`."""
+
+    temperature: float = DEFAULT_LLM_TEMPERATURE
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS
+
+
+_DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
 
 
 async def ainvoke_llm(
@@ -735,11 +863,7 @@ async def ainvoke_llm(
     fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
-    meter_auxiliary: bool = True,
-    fallback_config: RunnableConfig | None = None,
-    sticky_session_id: str | None = None,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
     given) on a provider failure. Bugs and CancelledError propagate.
@@ -778,89 +902,64 @@ async def ainvoke_llm(
     # The agent graph also comes through here (create_agent wants the retry +
     # fallback policy) but is already metered by LLMAccountingMiddleware, so it
     # passes meter_auxiliary=False — otherwise every graph call is booked twice.
-    usage_handler = UsageMetadataCallbackHandler() if meter_auxiliary else None
-    generation_handler = _GenerationIdCallback() if meter_auxiliary else None
+    opts = options or LLMInvokeOptions()
+    usage_handler = UsageMetadataCallbackHandler() if opts.meter_auxiliary else None
+    generation_handler = _GenerationIdCallback() if opts.meter_auxiliary else None
     user_id = (config or {}).get("configurable", {}).get("user_id")
+    # Wall time of the whole provider interaction — retries, backoff sleeps and
+    # the fallback attempt included, because that is what the caller waited for.
+    # Started before the timeout scope so a call killed by the ceiling still
+    # reports how long it burned rather than nothing at all.
+    invoke_start = time.monotonic()
     try:
-        async with asyncio.timeout(timeout):
-            try:
-                result = await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-                    messages,
-                    config=_with_usage_handler(
-                        _with_usage_handler(config, usage_handler), generation_handler
-                    ),
-                )
-                # OpenRouter's sticky routing expires after ~5 minutes and the
-                # next request lands on a cold provider (a known OpenRouter
-                # behavior) — the conversation's chain reads static-only or
-                # nothing. The first attempt just WROTE the chain onto that
-                # provider, so one immediate re-send hits it (~90%). Cheap: the
-                # re-send is almost fully cached and only fires on the flipped
-                # turns.
-                usage = getattr(result, "usage_metadata", None) or {}
-                details = usage.get("input_token_details") or {}
-                # pragma: no mutate ×2 — a truthy stand-in for either 0 is
-                # equivalent: 0 and 1 sit on the same side of the 8_000 input
-                # floor, and cached is only compared once prompt >= 8_000, so
-                # a 7_360 threshold treats 0 and 1 alike. Line-local proof is
-                # threshold arithmetic the classifier does not do.
-                cached = details.get("cache_read") or 0  # pragma: no mutate
-                prompt = usage.get("input_tokens") or 0  # pragma: no mutate
-                if (
-                    # Graph lane on a sticky-routing provider only: auxiliary
-                    # one-shots have no prior chain (cold IS their steady
-                    # state), and Gemini has no stickiness to re-hit — for
-                    # both, a replay is pure double billing.
-                    not meter_auxiliary
-                    and agent_configurable(config).get("provider") in STICKY_ROUTING_PROVIDERS
-                    and prompt >= STICKY_FLIP_RETRY_MIN_INPUT
-                    and cached < prompt * STICKY_FLIP_RETRY_MIN_HIT
-                ):
-                    try:
-                        # silent: graph providers stream, and without it both
-                        # invocations' tokens land in the same SSE stream —
-                        # the user watches a second answer append to the first.
-                        discarded = await with_llm_retry(primary, max_attempts=1).ainvoke(
-                            messages,
-                            # No usage handler to attach: this branch is gated
-                            # on the graph lane, where usage_handler is None.
-                            config=_silenced(config or {}),
-                        )
-                    except Exception as replay_error:
-                        # The first answer is complete and in hand; a failed
-                        # re-send (429, deadline) must never cost the turn.
-                        log.warning(
-                            f"{LogTag.AGENT} sticky-flip replay failed; keeping the first response",
-                            agent_name=label,
-                            error=str(replay_error),
-                        )
-                        return result
-                    # The replay exists to write the chain onto the provider for
-                    # the NEXT turn, so its answer is thrown away: the first one
-                    # already streamed to the user, and returning the replay's
-                    # would persist text that differs from what they watched.
-                    await _meter_discarded_replay(discarded, config, label)
-                return result
-            except LLM_FALLBACK_EXCEPTIONS as primary_error:
-                # The fallback runs under ``fallback_config`` when given. Reusing
-                # ``config`` here is what made provider failover a no-op: LangChain
-                # merges a passed config OVER a ``with_config`` one, so the run's
-                # own configurable put the just-failed provider straight back.
-                return _stamp_fallback(
-                    await _resolve_fallback(
-                        fallback,
-                        label,
-                        primary_error,
-                        session_id=sticky_session_id
-                        or _sticky_session_id(config, auxiliary=meter_auxiliary),
-                    ).ainvoke(
+        try:
+            async with asyncio.timeout(opts.timeout):
+                try:
+                    return await with_llm_retry(primary, max_attempts=opts.max_attempts).ainvoke(
                         messages,
                         config=_with_usage_handler(
-                            _with_usage_handler(fallback_config or config, usage_handler),
-                            generation_handler,
+                            _with_usage_handler(config, usage_handler), generation_handler
                         ),
                     )
-                )
+                except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                    # The fallback runs under ``fallback_config`` when given. Reusing
+                    # ``config`` here is what made provider failover a no-op: LangChain
+                    # merges a passed config OVER a ``with_config`` one, so the run's
+                    # own configurable put the just-failed provider straight back.
+                    return _stamp_fallback(
+                        await _resolve_fallback(
+                            fallback,
+                            label,
+                            primary_error,
+                            session_id=opts.sticky_session_id
+                            or _sticky_session_id(config, auxiliary=opts.meter_auxiliary),
+                        ).ainvoke(
+                            messages,
+                            config=_with_usage_handler(
+                                _with_usage_handler(opts.fallback_config or config, usage_handler),
+                                generation_handler,
+                            ),
+                        )
+                    )
+        except Exception as call_error:
+            # One row per failed CALL: the retry wrapper and the fallback have both
+            # been spent by the time the exception reaches here, so this counts
+            # outages rather than attempts. ``except Exception`` deliberately does
+            # not catch ``CancelledError`` (a BaseException) — a caller hanging up
+            # is not the provider failing, and recording it would inflate the error
+            # rate with our own cancellations.
+            await record_failed_llm_call(
+                user_id=str(user_id) if user_id else None,
+                model_name=_requested_model(primary),
+                error=call_error,
+                context=_invoke_context(
+                    config,
+                    label,
+                    background=opts.meter_auxiliary,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
+            )
+            raise
     finally:
         # ``finally``: a failed call still burned the tokens of every attempt the
         # retry and fallback made, and that spend is just as real.
@@ -869,7 +968,13 @@ async def ainvoke_llm(
                 usage_handler,
                 label,
                 str(user_id) if user_id else None,
-                generation_id=generation_handler.generation_id if generation_handler else None,
+                context=_invoke_context(
+                    config,
+                    label,
+                    background=True,
+                    duration_ms=round((time.monotonic() - invoke_start) * 1000, 2),
+                ),
+                facts=(generation_handler.facts if generation_handler else ResponseFacts()),
             )
 
 
@@ -880,13 +985,16 @@ def invoke_llm(
     fallback: LLMFallback = None,
     config: RunnableConfig | None = None,
     label: str = "model",
-    max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
-    fallback_config: RunnableConfig | None = None,
-    sticky_session_id: str | None = None,
+    options: LLMInvokeOptions | None = None,
 ) -> Any:  # noqa: ANN401 -- overrides LangChain Runnable methods typed Any upstream
-    """Sync counterpart of :func:`ainvoke_llm`."""
+    """Sync counterpart of :func:`ainvoke_llm`. Only ``options.max_attempts``,
+    ``options.fallback_config`` and ``options.sticky_session_id`` apply here —
+    ``timeout``/``meter_auxiliary`` are async-only (see :class:`LLMInvokeOptions`)."""
+    opts = options or LLMInvokeOptions()
     try:
-        return with_llm_retry(primary, max_attempts=max_attempts).invoke(messages, config=config)
+        return with_llm_retry(primary, max_attempts=opts.max_attempts).invoke(
+            messages, config=config
+        )
     except LLM_FALLBACK_EXCEPTIONS as primary_error:
         return _stamp_fallback(
             _resolve_fallback(
@@ -897,8 +1005,8 @@ def invoke_llm(
                 # _resolve_fallback nothing, so a sync fallback silently landed
                 # on whatever provider the router picked instead of the chain
                 # the primary had been warming.
-                session_id=sticky_session_id or _sticky_session_id(config, auxiliary=False),
-            ).invoke(messages, config=fallback_config or config)
+                session_id=opts.sticky_session_id or _sticky_session_id(config, auxiliary=False),
+            ).invoke(messages, config=opts.fallback_config or config)
         )
 
 
@@ -940,12 +1048,51 @@ def silent_metered_config(user_id: str) -> RunnableConfig:
     )
 
 
-def _silenced(config: RunnableConfig) -> RunnableConfig:
-    """Copy of ``config`` whose metadata carries ``silent`` — the SSE consumer
-    skips message chunks stamped with it (agent_helpers, stream_mode="messages")."""
-    merged = dict(config)
-    merged["metadata"] = {**(config.get("metadata") or {}), "silent": True}
-    return cast(RunnableConfig, merged)
+def _reported_cost(response: LLMResult) -> float | None:
+    """What OpenRouter charged for this call, from whichever shape carries it.
+
+    Auxiliary one-shots return the parsed schema rather than the ``AIMessage``,
+    so the price has to be read off the raw result like the generation id is.
+    Non-streaming puts ``token_usage`` in ``llm_output``; streaming leaves the
+    figure on the message's ``response_metadata``, where ``ChatOpenRouter``
+    copies it. ``None`` means the lane reported no price and the caller should
+    fall back to the pricing table.
+    """
+    llm_output = response.llm_output or {}
+    token_usage = llm_output.get("token_usage") or {}
+    for candidate in (llm_output.get("cost"), token_usage.get("cost")):
+        if candidate is not None:
+            # A price that will not parse is not a price: skip it and let the
+            # next shape (then the table) answer, rather than failing a call
+            # that already succeeded over its own cost annotation. The same goes
+            # for a negative or non-finite one — it would be summed across the
+            # retries of this call and land in a budget window.
+            with suppress(TypeError, ValueError):
+                parsed = float(candidate)
+                if math.isfinite(parsed) and parsed >= 0.0:
+                    return parsed
+    for generations in response.generations:
+        for generation in generations:
+            message = getattr(generation, "message", None)
+            cost = extract_message_cost(message) if message is not None else None
+            if cost is not None:
+                return cost
+    return None
+
+
+@dataclass(frozen=True)
+class ResponseFacts:
+    """What the provider's reply says about ITSELF, captured in one place.
+
+    Grouped rather than passed as four parallel keywords because they are read
+    from one object and describe one call — and because passing them separately
+    is precisely how three of them went missing one at a time.
+    """
+
+    generation_id: str | None = None
+    provider: str | None = None
+    finish_reason: str | None = None
+    cost: float | None = None
 
 
 class _GenerationIdCallback(BaseCallbackHandler):
@@ -961,6 +1108,40 @@ class _GenerationIdCallback(BaseCallbackHandler):
 
     def __init__(self) -> None:
         self.generation_id: str | None = None
+        self.provider: str | None = None
+        self.finish_reason: str | None = None
+        self._attempts = 0
+        self._priced_attempts = 0
+        self._cost_total = 0.0
+
+    @property
+    def facts(self) -> ResponseFacts:
+        """Everything captured off the reply, as one value for the metering seam."""
+        return ResponseFacts(
+            generation_id=self.generation_id,
+            provider=self.provider,
+            finish_reason=self.finish_reason,
+            cost=self.cost,
+        )
+
+    @property
+    def cost(self) -> float | None:
+        """Provider-reported spend summed over EVERY attempt this call made.
+
+        Accumulated, not last-write-wins, because the usage it is booked
+        against accumulates: ``UsageMetadataCallbackHandler`` adds up the
+        tokens of a retry and of a fallback, so keeping only the final
+        attempt's price would charge one attempt's dollars against several
+        attempts' tokens and under-count real spend on exactly the calls that
+        went wrong.
+
+        ``None`` when ANY attempt reported no price — a partial sum is not the
+        call's cost, so the caller falls back to the pricing table for the
+        whole thing rather than booking a number that is confidently short.
+        """
+        if self._attempts == 0 or self._priced_attempts != self._attempts:
+            return None
+        return self._cost_total
 
     def on_llm_end(
         self,
@@ -969,16 +1150,59 @@ class _GenerationIdCallback(BaseCallbackHandler):
         # the base signature types them Any and this handler reads none.
         **_kwargs: Any,  # noqa: ANN401 -- LangChain BaseCallbackHandler contract
     ) -> None:
-        llm_output = getattr(response, "llm_output", None) or {}
+        self._attempts += 1
+        reported = _reported_cost(response)
+        if reported is not None:
+            self._priced_attempts += 1
+            self._cost_total += reported
+        self._read_response_facts(response)
+        llm_output = response.llm_output or {}
         if llm_output.get("id"):
             self.generation_id = str(llm_output["id"])
             return
-        for generations in getattr(response, "generations", None) or []:
+        for generations in response.generations or []:
             for generation in generations:
                 info = getattr(generation, "generation_info", None) or {}
                 if info.get("id"):
                     self.generation_id = str(info["id"])
                     return
+
+    def _read_response_facts(self, response: LLMResult) -> None:
+        """Capture what the reply says about ITSELF: the upstream and the finish.
+
+        Read here rather than at the metering seam because this callback holds
+        the only thing that carries them on this route — the auxiliary lane
+        returns a parsed schema, not the ``AIMessage``, so
+        ``extract_message_provider`` has nothing to read and the fields arrived
+        empty. Three separate fields have now been lost at this seam for that
+        same reason (the cost, the generation id, and the upstream), so the
+        whole reply is read once instead of a field at a time.
+
+        Last non-empty attempt wins: on a retry or a fallback the LAST attempt
+        is the one that produced the answer the caller received, so it is the
+        one whose upstream and finish describe the result.
+        """
+        for generations in response.generations or []:
+            for generation in generations:
+                # A plain ``Generation`` (completion models) carries no message;
+                # only a ``ChatGeneration`` does, and only that can name an
+                # upstream. Keep scanning rather than stopping — a run can mix
+                # them, and the one that matters may not be first.
+                message = getattr(generation, "message", None)
+                if isinstance(message, AIMessage):
+                    provider = extract_message_provider(message)
+                    if provider:
+                        self.provider = provider
+                    finish_reason = extract_finish_reason(message)
+                    if finish_reason:
+                        self.finish_reason = finish_reason
+                # ``generation_info`` is where the NON-streaming path leaves the
+                # finish reason — it never reaches the message (see
+                # ``extract_finish_reason``), so it is read straight off the
+                # result and wins, being the more specific source.
+                info = generation.generation_info or {}
+                if info.get("finish_reason"):
+                    self.finish_reason = str(info["finish_reason"])
 
 
 def _with_usage_handler(
@@ -1008,7 +1232,8 @@ async def _record_auxiliary_usage(
     label: str,
     user_id: str | None,
     *,
-    generation_id: str | None = None,
+    context: LLMCallContext,
+    facts: ResponseFacts,
 ) -> None:
     """Meter one auxiliary (non-agent) model call for COGS observability.
 
@@ -1027,6 +1252,18 @@ async def _record_auxiliary_usage(
     ``llm_call`` event carries ``background=True``, so auxiliary COGS stays
     fully measurable and splittable from in-turn agent spend.
     """
+    # The handler aggregates per model, so a call that fanned out across models
+    # cannot attribute one price OR one generation to any single one of them;
+    # only the single-model case (every real auxiliary call) takes the reported
+    # figures, and the rest fall back to the table and to no id. Resolved ONCE,
+    # here, so what gets booked, what ``cost_source`` claims and what the ledger
+    # names as the serving generation can never disagree with each other.
+    attributable = len(handler.usage_metadata) == 1
+    booked_cost = facts.cost if attributable else None
+    booked_generation_id = facts.generation_id if attributable else None
+    # Same rule for the upstream: a fan-out cannot say which model any one
+    # provider served, and naming the wrong one is worse than naming none.
+    booked_provider = facts.provider if attributable else None
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
         output_tokens = int(usage.get("output_tokens", 0) or 0)
@@ -1047,19 +1284,46 @@ async def _record_auxiliary_usage(
         cost = await record_llm_call(
             user_id=user_id,
             model_name=model_name,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cached_tokens=cached_tokens,
-            reasoning_tokens=reasoning_tokens,
-            charge_to_budget=False,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                reasoning_tokens=reasoning_tokens,
+            ),
+            provider_cost=booked_cost,
+            # The handler keys its usage by the model that answered, and that
+            # is the same string being priced — requested and served are one
+            # value on this route, not two. ``provider`` stays None: the raw
+            # response never reaches here (the handler aggregates counts only),
+            # so the upstream name is not recoverable and must not be guessed.
+            #
+            # ``generation_id`` has to be stamped HERE and not only on the log
+            # line below: the ledger is the durable record, and a row without it
+            # cannot be audited against OpenRouter's generation endpoint at all.
+            # Every auxiliary row shipped with a null id while its own log line
+            # carried one, because this was the seam that dropped it.
+            context=replace(
+                context,
+                model_served=model_name,
+                generation_id=booked_generation_id,
+                provider=booked_provider,
+                finish_reason=facts.finish_reason,
+            ),
         )
         log.info(
             "llm_call",
             llm_event="llm_call",
             background=True,
+            # What was actually booked, not what was merely available: the
+            # multi-model fan-out is priced from the table even when a figure
+            # was reported, and the event must say so or coverage reporting
+            # counts table prices as provider prices.
+            cost_source="provider" if booked_cost is not None else "table",
             agent_name=label,
             model=model_name,
-            generation_id=generation_id,
+            # The attributed id, not the merely-captured one, so the event and
+            # the ledger row for this call always name the same generation.
+            generation_id=booked_generation_id,
             user_id=user_id,
             input_tokens=input_tokens,
             cached_tokens=cached_tokens,
@@ -1099,14 +1363,50 @@ def _aux_structured_runnable(
     return structured
 
 
+def background_structured_runnable(
+    schema: type[_StructuredT],
+    *,
+    temperature: float = DEFAULT_LLM_TEMPERATURE,
+    config: RunnableConfig | None = None,
+) -> Runnable:
+    """A structured one-shot on the provider THIS deployment actually runs on.
+
+    ``_aux_structured_runnable`` is hardwired to OpenRouter, which is right when
+    that is the deployment's lane and wrong when it is not. A deployment pointed
+    at another endpoint replays a playbook's tool calls perfectly and then cannot
+    write the run's result, because the one model call in the whole replay goes
+    somewhere it has no key for.
+
+    So when the custom endpoint is what this deployment runs on, the one-shot
+    runs there too. The aux alias is deliberately NOT applied in that case: it
+    names a model id only the OpenRouter catalogue serves, and re-pointing a
+    custom endpoint at it asks for a model that endpoint does not have.
+
+    Sim mode wins over the custom endpoint, as in every other factory here
+    (``init_custom_llm``, ``get_default_llm``): a sim run with DEV_LLM_* set
+    must land on the scripted stub, not on a real endpoint.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature).with_structured_output(schema)
+    if settings.DEV_DEFAULT_MODEL == LLMProviderName.CUSTOM and settings.DEV_LLM_BASE_URL:
+        # Bounded like the helper lane, and by model_copy for the reason
+        # get_helper_llm gives. Unbounded, a replay's narration ran to the
+        # endpoint's 64k output cap, took 257 seconds, and delivered a result
+        # cut mid-sentence; a one-shot that writes a brief never needs that.
+        bounded = _build_custom_llm(temperature).model_copy(
+            update={"max_tokens": HELPER_MAX_OUTPUT_TOKENS}
+        )
+        return bounded.with_structured_output(schema)
+    return _aux_structured_runnable(schema, temperature, config)
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
     *,
     label: str,
-    temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
@@ -1129,11 +1429,11 @@ async def ainvoke_structured(
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(schema, temperature, config),
+            _aux_structured_runnable(schema, options.temperature, config),
             prompt,
             config=config,
             label=label,
-            timeout=timeout,
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )
 
@@ -1149,9 +1449,8 @@ async def ainvoke_structured_gemini(
     prompt: LanguageModelInput,
     *,
     label: str,
-    temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
-    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
+    options: StructuredCallOptions = _DEFAULT_STRUCTURED_OPTIONS,
 ) -> _StructuredT:
     """The structured one-shot call for the memory pipeline: aux lane primary,
     direct Gemini as the fallback.
@@ -1186,35 +1485,34 @@ async def ainvoke_structured_gemini(
                 schema,
                 prompt,
                 label=label,
-                temperature=temperature,
                 config=config,
-                timeout=timeout,
+                options=options,
             )
         return cast(
             _StructuredT,
             await ainvoke_llm(
-                _memory_structured_runnable(schema, temperature),
+                _memory_structured_runnable(schema, options.temperature),
                 prompt,
                 config=config,
                 label=label,
-                timeout=timeout,
+                options=LLMInvokeOptions(timeout=options.timeout),
             ),
         )
     # Metering lives in ainvoke_llm, which this delegates to — a handler here too
     # would record the same call twice and over-report the user's COGS.
     fallback: LLMFallback = (
-        (lambda: _memory_structured_runnable(schema, temperature))
+        (lambda: _memory_structured_runnable(schema, options.temperature))
         if memory_lane_available()
         else None
     )
     return cast(
         _StructuredT,
         await ainvoke_llm(
-            _aux_structured_runnable(schema, temperature, config),
+            _aux_structured_runnable(schema, options.temperature, config),
             prompt,
             fallback=fallback,
             config=config,
             label=label,
-            timeout=timeout,
+            options=LLMInvokeOptions(timeout=options.timeout),
         ),
     )

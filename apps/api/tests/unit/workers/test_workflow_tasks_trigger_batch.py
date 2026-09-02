@@ -50,7 +50,9 @@ async def _run_task(
         patch(f"{MODULE}.notification_service", MagicMock(send_notification=AsyncMock())),
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
-            f"{MODULE}.execute_workflow_as_chat", new_callable=AsyncMock, return_value="conv-1"
+            f"{MODULE}.execute_workflow_as_chat",
+            new_callable=AsyncMock,
+            return_value=("conv-1", []),
         ) as run_chat,
         patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
         patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
@@ -58,7 +60,7 @@ async def _run_task(
     ):
         workflow = _workflow()
         scheduler.get_task = AsyncMock(return_value=workflow)
-        scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+        scheduler.claim_task_for_execution = AsyncMock(return_value=True)
         scheduler.handle_recurring_task = AsyncMock()
         create.return_value = MagicMock(execution_id="exec-1")
         with patch(f"{MODULE}.log") as log_mock:
@@ -167,7 +169,7 @@ class TestRefillOnEveryExit:
                 patch(
                     f"{MODULE}.execute_workflow_as_chat",
                     new_callable=AsyncMock,
-                    return_value="conv-1",
+                    return_value=("conv-1", []),
                 ),
                 patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
                 patch(
@@ -177,7 +179,7 @@ class TestRefillOnEveryExit:
                 patch(f"{MODULE}.log") as log_mock,
             ):
                 scheduler.get_task = AsyncMock(return_value=_workflow())
-                scheduler.claim_scheduled_for_execution = AsyncMock(return_value=True)
+                scheduler.claim_task_for_execution = AsyncMock(return_value=True)
                 scheduler.handle_recurring_task = AsyncMock()
                 create.return_value = MagicMock(execution_id="exec-1")
                 result = await execute_workflow_by_id(

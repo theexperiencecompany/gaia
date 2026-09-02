@@ -38,9 +38,9 @@ A bug ships a failing-then-passing test in the *natural* file for the tier that 
 | Specialized | `nx run api:test:stress` · `nx run api:test:meta` · `nx run api:test:composio` |
 
 `mise run test:python:hermetic` and `mise run test:python:real` mirror the two
-tiers. Fast-suite invariant: the hermetic default must finish within the CI
-`test-fast` lane's budget (~4 min); never slow it down — real-infra behavior
-belongs in `test:real`, not in the default run.
+tiers. Fast-suite invariant: the hermetic default must finish within the budget
+of the CI `test-python` `unit` slice (~4 min); never slow it down — real-infra
+behavior belongs in `test:real`, not in the default run.
 
 ## Structure
 

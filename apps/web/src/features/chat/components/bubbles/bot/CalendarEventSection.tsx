@@ -3,6 +3,7 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CalendarAdd01Icon, Tick02Icon } from "@icons";
 import { useMemo, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
+import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
 import type {
   CalendarEvent,
@@ -22,14 +23,58 @@ import { EventContent } from "./CalendarEventContent";
 
 type EventStatus = "idle" | "loading" | "completed";
 
+// Built once at module scope; identical output to calling
+// date.toLocaleTimeString("en-US", …) per render. The explicit timeZone keeps
+// formatting deterministic across server and browser (off-screen it resolves
+// to the browser's own zone, matching implicit local formatting).
+const SINGLE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+  timeZone: getBrowserTimezone(),
+});
+
+function getDisplayTime(event: CalendarEvent | SameDayEvent): string {
+  if ("start" in event && typeof event.start === "object") {
+    const sameDayEvent = event as SameDayEvent;
+    if (sameDayEvent.start?.dateTime && sameDayEvent.end?.dateTime) {
+      return formatTimeRange(
+        sameDayEvent.start.dateTime,
+        sameDayEvent.end.dateTime,
+      );
+    }
+    if (sameDayEvent.start?.date) return "All day";
+    return "No time";
+  }
+
+  const calEvent = event as CalendarEvent;
+  if ("start" in calEvent && "end" in calEvent && calEvent.start) {
+    const timedEvent = calEvent as TimedEvent;
+    const startStr = timedEvent.start;
+    const endStr = timedEvent.end;
+    if (startStr?.includes("T") && endStr?.includes("T")) {
+      return formatTimeRange(startStr, endStr);
+    }
+    return "All day";
+  }
+
+  if ("time" in calEvent && calEvent.time) {
+    const singleTimeEvent = calEvent as SingleTimeEvent;
+    if (singleTimeEvent.time.includes("T")) {
+      return SINGLE_TIME_FORMATTER.format(new Date(singleTimeEvent.time));
+    }
+    return "All day";
+  }
+
+  return "No time";
+}
+
 export default function CalendarEventSection({
   calendar_options,
 }: {
   calendar_options: CalendarOptions[];
 }) {
-  const [eventStatuses, setEventStatuses] = useState<
-    Record<number, EventStatus>
-  >({});
+  const [eventStatuses, setEventStatuses] = useState<EventStatus[]>([]);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
 
   const same_day_events = calendar_options[0]?.same_day_events;
@@ -57,7 +102,7 @@ export default function CalendarEventSection({
             summary: option.summary,
             description: option.description || "",
             time: option.start,
-            is_all_day: option.is_all_day || true,
+            is_all_day: option.is_all_day ?? true,
             recurrence: option.recurrence,
             calendar_id: option.calendar_id,
             attendees: option.attendees,
@@ -145,22 +190,33 @@ export default function CalendarEventSection({
   }
 
   const handleAdd = async (event: CalendarEvent, index: number) => {
+    // Index-assign (not slice-splice): slice() drops leading gaps, so an
+    // out-of-order first click would append at the wrong position and
+    // permanently misalign statuses with events. Pure-expression updater —
+    // no statements inside the state setter.
+    const setStatusAt = (status: EventStatus) =>
+      setEventStatuses((prev) =>
+        Object.assign([...prev], { [index]: status as EventStatus }),
+      );
     try {
-      setEventStatuses((prev) => ({ ...prev, [index]: "loading" }));
+      setStatusAt("loading");
       await calendarApi.createEventDefault(buildAddEventPayload(event));
-      setEventStatuses((prev) => ({ ...prev, [index]: "completed" }));
+      setStatusAt("completed");
     } catch (error) {
       console.error("Error adding event:", error);
-      setEventStatuses((prev) => ({ ...prev, [index]: "idle" }));
+      setStatusAt("idle");
       toast.error("Failed to add event");
     }
   };
 
   const handleAddAll = async () => {
     setIsConfirmingAll(true);
-    const pendingEvents = calendarEvents
-      .map((event, index) => ({ event, index }))
-      .filter(({ index }) => eventStatuses[index] !== "completed");
+    const pendingEvents: Array<{ event: CalendarEvent; index: number }> = [];
+    for (const [index, event] of calendarEvents.entries()) {
+      if (eventStatuses[index] !== "completed") {
+        pendingEvents.push({ event, index });
+      }
+    }
 
     try {
       await Promise.all(
@@ -174,53 +230,18 @@ export default function CalendarEventSection({
     }
   };
 
-  const allCompleted = calendarEvents.every(
-    (_, index) => eventStatuses[index] === "completed",
-  );
+  // Statuses are only recorded for indexes inside calendar_events, so equal
+  // counts imply every event reached "completed". The length pre-checks also
+  // bail out before .every()/.some() walk the events.
+  // js-length-check-first: array comparison must lead with the shared length
+  // equality so mismatched sizes bail out before item-by-item .every().
+  const allCompleted =
+    calendarEvents.length === eventStatuses.length &&
+    calendarEvents.every((_, index) => eventStatuses[index] === "completed");
 
-  const hasCompletedEvents = calendarEvents.some(
-    (_, index) => eventStatuses[index] === "completed",
-  );
-
-  const getDisplayTime = (event: CalendarEvent | SameDayEvent): string => {
-    if ("start" in event && typeof event.start === "object") {
-      const sameDayEvent = event as SameDayEvent;
-      if (sameDayEvent.start?.dateTime && sameDayEvent.end?.dateTime) {
-        return formatTimeRange(
-          sameDayEvent.start.dateTime,
-          sameDayEvent.end.dateTime,
-        );
-      }
-      if (sameDayEvent.start?.date) return "All day";
-      return "No time";
-    }
-
-    const calEvent = event as CalendarEvent;
-    if ("start" in calEvent && "end" in calEvent && calEvent.start) {
-      const timedEvent = calEvent as TimedEvent;
-      const startStr = timedEvent.start;
-      const endStr = timedEvent.end;
-      if (startStr?.includes("T") && endStr?.includes("T")) {
-        return formatTimeRange(startStr, endStr);
-      }
-      return "All day";
-    }
-
-    if ("time" in calEvent && calEvent.time) {
-      const singleTimeEvent = calEvent as SingleTimeEvent;
-      if (singleTimeEvent.time.includes("T")) {
-        const date = new Date(singleTimeEvent.time);
-        return date.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-      }
-      return "All day";
-    }
-
-    return "No time";
-  };
+  const hasCompletedEvents =
+    calendarEvents.length > 0 &&
+    calendarEvents.some((_, index) => eventStatuses[index] === "completed");
 
   return (
     <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">

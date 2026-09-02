@@ -19,6 +19,7 @@ from app.agents.templates.agent_template import (
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
@@ -201,23 +202,35 @@ async def format_workflow_execution_message(
         "notification_section": notification_section,
     }
 
+    # This run already replayed the workflow's playbook and it stopped partway,
+    # so some of the steps below have ALREADY happened. Appended rather than
+    # folded into the templates because it is per-run evidence, not part of the
+    # workflow's standing instructions.
+    fallback_section = (trigger_context or {}).get(PLAYBOOK_FALLBACK_CONTEXT_KEY) or ""
+
     # Email-triggered workflows get enhanced context
     if trigger_context and trigger_context.get("type") == "gmail":
         email_data = trigger_context.get("email_data", {})
         msg_text = email_data.get("message_text", "")
 
-        return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
-            email_sender=email_data.get("sender", "Unknown"),
-            email_subject=email_data.get("subject", "No Subject"),
-            email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
-            trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
-            **common_args,
+        return (
+            EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
+                email_sender=email_data.get("sender", "Unknown"),
+                email_subject=email_data.get("subject", "No Subject"),
+                email_content_preview=msg_text[:200] + ("..." if len(msg_text) > 200 else ""),
+                trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
+                **common_args,
+            )
+            + fallback_section
         )
 
     # Manual workflow execution
-    return WORKFLOW_EXECUTION_PROMPT.format(
-        user_message=existing_content or f"Execute workflow: {workflow_title}",
-        **common_args,
+    return (
+        WORKFLOW_EXECUTION_PROMPT.format(
+            user_message=existing_content or f"Execute workflow: {workflow_title}",
+            **common_args,
+        )
+        + fallback_section
     )
 
 
@@ -323,6 +336,44 @@ async def get_onboarding_system_prompt_if_applicable(
         return None
 
 
+def _uploaded_file_lines(
+    file: FileData, conversation_id: str | None, include_processing_guide: bool
+) -> tuple[list[str], bool] | None:
+    """One file's lines and whether it is on disk; ``None`` for an unsafe filename."""
+    try:
+        on_disk = safe_upload_filename(file.filename)
+    except ValueError:
+        return None
+    if conversation_id:
+        path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
+    else:
+        path = f"./user-uploaded/{on_disk}"
+    # Only advertise the path when the file really reached the workspace.
+    # The mirror is best-effort (it needs JuiceFS), so on a native API — or
+    # any deployment where it failed — this path does not exist, and naming
+    # it anyway sends the executor into read/bash attempts that can only
+    # fail. `search_uploaded_files` needs no mount and is the honest route.
+    on_disk_available = file.sandbox_path is not None
+    lines: list[str] = []
+    # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+    # without it an agent scoping to a single file can only guess the
+    # filename, which matches nothing.
+    if on_disk_available:
+        lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
+    else:
+        lines.append(
+            f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+        )
+    if file.description:
+        summary = file.description.strip()
+        if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+            summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+        lines.append(f"    summary: {summary}")
+        if conversation_id and include_processing_guide and on_disk_available:
+            lines.append(f"    full summary: `{path}.summary.md`")
+    return lines, on_disk_available
+
+
 def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
@@ -354,37 +405,12 @@ def format_files_list(
     lines: list[str] = []
     any_on_disk = False
     for file in files:
-        try:
-            on_disk = safe_upload_filename(file.filename)
-        except ValueError:
+        entry = _uploaded_file_lines(file, conversation_id, include_processing_guide)
+        if entry is None:
             continue
-        if conversation_id:
-            path = f"/workspace/sessions/{conversation_id}/user-uploaded/{on_disk}"
-        else:
-            path = f"./user-uploaded/{on_disk}"
-        # Only advertise the path when the file really reached the workspace.
-        # The mirror is best-effort (it needs JuiceFS), so on a native API — or
-        # any deployment where it failed — this path does not exist, and naming
-        # it anyway sends the executor into read/bash attempts that can only
-        # fail. `search_uploaded_files` needs no mount and is the honest route.
-        on_disk_available = file.sandbox_path is not None
+        file_lines, on_disk_available = entry
         any_on_disk = any_on_disk or on_disk_available
-        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
-        # without it an agent scoping to a single file can only guess the
-        # filename, which matches nothing.
-        if on_disk_available:
-            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
-        else:
-            lines.append(
-                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
-            )
-        if file.description:
-            summary = file.description.strip()
-            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
-                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
-            lines.append(f"    summary: {summary}")
-            if conversation_id and include_processing_guide and on_disk_available:
-                lines.append(f"    full summary: `{path}.summary.md`")
+        lines.extend(file_lines)
 
     if not lines:
         return ""

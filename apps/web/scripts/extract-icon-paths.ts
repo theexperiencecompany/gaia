@@ -28,6 +28,7 @@ import {
   Award01Icon,
   BarChartIcon,
   BodyPartMuscleIcon,
+  BookBookmark02Icon,
   BookOpen01Icon,
   Brain02Icon,
   BrainIcon,
@@ -232,6 +233,7 @@ function extractSvgPaths(
 const solidIcons: Record<string, IconComponent> = {
   AlarmClockIcon,
   BodyPartMuscleIcon,
+  BookBookmark02Icon,
   Brain02Icon,
   CheckListIcon,
   ComputerTerminal01Icon,

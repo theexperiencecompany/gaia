@@ -56,12 +56,16 @@ export default function PaymentSuccessPage() {
     if (hasVerified.current) return;
     hasVerified.current = true;
 
+    // `cancelled` is scoped to this effect run, so an overlapping re-run can
+    // never resolve out of order and write stale state.
+    let cancelled = false;
     const run = async () => {
       try {
         // The Dodo redirect can beat the webhook, so a single "not
         // completed" is not a failure — retry with growing delays while the
         // printer shows "Processing your order", and only then give up.
         const result = await verifyPaymentWithRetry(() => verifyPayment());
+        if (cancelled) return;
         if (result.payment_completed) {
           trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
@@ -73,6 +77,7 @@ export default function PaymentSuccessPage() {
         }
       } catch (error) {
         console.error("Payment verification failed:", error);
+        if (cancelled) return;
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
@@ -80,12 +85,19 @@ export default function PaymentSuccessPage() {
       }
     };
     run();
+    return () => {
+      cancelled = true;
+    };
   }, [verifyPayment]);
 
   // Celebrate an active subscription — confetti fires as the receipt starts
   // printing.
   useEffect(() => {
-    if (status === "success") UseCreateConfetti(3500);
+    if (status !== "success") return;
+    const interval = UseCreateConfetti(3500);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [status]);
 
   // Restart checkout for the plan the user last tried, falling back to pricing.

@@ -11,13 +11,14 @@ repository's own filters and update documents are proven a tier down, in
 
 from typing import Any
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.models.bot_models import BotSessionDocument
-from app.scripts.merge_legacy_dm_bot_sessions import (
+from app.scripts.merge_legacy_dm_bot_sessions import _apply_merges, canonical_key_for
+from app.services.bot_session_merge import (
     MergeAction,
-    _apply_merges,
-    canonical_key_for,
+    apply_merge,
     dm_channel_of,
     last_used,
     plan_merge,
@@ -48,15 +49,19 @@ class _FakeRepository:
     def __init__(self, *, renamed: bool = True, deleted: int = 1) -> None:
         self.renamed = renamed
         self.deleted = deleted
+        self.repointed = True
+        self.rename_raises: Exception | None = None
         self.calls: list[tuple[str, dict[str, Any]]] = []
 
     async def rename_session_key(self, **kwargs: Any) -> bool:
         self.calls.append(("rename_session_key", kwargs))
+        if self.rename_raises is not None:
+            raise self.rename_raises
         return self.renamed
 
     async def repoint_conversation(self, **kwargs: Any) -> bool:
         self.calls.append(("repoint_conversation", kwargs))
-        return True
+        return self.repointed
 
     async def delete_by_session_key(self, session_key: str) -> int:
         self.calls.append(("delete_by_session_key", {"session_key": session_key}))
@@ -66,14 +71,18 @@ class _FakeRepository:
 @pytest.fixture
 def repository(monkeypatch: pytest.MonkeyPatch) -> _FakeRepository:
     fake = _FakeRepository()
-    monkeypatch.setattr("app.scripts.merge_legacy_dm_bot_sessions.bot_session_repository", fake)
+    monkeypatch.setattr("app.services.bot_session_merge.bot_session_repository", fake)
     return fake
 
 
 class TestPlanMerge:
     def test_a_lone_legacy_row_is_renamed_onto_the_canonical_key(self) -> None:
         """Nothing to lose: the conversation moves to the key the code now reads."""
-        merge = plan_merge(_session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"), None)
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00")),
+            None,
+            canonical_key_for(legacy),
+        )
 
         assert merge is not None
         assert merge.action is MergeAction.RENAME
@@ -89,8 +98,9 @@ class TestPlanMerge:
 
     def test_the_newer_legacy_conversation_wins_and_the_canonical_row_is_repointed(self) -> None:
         merge = plan_merge(
-            _session(LEGACY_KEY, "conv-legacy", "2026-08-17T10:00:00+00:00"),
+            (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-17T10:00:00+00:00")),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T09:23:00+00:00"),
+            canonical_key_for(legacy),
         )
 
         assert merge is not None
@@ -106,6 +116,7 @@ class TestPlanMerge:
         merge = plan_merge(
             _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T18:00:00+00:00"),
+            CANONICAL_KEY,
         )
 
         assert merge is not None
@@ -121,6 +132,7 @@ class TestPlanMerge:
         merge = plan_merge(
             _session(LEGACY_KEY, "conv-legacy", stamp),
             _session(CANONICAL_KEY, "conv-canonical", stamp),
+            CANONICAL_KEY,
         )
 
         assert merge is not None
@@ -138,7 +150,8 @@ class TestPlanMerge:
         }
         fields[missing] = ""
 
-        assert plan_merge(BotSessionDocument(**fields), None) is None
+        row = BotSessionDocument(**fields)
+        assert plan_merge(row, None, canonical_key_for(row)) is None
 
     def test_a_row_whose_canonical_key_is_itself_is_left_alone(self) -> None:
         """A user literally identified as ``dm`` would map onto its own key; renaming
@@ -150,7 +163,7 @@ class TestPlanMerge:
             platform_user_id="dm",
         )
 
-        assert plan_merge(row, None) is None
+        assert plan_merge(row, None, canonical_key_for(row)) is None
 
 
 class TestLastUsed:
@@ -192,11 +205,54 @@ def test_dm_channel_of_takes_the_channel_segment_not_the_user() -> None:
     assert dm_channel_of("discord:user-1:channel-9") == "channel-9"
 
 
+class TestAWriteRacedByAnotherClaim:
+    """Between plan and write another actor can move either row: a workflow
+    delivery claiming the canonical key mid-RENAME (the unique index turns
+    that into DuplicateKeyError), or the canonical row vanishing mid-REPOINT.
+    Both must answer False with the legacy row left in place — never a failed
+    user request, never a stranded conversation — so the next flagged message
+    replans against the world as it is then."""
+
+    async def test_a_rename_losing_the_canonical_key_race_is_a_no_op(
+        self, repository: _FakeRepository
+    ) -> None:
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-history", "2026-08-16T09:23:00+00:00")),
+            None,
+            canonical_key_for(legacy),
+        )
+        assert merge is not None
+        repository.rename_raises = DuplicateKeyError("E11000 duplicate key")
+
+        assert await apply_merge(merge) is False
+        assert not any(name == "delete_by_session_key" for name, _ in repository.calls)
+
+    async def test_a_repoint_that_matched_nothing_does_not_delete_the_legacy_row(
+        self, repository: _FakeRepository
+    ) -> None:
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-newer", "2026-08-17T10:00:00+00:00")),
+            _session(CANONICAL_KEY, "conv-older", "2026-08-16T09:23:00+00:00"),
+            canonical_key_for(legacy),
+        )
+        assert merge is not None
+        assert merge.action is MergeAction.REPOINT
+        repository.repointed = False  # the canonical row vanished after planning
+
+        assert await apply_merge(merge) is False
+        # Deleting now would strand conv-newer with no session pointing at it.
+        assert not any(name == "delete_by_session_key" for name, _ in repository.calls)
+
+
 class TestApplyMerges:
     async def test_rename_moves_the_row_and_stamps_the_dm_channel(
         self, repository: _FakeRepository
     ) -> None:
-        merge = plan_merge(_session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"), None)
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00")),
+            None,
+            canonical_key_for(legacy),
+        )
         assert merge is not None
 
         assert await _apply_merges([merge]) == 1
@@ -217,8 +273,9 @@ class TestApplyMerges:
         """Order matters: dropping the legacy row before the canonical row owns its
         conversation would strand the surviving thread."""
         merge = plan_merge(
-            _session(LEGACY_KEY, "conv-legacy", "2026-08-17T10:00:00+00:00"),
+            (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-17T10:00:00+00:00")),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T09:23:00+00:00"),
+            canonical_key_for(legacy),
         )
         assert merge is not None
 
@@ -238,6 +295,7 @@ class TestApplyMerges:
         merge = plan_merge(
             _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T18:00:00+00:00"),
+            CANONICAL_KEY,
         )
         assert merge is not None
 
@@ -250,7 +308,11 @@ class TestApplyMerges:
     ) -> None:
         """A silent miss would report success while leaving the fork in place."""
         repository.renamed = False
-        merge = plan_merge(_session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"), None)
+        merge = plan_merge(
+            (legacy := _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00")),
+            None,
+            canonical_key_for(legacy),
+        )
         assert merge is not None
 
         assert await _apply_merges([merge]) == 0
@@ -263,10 +325,13 @@ class TestApplyMerges:
         only itself. Stopping the loop there would leave every remaining fork in
         place, and the run would still report a clean partial count."""
         repository.renamed = False  # the RENAME below matches nothing
-        first = plan_merge(_session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None)
+        first = plan_merge(
+            _session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None, CANONICAL_KEY
+        )
         second = plan_merge(
             _session(LEGACY_KEY, "conv-b", "2026-08-16T09:23:00+00:00"),
             _session(CANONICAL_KEY, "conv-c", "2026-08-16T18:00:00+00:00"),
+            CANONICAL_KEY,
         )
         assert first is not None and second is not None
 
@@ -280,6 +345,7 @@ class TestApplyMerges:
         merge = plan_merge(
             _session(LEGACY_KEY, "conv-legacy", "2026-08-16T09:23:00+00:00"),
             _session(CANONICAL_KEY, "conv-canonical", "2026-08-16T18:00:00+00:00"),
+            CANONICAL_KEY,
         )
         assert merge is not None
 
@@ -290,14 +356,18 @@ class TestApplyMerges:
     ) -> None:
         """What makes the migration idempotent: a second run finds nothing."""
         merges = [
-            plan_merge(_session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None),
+            plan_merge(
+                _session(LEGACY_KEY, "conv-a", "2026-08-16T09:23:00+00:00"), None, CANONICAL_KEY
+            ),
             plan_merge(
                 _session(LEGACY_KEY, "conv-b", "2026-08-17T10:00:00+00:00"),
                 _session(CANONICAL_KEY, "conv-c", "2026-08-16T09:23:00+00:00"),
+                CANONICAL_KEY,
             ),
             plan_merge(
                 _session(LEGACY_KEY, "conv-d", "2026-08-16T09:23:00+00:00"),
                 _session(CANONICAL_KEY, "conv-e", "2026-08-18T00:00:00+00:00"),
+                CANONICAL_KEY,
             ),
         ]
         assert all(m is not None for m in merges)

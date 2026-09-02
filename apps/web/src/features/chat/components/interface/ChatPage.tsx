@@ -64,6 +64,9 @@ const MainChat = React.memo(function MainChat() {
   const sendMessage = useSendMessage();
   const selectedWorkflow = useWorkflowSelectionStore((s) => s.selectedWorkflow);
   const autoSend = useWorkflowSelectionStore((s) => s.autoSend);
+  // Exactly-once guard for the deferred auto-send below. Set inside the timer
+  // callback (not at schedule time) so StrictMode's simulated remount and
+  // dep-driven re-runs reschedule instead of assuming the send already fired.
   const autoSendFiredRef = useRef(false);
 
   // Mounting useIntegrations refreshes the personalized catalog (staleTime: 0)
@@ -73,13 +76,18 @@ const MainChat = React.memo(function MainChat() {
   useEffect(() => {
     if (!(selectedWorkflow && autoSend)) return;
     if (autoSendFiredRef.current) return;
-    autoSendFiredRef.current = true;
 
     const workflow = selectedWorkflow;
-    useWorkflowSelectionStore.getState().clearSelectedWorkflow();
-    useChatStore.getState().setActiveConversationId(null);
 
-    setTimeout(() => {
+    // Defer one macrotask so navigation settles, then clear + send inside
+    // the callback: clearing the store HERE (in the effect body) would
+    // re-render before the macrotask fires, running this effect's cleanup
+    // and cancelling the send — silently dropping the execution (an e2e-
+    // verified regression). With the clear inside the callback, a cleanup
+    // on supersede is harmless: firedRef makes the next pass a no-op.
+    const sendTimer = setTimeout(() => {
+      autoSendFiredRef.current = true;
+      useWorkflowSelectionStore.getState().clearSelectedWorkflow();
       sendMessage("Run this workflow", {
         selectedWorkflow: workflow,
         selectedTool: null,
@@ -87,11 +95,11 @@ const MainChat = React.memo(function MainChat() {
         conversationId: null,
       });
     }, 0);
-  }, [selectedWorkflow, autoSend, sendMessage]);
 
-  useEffect(() => {
-    if (!selectedWorkflow || !autoSend) autoSendFiredRef.current = false;
-  }, [selectedWorkflow, autoSend]);
+    // Supersede semantics: a genuinely NEW selection replaces the pending
+    // send; genuine unmount cancels it (master's own behavior).
+    return () => clearTimeout(sendTimer);
+  }, [selectedWorkflow, autoSend, sendMessage]);
 
   const {
     hasMessages,

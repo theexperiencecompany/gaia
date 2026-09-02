@@ -2,7 +2,7 @@
 
 import { Spinner } from "@heroui/spinner";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { RedirectType, redirect, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -53,7 +53,6 @@ export default function DesktopLoginPage() {
       .then(() => {
         if (!cancelled) {
           setStatus("redirecting");
-          router.replace("/c");
         }
       })
       .catch(() => {
@@ -62,7 +61,7 @@ export default function DesktopLoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [isElectron, router]);
+  }, [isElectron]);
 
   // Listen for the main process signalling it's about to navigate to /c
   useEffect(() => {
@@ -72,6 +71,14 @@ export default function DesktopLoginPage() {
     });
     return cleanup;
   }, []);
+
+  // Session verified (or the Electron main process signalled completion) —
+  // hand off to the app. Resolved during render (not in an effect) so the
+  // login screen never paints before navigating; `redirect` performs the same
+  // client-side navigation router.replace did.
+  if (status === "redirecting") {
+    redirect("/c", RedirectType.replace);
+  }
 
   const handleOpenLogin = () => {
     const apiBaseUrl =
@@ -162,16 +169,6 @@ export default function DesktopLoginPage() {
               >
                 Try again
               </button>
-            </div>
-          )}
-
-          {status === "redirecting" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner color="primary" />
-              <div className="text-center">
-                <p className="font-medium text-white">Signing you in…</p>
-                <p className="mt-1 text-sm text-zinc-400">Taking you to GAIA</p>
-              </div>
             </div>
           )}
 

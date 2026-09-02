@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useRouter, useSearchParams } from "next/navigation";
+import { RedirectType, redirect, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { authApi } from "@/features/auth/api/authApi";
 import {
@@ -19,13 +19,15 @@ import {
   trackEvent,
 } from "@/lib/analytics";
 
+// Exactly-once guard for the OAuth login analytics event — module scope so it
+// can be flipped during the render-phase redirect without writing a ref.
+let hasTrackedOAuthLogin = false;
+
 const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
-  const hasTrackedLogin = useRef(false);
 
   const { data, error } = useQuery({
     queryKey: ["current-user"],
@@ -78,35 +80,35 @@ const useFetchUser = () => {
   }, [data, currentPath]);
 
   // OAuth redirect routing — isolated from store syncing so route changes
-  // don't overwrite user state with stale query data.
-  useEffect(() => {
-    if (!data) return;
+  // don't overwrite user state with stale query data. Resolved during render
+  // (not in an effect) so the callback page never paints before redirecting;
+  // `redirect` performs the same client-side navigation router.push did.
+  const accessToken = searchParams.get("access_token");
+  const refreshToken = searchParams.get("refresh_token");
 
-    const accessToken = searchParams.get("access_token");
-    const refreshToken = searchParams.get("refresh_token");
-    if (!accessToken || !refreshToken) return;
-
-    // Token-bearing URL params mean an OAuth login just completed. Guard with
-    // a ref so effect re-runs (route/searchParams churn before redirect) can't
-    // double-capture.
-    if (!hasTrackedLogin.current) {
-      trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
-        method: "workos_oauth",
-      });
-      hasTrackedLogin.current = true;
-    }
+  // Analytics for the OAuth login — fired pre-redirect (redirect() aborts the
+  // render, so an effect here would never run). A module flag, not a ref:
+  // refs must not be written during render. Exactly-once per page load.
+  if (
+    data &&
+    accessToken &&
+    refreshToken &&
+    !readPendingCheckout() &&
+    !hasTrackedOAuthLogin
+  ) {
+    hasTrackedOAuthLogin = true;
+    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_IN, {
+      method: "workos_oauth",
+    });
 
     // A pending checkout takes priority; useCheckoutResume redirects to Dodo.
-    if (readPendingCheckout()) return;
-
     const needsOnboarding = !data.onboarding?.completed;
     const phase = data.onboarding?.phase;
     const isStillProcessing =
       !!phase && ONBOARDING_PROCESSING_PHASES.has(phase);
 
     if (needsOnboarding && currentPath !== "/onboarding") {
-      router.push("/onboarding");
-      return;
+      redirect("/onboarding", RedirectType.push);
     }
 
     if (
@@ -114,9 +116,9 @@ const useFetchUser = () => {
       !isStillProcessing &&
       (currentPath === "/onboarding" || PUBLIC_PAGES.includes(currentPath))
     ) {
-      router.push("/c");
+      redirect("/c", RedirectType.push);
     }
-  }, [data, searchParams, router, currentPath]);
+  }
 
   // Clear user state on auth failure
   useEffect(() => {

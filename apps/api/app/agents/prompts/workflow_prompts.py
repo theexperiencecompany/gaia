@@ -3,102 +3,37 @@ Workflow generation prompts for GAIA workflow system.
 """
 
 # =============================================================================
-# WORKFLOW CREATION SUBAGENT TASK TEMPLATES
+# WHAT A WORKFLOW'S EXECUTION PROMPT MAY CONTAIN
 # =============================================================================
 
-WORKFLOW_CREATION_NEW_TASK_TEMPLATE = """Create a workflow based on this request:
+# Stated once, spliced into both authors of a workflow `prompt`: the chat
+# assistant (WORKFLOW_AGENT_SYSTEM_PROMPT) and the editor's generate-instructions
+# button (WORKFLOW_PROMPT_GENERATION_SYSTEM). One copy is what stops the two from
+# drifting, which is how the assistant ended up with no rule at all.
+WORKFLOW_INSTRUCTIONS_CONTRACT = """The executor reads these instructions after the trigger has
+already fired and handed over its data, so they say only WHAT TO DO. Leave out when the run
+happens (cron, clock times, "every morning"), what started it ("when a new email arrives"), and
+mechanics nobody asked for (field extraction, storage format, retries, error logging).
+What the user did ask for is the deliverable, not a mechanic: keep the fields, columns and format
+they named. A time window the work needs ("emails from the last 24 hours") stays too; a statement
+of when the run happens does not.
 
-"{workflow_request}"
-{hints_section}
-Process this request:
-1. If the request is clear and unambiguous, finalize immediately
-2. If anything is unclear (what it should do, when to run), ask ONE clarifying question
-3. For integration triggers, use search_triggers to find appropriate triggers
-4. For scheduled triggers, convert natural language to cron expression
-
-Always include a JSON block in your response (either clarifying or finalized type).
-"""
-
-WORKFLOW_CREATION_HINTS_TEMPLATE = """
-The executor provided these hints (use as suggestions, override based on user input):
-{hints}
-"""
-
-WORKFLOW_CREATION_FROM_CONVERSATION_TASK_TEMPLATE = """Create a workflow from this conversation context:
-
-Title suggestion: {suggested_title}
-Summary: {summary}
-
-Steps identified from conversation:
-{steps_text}
-
-Integrations used: {integrations_used}
-{user_request_section}
-{hints_section}
-Process this context:
-1. Summarize what was accomplished and confirm saving as workflow
-2. Determine trigger type - ask if not obvious from context
-3. For integration triggers, use search_triggers
-4. For scheduled triggers, convert natural language to cron
-5. Once confirmed, output finalized JSON
-
-Always include a JSON block in your response (either clarifying or finalized type).
-"""
-
-WORKFLOW_CREATION_USER_REQUEST_TEMPLATE = """
-User's additional request: "{workflow_request}"
-"""
-
-WORKFLOW_CREATION_RETRY_TEMPLATE = """Your previous response had an invalid JSON output. Error: {error}
-
-Please respond again with a VALID JSON block. Required format:
-
-For clarifying questions:
-```json
-{{"type": "clarifying", "message": "Your question here"}}
-```
-
-For finalized workflow:
-```json
-{{
-    "type": "finalized",
-    "title": "Workflow Title",
-    "description": "1-2 sentence summary for UI cards",
-    "prompt": "Detailed step-by-step instructions. Include numbered steps, specific integrations, data sources, and expected outputs.",
-    "trigger_type": "manual|scheduled|integration",
-    "cron_expression": "0 9 * * *",
-    "trigger_slug": "TRIGGER_SLUG_HERE",
-    "direct_create": true
-}}
-```
-
-Note: cron_expression required for scheduled, trigger_slug required for integration.
-Set direct_create: true only for simple, unambiguous workflows.
-
-Original request:
-{original_task}
-"""
+  WRONG: "Every morning at 9am: 1. Fetch unread Gmail and summarize it"
+  RIGHT: "1. Fetch unread Gmail and summarize it\""""
 
 
 # =============================================================================
 # WORKFLOW GENERATION PROMPTS (existing)
 # =============================================================================
 
-# Template for generating detailed todo execution prompt
-TODO_WORKFLOW_PROMPT_TEMPLATE = """This workflow was automatically generated from a todo item to help the user accomplish their task.
+# Execution prompt for a workflow generated from a todo. Everything the executor
+# needs is the task itself: how the workflow got created and when the user runs
+# it are config, and this string is read as the run's goal.
+TODO_WORKFLOW_PROMPT_TEMPLATE = """Complete this task for the user, using external tools for
+every concrete action it needs:
 
-**Purpose:** Break down this todo into actionable automated steps. The user will click "Run Workflow" when they're ready to execute it, and the AI assistant will carry out each step in sequence.
-
-**Important Context:**
-- This is a todo-driven workflow - focus on practical steps to complete the user's task
-- Each step should use external tools to accomplish concrete actions
-- Keep steps minimal and efficient - only include what's necessary to complete the todo
-- The user expects this workflow to help them finish their todo item faster
-
-**Todo Task:** {title}
+**Task:** {title}
 {details_section}
-
-Generate practical, executable steps that will help the user complete: "{title}"
 """
 
 # Short display description for todo workflows
@@ -345,24 +280,20 @@ If this workflow only fetches, reads, lists, or summarizes data, do NOT create a
 # MAGIC PROMPT GENERATOR: system prompt & user template
 # =============================================================================
 
-WORKFLOW_PROMPT_GENERATION_SYSTEM = """You are writing execution instructions for GAIA, an AI workflow agent.
+WORKFLOW_PROMPT_GENERATION_SYSTEM = f"""You are writing execution instructions for GAIA, an AI workflow agent.
 
-The instructions are read by the agent at execution time. Write directly to it in imperative second-person ("Fetch...", "Search...", "Send..."). Never third-person.
+Write directly to the agent in imperative second-person ("Fetch...", "Search...", "Send..."). Never third-person.
 
 The agent is intelligent: it decides how to call tools, process data, format output, handle retries, and structure results on its own. Your job is to describe the GOAL and the desired OUTCOME, not the mechanics.
 
-NEVER include in instructions:
-- Implementation details: "store in JSON", "extract fields", "parse response", "retry once", "log the error"
-- Data handling: "for each email extract X, Y, Z", "create an object", "build an array"
-- Trigger context: what triggers the workflow, when it fires, what event starts it, "when a new email arrives", "before each meeting", "check calendar for upcoming events" (the trigger system handles this separately and the agent already knows WHY it was invoked)
-- Scheduling language: cron, times, "every morning", "10 minutes before"
-- Retry/error logic: the agent handles failures automatically
-- Step-by-step procedures: the system generates steps separately
+{WORKFLOW_INSTRUCTIONS_CONTRACT}
+
+Also leave out step-by-step procedures: the system generates the steps separately.
 
 The user's description is raw input: distill it to intent. Strip away the WHEN (trigger) and focus on the WHAT (action). Examples:
 - "10 mins before every meeting check my inbox" → intent is "show me relevant emails for an upcoming meeting", NOT "check calendar then fetch emails"
 - "when I get an email, summarize it" → intent is "summarize the incoming email"
-- "extract sender, subject, first 200 chars, store as JSON" → intent is "summarize new emails"
+- "extract sender, subject, first 200 chars, store as JSON" → intent is "record each new email as JSON with its sender, subject and first 200 characters" (the fields and the format are the deliverable, so they stay; only the WHEN is stripped)
 
 Write 80-150 words of plain prose. No bullets, no headers, no code fences. Name the integrations and describe what the user should receive. One sentence for fallback behavior.
 

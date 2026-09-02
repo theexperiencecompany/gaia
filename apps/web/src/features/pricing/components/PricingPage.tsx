@@ -15,11 +15,15 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
 
+const EMPTY_PLANS: Plan[] = [];
+
 interface PricingPageProps {
   initialPlans?: Plan[];
 }
 
-export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
+export default function PricingPage({
+  initialPlans = EMPTY_PLANS,
+}: PricingPageProps) {
   const [isYearly, setIsYearly] = useState(false);
 
   useEffect(() => {

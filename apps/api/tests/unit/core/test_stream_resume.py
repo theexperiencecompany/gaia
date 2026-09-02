@@ -71,6 +71,17 @@ async def _keep_streaming() -> None:
     await StreamManager.publish_chunk(SID, 'data: {"response": "still working "}\n\n')
 
 
+async def _keep_streaming_from_the_executor() -> None:
+    """One more frame from a turn that has handed off to the executor.
+
+    Once comms says "I'm on it" the turn parks in ``await_executor_done`` and
+    every later frame comes from the executor's Redis writer, which only
+    publishes — ``update_progress`` is a comms-loop call and stops firing. This
+    is what a long turn actually looks like for most of its life.
+    """
+    await StreamManager.publish_chunk(SID, 'data: {"tool": "bash", "status": "running"}\n\n')
+
+
 class TestActiveIndexLifetime:
     async def test_ongoing_activity_keeps_a_long_turn_resumable(self, fake_redis):
         """A turn that is still streaming must not become unresumable.
@@ -102,6 +113,43 @@ class TestActiveIndexLifetime:
 
         assert await fake_redis.ttl(PROGRESS_KEY) > NEARLY_EXPIRED
         assert await fake_redis.ttl(EVENTS_KEY) > NEARLY_EXPIRED
+
+    async def test_executor_frames_keep_a_long_turn_resumable(self, fake_redis):
+        """A turn producing only executor frames must stay resumable.
+
+        EXECUTOR_WAIT_TIMEOUT is 30 minutes against a 5-minute STREAM_TTL, so
+        any executor turn past 5 minutes reaches this. The user reloads, the
+        backend says no turn is running, and their own message flips to FAILED
+        while the agent is still working.
+        """
+        await StreamManager.start_stream(SID, CONV, USER)
+        await _age_the_turns_keys(fake_redis)
+
+        await _keep_streaming_from_the_executor()
+
+        assert await fake_redis.ttl(ACTIVE_KEY) > NEARLY_EXPIRED, (
+            "an executor-only turn did not refresh its resume index, so it becomes "
+            "unresumable while still running and the user's message flips to FAILED"
+        )
+
+    async def test_executor_frames_keep_a_long_turn_cancellable(self, fake_redis):
+        """The stop button must keep working on a long turn.
+
+        ``cancel_stream_endpoint`` short-circuits on a missing progress key and
+        returns "Stream not found" WITHOUT setting the cancel signal, so an
+        expired progress key makes the button silently do nothing while the
+        executor runs to completion and posts its result anyway.
+        """
+        await StreamManager.start_stream(SID, CONV, USER)
+        await _age_the_turns_keys(fake_redis)
+
+        await _keep_streaming_from_the_executor()
+
+        assert await fake_redis.ttl(PROGRESS_KEY) > NEARLY_EXPIRED, (
+            "an executor-only turn did not refresh its progress key, so once it "
+            "expires cancel_stream_endpoint returns 'Stream not found' and never "
+            "sets the cancel signal — the stop button silently does nothing"
+        )
 
     async def test_a_refreshed_index_still_points_at_the_same_stream(self, fake_redis):
         """Refreshing the TTL must not disturb the value — an index rewritten

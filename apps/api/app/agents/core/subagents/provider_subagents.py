@@ -16,6 +16,9 @@ from langgraph.graph.state import CompiledStateGraph
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import (
+    CategoryOptions,
+    CategoryRisk,
+    ToolRegistry,
     get_tool_registry,
     integration_destructive_tools,
 )
@@ -28,7 +31,7 @@ from app.models.subagent_models import Subagent
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
-from .base_subagent import SubAgentFactory
+from .base_subagent import SubAgentFactory, SubAgentToolConfig
 
 
 class SubagentUnavailableError(Exception):
@@ -42,6 +45,37 @@ class SubagentUnavailableError(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> None:
+    """Put a Composio subagent's toolkit in the registry, once per process.
+
+    Both the live handoff and a playbook's validator and replay resolve the
+    subagent's tool space from the registry, and the toolkit is only there once
+    something has loaded it. A worker that has never handed off to this
+    subagent has an empty category for it until this runs, which is how a
+    replay three minutes after a worker restart found no GMAIL tool at all.
+
+    ``Subagent`` does not carry composio_config; the OAuth integration does
+    (composio is OAuth-only). The OAuthIntegration validator enforces
+    composio_config when managed_by="composio", so landing here without one
+    means a builtin Subagent declared managed_by="composio" and would silently
+    produce a tool-less agent. Fail loudly instead.
+    """
+    integration = get_integration_by_id(subagent.id)
+    if integration is None or integration.composio_config is None:
+        raise ValueError(
+            f"Composio subagent {subagent.id!r} has no matching OAuth "
+            f"integration with composio_config. managed_by='composio' "
+            f"must correspond to an OAUTH_INTEGRATIONS entry."
+        )
+    config = subagent.config
+    await tool_registry.register_provider_tools(
+        toolkit_name=integration.composio_config.toolkit,
+        space_name=config.tool_space,
+        specific_tools=config.specific_tools,
+        exclude_tools=config.exclude_tools,
+    )
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -87,9 +121,11 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                 tool_registry._add_category(
                     name=category_name,
                     tools=tools,
-                    space=config.tool_space,
-                    integration_name=subagent.id,
-                    destructive_tools=integration_destructive_tools(subagent.id),
+                    options=CategoryOptions(
+                        space=config.tool_space,
+                        integration_name=subagent.id,
+                    ),
+                    risk=CategoryRisk(destructive_tools=integration_destructive_tools(subagent.id)),
                 )
                 await tool_registry._index_category_tools(category_name)
                 log.info(
@@ -98,28 +134,8 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                     integration_id=subagent.id,
                 )
 
-    # Handle Composio-managed integrations
-    # `Subagent` does not carry composio_config; look up the OAuth integration
-    # for this branch (composio is OAuth-only). The OAuthIntegration model
-    # validator enforces composio_config when managed_by="composio", so the
-    # only way to land here without one is a builtin Subagent declaring
-    # managed_by="composio" — which would silently produce a tool-less agent.
-    # Fail loudly instead.
     elif subagent.managed_by == "composio":
-        integration = get_integration_by_id(subagent.id)
-        if integration is None or integration.composio_config is None:
-            raise ValueError(
-                f"Composio subagent {subagent.id!r} has no matching OAuth "
-                f"integration with composio_config. managed_by='composio' "
-                f"must correspond to an OAUTH_INTEGRATIONS entry."
-            )
-        toolkit_name = integration.composio_config.toolkit
-        await tool_registry.register_provider_tools(
-            toolkit_name=toolkit_name,
-            space_name=config.tool_space,
-            specific_tools=config.specific_tools,
-            exclude_tools=config.exclude_tools,
-        )
+        await register_composio_subagent_tools(subagent, tool_registry)
 
     llm = init_llm()
 
@@ -133,14 +149,16 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     graph = await SubAgentFactory.create_provider_subagent(
         provider=subagent.provider,
         llm=llm,
-        tool_space=config.tool_space,
         name=config.agent_name,
-        use_direct_tools=config.use_direct_tools,
-        disable_retrieve_tools=config.disable_retrieve_tools,
-        auto_bind_tools=config.auto_bind_tools,
-        extra_initial_tools=config.extra_initial_tools,
-        include_finish_task=config.include_finish_task,
-        source_label=subagent.name,
+        config=SubAgentToolConfig(
+            tool_space=config.tool_space,
+            use_direct_tools=config.use_direct_tools,
+            disable_retrieve_tools=config.disable_retrieve_tools,
+            auto_bind_tools=config.auto_bind_tools,
+            extra_initial_tools=config.extra_initial_tools,
+            include_finish_task=config.include_finish_task,
+            source_label=subagent.name,
+        ),
     )
 
     log.info(f"{LogTag.AGENT} Subagent created successfully", agent_name=config.agent_name)
@@ -230,15 +248,17 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     graph = await SubAgentFactory.create_provider_subagent(
         provider=subagent.provider,
         llm=llm,
-        tool_space=config.tool_space,
         name=config.agent_name,
-        use_direct_tools=config.use_direct_tools,
-        disable_retrieve_tools=config.disable_retrieve_tools,
-        auto_bind_tools=config.auto_bind_tools,
-        extra_initial_tools=config.extra_initial_tools,
-        include_finish_task=config.include_finish_task,
-        mcp_tools=tools,
-        source_label=subagent.name,
+        config=SubAgentToolConfig(
+            tool_space=config.tool_space,
+            use_direct_tools=config.use_direct_tools,
+            disable_retrieve_tools=config.disable_retrieve_tools,
+            auto_bind_tools=config.auto_bind_tools,
+            extra_initial_tools=config.extra_initial_tools,
+            include_finish_task=config.include_finish_task,
+            mcp_tools=tools,
+            source_label=subagent.name,
+        ),
     )
 
     log.info(
@@ -312,12 +332,14 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
     graph = await SubAgentFactory.create_provider_subagent(
         provider=integration_id,
         llm=llm,
-        tool_space=tool_namespace,
         name=agent_name,
-        use_direct_tools=use_direct,
-        disable_retrieve_tools=use_direct,
-        mcp_tools=tools,
-        source_label=custom_doc.name,
+        config=SubAgentToolConfig(
+            tool_space=tool_namespace,
+            use_direct_tools=use_direct,
+            disable_retrieve_tools=use_direct,
+            mcp_tools=tools,
+            source_label=custom_doc.name,
+        ),
     )
 
     log.info(

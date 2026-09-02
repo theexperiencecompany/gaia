@@ -28,7 +28,10 @@ export default function UseCasesPageClient({
             Practical use cases showing how GAIA works for you
           </p>
         </div>
-        <UseCaseSection dummySectionRef={contentRef} useBlurEffect={true} />
+        <UseCaseSection
+          dummySectionRef={contentRef}
+          options={{ useBlurEffect: true }}
+        />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
             <h1 className="mb-1 font-serif text-3xl sm:text-5xl md:text-6xl font-normal">

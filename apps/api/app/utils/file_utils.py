@@ -8,12 +8,9 @@ are embedded into ChromaDB for retrieval.
 
 import asyncio
 from pathlib import Path
-from typing import Union, cast
+from typing import TYPE_CHECKING, Union, cast
 
 from langchain_core.messages import BaseMessage
-from langchain_text_splitters import MarkdownTextSplitter
-from llama_cloud_services import LlamaParse
-from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import ainvoke_llm, get_helper_llm, metered_config, with_llm_retry
 from app.agents.llm.vision import describe_image
@@ -43,6 +40,9 @@ from app.utils import local_document_parser
 from app.utils.image_codec import ImageCodec, InvalidImageError
 from shared.py.wide_events import log
 
+if TYPE_CHECKING:
+    from llama_cloud_services import LlamaParse
+
 _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
 
 
@@ -52,8 +52,27 @@ def _chunk_markdown(markdown: str, max_chunk_chars: int = MAX_CHUNK_CHARS) -> li
     MarkdownTextSplitter guarantees the size bound and prefers natural cut
     points (heading > paragraph > line > character) over arbitrary offsets.
     """
+    from langchain_text_splitters import (  # noqa: PLC0415 -- the package __init__ pulls in nltk (~1s); only document uploads need it
+        MarkdownTextSplitter,
+    )
+
     splitter = MarkdownTextSplitter(chunk_size=max_chunk_chars, chunk_overlap=0)
     return splitter.split_text(markdown)
+
+
+# Office-style formats all go through LlamaParse; the suffix tells it the codec.
+_OFFICE_SUFFIX_BY_MIME: dict[str, str] = {
+    DOCX_MIME: ".docx",
+    DOC_MIME: ".doc",
+    XLSX_MIME: ".xlsx",
+    PPTX_MIME: ".pptx",
+    CSV_MIME: ".csv",
+    RTF_MIME: ".rtf",
+    EPUB_MIME: ".epub",
+    ODT_MIME: ".odt",
+    ODS_MIME: ".ods",
+    ODP_MIME: ".odp",
+}
 
 
 class DocumentProcessor:
@@ -73,9 +92,16 @@ class DocumentProcessor:
         self.llm = get_helper_llm()
 
     @property
-    def parser(self) -> LlamaParse:
+    def parser(self) -> "LlamaParse":
         """LlamaCloud client, constructed on first use."""
         if self._parser is None:
+            from llama_cloud_services import (  # noqa: PLC0415 -- ~0.7s SDK import; only the scanned-PDF OCR fallback needs it
+                LlamaParse,
+            )
+            from llama_cloud_services.parse.utils import (  # noqa: PLC0415 -- same: deferred with LlamaParse
+                ResultType,
+            )
+
             self._parser = LlamaParse(
                 result_type=ResultType.MD,
                 api_key=settings.LLAMA_INDEX_KEY or "",
@@ -83,7 +109,7 @@ class DocumentProcessor:
         return self._parser
 
     @parser.setter
-    def parser(self, value: LlamaParse) -> None:
+    def parser(self, value: "LlamaParse") -> None:
         self._parser = value
 
     async def process_file(
@@ -105,29 +131,10 @@ class DocumentProcessor:
                 return await self.process_image(file_content)
             if content_type == PDF_MIME:
                 return await self.process_doc(file_content)
-            if content_type == DOCX_MIME:
-                return await self.process_office_document(file_content, suffix=".docx")
-            if content_type == DOC_MIME:
-                return await self.process_office_document(file_content, suffix=".doc")
-            if content_type == XLSX_MIME:
-                return await self.process_office_document(file_content, suffix=".xlsx")
-            if content_type == PPTX_MIME:
-                return await self.process_office_document(file_content, suffix=".pptx")
-            if content_type == CSV_MIME:
-                return await self.process_office_document(file_content, suffix=".csv")
-            if content_type == RTF_MIME:
-                return await self.process_office_document(file_content, suffix=".rtf")
-            if content_type == EPUB_MIME:
-                return await self.process_office_document(file_content, suffix=".epub")
-            if content_type == ODT_MIME:
-                return await self.process_office_document(file_content, suffix=".odt")
-            if content_type == ODS_MIME:
-                return await self.process_office_document(file_content, suffix=".ods")
-            if content_type == ODP_MIME:
-                return await self.process_office_document(file_content, suffix=".odp")
-            if content_type.startswith("text/"):
-                return await self.process_text(file_content)
-            if content_type == "application/json":
+            suffix = _OFFICE_SUFFIX_BY_MIME.get(content_type)
+            if suffix is not None:
+                return await self.process_office_document(file_content, suffix=suffix)
+            if content_type.startswith("text/") or content_type == "application/json":
                 return await self.process_text(file_content)
             ext = Path(filename).suffix.lower()
             return f"File of type {ext} (no content extraction available)"
