@@ -123,7 +123,7 @@ export default function PaymentSuccessPage() {
               Welcome to GAIA Pro!
             </h1>
             <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-              You're all set. Every Pro feature is unlocked. Let's get to work.
+              You're on Pro. Everything is unlocked.
             </p>
             <RaisedButton
               color="#00bbff"

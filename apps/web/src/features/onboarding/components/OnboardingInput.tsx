@@ -8,12 +8,11 @@
  */
 
 import { Chip } from "@heroui/chip";
-import Image from "next/image";
 import { memo } from "react";
 
 import { needOptions, professionOptions } from "../constants";
 import { NEEDS_HINT } from "../constants/messages";
-import { OPTION_EMOJI } from "../constants/optionEmoji";
+import { OPTION_STYLE } from "../constants/optionStyle";
 import { OnboardingCTAButton } from "./OnboardingCTAButton";
 
 interface ProfessionModeProps {
@@ -106,6 +105,7 @@ function OptionChips({
     >
       {options.map((option) => {
         const selected = isSelected(option.value);
+        const { icon: Icon, tint } = OPTION_STYLE[option.value];
         return (
           <Chip
             key={option.value}
@@ -113,19 +113,16 @@ function OptionChips({
             type="button"
             size="lg"
             radius="full"
-            variant={selected ? "solid" : "flat"}
-            color={selected ? "primary" : "default"}
+            variant="flat"
             aria-pressed={selected}
             onClick={() => onSelect(option.value)}
-            className="cursor-pointer"
-            startContent={
-              <Image
-                src={OPTION_EMOJI[option.value]}
-                alt=""
-                width={22}
-                height={22}
-              />
-            }
+            // One pastel per option, on the fill, the text and the icon; the
+            // fill goes solid when picked. Founder's call, not a theme override.
+            classNames={{
+              base: `cursor-pointer ${selected ? tint.active : tint.idle}`,
+              content: "font-medium",
+            }}
+            startContent={<Icon className="size-4 shrink-0" />}
           >
             {option.label}
           </Chip>

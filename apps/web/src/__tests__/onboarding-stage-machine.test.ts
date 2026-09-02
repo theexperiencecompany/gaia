@@ -6,7 +6,7 @@ import {
   professionOptions,
   questions,
 } from "@/features/onboarding/constants";
-import { OPTION_EMOJI } from "@/features/onboarding/constants/optionEmoji";
+import { OPTION_STYLE } from "@/features/onboarding/constants/optionStyle";
 import { canSubmitNeeds, getStage } from "@/features/onboarding/state/derive";
 import { initialState } from "@/features/onboarding/state/initial";
 import { getMessages } from "@/features/onboarding/state/messages";
@@ -123,13 +123,14 @@ describe("Q2 multi-select", () => {
     }
   });
 
-  it("has an Apple emoji asset for every option the chips render", () => {
-    // The chips render `OPTION_EMOJI[value]` unconditionally — a missing entry
-    // is a broken <Image src>, and only this assertion catches it.
+  it("has an icon and a tint for every option the chips render", () => {
+    // The chips destructure `OPTION_STYLE[value]` unconditionally — a missing
+    // entry is a render crash, not a blank chip.
     for (const option of [...professionOptions, ...needOptions]) {
-      expect(OPTION_EMOJI[option.value]).toMatch(
-        /^\/images\/emoji\/apple\/[0-9a-f-]+\.png$/,
-      );
+      const style = OPTION_STYLE[option.value];
+      expect(style?.icon).toBeTypeOf("function");
+      expect(style?.tint.idle).toMatch(/^bg-\S+ text-\S+$/);
+      expect(style?.tint.active).toMatch(/^bg-\S+ text-\S+$/);
     }
   });
 

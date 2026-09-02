@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The onboarding question composer is a pill row of emoji chips plus one
+ * The onboarding question reply is a pill row of tinted icon chips plus one
  * Continue button, for both questions.
  *
  * What is pinned here: picking a chip never advances the flow on its own
