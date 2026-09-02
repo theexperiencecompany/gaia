@@ -3,7 +3,7 @@
 import { Skeleton } from "@heroui/skeleton";
 import { useUser } from "@/features/auth/hooks/useUser";
 
-import type { Plan } from "../api/pricingApi";
+import type { CheckoutSource, Plan } from "../api/pricingApi";
 import { ANNUAL_PRICE_RETENTION } from "../constants";
 import {
   useIsSubscriptionStatusUnknown,
@@ -47,12 +47,15 @@ interface PricingCardsProps {
    * stage sell the one plan the viewer can buy right now, with nothing else
    * competing for the decision. */
   hideEnterprise?: boolean;
+  /** Forwarded to every priced card's checkout. */
+  checkoutSource?: CheckoutSource;
 }
 
 export function PricingCards({
   durationIsMonth = false,
   initialPlans = [],
   hideEnterprise = false,
+  checkoutSource,
 }: PricingCardsProps) {
   const { plans, isLoading, error, subscriptionStatus } =
     usePricing(initialPlans);
@@ -207,6 +210,7 @@ export function PricingCards({
               title={plan.name}
               isPro={isPro}
               planViewerState={planViewerState}
+              checkoutSource={checkoutSource}
             />
           );
         })}

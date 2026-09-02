@@ -22,7 +22,6 @@ import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrint
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type PaymentStatus = "verifying" | "success" | "error";
 
@@ -66,32 +65,27 @@ export default function PaymentSuccessPage() {
     if (hasVerified.current) return;
     hasVerified.current = true;
 
-    const run = async () => {
-      try {
-        // The Dodo redirect can beat the webhook, so a single "not
-        // completed" is not a failure — retry with growing delays while the
-        // printer shows "Processing your order", and only then give up.
-        const result = await verifyPaymentWithRetry(() =>
-          verifyPayment(subscriptionId),
-        );
+    // The Dodo redirect can beat the webhook, so a single "not completed" is
+    // not a failure: retry with growing delays while the printer shows
+    // "Processing your order", and only then give up.
+    verifyPaymentWithRetry(() => verifyPayment(subscriptionId))
+      .then((result) => {
         if (result.payment_completed) {
-          trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_COMPLETED);
           setStatus("success");
-        } else {
-          setStatus("error");
-          setErrorMessage(
-            "We haven't received your payment confirmation yet. You can try checking out again.",
-          );
+          return;
         }
-      } catch (error) {
+        setStatus("error");
+        setErrorMessage(
+          "We haven't received your payment confirmation yet. You can try checking out again.",
+        );
+      })
+      .catch((error: unknown) => {
         console.error("Payment verification failed:", error);
         setStatus("error");
         setErrorMessage(
           "We couldn't verify your payment. Please try checking out again.",
         );
-      }
-    };
-    run();
+      });
   }, [verifyPayment, subscriptionId]);
 
   // Celebrate an active subscription — confetti fires as the receipt starts
@@ -113,7 +107,8 @@ export default function PaymentSuccessPage() {
       return;
     }
     const productId = localStorage.getItem(LAST_CHECKOUT_PRODUCT_KEY);
-    if (productId) createSubscriptionAndRedirect(productId);
+    if (productId)
+      createSubscriptionAndRedirect(productId, { source: "payment_retry" });
     else router.push("/pricing");
   };
 

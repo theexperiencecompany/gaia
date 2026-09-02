@@ -31,6 +31,10 @@ export const needOptions: NeedOption[] = [
 
 export const NEEDS_MIN_SELECTION = 1;
 
+/** Query key Dodo's return URL carries back into the wizard after checkout.
+ * Mirrors ONBOARDING_CHECKOUT_RETURN_PATH in apps/api payment_models.py. */
+export const CHECKOUT_RETURNED_PARAM = "checkout";
+
 export const FIELD_NAMES = {
   PROFESSION: "profession",
   NEEDS: "needs",

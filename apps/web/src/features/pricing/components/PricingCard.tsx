@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ShineBorder } from "@/components/ui/shine-border";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
+import type { CheckoutSource } from "../api/pricingApi";
 import { usePricingCardPrice } from "../hooks/usePricingCardPrice";
 import type { PlanViewerState } from "../types";
 import { PricingCardCta } from "./PricingCardCta";
@@ -29,6 +30,7 @@ interface PricingCardProps {
    * visitor. Defaults to "available" so a standalone render (e.g. a demo
    * card with no plan context) shows an actionable CTA. */
   planViewerState?: PlanViewerState;
+  checkoutSource?: CheckoutSource;
 }
 
 export function PricingCard({
@@ -43,6 +45,7 @@ export function PricingCard({
   planId,
   isPro = false,
   planViewerState = "available",
+  checkoutSource,
 }: PricingCardProps) {
   const { list, offer } = usePricingCardPrice({
     price,
@@ -84,6 +87,7 @@ export function PricingCard({
         durationIsMonth={durationIsMonth}
         planId={planId}
         planViewerState={planViewerState}
+        checkoutSource={checkoutSource}
       />
       <PricingCardFeatures
         features={features}

@@ -4,13 +4,16 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
-
+import type { CheckoutSource } from "../api/pricingApi";
 import { writePendingCheckout } from "../lib/pendingCheckout";
 import type { CheckoutPhase } from "../stores/checkoutOverlayStore";
 import type { PlanViewerState } from "../types";
 import { useDodoPayments } from "./useDodoPayments";
 
 interface PricingCardCtaInput {
+  /** Where this checkout is started from; rides to the server for funnel
+   * attribution and decides where Dodo sends the browser afterwards. */
+  checkoutSource?: CheckoutSource;
   title: string;
   price: number;
   durationIsMonth: boolean;
@@ -38,6 +41,7 @@ export function usePricingCardCta({
   durationIsMonth,
   planId,
   planViewerState,
+  checkoutSource = "pricing_card",
 }: PricingCardCtaInput): PricingCardCta {
   const isCurrentPlan = planViewerState === "current";
   const isSubscribedElsewhere = planViewerState === "subscribedElsewhere";
@@ -101,7 +105,7 @@ export function usePricingCardCta({
     }
 
     await openCheckoutOverlay(durationIsMonth ? "monthly" : "yearly", {
-      source: "pricing_card",
+      source: checkoutSource,
     });
   };
 

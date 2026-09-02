@@ -14,16 +14,19 @@ import { Spinner } from "@heroui/spinner";
 import * as m from "motion/react-m";
 import { useState } from "react";
 import { BillingPeriodTabs } from "@/features/pricing/components/BillingPeriodTabs";
+import { CheckoutConfirming } from "@/features/pricing/components/CheckoutConfirming";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { PAYMENT_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { useAwaitPaidStatus } from "../../hooks/useAwaitPaidStatus";
+import { useCheckoutReturn } from "../../hooks/useCheckoutReturn";
 import { OnboardingBotBubbles } from "../OnboardingMessages";
 
 export function Payment() {
   const [isYearly, setIsYearly] = useState(false);
   const { isUnknown } = useIsPaid();
+  const { returned, isLate } = useCheckoutReturn();
   useAwaitPaidStatus();
 
   return (
@@ -36,12 +39,22 @@ export function Payment() {
           would be shown an upgrade prompt they already bought. */}
       {isUnknown ? (
         <Spinner size="lg" aria-label="Checking your subscription" />
+      ) : returned ? (
+        // Back from Dodo: the webhook makes the subscription real, and the
+        // stage advances on its own the moment the poll sees it.
+        <div className="w-full max-w-sm">
+          <CheckoutConfirming isLate={isLate} />
+        </div>
       ) : (
         // Scaled so the whole card sits on a laptop screen without scrolling;
         // `zoom` shrinks the layout box too, unlike a transform.
         <div className="flex w-full flex-col items-center gap-4 [zoom:0.85]">
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
-          <PricingCards durationIsMonth={!isYearly} hideEnterprise />
+          <PricingCards
+            durationIsMonth={!isYearly}
+            hideEnterprise
+            checkoutSource="onboarding"
+          />
         </div>
       )}
     </m.div>

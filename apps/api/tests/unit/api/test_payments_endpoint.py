@@ -277,7 +277,9 @@ class TestCreateCheckoutSession:
             "payment_link": "https://checkout.dodopayments.com/sess_overlay",
             "status": "payment_link_created",
         }
-        mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", PlanDuration.YEARLY)
+        mock_create.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", PlanDuration.YEARLY, CheckoutSource.PRICING_CARD
+        )
 
     async def test_attributes_the_overlay_checkout_to_its_source(self, client: AsyncClient):
         """The server is the single emitter of `payment:checkout_started`; the
@@ -337,7 +339,9 @@ class TestCreateCheckoutSession:
         ) as mock_create:
             await client.post(CHECKOUT_SESSION_URL, json={"source": "checkout_resume"})
 
-        mock_create.assert_awaited_once_with("507f1f77bcf86cd799439011", PlanDuration.MONTHLY)
+        mock_create.assert_awaited_once_with(
+            "507f1f77bcf86cd799439011", PlanDuration.MONTHLY, CheckoutSource.CHECKOUT_RESUME
+        )
 
     async def test_rejects_an_unknown_billing_cycle(self, client: AsyncClient):
         response = await client.post(

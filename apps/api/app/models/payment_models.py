@@ -30,6 +30,10 @@ class PlanDuration(StrEnum):
     YEARLY = "yearly"
 
 
+PAYMENT_RESULT_PATH = "/payment/success"
+ONBOARDING_CHECKOUT_RETURN_PATH = "/onboarding?checkout=returned"
+
+
 class CheckoutSource(StrEnum):
     """Where in the product a checkout was started.
 
@@ -44,6 +48,16 @@ class CheckoutSource(StrEnum):
     PRICING_CARD = "pricing_card"
     PAYMENT_RETRY = "payment_retry"
     CHECKOUT_RESUME = "checkout_resume"
+    ONBOARDING = "onboarding"
+
+    @property
+    def return_path(self) -> str:
+        """Where Dodo sends the browser after checkout. A checkout started inside
+        the onboarding wizard returns to the wizard, which confirms the payment
+        in place; every other checkout lands on the standalone result page."""
+        if self is CheckoutSource.ONBOARDING:
+            return ONBOARDING_CHECKOUT_RETURN_PATH
+        return PAYMENT_RESULT_PATH
 
 
 class SubscriptionStatus(str, Enum):

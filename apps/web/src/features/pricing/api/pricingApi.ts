@@ -25,7 +25,8 @@ export type CheckoutSource =
   | "paywall_modal"
   | "pricing_card"
   | "payment_retry"
-  | "checkout_resume";
+  | "checkout_resume"
+  | "onboarding";
 
 export interface CreateSubscriptionRequest {
   product_id: string;

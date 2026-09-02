@@ -21,6 +21,7 @@ from app.constants.cache import UPGRADE_LINK_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.constants.payments import PAYMENT_HISTORY_LIMIT
 from app.models.payment_models import (
+    CheckoutSource,
     CreateSubscriptionResponse,
     PlanDocument,
     PlanDuration,
@@ -806,6 +807,38 @@ class TestCreateSubscription:
 
         call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
         assert call_kwargs["discount_code"] == "SAVE20"
+
+    async def test_return_url_follows_the_requested_path(
+        self,
+        payment_service,
+        mock_users_collection,
+        mock_subscription_repository,
+        mock_plan_repository,
+        mock_dodo_client,
+    ):
+        """A checkout started in the onboarding wizard comes back to the wizard,
+        not to the standalone result page: the wizard confirms the payment in
+        place and is the one screen the user sees after paying."""
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
+        mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
+        mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
+        checkout_response = MagicMock()
+        checkout_response.session_id = "sess_003"
+        checkout_response.checkout_url = "https://checkout.dodo.dev/sess_003"
+        mock_dodo_client.checkout_sessions.create = MagicMock(return_value=checkout_response)
+        mock_plan_repository.list_plans = AsyncMock(return_value=[])
+
+        await payment_service.create_subscription(
+            user_id=FAKE_USER_ID,
+            product_id="prod_abc123",
+            return_path=CheckoutSource.ONBOARDING.return_path,
+        )
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["return_url"].endswith("/onboarding?checkout=returned")
+
+        await payment_service.create_subscription(user_id=FAKE_USER_ID, product_id="prod_abc123")
+        call_kwargs = mock_dodo_client.checkout_sessions.create.call_args[1]
+        assert call_kwargs["return_url"].endswith("/payment/success")
 
     async def test_no_discount_code_when_not_provided(
         self,
@@ -1818,11 +1851,13 @@ class TestCreateProCheckout:
         upgrade_gets = [
             call
             for call in mock_redis_cache.get.await_args_list
-            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:yearly"
+            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:yearly:/payment/success"
         ]
         assert len(upgrade_gets) == 1
         # The checkout session must be created for THIS user, tied by metadata.
-        mint.assert_awaited_once_with(FAKE_USER_ID, "prod_y", discount_code=None)
+        mint.assert_awaited_once_with(
+            FAKE_USER_ID, "prod_y", discount_code=None, return_path="/payment/success"
+        )
 
     async def test_configured_paywall_discount_is_pre_applied_to_the_minted_session(
         self,
@@ -1881,7 +1916,7 @@ class TestCreateProCheckout:
         upgrade_calls = [
             call
             for call in mock_redis_cache.set.await_args_list
-            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:monthly"
+            if call.args[0] == f"upgrade_link:{FAKE_USER_ID}:monthly:/payment/success"
         ]
         assert len(upgrade_calls) == 1
         assert upgrade_calls[0].kwargs["ttl"] == UPGRADE_LINK_CACHE_TTL
@@ -1964,7 +1999,7 @@ class TestCreateProCheckout:
         await payment_service.create_pro_checkout(FAKE_USER_ID)
 
         cached_keys = [call.args[0] for call in mock_redis_cache.set.await_args_list]
-        upgrade_key = f"upgrade_link:{FAKE_USER_ID}:monthly"
+        upgrade_key = f"upgrade_link:{FAKE_USER_ID}:monthly:/payment/success"
         assert upgrade_key in cached_keys
         cached_payload = next(
             call.args[1]

@@ -3,6 +3,7 @@
 import { Button } from "@heroui/button";
 import { RaisedButton } from "@/components/ui/raised-button";
 
+import type { CheckoutSource } from "../api/pricingApi";
 import { usePricingCardCta } from "../hooks/usePricingCardCta";
 import type { PlanViewerState } from "../types";
 import { CheckoutConfirming } from "./CheckoutConfirming";
@@ -13,6 +14,7 @@ interface PricingCardCtaProps {
   durationIsMonth: boolean;
   planId?: string;
   planViewerState: PlanViewerState;
+  checkoutSource?: CheckoutSource;
 }
 
 export function PricingCardCta({
@@ -21,6 +23,7 @@ export function PricingCardCta({
   durationIsMonth,
   planId,
   planViewerState,
+  checkoutSource,
 }: PricingCardCtaProps) {
   const {
     buttonText,
@@ -37,6 +40,7 @@ export function PricingCardCta({
     durationIsMonth,
     planId,
     planViewerState,
+    checkoutSource,
   });
 
   return (

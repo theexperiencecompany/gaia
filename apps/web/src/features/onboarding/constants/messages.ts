@@ -7,9 +7,10 @@ export const PAYMENT_INTRO_LINES = [
   "Pick monthly or yearly and we can get going.",
 ];
 
-export const PAID_REVEAL_TITLE = "Welcome to GAIA Pro!";
-
-export const PAID_REVEAL_BODY = "You're on Pro. Everything is unlocked.";
+export const PAID_REVEAL_LINES = [
+  "You're in. Everything is unlocked.",
+  "Here's your receipt.",
+];
 
 export const PLATFORM_INTRO_LINES = [
   "I work best where you already text.",

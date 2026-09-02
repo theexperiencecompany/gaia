@@ -27,7 +27,9 @@ from app.db.repositories.plans import plan_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    PAYMENT_RESULT_PATH,
     CheckoutSessionDocument,
+    CheckoutSource,
     CreateSubscriptionResponse,
     PaymentHistoryEntry,
     PaymentVerificationResponse,
@@ -148,8 +150,13 @@ class DodoPaymentService:
         product_id: str,
         quantity: int = 1,
         discount_code: str | None = None,
+        return_path: str = PAYMENT_RESULT_PATH,
     ) -> CreateSubscriptionResponse:
-        """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
+        """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url.
+
+        ``return_path`` is where Dodo sends the browser afterwards, relative to
+        the frontend origin; the caller derives it from the checkout's source.
+        """
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
         # Get user
@@ -181,7 +188,7 @@ class DodoPaymentService:
                     # Allow customers to change their billing address country
                     "allow_customer_editing_country": True,
                 },
-                "return_url": f"{settings.FRONTEND_URL}/payment/success",
+                "return_url": f"{settings.FRONTEND_URL}{return_path}",
                 "metadata": {"user_id": user_id, "product_id": product_id},
                 "subscription_data": {
                     # Use product's stored price; override trial if needed
@@ -597,7 +604,10 @@ class DodoPaymentService:
         return plan
 
     async def create_pro_checkout(
-        self, user_id: str, billing_cycle: PlanDuration = PlanDuration.MONTHLY
+        self,
+        user_id: str,
+        billing_cycle: PlanDuration = PlanDuration.MONTHLY,
+        source: CheckoutSource | None = None,
     ) -> ProCheckout:
         """Mint (or reuse) a hosted checkout session that upgrades this user to Pro.
 
@@ -612,7 +622,10 @@ class DodoPaymentService:
         place the session is minted keeps the link and the pitch from drifting —
         and keeps one cached session per user and cycle.
         """
-        cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}"
+        return_path = source.return_path if source else PAYMENT_RESULT_PATH
+        # The session carries its return URL, so a session minted for one
+        # destination must never be handed to a checkout that expects another.
+        cache_key = f"{UPGRADE_LINK_CACHE_PREFIX}{user_id}:{billing_cycle}:{return_path}"
         cached = await redis_cache.get(cache_key)
         if isinstance(cached, dict) and "plan" in cached and "checkout" in cached:
             return ProCheckout(
@@ -625,6 +638,7 @@ class DodoPaymentService:
             user_id,
             plan.dodo_product_id,
             discount_code=settings.PAYWALL_DISCOUNT_CODE,
+            return_path=return_path,
         )
         await redis_cache.set(
             cache_key,

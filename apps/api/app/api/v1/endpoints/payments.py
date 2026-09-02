@@ -116,7 +116,9 @@ async def create_checkout_session_endpoint(
             "source": payload.source,
         },
     )
-    pro_checkout = await payment_service.create_pro_checkout(user_id, payload.billing_cycle)
+    pro_checkout = await payment_service.create_pro_checkout(
+        user_id, payload.billing_cycle, payload.source
+    )
     log.set_ns("payment", session_id=pro_checkout.checkout.subscription_id)
     log.audit(
         "overlay checkout session created",

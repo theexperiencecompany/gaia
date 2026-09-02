@@ -1,26 +1,36 @@
 /**
- * `paidReveal` stage. The payment-success card, celebrated with the same
- * confetti the standalone `/payment/success` page fires. No verification
- * call here: the stage is only reachable once the subscription status has
- * already resolved to paid, which is the same fact `verifyPayment` returns.
+ * `paidReveal` stage. The receipt printer from the standalone result page,
+ * printed in place: the stage is only reachable once the subscription status
+ * has resolved to paid, so the receipt is built from that record and the
+ * printer starts on the "printing" beat straight away.
  */
 
 "use client";
 
-import { CheckmarkCircle02Icon } from "@icons";
 import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useEffect } from "react";
+import { useUser } from "@/features/auth/hooks/useUser";
+import { PostPaymentReceipt } from "@/features/pricing/components/PostPaymentReceipt";
+import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
+import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { PAID_REVEAL_BODY, PAID_REVEAL_TITLE } from "../../constants/messages";
+import { PAID_REVEAL_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { Action } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
+import { OnboardingBotBubbles } from "../OnboardingMessages";
 
 const CONFETTI_DURATION_MS = 3500;
 
 export function PaidReveal() {
+  const { subscriptionStatus } = usePricing();
+  const user = useUser();
+  const printerStage = useReceiptPrinterStage(true);
+  const receipt = buildReceiptDetails(subscriptionStatus, undefined);
+
   useEffect(() => {
     const interval = UseCreateConfetti(CONFETTI_DURATION_MS);
     return () => {
@@ -29,15 +39,23 @@ export function PaidReveal() {
   }, []);
 
   return (
-    <m.div className="flex justify-center" {...MOTION_FADE_UP}>
-      <div className="w-full max-w-md rounded-3xl bg-zinc-900/60 p-8 text-center backdrop-blur-2xl">
-        <CheckmarkCircle02Icon className="mx-auto mb-5 size-16 text-primary" />
-        <h2 className="mb-2 font-semibold text-2xl text-white">
-          {PAID_REVEAL_TITLE}
-        </h2>
-        <p className="text-balance font-light text-sm text-zinc-400">
-          {PAID_REVEAL_BODY}
-        </p>
+    <m.div className="flex flex-col items-center gap-6" {...MOTION_FADE_UP}>
+      <div className="w-full">
+        <OnboardingBotBubbles lines={PAID_REVEAL_LINES} />
+      </div>
+      <div className="w-full max-w-sm">
+        <PostPaymentReceipt
+          billingPeriod={receipt.billingPeriod}
+          amount={receipt.amount}
+          currency={receipt.currency}
+          nextBillingDate={receipt.nextBillingDate}
+          planName={receipt.planName}
+          purchasedAt={receipt.purchasedAt}
+          customerEmail={user.email || undefined}
+          quantity={receipt.quantity}
+          stage={printerStage}
+          subscriptionRef={receipt.subscriptionRef}
+        />
       </div>
     </m.div>
   );
