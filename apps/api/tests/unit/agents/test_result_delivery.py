@@ -72,7 +72,9 @@ async def test_bot_source_delivers_to_platform_and_records() -> None:
         )
 
     assert source == ConversationSource.TELEGRAM
-    to_platform.assert_awaited_once_with(ConversationSource.TELEGRAM, "user-1", "ping")
+    to_platform.assert_awaited_once_with(
+        ConversationSource.TELEGRAM, "user-1", "ping", conversation_id="conv-2"
+    )
     ws.broadcast_to_user.assert_not_awaited()  # bots have no socket
     record.assert_awaited_once()
 
@@ -191,7 +193,9 @@ async def test_platform_path_logs_platform_transport_and_delivery() -> None:
         )
 
     assert source == ConversationSource.TELEGRAM
-    to_platform.assert_awaited_once_with(ConversationSource.TELEGRAM, "user-1", "ping")
+    to_platform.assert_awaited_once_with(
+        ConversationSource.TELEGRAM, "user-1", "ping", conversation_id="conv-2"
+    )
     assert verdict.call_args.kwargs["transport"] == "platform"
     assert verdict.call_args.kwargs["delivered"] is True
     assert verdict.call_args.kwargs["conversation_source"] == ConversationSource.TELEGRAM
@@ -214,5 +218,7 @@ async def test_missing_user_id_defaults_to_empty_string() -> None:
             conversation_id="conv-3", user={}, text="ping", origin="x"
         )
 
-    to_platform.assert_awaited_once_with(ConversationSource.TELEGRAM, "", "ping")
+    to_platform.assert_awaited_once_with(
+        ConversationSource.TELEGRAM, "", "ping", conversation_id="conv-3"
+    )
     convo_repo.get_source.assert_awaited_once_with("conv-3", user_id="")

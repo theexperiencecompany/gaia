@@ -225,7 +225,9 @@ async def deliver_message_to_conversation(
         user_msg_content="",
     )
     if is_bot_platform(source):
-        delivered = await deliver_message_to_platform(source, user_id, text)
+        delivered = await deliver_message_to_platform(
+            source, user_id, text, conversation_id=conversation_id
+        )
         transport = "platform"
     else:
         await _broadcast_bot_message(
@@ -357,6 +359,7 @@ async def _narrate_and_deliver(
             conversation_source,
             user_id,
             notification_text,
+            conversation_id=run.conversation_id,
         )
         transport = "platform"
     else:
