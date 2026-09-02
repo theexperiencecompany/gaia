@@ -8,7 +8,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
@@ -22,6 +22,7 @@ import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
+import { CliConnectModal } from "./CliConnectModal";
 import { MarketplaceBanner } from "./MarketplaceBanner";
 
 const IntegrationRow: React.FC<{
@@ -165,12 +166,27 @@ export const IntegrationsList: React.FC<{
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
+  // The CLI connect flow. The integration is kept after closing so the modal
+  // still has a name to show while it animates out.
+  const [isCliModalOpen, setIsCliModalOpen] = useState(false);
+  const [cliIntegration, setCliIntegration] = useState<Integration | null>(
+    null,
+  );
+
   const handleConnect = async (integrationId: string) => {
     const integration = integrations.find((i) => i.id === integrationId);
     // API-key (bearer) integrations collect their key in the detail sidebar —
     // open it instead of connecting directly (same as clicking the row).
     if (integration?.authType === "bearer" && integration.requiresAuth) {
       onIntegrationClick?.(integrationId);
+      return;
+    }
+    // CLI integrations connect over several steps (install, approve, sometimes
+    // a token), so they need a surface to show progress on rather than a single
+    // fire-and-forget call.
+    if (integration?.managedBy === "cli") {
+      setCliIntegration(integration);
+      setIsCliModalOpen(true);
       return;
     }
     try {
@@ -353,6 +369,13 @@ export const IntegrationsList: React.FC<{
           onIntegrationClick={onIntegrationClick}
         />
       )}
+
+      <CliConnectModal
+        isOpen={isCliModalOpen}
+        onClose={() => setIsCliModalOpen(false)}
+        integrationId={cliIntegration?.id ?? null}
+        integrationName={cliIntegration?.name ?? ""}
+      />
     </div>
   );
 };

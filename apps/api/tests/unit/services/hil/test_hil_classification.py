@@ -22,7 +22,7 @@ from app.services.hil.classification import (
     is_tool_destructive,
     mcp_destructive_hint,
 )
-from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
+from app.services.hil.prompts import CLI_COMMAND_CLASSIFY_PROMPT, TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import make_tool
@@ -263,3 +263,103 @@ class TestTheClassifierCallItself:
         assert prompt == TOOL_CLASSIFY_PROMPT.format(
             name="mystery_tool", description="(none provided)"
         )
+
+
+class TestCliCommandClassification:
+    """A CLI integration is ONE tool, so a name-keyed verdict would gate `gh pr list`
+    exactly as hard as `gh repo delete` — or, far worse, gate neither. These pin the
+    verdict to the command, and pin the registry's name-keyed flag out of the way."""
+
+    async def test_two_commands_of_one_tool_get_two_independent_verdicts(self) -> None:
+        # The bug this whole path exists for: one tool name, two risks. A verdict cached
+        # for a listing must never answer for a deletion.
+        verdicts = {
+            "gh pr list": _ClassifyResult(is_destructive=False, rationale="reads"),
+            "gh repo delete": _ClassifyResult(is_destructive=True, rationale="irreversible"),
+        }
+        cache: dict[tuple[str, str], HILToolRiskRecord] = {}
+
+        async def find(tool_name: str, subject_hash: str) -> HILToolRiskRecord | None:
+            return cache.get((tool_name, subject_hash))
+
+        async def upsert(record: HILToolRiskRecord) -> None:
+            cache[(record.tool_name, record.description_hash)] = record
+
+        async def classify(_schema: object, prompt: str, **_kwargs: object) -> _ClassifyResult:
+            return next(v for shape, v in verdicts.items() if prompt.endswith(shape))
+
+        with (
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(f"{MODULE}.ainvoke_structured", side_effect=classify) as llm,
+        ):
+            repo.find_classification = AsyncMock(side_effect=find)
+            repo.upsert_classification = AsyncMock(side_effect=upsert)
+
+            listing = await is_tool_destructive("run_gh", "Run gh.", command_shape="gh pr list")
+            deleting = await is_tool_destructive(
+                "run_gh", "Run gh.", command_shape="gh repo delete"
+            )
+            # The same command again is served from the cache, not re-judged.
+            again = await is_tool_destructive("run_gh", "Run gh.", command_shape="gh repo delete")
+
+        assert (listing, deleting, again) == (False, True, True)
+        assert llm.await_count == 2
+        assert {record.command_shape for record in cache.values()} == {
+            "gh pr list",
+            "gh repo delete",
+        }
+
+    async def test_the_registry_flag_is_neither_read_nor_written_for_a_command(self) -> None:
+        # Writing back would poison every other command of the same CLI through the
+        # name-keyed flag; reading it would let one poisoned entry answer for all of them.
+        registry = registry_with(False)
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)) as get_reg,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
+            ),
+        ):
+            repo.find_classification = AsyncMock(return_value=None)
+            repo.upsert_classification = AsyncMock()
+            result = await is_tool_destructive("run_gh", "Run gh.", command_shape="gh repo delete")
+
+        assert result is True
+        assert get_reg.await_count == 0
+        registry.mark_tool_destructive.assert_not_called()
+
+    async def test_an_unshapeable_command_gates_without_asking_anyone(self) -> None:
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock()) as get_reg,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
+        ):
+            repo.find_classification = AsyncMock(return_value=None)
+            assert await is_tool_destructive("run_gh", "Run gh.", command_shape="") is True
+
+        assert llm.await_count == 0
+        assert get_reg.await_count == 0
+        repo.find_classification.assert_not_awaited()
+
+    async def test_a_broken_cache_still_gates_the_command(self, mongo: MagicMock) -> None:
+        mongo.find_classification = AsyncMock(side_effect=ConnectionError("mongo down"))
+        with patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()):
+            assert (
+                await is_tool_destructive("run_gh", "Run gh.", command_shape="gh pr list") is True
+            )
+
+    async def test_the_classifier_is_shown_the_command_it_is_judging(self) -> None:
+        # Without the command in the prompt the verdict is about `run_gh` in the
+        # abstract, which is exactly the useless answer this replaces.
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=_ClassifyResult(is_destructive=True)),
+        ) as llm:
+            await _classify_with_llm("run_gh", "Run the gh CLI.", "gh repo delete")
+
+        _schema, prompt = llm.await_args.args
+        assert prompt == CLI_COMMAND_CLASSIFY_PROMPT.format(
+            name="run_gh", description="Run the gh CLI.", command="gh repo delete"
+        )
+        assert llm.await_args.kwargs["label"] == "hil_tool_classification"

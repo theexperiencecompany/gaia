@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
 
+from app.models.cli_config import CliConfig
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
@@ -61,9 +63,10 @@ class OAuthIntegration(BaseModel):
     included_integrations: list[str] = []
     is_featured: bool = False
     short_name: str | None = None
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
+    cli_config: CliConfig | None = None
     # Tool names/slugs this integration's HIL gate must treat as destructive
     # (e.g. GMAIL_SEND_EMAIL). Integration-agnostic — applies to Composio and
     # built-in MCP configs alike. ``None`` = uncurated: the HIL LLM classifier
@@ -90,6 +93,17 @@ class OAuthIntegration(BaseModel):
             raise ValueError(
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
+        # Same bidirectional invariant for the CLI transport: the connect
+        # dispatch and the tool factory both select on managed_by == "cli" and
+        # then require cli_config, so a mismatch would surface as a connect
+        # that resolves to nothing rather than a config error at import.
+        if self.cli_config is not None and self.managed_by != "cli":
+            raise ValueError(
+                f"Integration {self.id!r} sets cli_config but "
+                f"managed_by={self.managed_by!r}; expected 'cli'."
+            )
+        if self.managed_by == "cli" and self.cli_config is None:
+            raise ValueError(f"Integration {self.id!r} has managed_by='cli' but no cli_config.")
         return self
 
 

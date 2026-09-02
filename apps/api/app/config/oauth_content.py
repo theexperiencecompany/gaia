@@ -1358,3 +1358,72 @@ POSTHOG_CONTENT = IntegrationContent(
         ),
     ],
 )
+
+STRIPE_LINK_CONTENT = IntegrationContent(
+    use_cases=[
+        "Let GAIA buy something for you without ever handing it your card",
+        "Approve each purchase from your phone before any money moves",
+        "Try agent payments safely in test mode before spending anything real",
+        "Keep a reviewable record of what was bought, from where, and why",
+    ],
+    how_it_works=[
+        IntegrationHowItWorksStep(
+            title="Connect your Link wallet",
+            body=(
+                "GAIA opens a Stripe Link login and shows you a code to approve. "
+                "Your card details stay with Stripe — GAIA never sees or stores them."
+            ),
+        ),
+        IntegrationHowItWorksStep(
+            title="Ask GAIA to buy something",
+            body=(
+                "GAIA describes the purchase — merchant, amount, and reason — and "
+                "creates a spend request for exactly that."
+            ),
+        ),
+        IntegrationHowItWorksStep(
+            title="You approve it",
+            body=(
+                "The request lands in your Link app. Nothing is charged until you "
+                "approve, and the approval window is short by design."
+            ),
+        ),
+        IntegrationHowItWorksStep(
+            title="A single-use credential is issued",
+            body=(
+                "Stripe mints a one-time payment credential scoped to that purchase. "
+                "It cannot be reused for a second one."
+            ),
+        ),
+    ],
+    faqs=[
+        IntegrationFAQ(
+            question="Does GAIA get my card number?",
+            answer=(
+                "No. Stripe issues a one-time credential for each approved purchase. "
+                "Your real card never leaves your Link wallet."
+            ),
+        ),
+        IntegrationFAQ(
+            question="Can GAIA spend money without asking me?",
+            answer=(
+                "No. Every purchase needs your explicit approval in the Link app, and "
+                "per-purchase and daily spend caps apply on top of that."
+            ),
+        ),
+        IntegrationFAQ(
+            question="Can I try it without spending real money?",
+            answer=(
+                "Yes. Ask GAIA to use test mode and Stripe returns test credentials, so "
+                "you can watch the whole flow without a charge."
+            ),
+        ),
+        IntegrationFAQ(
+            question="What happens if I ignore an approval request?",
+            answer=(
+                "It expires and no credential is created. GAIA will tell you the request "
+                "expired rather than retrying silently."
+            ),
+        ),
+    ],
+)

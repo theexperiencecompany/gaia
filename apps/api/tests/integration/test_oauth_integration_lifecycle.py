@@ -669,6 +669,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=gmail_config,
             custom_doc=None,
         )
@@ -713,6 +714,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type="none",
             mcp_config=MCPConfig(server_url="https://mcp.deepwiki.com/mcp"),
+            cli_config=None,
             platform_integration=get_integration_by_id("deepwiki"),
             custom_doc=None,
         )
@@ -760,6 +762,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type="none",
             mcp_config=MCPConfig(server_url="https://custom.example.com/mcp"),
+            cli_config=None,
             platform_integration=None,
             custom_doc={"integration_id": "my-custom-mcp", "created_by": USER_ID},
         )

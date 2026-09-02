@@ -321,7 +321,9 @@ class TestGetSubagentById:
             "mcp_config": {},
             "icon_url": None,
         }
-        resolved = SimpleNamespace(custom_doc=resolved_doc, source="user_integrations")
+        resolved = SimpleNamespace(
+            custom_doc=resolved_doc, source="user_integrations", managed_by="cli"
+        )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
@@ -345,6 +347,9 @@ class TestGetSubagentById:
 
         assert result["id"] == "res_id"
         assert result["source"] == "user_integrations"
+        # The transport comes from the resolved integration, not an assumed
+        # "mcp": handoff names and labels the subagent from it.
+        assert result["managed_by"] == "cli"
 
 
 # ---------------------------------------------------------------------------

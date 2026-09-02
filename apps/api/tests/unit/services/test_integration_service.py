@@ -315,6 +315,7 @@ class TestIntegrationResolverHelpers:
             requires_auth=False,
             auth_type=None,
             mcp_config=mcp_cfg,
+            cli_config=None,
             platform_integration=None,
             custom_doc=None,
         )
@@ -1659,6 +1660,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1712,6 +1714,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1748,6 +1751,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1788,6 +1792,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1827,6 +1832,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1864,6 +1870,7 @@ class TestCreateAndConnectCustomIntegration:
             managed_by="mcp",
             source="custom",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
         )
         mock_create.return_value = integration
 
@@ -1897,6 +1904,7 @@ class TestBuildIntegrationsConfig:
                 integration_id="github",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=True),
+                cli_config=None,
             ),
             _make_oauth_integration(integration_id="todos", managed_by="internal"),
         ],
@@ -1916,6 +1924,7 @@ class TestBuildIntegrationsConfig:
                 integration_id="no-auth-mcp",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=False),
+                cli_config=None,
             ),
         ],
     )
@@ -1932,6 +1941,7 @@ class TestBuildIntegrationsConfig:
                 integration_id="oauth-mcp",
                 managed_by="mcp",
                 mcp_config=MCPConfig(server_url=SERVER_URL, requires_auth=True),
+                cli_config=None,
             ),
         ],
     )
@@ -2344,6 +2354,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type=None,
             mcp_config=None,
+            cli_config=None,
             platform_integration=None,
             custom_doc={"created_by": USER_ID},
         )
@@ -2386,6 +2397,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type=None,
             mcp_config=None,
+            cli_config=None,
             platform_integration=None,
             custom_doc={"created_by": "other-user"},
         )
@@ -2438,6 +2450,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=platform_int,
             custom_doc=None,
         )
@@ -2476,6 +2489,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=None,
             custom_doc=None,
         )
@@ -2510,6 +2524,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=platform_int,
             custom_doc=None,
         )
@@ -2539,6 +2554,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=None,
             custom_doc=None,
         )
@@ -2575,6 +2591,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=MCPConfig(server_url=SERVER_URL),
+            cli_config=None,
             platform_integration=_make_oauth_integration(
                 integration_id="perplexity", managed_by="mcp"
             ),
@@ -2604,6 +2621,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type=None,
             mcp_config=None,
+            cli_config=None,
             platform_integration=None,
             custom_doc=None,
         )

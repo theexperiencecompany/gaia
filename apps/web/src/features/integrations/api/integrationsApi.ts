@@ -5,6 +5,7 @@ import type { CommunityWorkflowsResponse } from "@/types/features/workflowTypes"
 import type {
   CommunityIntegration,
   CommunityIntegrationsResponse,
+  ConnectIntegrationResponse,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
@@ -16,6 +17,18 @@ import type {
 
 export interface IntegrationConfigResponse {
   integrations: Integration[];
+}
+
+/**
+ * Where the backend should send the user back to after an OAuth round trip:
+ * the current page, minus the params the callback itself owns.
+ */
+function connectRedirectPath(): string {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("integration");
+  url.searchParams.delete("oauth_success");
+  url.searchParams.delete("oauth_error");
+  return url.pathname + url.search;
 }
 
 export const integrationsApi = {
@@ -83,6 +96,29 @@ export const integrationsApi = {
   },
 
   /**
+   * POST the unified connect endpoint and hand back the response untouched.
+   *
+   * The endpoint is idempotent and advances a connection one step per call, so
+   * the CLI transport polls it and needs the raw `status`/`cli` block —
+   * including the in-band `error` status, which `connectIntegration` turns
+   * into a throw. Pass `silent` when the caller renders failures itself
+   * instead of letting the api layer toast every poll tick.
+   */
+  postConnect: async (
+    integrationId: string,
+    options: { bearerToken?: string; silent?: boolean } = {},
+  ): Promise<ConnectIntegrationResponse> => {
+    return await apiService.post<ConnectIntegrationResponse>(
+      `/integrations/connect/${integrationId.toLowerCase()}`,
+      {
+        redirect_path: connectRedirectPath(),
+        bearer_token: options.bearerToken,
+      },
+      { silent: options.silent },
+    );
+  },
+
+  /**
    * Connect an integration using the unified backend endpoint.
    */
   connectIntegration: async (
@@ -92,27 +128,9 @@ export const integrationsApi = {
     if (typeof window === "undefined")
       return { status: "error", name: "Unknown" };
 
-    const url = new URL(window.location.href);
-    url.searchParams.delete("integration");
-    url.searchParams.delete("oauth_success");
-    url.searchParams.delete("oauth_error");
-    const redirectPath = url.pathname + url.search;
-
-    const response = (await apiService.post(
-      `/integrations/connect/${integrationId.toLowerCase()}`,
-      {
-        redirect_path: redirectPath,
-        bearer_token: bearerToken,
-      },
-    )) as {
-      status: "connected" | "redirect" | "error";
-      integrationId: string;
-      name: string;
-      message?: string;
-      toolsCount?: number;
-      redirectUrl?: string;
-      error?: string;
-    };
+    const response = await integrationsApi.postConnect(integrationId, {
+      bearerToken,
+    });
 
     if (response.status === "redirect" && response.redirectUrl) {
       const safeUrl = sanitizeRedirectUrl(response.redirectUrl);

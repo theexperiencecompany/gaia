@@ -4,6 +4,8 @@ from typing import Final
 
 from composio.core.models.webhook_events import ConnectionStatusEnum
 
+from app.models.integration_provider import ManagedBy
+
 # Limits for LLM context to prevent overwhelming responses
 MAX_CONNECTED_FOR_LLM = 20
 MAX_AVAILABLE_FOR_LLM = 15
@@ -47,13 +49,17 @@ DEAD_CONNECTION_STATUSES: Final = frozenset(
     }
 )
 
-# Integration managed_by provider identifiers
-MANAGED_BY_MCP = "mcp"
-MANAGED_BY_COMPOSIO = "composio"
-MANAGED_BY_SELF = "self"
+# Integration managed_by provider identifiers. Annotated with the shared
+# ``ManagedBy`` alias so a typo here is a type error rather than a value that
+# silently matches no dispatch branch.
+MANAGED_BY_MCP: Final[ManagedBy] = "mcp"
+MANAGED_BY_COMPOSIO: Final[ManagedBy] = "composio"
+MANAGED_BY_SELF: Final[ManagedBy] = "self"
 # Internal integrations (todos, reminders, skills) are always available and
 # never require the user to connect anything.
-MANAGED_BY_INTERNAL = "internal"
+MANAGED_BY_INTERNAL: Final[ManagedBy] = "internal"
+# A real vendor command-line tool, installed and run in the user's sandbox.
+MANAGED_BY_CLI: Final[ManagedBy] = "cli"
 
 # Known integration IDs
 GMAIL_INTEGRATION_ID = "gmail"

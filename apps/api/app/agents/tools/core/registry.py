@@ -362,6 +362,7 @@ class ToolRegistry:
             finish_task_tool,
             flowchart_tool,
             image_tool,
+            integration_authoring_tool,
             integration_instructions_tools,
             integration_tool,
             manual_tool,
@@ -495,8 +496,13 @@ class ToolRegistry:
         )
         self._add_category(
             "integrations",
-            tools=integration_tool.tools,
-            risk=CategoryRisk(destructive_tools={"connect_integration"}),
+            tools=[*integration_tool.tools, *integration_authoring_tool.tools],
+            # Authoring is destructive in the sense the gate cares about: it
+            # stores an install command that will later run in the user's
+            # sandbox, so it is a change to their account, not a lookup.
+            risk=CategoryRisk(
+                destructive_tools={"connect_integration", "create_custom_integration"}
+            ),
         )
         self._add_category(
             "integration_instructions",

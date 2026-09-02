@@ -1,0 +1,264 @@
+"""Unit tests for the CLI connect state machine.
+
+The machine keeps no state of its own — every call re-reads the sandbox — so the
+tests drive it by varying only the observed :class:`CliState` and asserting the
+phase and the single action taken. That is exactly the contract the client polls
+against.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS
+from app.models.cli_config import CliAuthSpec, CliConfig
+from app.services.cli import connect
+from app.services.cli.runtime import CliResult, CliState
+
+USER = "user-1"
+INTEGRATION = "stripe_link"
+
+DEVICE = CliConfig(
+    command="link-cli",
+    install_command="npm install x",
+    auth=CliAuthSpec(
+        kind="device",
+        login_command="link-cli auth login",
+        verify_command="link-cli auth status",
+    ),
+)
+TOKEN = CliConfig(
+    command="gh",
+    install_command="curl x",
+    auth=CliAuthSpec(
+        kind="token",
+        verify_command="gh auth status",
+        token_env="GH_TOKEN",
+        token_label="GitHub token",
+        token_help_url="https://github.test/tokens",
+    ),
+)
+NO_AUTH = CliConfig(
+    command="fmt",
+    install_command="npm i fmt",
+    auth=CliAuthSpec(kind="none", verify_command="fmt -v"),
+)
+
+
+def state(**overrides: object) -> CliState:
+    base: dict[str, object] = {
+        "installed": True,
+        "authenticated": False,
+        "login_running": False,
+        "login_age_seconds": None,
+        "login_output": "",
+        "install_error": "",
+    }
+    base.update(overrides)
+    return CliState(**base)  # type: ignore[arg-type]
+
+
+@pytest.fixture
+def env():
+    """Patch everything outside this module; expose the doubles for assertions."""
+    sandbox = MagicMock()
+
+    @contextlib.asynccontextmanager
+    async def _acquire(_user_id: str):
+        yield sandbox
+
+    with (
+        patch.object(connect, "acquire_sandbox", _acquire),
+        patch.object(connect, "add_user_integration", AsyncMock()) as add_user,
+        patch.object(
+            connect.user_integration_repository, "exists", AsyncMock(return_value=False)
+        ) as exists,
+        patch.object(connect, "update_user_integration_status", AsyncMock()) as set_status,
+        patch.object(connect.runtime, "probe_state", AsyncMock()) as probe,
+        patch.object(connect.runtime, "start_login", AsyncMock()) as start_login,
+        patch.object(connect.runtime, "write_token", AsyncMock()) as write_token,
+    ):
+        start_login.return_value = CliResult(exit_code=0, stdout="", stderr="")
+        write_token.return_value = CliResult(exit_code=0, stdout="", stderr="")
+        yield MagicMock(
+            sandbox=sandbox,
+            add_user=add_user,
+            exists=exists,
+            set_status=set_status,
+            probe=probe,
+            start_login=start_login,
+            write_token=write_token,
+        )
+
+
+class TestAlreadyAuthenticated:
+    async def test_reports_connected_and_records_it(self, env):
+        env.probe.return_value = state(authenticated=True)
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "connected"
+        assert outcome.is_terminal
+        env.set_status.assert_awaited_once_with(USER, INTEGRATION, "connected")
+
+    async def test_does_not_start_another_login(self, env):
+        env.probe.return_value = state(authenticated=True)
+        await connect.advance(USER, INTEGRATION, DEVICE)
+        env.start_login.assert_not_awaited()
+
+    async def test_attaches_the_integration_before_transitioning(self, env):
+        env.probe.return_value = state(authenticated=True)
+        await connect.advance(USER, INTEGRATION, DEVICE)
+        env.add_user.assert_awaited_once()
+
+
+class TestIdempotency:
+    """advance() IS the client's poll loop, so every call must be safe."""
+
+    async def test_does_not_re_add_an_integration_the_user_already_has(self, env):
+        # add_user_integration raises on a duplicate, so an unguarded add turns
+        # the second poll into "already added to workspace" and the connect
+        # dialog dies one tick after it opens.
+        env.exists.return_value = True
+        env.probe.return_value = state(login_running=True, login_age_seconds=3, login_output="go")
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        env.add_user.assert_not_awaited()
+        assert outcome.phase == "awaiting_approval"
+
+    async def test_repeated_polls_stay_on_the_same_phase(self, env):
+        env.exists.return_value = True
+        env.probe.return_value = state(login_running=True, login_age_seconds=3, login_output="go")
+        phases = [(await connect.advance(USER, INTEGRATION, DEVICE)).phase for _ in range(3)]
+        assert phases == ["awaiting_approval"] * 3
+        env.start_login.assert_not_awaited()
+
+
+class TestInstallFailure:
+    async def test_surfaces_the_install_error_to_the_user(self, env):
+        env.probe.return_value = state(installed=False, install_error="npm ERR! 404")
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "failed"
+        assert "link-cli" in (outcome.message or "")
+        assert "404" in (outcome.instructions or "")
+
+    async def test_never_marks_the_integration_connected(self, env):
+        env.probe.return_value = state(installed=False, install_error="boom")
+        await connect.advance(USER, INTEGRATION, DEVICE)
+        env.set_status.assert_not_awaited()
+
+
+class TestDeviceLogin:
+    async def test_starts_a_login_when_none_has_run(self, env):
+        env.probe.return_value = state()
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "awaiting_approval"
+        env.start_login.assert_awaited_once()
+
+    async def test_relays_the_cli_output_verbatim_while_polling(self, env):
+        instructions = 'verification_url: "https://link.test/d?code=abc"\nphrase: abc'
+        env.probe.return_value = state(
+            login_running=True, login_age_seconds=5, login_output=instructions
+        )
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "awaiting_approval"
+        assert outcome.instructions == instructions
+
+    async def test_does_not_restart_a_running_login(self, env):
+        env.probe.return_value = state(
+            login_running=True, login_age_seconds=5, login_output="go here"
+        )
+        await connect.advance(USER, INTEGRATION, DEVICE)
+        env.start_login.assert_not_awaited()
+
+    async def test_keeps_showing_a_finished_login_that_already_printed_its_code(self, env):
+        # Some CLIs print the code and exit, leaving the exchange to the next
+        # status call. Restarting there would invalidate the code the user is
+        # currently typing.
+        env.probe.return_value = state(
+            login_running=False, login_age_seconds=30, login_output="enter code ABC"
+        )
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "awaiting_approval"
+        assert outcome.instructions == "enter code ABC"
+        env.start_login.assert_not_awaited()
+
+    async def test_waits_rather_than_restarting_when_a_fresh_login_has_not_printed_yet(self, env):
+        env.probe.return_value = state(login_running=False, login_age_seconds=2, login_output="")
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "awaiting_approval"
+        env.start_login.assert_not_awaited()
+
+    async def test_restarts_once_the_previous_attempt_is_stale(self, env):
+        env.probe.return_value = state(
+            login_running=False,
+            login_age_seconds=LOGIN_TIMEOUT_SECONDS + 1,
+            login_output="expired code",
+        )
+        await connect.advance(USER, INTEGRATION, DEVICE)
+        env.start_login.assert_awaited_once()
+
+    async def test_reports_failure_when_the_login_cannot_be_started(self, env):
+        env.probe.return_value = state()
+        env.start_login.return_value = CliResult(exit_code=1, stdout="", stderr="no such command")
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "failed"
+        assert "no such command" in (outcome.instructions or "")
+
+
+class TestTokenAuth:
+    async def test_asks_for_the_token_with_the_configured_prompt(self, env):
+        env.probe.return_value = state()
+        outcome = await connect.advance(USER, "gh", TOKEN)
+        assert outcome.phase == "needs_token"
+        assert outcome.token_label == "GitHub token"
+        assert outcome.token_help_url == "https://github.test/tokens"
+
+    async def test_writes_a_supplied_token_before_re_probing(self, env):
+        env.probe.return_value = state(authenticated=True)
+        outcome = await connect.advance(USER, "gh", TOKEN, token="ghp_x")
+        env.write_token.assert_awaited_once()
+        assert env.write_token.await_args.args[3] == "ghp_x"
+        assert outcome.phase == "connected"
+
+    async def test_reports_a_rejected_token_instead_of_asking_again(self, env):
+        # Re-prompting on a bad token is an infinite loop from the user's side:
+        # they paste the same value and see the same dialog with no explanation.
+        env.probe.return_value = state(authenticated=False)
+        outcome = await connect.advance(USER, "gh", TOKEN, token="bad")
+        assert outcome.phase == "failed"
+        assert "did not accept" in (outcome.message or "")
+
+    async def test_surfaces_a_write_failure(self, env):
+        env.write_token.return_value = CliResult(exit_code=1, stdout="", stderr="invalid token")
+        outcome = await connect.advance(USER, "gh", TOKEN, token="bad")
+        assert outcome.phase == "failed"
+        assert "invalid token" in (outcome.instructions or "")
+        env.probe.assert_not_awaited()
+
+    async def test_never_starts_a_device_login(self, env):
+        env.probe.return_value = state()
+        await connect.advance(USER, "gh", TOKEN)
+        env.start_login.assert_not_awaited()
+
+
+class TestNoAuth:
+    async def test_connects_when_the_cli_reports_ready(self, env):
+        env.probe.return_value = state(authenticated=True)
+        assert (await connect.advance(USER, "fmt", NO_AUTH)).phase == "connected"
+
+    async def test_fails_when_the_cli_does_not_report_ready(self, env):
+        # Nothing to log into, so a failing verify means a broken install, not a
+        # missing credential — asking the user for one would be misleading.
+        env.probe.return_value = state(authenticated=False)
+        outcome = await connect.advance(USER, "fmt", NO_AUTH)
+        assert outcome.phase == "failed"
+        assert "not reporting as ready" in (outcome.message or "")
+
+
+class TestIsConnected:
+    async def test_defers_entirely_to_the_cli(self, env):
+        env.probe.return_value = state(authenticated=True)
+        assert await connect.is_connected(USER, INTEGRATION, DEVICE) is True
+        env.probe.return_value = state(authenticated=False)
+        assert await connect.is_connected(USER, INTEGRATION, DEVICE) is False

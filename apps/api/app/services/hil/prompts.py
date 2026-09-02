@@ -101,6 +101,29 @@ TOOL_CLASSIFY_PROMPT = (
 )
 
 
+# One CLI integration is one tool, so the tool name says nothing about risk — the command
+# does. This judges a command SHAPE (``app/services/hil/command_shape.py``): the leading
+# words of every program the call would run, with flags and arguments stripped. Two things
+# follow, and both are stated to the model, because neither is obvious from the shape
+# alone: a stripped command that only SOME arguments make dangerous must be treated as
+# dangerous, and a chain is as destructive as its worst link.
+CLI_COMMAND_CLASSIFY_PROMPT = (
+    "An AI assistant may run the command-line invocation below autonomously on the "
+    "user's behalf, through its `{name}` tool.\n"
+    "Mark it destructive if running it is irreversible or produces an effect visible to "
+    "other people — sending, posting, publishing, merging, deploying, deleting, or "
+    "paying. Reading, listing, searching, and fetching data are NOT destructive.\n"
+    "You are shown the command's leading words only; flags and arguments have been "
+    "removed. Judge what this command does in general: if some arguments would make it "
+    "destructive, it is destructive.\n"
+    "Several commands separated by ` ; ` all run — that is destructive if ANY one of "
+    "them is.\n\n"
+    "Tool name: {name}\n"
+    "What the tool does: {description}\n"
+    "Command: {command}"
+)
+
+
 # --- what a blocked call tells the agent -----------------------------------------------
 
 # A decline ENDS the run, and the executor's final text is delivered to the user as a

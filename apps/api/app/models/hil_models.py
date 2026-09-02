@@ -66,12 +66,19 @@ class HILToolRiskRecord(MongoDocument):
     ``hil_tool_risk``), for durability across restarts/processes.
 
     Supported/internal tools are never stored here — they resolve straight from
-    the tool registry's ``destructive`` flag.
+    the tool registry's ``destructive`` flag. A CLI-backed tool stores one record
+    per command shape, since its single name covers every command it can run.
     """
 
     tool_name: str
+    # md5 of what was classified: the tool's description, plus the CLI command shape
+    # when the verdict is for one command rather than for the tool as a whole.
     description_hash: str
     is_destructive: bool
+    # The classified command shape, for a CLI-backed tool whose one name covers every
+    # command it can run (empty for every other tool). Stored in the clear because the
+    # hash above is a key, not something a human reading a cached verdict can decode.
+    command_shape: str = ""
     rationale: str = ""
     classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

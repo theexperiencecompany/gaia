@@ -49,7 +49,18 @@ export interface IntegrationConnectionData {
 
 export type IntegrationAuthType = "oauth" | "bearer" | "none";
 
-export type IntegrationManagedBy = "composio" | "mcp" | "internal" | "self";
+/**
+ * Which transport owns an integration's connection. `cli` is a real vendor
+ * command-line tool GAIA drives on the user's behalf — its connect flow is a
+ * state machine the client polls rather than a single call or an OAuth
+ * redirect (see `CliConnectDetail` on the connect response).
+ */
+export type IntegrationManagedBy =
+  | "composio"
+  | "mcp"
+  | "internal"
+  | "self"
+  | "cli";
 
 export interface IntegrationTool {
   name: string;

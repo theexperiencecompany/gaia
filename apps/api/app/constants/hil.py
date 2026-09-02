@@ -53,6 +53,14 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # asks, resolver leaves pending).
 HIL_LLM_TIMEOUT_SECONDS = 30
 
+# --- CLI command shaping ----------------------------------------------------------------
+#
+# How many leading words of one command survive into the shape its risk is classified
+# under (``gh pr list``, ``link-cli spend-request create``). Deep enough for the
+# subcommand paths real CLIs use, and a bound on how many distinct shapes one CLI can
+# mint — each new shape costs one classification.
+HIL_CLI_SHAPE_MAX_WORDS = 4
+
 # --- resume ---------------------------------------------------------------------------
 #
 # The only statuses a ``Command(resume=...)`` payload may carry. Anything else is treated

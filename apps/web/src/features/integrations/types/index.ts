@@ -7,8 +7,11 @@
  * from `../types`.
  */
 
+import type { IntegrationManagedBy } from "@shared/types";
+
 export type {
   IntegrationConnectionData,
+  IntegrationManagedBy,
   IntegrationStatusRecord as IntegrationStatus,
   IntegrationToolsResponse,
   MyIntegrationsResponse,
@@ -47,7 +50,7 @@ export interface Integration {
   expiredAt?: string;
   displayPriority?: number;
   isFeatured?: boolean;
-  managedBy?: "self" | "composio" | "mcp" | "internal";
+  managedBy?: IntegrationManagedBy;
   available?: boolean;
   authType?: "oauth" | "bearer" | "none";
   source?: "platform" | "custom";
@@ -62,6 +65,54 @@ export interface Integration {
     picture: string | null;
   } | null;
   slug: string;
+}
+
+/**
+ * Where a `managedBy: "cli"` connection currently stands.
+ *
+ * `installing` and `awaiting_approval` are waiting states the client polls
+ * through; `needs_token` hands control back to the user; `connected` and
+ * `failed` are terminal.
+ */
+export type CliConnectPhase =
+  | "installing"
+  | "needs_token"
+  | "awaiting_approval"
+  | "connected"
+  | "failed";
+
+/**
+ * What the user has to see and do right now for a CLI connection.
+ *
+ * `instructions` is the tool's own output relayed verbatim — the approval text
+ * (carrying a URL and a code) while waiting, or the failure detail when the
+ * phase is `failed`. GAIA never parses or rewords it.
+ */
+export interface CliConnectDetail {
+  phase: CliConnectPhase;
+  instructions?: string | null;
+  /** Prompt copy for the paste-a-token step, e.g. "Personal access token". */
+  tokenLabel?: string | null;
+  /** Where the user can go to mint that token. */
+  tokenHelpUrl?: string | null;
+}
+
+/**
+ * The unified connect endpoint's response.
+ *
+ * `pending` is the CLI transport's steady state: the endpoint is idempotent
+ * and advances the connection one step per call, so the client re-POSTs it
+ * until the status leaves `pending`, reading `cli` for what to show meanwhile.
+ */
+export interface ConnectIntegrationResponse {
+  status: "connected" | "redirect" | "error" | "pending";
+  integrationId: string;
+  name: string;
+  message?: string | null;
+  toolsCount?: number | null;
+  redirectUrl?: string | null;
+  error?: string | null;
+  cli?: CliConnectDetail | null;
 }
 
 export interface CreateCustomIntegrationRequest {

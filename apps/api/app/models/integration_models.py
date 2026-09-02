@@ -15,6 +15,8 @@ from pydantic.alias_generators import to_camel
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.integration_helpers import generate_integration_slug
+from app.models.cli_config import CliConfig
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
@@ -77,9 +79,7 @@ class Integration(MongoDocument):
     category: str = Field(..., description="e.g., productivity, communication, developer")
 
     # Management and source
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        ..., description="Which system manages the integration"
-    )
+    managed_by: ManagedBy = Field(..., description="Which system manages the integration")
     source: Literal["platform", "custom"] = Field(
         "custom", description="Platform (from code) or custom (user-created)"
     )
@@ -101,6 +101,7 @@ class Integration(MongoDocument):
     # Configuration (one of these based on managed_by)
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
+    cli_config: CliConfig | None = None
 
     # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
     # its auth flags at the document root for older documents. IntegrationResolver
@@ -255,7 +256,7 @@ class IntegrationResponse(BaseModel):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int
@@ -296,6 +297,12 @@ class IntegrationResponse(BaseModel):
         if integration.mcp_config:
             requires_auth = integration.mcp_config.requires_auth
             auth_type = integration.mcp_config.auth_type or ("oauth" if requires_auth else "none")
+        elif integration.cli_config:
+            # auth_type stays None for CLI-backed integrations: it names an
+            # HTTP auth scheme, and a CLI's login is neither OAuth nor a bearer
+            # header. Leaving it unset is what keeps the client from opening the
+            # bearer-token dialog instead of the CLI connect flow.
+            requires_auth = integration.cli_config.auth.kind != "none"
 
         # Compute slug at runtime (not stored in DB)
         slug = generate_integration_slug(
@@ -335,6 +342,10 @@ class IntegrationResponse(BaseModel):
         elif oauth_int.composio_config:
             requires_auth = True
             auth_type = "oauth"
+        elif oauth_int.cli_config:
+            # See from_integration: auth_type is an HTTP scheme and does not
+            # describe a CLI login.
+            requires_auth = oauth_int.cli_config.auth.kind != "none"
 
         return cls(
             integration_id=oauth_int.id,
@@ -347,7 +358,14 @@ class IntegrationResponse(BaseModel):
             display_priority=oauth_int.display_priority,
             requires_auth=requires_auth,
             auth_type=cast(AuthType, auth_type) if auth_type else None,
-            tools=[],  # Platform tools are loaded live, not stored
+            # A CLI integration's declared capabilities ARE its user-facing tool
+            # list — one tool wraps the whole CLI, so listing that single tool
+            # would tell the user nothing. Other platform tools load live.
+            tools=(
+                [IntegrationTool(name=c) for c in oauth_int.cli_config.capabilities]
+                if oauth_int.cli_config
+                else []
+            ),
             slug=oauth_int.id,  # Platform integrations use ID as slug
         )
 

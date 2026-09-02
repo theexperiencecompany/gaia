@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools.core.registry import integration_destructive_tools
+from app.models.cli_config import CliAuthSpec, CliConfig
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
+from app.services.cli.tools import CliIntegration
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -51,6 +53,31 @@ def _make_subagent_config(**overrides) -> SubAgentConfig:
     return SubAgentConfig(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
+def _cli_config(command: str = "link-cli") -> CliConfig:
+    return CliConfig(
+        command=command,
+        install_command=f"npm install {command}",
+        capabilities=["payment links"],
+        auth=CliAuthSpec(
+            kind="device",
+            login_command=f"{command} auth login",
+            verify_command=f"{command} auth status",
+        ),
+    )
+
+
+def _cli_integration(integration_id: str = "stripe_link") -> CliIntegration:
+    return CliIntegration(id=integration_id, name="Stripe Link", config=_cli_config())
+
+
+def _cli_tool_registry() -> AsyncMock:
+    registry = AsyncMock()
+    registry._categories = {}
+    registry._add_category = MagicMock()
+    registry._index_category_tools = AsyncMock()
+    return registry
+
+
 def _make_integration(
     integration_id: str = "test_int",
     managed_by: str = "composio",
@@ -58,6 +85,7 @@ def _make_integration(
     subagent_config: SubAgentConfig | None = None,
     composio_config: MagicMock | None = None,
     provider: str = "test_provider",
+    cli_config: CliConfig | None = None,
 ) -> OAuthIntegration:
     if subagent_config is None:
         subagent_config = _make_subagent_config()
@@ -80,6 +108,7 @@ def _make_integration(
         mcp_config=mcp_config,
         subagent_config=subagent_config,
         composio_config=composio_config,
+        cli_config=cli_config,
     )
 
 
@@ -421,6 +450,11 @@ class TestCreateSubagentForUser:
         with (
             patch(
                 "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.resolve_cli_integration",
+                new_callable=AsyncMock,
                 return_value=None,
             ),
             patch(
@@ -943,3 +977,208 @@ class TestRegisterSubagentProviders:
         assert count == 1
         registered_names = [c.kwargs["name"] for c in mock_providers.register.call_args_list]
         assert registered_names == ["agent_1"]
+
+
+# ---------------------------------------------------------------------------
+# CLI integrations
+# ---------------------------------------------------------------------------
+
+
+class TestCliSubagentTools:
+    async def test_platform_cli_registers_delegated_gated_category(self):
+        # The category shape IS the gating: `space` is how the subagent finds
+        # the tool, `is_delegated` keeps the raw shell out of executor
+        # discovery, and `require_integration` is what marks it locked until
+        # the user connects.
+        from app.agents.core.subagents.provider_subagents import create_subagent
+
+        subagent = _make_subagent(
+            integration_id="stripe_link",
+            managed_by="cli",
+            provider="stripe_link",
+            subagent_config=_make_subagent_config(
+                agent_name="stripe_link_agent",
+                tool_space="stripe_link",
+                use_direct_tools=True,
+                disable_retrieve_tools=True,
+                auto_bind_tools=["run_link_cli"],
+            ),
+        )
+        integration = _make_integration(
+            integration_id="stripe_link",
+            managed_by="cli",
+            cli_config=_cli_config(),
+            subagent_config=subagent.config,
+        )
+        registry = _cli_tool_registry()
+        mock_graph = MagicMock()
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=registry,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+                return_value=integration,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_mcp_client",
+                new_callable=AsyncMock,
+            ) as mock_get_mcp_client,
+            patch(
+                "app.agents.core.subagents.provider_subagents.init_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
+                new_callable=AsyncMock,
+                return_value=mock_graph,
+            ) as mock_factory,
+        ):
+            result = await create_subagent(subagent)
+
+        assert result is mock_graph
+        mock_get_mcp_client.assert_not_called()
+        registry.register_provider_tools.assert_not_called()
+
+        category = registry._add_category.call_args.kwargs
+        assert category["name"] == "stripe_link"
+        assert [t.name for t in category["tools"]] == ["run_link_cli"]
+        options = category["options"]
+        assert options.space == "stripe_link"
+        assert options.is_delegated is True
+        assert options.require_integration is True
+        registry._index_category_tools.assert_awaited_once_with("stripe_link")
+
+        assert mock_factory.call_args.kwargs["config"].tool_space == "stripe_link"
+
+    async def test_platform_cli_without_cli_config_fails_loudly(self):
+        # A managed_by="cli" entry with no spec would otherwise build a
+        # tool-less agent that reports healthy.
+        from app.agents.core.subagents.provider_subagents import (
+            register_cli_subagent_tools,
+        )
+
+        subagent = _make_subagent(integration_id="stripe_link", managed_by="cli")
+
+        with patch(
+            "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+            return_value=None,
+        ):
+            with pytest.raises(ValueError, match="no matching OAuth integration"):
+                await register_cli_subagent_tools(subagent, _cli_tool_registry())
+
+    async def test_registration_is_idempotent(self):
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        registry = _cli_tool_registry()
+        registry._categories = {"stripe_link": MagicMock()}
+
+        await register_cli_tools(registry, _cli_integration(), tool_space="stripe_link")
+
+        registry._add_category.assert_not_called()
+        registry._index_category_tools.assert_not_awaited()
+
+    async def test_custom_cli_integration_is_dispatched_to_the_cli_builder(self):
+        # A user-created CLI integration is not in the static registry, so the
+        # custom branch must route on its spec instead of assuming MCP.
+        from app.agents.core.subagents.provider_subagents import create_subagent_for_user
+
+        mock_graph = MagicMock()
+        integration = _cli_integration("custom_abc")
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_subagent_by_id",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.resolve_cli_integration",
+                new_callable=AsyncMock,
+                return_value=integration,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents._create_custom_mcp_subagent",
+                new_callable=AsyncMock,
+            ) as mock_mcp,
+            patch(
+                "app.agents.core.subagents.provider_subagents._create_custom_cli_subagent",
+                new_callable=AsyncMock,
+                return_value=mock_graph,
+            ) as mock_cli,
+        ):
+            result = await create_subagent_for_user("custom_abc", "user_123")
+
+        assert result is mock_graph
+        mock_mcp.assert_not_called()
+        mock_cli.assert_awaited_once_with(integration, "user_123")
+
+    async def test_custom_cli_refuses_when_not_connected(self):
+        # Nothing upstream gates a custom integration, so an unconnected CLI
+        # must be refused here rather than handed over unauthenticated.
+        from app.agents.core.subagents.provider_subagents import (
+            SubagentUnavailableError,
+            _create_custom_cli_subagent,
+        )
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.user_integration_repository"
+            ) as mock_repo,
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+            ) as mock_get_registry,
+            patch(
+                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
+                new_callable=AsyncMock,
+            ) as mock_factory,
+        ):
+            mock_repo.is_connected = AsyncMock(return_value=False)
+            with pytest.raises(SubagentUnavailableError, match="not connected"):
+                await _create_custom_cli_subagent(_cli_integration("custom_abc"), "user_123")
+
+        mock_get_registry.assert_not_called()
+        mock_factory.assert_not_called()
+
+    async def test_custom_cli_binds_its_single_tool_directly(self):
+        from app.agents.core.subagents.provider_subagents import _create_custom_cli_subagent
+
+        registry = _cli_tool_registry()
+        mock_graph = MagicMock()
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.user_integration_repository"
+            ) as mock_repo,
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=registry,
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.init_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
+                new_callable=AsyncMock,
+                return_value=mock_graph,
+            ) as mock_factory,
+        ):
+            mock_repo.is_connected = AsyncMock(return_value=True)
+            result = await _create_custom_cli_subagent(_cli_integration("custom_abc"), "user_123")
+
+        assert result is mock_graph
+        # The id is the namespace: a CLI has no server URL to derive one from.
+        assert registry._add_category.call_args.kwargs["options"].space == "custom_abc"
+
+        call_kwargs = mock_factory.call_args.kwargs
+        assert call_kwargs["name"] == "custom_cli_custom_abc"
+        cfg = call_kwargs["config"]
+        assert cfg.tool_space == "custom_abc"
+        assert cfg.use_direct_tools is True
+        assert cfg.disable_retrieve_tools is True
+        assert cfg.source_label == "Stripe Link"

@@ -9,6 +9,7 @@ tools are fetched on demand via `get_integration_tools`.
 
 import asyncio
 
+from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL
 from app.decorators.caching import Cacheable
 from app.schemas.integrations.responses import (
@@ -63,6 +64,12 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
             if ui is not None
             else counts.get(cfg.id.lower(), 0)
         )
+        if not tool_count:
+            # A CLI integration exposes one tool wrapping the whole command, so
+            # the registry count is 1 (and 0 until the category is lazily
+            # registered) — neither is what a user means by "what can this do".
+            # Its declared capabilities are.
+            tool_count = _cli_capability_count(cfg.id)
         items.append(
             MyIntegrationItem(
                 id=cfg.id,
@@ -146,3 +153,11 @@ async def get_integration_tools(integration_id: str, user_id: str) -> Integratio
 
     tools = await get_integration_tool_list(integration_id)
     return IntegrationToolsResponse(integration_id=integration_id, tools=tools, count=len(tools))
+
+
+def _cli_capability_count(integration_id: str) -> int:
+    """How many capabilities a CLI-backed platform integration declares, else 0."""
+    integration = get_integration_by_id(integration_id)
+    if integration is None or integration.cli_config is None:
+        return 0
+    return len(integration.cli_config.capabilities)

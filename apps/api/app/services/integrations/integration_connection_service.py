@@ -23,6 +23,7 @@ from app.schemas.integrations.responses import (
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
 )
+from app.services.cli import disconnect as cli_disconnect
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -71,8 +72,17 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
                 auth_type=auth_type_literal,
+                # A CLI declares its auth shape in cli_config, not mcp_config;
+                # without this every CLI integration renders as "no sign-in
+                # needed" and the connect dialog looks like a no-op.
                 requires_auth=(
-                    integration.mcp_config.requires_auth if integration.mcp_config else False
+                    integration.mcp_config.requires_auth
+                    if integration.mcp_config
+                    else (
+                        integration.cli_config.auth.kind != "none"
+                        if integration.cli_config
+                        else False
+                    )
                 ),
                 slug=integration.id,  # Platform integrations use ID as slug
             )
@@ -412,87 +422,6 @@ async def connect_self_integration(
     )
 
 
-async def initiate_integration_connection(
-    user_id: str,
-    integration_id: str,
-    *,
-    user_email: str = "",
-    redirect_path: str = "/integrations",
-    bearer_token: str | None = None,
-) -> ConnectIntegrationResponse | None:
-    """Resolve an integration and start its connect flow.
-
-    Single source of truth for the connect dispatch, shared by the
-    ``POST /connect/{id}`` endpoint and the login-free ``GET /connect-link``
-    entry point. Returns ``None`` when the integration does not exist (callers
-    map that to 404 / a friendly error); otherwise a ``ConnectIntegrationResponse``
-    whose ``redirect_url`` is the provider OAuth URL.
-    """
-    resolved = await IntegrationResolver.resolve(integration_id)
-    if not resolved:
-        return None
-
-    def _error(message: str) -> ConnectIntegrationResponse:
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=resolved.name,
-            error=message,
-        )
-
-    if (
-        resolved.source == "platform"
-        and resolved.platform_integration
-        and not resolved.platform_integration.available
-    ):
-        return _error(f"Integration {integration_id} is not available yet")
-
-    provider = resolved.platform_integration.provider if resolved.platform_integration else None
-    try:
-        if resolved.managed_by == "mcp":
-            return await connect_mcp_integration(
-                user_id=user_id,
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                requires_auth=resolved.requires_auth,
-                redirect_path=redirect_path,
-                server_url=resolved.mcp_config.server_url if resolved.mcp_config else None,
-                is_platform=resolved.source == "platform",
-                bearer_token=bearer_token,
-            )
-        if resolved.managed_by == "composio":
-            if not provider:
-                return _error("Provider not configured")
-            return await connect_composio_integration(
-                user_id=user_id,
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=redirect_path,
-            )
-        if resolved.managed_by == "self":
-            if not provider:
-                return _error("Provider not configured")
-            return await connect_self_integration(
-                user_id=user_id,
-                user_email=user_email,
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=redirect_path,
-            )
-        return _error(f"Unsupported integration type: {resolved.managed_by}")
-    except Exception as e:
-        log.error(
-            f"{LogTag.INTEGRATION} Failed to initiate connection for",
-            integration_id=integration_id,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
-        return _error(str(e))
-
-
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
     log.set(integration={"provider": integration_id, "action": "disconnect"})
@@ -500,7 +429,22 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
     if not resolved:
         raise ValueError(f"Integration {integration_id} not found")
 
-    if resolved.source == "custom":
+    if resolved.managed_by == "cli":
+        # Checked before the custom-source branch: a user-authored CLI
+        # integration is `source == "custom"` too, and the MCP teardown below
+        # would be both wrong and a no-op for it. `cli_config` is pinned by the
+        # catalog validator for this transport.
+        if resolved.cli_config:
+            await cli_disconnect(user_id, integration_id, resolved.cli_config)
+        await remove_user_integration(user_id, integration_id)
+        if (
+            resolved.source == "custom"
+            and resolved.custom_doc
+            and resolved.custom_doc.get("created_by") == user_id
+        ):
+            await delete_custom_integration(user_id, integration_id)
+
+    elif resolved.source == "custom":
         mcp_client = await get_mcp_client(user_id=user_id)
         await mcp_client.disconnect(integration_id)
         await remove_user_integration(user_id, integration_id)
