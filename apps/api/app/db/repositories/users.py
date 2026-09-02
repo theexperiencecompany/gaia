@@ -236,11 +236,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         timezone: str | None = None,
         completed_at: datetime | None = None,
     ) -> UserDocument | None:
-        """Atomically create the ``onboarding`` subdocument (gated on its absence).
+        """Atomically mark onboarding complete (gated on it not being complete yet).
 
-        Returns ``None`` when the gate misses — either onboarding already exists
-        (idempotent replay) or the user is gone; the caller distinguishes via
-        ``get``.
+        The gate is ``onboarding.completed``, not the subdocument's existence:
+        the wizard writes ``onboarding.preferences`` before payment, so the
+        subdocument exists long before completion. Returns ``None`` when the
+        gate misses — already completed (idempotent replay) or the user is
+        gone; the caller distinguishes via ``get``.
         """
         now = datetime.now(UTC)
         set_fields: dict[str, object] = {
@@ -256,7 +258,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
-            extra_filter={"onboarding": {"$exists": False}},
+            extra_filter={"onboarding.completed": {"$ne": True}},
         )
 
     async def update_onboarding_preferences(

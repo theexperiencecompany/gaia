@@ -14,7 +14,8 @@
 import type { GaiaClient } from "./api";
 import { GaiaApiError } from "./api";
 import type { MessageTarget, PlatformName } from "./types";
-import { hashLogIdentifier, wideLog, withWideEvent } from "./utils";
+import { hashLogIdentifier } from "./utils/logger";
+import { wideLog, withWideEvent } from "./utils/wide-events";
 
 /**
  * Exact code width. `secrets.token_urlsafe(PLATFORM_LINK_CODE_BYTES)` with 16

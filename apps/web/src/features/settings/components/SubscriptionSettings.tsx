@@ -8,81 +8,16 @@ import {
   useIsSubscriptionStatusUnknown,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
-import {
-  convertToUSDCents,
-  formatUSDFromCents,
-} from "@/features/pricing/utils/currencyConverter";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { usePaywallModalStore } from "@/stores/paywallModalStore";
+import {
+  formatDate,
+  getSubscriptionSummary,
+} from "@/features/settings/utils/subscriptionSummary";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
-
-// Module-scope formatter: hoisting keeps locale resolution out of the render
-// path (js-hoist-intl); explicit locale+timeZone gives deterministic
-// server/browser text per no-locale-format-in-render. Billing days are
-// rendered as UTC calendar dates.
-const BILLING_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  timeZone: "UTC",
-});
-
-const formatDate = (dateString?: string): string => {
-  if (!dateString) return "N/A";
-  try {
-    // Deterministic UTC billing dates — see formatter comment above.
-    return BILLING_DATE_FORMATTER.format(new Date(dateString));
-  } catch {
-    return "N/A";
-  }
-};
-
-const getDaysUntil = (dateString?: string): number | null => {
-  if (!dateString) return null;
-  try {
-    const diff = new Date(dateString).getTime() - Date.now();
-    return Math.ceil(diff / (1000 * 60 * 60 * 24));
-  } catch {
-    return null;
-  }
-};
-
-type ChipColor = "success" | "warning" | "danger" | "default";
-
-function getStatusColor(status: string): ChipColor {
-  switch (status.toLowerCase()) {
-    case "active":
-      return "success";
-    case "created":
-    case "on_hold":
-      return "warning";
-    case "cancelled":
-    case "expired":
-      return "danger";
-    default:
-      return "default";
-  }
-}
-
-function getStatusText(status: string): string {
-  switch (status.toLowerCase()) {
-    case "created":
-      return "Activating";
-    case "active":
-      return "Active";
-    case "cancelled":
-      return "Cancelled";
-    case "expired":
-      return "Expired";
-    case "on_hold":
-      return "On Hold";
-    default:
-      return status;
-  }
-}
+import { SubscriptionBillingSection } from "./SubscriptionBillingSection";
+import { SubscriptionUpsell } from "./SubscriptionUpsell";
 
 export function SubscriptionSettings() {
   const { data: status, refetch: refetchStatus } = useUserSubscriptionStatus();
@@ -95,7 +30,6 @@ export function SubscriptionSettings() {
   // Managing an existing Pro plan (monthly <-> yearly) is a different job
   // than subscribing for the first time — see the branches below.
   const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
   if (isUnknown) {
     return (
@@ -113,87 +47,21 @@ export function SubscriptionSettings() {
 
   if (!status?.is_subscribed) {
     return (
-      <SettingsPage>
-        {/* Plan summary header */}
-        <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-zinc-500">Current Plan</p>
-              <p className="mt-1 text-2xl font-semibold text-white">
-                No subscription
-              </p>
-            </div>
-            <Chip color="warning" variant="flat" size="sm" className="text-xs">
-              Inactive
-            </Chip>
-          </div>
-          <p className="mt-1 text-sm text-zinc-500">
-            GAIA is paid-only — subscribe to start using it
-          </p>
-        </div>
-
-        <SettingsSection title="Subscribe to GAIA Pro">
-          <div className="px-4 py-4 space-y-3">
-            <p className="text-sm text-zinc-400">
-              A subscription covers the server costs and unlocks chat,
-              workflows, priority support, and private Discord channels.
-            </p>
-            <Button
-              color="primary"
-              className="w-full font-semibold text-black"
-              size="sm"
-              onPress={() => openPaywallModal(undefined, { dismissible: true })}
-            >
-              View plans
-            </Button>
-          </div>
-        </SettingsSection>
-      </SettingsPage>
+      <SubscriptionUpsell hasEverSubscribed={status?.has_ever_subscribed} />
     );
   }
 
   const plan = status.current_plan;
   const subscription = status.subscription;
-
-  const priceFormatted = (() => {
-    if (plan) {
-      return formatUSDFromCents(convertToUSDCents(plan.amount, plan.currency));
-    }
-    if (subscription?.recurring_pre_tax_amount) {
-      return formatUSDFromCents(subscription.recurring_pre_tax_amount);
-    }
-    return "$0";
-  })();
-
-  const billingCycle = (() => {
-    if (plan?.duration) return plan.duration;
-    const interval = subscription?.payment_frequency_interval?.toLowerCase();
-    if (interval === "month") return "monthly";
-    if (interval === "year") return "yearly";
-    return interval || "monthly";
-  })();
-
-  const planName =
-    plan?.name || (status.plan_type === "pro" ? "GAIA Pro" : "GAIA Free");
-
-  const cancellationScheduled =
-    subscription?.cancel_at_next_billing_date === true;
-
-  const daysUntilNextBilling = getDaysUntil(subscription?.next_billing_date);
-  const statusColor = cancellationScheduled
-    ? "warning"
-    : getStatusColor(subscription?.status || "unknown");
-  const statusText = cancellationScheduled
-    ? "Cancelling"
-    : getStatusText(subscription?.status || "unknown");
-
-  const nextBillingLabel = (() => {
-    if (daysUntilNextBilling === null) return null;
-    if (daysUntilNextBilling < 0) return "overdue";
-    if (daysUntilNextBilling === 0) return "due today";
-    if (daysUntilNextBilling === 1) return "tomorrow";
-    return `in ${daysUntilNextBilling} days`;
-  })();
+  const {
+    planName,
+    priceFormatted,
+    billingCycle,
+    statusColor,
+    statusText,
+    cancellationScheduled,
+    nextBillingLabel,
+  } = getSubscriptionSummary(status);
 
   return (
     <SettingsPage>
@@ -236,63 +104,11 @@ export function SubscriptionSettings() {
         </p>
       </div>
 
-      {/* Billing details */}
-      <SettingsSection title="Billing">
-        <SettingsRow label="Billing cycle">
-          <span className="text-sm capitalize text-zinc-300">
-            {billingCycle}
-          </span>
-        </SettingsRow>
-
-        {subscription?.next_billing_date && (
-          <SettingsRow
-            label="Next billing date"
-            description={nextBillingLabel ?? undefined}
-          >
-            <span className="text-sm text-zinc-300">
-              {formatDate(subscription.next_billing_date)}
-            </span>
-          </SettingsRow>
-        )}
-
-        {subscription?.previous_billing_date && (
-          <SettingsRow label="Last payment">
-            <span className="text-sm text-zinc-300">
-              {formatDate(subscription.previous_billing_date)}
-            </span>
-          </SettingsRow>
-        )}
-
-        {subscription?.created_at && (
-          <SettingsRow label="Subscribed since">
-            <span className="text-sm text-zinc-300">
-              {formatDate(subscription.created_at)}
-            </span>
-          </SettingsRow>
-        )}
-
-        {subscription?.cancelled_at && (
-          <SettingsRow label="Cancelled on">
-            <span className="text-sm text-red-400">
-              {formatDate(subscription.cancelled_at)}
-            </span>
-          </SettingsRow>
-        )}
-
-        {subscription?.dodo_subscription_id && (
-          <SettingsRow
-            label="Subscription ID"
-            description="For support queries"
-          >
-            <span
-              className="font-mono text-sm text-zinc-500"
-              title={subscription.dodo_subscription_id}
-            >
-              ···{subscription.dodo_subscription_id.slice(-8)}
-            </span>
-          </SettingsRow>
-        )}
-      </SettingsSection>
+      <SubscriptionBillingSection
+        subscription={subscription}
+        billingCycle={billingCycle}
+        nextBillingLabel={nextBillingLabel}
+      />
 
       {/* Plan features */}
       {plan?.features && plan.features.length > 0 && (

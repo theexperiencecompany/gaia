@@ -9,38 +9,29 @@ import { useLogout } from "@/features/auth/hooks/useLogout";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
-import { REFUND_WINDOW_COPY, TAX_NOTE_COPY } from "../constants";
+import {
+  paywallCopyFor,
+  REFUND_WINDOW_COPY,
+  TAX_NOTE_COPY,
+} from "../constants";
 import { useDodoPayments } from "../hooks/useDodoPayments";
 import { useIsPaid } from "../hooks/useIsPaid";
-import { usePricing, useUserSubscriptionStatus } from "../hooks/usePricing";
+import { usePricing } from "../hooks/usePricing";
 import { isProPlan } from "../utils/planPredicates";
 import { CheckoutConfirming } from "./CheckoutConfirming";
 import { PlanFeature } from "./PlanFeature";
-
-/** Two audiences hit the same wall for different reasons, so they read
- *  different copy: someone whose subscription ran out is being asked to come
- *  back, while a free user at the paid-only migration is being told the rules
- *  changed. `has_ever_subscribed` is the only thing that separates them. */
-const LAPSED_COPY = {
-  heading: "Your subscription ended",
-  body: "Pick up right where you left off.",
-} as const;
-
-const MIGRATION_COPY = {
-  heading: "GAIA is Pro-only",
-  body: "Subscribe to GAIA Pro to keep chatting and running workflows.",
-} as const;
 
 export function PaywallModal() {
   const { open, offer, dismissible, closeModal } = usePaywallModalStore();
   const { plans } = usePricing();
   const { logout } = useLogout();
   const { openCheckoutOverlay, checkoutPhase } = useDodoPayments();
-  const { isPaid, isUnknown: isSubscriptionStatusUnknown } = useIsPaid();
-  const { data: subscriptionStatus } = useUserSubscriptionStatus();
-  const copy = subscriptionStatus?.has_ever_subscribed
-    ? LAPSED_COPY
-    : MIGRATION_COPY;
+  const {
+    isPaid,
+    isUnknown: isSubscriptionStatusUnknown,
+    hasEverSubscribed,
+  } = useIsPaid();
+  const copy = paywallCopyFor(hasEverSubscribed);
   const isConfirming =
     checkoutPhase === "confirming" || checkoutPhase === "timeout";
 
@@ -140,7 +131,7 @@ export function PaywallModal() {
                 disabled={checkoutPhase !== "idle"}
               >
                 {checkoutPhase === "idle"
-                  ? "Subscribe to GAIA Pro"
+                  ? copy.subscribeCta
                   : "Opening checkout..."}
               </RaisedButton>
               <p className="mt-2 text-center text-xs font-light text-zinc-500">

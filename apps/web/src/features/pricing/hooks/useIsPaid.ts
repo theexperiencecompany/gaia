@@ -25,6 +25,12 @@ export interface IsPaidResult {
    * is safe.
    */
   isUnknown: boolean;
+  /**
+   * Whether this account has ever held a subscription — what separates a
+   * lapsed customer from a never-paid one for copy (`paywallCopyFor`).
+   * Undefined while unknown.
+   */
+  hasEverSubscribed: boolean | undefined;
 }
 
 /**
@@ -40,5 +46,6 @@ export function useIsPaid(): IsPaidResult {
   return {
     isPaid: !isUnknown && subscriptionStatus?.plan_type === "pro",
     isUnknown,
+    hasEverSubscribed: subscriptionStatus?.has_ever_subscribed,
   };
 }

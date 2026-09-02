@@ -15,6 +15,7 @@ import React from "react";
 import { ShortcutKeysDisplay } from "@/config/keyboardShortcuts";
 import { getNavigationShortcut } from "@/config/keyboardShortcutsData";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
+import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { usePathname } from "@/i18n/navigation";
@@ -70,7 +71,7 @@ const buttonData = [
 
 export default function SidebarTopButtons() {
   const pathname = usePathname();
-  const { isPaid, isUnknown } = useIsPaid();
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const { plans } = usePricing();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
   const { notifications } = useNotifications({
@@ -102,6 +103,7 @@ export default function SidebarTopButtons() {
       {!isUnknown && !isPaid && (
         <SidebarPromo
           price={price}
+          copy={paywallCopyFor(hasEverSubscribed)}
           onUpgrade={() => openPaywallModal(undefined, { dismissible: true })}
         />
       )}

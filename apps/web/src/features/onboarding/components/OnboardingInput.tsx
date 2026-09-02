@@ -75,11 +75,12 @@ function NeedsInput({
   onToggleNeed,
   onContinue,
 }: NeedsModeProps) {
+  const selected = new Set(selectedNeeds);
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3">
       <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
         {needOptions.map((option) => {
-          const isSelected = selectedNeeds.includes(option.value);
+          const isSelected = selected.has(option.value);
           return (
             <RaisedButton
               key={option.value}

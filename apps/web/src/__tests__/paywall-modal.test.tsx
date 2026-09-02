@@ -36,6 +36,7 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({
     isPaid,
     isUnknown: isSubscriptionStatusUnknown,
+    hasEverSubscribed,
   }),
 }));
 

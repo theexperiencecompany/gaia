@@ -48,7 +48,7 @@ async def complete_onboarding(
     onboarding_data: OnboardingRequest,
 ) -> dict[str, Any]:
     """Complete a user's onboarding submission. Idempotent under concurrent
-    retries via an atomic `onboarding: {$exists: false}` gate.
+    retries via an atomic `onboarding.completed` gate in the repository.
 
     Submitting the answers IS completion: nothing is generated here, so the
     phase lands on COMPLETED and the user is routed straight into chat. The

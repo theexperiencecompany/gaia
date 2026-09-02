@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let isPaid = false;
 let isUnknown = false;
+let hasEverSubscribed: boolean | undefined = false;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
-  useIsPaid: () => ({ isPaid, isUnknown }),
+  useIsPaid: () => ({ isPaid, isUnknown, hasEverSubscribed }),
 }));
 
 import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
@@ -16,7 +17,19 @@ describe("PaywallNotice", () => {
   beforeEach(() => {
     isPaid = false;
     isUnknown = false;
+    hasEverSubscribed = false;
     usePaywallModalStore.setState({ open: false, offer: null });
+  });
+
+  it("tells a lapsed subscriber to resubscribe, not that the rules changed", () => {
+    hasEverSubscribed = true;
+    render(<PaywallNotice />);
+
+    expect(screen.getByText(/your subscription ended/i)).not.toBeNull();
+    expect(screen.queryByText(/GAIA is paid-only right now/i)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /^resubscribe$/i }),
+    ).not.toBeNull();
   });
 
   it("renders the upgrade notice for a loaded free (non-subscribed) user", () => {

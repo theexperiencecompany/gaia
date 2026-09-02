@@ -65,6 +65,59 @@ export const REFUND_WINDOW_COPY = "Cancel within 7 days.";
  */
 export const TAX_NOTE_COPY = "Local taxes may apply.";
 
+/**
+ * The words every paid-only surface uses for a non-subscriber. Two audiences
+ * hit the same wall for different reasons: someone whose subscription ran out
+ * is being asked to come back, while a free user at the paid-only migration is
+ * being told the rules changed. `has_ever_subscribed` is the only thing that
+ * separates them, so the choice lives in one place — `paywallCopyFor`.
+ */
+export interface PaywallCopy {
+  /** Modal heading and the settings plan line. */
+  heading: string;
+  /** One-line explanation under the heading. */
+  body: string;
+  /** Short button label wherever the action is offered. */
+  cta: string;
+  /** The modal's primary button, which names the plan. */
+  subscribeCta: string;
+  /** The quiet one-liner above the chat composer. */
+  composer: string;
+  /** Plan name shown where "GAIA Pro" would be. */
+  planLabel: string;
+  sidebarBody: (monthlyPrice: number) => string;
+}
+
+const LAPSED_PAYWALL_COPY: PaywallCopy = {
+  heading: "Your subscription ended",
+  body: "Pick up right where you left off.",
+  cta: "Resubscribe",
+  subscribeCta: "Resubscribe to GAIA Pro",
+  composer: "Your subscription ended — resubscribe to keep chatting.",
+  planLabel: "Subscription ended",
+  sidebarBody: (monthlyPrice) =>
+    `Resubscribe for $${monthlyPrice} a month to pick up where you left off`,
+};
+
+const MIGRATION_PAYWALL_COPY: PaywallCopy = {
+  heading: "GAIA is Pro-only",
+  body: "Subscribe to GAIA Pro to keep chatting and running workflows.",
+  cta: "Upgrade to Pro",
+  subscribeCta: "Subscribe to GAIA Pro",
+  composer:
+    "GAIA is paid-only right now — subscriptions cover the server costs.",
+  planLabel: "Not subscribed",
+  sidebarBody: (monthlyPrice) =>
+    `GAIA is paid-only — subscribe for $${monthlyPrice} a month to keep using it`,
+};
+
+/** Unknown status reads as the migration audience — never as lapsed. */
+export function paywallCopyFor(
+  hasEverSubscribed: boolean | undefined,
+): PaywallCopy {
+  return hasEverSubscribed ? LAPSED_PAYWALL_COPY : MIGRATION_PAYWALL_COPY;
+}
+
 /** First gap between subscription-status polls while confirming a payment. */
 export const CHECKOUT_CONFIRM_INITIAL_DELAY_MS = 1_000;
 

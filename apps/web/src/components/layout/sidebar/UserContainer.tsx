@@ -4,6 +4,7 @@ import Image from "next/image";
 import React from "react";
 import { ChevronsDownUp, ChevronsUpDown } from "@/components/shared/icons";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import SettingsMenu from "@/features/settings/components/SettingsMenu";
 
@@ -11,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../ui/avatar";
 
 export default function UserContainer() {
   const user = useUser();
-  const { isPaid, isUnknown } = useIsPaid();
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const [isOpen, setIsOpen] = React.useState(false);
 
   return (
@@ -52,7 +53,9 @@ export default function UserContainer() {
               <Skeleton className="h-2.5 w-12 rounded-full" />
             ) : (
               <span className="text-[11px] text-foreground-400">
-                {isPaid ? "GAIA Pro" : "GAIA Free"}
+                {isPaid
+                  ? "GAIA Pro"
+                  : paywallCopyFor(hasEverSubscribed).planLabel}
               </span>
             )}
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePaywallModalStore } from "@/stores/paywallModalStore";
 
@@ -13,16 +14,16 @@ import { usePaywallModalStore } from "@/stores/paywallModalStore";
  * states.
  */
 export function PaywallNotice() {
-  const { isPaid, isUnknown } = useIsPaid();
+  const { isPaid, isUnknown, hasEverSubscribed } = useIsPaid();
   const openPaywallModal = usePaywallModalStore((s) => s.openModal);
 
   if (isUnknown || isPaid) return null;
 
+  const copy = paywallCopyFor(hasEverSubscribed);
+
   return (
     <div className="mb-2 flex w-full items-center justify-between gap-3 rounded-2xl bg-zinc-800 px-4 py-2.5">
-      <p className="text-xs text-zinc-400">
-        GAIA is paid-only right now — subscriptions cover the server costs.
-      </p>
+      <p className="text-xs text-zinc-400">{copy.composer}</p>
       <Button
         size="sm"
         color="primary"
@@ -30,7 +31,7 @@ export function PaywallNotice() {
         className="shrink-0 font-medium text-black"
         onPress={() => openPaywallModal()}
       >
-        Upgrade to Pro
+        {copy.cta}
       </Button>
     </div>
   );
