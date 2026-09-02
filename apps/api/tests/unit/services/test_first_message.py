@@ -18,9 +18,7 @@ def _prefs(profession: str | None, needs: list[OnboardingNeed] | None) -> Onboar
 class TestComposeFirstMessage:
     def test_founder_with_two_needs(self) -> None:
         assert (
-            compose_first_message(
-                _prefs("founder", [OnboardingNeed.INBOX, OnboardingNeed.TODOS])
-            )
+            compose_first_message(_prefs("founder", [OnboardingNeed.INBOX, OnboardingNeed.TODOS]))
             == "Hi! I'm a founder. I could use help with my inbox and my todos. Who are you?"
         )
 
