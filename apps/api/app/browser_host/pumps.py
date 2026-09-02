@@ -13,6 +13,18 @@ from typing import Any
 
 import websockets
 
+# Starlette raises a bare RuntimeError (not a typed disconnect) when a websocket
+# is read after it closed or before it was accepted — which happens normally
+# during proxy teardown, when one direction closes the viewer socket while the
+# other is still looping on receive(). Matched by exact message, and only for a
+# plain RuntimeError, so an unrelated RuntimeError still propagates.
+_STARLETTE_NOT_CONNECTED_MESSAGES = frozenset(
+    {
+        'WebSocket is not connected. Need to call "accept" first.',
+        'Cannot call "receive" once a disconnect message has been received.',
+    }
+)
+
 
 def is_disconnect(exc: BaseException) -> bool:
     """Whether ``exc`` is an ordinary peer close (client gone or Chromium closed)."""
@@ -20,7 +32,9 @@ def is_disconnect(exc: BaseException) -> bool:
         return True
     # FastAPI's WebSocketDisconnect is checked by name so this module need not
     # import fastapi (the host may run without the web stack loaded).
-    return type(exc).__name__ == "WebSocketDisconnect"
+    if type(exc).__name__ == "WebSocketDisconnect":
+        return True
+    return type(exc) is RuntimeError and str(exc) in _STARLETTE_NOT_CONNECTED_MESSAGES
 
 
 async def pump_until_first_close(*coros: Coroutine[Any, Any, None]) -> None:

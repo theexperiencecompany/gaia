@@ -47,6 +47,30 @@ class TestIsDisconnect:
     def test_unrelated_exception_type_is_not_a_disconnect(self) -> None:
         assert is_disconnect(ValueError("boom")) is False
 
+    def test_starlette_not_connected_runtimeerror_is_a_disconnect(self) -> None:
+        # Starlette raises this bare RuntimeError when a socket is read after it
+        # closed / before accept — normal during teardown, not a real error.
+        assert (
+            is_disconnect(
+                RuntimeError('WebSocket is not connected. Need to call "accept" first.')
+            )
+            is True
+        )
+
+    def test_receive_after_disconnect_runtimeerror_is_a_disconnect(self) -> None:
+        assert (
+            is_disconnect(
+                RuntimeError(
+                    'Cannot call "receive" once a disconnect message has been received.'
+                )
+            )
+            is True
+        )
+
+    def test_an_unrelated_runtimeerror_still_propagates(self) -> None:
+        # The match is by exact message, so real RuntimeErrors are not swallowed.
+        assert is_disconnect(RuntimeError("second failed")) is False
+
     def test_similarly_named_exception_is_not_a_disconnect(self) -> None:
         """Pins the exact class-name string, not a prefix/substring match."""
 
@@ -71,6 +95,14 @@ class TestPumpUntilFirstClose:
                 pump_until_first_close(_instant_raise(ValueError("boom")), _blocks_forever()),
                 timeout=_TIMEOUT,
             )
+
+    async def test_not_connected_runtimeerror_exits_cleanly_not_raised(self) -> None:
+        # A viewer socket read during teardown must not blow up the pump.
+        err = RuntimeError('WebSocket is not connected. Need to call "accept" first.')
+        # returns None (no raise) — the whole point of the fix.
+        assert (
+            await pump_until_first_close(_instant_raise(err), _blocks_forever())
+        ) is None
 
     async def test_ordinary_disconnect_is_swallowed_not_raised(self) -> None:
         disconnect = websockets.exceptions.ConnectionClosed(None, None)
