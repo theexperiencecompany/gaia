@@ -64,7 +64,9 @@ class TestResolveTool:
         mcp_tool.name = "NOTION_MCP_SEARCH"
         client = MagicMock()
         client.find_integration.return_value = "notion-mcp"
-        client.get_tools.return_value = [mcp_tool]
+        # get_tools is async on the real MCPClient — a sync mock here hid a
+        # missing await that mypy caught; keep the mock faithful.
+        client.get_tools = AsyncMock(return_value=[mcp_tool])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
             patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),

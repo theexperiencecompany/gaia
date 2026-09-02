@@ -35,6 +35,8 @@ async def execute(
     unknown_tool or invalid_args error, correct tool_name/data per the error
     detail and retry once. Never retry the identical call.
     """
+    # UI-facing arg: consumed by the stream formatter (card label), not here.
+    del task_description
     result = await dispatch_tool(
         user_id=agent_configurable(config).get("user_id"),
         tool_name=tool_name,

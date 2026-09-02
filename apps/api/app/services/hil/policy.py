@@ -18,12 +18,12 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
-from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.services.hil.utils import current_tool_calls, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 

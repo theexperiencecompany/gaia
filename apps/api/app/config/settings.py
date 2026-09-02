@@ -258,6 +258,12 @@ class CommonSettings(BaseAppSettings):
         """Slack OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/slack/callback"
 
+    # Code mode (sandbox scripts calling GAIA tools via /sandbox/execute).
+    # Both unset = code mode ships dark: run_code refuses loudly. The callback
+    # URL must be reachable FROM the E2B sandbox (public API base in prod).
+    SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None  # min 32 chars, own secret
+    SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="allow",

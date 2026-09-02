@@ -16,6 +16,7 @@ import json
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
 from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError
 
@@ -129,7 +130,7 @@ def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolE
     return ToolExecutionResult(ok=False, resolved_name=tool_name, error=error)
 
 
-def _validate_args(tool: Any, data: dict[str, Any]) -> dict[str, Any] | DispatchError:
+def _validate_args(tool: BaseTool, data: dict[str, Any]) -> dict[str, Any] | DispatchError:
     """``data`` coerced through the tool's schema, or the correction to return.
 
     Provider-side constrained decoding is gone under the proxy — this check is

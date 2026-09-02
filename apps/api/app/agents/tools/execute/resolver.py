@@ -63,7 +63,7 @@ async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> tuple[str, B
     integration_id = mcp_client.find_integration(tool_name)
     if integration_id is None:
         return None
-    for tool in mcp_client.get_tools(integration_id):
+    for tool in await mcp_client.get_tools(integration_id):
         if tool.name == tool_name:
             return tool.name, tool
     return None

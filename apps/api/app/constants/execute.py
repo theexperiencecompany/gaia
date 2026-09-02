@@ -17,3 +17,10 @@ SCHEMA_DOC_MAX_CHARS = 6000
 # schema. Rendered only when present — most tools do not document their output
 # shape, and the doc must not pretend otherwise.
 RESPONSE_SCHEMA_METADATA_KEYS = ("output_parameters", "response_schema", "outputSchema")
+
+# Code mode: one script run's budget, and how long its token may keep calling
+# the execute route. The token outlives the script slightly so a call started
+# near the deadline still completes.
+RUN_CODE_TIMEOUT_SECONDS = 300
+RUN_CODE_TOKEN_TTL_SECONDS = 600
+RUN_CODE_OUTPUT_MAX_CHARS = 12_000

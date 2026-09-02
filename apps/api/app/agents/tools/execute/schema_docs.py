@@ -8,7 +8,7 @@ schema must never be injected wholesale.
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -69,7 +69,8 @@ def _response_schema_of(tool: BaseTool) -> dict[str, Any] | None:
 
 def _compact_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Strip generator noise (titles, internal params, $defs plumbing keys)."""
-    compacted = _strip_noise(schema)
+    # cast, not isinstance: _strip_noise maps dict->dict by construction.
+    compacted = cast(dict[str, Any], _strip_noise(schema))
     properties = compacted.get("properties")
     if isinstance(properties, dict):
         for name in _INTERNAL_ARG_NAMES:
@@ -81,7 +82,7 @@ def _compact_schema(schema: dict[str, Any]) -> dict[str, Any]:
     return compacted
 
 
-def _strip_noise(node: Any) -> Any:
+def _strip_noise(node: Any) -> Any:  # noqa: ANN401 -- recursive JSON tree, genuinely schemaless
     if isinstance(node, dict):
         return {key: _strip_noise(value) for key, value in node.items() if key not in {"title"}}
     if isinstance(node, list):
