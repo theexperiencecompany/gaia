@@ -4,13 +4,8 @@
 ``connect`` owns the idempotent connect state machine built on top of it.
 """
 
-from app.services.cli.connect import (
-    CliConnectOutcome,
-    CliConnectPhase,
-    advance,
-    disconnect,
-    is_connected,
-)
+from app.models.cli_config import CliConnectPhase
+from app.services.cli.connect import CliConnectOutcome, advance, disconnect
 from app.services.cli.runtime import CliResult, CliState
 
 __all__ = [
@@ -20,5 +15,4 @@ __all__ = [
     "CliState",
     "advance",
     "disconnect",
-    "is_connected",
 ]

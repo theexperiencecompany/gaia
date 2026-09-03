@@ -111,9 +111,11 @@ class CliState:
     installed: bool
     authenticated: bool
     login_running: bool
-    # Seconds since the detached login started, or ``None`` if none has been
-    # started in this sandbox. Read from the login log's mtime so it needs no
-    # external bookkeeping.
+    # Seconds since the detached login STARTED, or ``None`` if none has been
+    # started in this sandbox. Read from the pid file's mtime -- written once
+    # at launch and never touched again. The log's mtime would measure the
+    # last write instead, so a login that prints progress while it polls
+    # would look permanently fresh and never be restarted.
     login_age_seconds: int | None
     # The login command's own output, verbatim — the URL and code a human needs.
     login_output: str
@@ -315,6 +317,44 @@ async def ensure_installed(sbx: AsyncSandbox, integration_id: str, config: CliCo
     return result
 
 
+def _state_script(integration_id: str, config: CliConfig) -> str:
+    """The block that reports install/auth/login state in one round trip.
+
+    Extracted from :func:`probe_state` so its three bounds are readable and
+    testable on their own: each one exists because of a way this hung or lied.
+
+    * ``timeout ... </dev/null`` around the verify command, because it runs on
+      every poll tick while the per-user sandbox lock is held; a verify that
+      waits on a TTY would queue that user's every other tool call behind it.
+    * ``age`` from the PID file, written once at launch, not from the log,
+      whose mtime is its last write -- a login that prints progress while it
+      polls would look permanently fresh and never be restarted.
+    * ``tail -c`` on the log, because truncating in Python still drags an
+      unbounded stream across the wire on each of up to 240 ticks.
+    """
+    pid_path = shlex.quote(_login_pid_path(integration_id))
+    return f"""
+gaia_authed=0
+if timeout {VERIFY_TIMEOUT_SECONDS} sh -c {shlex.quote(config.auth.verify_command)} \
+     >/dev/null 2>&1 </dev/null; then gaia_authed=1; fi
+
+gaia_running=0
+gaia_pid=$(cat {pid_path} 2>/dev/null || true)
+if [ -n "$gaia_pid" ] && kill -0 "$gaia_pid" 2>/dev/null; then gaia_running=1; fi
+
+gaia_age=-1
+if [ -f {pid_path} ]; then
+  gaia_now=$(date +%s)
+  gaia_mtime=$(stat -c %Y {pid_path} 2>/dev/null || echo "$gaia_now")
+  gaia_age=$((gaia_now - gaia_mtime))
+fi
+
+echo "{_STATE_LINE} authenticated=$gaia_authed running=$gaia_running age=$gaia_age"
+echo "{_OUTPUT_BEGIN}"
+tail -c {LOGIN_OUTPUT_MAX_CHARS * 4} {shlex.quote(_login_log_path(integration_id))} 2>/dev/null || true
+"""
+
+
 async def probe_state(sbx: AsyncSandbox, integration_id: str, config: CliConfig) -> CliState:
     """Every fact the connect flow needs, in one sandbox round trip.
 
@@ -323,31 +363,7 @@ async def probe_state(sbx: AsyncSandbox, integration_id: str, config: CliConfig)
     CLI consider itself logged in, is a detached login still polling, and what
     has that login printed for the user.
     """
-    script = _wrap(
-        integration_id,
-        config,
-        f"""
-gaia_authed=0
-if ( {config.auth.verify_command} ) >/dev/null 2>&1; then gaia_authed=1; fi
-
-gaia_running=0
-gaia_pid=$(cat {shlex.quote(_login_pid_path(integration_id))} 2>/dev/null || true)
-if [ -n "$gaia_pid" ] && kill -0 "$gaia_pid" 2>/dev/null; then gaia_running=1; fi
-
-gaia_age=-1
-if [ -f {shlex.quote(_login_log_path(integration_id))} ]; then
-  gaia_now=$(date +%s)
-  gaia_mtime=$(stat -c %Y {shlex.quote(_login_log_path(integration_id))} 2>/dev/null || echo "$gaia_now")
-  gaia_age=$((gaia_now - gaia_mtime))
-fi
-
-echo "{_STATE_LINE} authenticated=$gaia_authed running=$gaia_running age=$gaia_age"
-echo "{_OUTPUT_BEGIN}"
-cat {shlex.quote(_login_log_path(integration_id))} 2>/dev/null || true
-""",
-        # The verify command is the slow part (a network round trip to the
-        # vendor); everything else is local.
-    )
+    script = _wrap(integration_id, config, _state_script(integration_id, config))
     # The install guard rides inside this same shell, and a cold sandbox is
     # exactly the state probe_state is called in (advance calls it first). A
     # verify-sized budget here would kill the install that has to finish before
@@ -405,6 +421,11 @@ async def start_login(sbx: AsyncSandbox, integration_id: str, config: CliConfig)
     log_path = _login_log_path(integration_id)
     pid_path = _login_pid_path(integration_id)
     detached = (
+        # Kill any predecessor FIRST. Deleting its pid file without killing it
+        # orphans the process with its only handle gone, so cancel_login can
+        # never reach it and a restarting login leaks one per attempt.
+        f"gaia_prev=$(cat {shlex.quote(pid_path)} 2>/dev/null || true); "
+        f'if [ -n "$gaia_prev" ]; then kill "$gaia_prev" 2>/dev/null || true; fi; '
         f"rm -f {shlex.quote(log_path)} {shlex.quote(pid_path)}; "
         f"nohup sh -c {shlex.quote(config.auth.login_command)} "
         f"> {shlex.quote(log_path)} 2>&1 & "

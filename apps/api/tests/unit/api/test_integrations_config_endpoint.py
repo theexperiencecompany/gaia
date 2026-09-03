@@ -5,11 +5,18 @@ and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
+import pytest
 
+from app.api.v1.endpoints.integrations import config as config_endpoint
+from app.schemas.integrations.requests import ConnectIntegrationRequest
+from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.analytics_service import AnalyticsEvents
+from tests.helpers import captured_wide_event
 
 API = "/api/v1/integrations"
 _MODULE = "app.api.v1.endpoints.integrations.config"
@@ -229,3 +236,110 @@ class TestConnectIntegration:
     async def test_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(f"{API}/connect/github", json={})
         assert resp.status_code == 401
+
+
+class TestConnectIntegrationHandler:
+    """The connect handler called directly, without the router in the way.
+
+    The HTTP tests above prove the wire contract. These prove the two things
+    the handler itself decides — which identity it acts for, and what it puts
+    on the wide event — which the router's own error handling would otherwise
+    flatten into an anonymous 400.
+    """
+
+    USER: ClassVar[dict[str, str]] = {
+        "user_id": "507f1f77bcf86cd799439011",
+        "email": "test@example.com",
+    }
+
+    async def _call(self, user: dict, **overrides: object) -> ConnectIntegrationResponse:
+        request = ConnectIntegrationRequest(**overrides)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
+        return await config_endpoint.connect_integration_endpoint(
+            integration_id="stripe_link", request=request, user=user
+        )
+
+    async def test_acts_for_the_authenticated_user_and_their_email(self):
+        # The dispatch keys the connection on this user id, and forwards the
+        # email as the OAuth login hint. Reading either from the wrong claim
+        # would connect an integration to the wrong account.
+        with patch(
+            f"{_MODULE}.initiate_integration_connection",
+            new_callable=AsyncMock,
+            return_value=ConnectIntegrationResponse(
+                status="connected", integration_id="stripe_link", name="Stripe Link"
+            ),
+        ) as dispatch:
+            await self._call(self.USER, redirect_path="/chat/7", bearer_token="paste-me")
+
+        assert dispatch.await_args.kwargs == {
+            "user_id": "507f1f77bcf86cd799439011",
+            "integration_id": "stripe_link",
+            "user_email": "test@example.com",
+            "redirect_path": "/chat/7",
+            "bearer_token": "paste-me",
+        }
+
+    async def test_a_token_carrying_no_user_id_is_refused_by_name(self):
+        # A validated token with no subject claim is a broken session, not an
+        # anonymous one; the message has to say so rather than fail as a
+        # generic 400 the caller cannot diagnose.
+        with pytest.raises(HTTPException) as exc_info:
+            await self._call({"email": "test@example.com"})
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "User ID not found"
+
+    async def test_an_unknown_user_id_claim_is_not_silently_accepted(self):
+        # Reading the wrong claim name must fail closed. If it ever resolved to
+        # something truthy, every connect would run as whatever that value is.
+        with pytest.raises(HTTPException) as exc_info:
+            await self._call({"userId": "507f1f77bcf86cd799439011"})
+
+        assert exc_info.value.status_code == 400
+
+    async def test_a_caller_with_no_email_still_connects(self):
+        # Bot and connect-link users have no email claim. The login hint is
+        # optional; requiring it would lock them out of every connect.
+        with patch(
+            f"{_MODULE}.initiate_integration_connection",
+            new_callable=AsyncMock,
+            return_value=ConnectIntegrationResponse(
+                status="pending", integration_id="stripe_link", name="Stripe Link"
+            ),
+        ) as dispatch:
+            await self._call({"user_id": "507f1f77bcf86cd799439011"})
+
+        assert dispatch.await_args.kwargs["user_email"] == ""
+
+    async def test_the_wide_event_names_the_operation_the_user_and_the_integration(self):
+        # This is the only record tying a failed connect to who asked for it and
+        # for what; the key names are the schema the log queries join on.
+        with patch(
+            f"{_MODULE}.initiate_integration_connection",
+            new_callable=AsyncMock,
+            return_value=ConnectIntegrationResponse(
+                status="pending", integration_id="stripe_link", name="Stripe Link"
+            ),
+        ):
+            async with captured_wide_event() as event:
+                await self._call(self.USER)
+                operation = event["operation"]
+
+        assert operation == "connect_integration"
+        assert event["integration_id"] == "stripe_link"
+        assert event["user"] == {"id": "507f1f77bcf86cd799439011"}
+        assert event["integration"] == {"id": "stripe_link"}
+
+    async def test_an_unresolvable_integration_is_a_404_naming_it(self):
+        with (
+            patch(
+                f"{_MODULE}.initiate_integration_connection",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await self._call(self.USER)
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Integration stripe_link not found"

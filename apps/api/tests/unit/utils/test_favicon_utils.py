@@ -16,6 +16,7 @@ from app.utils.favicon_utils import (
     _smithery_qualified_name,
     _validate_favicon_url,
     fetch_favicon_from_url,
+    fetch_favicon_safely,
     legacy_favicon_url,
 )
 
@@ -489,3 +490,49 @@ class TestFetchFaviconImpl:
         mock_legacy.return_value = "https://www.google.com/s2/favicons?domain=example.com&sz=256"
         result = await _fetch_favicon_impl("https://example.com/mcp")
         assert result == "https://www.google.com/s2/favicons?domain=example.com&sz=256"
+
+
+# --- fetch_favicon_safely: the one guarded entry point --------------------
+# Every caller that turns a URL into an integration icon goes through it, so its
+# guards are the only place those callers are protected.
+
+_SAFE_MODULE = "app.utils.favicon_utils"
+
+
+@pytest.mark.parametrize("blank", [None, "", "   "])
+async def test_a_blank_url_never_reaches_the_network(blank):
+    with patch(f"{_SAFE_MODULE}.fetch_favicon_from_url", AsyncMock()) as fetch:
+        assert await fetch_favicon_safely(blank) is None
+    fetch.assert_not_awaited()
+
+
+async def test_a_public_url_is_fetched():
+    with (
+        patch(f"{_SAFE_MODULE}.assert_public_http_url", AsyncMock()),
+        patch(
+            f"{_SAFE_MODULE}.fetch_favicon_from_url", AsyncMock(return_value="https://cdn/x.png")
+        ),
+    ):
+        assert await fetch_favicon_safely("https://example.test") == "https://cdn/x.png"
+
+
+async def test_a_url_resolving_to_a_private_address_is_never_fetched():
+    # The callers' shape check does not resolve DNS, so this is the only layer
+    # that stops an internal hostname.
+    with (
+        patch(
+            f"{_SAFE_MODULE}.assert_public_http_url", AsyncMock(side_effect=ValueError("private"))
+        ),
+        patch(f"{_SAFE_MODULE}.fetch_favicon_from_url", AsyncMock()) as fetch,
+    ):
+        assert await fetch_favicon_safely("http://localhost:8080") is None
+    fetch.assert_not_awaited()
+
+
+async def test_a_failing_fetch_yields_no_icon_rather_than_raising():
+    # An icon is cosmetic; it must never fail the operation that wanted it.
+    with (
+        patch(f"{_SAFE_MODULE}.assert_public_http_url", AsyncMock()),
+        patch(f"{_SAFE_MODULE}.fetch_favicon_from_url", AsyncMock(return_value=None)),
+    ):
+        assert await fetch_favicon_safely("https://example.test") is None

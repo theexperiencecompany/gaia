@@ -37,7 +37,15 @@ exactly as it would on a laptop — and a CLI we have never seen keeps working
 as long as it respects ``HOME``.
 """
 
+import hashlib
+from typing import Final
+
 from app.agents.workspace.paths import GAIA_RUNTIME_DIRNAME, WORKSPACE_ROOT
+from app.constants.sandbox import (
+    BASH_DEFAULT_TIMEOUT_SECONDS,
+    BASH_MAX_COMMAND_LENGTH,
+    BASH_MAX_TIMEOUT_SECONDS,
+)
 
 # --- Local disk (baked into the image or re-created per sandbox) -------------
 
@@ -115,10 +123,12 @@ def install_marker_path(integration_id: str) -> str:
 # paid once per sandbox, never per call.
 INSTALL_TIMEOUT_SECONDS = 600
 
-# A single CLI invocation on behalf of the agent. Matches the bash tool's
-# default: these are the same class of command.
-EXEC_DEFAULT_TIMEOUT_SECONDS = 300
-EXEC_MAX_TIMEOUT_SECONDS = 1800
+# A single CLI invocation on behalf of the agent. These ARE sandbox shell
+# commands, so they take the sandbox's bounds rather than a second copy of the
+# same two numbers (constants/sandbox.py asks callers to import instead of
+# redefining, and a constant whose comment says "matches X" is a copy of X).
+EXEC_DEFAULT_TIMEOUT_SECONDS: Final[int] = BASH_DEFAULT_TIMEOUT_SECONDS
+EXEC_MAX_TIMEOUT_SECONDS: Final[int] = BASH_MAX_TIMEOUT_SECONDS
 
 # Bound on a "does this CLI consider itself logged in?" probe. Kept short: it
 # runs on every connect poll, and a CLI that cannot answer in this window is
@@ -140,3 +150,41 @@ LOGIN_TIMEOUT_SECONDS = 600
 # response. Login output is instructions for a human ("go to <url>, enter
 # <code>"), never a transcript, so this is ample.
 LOGIN_OUTPUT_MAX_CHARS = 4_000
+
+
+# --- The agent-facing tool ---------------------------------------------------
+
+# Metadata stamped on every CLI-backed tool. Lives here rather than beside the
+# tool factory because the HIL gate reads it, and a service importing an
+# agent-tool module would drag langchain, e2b and the sandbox client into the
+# gate's import graph.
+CLI_INTEGRATION_METADATA_KEY = "gaia_cli_integration"
+CLI_COMMAND_METADATA_KEY = "gaia_cli_command"
+
+# Custom integrations are per-user Mongo documents, but the tool registry is
+# process-global and keyed by name alone ("Tool names are globally unique" --
+# registry.py). Two users each authoring a CLI called `gh` would therefore
+# collide: last writer wins, and the loser's approval cards, Chroma namespace
+# and cached HIL verdict all resolve to the other user's integration. A short
+# digest of the integration id keeps the name readable and unique.
+_CUSTOM_TOOL_NAME_DIGEST_CHARS = 8
+
+
+def cli_tool_name(command: str, integration_id: str, *, is_platform: bool) -> str:
+    """The registry name for one CLI integration's tool.
+
+    Platform integrations keep the clean ``run_<command>`` form: their ids are
+    curated and unique, so there is nothing to disambiguate. Custom ones carry a
+    digest of their integration id.
+    """
+    base = f"run_{command.replace('-', '_').replace('.', '_')}"
+    if is_platform:
+        return base
+    digest = hashlib.sha256(integration_id.encode()).hexdigest()
+    return f"{base}_{digest[:_CUSTOM_TOOL_NAME_DIGEST_CHARS]}"
+
+
+# A CLI invocation is a shell string like any other, so it takes the same length
+# bound the bash tool applies. Without it the CLI tool accepted an unbounded
+# command its sibling refuses.
+EXEC_MAX_COMMAND_LENGTH: Final[int] = BASH_MAX_COMMAND_LENGTH

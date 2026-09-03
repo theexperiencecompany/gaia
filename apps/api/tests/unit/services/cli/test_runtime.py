@@ -288,3 +288,64 @@ class TestUserVisibleOutput:
 
     def test_output_that_is_entirely_internal_collapses_to_nothing(self):
         assert runtime.user_visible_output("/workspace/a\n/opt/gaia/b") == ""
+
+
+class TestLoginLifecycleHardening:
+    """Defects found reviewing this branch, each with a concrete failure."""
+
+    def test_age_is_measured_from_the_pid_file_not_the_log(self):
+        # The log's mtime is its LAST WRITE. A login that prints progress while
+        # it polls (link-cli auth login --interval does exactly this) would look
+        # permanently fresh, so the connect flow would never restart an expired
+        # device code and the user would stare at a dead one until the client
+        # cap fired.
+        script = runtime._state_script("app_id", make_config())
+        assert runtime._login_pid_path("app_id") in script
+        stat_lines = [line for line in script.splitlines() if "stat -c %Y" in line]
+        assert stat_lines, "expected an mtime read"
+        for line in stat_lines:
+            assert runtime._login_pid_path("app_id") in line
+            assert runtime._login_log_path("app_id") not in line
+
+    def test_the_verify_command_carries_its_own_deadline_and_no_stdin(self):
+        # Without these, an authored verify_command that waits on a TTY blocks
+        # for the whole probe budget while holding the per-user sandbox lock,
+        # queueing every other tool call that user makes behind it.
+        from app.constants.cli_integrations import VERIFY_TIMEOUT_SECONDS
+
+        script = runtime._state_script("app_id", make_config())
+        assert f"timeout {VERIFY_TIMEOUT_SECONDS}" in script
+        assert "</dev/null" in script
+
+    def test_a_verify_command_with_a_pipe_survives_being_bounded(self):
+        # The bound wraps the command in `sh -c`, so it has to be quoted as one
+        # argument or a piped verify would be split.
+        config = make_config(
+            auth=CliAuthSpec(
+                kind="device",
+                login_command="tool auth login",
+                verify_command="tool auth status --json | grep -q true",
+            )
+        )
+        script = runtime._wrap("app_id", config, runtime._state_script("app_id", config))
+        assert_valid_shell(script)
+        assert "grep -q true" in script
+
+    def test_the_login_log_read_is_bounded_in_the_sandbox(self):
+        # Truncating in Python still pulls an unbounded log across the wire on
+        # every one of up to 240 poll ticks.
+        script = runtime._state_script("app_id", make_config())
+        assert "tail -c" in script
+        assert f"cat {runtime._login_log_path('app_id')}" not in script
+
+    async def test_starting_a_login_kills_the_one_it_replaces(self):
+        # Deleting the pid file without killing the process orphans it: its only
+        # handle is gone, so cancel_login can never reach it.
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(return_value=MagicMock(exit_code=0, stdout="", stderr=""))
+        await runtime.start_login(sandbox, "app_id", make_config())
+
+        script = sandbox.commands.run.await_args.args[0]
+        kill_index = script.index("kill ")
+        remove_index = script.index("rm -f")
+        assert kill_index < remove_index, "the predecessor must die before its pid file is removed"

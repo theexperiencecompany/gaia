@@ -59,17 +59,17 @@ async def get_my_integrations(user_id: str) -> MyIntegrationsResponse:
             if ui is not None
             else ("connected" if status_map.get(cfg.id) else "not_connected")
         )
-        tool_count = (
+        # A CLI integration exposes ONE tool wrapping the whole command, so the
+        # registry counts it as 1 (0 until the category is lazily registered).
+        # Neither number is what a user means by "what can this do" — the
+        # declared capabilities are, so they win outright rather than acting as
+        # a fallback for a missing count.
+        capability_count = _cli_capability_count(cfg.id)
+        tool_count = capability_count or (
             (len(ui.integration.tools) or counts.get(cfg.id.lower(), 0))
             if ui is not None
             else counts.get(cfg.id.lower(), 0)
         )
-        if not tool_count:
-            # A CLI integration exposes one tool wrapping the whole command, so
-            # the registry count is 1 (and 0 until the category is lazily
-            # registered) — neither is what a user means by "what can this do".
-            # Its declared capabilities are.
-            tool_count = _cli_capability_count(cfg.id)
         items.append(
             MyIntegrationItem(
                 id=cfg.id,

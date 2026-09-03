@@ -31,7 +31,7 @@ from typing import Any, Final
 
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.cli.cli_tool import CLI_INTEGRATION_METADATA_KEY
+from app.constants.cli_integrations import CLI_INTEGRATION_METADATA_KEY
 from app.constants.hil import HIL_CLI_SHAPE_MAX_WORDS
 
 # The argument the shell string arrives in — ``CliToolInput.command``.
@@ -82,6 +82,7 @@ def cli_command_shape(tool: BaseTool | None, args: Mapping[str, Any] | None) -> 
 # resolve to a reassuring head word.
 _SHELL_EXEC_WRAPPERS = frozenset(
     {
+        # Shells and direct exec.
         "sh",
         "bash",
         "zsh",
@@ -89,6 +90,9 @@ _SHELL_EXEC_WRAPPERS = frozenset(
         "ksh",
         "eval",
         "exec",
+        "source",
+        ".",
+        # Run-something-else wrappers.
         "env",
         "xargs",
         "nohup",
@@ -96,9 +100,34 @@ _SHELL_EXEC_WRAPPERS = frozenset(
         "sudo",
         "doas",
         "nice",
+        "ionice",
         "setsid",
         "watch",
         "command",
+        "stdbuf",
+        "flock",
+        "script",
+        "busybox",
+        "chroot",
+        "unshare",
+        # Interpreters: `python3 -c '<payload>'` hides its payload in an
+        # argument exactly the way `sh -c` does.
+        "python",
+        "python3",
+        "node",
+        "deno",
+        "bun",
+        "perl",
+        "ruby",
+        "php",
+        "awk",
+        "sed",
+        # Tools whose flags run arbitrary commands (`find -exec`, `git -c
+        # alias`, `make` recipes, `ssh host cmd`).
+        "find",
+        "git",
+        "make",
+        "ssh",
     }
 )
 
@@ -159,20 +188,28 @@ def _leading_words(segment: list[str]) -> str:
     A segment with no words is not "harmless": ``--force`` alone, a bare redirection,
     a path-qualified executable — none of them shape, so all of them gate.
 
-    Neither does a segment whose head hands the real command to another shell.
+    Neither does a segment that hands the real command to something else.
     ``sh -c 'gh repo delete acme/api'`` would otherwise shape as a bare ``sh``:
     the payload is a quoted argument, not a separator, so it never becomes its
     own segment, and the classifier would judge a command name that says nothing
     about what runs.
+
+    The env-assignment strip happens BEFORE that check and the check applies to
+    every shape word, not just the first. Doing it the other way round left
+    ``FOO=1 sh -c '<payload>'`` shaping as ``sh`` and ``LC_ALL=C env gh repo
+    delete`` shaping as ``env gh repo delete`` — one assignment in front was
+    enough to walk a payload past the gate, and the verdict is cached per shape
+    for every user.
     """
-    if segment and segment[0] in _SHELL_EXEC_WRAPPERS:
-        return ""
     words: list[str] = []
     for token in segment:
         if not words and _ENV_ASSIGNMENT.match(token):
             continue
         if not _SHAPE_WORD.match(token):
             break
+        if token in _SHELL_EXEC_WRAPPERS:
+            # Whatever this would have run is in an argument we cannot see.
+            return ""
         words.append(token)
         if len(words) == HIL_CLI_SHAPE_MAX_WORDS:
             break

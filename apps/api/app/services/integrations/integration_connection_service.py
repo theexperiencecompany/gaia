@@ -14,6 +14,7 @@ from app.config.oauth_config import (
     get_integration_scopes,
 )
 from app.config.token_repository import token_repository
+from app.constants.integrations import MANAGED_BY_CLI, MANAGED_BY_MCP
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
@@ -82,11 +83,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 requires_auth=(
                     integration.mcp_config.requires_auth
                     if integration.mcp_config
-                    else (
-                        integration.cli_config.auth.kind != "none"
-                        if integration.cli_config
-                        else False
-                    )
+                    else (integration.cli_config.requires_auth if integration.cli_config else False)
                 ),
                 slug=integration.id,  # Platform integrations use ID as slug
             )
@@ -501,7 +498,7 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
     if not resolved:
         raise ValueError(f"Integration {integration_id} not found")
 
-    if resolved.managed_by == "cli":
+    if resolved.managed_by == MANAGED_BY_CLI:
         # Checked before the custom-source branch: a user-authored CLI
         # integration is `source == "custom"` too, and the MCP teardown would be
         # both wrong and a no-op for it.
@@ -561,10 +558,18 @@ async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str)
             )
 
     # Determine whether to delete record or set status to "created"
-    if managed_by == "mcp":
-        # MCP integrations: record already deleted in main disconnect logic
+    if managed_by in (MANAGED_BY_MCP, MANAGED_BY_CLI):
+        # Both transports already removed the record in the disconnect helper
+        # above. Falling through would call update_user_integration_status,
+        # which is an UPSERT: for a user-authored integration whose catalog
+        # document was just deleted, it recreates the user_integrations row with
+        # status "created". The row is then invisible (get_user_integrations
+        # drops rows whose document is missing) but permanent -- exists() stays
+        # true forever and a second disconnect raises "not found".
         log.info(
-            f"{LogTag.INTEGRATION} MCP integration record removed", integration_id=integration_id
+            f"{LogTag.INTEGRATION} Integration record already removed",
+            integration_id=integration_id,
+            managed_by=managed_by,
         )
     else:
         # Check if it's a platform integration (defined in oauth_config.py)

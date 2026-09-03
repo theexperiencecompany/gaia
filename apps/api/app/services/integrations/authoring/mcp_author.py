@@ -39,6 +39,10 @@ class McpIntegrationAuthor(IntegrationAuthor):
         # through that model.
         assert_safe_url_shape(blueprint.server_url)
 
+        # An authored integration starts private; publishing is a separate,
+        # deliberate step. That is the request model's own default, so it is
+        # not restated here -- it is pinned by a test instead, which can fail
+        # if the default ever moves.
         request = CreateCustomIntegrationRequest(
             name=blueprint.name,
             description=blueprint.description or None,
@@ -46,7 +50,6 @@ class McpIntegrationAuthor(IntegrationAuthor):
             server_url=blueprint.server_url,
             requires_auth=blueprint.requires_auth,
             auth_type=blueprint.auth_type,
-            is_public=False,
             bearer_token=blueprint.bearer_token,
         )
         mcp_client = await get_mcp_client(user_id=user_id)
@@ -54,8 +57,7 @@ class McpIntegrationAuthor(IntegrationAuthor):
             user_id, request, mcp_client
         )
 
-        status = str(result.get("status", ""))
-        connected = status == "connected"
+        connected = result.get("status") == "connected"
         return AuthoredIntegration(
             integration=integration,
             needs_connection=not connected,

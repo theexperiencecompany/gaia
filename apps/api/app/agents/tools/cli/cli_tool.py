@@ -13,9 +13,13 @@ So the model gets what a developer gets: the command, its own help, and a
 shell. Pipes, redirection and ``&&`` work, because a CLI without them is half a
 CLI; ``gh pr list --json number | jq ...`` is the normal way to use one.
 
-What the model does NOT get is a way out of the integration: the tool's name,
-description and gating are bound to one integration, and only that
-integration's launcher is put on ``PATH``.
+What the tool does bound is attribution, not isolation: its name, description
+and HIL gating belong to one integration, and every command it runs is
+classified against that integration. It is NOT a sandbox within the sandbox --
+``PATH`` carries the shared launcher directory, so every CLI the user has
+connected is reachable from any of them, and they all run as the same sandbox
+user. That is the same trust boundary the bash tool already has: one user's
+own tools, on one user's own machine.
 """
 
 from __future__ import annotations
@@ -29,9 +33,13 @@ from pydantic import BaseModel, Field
 from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_dir
 from app.constants.cli_integrations import (
+    CLI_COMMAND_METADATA_KEY,
+    CLI_INTEGRATION_METADATA_KEY,
     EXEC_DEFAULT_TIMEOUT_SECONDS,
+    EXEC_MAX_COMMAND_LENGTH,
     EXEC_MAX_TIMEOUT_SECONDS,
     INSTALL_TIMEOUT_SECONDS,
+    cli_tool_name,
 )
 from app.constants.log_tags import LogTag
 from app.models.cli_config import CliConfig
@@ -39,13 +47,6 @@ from app.services.cli import runtime
 from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
 from app.utils.output_limiter import truncate_head_tail
 from shared.py.wide_events import log
-
-# Metadata key marking a tool as CLI-backed, and naming the integration it
-# belongs to. Read by the HIL gate, which classifies the risk of the *command*
-# rather than of the tool as a whole (every call shares one tool name, so a
-# name-only verdict would gate `gh pr list` exactly as hard as `gh repo delete`).
-CLI_INTEGRATION_METADATA_KEY = "gaia_cli_integration"
-CLI_COMMAND_METADATA_KEY = "gaia_cli_command"
 
 
 class CliToolInput(BaseModel):
@@ -61,18 +62,6 @@ class CliToolInput(BaseModel):
         default=EXEC_DEFAULT_TIMEOUT_SECONDS,
         description="Seconds before the command is killed.",
     )
-
-
-def tool_name_for(command: str) -> str:
-    """Stable tool name for a CLI integration's command.
-
-    Derived from the executable rather than the integration id, so the name the
-    model selects and the name it types inside ``command`` are the same word
-    (``run_link_cli`` -> ``link-cli``). The ``run_`` prefix keeps it reading as
-    an action and avoids a bare ``gh``/``vercel`` colliding with a future
-    first-party tool of that name.
-    """
-    return f"run_{command.replace('-', '_').replace('.', '_')}"
 
 
 def _description(config: CliConfig, integration_name: str) -> str:
@@ -96,8 +85,15 @@ def _description(config: CliConfig, integration_name: str) -> str:
     return " ".join(lines)
 
 
-def build_cli_tool(integration_id: str, integration_name: str, config: CliConfig) -> BaseTool:
+def build_cli_tool(
+    integration_id: str,
+    integration_name: str,
+    config: CliConfig,
+    *,
+    is_platform: bool = True,
+) -> BaseTool:
     """Create the LangChain tool that runs one connected CLI."""
+    name = cli_tool_name(config.command, integration_id, is_platform=is_platform)
 
     async def _run(
         command: Annotated[str, "Shell command to run"],
@@ -109,11 +105,13 @@ def build_cli_tool(integration_id: str, integration_name: str, config: CliConfig
     ) -> str:
         runnable_config: RunnableConfig = run_config or {}
         log.set(
-            tool={"name": tool_name_for(config.command), "action": "execute"},
+            tool={"name": name, "action": "execute"},
             integration={"id": integration_id, "managed_by": "cli"},
         )
         if not command.strip():
             return "Error: command cannot be empty"
+        if len(command) > EXEC_MAX_COMMAND_LENGTH:
+            return f"Error: command exceeds {EXEC_MAX_COMMAND_LENGTH} characters"
 
         try:
             user_id = get_user_id(runnable_config)
@@ -167,7 +165,7 @@ def build_cli_tool(integration_id: str, integration_name: str, config: CliConfig
 
     return StructuredTool.from_function(
         coroutine=_run,
-        name=tool_name_for(config.command),
+        name=name,
         description=_description(config, integration_name),
         args_schema=CliToolInput,
         # The gate reads these to classify the command being run, and to tie the

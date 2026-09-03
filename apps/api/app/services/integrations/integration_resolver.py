@@ -92,7 +92,7 @@ class IntegrationResolver:
             if integration.cli_config:
                 # A CLI's auth shape is declared by its own spec, not by the
                 # MCP-flavoured document fields.
-                requires_auth = integration.cli_config.auth.kind != "none"
+                requires_auth = integration.cli_config.requires_auth
 
             if mcp_config:
                 # mcp_config is authoritative, but log if document-level values conflict

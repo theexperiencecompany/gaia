@@ -232,7 +232,7 @@ class CreateCustomIntegrationRequest(BaseModel):
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
     auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
-    is_public: bool = Field(False)
+    is_public: bool = Field(default=False)
     bearer_token: str | None = Field(None)
 
 
@@ -302,7 +302,7 @@ class IntegrationResponse(BaseModel):
             # HTTP auth scheme, and a CLI's login is neither OAuth nor a bearer
             # header. Leaving it unset is what keeps the client from opening the
             # bearer-token dialog instead of the CLI connect flow.
-            requires_auth = integration.cli_config.auth.kind != "none"
+            requires_auth = integration.cli_config.requires_auth
 
         # Compute slug at runtime (not stored in DB)
         slug = generate_integration_slug(
@@ -345,7 +345,7 @@ class IntegrationResponse(BaseModel):
         elif oauth_int.cli_config:
             # See from_integration: auth_type is an HTTP scheme and does not
             # describe a CLI login.
-            requires_auth = oauth_int.cli_config.auth.kind != "none"
+            requires_auth = oauth_int.cli_config.requires_auth
 
         return cls(
             integration_id=oauth_int.id,

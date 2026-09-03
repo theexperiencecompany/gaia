@@ -21,6 +21,7 @@ from app.services.integrations.authoring.base import (
     register_author,
 )
 from app.services.integrations.user_integrations import add_user_integration
+from app.utils.favicon_utils import fetch_favicon_safely
 from shared.py.wide_events import log
 
 
@@ -45,6 +46,7 @@ class CliIntegrationAuthor(IntegrationAuthor):
                 command=blueprint.command,
                 install_command=blueprint.install_command,
                 capabilities=blueprint.capabilities,
+                homepage=blueprint.homepage,
                 auth=CliAuthSpec(
                     kind=blueprint.auth_kind,
                     login_command=blueprint.login_command,
@@ -62,6 +64,7 @@ class CliIntegrationAuthor(IntegrationAuthor):
             # what is wrong so it can fix it and retry.
             raise ValueError(f"Invalid CLI configuration: {e}") from e
 
+        icon_url = await fetch_favicon_safely(cli_config.homepage)
         integration_id = str(uuid.uuid4())
         integration = Integration(
             integration_id=integration_id,
@@ -74,14 +77,14 @@ class CliIntegrationAuthor(IntegrationAuthor):
             created_by=user_id,
             display_priority=0,
             is_featured=False,
+            icon_url=icon_url,
             cli_config=cli_config,
             # The capabilities double as the integration's displayed tool list:
             # they are what this integration can do, which is exactly what the
             # tool list means to a user, and it is what publishing validates.
             tools=[IntegrationTool(name=capability) for capability in cli_config.capabilities],
-            requires_auth=cli_config.auth.kind != "none",
+            requires_auth=cli_config.requires_auth,
             created_at=datetime.now(UTC),
-            icon_url=None,
             published_at=None,
             clone_count=0,
         )
@@ -100,7 +103,7 @@ class CliIntegrationAuthor(IntegrationAuthor):
             await integration_repository.delete(integration_id)
             raise
 
-        needs_connection = cli_config.auth.kind != "none"
+        needs_connection = cli_config.requires_auth
         return AuthoredIntegration(
             integration=integration,
             needs_connection=True,

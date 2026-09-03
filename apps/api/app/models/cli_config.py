@@ -39,6 +39,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.utils.url_safety import assert_safe_url_shape
+
 # An executable name, not a path. This becomes a filename in the launcher
 # directory and is interpolated into shell, so it is restricted to characters
 # that are inert in both roles. Vendor CLIs are all named well within this
@@ -47,6 +49,13 @@ COMMAND_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
 
 # Environment-variable name, for the token auth shape.
 ENV_VAR_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
+
+
+# Where a connect attempt stands. Lives beside the config rather than in the
+# service that drives it, because the API schema also needs it and a schema
+# cannot import a service -- which is why it was previously written out twice
+# and would have silently rejected a new phase at serialization time.
+CliConnectPhase = Literal["installing", "needs_token", "awaiting_approval", "connected", "failed"]
 
 
 class CliAuthSpec(BaseModel):
@@ -133,7 +142,38 @@ class CliConfig(BaseModel):
     # card. The agent gets the real detail from the CLI's own --help.
     capabilities: list[str] = Field(default_factory=list)
 
+    # The vendor's own site, used only to fetch the icon shown on the
+    # integration card. Declared rather than derived: the obvious shortcut is to
+    # reuse a URL out of ``install_command``, but that names where the bytes are
+    # hosted, not whose tool this is. A CLI published through GitHub Releases or
+    # npm would take GitHub's or npm's icon, which looks plausible and is wrong.
+    homepage: str | None = None
+
     auth: CliAuthSpec
+
+    @field_validator("homepage")
+    @classmethod
+    def _validate_homepage(cls, v: str | None) -> str | None:
+        """Reject anything the favicon fetcher should not be pointed at.
+
+        This value reaches an outbound HTTP request, and for an agent-authored
+        integration it originates from a model, so it gets the same cheap
+        SSRF shape check the MCP server URL does.
+        """
+        if v is None or not v.strip():
+            return None
+        assert_safe_url_shape(v)
+        return v
+
+    @property
+    def requires_auth(self) -> bool:
+        """Whether connecting this CLI needs a credential step.
+
+        One derived predicate instead of ``auth.kind != "none"`` spelled out at
+        every call site, so adding a fourth auth shape cannot leave one of them
+        behind.
+        """
+        return self.auth.kind != "none"
 
     @field_validator("command")
     @classmethod

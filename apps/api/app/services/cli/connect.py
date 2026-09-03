@@ -23,25 +23,19 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass
-from typing import Literal
 
 from e2b import AsyncSandbox
 
 from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.repositories.user_integrations import user_integration_repository
-from app.models.cli_config import CliConfig
+from app.models.cli_config import CliConfig, CliConnectPhase
 from app.services.cli import runtime
 from app.services.integrations.user_integration_status import update_user_integration_status
 from app.services.integrations.user_integrations import add_user_integration
-from app.services.sandbox import acquire_sandbox
+from app.services.sandbox import SandboxAcquisitionError, acquire_sandbox
+from app.services.sandbox.errors import SandboxRateLimitError
 from shared.py.wide_events import log
-
-# ``installing`` — the CLI is being fetched into the sandbox.
-# ``needs_token`` — waiting for the user to paste a secret.
-# ``awaiting_approval`` — a device login is live; ``instructions`` says what to do.
-# ``connected`` / ``failed`` — terminal.
-CliConnectPhase = Literal["installing", "needs_token", "awaiting_approval", "connected", "failed"]
 
 _TERMINAL: frozenset[CliConnectPhase] = frozenset({"connected", "failed"})
 
@@ -89,6 +83,30 @@ async def advance(
 
     await _ensure_attached(user_id, integration_id)
 
+    try:
+        return await _advance_in_sandbox(user_id, integration_id, config, token)
+    except SandboxRateLimitError:
+        # A quota the user owns and can wait out, not a broken integration.
+        return _failed(
+            integration_id,
+            "You have started too many workspaces recently. Wait a few minutes and connect again.",
+        )
+    except SandboxAcquisitionError as e:
+        return _failed(
+            integration_id,
+            f"GAIA could not start the workspace that runs {config.command}. "
+            "This is usually temporary; try again in a minute.",
+            detail=str(e),
+        )
+
+
+async def _advance_in_sandbox(
+    user_id: str,
+    integration_id: str,
+    config: CliConfig,
+    token: str | None,
+) -> CliConnectOutcome:
+    """The part of :func:`advance` that needs a live sandbox."""
     async with acquire_sandbox(user_id) as sbx:
         # Only the token shape has somewhere to put a secret. The connect
         # endpoint is public and takes a bearer_token for the MCP transport, so
@@ -208,13 +226,6 @@ async def disconnect(user_id: str, integration_id: str, config: CliConfig) -> No
     async with acquire_sandbox(user_id) as sbx:
         await runtime.cancel_login(sbx, integration_id)
         await runtime.clear_credentials(sbx, integration_id, config)
-
-
-async def is_connected(user_id: str, integration_id: str, config: CliConfig) -> bool:
-    """Ask the CLI itself whether it is still logged in."""
-    async with acquire_sandbox(user_id) as sbx:
-        state = await runtime.probe_state(sbx, integration_id, config)
-        return state.authenticated
 
 
 def _failed(integration_id: str, message: str, *, detail: str | None = None) -> CliConnectOutcome:

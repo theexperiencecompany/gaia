@@ -33,7 +33,7 @@ from app.services.integrations.user_integrations import (
 )
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.utils.favicon_utils import fetch_favicon_from_url
+from app.utils.favicon_utils import fetch_favicon_safely
 from shared.py.wide_events import log
 
 
@@ -271,7 +271,7 @@ async def create_and_connect_custom_integration(
             "action": "create_and_connect_custom_integration",
         }
     )
-    icon_url = await _fetch_icon_safely(request.server_url)
+    icon_url = await fetch_favicon_safely(request.server_url)
     integration = await create_custom_integration(user_id, request, icon_url)
     integration_id = integration.integration_id
 
@@ -296,14 +296,6 @@ async def create_and_connect_custom_integration(
 
     # No auth required - try direct connection
     return await _connect_without_auth(integration, mcp_client)
-
-
-async def _fetch_icon_safely(server_url: str) -> str | None:
-    """Fetch favicon with error handling."""
-    try:
-        return await fetch_favicon_from_url(server_url)
-    except Exception:
-        return None
 
 
 async def _probe_connection_safely(mcp_client: MCPClient, server_url: str) -> dict[str, Any]:

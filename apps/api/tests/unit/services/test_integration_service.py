@@ -285,6 +285,59 @@ class TestIntegrationResolverResolve:
 
     @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
+    async def test_resolve_custom_cli_takes_requires_auth_from_its_own_auth_spec(
+        self, mock_get_by_id, mock_repo
+    ):
+        """A CLI's credential step is declared by its auth spec, not the
+        MCP-flavoured document field, which every authored CLI leaves at the
+        default. Trusting the document would resolve a token-authenticated CLI
+        as needing nothing, and the connect flow would skip the paste-a-token
+        step entirely."""
+        mock_get_by_id.return_value = None
+        doc = _make_custom_doc(requires_auth=False)
+        doc["managed_by"] = "cli"
+        doc["mcp_config"] = None
+        doc["cli_config"] = {
+            "command": "gh",
+            "install_command": "npm install -g gh",
+            "auth": {
+                "kind": "token",
+                "verify_command": "gh auth status",
+                "token_env": "GH_TOKEN",
+                "token_label": "GitHub token",
+            },
+        }
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+
+        result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
+
+        assert result is not None
+        assert result.requires_auth is True
+
+    @patch("app.services.integrations.integration_resolver.integration_repository")
+    @patch("app.services.integrations.integration_resolver.get_integration_by_id")
+    async def test_resolve_custom_cli_with_no_auth_requires_none(self, mock_get_by_id, mock_repo):
+        """The other direction: a formatter-style CLI with no credentials must
+        not be reported as needing one, or the UI shows a connect dialog with
+        nothing to fill in."""
+        mock_get_by_id.return_value = None
+        doc = _make_custom_doc(requires_auth=True)
+        doc["managed_by"] = "cli"
+        doc["mcp_config"] = None
+        doc["cli_config"] = {
+            "command": "fmt",
+            "install_command": "npm install -g fmt",
+            "auth": {"kind": "none", "verify_command": "fmt --version"},
+        }
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+
+        result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
+
+        assert result is not None
+        assert result.requires_auth is False
+
+    @patch("app.services.integrations.integration_resolver.integration_repository")
+    @patch("app.services.integrations.integration_resolver.get_integration_by_id")
     async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_repo):
         """When mcp_config.requires_auth differs from doc-level, mcp_config wins and syncs."""
         mock_get_by_id.return_value = None
@@ -1675,7 +1728,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_bearer_token_flow(self, mock_favicon, mock_create):
@@ -1729,7 +1782,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_probe_fails_returns_error(self, mock_favicon, mock_create):
@@ -1766,7 +1819,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_probe_detects_auth_requirement(self, mock_favicon, mock_create):
@@ -1807,7 +1860,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_connect_without_auth_success(self, mock_favicon, mock_create):
@@ -1845,7 +1898,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_connect_raises_oauth_error_triggers_auth_flow(self, mock_favicon, mock_create):
@@ -1885,7 +1938,7 @@ class TestCreateAndConnectCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.custom_crud.fetch_favicon_from_url",
+        "app.services.integrations.custom_crud.fetch_favicon_safely",
         new_callable=AsyncMock,
     )
     async def test_connect_generic_error(self, mock_favicon, mock_create):
@@ -3083,3 +3136,46 @@ class TestConnectMorePaths:
 
         assert result.status == "redirect"
         assert result.redirect_url == "https://auth.example.com"
+
+
+class TestCliDisconnectDoesNotResurrectTheRecord:
+    """Disconnecting a user-authored CLI integration must leave nothing behind.
+
+    ``_invalidate_caches`` ends in ``update_user_integration_status``, which is
+    an upsert. For a custom integration whose catalog document the disconnect
+    just deleted, falling into that branch recreates the ``user_integrations``
+    row with status "created" — invisible in the UI (the list drops rows whose
+    document is gone) but permanent: ``exists()`` stays true forever and a
+    second disconnect raises "not found".
+    """
+
+    async def test_the_user_record_is_not_recreated(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.integrations import integration_connection_service as module
+
+        with (
+            patch.object(module, "get_integration_by_id", return_value=None),
+            patch.object(module, "delete_cache", AsyncMock()),
+            patch.object(module, "remove_user_integration", AsyncMock()) as remove,
+            patch.object(module, "update_user_integration_status", AsyncMock()) as upsert,
+        ):
+            await module._invalidate_caches("user-1", "d8f9d534-cli", "cli")
+
+        upsert.assert_not_awaited()
+        remove.assert_not_awaited()
+
+    async def test_mcp_keeps_its_existing_behaviour(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.integrations import integration_connection_service as module
+
+        with (
+            patch.object(module, "get_integration_by_id", return_value=None),
+            patch.object(module, "delete_cache", AsyncMock()),
+            patch.object(module, "remove_user_integration", AsyncMock()),
+            patch.object(module, "update_user_integration_status", AsyncMock()) as upsert,
+        ):
+            await module._invalidate_caches("user-1", "custom-mcp", "mcp")
+
+        upsert.assert_not_awaited()

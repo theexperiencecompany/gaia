@@ -66,8 +66,15 @@ def _cli_config(command: str = "link-cli") -> CliConfig:
     )
 
 
-def _cli_integration(integration_id: str = "stripe_link") -> CliIntegration:
-    return CliIntegration(id=integration_id, name="Stripe Link", config=_cli_config())
+def _cli_integration(
+    integration_id: str = "stripe_link", *, is_platform: bool = True
+) -> CliIntegration:
+    return CliIntegration(
+        id=integration_id,
+        name="Stripe Link",
+        config=_cli_config(),
+        is_platform=is_platform,
+    )
 
 
 def _cli_tool_registry() -> AsyncMock:

@@ -117,7 +117,7 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
-from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS
+from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS, cli_tool_name
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
@@ -2041,11 +2041,16 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                     "link-cli auth login --client-name GAIA --interval 5 "
                     f"--timeout {LOGIN_TIMEOUT_SECONDS}"
                 ),
-                # `auth status` exits 0 whether or not you are signed in, so the
-                # exit code alone says nothing — the authenticated flag does.
+                # `auth status` exits 0 whether or not you are signed in, so
+                # the exit code alone says nothing -- the authenticated flag
+                # does. Read with `jq -e` (baked into the sandbox image) rather
+                # than grepped: a grep silently matches nothing if Stripe
+                # renames the field or pretty-prints the value onto its own
+                # line, which would strand the user as permanently
+                # "not connected". `jq -e` exits non-zero on false AND errors
+                # loudly on a shape it cannot read.
                 verify_command=(
-                    "link-cli auth status --format json "
-                    "| grep -qi '\"authenticated\"[[:space:]]*:[[:space:]]*true'"
+                    "link-cli auth status --format json | jq -e '.authenticated == true'"
                 ),
                 logout_command="link-cli auth logout",
             ),
@@ -2070,7 +2075,11 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             # there is nothing to retrieve — bind it and go.
             use_direct_tools=True,
             disable_retrieve_tools=True,
-            auto_bind_tools=["run_link_cli"],
+            # Derived, not spelled out: the tool's registry name comes from the
+            # command, so a literal here silently binds nothing the day the
+            # command changes -- and with disable_retrieve_tools that produces a
+            # subagent with no tools that still reports healthy.
+            auto_bind_tools=[cli_tool_name("link-cli", "stripe_link", is_platform=True)],
         ),
         content=STRIPE_LINK_CONTENT,
     ),

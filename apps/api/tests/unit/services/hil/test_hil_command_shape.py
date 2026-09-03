@@ -202,3 +202,50 @@ class TestGateBypassesFoundInReview:
 
     def test_an_ordinary_command_named_like_a_wrapper_argument_still_shapes(self):
         assert derive_command_shape("gh repo list") == "gh repo list"
+
+
+class TestTheLexerHasNoOpinionsOfItsOwn:
+    """The shape is only as honest as the tokenizer under it.
+
+    Every one of these is a way a shell-like lexer can quietly drop or truncate
+    part of the command. Each one that got through would hand the classifier a
+    shorter, more innocent string than what actually runs — and the verdict for
+    that shorter string is then cached against the real one.
+    """
+
+    def test_quoting_a_subcommand_does_not_hide_it(self) -> None:
+        # Quotes are shell syntax, not part of the word. A lexer that kept them
+        # would fail the shape-word test on `"repo"` and stop at a bare `gh`,
+        # so quoting the dangerous half of the command would be enough to have
+        # it classified as whatever plain `gh` was classified as.
+        assert derive_command_shape('gh "repo" "delete" acme/api') == "gh repo delete"
+        assert derive_command_shape("gh 'repo' delete acme/api") == "gh repo delete"
+
+    @pytest.mark.parametrize(
+        ("command", "expected"),
+        [
+            # `build:prod` is an argument, not a subcommand — the run ends there.
+            ("npm run build:prod", "npm run"),
+            # Nothing shapeable at the head at all: fail closed, do not offer `aws`.
+            ("aws:cli s3 ls", ""),
+            ("g++ --version", ""),
+        ],
+    )
+    def test_a_word_the_shape_cannot_represent_ends_the_run_whole(
+        self, command: str, expected: str
+    ) -> None:
+        # It must not be chopped at the first character the lexer does not
+        # recognise: `aws:cli` truncated to `aws` is a command that was never
+        # typed, and `g++` truncated to `g` shapes an unshapeable string.
+        assert derive_command_shape(command) == expected
+
+    def test_no_character_in_the_command_starts_a_comment(self) -> None:
+        # A commenter character discards the rest of the line, taking every
+        # chained command after it out of the shape. `#` was the one found in
+        # review; the guarantee has to be that there is no such character at
+        # all, so an ordinary env prefix is shaped in full too.
+        assert derive_command_shape("MAX_RETRIES=3 gh pr list") == "gh pr list"
+        assert (
+            derive_command_shape("MAX_RETRIES=3 gh api /user && gh repo delete acme/api")
+            == "gh api ; gh repo delete"
+        )

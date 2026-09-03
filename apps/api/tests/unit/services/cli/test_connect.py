@@ -256,14 +256,6 @@ class TestNoAuth:
         assert "not reporting as ready" in (outcome.message or "")
 
 
-class TestIsConnected:
-    async def test_defers_entirely_to_the_cli(self, env):
-        env.probe.return_value = state(authenticated=True)
-        assert await connect.is_connected(USER, INTEGRATION, DEVICE) is True
-        env.probe.return_value = state(authenticated=False)
-        assert await connect.is_connected(USER, INTEGRATION, DEVICE) is False
-
-
 class TestReviewFixes:
     """Behaviours added after review; each one had a concrete failure."""
 
@@ -308,3 +300,48 @@ class TestReviewFixes:
         env.add_user.side_effect = RuntimeError("mongo down")
         with pytest.raises(RuntimeError):
             await connect.advance(USER, INTEGRATION, DEVICE)
+
+
+class TestInfrastructureFailuresAreExplained:
+    """A user cannot act on "500: failed to run reserve script"."""
+
+    async def test_an_unavailable_sandbox_says_what_to_do(self, env):
+        from app.services.sandbox import SandboxAcquisitionError
+
+        with patch.object(
+            connect,
+            "acquire_sandbox",
+            MagicMock(side_effect=SandboxAcquisitionError("e2b 500: reserve script failed")),
+        ):
+            outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+
+        assert outcome.phase == "failed"
+        assert "link-cli" in (outcome.message or "")
+        assert "try again" in (outcome.message or "").lower()
+
+    async def test_a_sandbox_rate_limit_is_named_as_the_users_own_quota(self, env):
+        from app.services.sandbox.errors import SandboxRateLimitError
+
+        with patch.object(
+            connect,
+            "acquire_sandbox",
+            MagicMock(side_effect=SandboxRateLimitError("too many")),
+        ):
+            outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+
+        assert outcome.phase == "failed"
+        assert "too many workspaces" in (outcome.message or "")
+        # A quota is not a broken integration, so no upstream noise is shown.
+        assert outcome.instructions is None
+
+    async def test_the_integration_is_still_attached_before_the_failure(self, env):
+        from app.services.sandbox import SandboxAcquisitionError
+
+        with patch.object(
+            connect,
+            "acquire_sandbox",
+            MagicMock(side_effect=SandboxAcquisitionError("down")),
+        ):
+            await connect.advance(USER, INTEGRATION, DEVICE)
+        # Otherwise a user who hits a blip has no record to retry against.
+        env.add_user.assert_awaited_once()

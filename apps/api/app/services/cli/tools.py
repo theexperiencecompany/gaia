@@ -18,6 +18,7 @@ connect flow records.
 
 from dataclasses import dataclass
 
+from app.constants.cli_integrations import cli_tool_name
 from app.models.cli_config import CliConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 
@@ -29,6 +30,15 @@ class CliIntegration:
     id: str
     name: str
     config: CliConfig
+    # Platform integrations are curated and their ids are unique, so their tool
+    # keeps the clean name; custom ones are per-user documents sharing one
+    # process-global registry and need disambiguating.
+    is_platform: bool
+
+    @property
+    def tool_name(self) -> str:
+        """The registry name of this integration's tool."""
+        return cli_tool_name(self.config.command, self.id, is_platform=self.is_platform)
 
 
 async def resolve_cli_integration(integration_id: str) -> CliIntegration | None:
@@ -45,4 +55,5 @@ async def resolve_cli_integration(integration_id: str) -> CliIntegration | None:
         id=resolved.integration_id,
         name=resolved.name,
         config=resolved.cli_config,
+        is_platform=resolved.source == "platform",
     )

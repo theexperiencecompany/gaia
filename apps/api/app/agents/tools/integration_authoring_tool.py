@@ -57,6 +57,14 @@ class CustomIntegrationSpec(BaseModel):
         default=None,
         description="CLI only: short phrases for what it can do, shown to the user",
     )
+    homepage: str = Field(
+        default="",
+        description=(
+            "CLI only: the vendor's own site, e.g. 'https://cli.github.com'. Used for "
+            "the integration's icon, so give the product's homepage, NOT the download "
+            "or package-registry URL."
+        ),
+    )
     auth_kind: Literal["none", "device", "token"] = Field(
         default="none",
         description=(
@@ -172,6 +180,7 @@ def _build_blueprint(spec: CustomIntegrationSpec) -> McpBlueprint | CliBlueprint
         command=spec.command,
         install_command=spec.install_command,
         capabilities=spec.capabilities or [],
+        homepage=spec.homepage or None,
         auth_kind=spec.auth_kind,
         login_command=spec.login_command or None,
         verify_command=spec.verify_command,

@@ -49,6 +49,8 @@ class CliBlueprint(BlueprintBase):
     command: str
     install_command: str
     capabilities: list[str] = Field(default_factory=list)
+    # The vendor's site, used to fetch the integration's icon.
+    homepage: str | None = None
     auth_kind: Literal["none", "device", "token"] = "none"
     login_command: str | None = None
     verify_command: str

@@ -99,7 +99,14 @@ async def register_cli_subagent_tools(subagent: Subagent, tool_registry: ToolReg
         )
     await register_cli_tools(
         tool_registry,
-        CliIntegration(id=subagent.id, name=integration.name, config=integration.cli_config),
+        CliIntegration(
+            id=subagent.id,
+            name=integration.name,
+            config=integration.cli_config,
+            # Reached only via the OAUTH_INTEGRATIONS lookup above, so this is
+            # by definition a curated platform entry.
+            is_platform=True,
+        ),
         tool_space=subagent.config.tool_space,
     )
 
@@ -128,7 +135,12 @@ async def register_cli_tools(
     if integration.id in tool_registry._categories:
         return
 
-    tool = build_cli_tool(integration.id, integration.name, integration.config)
+    tool = build_cli_tool(
+        integration.id,
+        integration.name,
+        integration.config,
+        is_platform=integration.is_platform,
+    )
     tool_registry._add_category(
         name=integration.id,
         tools=[tool],

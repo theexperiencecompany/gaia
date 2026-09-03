@@ -84,7 +84,15 @@ async def initiate_integration_connection(
             error=str(e),
             error_type=type(e).__name__,
         )
-        return _error(str(e))
+        # The raw text here is an upstream failure ("500: Failed to create
+        # sandbox: failed to run reserve script: redis: connection pool
+        # timeout") that names GAIA's internals and tells the user nothing they
+        # can act on. The detail stays on the wide event above, where it is
+        # actually useful; the user gets the one thing they can do.
+        return _error(
+            f"Something went wrong connecting {resolved.name}. "
+            "This is usually temporary; try again in a moment."
+        )
 
     log.set(outcome=result.status)
     if result.status == "connected":

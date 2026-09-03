@@ -6,6 +6,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.models.cli_config import CliConnectPhase
 from app.models.integration_instructions_models import InstructionsEditor
 from app.models.integration_models import UserIntegrationStatus
 from app.models.integration_provider import ManagedBy
@@ -189,7 +190,7 @@ class CliConnectDetail(CamelModel):
     leaves ``pending``.
     """
 
-    phase: Literal["installing", "needs_token", "awaiting_approval", "connected", "failed"]
+    phase: CliConnectPhase
     # The CLI's own login output, relayed verbatim (the URL and code to
     # approve). Never parsed by GAIA — vendors word and reword this freely.
     instructions: str | None = None

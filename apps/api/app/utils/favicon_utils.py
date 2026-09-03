@@ -21,6 +21,7 @@ import tldextract
 from app.constants.cache import FAVICON_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
+from app.utils.url_safety import assert_public_http_url
 from shared.py.wide_events import log
 
 IconFormat = Literal["png", "svg", "ico", "other"]
@@ -294,3 +295,34 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
 async def fetch_favicon_uncached(server_url: str) -> str | None:
     """Resolve a favicon bypassing the cache (for diagnostics / dev tooling)."""
     return await _fetch_favicon_impl(server_url)
+
+
+async def fetch_favicon_safely(url: str | None) -> str | None:
+    """The favicon for ``url``, or ``None`` — never raising, never fetching a
+    private address.
+
+    The single entry point for every caller that turns a URL into an
+    integration's icon (an MCP server, a CLI vendor's homepage). Two things it
+    adds over ``fetch_favicon_from_url``:
+
+    * ``None``/blank in, ``None`` out, so callers need no guard of their own.
+    * The RESOLVING SSRF check. Callers shape-check their URL when it is
+      accepted, but that check deliberately does not resolve DNS, so a hostname
+      pointing at a private address still reaches here. An icon is never worth
+      an outbound request to somebody's internal network.
+
+    An icon is cosmetic; a failure to get one must never fail the operation that
+    wanted it, so everything is swallowed.
+    """
+    if not url or not url.strip():
+        return None
+    try:
+        await assert_public_http_url(url)
+    except ValueError as e:
+        log.warning(
+            f"{LogTag.TOOL} Refusing to fetch a favicon from a non-public URL",
+            server_url=url,
+            error=str(e),
+        )
+        return None
+    return await fetch_favicon_from_url(url)
