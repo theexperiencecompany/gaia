@@ -235,7 +235,7 @@ If a match is found, update that todo's canvas with the new signal information u
 update_tracked_todo_canvas (mode "append" or "section"; do not read the canvas and rewrite the
 whole thing). Be verbose, this is GAIA's working memory: include email addresses, thread IDs,
 event IDs, timestamps; quote the key sentences (not whole emails); update Current State; add a
-Timeline entry "- {date}: {what happened}".
+Timeline entry "- {{date}}: {{what happened}}".
 
 This matching step only MATCHES and UPDATES existing tracked todos: do not create a new one
 just because a signal arrived. (Creating still follows the normal rule, only when the run
