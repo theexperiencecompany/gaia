@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from unittest.mock import AsyncMock, call, patch
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, v1
 import pytest
 import yaml
 
@@ -1342,6 +1342,69 @@ result_brief: x
 
         assert result.issues == []
 
+    @pytest.mark.parametrize(
+        "tool_kind",
+        ["json-document", "pydantic-v1"],
+    )
+    async def test_a_required_arg_is_read_from_every_schema_shape_langchain_hands_back(
+        self, tool_kind: str
+    ) -> None:
+        """Decorated tools carry a v2 model, MCP tools a raw JSON document and
+        legacy tools a v1 model. ``required`` is spelled the same way on all
+        three, but each is read through a different branch, and a branch that
+        reads nothing would quietly stop refusing calls that cannot run."""
+
+        class _JsonExec(BaseTool):
+            name: str = "run_query"
+            description: str = "Run a query"
+
+            def _run(self, **kwargs: Any) -> dict[str, Any]:
+                return {}
+
+        json_document: dict[str, Any] = {
+            "type": "object",
+            "properties": {"code": {"type": "string"}, "lang": {"type": "string"}},
+            "required": ["code"],
+        }
+
+        class _LegacyArgs(v1.BaseModel):
+            code: str
+            lang: str = ""
+
+        class _LegacyExec(BaseTool):
+            name: str = "run_query"
+            description: str = "Run a query"
+            args_schema: type[v1.BaseModel] = _LegacyArgs
+
+            def _run(self, **kwargs: Any) -> dict[str, Any]:
+                return {}
+
+        exec_tool: BaseTool = (
+            _JsonExec(args_schema=json_document) if tool_kind == "json-document" else _LegacyExec()
+        )
+        body = _body(
+            """
+description: Run a query with only the optional argument
+steps:
+  - id: query
+    tool: run_query
+    args:
+      lang: sql
+result_brief: x
+"""
+        )
+        with patch(
+            f"{MODULE}.get_tool_registry", return_value=_FakeRegistry({"run_query": exec_tool})
+        ):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args",
+                "run_query requires 'code' and this step does not set it; it takes: code, lang",
+            )
+        ]
+
     async def test_a_deep_step_reference_resolves_against_the_step_id(self) -> None:
         """``$steps.agenda.organizer.email`` names step ``agenda``, not
         ``agenda.organizer``. Splitting from the wrong end rejects a playbook
@@ -1883,6 +1946,49 @@ result_brief: x
             "$steps.agenda.threadId is not in step 'agenda''s result"
             "; its result has keys: messages, nextPage"
         )
+
+    @pytest.mark.parametrize(
+        ("key_count", "expected_hint"),
+        [
+            (12, "; its result has keys: " + ", ".join(f"k{i:02d}" for i in range(12))),
+            (13, "; its result has keys: " + ", ".join(f"k{i:02d}" for i in range(12)) + ", ..."),
+        ],
+        ids=["exactly-the-cap", "one-over-the-cap"],
+    )
+    async def test_the_keys_hint_lists_up_to_the_cap_and_marks_the_rest(
+        self, key_count: int, expected_hint: str
+    ) -> None:
+        """A wide result must not bury the sentence that says what is wrong, so
+        the hint stops at the cap and says there is more. Exactly at the cap
+        there is nothing more to say, and the marker must not appear."""
+        body = _body(
+            """
+description: Reply on a field that does not exist
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.threadId
+      subject: hi
+result_brief: x
+"""
+        )
+        wide = {f"k{i:02d}": i for i in range(key_count)}
+        results = [
+            _call("list_events", {"calendar_id": "primary"}, wide),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.problem for issue in result.issues] == [
+            "$steps.agenda.threadId is not in step 'agenda''s result" + expected_hint
+        ]
 
     async def test_a_reference_deeper_than_one_field_is_still_read_from_its_step(self) -> None:
         """``$steps.agenda.organizer.email`` names the step ``agenda`` and the

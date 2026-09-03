@@ -434,7 +434,9 @@ def _envelope_error(result: object) -> str:
 
 
 def _rendered_args(args: Mapping[str, Any]) -> str:
-    rendered = json.dumps(dict(args), default=str, ensure_ascii=False)
+    # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
+    # only tests truthiness), so that mutation is provably equivalent and exempt.
+    rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate
     if len(rendered) <= _ARGS_IN_MESSAGE_MAX_CHARS:
         return rendered
     return rendered[:_ARGS_IN_MESSAGE_MAX_CHARS] + "..."
@@ -489,7 +491,7 @@ def _check_required_args(
             PlaybookIssue(
                 where=f"{path}.args",
                 problem=f"{tool_name} requires {name!r} and this step does not set it; "
-                f"it takes: {', '.join(sorted(tool.args)) or 'nothing'}",
+                f"it takes: {', '.join(sorted(tool.args))}",
             )
         )
 
