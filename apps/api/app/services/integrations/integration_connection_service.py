@@ -75,6 +75,14 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 # A CLI declares its auth shape in cli_config, not mcp_config;
                 # without this every CLI integration renders as "no sign-in
                 # needed" and the connect dialog looks like a no-op.
+                #
+                # KNOWN INCONSISTENCY, pre-dating the CLI transport: a Composio
+                # integration has neither config, so it falls to `False` here
+                # while IntegrationResolver reports `True` for the same row.
+                # Every Composio card therefore claims no sign-in is needed for
+                # what is pure OAuth. Left as-is deliberately: this field is
+                # read by the marketplace UI, so changing it moves behaviour for
+                # 23 shipped integrations and is a product call, not a cleanup.
                 requires_auth=(
                     integration.mcp_config.requires_auth
                     if integration.mcp_config
