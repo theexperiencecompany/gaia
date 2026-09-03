@@ -709,7 +709,9 @@ fail-under = 80
 exclude = [
   # Tool docstrings are applied at import time by @with_doc from
   # app/templates/docstrings/, so the source has none for interrogate to see.
-  "**/app/agents/tools/todo_tool.py",
+  # Basename form on purpose: scripts/ci/changes.sh only honours segment or
+  # basename patterns when it scopes a PR scan.
+  "**/todo_tool.py",
   "**/tests",
   "**/tests/**",
   "**/conftest.py",
