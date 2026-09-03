@@ -757,8 +757,9 @@ class TestCanvasBounding:
         # every later todo skipped, the digest never sent, for every user.
         # call_agent_silent is the seam here on purpose — mocking
         # _call_health_check_agent would mock away the failing construction.
+        head = "## Current State\nwaiting on the vendor\n"
         tail = "FINAL CANVAS LINE"
-        canvas = "x" * (60_000 - len(tail)) + tail
+        canvas = head + "x" * (60_000 - len(head) - len(tail)) + tail
         captured: dict[str, MessageRequestWithHistory] = {}
 
         async def fake_call_agent_silent(
@@ -781,13 +782,17 @@ class TestCanvasBounding:
         prompt = captured["request"].message
         assert len(prompt) < MAX_MESSAGE_LENGTH
 
-        # The newest entries are appended to a canvas, so the tail is what survives,
-        # behind a marker accounting for everything dropped ahead of it.
-        marker = re.search(r"Canvas:\n\[earlier canvas trimmed: (\d+) characters\]\n", prompt)
+        # Current State lives near the top and the newest entries are appended
+        # at the bottom, so both ends survive and the middle is what is dropped,
+        # behind a marker accounting for exactly what went missing.
+        marker = re.search(r"\n\[middle of canvas trimmed: (\d+) characters\]\n", prompt)
         assert marker is not None
-        kept = prompt.split(marker.group(0), 1)[1].split("\n\nIs there a clear", 1)[0]
-        assert kept.endswith(tail)
-        assert len(kept) + int(marker.group(1)) == len(canvas)
+        before, after = prompt.split(marker.group(0), 1)
+        kept_head = before.split("Canvas:\n", 1)[1]
+        kept_tail = after.split("\n\nIs there a clear", 1)[0]
+        assert kept_head.startswith(head)
+        assert kept_tail.endswith(tail)
+        assert len(kept_head) + len(kept_tail) + int(marker.group(1)) == len(canvas)
 
     async def test_a_canvas_under_the_bound_reaches_the_agent_untouched(self) -> None:
         canvas = "y" * 1_000

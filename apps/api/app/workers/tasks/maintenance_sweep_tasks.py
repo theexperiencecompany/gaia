@@ -556,19 +556,20 @@ async def _read_canvas(todo: TodoDocument) -> str:
 
 
 def _bounded_canvas(canvas: str) -> str:
-    """Trim an oversized canvas to the newest ``HEALTH_CHECK_CANVAS_MAX_CHARS`` characters.
+    """Trim an oversized canvas to its head and tail, within ``HEALTH_CHECK_CANVAS_MAX_CHARS``.
 
-    A canvas grows by appending ("Current State", timeline entries), so the tail
-    carries the information a health check needs; the marker keeps the agent from
-    reading a mid-sentence opening as the todo's beginning.
+    A canvas is sectioned markdown: ``Key Details`` and ``Current State`` sit
+    near the top and are patched in place, while activity-log and timeline
+    entries are appended to the bottom. Both ends carry what a health check
+    needs, so the middle is what gets dropped, behind a marker that keeps the
+    agent from reading the cut as a gap in the todo's history.
     """
     if len(canvas) <= HEALTH_CHECK_CANVAS_MAX_CHARS:
         return canvas
 
-    trimmed = len(canvas) - HEALTH_CHECK_CANVAS_MAX_CHARS
-    return (
-        f"[earlier canvas trimmed: {trimmed} characters]\n{canvas[-HEALTH_CHECK_CANVAS_MAX_CHARS:]}"
-    )
+    half = HEALTH_CHECK_CANVAS_MAX_CHARS // 2
+    trimmed = len(canvas) - 2 * half
+    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
 
 
 async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:
