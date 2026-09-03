@@ -77,6 +77,32 @@ def cli_command_shape(tool: BaseTool | None, args: Mapping[str, Any] | None) -> 
     return derive_command_shape(command) if isinstance(command, str) else ""
 
 
+# Commands that take another command as an argument. The shape of the wrapper
+# says nothing about the shape of what it runs, so these fail closed rather than
+# resolve to a reassuring head word.
+_SHELL_EXEC_WRAPPERS = frozenset(
+    {
+        "sh",
+        "bash",
+        "zsh",
+        "dash",
+        "ksh",
+        "eval",
+        "exec",
+        "env",
+        "xargs",
+        "nohup",
+        "timeout",
+        "sudo",
+        "doas",
+        "nice",
+        "setsid",
+        "watch",
+        "command",
+    }
+)
+
+
 def derive_command_shape(command: str) -> str:
     """The classification key for one shell string, or ``""`` when it has none."""
     try:
@@ -102,6 +128,13 @@ def _tokenize(command: str) -> list[str]:
     lexer = shlex.shlex(command, posix=True, punctuation_chars=_PUNCTUATION_CHARS)
     lexer.whitespace = _WHITESPACE
     lexer.whitespace_split = True
+    # shlex honours `#` as a comment even in the MIDDLE of a word and discards
+    # the rest of the line; a POSIX shell only starts a comment at the start of
+    # a word. Left on, `gh api /user#x && gh repo delete acme/api` tokenizes to
+    # `gh api` and the delete disappears from the shape entirely, so the gate
+    # judges a prefix and runs the whole string. Nothing here needs comment
+    # handling: only the shape words matter.
+    lexer.commenters = ""
     return list(lexer)
 
 
@@ -125,7 +158,15 @@ def _leading_words(segment: list[str]) -> str:
 
     A segment with no words is not "harmless": ``--force`` alone, a bare redirection,
     a path-qualified executable — none of them shape, so all of them gate.
+
+    Neither does a segment whose head hands the real command to another shell.
+    ``sh -c 'gh repo delete acme/api'`` would otherwise shape as a bare ``sh``:
+    the payload is a quoted argument, not a separator, so it never becomes its
+    own segment, and the classifier would judge a command name that says nothing
+    about what runs.
     """
+    if segment and segment[0] in _SHELL_EXEC_WRAPPERS:
+        return ""
     words: list[str] = []
     for token in segment:
         if not words and _ENV_ASSIGNMENT.match(token):

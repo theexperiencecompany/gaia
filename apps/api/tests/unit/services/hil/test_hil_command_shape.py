@@ -168,3 +168,37 @@ class TestReadingTheCallItself:
         # ``""`` gates — never fall back to the name-keyed verdict a ``None`` would ask for.
         tool = make_tool(name="run_gh", metadata=CLI_METADATA)
         assert cli_command_shape(tool, args) == ""
+
+
+class TestGateBypassesFoundInReview:
+    """Two ways a chained command could hide from the shape, and did."""
+
+    def test_a_mid_word_hash_does_not_swallow_the_rest_of_the_line(self):
+        # shlex honours `#` as a comment mid-word; a POSIX shell does not, so
+        # the second command really runs. Shaping only the prefix would let
+        # `gh api` (read-only) carry a repo delete past the gate.
+        shape = derive_command_shape("gh api /user#x && gh repo delete acme/api")
+        assert "gh repo delete" in shape
+
+    def test_a_literal_hash_argument_survives(self):
+        assert derive_command_shape("gh issue view '#42'").startswith("gh issue view")
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "sh -c 'gh repo delete acme/api'",
+            'bash -c "rm -rf /"',
+            'eval "$CMD"',
+            "xargs gh repo delete",
+            "env FOO=1 sh -c 'gh repo delete x'",
+            "timeout 5 sh -c 'gh repo delete x'",
+        ],
+    )
+    def test_shell_exec_wrappers_fail_closed(self, command: str):
+        # The payload is a quoted argument, not a separator, so it never becomes
+        # its own segment. Shaping the wrapper would classify a name that says
+        # nothing about what runs.
+        assert derive_command_shape(command) == ""
+
+    def test_an_ordinary_command_named_like_a_wrapper_argument_still_shapes(self):
+        assert derive_command_shape("gh repo list") == "gh repo list"

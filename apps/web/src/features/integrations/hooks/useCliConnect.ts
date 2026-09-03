@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import { integrationsApi } from "../api/integrationsApi";
 import { integrationKeys, toolKeys } from "../api/queryKeys";
-import { CLI_CONNECT_POLL_INTERVAL_MS } from "../constants/connect";
+import {
+  CLI_CONNECT_POLL_INTERVAL_MS,
+  CLI_CONNECT_POLL_MAX_ATTEMPTS,
+} from "../constants/connect";
 import type { CliConnectPhase, ConnectIntegrationResponse } from "../types";
 
 /** Phases that still need the backend to make progress on its own. */
@@ -101,6 +104,8 @@ function derivePhase(response: ConnectIntegrationResponse): CliConnectPhase {
 type PollStep = (
   integrationId: string,
   runId: number,
+  /** Which tick this is, so the loop can stop instead of running forever. */
+  attempt: number,
   bearerToken?: string,
 ) => Promise<void>;
 
@@ -140,7 +145,7 @@ export function useCliConnect({
   }, []);
 
   const step = useCallback<PollStep>(
-    async (id, runId, bearerToken) => {
+    async (id, runId, attempt, bearerToken) => {
       let response: ConnectIntegrationResponse;
       try {
         response = await integrationsApi.postConnect(id, {
@@ -191,9 +196,19 @@ export function useCliConnect({
 
       if (!POLLED_PHASES.includes(phase)) return;
 
+      if (attempt + 1 >= CLI_CONNECT_POLL_MAX_ATTEMPTS) {
+        setState((previous) => ({
+          ...previous,
+          phase: "failed",
+          error:
+            "This took too long. The login may have expired — try connecting again.",
+        }));
+        return;
+      }
+
       timeoutRef.current = setTimeout(() => {
         timeoutRef.current = null;
-        void step(id, runId);
+        void step(id, runId, attempt + 1);
       }, CLI_CONNECT_POLL_INTERVAL_MS);
     },
     [queryClient],
@@ -204,7 +219,7 @@ export function useCliConnect({
     (id: string, bearerToken?: string) => {
       clearPendingTick();
       runIdRef.current += 1;
-      void step(id, runIdRef.current, bearerToken);
+      void step(id, runIdRef.current, 0, bearerToken);
     },
     [clearPendingTick, step],
   );

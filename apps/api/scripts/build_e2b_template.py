@@ -173,6 +173,10 @@ def build(name: str) -> str:
         # left `node` with a 12s startup; from the image it is 0.3s).
         # Symlinked into /usr/local/bin because e2b runs commands via a
         # non-login `bash -c`, which never sources /etc/profile.d.
+        #
+        # Installed BEFORE the sudo strip below purges apt, and it needs no
+        # writable app directories of its own: per-integration installs and
+        # launchers live under the sandbox user's own home at runtime.
         .run_cmd(
             f"mkdir -p {RUNTIME_DIR} && "
             f"curl -fsSL {NODE_TARBALL_URL} -o /tmp/node.tar.xz && "
@@ -181,6 +185,42 @@ def build(name: str) -> str:
             f"ln -sf {RUNTIME_BIN_DIR}/node /usr/local/bin/node && "
             f"ln -sf {RUNTIME_BIN_DIR}/npm /usr/local/bin/npm && "
             f"ln -sf {RUNTIME_BIN_DIR}/npx /usr/local/bin/npx",
+            user="root",
+        )
+        # Strip the sandbox user from every privilege group, then purge the
+        # `sudo` package itself. Removing the setuid binary closes the last
+        # theoretical escalation surface — even if a future regression added
+        # a password or a NOPASSWD rule back, there's no `sudo` for it to
+        # apply to. The API uses commands.run(user="root") for the handful
+        # of operations that genuinely need root; nothing in our sandbox
+        # codepath ever shells out to `sudo`.
+        .run_cmd(
+            "set -e; "
+            "if id -u user >/dev/null 2>&1; then "
+            "  gpasswd -d user sudo 2>/dev/null || true; "
+            "  gpasswd -d user wheel 2>/dev/null || true; "
+            "fi; "
+            "rm -f /etc/sudoers.d/*-user /etc/sudoers.d/90-cloud-init-users "
+            "       /etc/sudoers.d/nopasswd-user /etc/sudoers.d/user; "
+            "if [ -f /etc/sudoers ]; then "
+            "  sed -i '/^%sudo[[:space:]].*NOPASSWD/d' /etc/sudoers; "
+            "  sed -i '/^user[[:space:]].*NOPASSWD/d' /etc/sudoers; "
+            "fi; "
+            # Purge sudo entirely. `--allow-remove-essential` is not needed
+            # — sudo is not Essential. Run after the group-strip so we don't
+            # leave a sudoers.d entry pointing at a now-removed binary.
+            "DEBIAN_FRONTEND=noninteractive apt-get purge -y sudo 2>&1 | tail -3; "
+            "apt-get autoremove -y --purge 2>&1 | tail -3; "
+            "rm -rf /var/lib/apt/lists/*",
+            user="root",
+        )
+        # Cache + workspace dirs. /workspace and /mnt/jfs are mode 0750 owned
+        # by `user` so unprivileged ops work but no cross-uid leak is possible.
+        .run_cmd(
+            "mkdir -p /var/cache/juicefs /workspace /mnt/jfs && "
+            "chown -R user:user /workspace /mnt/jfs && "
+            "chmod 0750 /workspace /mnt/jfs && "
+            "chmod 0755 /var/cache/juicefs",
             user="root",
         )
         # Stage the mount script in /tmp (E2B's copy step has issues writing

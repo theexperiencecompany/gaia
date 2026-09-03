@@ -350,7 +350,11 @@ cat {shlex.quote(_login_log_path(integration_id))} 2>/dev/null || true
         # The verify command is the slow part (a network round trip to the
         # vendor); everything else is local.
     )
-    result = await _run(sbx, script, timeout=VERIFY_TIMEOUT_SECONDS + 30)
+    # The install guard rides inside this same shell, and a cold sandbox is
+    # exactly the state probe_state is called in (advance calls it first). A
+    # verify-sized budget here would kill the install that has to finish before
+    # the verify can mean anything.
+    result = await _run(sbx, script, timeout=INSTALL_TIMEOUT_SECONDS + VERIFY_TIMEOUT_SECONDS)
 
     if result.install_failed:
         return CliState(

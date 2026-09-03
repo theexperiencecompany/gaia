@@ -435,7 +435,20 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         # would be both wrong and a no-op for it. `cli_config` is pinned by the
         # catalog validator for this transport.
         if resolved.cli_config:
-            await cli_disconnect(user_id, integration_id, resolved.cli_config)
+            try:
+                await cli_disconnect(user_id, integration_id, resolved.cli_config)
+            except Exception as e:
+                # Best-effort cleanup: the durable HOME is per-integration and is
+                # recreated on the next connect anyway. Letting an unreachable
+                # sandbox abort the disconnect would leave the user owning an
+                # integration they cannot remove until it comes back.
+                log.warning(
+                    f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
+                    integration_id=integration_id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         await remove_user_integration(user_id, integration_id)
         if (
             resolved.source == "custom"

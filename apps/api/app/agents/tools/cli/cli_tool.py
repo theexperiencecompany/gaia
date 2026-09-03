@@ -31,6 +31,7 @@ from app.agents.workspace.paths import session_dir
 from app.constants.cli_integrations import (
     EXEC_DEFAULT_TIMEOUT_SECONDS,
     EXEC_MAX_TIMEOUT_SECONDS,
+    INSTALL_TIMEOUT_SECONDS,
 )
 from app.constants.log_tags import LogTag
 from app.models.cli_config import CliConfig
@@ -128,7 +129,17 @@ def build_cli_tool(integration_id: str, integration_name: str, config: CliConfig
         try:
             async with acquire_sandbox(user_id) as sbx:
                 result = await runtime.execute(
-                    sbx, integration_id, config, command, timeout=bounded, cwd=cwd
+                    sbx,
+                    integration_id,
+                    config,
+                    command,
+                    # `bounded` is the model's budget for ITS command. The
+                    # install guard shares the same shell, and after the hourly
+                    # sandbox recreation the first call pays for it, so the
+                    # sandbox-level deadline has to cover both or a cold call
+                    # dies mid-install with a timeout the model cannot act on.
+                    timeout=bounded + INSTALL_TIMEOUT_SECONDS,
+                    cwd=cwd,
                 )
         except SandboxAcquisitionError as e:
             return f"Error: sandbox unavailable ({e})"

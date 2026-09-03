@@ -122,14 +122,22 @@ async def is_gated(
         return True
     if _argument_gate_hit(tool_name, args):
         return True
-    override = prefs.tool_overrides.get(tool_name)
-    if override is not None:
-        return override
+    command_shape = cli_command_shape(tool, args)
+    # Overrides are keyed by tool NAME, and a CLI-backed tool has exactly one
+    # name for every command it can run. Honouring "don't ask again for
+    # run_gh", earned by approving `gh pr list`, would also pre-approve
+    # `gh repo delete` — the very collapse _classify_command exists to prevent.
+    # Until overrides can be keyed per command, a CLI call always falls through
+    # to per-command classification.
+    if command_shape is None:
+        override = prefs.tool_overrides.get(tool_name)
+        if override is not None:
+            return override
     return await is_tool_destructive(
         tool_name,
         getattr(tool, "description", "") or "",
         destructive_hint=mcp_destructive_hint(tool),
-        command_shape=cli_command_shape(tool, args),
+        command_shape=command_shape,
     )
 
 

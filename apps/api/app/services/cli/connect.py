@@ -21,6 +21,7 @@ that it once did).
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from typing import Literal
 
@@ -86,17 +87,20 @@ async def advance(
     # loop, and ``add_user_integration`` raises on a duplicate, so an unguarded
     # add fails every call after the first.
 
-    if not await user_integration_repository.exists(user_id, integration_id):
-        await add_user_integration(user_id, integration_id, initial_status="created")
+    await _ensure_attached(user_id, integration_id)
 
     async with acquire_sandbox(user_id) as sbx:
-        if token is not None:
+        # Only the token shape has somewhere to put a secret. The connect
+        # endpoint is public and takes a bearer_token for the MCP transport, so
+        # a token can arrive for a device-login CLI; writing it would raise on
+        # the missing token_env and surface as an opaque error.
+        if token is not None and config.auth.kind == "token":
             written = await runtime.write_token(sbx, integration_id, config, token)
             if not written.ok:
                 return _failed(
                     integration_id,
                     "The CLI rejected that token.",
-                    detail=written.stderr or written.stdout,
+                    detail=runtime.user_visible_output(written.stderr or written.stdout),
                 )
 
         state = await runtime.probe_state(sbx, integration_id, config)
@@ -138,6 +142,23 @@ async def advance(
         return await _advance_device_login(sbx, integration_id, config, state)
 
 
+async def _ensure_attached(user_id: str, integration_id: str) -> None:
+    """Attach the integration to the user, tolerating an existing record.
+
+    ``advance`` IS the client's poll loop and two polls can overlap (a retry
+    fired while a request is still in flight, the same page open twice), so the
+    existence check alone is a race: both callers see "absent" and the loser's
+    duplicate insert would surface as a user-visible connect error on a call
+    that should have been a no-op.
+    """
+    if await user_integration_repository.exists(user_id, integration_id):
+        return
+    # Raised only for "already added" here; the integration is resolved by the
+    # caller before this point, so it cannot be the not-found case.
+    with contextlib.suppress(ValueError):
+        await add_user_integration(user_id, integration_id, initial_status="created")
+
+
 async def _advance_device_login(
     sbx: AsyncSandbox,
     integration_id: str,
@@ -176,7 +197,7 @@ async def _advance_device_login(
         return _failed(
             integration_id,
             f"Could not start the {config.command} login.",
-            detail=started.stderr or started.stdout,
+            detail=runtime.user_visible_output(started.stderr or started.stdout),
         )
     return CliConnectOutcome(phase="awaiting_approval", message=f"Starting {config.command} login…")
 

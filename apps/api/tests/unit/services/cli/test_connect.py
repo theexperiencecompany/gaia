@@ -262,3 +262,49 @@ class TestIsConnected:
         assert await connect.is_connected(USER, INTEGRATION, DEVICE) is True
         env.probe.return_value = state(authenticated=False)
         assert await connect.is_connected(USER, INTEGRATION, DEVICE) is False
+
+
+class TestReviewFixes:
+    """Behaviours added after review; each one had a concrete failure."""
+
+    async def test_a_token_sent_to_a_device_login_is_ignored_not_fatal(self, env):
+        # The connect endpoint is public and carries bearer_token for the MCP
+        # transport, so a token can arrive for a device CLI. Writing it would
+        # raise on the missing token_env and surface as an opaque error.
+        env.probe.return_value = state(login_running=True, login_age_seconds=2, login_output="go")
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE, token="stray")
+        env.write_token.assert_not_awaited()
+        assert outcome.phase == "awaiting_approval"
+
+    async def test_a_failed_login_start_does_not_leak_sandbox_paths(self, env):
+        env.probe.return_value = state()
+        env.start_login.return_value = CliResult(
+            exit_code=1, stdout="", stderr="cannot write /workspace/.gaia/apps/x/login.log"
+        )
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "failed"
+        assert "/workspace" not in (outcome.instructions or "")
+
+    async def test_a_rejected_token_does_not_leak_sandbox_paths(self, env):
+        env.exists.return_value = False
+        env.write_token.return_value = CliResult(
+            exit_code=1, stdout="", stderr="bad token; see /home/user/.gaia/apps/gh/install.log"
+        )
+        outcome = await connect.advance(USER, "gh", TOKEN, token="bad")
+        assert outcome.phase == "failed"
+        assert "/home/user" not in (outcome.instructions or "")
+
+    async def test_a_duplicate_attach_losing_a_race_is_not_an_error(self, env):
+        # Two overlapping polls both see "absent"; the loser's insert raises.
+        # That must stay a no-op, not a user-visible connect failure.
+        env.exists.return_value = False
+        env.add_user.side_effect = ValueError("Integration 'x' already added to workspace")
+        env.probe.return_value = state(authenticated=True)
+        outcome = await connect.advance(USER, INTEGRATION, DEVICE)
+        assert outcome.phase == "connected"
+
+    async def test_an_unrelated_attach_failure_still_propagates(self, env):
+        env.exists.return_value = False
+        env.add_user.side_effect = RuntimeError("mongo down")
+        with pytest.raises(RuntimeError):
+            await connect.advance(USER, INTEGRATION, DEVICE)
