@@ -15,6 +15,8 @@ from pydantic.alias_generators import to_camel
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.integration_helpers import generate_integration_slug
+from app.models.cli_config import CliConfig
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 
@@ -77,22 +79,20 @@ class Integration(MongoDocument):
     category: str = Field(..., description="e.g., productivity, communication, developer")
 
     # Management and source
-    managed_by: Literal["self", "composio", "mcp", "internal"] = Field(
-        ..., description="Which system manages the integration"
-    )
+    managed_by: ManagedBy = Field(..., description="Which system manages the integration")
     source: Literal["platform", "custom"] = Field(
-        "custom", description="Platform (from code) or custom (user-created)"
+        default="custom", description="Platform (from code) or custom (user-created)"
     )
 
     # Visibility and ownership
-    is_public: bool = Field(False, description="Visible in public marketplace")
+    is_public: bool = Field(default=False, description="Visible in public marketplace")
     created_by: str | None = Field(None, description="User ID for custom integrations")
 
     # Publishing metadata
     published_at: datetime | None = Field(
-        None, description="When integration was published to marketplace"
+        default=None, description="When integration was published to marketplace"
     )
-    clone_count: int = Field(0, description="Number of times this integration was cloned")
+    clone_count: int = Field(default=0, description="Number of times this integration was cloned")
     # Human-readable unique slug, written at publish time (and by the slug backfill);
     # absent until published. Creator info (name/picture) is not stored here — it is
     # joined from the users collection at read time (see IntegrationWithCreator).
@@ -101,6 +101,7 @@ class Integration(MongoDocument):
     # Configuration (one of these based on managed_by)
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
+    cli_config: CliConfig | None = None
 
     # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
     # its auth flags at the document root for older documents. IntegrationResolver
@@ -114,8 +115,8 @@ class Integration(MongoDocument):
         default_factory=list, description="Tool list for frontend display only"
     )
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
-    display_priority: int = Field(0, description="Higher priority shows first")
-    is_featured: bool = Field(False, description="Show in featured section")
+    display_priority: int = Field(default=0, description="Higher priority shows first")
+    is_featured: bool = Field(default=False, description="Show in featured section")
 
     # LLM-generated marketplace detail content (use cases, how-it-works, FAQs).
     # Generated at publish time; absent until then (frontend falls back to generic copy).
@@ -231,7 +232,7 @@ class CreateCustomIntegrationRequest(BaseModel):
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
     auth_type: Literal["none", "oauth", "bearer"] | None = Field(None)
-    is_public: bool = Field(False)
+    is_public: bool = Field(default=False)
     bearer_token: str | None = Field(None)
 
 
@@ -255,7 +256,7 @@ class IntegrationResponse(BaseModel):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int
@@ -296,6 +297,12 @@ class IntegrationResponse(BaseModel):
         if integration.mcp_config:
             requires_auth = integration.mcp_config.requires_auth
             auth_type = integration.mcp_config.auth_type or ("oauth" if requires_auth else "none")
+        elif integration.cli_config:
+            # auth_type stays None for CLI-backed integrations: it names an
+            # HTTP auth scheme, and a CLI's login is neither OAuth nor a bearer
+            # header. Leaving it unset is what keeps the client from opening the
+            # bearer-token dialog instead of the CLI connect flow.
+            requires_auth = integration.cli_config.requires_auth
 
         # Compute slug at runtime (not stored in DB)
         slug = generate_integration_slug(
@@ -335,6 +342,10 @@ class IntegrationResponse(BaseModel):
         elif oauth_int.composio_config:
             requires_auth = True
             auth_type = "oauth"
+        elif oauth_int.cli_config:
+            # See from_integration: auth_type is an HTTP scheme and does not
+            # describe a CLI login.
+            requires_auth = oauth_int.cli_config.requires_auth
 
         return cls(
             integration_id=oauth_int.id,
@@ -347,7 +358,14 @@ class IntegrationResponse(BaseModel):
             display_priority=oauth_int.display_priority,
             requires_auth=requires_auth,
             auth_type=cast(AuthType, auth_type) if auth_type else None,
-            tools=[],  # Platform tools are loaded live, not stored
+            # A CLI integration's declared capabilities ARE its user-facing tool
+            # list — one tool wraps the whole CLI, so listing that single tool
+            # would tell the user nothing. Other platform tools load live.
+            tools=(
+                [IntegrationTool(name=c) for c in oauth_int.cli_config.capabilities]
+                if oauth_int.cli_config
+                else []
+            ),
             slug=oauth_int.id,  # Platform integrations use ID as slug
         )
 

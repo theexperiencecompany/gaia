@@ -15,6 +15,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.llm.client import init_llm
+from app.agents.tools.cli.cli_tool import build_cli_tool
 from app.agents.tools.core.registry import (
     CategoryOptions,
     CategoryRisk,
@@ -26,8 +27,10 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.subagent_models import Subagent
+from app.services.cli.tools import CliIntegration, resolve_cli_integration
 from app.services.mcp.mcp_client import get_mcp_client
 from shared.py.wide_events import log
 
@@ -76,6 +79,99 @@ async def register_composio_subagent_tools(subagent: Subagent, tool_registry: To
         specific_tools=config.specific_tools,
         exclude_tools=config.exclude_tools,
     )
+
+
+async def register_cli_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> None:
+    """Put a platform CLI integration's single tool in the registry.
+
+    ``Subagent`` does not carry cli_config; the OAuth integration does. The
+    OAuthIntegration validator enforces cli_config when managed_by="cli", so
+    landing here without one means an entry declared that transport and never
+    described the CLI — which would build a tool-less agent that reports
+    healthy. Fail loudly instead, exactly as the Composio path does.
+    """
+    integration = get_integration_by_id(subagent.id)
+    if integration is None or integration.cli_config is None:
+        raise ValueError(
+            f"CLI subagent {subagent.id!r} has no matching OAuth integration "
+            f"with cli_config. managed_by='cli' must correspond to an "
+            f"OAUTH_INTEGRATIONS entry."
+        )
+    await register_cli_tools(
+        tool_registry,
+        CliIntegration(
+            id=subagent.id,
+            name=integration.name,
+            config=integration.cli_config,
+            # Reached only via the OAUTH_INTEGRATIONS lookup above, so this is
+            # by definition a curated platform entry.
+            is_platform=True,
+        ),
+        tool_space=subagent.config.tool_space,
+    )
+
+
+async def register_cli_tools(
+    tool_registry: ToolRegistry, integration: CliIntegration, tool_space: str
+) -> None:
+    """Register, once per process, the one tool that runs this integration's CLI.
+
+    A CLI integration is delegated and integration-gated exactly like a Composio
+    toolkit, so it gets the same category shape: keyed by integration id, spaced
+    by the subagent's tool_space (which is how ``build_scoped_tool_dict`` finds
+    it), delegated so the main executor discovers the subagent rather than the
+    raw shell, and require_integration so the tools catalog reports it locked
+    until the user connects.
+
+    Unlike the per-user MCP tools, this category is process-global on purpose:
+    the tool closes over the integration, never over a user, and resolves the
+    sandbox and the credentials from the run's user at call time.
+
+    Risk stays with ``integration_destructive_tools`` — uncurated means the HIL
+    classifier judges each command at gate time, which is the only workable
+    verdict when one tool name covers ``gh pr list`` and ``gh repo delete``
+    alike.
+    """
+    if integration.id in tool_registry._categories:
+        return
+
+    tool = build_cli_tool(
+        integration.id,
+        integration.name,
+        integration.config,
+        is_platform=integration.is_platform,
+    )
+    tool_registry._add_category(
+        name=integration.id,
+        tools=[tool],
+        options=CategoryOptions(
+            space=tool_space,
+            require_integration=True,
+            integration_name=integration.id,
+            is_delegated=True,
+        ),
+        risk=CategoryRisk(destructive_tools=integration_destructive_tools(integration.id)),
+    )
+    await tool_registry._index_category_tools(integration.id)
+
+    log.set(cli={"integration_id": integration.id, "command": integration.config.command})
+    log.info(
+        f"{LogTag.AGENT} Registered CLI integration tool",
+        integration_id=integration.id,
+        command=integration.config.command,
+        tool_name=tool.name,
+        tool_space=tool_space,
+    )
+
+
+def custom_subagent_name(integration_id: str, *, is_cli: bool) -> str:
+    """Graph name for a user-created integration's subagent.
+
+    Defined once because the handoff layer derives the same name for its call
+    records: two copies of the convention drift the moment a transport is added
+    — which is exactly what CLI would have done.
+    """
+    return f"custom_{'cli' if is_cli else 'mcp'}_{integration_id}"
 
 
 async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
@@ -137,6 +233,12 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
     elif subagent.managed_by == "composio":
         await register_composio_subagent_tools(subagent, tool_registry)
 
+    # CLI integrations: one tool, registered here rather than per user. Whether
+    # THIS user may reach it is settled before the graph is asked for — handoff
+    # runs the connection check for every non-MCP, non-internal transport.
+    elif subagent.managed_by == "cli":
+        await register_cli_subagent_tools(subagent, tool_registry)
+
     llm = init_llm()
 
     log.set(subagent={"name": config.agent_name, "provider": subagent.provider})
@@ -185,9 +287,14 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
     """
     subagent = get_subagent_by_id(integration_id)
 
-    # Custom MCPs from MongoDB (not in static registry) — IDs can be 'custom_'
-    # prefixed or 12-char hex.
+    # Custom integrations from MongoDB (not in static registry) — IDs can be
+    # 'custom_' prefixed or 12-char hex. A CLI-backed one is dispatched on its
+    # spec here rather than inside the MCP builder, so that builder keeps owning
+    # exactly one transport.
     if not subagent:
+        cli_integration = await resolve_cli_integration(integration_id)
+        if cli_integration is not None:
+            return await _create_custom_cli_subagent(cli_integration, user_id)
         return await _create_custom_mcp_subagent(integration_id, user_id)
 
     mcp_config = subagent.mcp_config
@@ -313,7 +420,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
         raise SubagentUnavailableError(f"{integration_id} exposed no usable tools")
 
     llm = init_llm()
-    agent_name = f"custom_mcp_{integration_id}"
+    agent_name = custom_subagent_name(integration_id, is_cli=False)
 
     log.set(subagent={"name": agent_name, "provider": integration_id})
 
@@ -346,6 +453,70 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str) -> Comp
         f"{LogTag.AGENT} Custom MCP subagent created successfully",
         agent_name=agent_name,
         integration_id=integration_id,
+        user_id=user_id,
+    )
+    return graph
+
+
+async def _create_custom_cli_subagent(
+    integration: CliIntegration, user_id: str
+) -> CompiledStateGraph:
+    """Build a subagent graph for a user-created CLI integration from MongoDB.
+
+    The connection check lives here because this is the only place it can: a
+    platform CLI integration is gated by handoff before its graph is ever asked
+    for, but a custom one is resolved straight out of Mongo and never passes
+    that check. Skipping it would hand the model a CLI that is installed and
+    signed in for nobody, and the failure would surface as vendor auth errors
+    rather than "connect this first".
+
+    The integration's id is its namespace: unlike a custom MCP there is no
+    server URL to derive one from, and the id is already unique per document.
+    """
+    if not await user_integration_repository.is_connected(user_id, integration.id):
+        log.warning(
+            f"{LogTag.AGENT} Custom CLI subagent refused: integration not connected",
+            integration_id=integration.id,
+            user_id=user_id,
+        )
+        # Dash-free: this reason is relayed to the model verbatim by handoff.
+        raise SubagentUnavailableError(
+            f"{integration.name} is not connected. Ask the user to connect it first."
+        )
+
+    tool_registry = await get_tool_registry()
+    await register_cli_tools(tool_registry, integration, tool_space=integration.id)
+
+    llm = init_llm()
+    agent_name = custom_subagent_name(integration.id, is_cli=True)
+
+    log.set(subagent={"name": agent_name, "provider": integration.id})
+    log.info(
+        f"{LogTag.AGENT} Creating custom CLI subagent",
+        agent_name=agent_name,
+        integration_id=integration.id,
+        command=integration.config.command,
+        user_id=user_id,
+    )
+
+    graph = await SubAgentFactory.create_provider_subagent(
+        provider=integration.id,
+        llm=llm,
+        name=agent_name,
+        config=SubAgentToolConfig(
+            tool_space=integration.id,
+            # One tool, so retrieval can only ever return that same tool: bind
+            # it up front and skip the round trip.
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+            source_label=integration.name,
+        ),
+    )
+
+    log.info(
+        f"{LogTag.AGENT} Custom CLI subagent created successfully",
+        agent_name=agent_name,
+        integration_id=integration.id,
         user_id=user_id,
     )
     return graph

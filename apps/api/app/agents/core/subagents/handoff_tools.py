@@ -38,6 +38,7 @@ from app.agents.core.subagents.call_record import append_call_record
 from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
+    custom_subagent_name,
 )
 from app.agents.core.subagents.registry import (
     all_subagents,
@@ -226,7 +227,10 @@ async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | N
             "id": doc.get("integration_id"),
             "name": doc.get("name"),
             "source": resolved.source,
-            "managed_by": "mcp",
+            # The document's own transport, not an assumed one: a CLI-backed
+            # integration reaching this fallback would otherwise be labelled and
+            # named as an MCP for the rest of the handoff.
+            "managed_by": resolved.managed_by,
             "mcp_config": doc.get("mcp_config"),
             "icon_url": doc.get("icon_url"),
             "subagent_config": None,
@@ -300,7 +304,7 @@ async def _resolve_custom_mcp_subagent(
     resolved: dict[str, Any],
     user_id: str | None,
 ) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
-    """Resolve a custom MCP (a MongoDB dict) into the `_resolve_subagent` tuple."""
+    """Resolve a custom integration (a MongoDB dict) into the `_resolve_subagent` tuple."""
     integration_id = str(resolved.get("id", ""))
     integration_name = str(resolved.get("name", integration_id))
 
@@ -315,7 +319,6 @@ async def _resolve_custom_mcp_subagent(
             False,
         )
 
-    # Create subagent for custom MCP
     try:
         subagent_graph = await create_subagent_for_user(integration_id, user_id)
     except SubagentUnavailableError as e:
@@ -326,7 +329,7 @@ async def _resolve_custom_mcp_subagent(
             False,
         )
 
-    agent_name = f"custom_mcp_{integration_id}"
+    agent_name = custom_subagent_name(integration_id, is_cli=resolved.get("managed_by") == "cli")
     return subagent_graph, agent_name, integration_id, True
 
 

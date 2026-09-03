@@ -23,9 +23,7 @@ from app.models.user_models import (
     OnboardingStatusResponse,
     UserDocument,
 )
-from app.services.integrations.integration_connection_service import (
-    disconnect_integration,
-)
+from app.services.integrations.connect_dispatch import disconnect_integration
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
     abort_active_workflows_job,

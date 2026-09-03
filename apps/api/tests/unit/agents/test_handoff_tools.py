@@ -19,7 +19,10 @@ from app.agents.core.subagents.handoff_tools import (
     handoff,
     index_custom_mcp_as_subagent,
 )
-from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
+from app.agents.core.subagents.provider_subagents import (
+    SubagentUnavailableError,
+    custom_subagent_name,
+)
 from app.agents.core.subagents.subagent_runner import SubagentOutcome, subagent_row_id
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.db.repositories.user_integrations import user_integration_repository
@@ -321,7 +324,9 @@ class TestGetSubagentById:
             "mcp_config": {},
             "icon_url": None,
         }
-        resolved = SimpleNamespace(custom_doc=resolved_doc, source="user_integrations")
+        resolved = SimpleNamespace(
+            custom_doc=resolved_doc, source="user_integrations", managed_by="cli"
+        )
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools.get_subagent_by_id",
@@ -345,6 +350,9 @@ class TestGetSubagentById:
 
         assert result["id"] == "res_id"
         assert result["source"] == "user_integrations"
+        # The transport comes from the resolved integration, not an assumed
+        # "mcp": handoff names and labels the subagent from it.
+        assert result["managed_by"] == "cli"
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +429,50 @@ class TestResolveSubagent:
         assert graph is mock_graph
         assert is_custom is True
         assert int_id == "abc"
+
+    async def test_a_custom_cli_integration_gets_the_cli_graph_name(self):
+        """The graph name is the handoff layer's only handle on the subagent,
+        and provider_subagents registers a CLI-backed one under a different
+        name from an MCP one. Derive the wrong flavour here and the handoff
+        records a call against a graph that was never registered."""
+        custom_dict = {"id": "abc", "name": "Some CLI", "managed_by": "cli"}
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=custom_dict,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            _, name, _, _ = await _resolve_subagent("abc", "user1")
+
+        assert name == custom_subagent_name("abc", is_cli=True)
+
+    async def test_a_custom_mcp_integration_gets_the_mcp_graph_name(self):
+        # The same derivation the other way: only managed_by == "cli" exactly
+        # selects the CLI flavour, so every other custom integration keeps the
+        # MCP name it is registered under.
+        custom_dict = {"id": "abc", "name": "Custom", "managed_by": "mcp"}
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new_callable=AsyncMock,
+                return_value=custom_dict,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+        ):
+            _, name, _, _ = await _resolve_subagent("abc", "user1")
+
+        assert name == custom_subagent_name("abc", is_cli=False)
+        assert name != custom_subagent_name("abc", is_cli=True)
 
     async def test_custom_mcp_no_user_id(self):
         custom_dict = {"id": "abc", "name": "Custom"}

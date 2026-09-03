@@ -22,6 +22,7 @@ from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
+from app.services.hil.command_shape import cli_command_shape
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.utils import current_tool_calls, tool_of, unpack_tool_call
 from shared.py.wide_events import log
@@ -94,7 +95,7 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
         return "allow"
-    if not await is_gated(prefs, tool_name, tool_of(request)):  # args resolved above
+    if not await is_gated(prefs, tool_name, tool_of(request), call.args):
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
 
@@ -112,18 +113,31 @@ async def is_gated(
     to the user's own account confirm first"), not classifier opinions.
     Otherwise a user's per-tool choice wins in both directions — even over an
     MCP destructiveHint — since it is a deliberate setting on their own account.
+
+    ``args`` is what makes a CLI-backed call classifiable at all: its tool name is one
+    per integration, so the risk lives in the ``command`` argument (see
+    ``cli_command_shape``). Every caller passes the call's own args.
     """
     if await _is_always_gated(tool_name):
         return True
     if _argument_gate_hit(tool_name, args):
         return True
-    override = prefs.tool_overrides.get(tool_name)
-    if override is not None:
-        return override
+    command_shape = cli_command_shape(tool, args)
+    # Overrides are keyed by tool NAME, and a CLI-backed tool has exactly one
+    # name for every command it can run. Honouring "don't ask again for
+    # run_gh", earned by approving `gh pr list`, would also pre-approve
+    # `gh repo delete` — the very collapse _classify_command exists to prevent.
+    # Until overrides can be keyed per command, a CLI call always falls through
+    # to per-command classification.
+    if command_shape is None:
+        override = prefs.tool_overrides.get(tool_name)
+        if override is not None:
+            return override
     return await is_tool_destructive(
         tool_name,
         getattr(tool, "description", "") or "",
         destructive_hint=mcp_destructive_hint(tool),
+        command_shape=command_shape,
     )
 
 

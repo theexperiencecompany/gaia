@@ -2,15 +2,21 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
 from httpx import AsyncClient
 import pytest
 
+from app.api.v1.endpoints.integrations import public as public_endpoint
 from app.models.integration_models import (
     Integration,
     IntegrationWithCreator,
     UserIntegrationDocument,
 )
+from app.schemas.integrations.requests import ConnectIntegrationRequest
+from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.analytics_service import AnalyticsEvents
+from app.services.integrations.integration_connection_service import McpConnectRequest
+from tests.helpers import captured_wide_event
 
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
@@ -584,3 +590,126 @@ class TestSearchIntegrations:
 
         assert resp.status_code == 500
         assert "Failed to search" in resp.json()["detail"]
+
+
+class TestAddPublicIntegrationHandler:
+    """The add handler called directly, without the router in the way.
+
+    The HTTP tests above cover the wire contract. These cover what the handler
+    itself decides before any of that is visible: which catalog row it reads,
+    and what it writes to the wide event — the only record of who added what
+    when a marketplace add goes wrong.
+    """
+
+    USER = "507f1f77bcf86cd799439011"
+
+    async def _call(self, integration_id: str = "integ1") -> object:
+        return await public_endpoint.add_public_integration(
+            integration_id=integration_id,
+            request=ConnectIntegrationRequest(redirect_path="/integrations"),
+            user_id=self.USER,
+        )
+
+    async def test_the_requested_integration_is_the_one_looked_up(self):
+        # The id in the path is the row that gets cloned into the user's
+        # workspace; looking up anything else would add the wrong integration
+        # under the right name.
+        existing = UserIntegrationDocument(
+            user_id="u1", integration_id="integ1", status="connected"
+        )
+        with (
+            patch(f"{_PUBLIC}.integration_repository") as repo,
+            patch(f"{_PUBLIC}.user_integration_repository") as user_repo,
+        ):
+            repo.get_public = AsyncMock(
+                side_effect=lambda iid: _integration("integ1", "Integ") if iid == "integ1" else None
+            )
+            user_repo.get_for_user = AsyncMock(return_value=existing)
+
+            result = await self._call("integ1")
+
+        repo.get_public.assert_awaited_once_with("integ1")
+        assert result.status == "connected"
+
+    async def test_an_integration_that_is_not_public_is_a_404(self):
+        # get_public returns None for a private or missing row. Adding it
+        # anyway would publish someone else's private integration by id.
+        with patch(f"{_PUBLIC}.integration_repository") as repo:
+            repo.get_public = AsyncMock(return_value=None)
+            with pytest.raises(HTTPException) as exc_info:
+                await self._call("not-public")
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Integration not found"
+
+    async def test_the_wide_event_names_the_operation_the_user_and_the_integration(self):
+        existing = UserIntegrationDocument(
+            user_id="u1", integration_id="integ1", status="connected"
+        )
+        with (
+            patch(f"{_PUBLIC}.integration_repository") as repo,
+            patch(f"{_PUBLIC}.user_integration_repository") as user_repo,
+        ):
+            repo.get_public = AsyncMock(return_value=_integration("integ1", "Integ"))
+            user_repo.get_for_user = AsyncMock(return_value=existing)
+
+            async with captured_wide_event() as event:
+                await self._call("integ1")
+                operation = event["operation"]
+
+        assert operation == "add_public_integration"
+        assert event["integration_id"] == "integ1"
+        assert event["user"] == {"id": self.USER}
+        assert event["integration"] == {"id": "integ1"}
+
+    async def test_the_marketplace_add_connects_the_community_server_as_non_platform(self):
+        """Everything the MCP connect branches on comes from the catalog row.
+
+        ``is_platform`` is the one that matters most: a platform integration may
+        use GAIA's own credentials, and a community integration anyone can
+        publish must never be treated as one. The rest are asserted with it
+        because a dropped field is as wrong as a flipped one — the request is
+        built once and nothing downstream can recover a missing server URL or
+        the token the user pasted.
+        """
+        original = _integration(
+            "integ1",
+            "Community MCP",
+            mcp_config={
+                "server_url": "https://mcp.community.test",
+                "requires_auth": True,
+                "auth_type": "bearer",
+            },
+        )
+        with (
+            patch(f"{_PUBLIC}.integration_repository") as repo,
+            patch(f"{_PUBLIC}.user_integration_repository") as user_repo,
+            patch(f"{_PUBLIC}.add_user_integration", new_callable=AsyncMock),
+            patch(
+                f"{_PUBLIC}.connect_mcp_integration",
+                new_callable=AsyncMock,
+                return_value=ConnectIntegrationResponse(
+                    status="connected", integration_id="integ1", name="Community MCP"
+                ),
+            ) as connect,
+        ):
+            repo.get_public = AsyncMock(return_value=original)
+            repo.increment_clone_count = AsyncMock()
+            user_repo.get_for_user = AsyncMock(return_value=None)
+
+            await public_endpoint.add_public_integration(
+                integration_id="integ1",
+                request=ConnectIntegrationRequest(redirect_path="/chat/7", bearer_token="paste-me"),
+                user_id=self.USER,
+            )
+
+        assert connect.await_args.args[0] == McpConnectRequest(
+            user_id=self.USER,
+            integration_id="integ1",
+            integration_name="Community MCP",
+            requires_auth=True,
+            redirect_path="/chat/7",
+            server_url="https://mcp.community.test",
+            is_platform=False,
+            bearer_token="paste-me",
+        )

@@ -72,6 +72,7 @@ from app.agents.prompts.subagent_prompts import (
     REDDIT_AGENT_SYSTEM_PROMPT,
     SKILLS_AGENT_SYSTEM_PROMPT,
     SLACK_AGENT_SYSTEM_PROMPT,
+    STRIPE_LINK_AGENT_SYSTEM_PROMPT,
     TODO_AGENT_SYSTEM_PROMPT,
     TODOIST_AGENT_SYSTEM_PROMPT,
     TRELLO_AGENT_SYSTEM_PROMPT,
@@ -107,12 +108,14 @@ from app.config.oauth_content import (
     POSTHOG_CONTENT,
     REDDIT_CONTENT,
     SLACK_CONTENT,
+    STRIPE_LINK_CONTENT,
     TODOIST_CONTENT,
     TRELLO_CONTENT,
     TWITTER_CONTENT,
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS, cli_tool_name
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
@@ -141,6 +144,7 @@ from app.constants.hil_destructive_tools import (
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
+from app.models.cli_config import CliAuthSpec, CliConfig
 from app.models.mcp_config import (
     ComposioConfig,
     MCPConfig,
@@ -1977,6 +1981,92 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             memory_prompt=POSTHOG_MEMORY_PROMPT,
         ),
         content=POSTHOG_CONTENT,
+    ),
+    # Stripe Link — the first CLI-backed integration. GAIA runs Stripe's own
+    # `link-cli` inside the user's sandbox rather than reimplementing the Link
+    # API: Stripe owns the payment flow, the approval UX and the credential
+    # lifecycle, and the CLI is the interface they maintain for agents.
+    OAuthIntegration(
+        id="stripe_link",
+        name="Stripe Link",
+        description=(
+            "Let GAIA pay for things with single-use credentials from your Link wallet. "
+            "Your card is never exposed and you approve every purchase."
+        ),
+        category="business",
+        provider="stripe_link",
+        scopes=[],
+        available=True,
+        is_featured=True,
+        short_name="link",
+        managed_by="cli",
+        cli_config=CliConfig(
+            command="link-cli",
+            # Caret-pinned: 0.x means this tracks patches only, so a flag we
+            # depend on cannot disappear under us in a minor release, while
+            # fixes still land without a redeploy.
+            install_command=(
+                "npm install --no-audit --no-fund --loglevel=error '@stripe/link-cli@^0.16.0'"
+            ),
+            capabilities=[
+                "create a one-time payment credential for a specific purchase",
+                "request the user's approval for a purchase",
+                "list payment methods, shipping addresses and wallet balances",
+                "pay a Machine Payment Protocol (HTTP 402) endpoint",
+            ],
+            auth=CliAuthSpec(
+                kind="device",
+                # --interval makes the CLI print the approval URL and then keep
+                # polling in the same process, so one detached login covers the
+                # whole flow. --timeout is bound to LOGIN_TIMEOUT_SECONDS rather
+                # than repeated as a literal: if the CLI stopped polling first,
+                # the difference would be a window where GAIA still shows a code
+                # that can no longer be redeemed.
+                login_command=(
+                    "link-cli auth login --client-name GAIA --interval 5 "
+                    f"--timeout {LOGIN_TIMEOUT_SECONDS}"
+                ),
+                # `auth status` exits 0 whether or not you are signed in, so
+                # the exit code alone says nothing -- the authenticated flag
+                # does. Read with `jq -e` (baked into the sandbox image) rather
+                # than grepped: a grep silently matches nothing if Stripe
+                # renames the field or pretty-prints the value onto its own
+                # line, which would strand the user as permanently
+                # "not connected". `jq -e` exits non-zero on false AND errors
+                # loudly on a shape it cannot read.
+                verify_command=(
+                    "link-cli auth status --format json | jq -e '.authenticated == true'"
+                ),
+                logout_command="link-cli auth logout",
+            ),
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="stripe_link_agent",
+            tool_space="stripe_link",
+            handoff_tool_name="call_stripe_link_agent",
+            domain="payments made on the user's behalf",
+            capabilities=(
+                "creating single-use payment credentials, requesting purchase approval, "
+                "listing payment methods and balances, and paying 402-gated endpoints"
+            ),
+            use_cases=(
+                "buying something for the user, paying for an API or service, or "
+                "checking which payment methods and balances are available"
+            ),
+            system_prompt=STRIPE_LINK_AGENT_SYSTEM_PROMPT,
+            # One tool wraps the whole CLI (see app/agents/tools/cli/cli_tool.py
+            # for why the CLI is not exploded into per-subcommand tools), so
+            # there is nothing to retrieve — bind it and go.
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+            # Derived, not spelled out: the tool's registry name comes from the
+            # command, so a literal here silently binds nothing the day the
+            # command changes -- and with disable_retrieve_tools that produces a
+            # subagent with no tools that still reports healthy.
+            auto_bind_tools=[cli_tool_name("link-cli", "stripe_link", is_platform=True)],
+        ),
+        content=STRIPE_LINK_CONTENT,
     ),
 ]
 

@@ -821,11 +821,12 @@ class TestInitializedCategoryContract:
             "context": {"gather_context"},
         }
 
-    def test_the_two_destructive_built_ins_are_stamped_alone(self, registry: ToolRegistry) -> None:
-        """``execute_workflow`` starts an autonomous run and
-        ``connect_integration`` connects an external account; every sibling is
-        reversible or read-only. A mangled member name in either curated set
-        downgrades the one tool that must stop at the HIL gate to safe.
+    def test_the_destructive_built_ins_are_stamped_alone(self, registry: ToolRegistry) -> None:
+        """``execute_workflow`` starts an autonomous run, ``connect_integration``
+        connects an external account, and ``create_custom_integration`` stores an
+        install command that will later run in the user's sandbox; every sibling
+        is reversible or read-only. A mangled member name in either curated set
+        downgrades a tool that must stop at the HIL gate to safe.
         """
         workflows = {
             tool.name: tool.destructive for tool in registry._categories["workflows"].tools
@@ -849,6 +850,7 @@ class TestInitializedCategoryContract:
             "suggest_integrations": False,
             "connect_integration": True,
             "check_integrations_status": False,
+            "create_custom_integration": True,
         }
 
 

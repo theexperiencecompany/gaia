@@ -10,8 +10,8 @@ field lives in a separate key space — that's the name registered with
 """
 
 from dataclasses import dataclass
-from typing import Literal
 
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 
 
@@ -20,7 +20,7 @@ class Subagent:
     id: str
     name: str
     provider: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     config: SubAgentConfig
     short_name: str | None = None
     mcp_config: MCPConfig | None = None

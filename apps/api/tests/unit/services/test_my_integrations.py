@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config.oauth_config import get_integration_by_id
 from app.models.integration_models import (
     IntegrationResponse,
     IntegrationTool,
@@ -23,6 +24,7 @@ from app.schemas.integrations.responses import (
 )
 from app.services.integrations.my_integrations import get_integration_tools, get_my_integrations
 from app.utils.errors import AppError
+from tests.helpers import captured_wide_event
 
 _MOD = "app.services.integrations.my_integrations"
 USER_ID = "507f1f77bcf86cd799439011"
@@ -141,6 +143,52 @@ class TestGetMyIntegrations:
 
         assert result.integrations[0].tool_count == 0
 
+    async def test_a_cli_integration_counts_the_capabilities_it_declares(
+        self, mock_deps, mock_redis_cache
+    ):
+        """A CLI integration registers one tool that wraps the whole command, so
+        the tool registry can only ever say 1 — and says 0 until the category is
+        lazily registered. Neither answers "what can this do", which is what the
+        card shows; the catalog's declared capabilities do."""
+        catalog_entry = get_integration_by_id("stripe_link")
+        assert catalog_entry is not None
+        assert catalog_entry.cli_config is not None
+        assert catalog_entry.cli_config.capabilities, "the fixture needs a CLI with capabilities"
+
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[_config_item(id="stripe_link", name="Stripe Link", managed_by="cli")]
+        )
+        mock_deps.categories.return_value = {}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == len(catalog_entry.cli_config.capabilities)
+
+    async def test_a_platform_integration_with_no_cli_config_stays_at_zero(
+        self, mock_deps, mock_redis_cache
+    ):
+        """The capability fallback must not invent a count for the OAuth and
+        Composio integrations, which are the overwhelming majority."""
+        mock_deps.config.return_value = IntegrationsConfigResponse(
+            integrations=[_config_item(id="not-in-the-catalog")]
+        )
+        mock_deps.categories.return_value = {}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == 0
+
+    async def test_the_wide_event_attributes_the_catalog_to_its_owner(
+        self, mock_deps, mock_redis_cache
+    ):
+        """This response is entirely per-user, so "the wrong integrations came
+        back" is only diagnosable if the event says whose they were."""
+        async with captured_wide_event() as event:
+            await get_my_integrations(USER_ID)
+            user = event["user"]
+
+        assert user == {"id": USER_ID}
+
     async def test_platform_status_from_connection_map(self, mock_deps, mock_redis_cache):
         mock_deps.status.return_value = {"github": True}
 
@@ -169,6 +217,51 @@ class TestGetMyIntegrations:
         item = result.integrations[0]
         assert item.status == "created"
         assert item.tool_count == 2
+
+    async def test_an_empty_stored_tool_list_falls_back_to_the_registry_count(
+        self, mock_deps, mock_redis_cache
+    ):
+        """A user record whose tool list was never populated must not blank the
+        card. The registry keys its counts by (often capitalised) category name
+        while the catalog keys by id, so the fallback has to match them
+        case-insensitively or every such integration silently shows nothing."""
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    integration=_integration_response(
+                        integration_id="github", name="GitHub", source="platform", tools=[]
+                    ),
+                )
+            ]
+        )
+        mock_deps.categories.return_value = {"Github": 4}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == 4
+
+    async def test_an_integration_nobody_can_count_reports_no_tools(
+        self, mock_deps, mock_redis_cache
+    ):
+        """Neither the user record nor the registry knows anything. Zero is the
+        honest answer; any invented number becomes "1 tool" on a card for an
+        integration that exposes none."""
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    integration=_integration_response(
+                        integration_id="github", name="GitHub", source="platform", tools=[]
+                    ),
+                )
+            ]
+        )
+        mock_deps.categories.return_value = {}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == 0
 
     async def test_expired_platform_integration_carries_expired_at(
         self, mock_deps, mock_redis_cache
@@ -315,3 +408,42 @@ class TestGetIntegrationTools:
         assert response.integration_id == "ghost"
         assert response.tools == []
         assert response.count == 0
+
+
+class TestCliToolCountBeatsTheRegistry:
+    """What a CLI integration can do is its capabilities, not its tool count.
+
+    One tool wraps the whole command, so the registry's answer is 1 once the
+    category is registered. A user reading "1 tool" on a card that can create
+    payments, list balances and pay 402 endpoints has been told something false.
+    """
+
+    async def test_capabilities_win_even_when_the_registry_has_counted_the_tool(self):
+        from unittest.mock import AsyncMock, patch
+
+        from app.services.integrations import my_integrations as module
+
+        integration = module.get_integration_by_id("stripe_link")
+        assert integration is not None and integration.cli_config is not None
+        expected = len(integration.cli_config.capabilities)
+        assert expected > 1, "fixture needs a CLI integration with several capabilities"
+
+        # build_integrations_config is lru_cached and shared process-wide, so a
+        # test that ran earlier can leave a stale catalog behind. Rebuild it.
+        module.build_integrations_config.cache_clear()
+
+        with (
+            patch.object(module, "get_all_integrations_status", AsyncMock(return_value={})),
+            patch.object(
+                module,
+                "get_user_integrations",
+                AsyncMock(return_value=SimpleNamespace(integrations=[])),
+            ),
+            # The registry has counted the single wrapper tool.
+            patch.object(module, "get_tool_categories", AsyncMock(return_value={"stripe_link": 1})),
+        ):
+            result = await module.get_my_integrations.__wrapped__("user-1")
+
+        items = {i.id: i for i in result.integrations}
+        assert "stripe_link" in items, "the CLI integration is missing from the catalog"
+        assert items["stripe_link"].tool_count == expected

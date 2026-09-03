@@ -13,8 +13,13 @@ Three things decide whether a destructive call runs unattended, and each is atta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.tools import BaseTool
 import pytest
 
+from app.agents.tools.cli.cli_tool import (
+    CLI_COMMAND_METADATA_KEY,
+    CLI_INTEGRATION_METADATA_KEY,
+)
 from app.models.hil_models import HILPreferences
 from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
@@ -671,3 +676,89 @@ class TestArgumentGate:
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+
+class TestCliBackedCallsAreClassifiedByCommand:
+    """One CLI integration is one tool name, so the policy has to reach the classifier
+    with the COMMAND. These pin the two halves of that: the shape is derived from the
+    call's own args, and nothing about a non-CLI tool changes."""
+
+    def cli_tool(self) -> BaseTool:
+        return make_tool(
+            name="run_gh",
+            description="Run the gh CLI.",
+            metadata={CLI_INTEGRATION_METADATA_KEY: "github", CLI_COMMAND_METADATA_KEY: "gh"},
+        )
+
+    async def test_the_command_shape_reaches_the_classifier(self) -> None:
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)) as classify:
+            await is_gated(
+                prefs(),
+                "run_gh",
+                self.cli_tool(),
+                args={"command": "gh repo delete acme/api --yes", "timeout": 60},
+            )
+
+        assert classify.await_args.kwargs["command_shape"] == "gh repo delete"
+
+    async def test_the_shape_travels_through_resolve_policy_not_just_is_gated(self) -> None:
+        # resolve_policy used to classify without the call's args at all — the whole
+        # gate would have gone back to name-only for every CLI call.
+        request = make_request(
+            name="run_gh",
+            args={"command": "gh pr list --json number"},
+            tool=self.cli_tool(),
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)) as classify,
+        ):
+            assert await resolve_policy(request, USER_ID, "run_gh") == "allow"
+
+        assert classify.await_args.kwargs["command_shape"] == "gh pr list"
+
+    async def test_a_cli_sibling_is_classified_by_its_own_command_too(self) -> None:
+        # The double-run guard resolves siblings from the registry; a CLI sibling has to
+        # arrive at the classifier with its command, or a `gh repo delete` sibling reads
+        # as whatever `run_gh` in the abstract reads as.
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "web_search", "args": {}},
+                {"id": "call-2", "name": "run_gh", "args": {"command": "gh repo delete acme/api"}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        shapes: list[str | None] = []
+
+        async def classify(_name: str, _description: str, **kwargs: object) -> bool:
+            shape = kwargs["command_shape"]
+            shapes.append(shape if shape is None else str(shape))
+            return shape == "gh repo delete"
+
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(
+                        get_tool_meta=lambda name: SimpleNamespace(
+                            always_gate=False, tool=self.cli_tool()
+                        )
+                        if name == "run_gh"
+                        else None
+                    )
+                ),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+        assert "gh repo delete" in shapes
+
+    async def test_a_non_cli_tool_is_still_classified_by_name_alone(self) -> None:
+        # The regression fence for every existing tool: no shape, so the registry's
+        # name-keyed verdict keeps deciding exactly as it did before.
+        with patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)) as classify:
+            await is_gated(prefs(), "send_email", make_tool(), args={"command": "rm -rf /"})
+
+        assert classify.await_args.kwargs["command_shape"] is None

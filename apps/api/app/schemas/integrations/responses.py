@@ -6,8 +6,10 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.models.cli_config import CliConnectPhase
 from app.models.integration_instructions_models import InstructionsEditor
 from app.models.integration_models import UserIntegrationStatus
+from app.models.integration_provider import ManagedBy
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import SuccessResponse
 
@@ -41,7 +43,7 @@ class IntegrationConfigItem(CamelModel):
     display_priority: int
     included_integrations: list[str]
     is_featured: bool
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     auth_type: Literal["none", "oauth", "bearer"] | None = None
     requires_auth: bool = False
     source: Literal["platform"] = "platform"
@@ -99,7 +101,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     name: str
     description: str
     category: str
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     source: Literal["platform", "custom"]
     is_featured: bool
     display_priority: int
@@ -135,7 +137,7 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     description: str
     category: str
     source: Literal["platform", "custom"]
-    managed_by: Literal["self", "composio", "mcp", "internal"]
+    managed_by: ManagedBy
     status: Literal["connected", "created", "expired", "not_connected"]
     # When the upstream grant died, so the UI can say how long it has been broken.
     expired_at: datetime | None = None
@@ -172,14 +174,42 @@ class IntegrationToolsResponse(CamelModel):
     count: int = 0
 
 
+# The outcome of a connect attempt, shared by the direct connect endpoint and
+# the marketplace "add" path. One alias because they are the same fact: adding a
+# public integration performs a connect and forwards its result verbatim, so a
+# status the connect can produce is a status the add can return.
+ConnectStatus = Literal["connected", "redirect", "error", "pending"]
+
+
+class CliConnectDetail(CamelModel):
+    """Live state of a CLI connect attempt, for the client to render and poll.
+
+    A CLI connect is neither instant nor a redirect: it installs a tool and
+    then waits on a human. This block carries what the user has to see and do
+    right now, and the client re-POSTs the connect endpoint until ``status``
+    leaves ``pending``.
+    """
+
+    phase: CliConnectPhase
+    # The CLI's own login output, relayed verbatim (the URL and code to
+    # approve). Never parsed by GAIA — vendors word and reword this freely.
+    instructions: str | None = None
+    # Prompt copy for the paste-a-token shape.
+    token_label: str | None = None
+    token_help_url: str | None = None
+
+
 class ConnectIntegrationResponse(CamelModel):
-    status: Literal["connected", "redirect", "error"]
+    # ``pending`` is the CLI transport's steady state while an install runs or
+    # a device login waits on the user; ``cli`` says what to show meanwhile.
+    status: ConnectStatus
     integration_id: str
     name: str
     message: str | None = None
     tools_count: int | None = None
     redirect_url: str | None = None
     error: str | None = None
+    cli: CliConnectDetail | None = None
 
 
 class PublishIntegrationResponse(SuccessResponse, CamelModel):
@@ -267,7 +297,7 @@ class AddIntegrationResponse(CamelModel):
 
     integration_id: str
     name: str
-    status: Literal["connected", "redirect", "error"]
+    status: ConnectStatus
     message: str = "Integration added successfully"
     redirect_url: str | None = None
     tools_count: int | None = None

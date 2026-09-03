@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.integrations import integration_repository
+from app.models.cli_config import CliConfig
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from shared.py.wide_events import log
@@ -24,11 +26,12 @@ class ResolvedIntegration:
     name: str
     description: str
     category: str
-    managed_by: str
+    managed_by: ManagedBy
     source: str  # "platform" or "custom"
     requires_auth: bool
     auth_type: str | None  # "none", "oauth", "bearer"
     mcp_config: MCPConfig | None
+    cli_config: CliConfig | None
     # Original sources for backward compatibility
     platform_integration: OAuthIntegration | None
     custom_doc: dict | None
@@ -73,6 +76,7 @@ class IntegrationResolver:
                 requires_auth=requires_auth,
                 auth_type=auth_type,
                 mcp_config=platform_integration.mcp_config,
+                cli_config=platform_integration.cli_config,
                 platform_integration=platform_integration,
                 custom_doc=None,
             )
@@ -84,6 +88,11 @@ class IntegrationResolver:
             mcp_config = integration.mcp_config
             requires_auth = integration.requires_auth
             auth_type = integration.auth_type or "none"
+
+            if integration.cli_config:
+                # A CLI's auth shape is declared by its own spec, not by the
+                # MCP-flavoured document fields.
+                requires_auth = integration.cli_config.requires_auth
 
             if mcp_config:
                 # mcp_config is authoritative, but log if document-level values conflict
@@ -125,6 +134,7 @@ class IntegrationResolver:
                 requires_auth=requires_auth,
                 auth_type=auth_type,
                 mcp_config=mcp_config,
+                cli_config=integration.cli_config,
                 platform_integration=None,
                 custom_doc=integration.model_dump(),
             )

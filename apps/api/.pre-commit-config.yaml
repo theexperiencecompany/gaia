@@ -90,5 +90,11 @@ repos:
         # apps/api-relative: this nested config runs with cwd=apps/api, so
         # ^apps/api/app/ can never match and the hook would always skip.
         files: ^app/
+        # `files` alone matches every file under app/, including the non-Python
+        # ones that live there (skill SKILL.md bodies, bundled resources).
+        # Handing mypy a Markdown file makes it fail as a syntax error on the
+        # first non-ASCII character, blocking a commit for a reason that has
+        # nothing to do with types.
+        types: [python]
         pass_filenames: true
         priority: 0

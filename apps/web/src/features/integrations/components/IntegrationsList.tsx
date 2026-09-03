@@ -18,10 +18,12 @@ import {
   getUniqueCategories,
   sortCategories,
 } from "../constants/categories";
+import { useCliConnectModal } from "../hooks/useCliConnectModal";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
+import { CliConnectModal } from "./CliConnectModal";
 import { MarketplaceBanner } from "./MarketplaceBanner";
 
 const IntegrationRow: React.FC<{
@@ -165,12 +167,21 @@ export const IntegrationsList: React.FC<{
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
+  const cliConnect = useCliConnectModal();
+
   const handleConnect = async (integrationId: string) => {
     const integration = integrations.find((i) => i.id === integrationId);
     // API-key (bearer) integrations collect their key in the detail sidebar —
     // open it instead of connecting directly (same as clicking the row).
     if (integration?.authType === "bearer" && integration.requiresAuth) {
       onIntegrationClick?.(integrationId);
+      return;
+    }
+    // CLI integrations connect over several steps (install, approve, sometimes
+    // a token), so they need a surface to show progress on rather than a single
+    // fire-and-forget call.
+    if (integration?.managedBy === "cli") {
+      cliConnect.open(integration);
       return;
     }
     try {
@@ -353,6 +364,13 @@ export const IntegrationsList: React.FC<{
           onIntegrationClick={onIntegrationClick}
         />
       )}
+
+      <CliConnectModal
+        isOpen={cliConnect.isOpen}
+        onClose={cliConnect.close}
+        integrationId={cliConnect.integrationId}
+        integrationName={cliConnect.integrationName}
+      />
     </div>
   );
 };

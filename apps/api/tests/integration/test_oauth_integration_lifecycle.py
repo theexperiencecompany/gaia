@@ -25,7 +25,7 @@ Mocking boundaries:
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, get_args
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -40,14 +40,16 @@ from app.models.integration_models import (
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
+from app.services.integrations.connect_dispatch import disconnect_integration
 from app.services.integrations.integration_connection_service import (
+    McpConnectRequest,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
-    disconnect_integration,
 )
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
@@ -669,6 +671,7 @@ class TestDisconnectIntegration:
             requires_auth=True,
             auth_type="oauth",
             mcp_config=None,
+            cli_config=None,
             platform_integration=gmail_config,
             custom_doc=None,
         )
@@ -676,13 +679,20 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_composio_service",
+                "app.services.integrations.providers.oauth_providers.get_composio_service",
                 return_value=mock_composio,
             ),
             patch(
                 "app.services.integrations.integration_connection_service.delete_cache",
                 AsyncMock(),
             ),
+            patch(
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
+                AsyncMock(return_value=True),
+            ),
+            # A platform Composio integration's record is removed by
+            # _invalidate_caches, which still lives in the connection service --
+            # the provider only revokes upstream.
             patch(
                 "app.services.integrations.integration_connection_service.remove_user_integration",
                 AsyncMock(return_value=True),
@@ -713,6 +723,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type="none",
             mcp_config=MCPConfig(server_url="https://mcp.deepwiki.com/mcp"),
+            cli_config=None,
             platform_integration=get_integration_by_id("deepwiki"),
             custom_doc=None,
         )
@@ -723,11 +734,11 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_mcp_client",
+                "app.services.integrations.providers.oauth_providers.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.remove_user_integration",
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
                 AsyncMock(return_value=True),
             ),
             patch(
@@ -760,6 +771,7 @@ class TestDisconnectIntegration:
             requires_auth=False,
             auth_type="none",
             mcp_config=MCPConfig(server_url="https://custom.example.com/mcp"),
+            cli_config=None,
             platform_integration=None,
             custom_doc={"integration_id": "my-custom-mcp", "created_by": USER_ID},
         )
@@ -771,11 +783,11 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_mcp_client",
+                "app.services.integrations.providers.oauth_providers.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.remove_user_integration",
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
                 mock_remove,
             ),
             patch(
@@ -1150,7 +1162,7 @@ class TestOAuthConfigHelpers:
             assert integration.id, f"Integration missing id: {integration}"
             assert integration.name, f"Integration {integration.id} missing name"
             assert integration.provider, f"Integration {integration.id} missing provider"
-            assert integration.managed_by in ("self", "composio", "mcp", "internal"), (
+            assert integration.managed_by in get_args(ManagedBy), (
                 f"Integration {integration.id} has invalid managed_by: {integration.managed_by}"
             )
 
@@ -1226,11 +1238,13 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="deepwiki",
-                integration_name="DeepWiki",
-                requires_auth=False,
-                redirect_path="/integrations",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="deepwiki",
+                    integration_name="DeepWiki",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                )
             )
 
             assert response.status == "connected"
@@ -1263,12 +1277,14 @@ class TestMCPIntegrationConnection:
             # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="custom-api",
-                integration_name="Custom API",
-                requires_auth=False,
-                redirect_path="/integrations",
-                bearer_token="sk-test-bearer-token",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="custom-api",
+                    integration_name="Custom API",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                    bearer_token="sk-test-bearer-token",
+                )
             )
 
             assert response.status == "connected"
@@ -1302,12 +1318,14 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="broken-api",
-                integration_name="Broken API",
-                requires_auth=False,
-                redirect_path="/integrations",
-                bearer_token="sk-bad-token",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="broken-api",
+                    integration_name="Broken API",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                    bearer_token="sk-bad-token",
+                )
             )
 
             assert response.status == "error"
@@ -1337,12 +1355,14 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="linear",
-                integration_name="Linear",
-                requires_auth=True,
-                redirect_path="/integrations",
-                is_platform=True,
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="linear",
+                    integration_name="Linear",
+                    requires_auth=True,
+                    redirect_path="/integrations",
+                    is_platform=True,
+                )
             )
 
             assert response.status == "redirect"

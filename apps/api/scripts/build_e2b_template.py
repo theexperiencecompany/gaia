@@ -53,6 +53,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.agents.workspace.system_files import system_files
 from app.config.secrets import inject_infisical_secrets
+from app.constants.cli_integrations import (
+    NODE_TARBALL_URL,
+    RUNTIME_BIN_DIR,
+    RUNTIME_DIR,
+)
 
 JUICEFS_VERSION = "1.3.0"
 JUICEFS_TARBALL = (
@@ -160,6 +165,26 @@ def build(name: str) -> str:
         .run_cmd("install -m 0755 /tmp/juicefs /usr/local/bin/juicefs", user="root")
         .run_cmd(
             "rm -rf /tmp/juicefs.tar.gz /tmp/juicefs /tmp/LICENSE /tmp/README.md",
+            user="root",
+        )
+        # Node runtime for CLI-backed integrations (see
+        # app/constants/cli_integrations.py for why it is baked rather than
+        # installed per sandbox: on JuiceFS the same extract took >600s and
+        # left `node` with a 12s startup; from the image it is 0.3s).
+        # Symlinked into /usr/local/bin because e2b runs commands via a
+        # non-login `bash -c`, which never sources /etc/profile.d.
+        #
+        # Installed BEFORE the sudo strip below purges apt, and it needs no
+        # writable app directories of its own: per-integration installs and
+        # launchers live under the sandbox user's own home at runtime.
+        .run_cmd(
+            f"mkdir -p {RUNTIME_DIR} && "
+            f"curl -fsSL {NODE_TARBALL_URL} -o /tmp/node.tar.xz && "
+            f"tar -xJf /tmp/node.tar.xz -C {RUNTIME_DIR} --strip-components=1 && "
+            "rm -f /tmp/node.tar.xz && "
+            f"ln -sf {RUNTIME_BIN_DIR}/node /usr/local/bin/node && "
+            f"ln -sf {RUNTIME_BIN_DIR}/npm /usr/local/bin/npm && "
+            f"ln -sf {RUNTIME_BIN_DIR}/npx /usr/local/bin/npx",
             user="root",
         )
         # Strip the sandbox user from every privilege group, then purge the
