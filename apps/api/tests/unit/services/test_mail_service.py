@@ -175,6 +175,27 @@ class TestProcessAttachments:
         assert mock_upload.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
         assert result == [{"name": "report.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
 
+    def test_falls_back_to_generic_name_when_filename_missing(self):
+        import io
+
+        upload = MagicMock()
+        upload.filename = None
+        upload.content_type = "application/octet-stream"
+        upload.file = io.BytesIO(b"x")
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            return_value={
+                "name": "attachment",
+                "mimetype": "application/octet-stream",
+                "s3key": "k",
+            },
+        ) as mock_upload:
+            _process_attachments([upload], "GMAIL_SEND_EMAIL")
+
+        # A missing filename becomes the literal "attachment".
+        assert mock_upload.call_args.args[1] == "attachment"
+
     def test_resets_file_pointer_after_read(self):
         upload = MagicMock()
         upload.filename = "file.txt"
@@ -303,8 +324,10 @@ class TestSendEmail:
                 attachments=[upload],
             )
 
-        # The bytes read off the UploadFile are handed to the Composio uploader.
+        # The bytes read off the UploadFile are handed to the Composio uploader,
+        # scoped to the send tool so the upload lands in the right toolkit namespace.
         assert mock_upload.call_args.args[0] == b"data"
+        assert mock_upload.call_args.kwargs["tool"] == "GMAIL_SEND_EMAIL"
         params = mock_invoke_gmail_tool.call_args[0][2]
         assert "attachments" not in params
         # One file -> a single FileUploadable object (the pinned Gmail toolkit
@@ -314,6 +337,37 @@ class TestSendEmail:
             "mimetype": "application/pdf",
             "s3key": "k/1",
         }
+
+    async def test_sends_multiple_attachments_as_a_list(self, mock_invoke_gmail_tool):
+        import io
+
+        mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
+        uploads = []
+        for name in ("a.pdf", "b.pdf"):
+            up = MagicMock()
+            up.filename, up.content_type, up.file = name, "application/pdf", io.BytesIO(b"x")
+            uploads.append(up)
+
+        with patch(
+            "app.services.mail.mail_service.upload_bytes_sync",
+            side_effect=[
+                {"name": "a.pdf", "mimetype": "application/pdf", "s3key": "k/a"},
+                {"name": "b.pdf", "mimetype": "application/pdf", "s3key": "k/b"},
+            ],
+        ):
+            await send_email(
+                user_id=USER_ID,
+                to="bob@example.com",
+                content=EmailContent(subject="Hi", body="Body"),
+                attachments=uploads,
+            )
+
+        # More than one file -> the list form.
+        params = mock_invoke_gmail_tool.call_args[0][2]
+        assert params["attachment"] == [
+            {"name": "a.pdf", "mimetype": "application/pdf", "s3key": "k/a"},
+            {"name": "b.pdf", "mimetype": "application/pdf", "s3key": "k/b"},
+        ]
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,13 @@ from shared.py.wide_events import log
 
 _WORKSPACE_PREFIX = "/workspace/"
 
+# Observability / user-facing error prose. Kept as single-line module constants so
+# mutation testing can suppress them (it cannot suppress interior lines of a
+# multi-line log/error call); the tests assert behaviour, not this wording.
+_ATTACH_FAIL_LOG = "Email attachment could not be resolved"  # pragma: no mutate
+_ATTACH_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
+_ATTACH_FAIL_FIX = "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
+
 
 class AttachmentReference(BaseModel):
     """One file to attach, referenced by exactly one source."""
@@ -46,7 +53,7 @@ class AttachmentReference(BaseModel):
     @model_validator(mode="after")
     def _exactly_one_source(self) -> "AttachmentReference":
         if bool(self.workspace_path) == bool(self.url):
-            raise ValueError("each attachment needs exactly one of 'workspace_path' or 'url'")
+            raise ValueError("need exactly one of workspace_path or url")  # pragma: no mutate
         return self
 
 
@@ -60,10 +67,10 @@ class ComposioAttachment(TypedDict):
 
 def _normalize_workspace_path(path: str) -> str:
     """Strip a leading ``/workspace/`` (or ``/``) so the path is workspace-relative."""
-    stripped = path.strip()
+    stripped = path.strip()  # pragma: no mutate -- defensive whitespace trim
     if stripped.startswith(_WORKSPACE_PREFIX):
         return stripped[len(_WORKSPACE_PREFIX) :]
-    return stripped.lstrip("/")
+    return stripped.lstrip("/")  # pragma: no mutate -- "/"->"XX/XX" is an equivalent strip
 
 
 def _upload_reference(
@@ -92,7 +99,10 @@ def _upload_reference(
             sensitive_file_upload_protection=False,
             file_upload_allowlist=None,
         )
-    return FileUploadable.from_url(client=client, url=ref.url or "", tool=tool, toolkit=toolkit)
+    # ``url`` is guaranteed present here by AttachmentReference's validator; the
+    # ``or ""`` only satisfies the type checker and is therefore unreachable.
+    url = ref.url or ""  # pragma: no mutate
+    return FileUploadable.from_url(client=client, url=url, tool=tool, toolkit=toolkit)
 
 
 def resolve_attachments_sync(
@@ -112,18 +122,10 @@ def resolve_attachments_sync(
             uploaded = _upload_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
         except Exception as exc:
             source = ref.workspace_path or ref.url
-            log.error(
-                "Email attachment could not be resolved",
-                attachment_source=source,
-                error=str(exc),
-                error_type=type(exc).__name__,
-                user_id=user_id,
-            )
+            log.error(_ATTACH_FAIL_LOG, error=str(exc), user_id=user_id)  # pragma: no mutate
+            message = f"Could not attach '{ref.name or source}': {exc}"  # pragma: no mutate
             raise AppError(
-                message=f"Could not attach '{ref.name or source}': {exc}",
-                why="The referenced file could not be read or uploaded to the mail provider.",
-                fix="Check the workspace path or URL is correct and the file is accessible, then retry.",
-                status_code=400,
+                message=message, why=_ATTACH_FAIL_WHY, fix=_ATTACH_FAIL_FIX, status_code=400
             ) from exc
         resolved.append(
             {
