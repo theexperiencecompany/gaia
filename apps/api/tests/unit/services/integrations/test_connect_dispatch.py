@@ -417,3 +417,85 @@ class TestCliProvider:
         assert result.cli is not None
         assert result.cli.token_label == "GitHub token"
         assert result.cli.token_help_url == "https://gh.test/t"
+
+
+class TestCliProviderDisconnect:
+    """Disconnecting a CLI has to finish even when the sandbox does not.
+
+    The durable HOME lives in the user's sandbox, so tearing it down is a
+    remote call that can fail for reasons that have nothing to do with the
+    integration. If that failure aborted the disconnect, the user would be
+    left owning an integration they cannot remove until their sandbox comes
+    back — and the record is what every other surface reads.
+    """
+
+    CONFIG = CliConfig(
+        command="link-cli",
+        install_command="npm install x",
+        auth=CliAuthSpec(
+            kind="device",
+            login_command="link-cli auth login",
+            verify_command="link-cli auth status",
+        ),
+    )
+    MODULE = "app.services.integrations.providers.cli_provider"
+
+    def _resolved(self, cli_config: CliConfig | None) -> MagicMock:
+        resolved = _resolved(managed_by="cli", cli_config=cli_config)
+        resolved.integration_id = "stripe_link"
+        return resolved
+
+    async def test_the_sandbox_state_is_torn_down_before_the_record_goes(self):
+        resolved = self._resolved(self.CONFIG)
+        with (
+            patch(f"{self.MODULE}.cli_disconnect", AsyncMock()) as teardown,
+            patch(f"{self.MODULE}.remove_user_integration", AsyncMock()) as remove,
+            patch(f"{self.MODULE}.delete_if_user_authored", AsyncMock()) as delete,
+        ):
+            await CliIntegrationProvider().disconnect(USER, resolved)
+
+        # The teardown runs the CLI's own logout and deletes its durable HOME,
+        # so it needs this user, this integration and this spec.
+        teardown.assert_awaited_once_with(USER, "stripe_link", self.CONFIG)
+        remove.assert_awaited_once_with(USER, "stripe_link")
+        delete.assert_awaited_once_with(USER, resolved)
+
+    async def test_a_failed_teardown_still_removes_the_record_and_is_recorded(self):
+        resolved = self._resolved(self.CONFIG)
+        with (
+            patch(
+                f"{self.MODULE}.cli_disconnect",
+                AsyncMock(side_effect=RuntimeError("sandbox unreachable")),
+            ),
+            patch(f"{self.MODULE}.remove_user_integration", AsyncMock()) as remove,
+            patch(f"{self.MODULE}.delete_if_user_authored", AsyncMock()) as delete,
+        ):
+            async with captured_wide_event() as event:
+                await CliIntegrationProvider().disconnect(USER, resolved)
+
+        remove.assert_awaited_once_with(USER, "stripe_link")
+        delete.assert_awaited_once_with(USER, resolved)
+        # Swallowing the failure is only defensible because it is visible here.
+        (warning,) = event["warnings"]
+        assert warning == {
+            "msg": f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
+            "integration_id": "stripe_link",
+            "user_id": USER,
+            "error": "sandbox unreachable",
+            "error_type": "RuntimeError",
+        }
+
+    async def test_a_document_with_no_cli_config_is_still_disconnectable(self):
+        # Only reachable via a hand-written Mongo document, which is exactly
+        # the case where the user most needs to be able to remove it.
+        resolved = self._resolved(None)
+        with (
+            patch(f"{self.MODULE}.cli_disconnect", AsyncMock()) as teardown,
+            patch(f"{self.MODULE}.remove_user_integration", AsyncMock()) as remove,
+            patch(f"{self.MODULE}.delete_if_user_authored", AsyncMock()) as delete,
+        ):
+            await CliIntegrationProvider().disconnect(USER, resolved)
+
+        teardown.assert_not_awaited()
+        remove.assert_awaited_once_with(USER, "stripe_link")
+        delete.assert_awaited_once_with(USER, resolved)

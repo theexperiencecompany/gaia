@@ -57,6 +57,7 @@ from app.services.integrations.integration_connection_service import (
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
+    delete_if_user_authored,
 )
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
@@ -76,6 +77,7 @@ from app.services.integrations.user_integrations import (
     get_user_integrations,
     remove_user_integration,
 )
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Shared constants & helpers
@@ -2185,7 +2187,16 @@ class TestConnectMcpIntegration:
 
         assert result.status == "connected"
         assert result.tools_count == 1
-        mock_store.store_bearer_token.assert_awaited_once()
+        assert result.integration_id == INTEGRATION_ID
+        assert result.name == "Test"
+        assert result.message == "Integration connected successfully"
+        # The token is a per-user credential: stored under this user's store,
+        # keyed by this integration. Either one wrong and the next connect
+        # reads somebody else's token, or none at all.
+        mock_token_store_cls.assert_called_once_with(USER_ID)
+        mock_store.store_bearer_token.assert_awaited_once_with(INTEGRATION_ID, "my-token")
+        mock_client.connect.assert_awaited_once_with(INTEGRATION_ID)
+        mock_update_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, "connected")
 
     @patch(
         "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
@@ -2220,8 +2231,16 @@ class TestConnectMcpIntegration:
         )
 
         assert result.status == "error"
-        assert result.error is not None
-        mock_store.delete_credentials.assert_awaited_once()
+        # The reason is shown to the user; a generic string here would make a
+        # bad token indistinguishable from an unreachable server.
+        assert result.error == "Connection failed"
+        assert result.message == "Connection failed"
+        assert result.integration_id == INTEGRATION_ID
+        assert result.name == "Test"
+        # Rollback: a stored credential for a connection that never worked
+        # would make the next attempt skip the token prompt and fail again.
+        mock_store.delete_credentials.assert_awaited_once_with(INTEGRATION_ID)
+        mock_invalidate.assert_awaited_once_with(USER_ID)
 
     @patch(
         "app.services.integrations.integration_connection_service.get_mcp_client",
@@ -3179,3 +3198,138 @@ class TestCliDisconnectDoesNotResurrectTheRecord:
             await module._invalidate_caches("user-1", "custom-mcp", "mcp")
 
         upsert.assert_not_awaited()
+
+
+class TestDeletingOnlyWhatTheUserAuthored:
+    """Disconnect removes the user's link; it removes the catalog document only
+    when that user wrote it.
+
+    Every other case is somebody else's row. A custom integration installed
+    from the marketplace is a link to the author's document, and a platform
+    integration is shared by everyone — deleting either because one user
+    disconnected takes it away from all of them, irreversibly.
+    """
+
+    MODULE = "app.services.integrations.integration_connection_service"
+
+    def _resolved(self, *, source: str, created_by: str | None) -> ResolvedIntegration:
+        return ResolvedIntegration(
+            integration_id=CUSTOM_INTEGRATION_ID,
+            name="Some CLI",
+            description="",
+            category="custom",
+            managed_by="cli",
+            source=source,
+            requires_auth=True,
+            auth_type=None,
+            mcp_config=None,
+            cli_config=None,
+            platform_integration=None,
+            custom_doc=None if created_by is None else {"created_by": created_by},
+        )
+
+    async def test_the_author_of_a_custom_integration_deletes_its_document(self):
+        with patch(f"{self.MODULE}.delete_custom_integration", new_callable=AsyncMock) as delete:
+            await delete_if_user_authored(
+                USER_ID, self._resolved(source="custom", created_by=USER_ID)
+            )
+
+        delete.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
+
+    async def test_someone_elses_custom_integration_is_only_unlinked(self):
+        with patch(f"{self.MODULE}.delete_custom_integration", new_callable=AsyncMock) as delete:
+            await delete_if_user_authored(
+                USER_ID, self._resolved(source="custom", created_by="another-user")
+            )
+
+        delete.assert_not_awaited()
+
+    async def test_a_platform_integration_is_never_deleted(self):
+        # Shared by every user; there is no "my copy" of it to remove.
+        with patch(f"{self.MODULE}.delete_custom_integration", new_callable=AsyncMock) as delete:
+            await delete_if_user_authored(
+                USER_ID, self._resolved(source="platform", created_by=USER_ID)
+            )
+
+        delete.assert_not_awaited()
+
+    async def test_a_custom_row_with_no_document_is_left_alone(self):
+        # Ownership cannot be established, so the safe answer is to unlink only.
+        with patch(f"{self.MODULE}.delete_custom_integration", new_callable=AsyncMock) as delete:
+            await delete_if_user_authored(USER_ID, self._resolved(source="custom", created_by=None))
+
+        delete.assert_not_awaited()
+
+
+class TestTheBearerConnectWideEvent:
+    """The bearer flow stores a credential and then either connects or rolls
+    back. The wide event is where that outcome is read in production — nothing
+    else records which auth shape was used or how many tools came back."""
+
+    MODULE = "app.services.integrations.integration_connection_service"
+
+    def _request(self) -> McpConnectRequest:
+        return McpConnectRequest(
+            user_id=USER_ID,
+            integration_id=INTEGRATION_ID,
+            integration_name="Test",
+            requires_auth=False,
+            redirect_path="/integrations",
+            bearer_token="my-token",
+        )
+
+    async def test_a_successful_connect_records_the_shape_and_the_tool_count(self):
+        client = AsyncMock()
+        client.connect.return_value = ["t1", "t2"]
+        with (
+            patch(f"{self.MODULE}.get_mcp_client", new_callable=AsyncMock, return_value=client),
+            patch(f"{self.MODULE}.MCPTokenStore", return_value=AsyncMock()),
+            patch(f"{self.MODULE}.update_user_integration_status", new_callable=AsyncMock),
+            patch(f"{self.MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
+        ):
+            async with captured_wide_event() as event:
+                await connect_mcp_integration(self._request())
+                integration = dict(event["integration"])
+
+        assert integration == {
+            "provider": "Test",
+            "action": "connect_mcp",
+            "auth_type": "bearer",
+            "status": "connected",
+            "tools_count": 2,
+        }
+
+    async def test_a_server_that_exposes_nothing_still_reports_a_count(self):
+        # `connect` can legitimately return an empty list; reporting None here
+        # would make "connected with no tools" unreadable in the event.
+        client = AsyncMock()
+        client.connect.return_value = []
+        with (
+            patch(f"{self.MODULE}.get_mcp_client", new_callable=AsyncMock, return_value=client),
+            patch(f"{self.MODULE}.MCPTokenStore", return_value=AsyncMock()),
+            patch(f"{self.MODULE}.update_user_integration_status", new_callable=AsyncMock),
+            patch(f"{self.MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
+        ):
+            result = await connect_mcp_integration(self._request())
+
+        assert result.status == "connected"
+        assert result.tools_count == 0
+
+    async def test_a_failed_connect_records_the_error_status(self):
+        client = AsyncMock()
+        client.connect.side_effect = RuntimeError("bad token")
+        with (
+            patch(f"{self.MODULE}.get_mcp_client", new_callable=AsyncMock, return_value=client),
+            patch(f"{self.MODULE}.MCPTokenStore", return_value=AsyncMock()),
+            patch(f"{self.MODULE}.invalidate_user_integration_caches", new_callable=AsyncMock),
+        ):
+            async with captured_wide_event() as event:
+                await connect_mcp_integration(self._request())
+                integration = dict(event["integration"])
+
+        assert integration == {
+            "provider": "Test",
+            "action": "connect_mcp",
+            "auth_type": "bearer",
+            "status": "error",
+        }

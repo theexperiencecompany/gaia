@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import ClassVar
 import uuid
 
@@ -66,17 +65,19 @@ class CliIntegrationAuthor(IntegrationAuthor):
 
         icon_url = await fetch_favicon_safely(cli_config.homepage)
         integration_id = str(uuid.uuid4())
+        # Only the fields whose value is NOT the model's own default are passed:
+        # an authored integration is private, unpublished, unfeatured, and
+        # stamped with the current time because that is what Integration already
+        # says. Restating them adds nothing a reader can rely on and nothing a
+        # test can catch -- the invariants are pinned in test_authoring.py
+        # instead, where they fail if a default ever moves.
         integration = Integration(
             integration_id=integration_id,
             name=blueprint.name,
             description=blueprint.description,
             category=blueprint.category,
             managed_by=self.managed_by,
-            source="custom",
-            is_public=False,
             created_by=user_id,
-            display_priority=0,
-            is_featured=False,
             icon_url=icon_url,
             cli_config=cli_config,
             # The capabilities double as the integration's displayed tool list:
@@ -84,9 +85,6 @@ class CliIntegrationAuthor(IntegrationAuthor):
             # tool list means to a user, and it is what publishing validates.
             tools=[IntegrationTool(name=capability) for capability in cli_config.capabilities],
             requires_auth=cli_config.requires_auth,
-            created_at=datetime.now(UTC),
-            published_at=None,
-            clone_count=0,
         )
 
         await integration_repository.create(integration)

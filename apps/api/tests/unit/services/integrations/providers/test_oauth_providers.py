@@ -57,6 +57,15 @@ def _ctx(
     )
 
 
+def _resolved(*, source: str = "platform") -> MagicMock:
+    """The catalog resolution a disconnect is handed."""
+    resolved = MagicMock()
+    resolved.integration_id = INTEGRATION
+    resolved.source = source
+    resolved.name = "Acme CRM"
+    return resolved
+
+
 def _ok() -> ConnectIntegrationResponse:
     return ConnectIntegrationResponse(status="connected", integration_id=INTEGRATION, name="Acme")
 
@@ -162,6 +171,50 @@ class TestSelfProvider:
         connect.assert_not_awaited()
         assert result.status == "error"
         assert result.error == "Provider not configured"
+
+
+class TestMcpDisconnect:
+    """Disconnecting an MCP server is three writes, and which of them run
+    depends on who owns the server.
+
+    A platform server is shared by every user, so only the caller's link may go.
+    A server the caller added themselves is theirs alone, so its catalog
+    document goes with it — otherwise the marketplace keeps an entry nobody
+    owns and nobody can remove.
+    """
+
+    async def test_a_custom_server_loses_its_session_link_and_catalog_row(self):
+        resolved = _resolved(source="custom")
+        mcp_client = MagicMock()
+        mcp_client.disconnect = AsyncMock()
+        with (
+            patch(f"{MODULE}.get_mcp_client", AsyncMock(return_value=mcp_client)) as get_client,
+            patch(f"{MODULE}.remove_user_integration", AsyncMock()) as remove,
+            patch(f"{MODULE}.delete_if_user_authored", AsyncMock()) as delete,
+        ):
+            await McpIntegrationProvider().disconnect(USER, resolved)
+
+        # The session is per user, so it is that user's client that must drop it.
+        get_client.assert_awaited_once_with(user_id=USER)
+        mcp_client.disconnect.assert_awaited_once_with(INTEGRATION)
+        remove.assert_awaited_once_with(USER, INTEGRATION)
+        delete.assert_awaited_once_with(USER, resolved)
+
+    async def test_a_platform_server_keeps_its_catalog_row(self):
+        # Deleting it would remove a shared integration from every other user's
+        # marketplace because one person disconnected.
+        resolved = _resolved(source="platform")
+        mcp_client = MagicMock()
+        mcp_client.disconnect = AsyncMock()
+        with (
+            patch(f"{MODULE}.get_mcp_client", AsyncMock(return_value=mcp_client)),
+            patch(f"{MODULE}.remove_user_integration", AsyncMock()) as remove,
+            patch(f"{MODULE}.delete_if_user_authored", AsyncMock()) as delete,
+        ):
+            await McpIntegrationProvider().disconnect(USER, resolved)
+
+        remove.assert_awaited_once_with(USER, INTEGRATION)
+        delete.assert_not_awaited()
 
 
 class TestProviderIdentity:

@@ -188,7 +188,6 @@ async def add_public_integration(
                 requires_auth=requires_auth,
                 redirect_path=request.redirect_path,
                 server_url=server_url,
-                is_platform=False,
                 bearer_token=request.bearer_token,
             )
         )

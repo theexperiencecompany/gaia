@@ -25,6 +25,7 @@ from app.services.integrations.authoring import (
     McpBlueprint,
     create_integration,
     get_author,
+    register_author,
 )
 from app.services.integrations.authoring.cli_author import CliIntegrationAuthor
 from app.services.integrations.authoring.mcp_author import McpIntegrationAuthor
@@ -92,6 +93,22 @@ class TestAuthorRegistry:
     def test_both_transports_are_authorable(self):
         assert isinstance(get_author("cli"), CliIntegrationAuthor)
         assert get_author("mcp") is not None
+
+    def test_registering_an_author_is_what_makes_a_kind_creatable(self):
+        # Registration is the whole mechanism: a registry that stored anything
+        # but the author leaves `create_integration` with nothing to call, and
+        # a transport that is in fact implemented reports "No author
+        # registered".
+        original = get_author("cli")
+        assert original is not None
+        replacement = CliIntegrationAuthor()
+        try:
+            register_author(replacement)
+            assert get_author("cli") is replacement
+        finally:
+            # The registry is process-wide; put the real author back so a later
+            # test never authors through a stub.
+            register_author(original)
 
     async def test_an_unknown_kind_fails_loudly(self):
         blueprint = MagicMock()

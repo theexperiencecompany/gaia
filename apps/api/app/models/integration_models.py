@@ -81,18 +81,18 @@ class Integration(MongoDocument):
     # Management and source
     managed_by: ManagedBy = Field(..., description="Which system manages the integration")
     source: Literal["platform", "custom"] = Field(
-        "custom", description="Platform (from code) or custom (user-created)"
+        default="custom", description="Platform (from code) or custom (user-created)"
     )
 
     # Visibility and ownership
-    is_public: bool = Field(False, description="Visible in public marketplace")
+    is_public: bool = Field(default=False, description="Visible in public marketplace")
     created_by: str | None = Field(None, description="User ID for custom integrations")
 
     # Publishing metadata
     published_at: datetime | None = Field(
-        None, description="When integration was published to marketplace"
+        default=None, description="When integration was published to marketplace"
     )
-    clone_count: int = Field(0, description="Number of times this integration was cloned")
+    clone_count: int = Field(default=0, description="Number of times this integration was cloned")
     # Human-readable unique slug, written at publish time (and by the slug backfill);
     # absent until published. Creator info (name/picture) is not stored here — it is
     # joined from the users collection at read time (see IntegrationWithCreator).
@@ -115,8 +115,8 @@ class Integration(MongoDocument):
         default_factory=list, description="Tool list for frontend display only"
     )
     icon_url: str | None = Field(None, description="Favicon URL fetched from MCP server subdomain")
-    display_priority: int = Field(0, description="Higher priority shows first")
-    is_featured: bool = Field(False, description="Show in featured section")
+    display_priority: int = Field(default=0, description="Higher priority shows first")
+    is_featured: bool = Field(default=False, description="Show in featured section")
 
     # LLM-generated marketplace detail content (use cases, how-it-works, FAQs).
     # Generated at publish time; absent until then (frontend falls back to generic copy).
