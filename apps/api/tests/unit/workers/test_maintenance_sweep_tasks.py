@@ -793,6 +793,10 @@ class TestCanvasBounding:
         assert kept_head.startswith(head)
         assert kept_tail.endswith(tail)
         assert len(kept_head) + len(kept_tail) + int(marker.group(1)) == len(canvas)
+        # The budget is split evenly, and all of it is used.
+        from app.workers.tasks.maintenance_sweep_tasks import HEALTH_CHECK_CANVAS_MAX_CHARS
+
+        assert len(kept_head) == len(kept_tail) == HEALTH_CHECK_CANVAS_MAX_CHARS // 2
 
     async def test_a_canvas_under_the_bound_reaches_the_agent_untouched(self) -> None:
         canvas = "y" * 1_000
