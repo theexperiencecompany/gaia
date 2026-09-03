@@ -24,6 +24,7 @@ import json
 import re
 from typing import Any
 
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, ValidationError
 import yaml
 
@@ -33,7 +34,7 @@ from app.models.playbook_models import (
     AskSlot,
     PlaybookBody,
     PlaybookStep,
-    has_ask_slots,
+    is_ask_slot,
     walk_ask_slots,
 )
 from app.models.workflow_execution_models import largest_list_len
@@ -43,7 +44,7 @@ from app.services.workflow.playbook.evaluator import (
     StepResult,
     resolve_step,
 )
-from app.services.workflow.playbook.placeholders import placeholder_tokens
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN, placeholder_tokens
 from app.services.workflow.playbook.tool_space import (
     ToolSpace,
     handoff_tool_space,
@@ -249,6 +250,7 @@ def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Wal
         _check_recorded_call(step, tool_name, path, space, walk)
 
     schema: dict[str, Any] = space.tools[tool_name].args
+    _check_required_args(step, tool_name, path, space, walk)
     for key, value in step.args.items():
         where = f"{path}.args.{key}"
         # ensure_ascii=False, or the marker's ellipsis leaves json.dumps as
@@ -337,29 +339,67 @@ def _check_recorded_call(
 def _matched_call(step: PlaybookStep, walk: _Walk) -> RecordedResult | None:
     """The recorded call this step froze, or ``None`` when the tool never ran.
 
-    A step's literal args are the only evidence of WHICH call it froze: a tool
-    called three times with different queries left three results, and checking
-    the step against the wrong one reports a shape the author never claimed. An
-    arg holding a placeholder or an ``$ask`` slot is a wildcard — the value it
-    stands for does not exist until replay, so it cannot disagree with
-    anything. The LAST call wins, both among the calls that agree and as the
-    fallback when none does: a run that repeats a tool settles on its final
-    call, which is the one worth freezing.
+    A step's args are the only evidence of WHICH call it froze: a tool called
+    three times with different queries left three results, and checking the step
+    against the wrong one reports a shape the author never claimed. Agreement is
+    structural (``_agrees``) rather than per-arg, because the deciding
+    difference between two calls is routinely nested inside an arg that also
+    carries a placeholder — treating that whole arg as a wildcard matches on the
+    parts that say nothing. The LAST call wins, both among the calls that agree
+    and as the fallback when none does: a run that repeats a tool settles on its
+    final call, which is the one worth freezing.
     """
     calls = [call for call in (walk.results or ()) if call.tool_name == step.tool]
     if not calls:
         return None
-    literals = {
-        key: value
-        for key, value in step.args.items()
-        if not any(True for _ in placeholder_tokens(value)) and not has_ask_slots(value)
-    }
     agreeing = [
         call
         for call in calls
-        if all(key in call.args and call.args[key] == value for key, value in literals.items())
+        if all(
+            key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
+        )
     ]
     return (agreeing or calls)[-1]
+
+
+def _agrees(step_value: object, recorded_value: object) -> bool:
+    """Whether a step's authored value could be the recorded call's value.
+
+    Anything that does not exist until replay agrees with everything: an
+    ``$ask`` slot, and a string that is nothing but a placeholder token. A
+    string that merely *embeds* a token ("Email $steps.mail.to") agrees with any
+    string, since the text it renders to is unknowable here but its type is not.
+
+    Containers are compared through, which is the whole point: a mapping agrees
+    when every key the step authored is present and agrees (recorded keys the
+    step omitted are fine — the model may have left a default unwritten), and a
+    list agrees elementwise at the same length. Everything else is equality.
+    """
+    if is_ask_slot(step_value):
+        return True
+    if isinstance(step_value, str):
+        if PLACEHOLDER_TOKEN.fullmatch(step_value):
+            return True
+        if PLACEHOLDER_TOKEN.search(step_value):
+            return isinstance(recorded_value, str)
+        return step_value == recorded_value
+    if isinstance(step_value, Mapping):
+        return isinstance(recorded_value, Mapping) and all(
+            key in recorded_value and _agrees(item, recorded_value[key])
+            for key, item in step_value.items()
+        )
+    if isinstance(step_value, list):
+        return (
+            isinstance(recorded_value, list)
+            and len(step_value) == len(recorded_value)
+            # strict= can never fire: the length check above short-circuits first,
+            # so no mutation of it is observable (same construct as trigger_dispatch_tasks).
+            and all(
+                _agrees(item, other)
+                for item, other in zip(step_value, recorded_value, strict=True)  # pragma: no mutate
+            )
+        )
+    return step_value == recorded_value
 
 
 def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
@@ -433,6 +473,43 @@ def _shape_hint(value: object) -> str:
     if len(keys) > _MAX_LISTED_KEYS:
         listed += ", ..."
     return f"; its result has keys: {listed}"
+
+
+def _check_required_args(
+    step: PlaybookStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
+) -> None:
+    """A missing required arg is a call that fails at replay before it starts.
+
+    Nothing else catches it: the per-arg checks walk the args the step HAS, and
+    a run-result match agrees with an empty mapping trivially.
+    """
+    tool = space.tools[tool_name]
+    for name in sorted(_required_args(tool) - set(step.args)):
+        walk.issues.append(
+            PlaybookIssue(
+                where=f"{path}.args",
+                problem=f"{tool_name} requires {name!r} and this step does not set it; "
+                f"it takes: {', '.join(sorted(tool.args)) or 'nothing'}",
+            )
+        )
+
+
+def _required_args(tool: BaseTool) -> set[str]:
+    """The arg names a tool cannot be called without, from its own call schema.
+
+    ``tool.args`` is only the property map; the ``required`` list lives one
+    level up, on the schema that ``tool_call_schema`` renders. langchain hands
+    that back as a v2 model for decorated tools, a v1 model for legacy ones and
+    a raw JSON document for MCP tools; all three spell ``required`` the same way.
+    """
+    schema = tool.tool_call_schema
+    if isinstance(schema, dict):
+        rendered: Mapping[str, Any] = schema
+    elif issubclass(schema, BaseModel):
+        rendered = schema.model_json_schema()
+    else:
+        rendered = schema.schema()
+    return set(rendered.get("required") or [])
 
 
 def _check_ask_slot(slot: Mapping[str, Any], where: str, walk: _Walk) -> None:

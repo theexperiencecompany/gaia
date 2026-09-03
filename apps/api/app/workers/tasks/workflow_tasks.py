@@ -801,6 +801,45 @@ async def _notify_replay_finished(
         )
 
 
+async def _deliver_replay(
+    fire: _Fire,
+    playbook: PlaybookDocument,
+    conversation_id: str,
+    result: PlaybookRunResult,
+) -> tuple[str, list[RecordedCall], str]:
+    """Write a trusted replay's turn and tell the user; the other outcomes leave
+    the conversation to the agent run that takes over, so one fire shows one
+    result instead of a half-run followed by a real one."""
+    workflow, workflow_id, user = fire.workflow, fire.workflow_id, fire.user
+    log.set_ns(
+        "playbook",
+        mode="replay",
+        reason="workflow_hash_match",
+        playbook_id=playbook.playbook_id,
+        llm_calls=result.llm_calls,
+        outcome=PlaybookRunStatus.SUCCESS.value,
+    )
+    if result.narration_failed is not None:
+        log.warning(
+            f"{LogTag.WORKER} Playbook replayed but the narration failed; "
+            "delivered the steps' record instead",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            reason=result.narration_failed,
+        )
+    await add_playbook_run_messages(
+        conversation_id=conversation_id,
+        user_id=workflow.user_id,
+        workflow=workflow,
+        response=result.text,
+        trace=result.trace,
+        playbook=playbook,
+    )
+    await _notify_replay_finished(workflow, user, conversation_id, result.text)
+    summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
+    return conversation_id, result.trace, summary
+
+
 async def _finish_after_replay(
     fire: _Fire,
     playbook: PlaybookDocument,
@@ -853,38 +892,7 @@ async def _finish_after_replay(
         )
 
     if status is PlaybookRunStatus.SUCCESS:
-        log.set_ns(
-            "playbook",
-            mode="replay",
-            reason="workflow_hash_match",
-            playbook_id=playbook.playbook_id,
-            llm_calls=result.llm_calls,
-            outcome=status.value,
-        )
-        if result.narration_failed is not None:
-            log.warning(
-                f"{LogTag.WORKER} Playbook replayed but the narration failed; "
-                "delivered the steps' record instead",
-                workflow_id=workflow_id,
-                playbook_id=playbook.playbook_id,
-                reason=result.narration_failed,
-            )
-        # Only a trusted replay writes the turn. The others leave the
-        # conversation to the agent run that takes over, so the user sees one
-        # result for one fire instead of a half-run followed by a real one.
-        await add_playbook_run_messages(
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
-            workflow=workflow,
-            response=result.text,
-            trace=result.trace,
-            playbook=playbook,
-        )
-        await _notify_replay_finished(workflow, user, conversation_id, result.text)
-        summary = (
-            REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
-        )
-        return conversation_id, result.trace, summary
+        return await _deliver_replay(fire, playbook, conversation_id, result)
 
     disabled = False
     if status is PlaybookRunStatus.SUSPECT and updated is not None:

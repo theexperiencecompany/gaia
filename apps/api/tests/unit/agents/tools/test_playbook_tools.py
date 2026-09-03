@@ -14,10 +14,13 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
+from pydantic import ValidationError
 import pytest
 import yaml
 
 from app.agents.tools.playbook_tools import (
+    _explain_validation_error,
+    _run_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
@@ -1177,11 +1180,11 @@ class TestWritePlaybookBoundary:
         assert schema["$defs"][child_name].get("additionalProperties") is not False
 
     @pytest.mark.parametrize(
-        ("arguments", "expected_location"),
+        ("arguments", "expected_problems"),
         [
             (
                 {"steps": NEW_STEPS, "result_brief": "Say what is on today."},
-                "description",
+                "description: Field required",
             ),
             (
                 {
@@ -1190,17 +1193,21 @@ class TestWritePlaybookBoundary:
                         {"id": "agenda", "tool": "list_events", "handoff": "gmail", "args": {}}
                     ],
                 },
-                "steps[0]",
+                "steps[0]: Value error, step agenda: set exactly one of 'tool' or 'handoff'",
+            ),
+            (
+                {"steps": NEW_STEPS},
+                "description: Field required; result_brief: Field required",
             ),
         ],
-        ids=["missing-description", "both-tool-and-handoff"],
+        ids=["missing-description", "both-tool-and-handoff", "two-problems"],
     )
     async def test_arguments_that_miss_the_schema_come_back_as_a_readable_refusal(
         self,
         store: _FakePlaybookStore,
         workflows: MagicMock,
         arguments: dict[str, Any],
-        expected_location: str,
+        expected_problems: str,
     ) -> None:
         """langchain raises before the coroutine runs, so without the tool's
         ``handle_validation_error`` hook the model gets a framework traceback
@@ -1219,11 +1226,23 @@ class TestWritePlaybookBoundary:
         parsed = json.loads(result)
         assert parsed["success"] is False
         assert parsed["error"] == "invalid_playbook"
-        assert parsed["message"].startswith(
+        assert parsed["message"] == (
             "The playbook was not written. Fix these and call write_playbook again: "
+            + expected_problems
         )
-        assert f"{expected_location}: " in parsed["message"]
         assert store.documents == {}
+
+    def test_a_refusal_with_no_field_to_point_at_names_the_arguments_as_a_whole(self) -> None:
+        """A pydantic error on the call as a whole carries no location. Rendered
+        as the empty string the model reads ": Input should be..." and has
+        nothing to act on; the arguments themselves are what is wrong."""
+        with pytest.raises(ValidationError) as raised:
+            write_playbook.tool_call_schema.model_validate("not a mapping")
+
+        assert json.loads(_explain_validation_error(raised.value))["message"] == (
+            "The playbook was not written. Fix these and call write_playbook again: "
+            "arguments: Input should be a valid dictionary or instance of write_playbook"
+        )
 
 
 @pytest.mark.unit
@@ -1412,3 +1431,97 @@ class TestWritePlaybookAgainstTheAuthoringRun:
 
         assert "state" not in schema["properties"]
         assert schema["required"] == ["description", "steps", "result_brief"]
+
+
+@pytest.mark.unit
+class TestTheRunTheWriteIsCheckedAgainst:
+    """Reading the run out of the graph state: each recorded call paired with
+    the message that answered it. What this drops never reaches the validator,
+    and what it invents is checked against a call that never happened."""
+
+    def test_a_call_is_recorded_with_its_arguments_and_what_came_back(self) -> None:
+        """A tool answering in content blocks rather than a string is the normal
+        shape for several providers. Dropped or blanked, the step it belongs to
+        is refused as "did not run in this run"."""
+        state = {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "GMAIL_FETCH_MESSAGES", "args": {"query": "is:unread"}, "id": "c1"}
+                    ],
+                ),
+                ToolMessage(
+                    content=[
+                        {"type": "text", "text": "one", "at": datetime(2026, 9, 1, tzinfo=UTC)}
+                    ],
+                    tool_call_id="c1",
+                ),
+            ]
+        }
+
+        results = _run_results(state)
+
+        assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
+        assert results[0].args == {"query": "is:unread"}
+        assert results[0].result == [
+            {"type": "text", "text": "one", "at": "2026-09-01 00:00:00+00:00"}
+        ]
+
+    def test_a_call_with_no_tool_name_is_not_a_call_a_step_could_have_frozen(self) -> None:
+        """A nameless call matches no step's tool. Kept, it becomes a recorded
+        result under a name no playbook can ever address."""
+        state = {
+            "messages": [
+                AIMessage(content="", tool_calls=[{"name": "", "args": {}, "id": "c1"}]),
+                ToolMessage(content=json.dumps({"ok": True}), tool_call_id="c1"),
+            ]
+        }
+
+        assert _run_results(state) == []
+
+    def test_a_call_still_in_flight_is_skipped_and_the_ones_beside_it_are_kept(self) -> None:
+        """``write_playbook`` itself is unanswered in every real run. Stopping at
+        it throws away the calls the playbook is being written from."""
+        state = {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "write_playbook", "args": {}, "id": "c0"},
+                        {
+                            "name": "GMAIL_FETCH_MESSAGES",
+                            "args": {"query": "is:unread"},
+                            "id": "c1",
+                        },
+                    ],
+                ),
+                ToolMessage(content=json.dumps({"messages": [{"id": "m1"}]}), tool_call_id="c1"),
+            ]
+        }
+
+        results = _run_results(state)
+
+        assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
+
+    async def test_a_write_records_how_many_of_the_runs_calls_it_was_checked_against(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """``None`` and ``0`` are different answers — no graph state reached the
+        tool at all, versus a run that genuinely made no calls — and this count
+        is the only field that tells them apart in production."""
+        state = _run_state(
+            ("GMAIL_FETCH_MESSAGES", {"query": "is:unread"}, {"messages": [{"id": "m1"}]}),
+            ("GMAIL_REPLY", {"thread_id": "t1", "body": "hi"}, {"sent": [{"id": "1"}]}),
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
+            )
+
+        assert log.set_ns.call_args_list[0] == call("playbook", checked_against_calls=2)

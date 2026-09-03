@@ -2571,6 +2571,10 @@ class TestADiscardedShortcutLeavesARecordOnTheWorkflow:
         assert (discard.playbook_id, discard.revision) == ("pb_1", 0)
         assert discard.reason == "stale_workflow_hash"
         assert discard.details == {}
+        # Stamped in UTC, not on the worker's local clock: a naive timestamp
+        # read back six months later says the wrong hour and cannot be compared
+        # with anything else in the record.
+        assert discard.at.tzinfo is UTC
         assert harness.update_workflow.await_args.args[:2] == ("wf_1", "u_1")
 
     async def test_an_exhausted_heal_records_the_attempts_it_spent(self) -> None:

@@ -80,10 +80,12 @@ PLAYBOOK_HEAL_NO_REASON = "no reason was recorded"
 _PLAYBOOK_VOICE = """Write like a person. Open on the actual point, vary your sentence length, use plain words, and say what you think instead of hedging every clause. No throat-clearing openers, no "delve", "seamless", "robust", "leverage", "testament to", no reflexive "Moreover". Do not overcorrect into forced quirkiness or slang either. Natural and clear is the whole target."""
 
 #: The mid-run call: fills the ``$ask`` slots the next step needs, and nothing
-#: else. It runs before the later steps, so it must not write the user's result
-#: or judge the run: neither can be done before the run's outcome is known.
+#: else. One call per step that carries slots, made immediately before that
+#: step, so the slots are written from everything that has actually run. It runs
+#: before the later steps, so it must not write the user's result or judge the
+#: run: neither can be done before the run's outcome is known.
 PLAYBOOK_ASK_PROMPT = (
-    """You are writing the slots a workflow run needs before it can continue. The run follows a written playbook, so its steps are replayed rather than reasoned out. The steps listed as ran already happened exactly as listed. The steps still to run happen after you answer, and some of them use what you write.
+    """You are writing the slots the next step of a workflow run needs before it can continue. The run follows a written playbook, so its steps are replayed rather than reasoned out. The steps listed as ran already happened exactly as listed. The steps still to run happen after you answer, and the first of them uses what you write.
 
 <playbook>
 {description}
@@ -144,7 +146,7 @@ Ground every word in what is listed above. Never invent a number, a name, a link
 
 #: Delivered as the run's result when every step replayed but the narration
 #: call did not return. The steps' effects are real and their results are on
-#: the record, so the user gets what ran rather than a failed run — and the
+#: the record, so the user gets what ran rather than a failed run, and the
 #: playbook is not sent to heal over a call that was never its fault.
 PLAYBOOK_NARRATION_FALLBACK_TEMPLATE = """The saved steps for this workflow ran, but the summary could not be written this time ({reason}).
 

@@ -228,6 +228,21 @@ _ARGS_DESCRIPTION = (
 )
 
 
+#: Names a model reaches for when it means ``args``. Dropped as unknown keys,
+#: any of these would store a call with no arguments at all and pass it off as
+#: authored; refusing them by name is what keeps lenience from swallowing the
+#: one key a step cannot do without.
+_ARGS_NEAR_MISSES = ("arguments", "input", "inputs", "params", "parameters", "kwargs")
+
+
+def _refuse_args_near_miss(data: Mapping[str, Any]) -> None:
+    if "args" in data:
+        return
+    for key in _ARGS_NEAR_MISSES:
+        if key in data:
+            raise ValueError(f"a step's arguments go under 'args', not {key!r}; rename it")
+
+
 class PlaybookHandoffStepInput(BaseModel):
     """A tool call recorded inside a handoff, as the authoring tool takes it.
 
@@ -262,6 +277,7 @@ class PlaybookHandoffStepInput(BaseModel):
                     "playbooks are one level deep, so list the calls that subagent made "
                     "as the handoff's own steps"
                 )
+            _refuse_args_near_miss(data)
         return data
 
     def to_step(self) -> PlaybookStep:
@@ -288,6 +304,13 @@ class PlaybookStepInput(BaseModel):
         default_factory=list,
         description="The tool calls the handoff's subagent ran. Only a handoff carries these.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _args_spelled_right(cls, data: object) -> object:
+        if isinstance(data, Mapping):
+            _refuse_args_near_miss(data)
+        return data
 
     @model_validator(mode="after")
     def exactly_one_shape(self) -> Self:

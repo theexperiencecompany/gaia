@@ -8,6 +8,7 @@ The grammar itself is enforced by the models, since the structured tool schema
 is the only way a playbook is ever authored — nothing parses YAML back.
 """
 
+from datetime import datetime
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, call, patch
 
@@ -245,7 +246,7 @@ description: Copied from the record
 steps:
   - id: one
     tool: list_events
-    args: {{"query": "newsletters {ARG_TRUNCATION_MARKER}"}}
+    args: {{"calendar_id": "primary", "query": "newsletters {ARG_TRUNCATION_MARKER}"}}
 result_brief: x
 """
         )
@@ -268,6 +269,7 @@ steps:
   - id: one
     tool: list_events
     args:
+      calendar_id: primary
       query: "newsletters {ARG_TRUNCATION_MARKER}"
       bogus: "x"
 result_brief: x
@@ -1197,6 +1199,8 @@ steps:
   - id: one
     tool: send_email
     args:
+      to: a@b.com
+      subject: hi
       bcc: c@d.com
       cc: e@f.com
 result_brief: x
@@ -1246,6 +1250,97 @@ result_brief: x
             result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert "it takes: nothing" in result.issues[0].problem
+
+    async def test_a_required_arg_the_step_never_sets_is_refused_by_name(self) -> None:
+        """Nothing else catches this: the per-arg checks walk the args the step
+        HAS, so a call missing a required one is accepted here and fails at
+        replay before it starts."""
+        body = _body(
+            """
+description: Mail with half the arguments
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args",
+                "send_email requires 'subject' and this step does not set it; "
+                "it takes: retries, subject, to",
+            )
+        ]
+
+    async def test_every_missing_required_arg_is_named_in_sorted_order(self) -> None:
+        """Naming one at a time costs the author a round trip each, and the
+        order has to be the same every run or the message is not diffable."""
+        body = _body(
+            """
+description: Mail with no arguments at all
+steps:
+  - id: mail
+    tool: send_email
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [issue.problem for issue in result.issues] == [
+            "send_email requires 'subject' and this step does not set it; "
+            "it takes: retries, subject, to",
+            "send_email requires 'to' and this step does not set it; "
+            "it takes: retries, subject, to",
+        ]
+
+    @pytest.mark.parametrize(
+        "authored",
+        ["$user.email", {"$ask": "who this goes to"}],
+        ids=["placeholder", "ask-slot"],
+    )
+    async def test_a_required_arg_filled_at_replay_still_counts_as_set(
+        self, authored: object
+    ) -> None:
+        """The arg is present; only its value is deferred. Refusing it would
+        refuse every playbook that addresses the user or writes its own text."""
+        body = PlaybookBody.model_validate(
+            {
+                "description": "Mail the agenda",
+                "steps": [
+                    {"id": "mail", "tool": "send_email", "args": {"to": authored, "subject": "hi"}}
+                ],
+                "result_brief": "x",
+            }
+        )
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+
+    async def test_a_tool_that_requires_nothing_is_not_asked_for_anything(self) -> None:
+        """An MCP schema with no ``required`` list is not a tool that requires
+        every arg; a step calling it with none is complete."""
+        registry = _schema_registry(ping={})
+        body = _body(
+            """
+description: Ping
+steps:
+  - id: one
+    tool: ping
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
 
     async def test_a_deep_step_reference_resolves_against_the_step_id(self) -> None:
         """``$steps.agenda.organizer.email`` names step ``agenda``, not
@@ -1312,6 +1407,37 @@ result_brief: x
 
         assert result.issues == []
 
+    async def test_a_non_string_arg_picks_the_call_that_used_that_value(self) -> None:
+        """Numbers agree by equality like anything else. Matched the other way
+        round the step is checked against the call it is NOT, and this playbook
+        is refused for the emptiness of a run it never froze."""
+        body = _body(
+            """
+description: Mail with two retries
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+      retries: 2
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "send_email",
+                {"to": "a@b.com", "subject": "hi", "retries": 2},
+                {"sent": [{"id": "1"}]},
+            ),
+            _call("send_email", {"to": "a@b.com", "subject": "hi", "retries": 5}, {"sent": []}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
     async def test_an_arg_holding_a_placeholder_matches_any_recorded_value(self) -> None:
         """A placeholder has no value until replay, so it cannot disagree with a
         recorded arg. Treated as a literal it would agree with nothing and the
@@ -1365,6 +1491,169 @@ result_brief: x
         assert result.issues[0].problem.startswith("list_events returned no items in this run")
         assert '{"calendar_id": "primary"}' in result.issues[0].problem
 
+    async def test_a_literal_nested_beside_a_placeholder_still_picks_the_call(self) -> None:
+        """The two calls differ only inside ``filters``, which also carries a
+        placeholder. Treating the whole arg as a wildcard matches the last call
+        and refuses this playbook for the spam folder's emptiness."""
+        body = _body(
+            """
+description: Read the inbox
+steps:
+  - id: mail
+    tool: search_mail
+    args:
+      filters:
+        label: INBOX
+        after: $today
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "search_mail",
+                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
+                {"messages": [{"id": "m1"}]},
+            ),
+            _call(
+                "search_mail",
+                {"filters": {"label": "SPAM", "after": "2026-09-01"}},
+                {"messages": []},
+            ),
+        ]
+
+        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_key_the_recorded_call_lacks_disagrees_with_it(self) -> None:
+        """The last call never sent ``label`` at all, so it is not the call this
+        step froze — an arg the step names and the record omits is a
+        disagreement, not something to shrug at."""
+        body = _body(
+            """
+description: Read the inbox
+steps:
+  - id: mail
+    tool: search_mail
+    args:
+      filters:
+        label: INBOX
+        after: $today
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "search_mail",
+                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
+                {"messages": [{"id": "m1"}]},
+            ),
+            _call("search_mail", {"filters": {"after": "2026-09-01"}}, {"messages": []}),
+        ]
+
+        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_ask_slot_nested_in_an_arg_matches_any_recorded_value(self) -> None:
+        """Text a model writes at replay does not exist yet, so it agrees with
+        whatever sat in that position — while the literal beside it still
+        decides which call this is."""
+        body = _body(
+            """
+description: Read the inbox
+steps:
+  - id: mail
+    tool: search_mail
+    args:
+      filters:
+        label: INBOX
+        after:
+          $ask: Which day to read from
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "search_mail",
+                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
+                {"messages": [{"id": "m1"}]},
+            ),
+            _call(
+                "search_mail",
+                {"filters": {"label": "SPAM", "after": "2026-08-01"}},
+                {"messages": []},
+            ),
+        ]
+
+        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_list_arg_agrees_at_its_own_length_only(self) -> None:
+        """A placeholder element stands for one value, not for any number of
+        them, so a recorded list of another length is a different call."""
+        body = _body(
+            """
+description: Tag the inbox
+steps:
+  - id: tagged
+    tool: tag_mail
+    args:
+      labels:
+        - INBOX
+        - $today
+result_brief: x
+"""
+        )
+        results = [
+            _call("tag_mail", {"labels": ["INBOX", "2026-09-01"]}, {"tagged": [{"id": "m1"}]}),
+            _call("tag_mail", {"labels": ["INBOX", "2026-09-01", "SPAM"]}, {"tagged": []}),
+        ]
+
+        registry = _schema_registry(tag_mail={"labels": {"type": "array"}})
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_key_the_step_left_out_does_not_break_agreement(self) -> None:
+        """The model writes the args it meant, not every default the tool
+        filled in; a recorded key the step never mentions cannot be evidence
+        that this is some other call."""
+        body = _body(
+            """
+description: Read the inbox
+steps:
+  - id: mail
+    tool: search_mail
+    args:
+      filters:
+        label: INBOX
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "search_mail",
+                {"filters": {"label": "INBOX", "after": "2026-09-01"}},
+                {"messages": [{"id": "m1"}]},
+            ),
+            _call("search_mail", {"filters": {"label": "SPAM"}}, {"messages": []}),
+        ]
+
+        registry = _schema_registry(search_mail={"filters": {"type": "object"}})
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
     async def test_a_tool_the_run_never_called_is_refused(self) -> None:
         """A playbook freezes calls that ran. A step for a tool this run never
         touched was invented, and its args have never been proven to work."""
@@ -1412,7 +1701,10 @@ result_brief: x
             result = await validate_playbook(body, USER_ID, results)
 
         assert [issue.where for issue in result.issues] == ["steps[0]"]
-        assert "widen the args or decline the playbook" in result.issues[0].problem
+        assert result.issues[0].problem == (
+            'list_events returned no items in this run (args: {"calendar_id": "primary"}); '
+            "freeze a call that produced data — widen the args or decline the playbook"
+        )
 
     async def test_a_call_that_reported_its_own_failure_is_refused_by_its_error(self) -> None:
         """A tool that catches its own failure answers with a success-shaped
@@ -1443,7 +1735,116 @@ result_brief: x
             result = await validate_playbook(body, USER_ID, results)
 
         assert [issue.where for issue in result.issues] == ["steps[0]"]
-        assert "Gmail token expired" in result.issues[0].problem
+        assert result.issues[0].problem == (
+            "send_email failed in this run (Gmail token expired); a playbook freezes "
+            "calls that succeeded — fix the call and run it again, or drop the step"
+        )
+
+    @pytest.mark.parametrize(
+        ("envelope", "said"),
+        [
+            ({"success": False, "message": "Gmail token expired"}, "Gmail token expired"),
+            ({"success": False}, "the call reported success: false"),
+        ],
+        ids=["message-key", "said-nothing"],
+    )
+    async def test_a_failure_with_no_error_key_is_named_by_whatever_it_did_say(
+        self, envelope: dict[str, Any], said: str
+    ) -> None:
+        """Tools spell their failure two ways — an ``error`` and a bare
+        ``message`` — and some say only ``success: false``. The refusal is the
+        author's only account of why the call failed, so it has to read the
+        second spelling and say so plainly when there is no third."""
+        body = _body(
+            """
+description: Mail from a failing tool
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [_call("send_email", {"to": "a@b.com", "subject": "hi"}, envelope)]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]
+        assert result.issues[0].problem == (
+            f"send_email failed in this run ({said}); a playbook freezes "
+            "calls that succeeded — fix the call and run it again, or drop the step"
+        )
+
+    async def test_the_args_naming_the_empty_call_are_rendered_as_they_were_sent(self) -> None:
+        """The args are there to say WHICH call came back empty. Escaped to
+        ASCII the author cannot recognise their own query, and a value that is
+        not JSON (a datetime the tool was handed) must render rather than crash
+        the whole validation."""
+        body = _body(
+            """
+description: Read an empty calendar
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "list_events",
+                {"query": "café ☕", "after": datetime(2026, 9, 1)},
+                {"events": []},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues[0].problem == (
+            "list_events returned no items in this run "
+            '(args: {"query": "café ☕", "after": "2026-09-01 00:00:00"}); '
+            "freeze a call that produced data — widen the args or decline the playbook"
+        )
+
+    @pytest.mark.parametrize(
+        ("filler", "rendered"),
+        [
+            (191, '{"q": "' + "x" * 191 + '"}'),
+            (192, '{"q": "' + "x" * 192 + '"...'),
+        ],
+        ids=["exactly-at-the-cap", "one-character-over"],
+    )
+    async def test_long_args_are_cut_at_the_cap_and_marked(
+        self, filler: int, rendered: str
+    ) -> None:
+        """200 characters of args, then an ellipsis. The cap is inclusive: a
+        rendering that lands exactly on it is complete and must not be marked as
+        cut, or the author goes looking for args that were never dropped."""
+        body = _body(
+            """
+description: Read an empty calendar
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+result_brief: x
+"""
+        )
+        results = [_call("list_events", {"q": "x" * filler}, {"events": []})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues[0].problem == (
+            f"list_events returned no items in this run (args: {rendered}); "
+            "freeze a call that produced data — widen the args or decline the playbook"
+        )
 
     async def test_a_reference_to_a_field_the_result_lacks_is_refused_with_its_keys(self) -> None:
         """``pb_c7d357db77dd`` exactly: a field frozen on a tool that does not
@@ -1481,6 +1882,74 @@ result_brief: x
         assert result.issues[0].problem == (
             "$steps.agenda.threadId is not in step 'agenda''s result"
             "; its result has keys: messages, nextPage"
+        )
+
+    async def test_a_reference_deeper_than_one_field_is_still_read_from_its_step(self) -> None:
+        """``$steps.agenda.organizer.email`` names the step ``agenda`` and the
+        path ``organizer.email``. Split from the other end the step is called
+        ``agenda.organizer``, nothing in the run answers to it, and a reference
+        into a shape the tool does not return is waved through."""
+        body = _body(
+            """
+description: Reply to the organizer
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.organizer.email
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "primary"}, {"organizer": {"name": "Ada"}}),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[1].args.to"]
+        assert result.issues[0].problem == (
+            "$steps.agenda.organizer.email is not in step 'agenda''s result"
+            "; its result has keys: organizer"
+        )
+
+    async def test_a_result_with_no_keys_to_offer_ends_the_refusal_where_it_is(self) -> None:
+        """The keys are a hint, not a sentence: a result that is a bare list has
+        none to give, and the refusal has to stop rather than trail off into an
+        empty ``has keys:``."""
+        body = _body(
+            """
+description: Reply on a thread id a list cannot carry
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.threadId
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "primary"}, ["m1", "m2"]),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[1].args.to"]
+        assert result.issues[0].problem == (
+            "$steps.agenda.threadId is not in step 'agenda''s result"
         )
 
     async def test_a_reference_the_recorded_result_resolves_is_accepted(self) -> None:

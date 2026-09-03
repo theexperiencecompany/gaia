@@ -74,6 +74,18 @@ class TestAskSlotKeys:
 
         assert [item.key for item in located] == ["fetch.query"]
 
+    def test_a_step_with_neither_a_name_nor_a_tool_is_keyed_by_its_path_alone(self) -> None:
+        """``exactly_one_shape`` forbids this step, so it only exists if one is
+        conjured past validation (``model_construct``) — a stored document read
+        back, say. The prefix then falls back to nothing, and the key is the
+        argument path on its own; anything else spells a step name that no step
+        answers to, and the written text is never substituted."""
+        shapeless = PlaybookStep.model_construct(
+            id="", tool=None, handoff=None, steps=[], args={"query": {"$ask": "what to look up"}}
+        )
+
+        assert [item.key for item in ask_slots([shapeless])] == [".query"]
+
     def test_slots_come_back_in_execution_order(self) -> None:
         steps = [
             PlaybookStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
@@ -142,8 +154,13 @@ class TestPlaybookHandoffStepInput:
         silently and the stored playbook runs less than the author wrote while
         reporting success. The message has to name which key, or the author
         cannot tell nesting from a typo."""
-        with pytest.raises(ValidationError, match=f"cannot carry {named}"):
+        with pytest.raises(ValidationError) as raised:
             PlaybookHandoffStepInput.model_validate(child)
+
+        assert (
+            f"a handoff's child is one tool call and cannot carry {named}: playbooks are "
+            "one level deep, so list the calls that subagent made as the handoff's own steps"
+        ) in str(raised.value)
 
     def test_a_stray_annotation_on_a_child_is_still_dropped(self) -> None:
         """The refusal above is exactly two keys wide: a ``goal`` on a child is
@@ -156,6 +173,52 @@ class TestPlaybookHandoffStepInput:
             "id": "mail",
             "tool": "list_events",
         }
+
+
+class TestArgsSpelledRight:
+    """``args`` under another name is dropped as unknown, and the step then
+    stores a call with no arguments at all while reporting a successful write."""
+
+    @pytest.mark.parametrize(
+        "near_miss",
+        ["arguments", "input", "inputs", "params", "parameters", "kwargs"],
+    )
+    @pytest.mark.parametrize(
+        "model",
+        [PlaybookStepInput, PlaybookHandoffStepInput],
+        ids=["top-level", "handoff-child"],
+    )
+    def test_arguments_under_another_name_are_refused_by_that_name(
+        self, model: type[PlaybookStepInput] | type[PlaybookHandoffStepInput], near_miss: str
+    ) -> None:
+        with pytest.raises(ValidationError) as raised:
+            model.model_validate({"id": "mail", "tool": "send_email", near_miss: {"to": "a@b.com"}})
+
+        assert f"a step's arguments go under 'args', not {near_miss!r}; rename it" in str(
+            raised.value
+        )
+
+    @pytest.mark.parametrize(
+        "model",
+        [PlaybookStepInput, PlaybookHandoffStepInput],
+        ids=["top-level", "handoff-child"],
+    )
+    def test_a_stray_alias_beside_real_args_is_dropped_not_refused(
+        self, model: type[PlaybookStepInput] | type[PlaybookHandoffStepInput]
+    ) -> None:
+        """The refusal is about arguments going missing. With ``args`` present
+        nothing is lost, so the extra key is the same harmless annotation any
+        other unknown key is."""
+        step = model.model_validate(
+            {
+                "id": "mail",
+                "tool": "send_email",
+                "args": {"to": "a@b.com"},
+                "arguments": {"to": "z@z.com"},
+            }
+        )
+
+        assert step.args == {"to": "a@b.com"}
 
 
 class TestAskSlot:

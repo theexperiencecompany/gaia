@@ -7,9 +7,9 @@ which is the only way to tell that a replay still gates every call now that the
 runner no longer calls the gate itself.
 
 A replay makes one model call when the playbook has no asks (the end-of-run
-result and verdict) and two when it has asks (an ask fill mid-run, before the step
-that needs it, then the same end-of-run call), no matter how many ``$ask`` slots
-there are. The scripted model's turns are not model calls and never reach a provider.
+result and verdict), plus one ask fill for each step that carries ``$ask`` slots,
+made immediately before that step so the slots are written from what has actually
+run. The scripted model's turns are not model calls and never reach a provider.
 """
 
 from collections.abc import Iterator
@@ -214,15 +214,15 @@ def _slot(prompt: str, max_tokens: int | None = None) -> dict[str, Any]:
 
 
 def _ask_fill(asks: dict[str, str] | None = None) -> PlaybookAskFill:
-    """What the one mid-run call answers, keyed by each slot's ``<step>.<arg>`` key."""
+    """What one ask call answers, keyed by each slot's ``<step>.<arg>`` key."""
     return PlaybookAskFill(
         asks=[PlaybookAskAnswer(name=name, text=text) for name, text in (asks or {}).items()]
     )
 
 
-def _ask_prompt(llm: AsyncMock) -> str:
-    """The prompt the mid-run ask call was given: always the FIRST model call."""
-    return str(llm.await_args_list[0].args[1])
+def _ask_prompt(llm: AsyncMock, index: int = 0) -> str:
+    """The prompt an ask call was given; the ask calls come before the end-of-run one."""
+    return str(llm.await_args_list[index].args[1])
 
 
 def _result_prompt(llm: AsyncMock) -> str:
@@ -265,8 +265,10 @@ async def _run(
     """Run the playbook with mocked seams; hands back the result and the LLM mock.
 
     ``narration`` is what the end-of-run call returns; ``ask_fill`` is what the
-    mid-run ask call returns, and giving one makes the model answer the ask call
-    first and the narration second, in that order. ``runnable``,
+    ask call returns, and giving one makes the model answer the ask call first
+    and the narration second, in that order — so it fits a playbook whose slots
+    all sit on one step. A playbook with slots on several steps makes an ask
+    call per step and scripts them through ``seams.llm`` instead. ``runnable``,
     ``find_previous`` and ``llm`` let a test hold on to the seam it is asserting
     about: how a model call is built, what the previous execution's trace was
     looked up with, and what the model calls do.
@@ -2452,55 +2454,124 @@ async def test_a_replay_that_finished_without_a_narration_refuses_to_report_a_re
     assert str(raised.value) == "playbook replay finished every step without a narration"
 
 
-async def test_the_slots_are_filled_once_however_many_steps_carry_them() -> None:
-    """The fill is remembered, so the third step reads what the one call wrote.
+#: Two slotted steps around a fetch: the mail's body is written from the events,
+#: and the note's body is written from what the mail actually went out as.
+TWO_SLOTTED_STEPS = [
+    PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+    PlaybookStep(
+        id="mail",
+        tool="send_email",
+        args={"to": "$trigger.to", "body": _slot("Write the digest.")},
+    ),
+    PlaybookStep(
+        id="note",
+        tool="send_email",
+        args={"to": "$user.email", "body": _slot("Note what the mail said.")},
+    ),
+]
 
-    Forgetting it costs another model call mid-run and lets one instruction be
-    answered two different ways inside a single replay: the mail says one thing
-    and the note filed about it says another.
+
+async def test_each_slotted_step_gets_its_own_ask_call_listing_only_its_slots() -> None:
+    """Two steps carrying slots, two ask calls, and neither is shown the other's.
+
+    The keys are what say which step a call is answering for, so a call listed
+    both steps' keys is a call being asked to write an argument for a step that
+    is still several results away.
     """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
-    playbook = _playbook(
-        [
-            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-            PlaybookStep(
-                id="mail",
-                tool="send_email",
-                args={"to": "$trigger.to", "body": _slot("Write the digest.")},
-            ),
-            PlaybookStep(
-                id="note",
-                tool="send_email",
-                args={"to": "$user.email", "body": _slot("Write the digest.")},
-            ),
+    fills = AsyncMock(
+        side_effect=[
+            _ask_fill({"mail.body": "Twelve today."}),
+            _ask_fill({"note.body": "Told the team about twelve."}),
+            _narration(),
         ]
     )
 
-    result, llm = await _run(
-        playbook,
-        registry,
-        ask_fill=_ask_fill({"mail.body": "Twelve today.", "note.body": "Twelve today."}),
-    )
+    result, llm = await _run(_playbook(TWO_SLOTTED_STEPS), registry, seams=_Seams(llm=fills))
 
     assert result.ok is True, result.failure
-    assert llm.await_count == 2
-    assert result.llm_calls == 2
+    assert llm.await_count == 3
+    assert result.llm_calls == 3
+    assert _prompt_block(_ask_prompt(llm, 0), "asks").splitlines()[::2] == [
+        "- mail.body: Write the digest."
+    ]
+    assert _prompt_block(_ask_prompt(llm, 1), "asks").splitlines()[::2] == [
+        "- note.body: Note what the mail said."
+    ]
     assert recorder.calls[1][1]["body"] == "Twelve today."
-    assert recorder.calls[2][1]["body"] == "Twelve today."
+    assert recorder.calls[2][1]["body"] == "Told the team about twelve."
 
 
-# --- one fill, every slot ---------------------------------------------------
+async def test_a_later_steps_slot_is_written_from_the_steps_that_already_ran() -> None:
+    """The bug this split fixes: a slot answered before the run reached it.
+
+    One call at the first slotted step wrote every slot in the playbook, so the
+    note's "what the mail said" was answered with nothing listed under ran — the
+    mail had not gone out yet — and that text reached a real tool. Its call now
+    fires at its own step, with the fetch and the mail both listed as run.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    fills = AsyncMock(
+        side_effect=[
+            _ask_fill({"mail.body": "Twelve today."}),
+            _ask_fill({"note.body": "Told the team about twelve."}),
+            _narration(),
+        ]
+    )
+
+    result, llm = await _run(_playbook(TWO_SLOTTED_STEPS), registry, seams=_Seams(llm=fills))
+
+    assert result.ok is True, result.failure
+    assert _prompt_block(_ask_prompt(llm, 0), "ran") == (
+        'events (list_events {"calendar_id":"primary"}) -> {"count": 12}'
+    )
+    assert _prompt_block(_ask_prompt(llm, 1), "ran") == (
+        'events (list_events {"calendar_id":"primary"}) -> {"count": 12}\n'
+        'mail (send_email {"to":"team@example.com","body":"Twelve today."}) -> sent'
+    )
 
 
-async def test_one_ask_call_fills_every_slot_including_a_later_steps_and_a_childs() -> None:
-    """One mid-run call writes every slot the playbook holds, wherever it sits.
+async def test_a_fill_that_omits_a_later_steps_key_stops_the_run_at_that_step() -> None:
+    """Each call is checked against its own step's slots, not the playbook's.
 
-    Slots are addressed by key, so a later step's slot and a slot inside a
-    handoff's recorded child are written by the same call that the first slot
-    triggered. A fill that covered only the step that triggered it would cost a
-    model call per step with a slot, and each one would answer the same playbook
-    from a different half of the run.
+    A step whose call came back without its key must not run: the argument would
+    still hold the slot's own dict. Checked at the later step because that is
+    where the earlier fill's answers no longer stand in for it — the run has
+    already spent a call, so "some slot was written" says nothing about this one.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    fills = AsyncMock(
+        side_effect=[_ask_fill({"mail.body": "Twelve today."}), _ask_fill({"note.elsewhere": "x"})]
+    )
+
+    with patch(f"{MODULE}.log") as log:
+        result, llm = await _run(_playbook(TWO_SLOTTED_STEPS), registry, seams=_Seams(llm=fills))
+
+    assert result.ok is False
+    assert result.failure is not None
+    assert result.failure.startswith(
+        "Playbook stopped at step 3 (send_email): note.body was never written."
+    )
+    # The step never ran, and the mail before it did: the fill that answered
+    # that step's own slot is not undone by the one that failed.
+    assert [name for name, _ in recorder.calls] == ["list_events", "send_email"]
+    assert llm.await_count == 2
+    assert log.warning.call_args.kwargs["missing_asks"] == ["note.body"]
+
+
+# --- one fill per slotted step ----------------------------------------------
+
+
+async def test_a_handoff_childs_slot_is_filled_by_its_own_call_like_any_other() -> None:
+    """A child inside a handoff is a step, so it gets a step's ask call.
+
+    Its slot is not swept up by the call the first top-level slot triggered:
+    the child runs last, and a fill made before the two steps ahead of it would
+    write its argument from a run that had not reached it. The keys stay the
+    child's own, so the answers still land where the evaluator looks for them.
     """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
@@ -2529,41 +2600,45 @@ async def test_one_ask_call_fills_every_slot_including_a_later_steps_and_a_child
         ]
     )
 
+    fills = AsyncMock(
+        side_effect=[
+            _ask_fill({"mail.body": "Twelve events today."}),
+            _ask_fill({"note.body": "Filed for the record."}),
+            _ask_fill({"more.calendar_id": "second"}),
+            _narration(),
+        ]
+    )
+
     result, llm = await _run(
         playbook,
         registry,
-        ask_fill=_ask_fill(
-            {
-                "mail.body": "Twelve events today.",
-                "note.body": "Filed for the record.",
-                "more.calendar_id": "second",
-            }
-        ),
-        seams=_Seams(subagent=_FakeSubagent()),
+        seams=_Seams(subagent=_FakeSubagent(), llm=fills),
     )
 
     assert result.ok is True, result.failure
-    assert llm.await_count == 2
-    assert result.llm_calls == 2
+    assert llm.await_count == 4
+    assert result.llm_calls == 4
     assert recorder.calls[0][1]["body"] == "Twelve events today."
     assert recorder.calls[1][1]["body"] == "Filed for the record."
     assert recorder.calls[2][1]["calendar_id"] == "second"
-    # Listed in execution order, handoff children included, keyed by
+    # One call per slotted step, in execution order, each keyed by
     # ``<step id>.<argument path>`` — the key the answers are looked back up by.
-    assert _prompt_block(_ask_prompt(llm), "asks").splitlines()[::2] == [
+    assert [
+        _prompt_block(_ask_prompt(llm, index), "asks").splitlines()[0] for index in range(3)
+    ] == [
         "- mail.body: Write the digest.",
         "- note.body: Write the note.",
         "- more.calendar_id: Which calendar?",
     ]
 
 
-async def test_the_ask_fill_fires_at_the_first_step_with_a_slot_and_not_again() -> None:
-    """One fill, at the first step that carries a slot — not one per such step.
+async def test_each_fill_fires_at_its_own_step_and_no_earlier() -> None:
+    """A run whose first and third steps carry slots makes one fill at each.
 
-    A run whose first and third steps both carry slots still makes exactly one
-    fill call, before anything has run. A second fill mid-run buys another model
-    call and lets one instruction be answered two different ways inside a single
-    replay.
+    The first fires before anything has run, which is all its step can be
+    written from. The second fires after the two steps in front of it, which is
+    the whole point: written at the first one it would answer from a run that
+    had not fetched anything yet.
     """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
@@ -2582,7 +2657,11 @@ async def test_the_ask_fill_fires_at_the_first_step_with_a_slot_and_not_again() 
             ),
         ]
     )
-    answers = [_ask_fill({"mail.body": "Twelve today.", "note.body": "Filed."}), _narration()]
+    answers = [
+        _ask_fill({"mail.body": "Twelve today."}),
+        _ask_fill({"note.body": "Filed."}),
+        _narration(),
+    ]
     tools_run_before_each_call: list[list[str]] = []
 
     async def model(runnable: object, prompt: object, **kwargs: object) -> object:
@@ -2592,11 +2671,13 @@ async def test_the_ask_fill_fires_at_the_first_step_with_a_slot_and_not_again() 
     result, llm = await _run(playbook, registry, seams=_Seams(llm=AsyncMock(side_effect=model)))
 
     assert result.ok is True, result.failure
-    # The fill ran before step 1, and the only call after it is the end-of-run
-    # one: the third step's slot did not trigger a second fill.
-    assert tools_run_before_each_call == [[], ["send_email", "list_events", "send_email"]]
-    assert llm.await_count == 2
-    assert result.llm_calls == 2
+    assert tools_run_before_each_call == [
+        [],
+        ["send_email", "list_events"],
+        ["send_email", "list_events", "send_email"],
+    ]
+    assert llm.await_count == 3
+    assert result.llm_calls == 3
     assert recorder.calls[2][1]["body"] == "Filed."
 
 
@@ -2845,7 +2926,7 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
         patch(f"{MODULE}.background_structured_runnable", MagicMock()),
         patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=fill)),
     ):
-        await _fill_asks(playbook, run, pending=[])
+        await _fill_asks(playbook, playbook.steps[0], run, pending=[])
 
     assert run.llm_calls == 6
     assert run.ask_fill is fill

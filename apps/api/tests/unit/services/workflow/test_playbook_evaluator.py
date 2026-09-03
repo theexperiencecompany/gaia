@@ -379,6 +379,12 @@ def test_a_slot_that_reached_resolution_unfilled_stops_the_run() -> None:
         resolve_value({"$ask": "Write a subject line"}, _context())
     _assert_actionable(caught.value, "$ask")
     assert caught.value.message == "an $ask slot was not filled before resolution"
+    # The whole triple: this is a bug in the run's own order, and the two lines
+    # that say which order was skipped are the only thing pointing at it.
+    assert caught.value.why == (
+        "the run resolved this step's arguments without first filling its ask slots"
+    )
+    assert caught.value.fix == "fill the step's ask slots before resolving its arguments"
 
 
 def test_dollar_ask_in_a_string_is_literal_text_not_a_placeholder() -> None:
