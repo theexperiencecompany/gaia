@@ -36,8 +36,6 @@ from e2b import AsyncSandbox, CommandExitException
 
 from app.agents.workspace.paths import WORKSPACE_ROOT
 from app.constants.cli_integrations import (
-    APPS_DIR,
-    CLI_HOME_ROOT,
     GAIA_OPT_ROOT,
     INSTALL_TIMEOUT_SECONDS,
     LAUNCHER_DIR,
@@ -487,8 +485,3 @@ async def clear_credentials(sbx: AsyncSandbox, integration_id: str, config: CliC
         f"{shlex.quote(launcher_path(config.command))}",
         timeout=120,
     )
-
-
-def workspace_roots() -> tuple[str, str, str]:
-    """The three directories this subsystem owns, for diagnostics and tests."""
-    return APPS_DIR, LAUNCHER_DIR, CLI_HOME_ROOT

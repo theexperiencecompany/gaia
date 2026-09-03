@@ -173,6 +173,13 @@ class IntegrationToolsResponse(CamelModel):
     count: int = 0
 
 
+# The outcome of a connect attempt, shared by the direct connect endpoint and
+# the marketplace "add" path. One alias because they are the same fact: adding a
+# public integration performs a connect and forwards its result verbatim, so a
+# status the connect can produce is a status the add can return.
+ConnectStatus = Literal["connected", "redirect", "error", "pending"]
+
+
 class CliConnectDetail(CamelModel):
     """Live state of a CLI connect attempt, for the client to render and poll.
 
@@ -194,7 +201,7 @@ class CliConnectDetail(CamelModel):
 class ConnectIntegrationResponse(CamelModel):
     # ``pending`` is the CLI transport's steady state while an install runs or
     # a device login waits on the user; ``cli`` says what to show meanwhile.
-    status: Literal["connected", "redirect", "error", "pending"]
+    status: ConnectStatus
     integration_id: str
     name: str
     message: str | None = None
@@ -289,7 +296,7 @@ class AddIntegrationResponse(CamelModel):
 
     integration_id: str
     name: str
-    status: Literal["connected", "redirect", "error"]
+    status: ConnectStatus
     message: str = "Integration added successfully"
     redirect_url: str | None = None
     tools_count: int | None = None

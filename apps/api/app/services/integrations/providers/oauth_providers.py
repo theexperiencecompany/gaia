@@ -13,6 +13,7 @@ from typing import ClassVar
 from app.models.integration_provider import ManagedBy
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.integrations.integration_connection_service import (
+    McpConnectRequest,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
@@ -28,14 +29,16 @@ class McpIntegrationProvider(IntegrationProvider):
     async def connect(self, ctx: ConnectContext) -> ConnectIntegrationResponse:
         mcp_config = ctx.resolved.mcp_config
         return await connect_mcp_integration(
-            user_id=ctx.user_id,
-            integration_id=ctx.integration_id,
-            integration_name=ctx.resolved.name,
-            requires_auth=ctx.resolved.requires_auth,
-            redirect_path=ctx.redirect_path,
-            server_url=mcp_config.server_url if mcp_config else None,
-            is_platform=ctx.resolved.source == "platform",
-            bearer_token=ctx.secret,
+            McpConnectRequest(
+                user_id=ctx.user_id,
+                integration_id=ctx.integration_id,
+                integration_name=ctx.resolved.name,
+                requires_auth=ctx.resolved.requires_auth,
+                redirect_path=ctx.redirect_path,
+                server_url=mcp_config.server_url if mcp_config else None,
+                is_platform=ctx.resolved.source == "platform",
+                bearer_token=ctx.secret,
+            )
         )
 
 

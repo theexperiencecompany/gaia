@@ -5,7 +5,7 @@ and POST /connect/{integration_id}.  Service layer is mocked;
 only HTTP status codes, response shapes, and error handling are verified.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
@@ -41,36 +41,6 @@ def _config_item(
         "source": "platform",
         "slug": iid,
     }
-
-
-def _resolved(
-    managed_by: str = "mcp",
-    name: str = "TestInt",
-    source: str = "platform",
-    requires_auth: bool = False,
-    provider: str | None = None,
-    available: bool = True,
-    server_url: str | None = "https://mcp.example.com",
-) -> MagicMock:
-    mock = MagicMock()
-    mock.managed_by = managed_by
-    mock.name = name
-    mock.source = source
-    mock.requires_auth = requires_auth
-    if source == "platform":
-        pi = MagicMock()
-        pi.available = available
-        pi.provider = provider
-        mock.platform_integration = pi
-    else:
-        mock.platform_integration = None
-    if managed_by == "mcp":
-        mock.mcp_config = MagicMock()
-        mock.mcp_config.requires_auth = requires_auth
-        mock.mcp_config.server_url = server_url
-    else:
-        mock.mcp_config = None
-    return mock
 
 
 # ===========================================================================

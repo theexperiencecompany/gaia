@@ -1,5 +1,6 @@
 """Integration connection service - handles connect/disconnect logic."""
 
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
 
@@ -26,7 +27,10 @@ from app.schemas.integrations.responses import (
 from app.services.cli import disconnect as cli_disconnect
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
-from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.integrations.integration_resolver import (
+    IntegrationResolver,
+    ResolvedIntegration,
+)
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
@@ -121,27 +125,44 @@ async def _redirect_to_oauth(
     )
 
 
+@dataclass(frozen=True)
+class McpConnectRequest:
+    """One attempt to connect an MCP-backed integration.
+
+    A single request rather than nine parameters threaded through four helpers:
+    every step of the flow needs the same identity (user, integration, display
+    name) plus the same handful of knobs, and re-listing them at each hop is how
+    a helper ends up reading `is_platform` from one call site and not the other.
+    """
+
+    user_id: str
+    integration_id: str
+    integration_name: str
+    requires_auth: bool
+    redirect_path: str
+    server_url: str | None = None
+    is_platform: bool = False
+    probe_result: McpProbeResult | None = None
+    bearer_token: str | None = None
+
+
 async def _handle_auth_required(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    redirect_path: str,
+    request: McpConnectRequest,
+    mcp_client: MCPClient,
     *,
-    is_platform: bool,
     detected_auth_type: str | None,
     probe_result: McpProbeResult | None,
-    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Bearer servers return bearer_required (frontend collects a key); everything
     else gets the OAuth redirect."""
-    if not is_platform:
-        await update_user_integration_status(user_id, integration_id, "created")
+    if not request.is_platform:
+        await update_user_integration_status(request.user_id, request.integration_id, "created")
 
     if detected_auth_type == "bearer":
         return ConnectIntegrationResponse(
             status="error",
-            integration_id=integration_id,
-            name=integration_name,
+            integration_id=request.integration_id,
+            name=request.integration_name,
             error="bearer_required",
             message="This integration requires an API key.",
         )
@@ -152,144 +173,120 @@ async def _handle_auth_required(
     # given. Typing both ends surfaced it.
     return await _redirect_to_oauth(
         mcp_client,
-        integration_id,
-        integration_name,
-        redirect_path,
+        request.integration_id,
+        request.integration_name,
+        request.redirect_path,
         challenge_data=probe_result.get("oauth_challenge") if probe_result else None,
     )
 
 
 async def _handle_connect_failure(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    is_platform: bool,
-    error: Exception,
+    request: McpConnectRequest, error: Exception
 ) -> ConnectIntegrationResponse:
     """Surface a connection failure as a structured error, never a 500."""
-    if not is_platform:
-        await update_user_integration_status(user_id, integration_id, "created")
+    if not request.is_platform:
+        await update_user_integration_status(request.user_id, request.integration_id, "created")
     log.warning(
         f"{LogTag.INTEGRATION} MCP connection failed for",
-        integration_id=integration_id,
+        integration_id=request.integration_id,
         error=error,
-        user_id=user_id,
+        user_id=request.user_id,
     )
-    log.set(integration={"provider": integration_name, "action": "connect_mcp", "status": "error"})
+    log.set(
+        integration={
+            "provider": request.integration_name,
+            "action": "connect_mcp",
+            "status": "error",
+        }
+    )
     return ConnectIntegrationResponse(
         status="error",
-        integration_id=integration_id,
-        name=integration_name,
+        integration_id=request.integration_id,
+        name=request.integration_name,
         error=str(error),
         message="Connection failed",
     )
 
 
-async def connect_mcp_integration(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    requires_auth: bool,
-    redirect_path: str,
-    server_url: str | None = None,
-    is_platform: bool = False,
-    probe_result: McpProbeResult | None = None,
-    bearer_token: str | None = None,
-) -> ConnectIntegrationResponse:
+async def connect_mcp_integration(request: McpConnectRequest) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
-    log.set(integration={"provider": integration_name, "action": "connect_mcp"})
-    mcp_client = await get_mcp_client(user_id=user_id)
+    log.set(integration={"provider": request.integration_name, "action": "connect_mcp"})
+    mcp_client = await get_mcp_client(user_id=request.user_id)
 
     # Bearer token flow - store and connect directly
-    if bearer_token:
-        return await _connect_with_bearer_token(
-            user_id, integration_id, integration_name, bearer_token, mcp_client
-        )
+    if request.bearer_token:
+        return await _connect_with_bearer_token(request, request.bearer_token, mcp_client)
 
     # Use provided probe_result or perform probe if needed
-    if server_url and not requires_auth and probe_result is None:
-        probe_result = await mcp_client.probe_connection(server_url)
+    probe_result = request.probe_result
+    requires_auth = request.requires_auth
+    if request.server_url and not requires_auth and probe_result is None:
+        probe_result = await mcp_client.probe_connection(request.server_url)
 
     # Check if probe detected auth requirement
     detected_auth_type: str | None = None
     if probe_result and not requires_auth and probe_result.get("requires_auth"):
         detected_auth_type = probe_result.get("auth_type", "oauth")
         await mcp_client.update_integration_auth_status(
-            integration_id, requires_auth=True, auth_type=detected_auth_type
+            request.integration_id, requires_auth=True, auth_type=detected_auth_type
         )
         requires_auth = True
 
     if requires_auth:
         return await _handle_auth_required(
-            user_id,
-            integration_id,
-            integration_name,
-            redirect_path,
-            is_platform=is_platform,
+            request,
+            mcp_client,
             detected_auth_type=detected_auth_type,
             probe_result=probe_result,
-            mcp_client=mcp_client,
         )
 
     try:
-        tools = await mcp_client.connect(integration_id)
+        tools = await mcp_client.connect(request.integration_id)
     except OAuthAuthenticationError:
         # mcp-use only learned auth was needed at connect time — route to OAuth.
         return await _handle_auth_required(
-            user_id,
-            integration_id,
-            integration_name,
-            redirect_path,
-            is_platform=is_platform,
-            detected_auth_type=None,
-            probe_result=None,
-            mcp_client=mcp_client,
+            request, mcp_client, detected_auth_type=None, probe_result=None
         )
     except Exception as e:
-        return await _handle_connect_failure(
-            user_id, integration_id, integration_name, is_platform, e
-        )
+        return await _handle_connect_failure(request, e)
 
     tools_count = len(tools) if tools else 0
-    await invalidate_user_integration_caches(user_id)
+    await invalidate_user_integration_caches(request.user_id)
 
     log.set(
         integration={
-            "provider": integration_name,
+            "provider": request.integration_name,
             "action": "connect_mcp",
             "status": "connected",
-            "auth_type": "bearer" if bearer_token else "none",
+            # Reached only on the no-token path; the bearer flow returns above.
+            "auth_type": "none",
             "tools_count": tools_count,
         }
     )
     return ConnectIntegrationResponse(
         status="connected",
-        integration_id=integration_id,
-        name=integration_name,
+        integration_id=request.integration_id,
+        name=request.integration_name,
         tools_count=tools_count,
         message="Integration connected successfully",
     )
 
 
 async def _connect_with_bearer_token(
-    user_id: str,
-    integration_id: str,
-    integration_name: str,
-    bearer_token: str,
-    mcp_client: MCPClient,
+    request: McpConnectRequest, bearer_token: str, mcp_client: MCPClient
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
-    token_store = MCPTokenStore(user_id)
-    await token_store.store_bearer_token(integration_id, bearer_token)
+    token_store = MCPTokenStore(request.user_id)
+    await token_store.store_bearer_token(request.integration_id, bearer_token)
 
     try:
-        tools = await mcp_client.connect(integration_id)
+        tools = await mcp_client.connect(request.integration_id)
         # Busts the full per-user integration cache set (status + tools:user:*).
-        await update_user_integration_status(user_id, integration_id, "connected")
+        await update_user_integration_status(request.user_id, request.integration_id, "connected")
         tools_count = len(tools) if tools else 0
         log.set(
             integration={
-                "provider": integration_name,
+                "provider": request.integration_name,
                 "action": "connect_mcp",
                 "auth_type": "bearer",
                 "status": "connected",
@@ -298,18 +295,18 @@ async def _connect_with_bearer_token(
         )
         return ConnectIntegrationResponse(
             status="connected",
-            integration_id=integration_id,
-            name=integration_name,
+            integration_id=request.integration_id,
+            name=request.integration_name,
             tools_count=tools_count,
             message="Integration connected successfully",
         )
     except Exception as e:
         # Rollback: clean up stored credentials on connection failure
-        await token_store.delete_credentials(integration_id)
-        await invalidate_user_integration_caches(user_id)
+        await token_store.delete_credentials(request.integration_id)
+        await invalidate_user_integration_caches(request.user_id)
         log.set(
             integration={
-                "provider": integration_name,
+                "provider": request.integration_name,
                 "action": "connect_mcp",
                 "auth_type": "bearer",
                 "status": "error",
@@ -317,8 +314,8 @@ async def _connect_with_bearer_token(
         )
         return ConnectIntegrationResponse(
             status="error",
-            integration_id=integration_id,
-            name=integration_name,
+            integration_id=request.integration_id,
+            name=request.integration_name,
             error=str(e),
             message="Connection failed",
         )
@@ -422,6 +419,81 @@ async def connect_self_integration(
     )
 
 
+def _require_provider(resolved: ResolvedIntegration) -> str:
+    """The upstream provider slug, or a loud failure.
+
+    Composio and the self-managed OAuth flow both revoke by provider, and a
+    catalog entry missing one cannot be torn down at all — better a raised
+    ValueError than a silent no-op that leaves the grant live upstream.
+    """
+    provider = resolved.platform_integration.provider if resolved.platform_integration else None
+    if not provider:
+        raise ValueError(f"Provider not configured for {resolved.integration_id}")
+    return provider
+
+
+async def _delete_if_user_authored(user_id: str, resolved: ResolvedIntegration) -> None:
+    """Drop the catalog document too, but only for the user who authored it.
+
+    A custom integration cloned from someone else's is removed from this user
+    without deleting the original.
+    """
+    if (
+        resolved.source == "custom"
+        and resolved.custom_doc
+        and resolved.custom_doc.get("created_by") == user_id
+    ):
+        await delete_custom_integration(user_id, resolved.integration_id)
+
+
+async def _disconnect_cli(user_id: str, resolved: ResolvedIntegration) -> None:
+    """Tear down the CLI's sandbox state, then detach it from the user."""
+    # `cli_config` is pinned by the catalog validator for this transport.
+    if resolved.cli_config:
+        try:
+            await cli_disconnect(user_id, resolved.integration_id, resolved.cli_config)
+        except Exception as e:
+            # Best-effort cleanup: the durable HOME is per-integration and is
+            # recreated on the next connect anyway. Letting an unreachable
+            # sandbox abort the disconnect would leave the user owning an
+            # integration they cannot remove until it comes back.
+            log.warning(
+                f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
+                integration_id=resolved.integration_id,
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+    await remove_user_integration(user_id, resolved.integration_id)
+    await _delete_if_user_authored(user_id, resolved)
+
+
+async def _disconnect_mcp(user_id: str, resolved: ResolvedIntegration) -> None:
+    """Drop the MCP session and the user's record of the server."""
+    mcp_client = await get_mcp_client(user_id=user_id)
+    await mcp_client.disconnect(resolved.integration_id)
+    await remove_user_integration(user_id, resolved.integration_id)
+
+
+async def _disconnect_custom_mcp(user_id: str, resolved: ResolvedIntegration) -> None:
+    """An MCP server the user added themselves: also drop the catalog document."""
+    await _disconnect_mcp(user_id, resolved)
+    await _delete_if_user_authored(user_id, resolved)
+
+
+async def _disconnect_composio(user_id: str, resolved: ResolvedIntegration) -> None:
+    """Delete the connected account Composio holds for this provider."""
+    composio_service = get_composio_service()
+    await composio_service.delete_connected_account(
+        user_id=user_id, provider=_require_provider(resolved)
+    )
+
+
+async def _disconnect_self(user_id: str, resolved: ResolvedIntegration) -> None:
+    """Revoke the OAuth token GAIA obtained itself."""
+    await token_repository.revoke_token(user_id=user_id, provider=_require_provider(resolved))
+
+
 async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
     log.set(integration={"provider": integration_id, "action": "disconnect"})
@@ -431,57 +503,17 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
 
     if resolved.managed_by == "cli":
         # Checked before the custom-source branch: a user-authored CLI
-        # integration is `source == "custom"` too, and the MCP teardown below
-        # would be both wrong and a no-op for it. `cli_config` is pinned by the
-        # catalog validator for this transport.
-        if resolved.cli_config:
-            try:
-                await cli_disconnect(user_id, integration_id, resolved.cli_config)
-            except Exception as e:
-                # Best-effort cleanup: the durable HOME is per-integration and is
-                # recreated on the next connect anyway. Letting an unreachable
-                # sandbox abort the disconnect would leave the user owning an
-                # integration they cannot remove until it comes back.
-                log.warning(
-                    f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
-                    integration_id=integration_id,
-                    user_id=user_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-        await remove_user_integration(user_id, integration_id)
-        if (
-            resolved.source == "custom"
-            and resolved.custom_doc
-            and resolved.custom_doc.get("created_by") == user_id
-        ):
-            await delete_custom_integration(user_id, integration_id)
-
+        # integration is `source == "custom"` too, and the MCP teardown would be
+        # both wrong and a no-op for it.
+        await _disconnect_cli(user_id, resolved)
     elif resolved.source == "custom":
-        mcp_client = await get_mcp_client(user_id=user_id)
-        await mcp_client.disconnect(integration_id)
-        await remove_user_integration(user_id, integration_id)
-        if resolved.custom_doc and resolved.custom_doc.get("created_by") == user_id:
-            await delete_custom_integration(user_id, integration_id)
-
+        await _disconnect_custom_mcp(user_id, resolved)
     elif resolved.managed_by == "composio":
-        composio_service = get_composio_service()
-        provider = resolved.platform_integration.provider if resolved.platform_integration else None
-        if not provider:
-            raise ValueError(f"Provider not configured for {integration_id}")
-        await composio_service.delete_connected_account(user_id=user_id, provider=provider)
-
+        await _disconnect_composio(user_id, resolved)
     elif resolved.managed_by == "self":
-        provider = resolved.platform_integration.provider if resolved.platform_integration else None
-        if not provider:
-            raise ValueError(f"Provider not configured for {integration_id}")
-        await token_repository.revoke_token(user_id=user_id, provider=provider)
-
+        await _disconnect_self(user_id, resolved)
     elif resolved.managed_by == "mcp":
-        mcp_client = await get_mcp_client(user_id=user_id)
-        await mcp_client.disconnect(integration_id)
-        await remove_user_integration(user_id, integration_id)
-
+        await _disconnect_mcp(user_id, resolved)
     else:
         raise ValueError(f"Integration {integration_id} disconnect not supported")
 

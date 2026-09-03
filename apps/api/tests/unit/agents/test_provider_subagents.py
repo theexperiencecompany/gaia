@@ -8,7 +8,7 @@ import pytest
 from app.agents.tools.core.registry import integration_destructive_tools
 from app.models.cli_config import CliAuthSpec, CliConfig
 from app.models.integration_models import Integration
-from app.models.mcp_config import MCPConfig, SubAgentConfig
+from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 from app.services.cli.tools import CliIntegration
@@ -81,21 +81,18 @@ def _cli_tool_registry() -> AsyncMock:
 def _make_integration(
     integration_id: str = "test_int",
     managed_by: str = "composio",
-    mcp_config: MCPConfig | None = None,
     subagent_config: SubAgentConfig | None = None,
-    composio_config: MagicMock | None = None,
     provider: str = "test_provider",
     cli_config: CliConfig | None = None,
 ) -> OAuthIntegration:
+    """Build the catalog entry for an integration under test.
+
+    ``composio_config`` is derived rather than passed: ``OAuthIntegration``
+    pins the invariant that a Composio-managed entry must carry one, so a
+    caller could never usefully leave it out or supply a different one.
+    """
     if subagent_config is None:
         subagent_config = _make_subagent_config()
-    if composio_config is None and managed_by == "composio":
-        from app.models.mcp_config import ComposioConfig
-
-        composio_config = ComposioConfig(  # type: ignore[assignment]  # real ComposioConfig replaces the mock in this test
-            auth_config_id="test_auth",
-            toolkit="test_toolkit",
-        )
 
     return OAuthIntegration(
         id=integration_id,
@@ -105,9 +102,12 @@ def _make_integration(
         provider=provider,
         scopes=[],
         managed_by=managed_by,  # type: ignore[arg-type]  # fixture uses a plain string for the managed_by Literal
-        mcp_config=mcp_config,
         subagent_config=subagent_config,
-        composio_config=composio_config,
+        composio_config=(
+            ComposioConfig(auth_config_id="test_auth", toolkit="test_toolkit")
+            if managed_by == "composio"
+            else None
+        ),
         cli_config=cli_config,
     )
 

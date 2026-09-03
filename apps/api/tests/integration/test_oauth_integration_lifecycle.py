@@ -25,7 +25,7 @@ Mocking boundaries:
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, get_args
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -40,9 +40,11 @@ from app.models.integration_models import (
     UserIntegrationDocument,
     UserIntegrationStatus,
 )
+from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_connection_service import (
+    McpConnectRequest,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
@@ -1147,7 +1149,7 @@ class TestOAuthConfigHelpers:
             assert integration.id, f"Integration missing id: {integration}"
             assert integration.name, f"Integration {integration.id} missing name"
             assert integration.provider, f"Integration {integration.id} missing provider"
-            assert integration.managed_by in ("self", "composio", "mcp", "internal"), (
+            assert integration.managed_by in get_args(ManagedBy), (
                 f"Integration {integration.id} has invalid managed_by: {integration.managed_by}"
             )
 
@@ -1223,11 +1225,13 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="deepwiki",
-                integration_name="DeepWiki",
-                requires_auth=False,
-                redirect_path="/integrations",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="deepwiki",
+                    integration_name="DeepWiki",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                )
             )
 
             assert response.status == "connected"
@@ -1260,12 +1264,14 @@ class TestMCPIntegrationConnection:
             # only update_user_integration_status is (no patch needed for caches here)
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="custom-api",
-                integration_name="Custom API",
-                requires_auth=False,
-                redirect_path="/integrations",
-                bearer_token="sk-test-bearer-token",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="custom-api",
+                    integration_name="Custom API",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                    bearer_token="sk-test-bearer-token",
+                )
             )
 
             assert response.status == "connected"
@@ -1299,12 +1305,14 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="broken-api",
-                integration_name="Broken API",
-                requires_auth=False,
-                redirect_path="/integrations",
-                bearer_token="sk-bad-token",
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="broken-api",
+                    integration_name="Broken API",
+                    requires_auth=False,
+                    redirect_path="/integrations",
+                    bearer_token="sk-bad-token",
+                )
             )
 
             assert response.status == "error"
@@ -1334,12 +1342,14 @@ class TestMCPIntegrationConnection:
             ),
         ):
             response = await connect_mcp_integration(
-                user_id=USER_ID,
-                integration_id="linear",
-                integration_name="Linear",
-                requires_auth=True,
-                redirect_path="/integrations",
-                is_platform=True,
+                McpConnectRequest(
+                    user_id=USER_ID,
+                    integration_id="linear",
+                    integration_name="Linear",
+                    requires_auth=True,
+                    redirect_path="/integrations",
+                    is_platform=True,
+                )
             )
 
             assert response.status == "redirect"
