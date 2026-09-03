@@ -50,25 +50,37 @@ const MINTED = {
   },
 };
 
+/** Mirrors the hook's query key; the mint is cached under it, as in the app. */
+const LINK_CODE_QUERY_KEY = ["onboarding", "platform-link-code"];
+
 /** One client per test: the mint is cached per key, exactly as in the app. */
 function makeWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return ({ children }: { children: ReactNode }) => (
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
+  return { Wrapper, queryClient };
 }
 
 /**
- * Renders the hook and flushes the mint promise, so every test starts from the
- * state the user actually sees: buttons wired to a resolved (or failed) mint.
+ * Renders the hook and waits for the mint to settle (resolved or failed), so
+ * every test starts from the state the user actually sees: buttons wired to
+ * the minted links. Waiting on the query state rather than a fixed number of
+ * microtasks is what keeps this stable on a loaded CI box.
  */
 async function renderConnect(dispatch = vi.fn()) {
+  const { Wrapper, queryClient } = makeWrapper();
   const result = renderHook(() => useConnectPlatform(dispatch, true), {
-    wrapper: makeWrapper(),
+    wrapper: Wrapper,
   });
   await waitFor(() => expect(mintLinkCode).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(queryClient.getQueryState(LINK_CODE_QUERY_KEY)?.status).not.toBe(
+      "pending",
+    ),
+  );
   await act(async () => {
     await Promise.resolve();
   });
@@ -102,7 +114,7 @@ describe("useConnectPlatform", () => {
     const { rerender } = renderHook(
       ({ persisted }: { persisted: boolean }) =>
         useConnectPlatform(vi.fn(), persisted),
-      { wrapper: makeWrapper(), initialProps: { persisted: false } },
+      { wrapper: makeWrapper().Wrapper, initialProps: { persisted: false } },
     );
     await act(async () => {
       await Promise.resolve();
@@ -123,7 +135,7 @@ describe("useConnectPlatform", () => {
       useConnectPlatform(vi.fn(), true);
       return null;
     }
-    const Wrapper = makeWrapper();
+    const { Wrapper } = makeWrapper();
 
     render(
       <Wrapper>

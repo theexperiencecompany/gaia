@@ -226,10 +226,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     base_ctx = OnboardingContext(
         user_id=user_id,
         name=user.name or "there",
-        profession=(onboarding.get("preferences") or {}).get("profession", "")
-        or "",  # pragma: no mutate — `or ""` collapses the default
-        focus=onboarding.get("focus", "")
-        or "",  # pragma: no mutate — `or ""` collapses the default
+        profession=(onboarding.get("preferences") or {}).get("profession")
+        or "",  # pragma: no mutate — the default for a missing answer
+        focus=onboarding.get("focus") or "",  # pragma: no mutate — the default for a missing answer
         user_email=user.email,
         clarify_answers=onboarding.get("clarify_answers") or [],
     )

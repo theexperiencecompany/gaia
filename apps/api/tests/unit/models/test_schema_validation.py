@@ -236,6 +236,42 @@ class TestOnboardingRequest:
         with pytest.raises(ValidationError):
             OnboardingRequest(profession="Founder", needs=[], other_need="  ")
 
+    @pytest.mark.parametrize(
+        ("profession", "message"),
+        [
+            ("   ", r"Value error, Profession cannot be empty \["),
+            ("Eng\nineer", r"Value error, Profession must be one line of words \["),
+            ("12345", r"Value error, Profession must be one line of words \["),
+        ],
+    )
+    def test_profession_rejections_say_why(self, profession: str, message: str):
+        """The message is what the wizard surfaces; a vague one is a support ticket."""
+        with pytest.raises(ValidationError, match=message):
+            OnboardingRequest(profession=profession, needs=["inbox"])
+        with pytest.raises(ValidationError, match=message):
+            OnboardingPreferences(profession=profession)
+
+    def test_profession_of_exactly_the_cap_is_accepted_everywhere(self):
+        at_cap = "E" * PROFESSION_MAX_LENGTH
+        assert OnboardingRequest(profession=at_cap, needs=["inbox"]).profession == at_cap
+        assert OnboardingPreferences(profession=at_cap).profession == at_cap
+
+    def test_too_long_profession_says_why_on_the_preferences_model(self):
+        # The request field carries max_length, so pydantic answers first there;
+        # the shared rule is what the preferences PATCH reports.
+        with pytest.raises(
+            ValidationError,
+            match=rf"Value error, Profession must be {PROFESSION_MAX_LENGTH} characters or less \[",
+        ):
+            OnboardingPreferences(profession="E" * (PROFESSION_MAX_LENGTH + 1))
+
+    def test_no_q2_answer_says_why(self):
+        with pytest.raises(
+            ValidationError,
+            match=r"Value error, Pick at least one need or say it in your own words \[",
+        ):
+            OnboardingRequest(profession="Founder", needs=[])
+
     def test_empty_profession(self):
         with pytest.raises(ValidationError):
             OnboardingRequest(profession="", needs=["inbox"])

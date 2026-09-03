@@ -491,6 +491,19 @@ class TestNewUserGuidanceBlock:
             )
         assert block == build_new_user_guidance("Founder", [OnboardingNeed.INBOX])
 
+    async def test_a_non_string_typed_need_is_passed_as_none_not_empty(self) -> None:
+        """The playbook builder gets None, so it never renders an empty quote."""
+        with (
+            self._patch_count(self._count(1)),
+            patch(
+                "app.agents.context.fetchers.build_new_user_guidance", return_value="block"
+            ) as build,
+        ):
+            await build_new_user_guidance_block(
+                ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
+            )
+        build.assert_called_once_with("Founder", [OnboardingNeed.INBOX], None)
+
     async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
         with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
             assert (
