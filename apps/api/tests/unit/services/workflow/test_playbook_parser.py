@@ -19,7 +19,6 @@ import yaml
 from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER
 from app.models.mcp_config import SubAgentConfig
 from app.models.playbook_models import (
-    PlaybookAsk,
     PlaybookBody,
     PlaybookHandoffStepInput,
     PlaybookStep,
@@ -27,7 +26,11 @@ from app.models.playbook_models import (
     playbook_body_from_input,
 )
 from app.models.subagent_models import Subagent
-from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
+from app.services.workflow.playbook.parser import (
+    RecordedResult,
+    dump_playbook,
+    validate_playbook,
+)
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
@@ -117,13 +120,10 @@ steps:
     tool: send_email
     args:
       to: $user.email
-      subject: Agenda for $today
+      subject:
+        $ask: Write the agenda as a short note
       retries: 2
-ask:
-  body:
-    prompt: Write the agenda as a short note
-    uses: [agenda]
-synthesize: Say what was sent.
+result_brief: Say what was sent.
 """
 
 
@@ -190,7 +190,7 @@ class TestPlaybookGrammar:
                             "steps": [{"id": "inner", "tool": "send_email"}],
                         }
                     ],
-                    "synthesize": "x",
+                    "result_brief": "x",
                 }
             )
         assert "both_shapes" in str(exc.value)
@@ -201,7 +201,7 @@ class TestPlaybookGrammar:
                 {
                     "description": "Empty handoff",
                     "steps": [{"id": "delegate", "handoff": "mail_agent"}],
-                    "synthesize": "x",
+                    "result_brief": "x",
                 }
             )
         assert "mail_agent" in str(exc.value)
@@ -213,7 +213,7 @@ class TestPlaybookGrammar:
                     "description": "Extra key",
                     "version": 3,
                     "steps": [{"id": "one", "tool": "send_email"}],
-                    "synthesize": "x",
+                    "result_brief": "x",
                 }
             )
         assert "version" in str(exc.value)
@@ -221,7 +221,7 @@ class TestPlaybookGrammar:
     def test_a_playbook_with_no_steps_is_rejected(self) -> None:
         with pytest.raises(ValidationError):
             PlaybookBody.model_validate(
-                {"description": "Nothing to do", "steps": [], "synthesize": "x"}
+                {"description": "Nothing to do", "steps": [], "result_brief": "x"}
             )
 
 
@@ -246,7 +246,7 @@ steps:
   - id: one
     tool: list_events
     args: {{"query": "newsletters {ARG_TRUNCATION_MARKER}"}}
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -270,7 +270,7 @@ steps:
     args:
       query: "newsletters {ARG_TRUNCATION_MARKER}"
       bogus: "x"
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -303,7 +303,7 @@ steps:
   - id: one
     tool: send_owl
     args: {}
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -322,7 +322,7 @@ steps:
       to: a@b.com
       subject: hi
       bcc: c@d.com
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -342,7 +342,7 @@ steps:
       to: a@b.com
       subject: hi
       retries: soon
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -365,7 +365,7 @@ steps:
     tool: list_events
     args:
       calendar_id: primary
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -391,7 +391,7 @@ steps:
         args:
           to: $steps.agenda.organizer
           subject: hi
-synthesize: x
+result_brief: x
 """
         )
         with (
@@ -416,7 +416,7 @@ steps:
         tool: send_email
         args:
           to: a@b.com
-synthesize: x
+result_brief: x
 """
         )
         with (
@@ -443,7 +443,7 @@ steps:
         tool: exec
         args:
           code: "1"
-synthesize: x
+result_brief: x
 """
         )
         mcp_only = {"exec": _mcp_exec_tool()}
@@ -476,7 +476,7 @@ steps:
         args:
           to: a@b.com
           subject: hi
-synthesize: x
+result_brief: x
 """
         )
         with (
@@ -505,7 +505,7 @@ steps:
         tool: list_events
         args:
           calendar_id: primary
-synthesize: x
+result_brief: x
 """
         )
         with (
@@ -516,23 +516,31 @@ synthesize: x
 
         assert result.issues == []
 
-    async def test_undeclared_ask_reference_is_rejected(self) -> None:
+    async def test_a_dollar_ask_string_is_literal_text_and_is_type_checked_as_one(self) -> None:
+        """``$ask`` left the placeholder vocabulary when asks moved inline, so
+        ``$ask.headline`` is characters like ``$HOME`` is. It must neither be
+        refused as an undeclared reference nor exempt the argument from the type
+        check the way a real placeholder does — an author who writes it into an
+        integer arg has written a string there."""
         body = _body(
             """
-description: Reads an ask nobody declared
+description: A dollar-ask string is just text
 steps:
   - id: mail
     tool: send_email
     args:
       to: a@b.com
       subject: $ask.headline
-synthesize: x
+      retries: $ask.count
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
-        assert result.valid is False
-        assert "$ask.headline" in result.issues[0].problem
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            ("steps[0].args.retries", "expected integer, got str")
+        ]
 
     async def test_an_unknown_dollar_word_is_literal_text_not_a_placeholder(self) -> None:
         """Only the closed namespaces are placeholders. A recorded ``bash`` step
@@ -546,7 +554,7 @@ steps:
     args:
       to: $sender.email
       subject: echo $HOME $1
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -556,25 +564,45 @@ synthesize: x
     async def test_a_placeholder_embedded_in_text_is_checked_like_a_whole_one(self) -> None:
         """The evaluator interpolates ``$x`` inside a larger string, so the
         validator has to read it there too. It only looked at values that
-        START with ``$``, so ``"Sent $ask.headline"`` was accepted and then
-        replayed against an ask the playbook never declares."""
+        START with ``$``, so ``"Sent $steps.headline.text"`` was accepted and
+        then replayed against a step the playbook never declares."""
         body = _body(
             """
-description: Embedded undeclared ask
+description: Embedded undeclared step reference
 steps:
   - id: mail
     tool: send_email
     args:
       to: a@b.com
-      subject: Sent $ask.headline about today
-synthesize: x
+      subject: Sent $steps.headline.text about today
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
         assert result.valid is False
         assert result.issues[0].where == "steps[0].args.subject"
-        assert "$ask.headline" in result.issues[0].problem
+        assert "$steps.headline.text" in result.issues[0].problem
+
+    async def test_an_embedded_dollar_ask_is_literal_text_too(self) -> None:
+        """The embedded scan reads every ``$word`` in a string; ``$ask`` is no
+        longer one of the roots it knows, so text mentioning it must pass rather
+        than being refused as a reference to a table that no longer exists."""
+        body = _body(
+            """
+description: Text that mentions an ask
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: Sent $ask.headline about today
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert result.issues == []
 
     async def test_an_embedded_reference_to_an_undeclared_step_is_refused(self) -> None:
         body = _body(
@@ -586,7 +614,7 @@ steps:
     args:
       to: a@b.com
       subject: Found $steps.agenda.count events
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -608,7 +636,7 @@ steps:
     args:
       to: a@b.com
       subject: Found $steps.agenda.count events on $today
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -624,154 +652,18 @@ steps:
     tool: list_events
     args:
       calendar_id: $last_run.LIST_EVENTS.calendar_id
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
         assert result.issues == []
 
-    async def test_ask_uses_an_undeclared_step_is_rejected(self) -> None:
-        body = _body(
-            """
-description: Ask reading a step that does not exist
-steps:
-  - id: agenda
-    tool: list_events
-    args:
-      calendar_id: primary
-ask:
-  body:
-    prompt: Write it up
-    uses: [inbox]
-synthesize: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-        assert result.valid is False
-        assert result.issues[0].where == "ask.body.uses"
-
-    async def test_an_ask_reading_a_step_that_runs_after_the_asks_are_filled_is_refused(
-        self,
-    ) -> None:
-        """The runner narrates at the FIRST step addressing any ``$ask``, from the
-        steps completed by then. ``uses`` was only checked against the steps the
-        whole document declares, so an ask reading a later step validated and
-        was then written from nothing at replay, silently."""
-        body = _body(
-            """
-description: Summarise the agenda before fetching it
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: $ask.summary
-  - id: calendar
-    tool: list_events
-    args:
-      calendar_id: primary
-ask:
-  summary:
-    prompt: Summarise the agenda
-    uses: [calendar]
-synthesize: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-
-        assert result.valid is False
-        # Whole message, not fragments of it: the author is told which ask, where
-        # the asks are filled, which step runs too late, and both ways out.
-        assert [(issue.where, issue.problem) for issue in result.issues] == [
-            (
-                "ask.summary.uses",
-                "ask 'summary' reads step 'calendar', but the asks are filled at step 'mail' "
-                "(the first to address $ask), before 'calendar' runs; move 'calendar' ahead "
-                "of 'mail' or drop it from uses",
-            )
-        ]
-
-    async def test_every_ask_is_filled_at_the_first_ask_step_not_only_the_one_addressed(
-        self,
-    ) -> None:
-        """One model call writes every ask. An ask whose own reference comes
-        late enough is still written at the first ``$ask`` step, before the step
-        it reads has run."""
-        body = _body(
-            """
-description: Two asks, one filled too early
-steps:
-  - id: mail
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: $ask.greeting
-  - id: calendar
-    tool: list_events
-    args:
-      calendar_id: primary
-  - id: followup
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: $ask.summary
-ask:
-  greeting:
-    prompt: Say hello
-  summary:
-    prompt: Summarise the agenda
-    uses: [calendar]
-synthesize: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-
-        assert result.valid is False
-        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
-        assert "'mail'" in result.issues[0].problem
-
-    async def test_an_ask_is_checked_past_the_uses_entries_that_are_already_fine(self) -> None:
-        """``uses`` is checked entry by entry, not up to the first acceptable one.
-
-        Stopping at the first entry that already ran would clear the whole ask,
-        and the later step behind it would be written from nothing at replay.
-        """
-        body = _body(
-            """
-description: An ask reading one earlier step and one later one
-steps:
-  - id: inbox
-    tool: list_events
-    args:
-      calendar_id: primary
-  - id: mail
-    tool: send_email
-    args:
-      to: a@b.com
-      subject: $ask.summary
-  - id: calendar
-    tool: list_events
-    args:
-      calendar_id: work
-ask:
-  summary:
-    prompt: Summarise both
-    uses: [inbox, calendar]
-synthesize: x
-"""
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-
-        assert result.valid is False
-        assert [issue.where for issue in result.issues] == ["ask.summary.uses"]
-        assert "'calendar'" in result.issues[0].problem
-
-    async def test_an_ask_reading_only_earlier_steps_is_accepted(self) -> None:
+    async def test_an_ask_slot_standing_where_an_argument_goes_is_accepted(self) -> None:
+        """The whole point of the inline shape: a value a model writes at replay
+        sits in the argument that needs it, in whichever step needs it, and the
+        validator lets it through. Refusing it would make the only way to author
+        written text an unwritable playbook."""
         body = _body(
             """
 description: Summarise the agenda after fetching it
@@ -784,12 +676,10 @@ steps:
     tool: send_email
     args:
       to: a@b.com
-      subject: $ask.summary
-ask:
-  summary:
-    prompt: Summarise the agenda
-    uses: [calendar]
-synthesize: x
+      subject:
+        $ask: Summarise the agenda
+        max_tokens: 200
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -797,30 +687,156 @@ synthesize: x
 
         assert result.issues == []
 
-    async def test_an_ask_reading_a_step_nobody_declares_is_reported_once(self) -> None:
-        """The ordering check must not double up with the existence check."""
+    async def test_a_slot_nested_inside_a_structured_arg_is_accepted(self) -> None:
+        """Slots reach as deep as arguments nest; a payload-shaped arg carrying
+        one must validate exactly like a top-level one."""
+        registry = _schema_registry(query_rows={"filter": {"type": "object"}})
         body = _body(
             """
-description: Ask reading a ghost step
+description: A slot inside a payload
+steps:
+  - id: rows
+    tool: query_rows
+    args:
+      filter:
+        note:
+          $ask: Say why this run matters
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=registry):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
+
+    async def test_a_slot_carrying_a_key_the_vocabulary_has_no_room_for_is_refused(self) -> None:
+        """The slot vocabulary is two keys. A model that adds ``goal`` has
+        written an instruction the runner will never read, so the refusal names
+        the argument it sits in and spells out what a slot may hold — one issue,
+        not a pydantic dump the author has to decode."""
+        body = _body(
+            """
+description: A slot with an extra key
 steps:
   - id: mail
     tool: send_email
     args:
       to: a@b.com
-      subject: $ask.summary
-ask:
-  summary:
-    prompt: Summarise
-    uses: [inbox]
-synthesize: x
+      subject:
+        $ask: Write a subject
+        goal: sound friendly
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
 
+        assert result.valid is False
         assert [(issue.where, issue.problem) for issue in result.issues] == [
-            ("ask.summary.uses", "no step is declared with id 'inbox'")
+            (
+                "steps[0].args.subject",
+                "an $ask slot takes only '$ask' (what to write) and an optional "
+                "max_tokens 1..8192; got ['$ask', 'goal']",
+            )
         ]
+
+    async def test_a_slot_on_a_step_with_no_id_is_refused_so_keys_cannot_collide(
+        self,
+    ) -> None:
+        """A slot's key is its step's id plus the arg path; with no id the tool
+        name stands in, so two id-less steps of one tool would share a key and
+        the second would silently receive the first's text. Refusing at
+        authoring time is the only place the author can still add the id."""
+        body = _body(
+            """
+description: Two searches, neither named
+steps:
+  - tool: list_events
+    args:
+      calendar_id:
+        $ask: which calendar to read
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["steps[0].args.calendar_id"]
+        assert "needs an id" in result.issues[0].problem
+        assert "list_events" in result.issues[0].problem
+
+    async def test_a_slot_with_an_empty_prompt_is_refused(self) -> None:
+        """A slot with nothing to say is a model call with no instruction; the
+        text it writes would be whatever the run happened to look like."""
+        body = _body(
+            """
+description: A slot with no instruction
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject:
+        $ask: ""
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["steps[0].args.subject"]
+        assert "$ask" in result.issues[0].problem
+
+    async def test_a_slot_whose_max_tokens_is_out_of_range_is_refused(self) -> None:
+        """The budget is what keeps one replay's token cost bounded; a slot
+        asking for more than the cap must be refused at authoring time rather
+        than turning a playbook into an open-ended generation."""
+        body = _body(
+            """
+description: A slot with a runaway budget
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject:
+        $ask: Write a subject
+        max_tokens: 999999
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [issue.where for issue in result.issues] == ["steps[0].args.subject"]
+        assert "max_tokens 1..8192" in result.issues[0].problem
+
+    async def test_an_arg_holding_a_slot_is_not_type_checked(self) -> None:
+        """A slot is a dict now and the model's text at replay, exactly as a
+        placeholder is a string now and whatever it resolves to later. Type-
+        checking the unfilled slot would refuse every typed argument a model is
+        meant to write."""
+        body = _body(
+            """
+description: A written count
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+      retries:
+        $ask: How many retries this deserves
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.issues == []
 
     async def test_a_duplicate_step_id_is_refused_by_name(self) -> None:
         """The runner records results by id, so a second ``agenda`` overwrites
@@ -840,7 +856,7 @@ steps:
         tool: list_events
         args:
           calendar_id: work
-synthesize: x
+result_brief: x
 """
         )
         with (
@@ -877,7 +893,7 @@ steps:
         args:
           to: a@b.com
           subject: hi
-synthesize: x
+result_brief: x
 """
         )
         registry = _registry()
@@ -908,7 +924,7 @@ steps:
     args:
       to: a@b.com
       subject: 2026-03-14
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -937,7 +953,7 @@ steps:
     args:
       to: a@b.com
       subject: Synced $steps.XERO_SYNC.organizer
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -962,7 +978,7 @@ steps:
     tool: query_rows
     args:
       cursor: tok_1
-synthesize: x
+result_brief: x
 """
         )
         refused = _body(
@@ -973,7 +989,7 @@ steps:
     tool: query_rows
     args:
       cursor: 7
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1003,7 +1019,7 @@ steps:
     tool: query_rows
     args:
       cursor: {value}
-synthesize: x
+result_brief: x
 """
             )
             with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1023,7 +1039,7 @@ steps:
     tool: query_rows
     args:
       cursor: 7
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1045,7 +1061,7 @@ steps:
     tool: query_rows
     args:
       limit: [1, 2]
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1072,7 +1088,7 @@ steps:
     tool: query_rows
     args:
       limit: nope
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1096,7 +1112,7 @@ steps:
       to: a@b.com
       subject: hi
       retries: true
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1124,7 +1140,7 @@ steps:
       to: a@b.com
       subject: hi
       retries: $steps.agenda.count
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1143,7 +1159,7 @@ steps:
     tool: query_rows
     args:
       ids: [$steps.nowhere.id]
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1163,7 +1179,7 @@ steps:
     args:
       filter:
         owner: $steps.nowhere.id
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1183,7 +1199,7 @@ steps:
     args:
       bcc: c@d.com
       cc: e@f.com
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1203,7 +1219,7 @@ steps:
     tool: send_email
     args:
       bcc: c@d.com
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
@@ -1223,7 +1239,7 @@ steps:
     tool: ping
     args:
       loud: true
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=registry):
@@ -1248,12 +1264,299 @@ steps:
     args:
       to: $steps.agenda.organizer.email
       subject: hi
-synthesize: x
+result_brief: x
 """
         )
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID)
         assert result.issues == []
+
+
+def _call(tool_name: str, args: dict[str, Any], result: object) -> RecordedResult:
+    """One call as the authoring run made it, with what came back."""
+    return RecordedResult(tool_name=tool_name, args=args, result=result)
+
+
+@pytest.mark.unit
+class TestValidateAgainstTheRunThatIsWritingIt:
+    """The checks that read the authoring run's own results.
+
+    Every case here was a playbook production accepted and then broke on:
+    ``pb_c7d357db77dd`` froze a field its tool does not return, and two more
+    were frozen from calls that came back empty. The run had every answer in
+    hand at write time, and nothing looked at it.
+    """
+
+    async def test_a_step_is_matched_to_the_call_whose_literal_args_agree(self) -> None:
+        """A tool called twice left two results. If the step is matched to the
+        wrong one, this playbook is refused for an emptiness that belongs to the
+        other calendar entirely."""
+        body = _body(
+            """
+description: Read the work calendar
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: work
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
+            _call("list_events", {"calendar_id": "primary"}, {"events": []}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_an_arg_holding_a_placeholder_matches_any_recorded_value(self) -> None:
+        """A placeholder has no value until replay, so it cannot disagree with a
+        recorded arg. Treated as a literal it would agree with nothing and the
+        step would be checked against the last call — here, the empty one."""
+        body = _body(
+            """
+description: Mail the digest
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: one
+result_brief: x
+"""
+        )
+        results = [
+            _call("send_email", {"to": "a@b.com", "subject": "one"}, {"sent": [{"id": "1"}]}),
+            _call("send_email", {"to": "z@z.com", "subject": "two"}, {"sent": []}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_step_agreeing_with_no_call_falls_back_to_the_last_one(self) -> None:
+        """A step whose args match nothing recorded still has to be checked
+        against something; the run's final call is the one it settled on. If the
+        fallback picks the first instead, the empty call goes unreported."""
+        body = _body(
+            """
+description: Read a third calendar
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: other
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
+            _call("list_events", {"calendar_id": "primary"}, {"events": []}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]
+        assert result.issues[0].problem.startswith("list_events returned no items in this run")
+        assert '{"calendar_id": "primary"}' in result.issues[0].problem
+
+    async def test_a_tool_the_run_never_called_is_refused(self) -> None:
+        """A playbook freezes calls that ran. A step for a tool this run never
+        touched was invented, and its args have never been proven to work."""
+        body = _body(
+            """
+description: Mail an agenda that was never mailed
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [_call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e1"}]})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]
+        assert result.issues[0].problem == (
+            "send_email did not run in this run; a playbook freezes calls that ran and "
+            "produced their result — run it, or drop the step"
+        )
+
+    async def test_a_call_that_returned_no_items_is_refused(self) -> None:
+        """Two production playbooks were frozen from a call that returned zero
+        items and were marked SUSPECT one fire later. The list is nested under an
+        envelope, so the check has to look past the top level."""
+        body = _body(
+            """
+description: Read an empty calendar
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+result_brief: x
+"""
+        )
+        results = [_call("list_events", {"calendar_id": "primary"}, {"data": {"events": []}})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]
+        assert "widen the args or decline the playbook" in result.issues[0].problem
+
+    async def test_a_call_that_reported_its_own_failure_is_refused_by_its_error(self) -> None:
+        """A tool that catches its own failure answers with a success-shaped
+        message carrying an error envelope. Freezing that call freezes a step
+        that has never once worked, and the refusal has to name the error the
+        author has to fix."""
+        body = _body(
+            """
+description: Mail from an expired token
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "send_email",
+                {"to": "a@b.com", "subject": "hi"},
+                {"success": False, "error": "Gmail token expired"},
+            )
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[0]"]
+        assert "Gmail token expired" in result.issues[0].problem
+
+    async def test_a_reference_to_a_field_the_result_lacks_is_refused_with_its_keys(self) -> None:
+        """``pb_c7d357db77dd`` exactly: a field frozen on a tool that does not
+        return it. The keys are the whole point of the message — without them the
+        author is told what is wrong and not what it could have written."""
+        body = _body(
+            """
+description: Reply on a thread id that does not exist
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.threadId
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"messages": [{"id": "m1"}], "nextPage": "abc"},
+            ),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[1].args.to"]
+        assert result.issues[0].problem == (
+            "$steps.agenda.threadId is not in step 'agenda''s result"
+            "; its result has keys: messages, nextPage"
+        )
+
+    async def test_a_reference_the_recorded_result_resolves_is_accepted(self) -> None:
+        """The check has to accept the shape the run actually produced, nested
+        list index included; a refusal here refuses a playbook that replays."""
+        body = _body(
+            """
+description: Reply to the first message
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $steps.agenda.messages.0.id
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _call("send_email", {"to": "m1", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_reference_to_a_steps_offload_file_is_exempt(self) -> None:
+        """``$steps.<id>.file`` addresses the workspace path a step offloaded its
+        result to, which exists only at replay. Checked against the authoring
+        run's result it is always absent, and every offloading playbook would be
+        refused."""
+        body = _body(
+            """
+description: Mail the offloaded agenda
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: $steps.agenda.file
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "primary"}, {"messages": [{"id": "m1"}]}),
+            _call("send_email", {"to": "a@b.com", "subject": "x"}, {"sent": [{"id": "1"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_without_results_the_verdict_is_the_one_it_was_before(self) -> None:
+        """No results is not an empty run. The dev executor route and every
+        caller with no graph behind it pass nothing, and must get exactly the
+        registry checks they got before — while a run that genuinely made no
+        calls is refused."""
+        body = _body(VALID_YAML)
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            without = await validate_playbook(body, USER_ID)
+            empty_run = await validate_playbook(body, USER_ID, [])
+
+        assert without.valid is True
+        assert without.issues == []
+        assert [issue.where for issue in empty_run.issues] == ["steps[0]", "steps[1]"]
 
 
 @pytest.mark.unit
@@ -1272,21 +1575,39 @@ steps:
     tool: list_events
     args:
       calendar_id: primary
-synthesize: x
+result_brief: x
 """
         )
         rendered = dump_playbook(body)
         assert "Résumé für das Team" in rendered
 
-    def test_keys_stay_in_authored_order(self) -> None:
-        """Alphabetising would put ``description`` after ``ask`` and scatter each
-        step's ``id``/``tool``/``args``, so the document stops reading like the
-        sequence it describes."""
+    def test_keys_stay_in_authored_order_with_the_result_brief_last(self) -> None:
+        """Alphabetising would put ``description`` after ``result_brief`` and
+        scatter each step's ``id``/``tool``/``args``, so the document stops
+        reading like the sequence it describes. ``result_brief`` comes last
+        because it is written from what every step above it returned."""
         body = _body(VALID_YAML)
         rendered = dump_playbook(body)
         assert rendered.index("description:") < rendered.index("steps:")
-        assert rendered.index("steps:") < rendered.index("ask:")
+        assert rendered.index("steps:") < rendered.index("result_brief:")
         assert rendered.index("id: agenda") < rendered.index("args:")
+
+    def test_the_document_carries_no_ask_section_of_its_own(self) -> None:
+        """Asks stopped being a section when they moved inline. Rendering one
+        anyway would teach the agent reading its playbook back to author the
+        shape whose dead entries this change exists to make impossible."""
+        rendered = dump_playbook(_body(VALID_YAML))
+        assert set(yaml.safe_load(rendered)) == {"description", "steps", "result_brief"}
+
+    def test_an_ask_slot_renders_inside_the_argument_it_stands_in(self) -> None:
+        """The agent revises the playbook from this YAML, so a slot has to read
+        where its value belongs. Rendered anywhere else — or flattened to a
+        marker — the agent could not tell which argument a model writes."""
+        rendered = dump_playbook(_body(VALID_YAML))
+
+        mail = yaml.safe_load(rendered)["steps"][1]
+        assert mail["args"]["subject"] == {"$ask": "Write the agenda as a short note"}
+        assert "$ask: Write the agenda as a short note" in rendered
 
 
 def _messages(exc: pytest.ExceptionInfo[ValidationError]) -> list[str]:
@@ -1436,26 +1757,34 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
         assert step.tool == "send_email"
         assert step.args == {"to": "team@example.com", "subject": "Agenda"}
 
-    def test_the_declared_asks_reach_the_stored_body(self) -> None:
-        ask = PlaybookAsk(prompt="Write the digest.", uses=["events"])
+    def test_an_ask_slot_written_into_an_arg_reaches_the_stored_body(self) -> None:
+        """A slot is ordinary argument data all the way through the conversion.
 
+        The tool boundary no longer has an ``ask`` parameter to drop, so a slot
+        lost here would be lost silently: the playbook stores and replays, and
+        the step simply sends nothing where the written text belonged.
+        """
         body = playbook_body_from_input(
             description="Mail the agenda",
-            steps=[PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"})],
-            synthesize="Say how many events there were.",
-            ask={"body": ask},
+            steps=[
+                PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"}),
+                PlaybookStepInput(
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "a@b.com", "subject": {"$ask": "Write the digest."}},
+                ),
+            ],
+            result_brief="Say how many events there were.",
         )
 
-        assert body.ask == {"body": ask}
-        assert [step.tool for step in body.steps] == ["list_events"]
+        assert body.steps[1].args["subject"] == {"$ask": "Write the digest."}
+        assert body.result_brief == "Say how many events there were."
 
-    def test_a_playbook_with_no_asks_stores_an_empty_mapping(self) -> None:
-        """``None`` is what the tool boundary sends for "no asks", and it is not storable."""
-        body = playbook_body_from_input(
-            description="Mail the agenda",
-            steps=[PlaybookStepInput(id="events", tool="list_events", args={"calendar_id": "x"})],
-            synthesize="Say how many events there were.",
-            ask=None,
+    def test_an_ask_slot_inside_a_handoff_child_survives_the_conversion(self) -> None:
+        """A handoff's children are converted through their own model, so a slot
+        in one has a second chance to be dropped on the way to the stored body."""
+        child = PlaybookHandoffStepInput(
+            id="mail", tool="send_email", args={"subject": {"$ask": "Write the digest."}}
         )
 
-        assert body.ask == {}
+        assert child.to_step().args == {"subject": {"$ask": "Write the digest."}}

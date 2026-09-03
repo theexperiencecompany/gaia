@@ -8,7 +8,7 @@ runner no longer calls the gate itself.
 
 A replay makes one model call when the playbook has no asks (the end-of-run
 result and verdict) and two when it has asks (an ask fill mid-run, before the step
-that needs it, then the same end-of-run call), no matter how many ``$ask`` fields
+that needs it, then the same end-of-run call), no matter how many ``$ask`` slots
 there are. The scripted model's turns are not model calls and never reach a provider.
 """
 
@@ -37,7 +37,11 @@ from app.agents.middleware.factory import (
 from app.agents.workspace.offload import mark_offload
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
-from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
+from app.models.playbook_models import (
+    DEFAULT_ASK_MAX_TOKENS,
+    PlaybookDocument,
+    PlaybookStep,
+)
 from app.models.workflow_execution_models import (
     RECORD_CUT_MARKER,
     RESULT_DIGEST_MAX_CHARS,
@@ -180,14 +184,11 @@ class _FakeSubagent:
     config = _FakeSubagentConfig()
 
 
-def _playbook(
-    steps: list[PlaybookStep], ask: dict[str, PlaybookAsk] | None = None
-) -> PlaybookDocument:
+def _playbook(steps: list[PlaybookStep]) -> PlaybookDocument:
     return PlaybookDocument(
         description="Mail the day's agenda",
         steps=steps,
-        ask=ask or {},
-        synthesize="Say how many events there were and that the mail went out.",
+        result_brief="Say how many events there were and that the mail went out.",
         workflow_id="wf_1",
         user_id="u_1",
         workflow_hash="hash_1",
@@ -200,9 +201,22 @@ def _narration(result: str = "Twelve events, mail sent.") -> PlaybookNarration:
     return PlaybookNarration(result=result)
 
 
-def _ask_fill(**asks: str) -> PlaybookAskFill:
+def _slot(prompt: str, max_tokens: int | None = None) -> dict[str, Any]:
+    """An ask slot as it is authored: the instruction, standing in the argument.
+
+    Written as a plain dict rather than through ``AskSlot`` because that is what
+    a stored playbook holds and what the runner has to recognise.
+    """
+    slot: dict[str, Any] = {"$ask": prompt}
+    if max_tokens is not None:
+        slot["max_tokens"] = max_tokens
+    return slot
+
+
+def _ask_fill(asks: dict[str, str] | None = None) -> PlaybookAskFill:
+    """What the one mid-run call answers, keyed by each slot's ``<step>.<arg>`` key."""
     return PlaybookAskFill(
-        asks=[PlaybookAskAnswer(name=name, text=text) for name, text in asks.items()]
+        asks=[PlaybookAskAnswer(name=name, text=text) for name, text in (asks or {}).items()]
     )
 
 
@@ -420,15 +434,14 @@ async def test_one_ask_call_covers_two_asks_and_one_result_call_follows() -> Non
             PlaybookStep(
                 id="mail",
                 tool="send_email",
-                args={"to": "$ask.recipient", "body": "$ask.body"},
+                args={
+                    "to": _slot("Who should get this?"),
+                    "body": _slot("Write the digest."),
+                },
             ),
-        ],
-        ask={
-            "recipient": PlaybookAsk(prompt="Who should get this?", uses=["events"]),
-            "body": PlaybookAsk(prompt="Write the digest.", uses=["events"]),
-        },
+        ]
     )
-    ask_fill = _ask_fill(recipient="team@example.com", body="Twelve events today.")
+    ask_fill = _ask_fill({"mail.to": "team@example.com", "mail.body": "Twelve events today."})
 
     result, llm = await _run(playbook, registry, ask_fill=ask_fill)
 
@@ -440,11 +453,17 @@ async def test_one_ask_call_covers_two_asks_and_one_result_call_follows() -> Non
     # Both fields reach the end call as separate lines: run together they read
     # as one field whose text is the other's, which is what it writes from.
     assert _prompt_block(_result_prompt(llm), "asks") == (
-        "- recipient: team@example.com\n- body: Twelve events today."
+        "- mail.to: team@example.com\n- mail.body: Twelve events today."
     )
 
 
-async def test_a_playbook_with_no_asks_still_makes_exactly_one_call() -> None:
+async def test_a_playbook_with_no_slots_makes_exactly_one_model_call() -> None:
+    """A playbook with nothing to write pays for the narration and nothing else.
+
+    The ask fill is the replay's one optional cost. A second call on a playbook
+    that has no slot to fill is a model call bought for nothing, on every fire
+    of every workflow that never needed one.
+    """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
 
@@ -701,9 +720,14 @@ async def test_a_step_that_raises_is_logged_with_its_error_type() -> None:
     }
 
 
-async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record() -> None:
-    """The narration is the last thing a finished replay does; a raise there
-    dropped a trace in which EVERY step had already run."""
+async def test_a_narration_that_raises_after_every_step_is_still_a_completed_run() -> None:
+    """The steps ARE the workflow; the narration is the sentence about them.
+
+    Prod: 13 of 15 failed replays had every tool step complete and only this
+    call raise. Reported as a stopped run, the user got nothing and the next
+    fire spent a full heal run on a sequence that had just worked. A run that
+    ran everything is a run that finished, and it delivers what it did.
+    """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder))
     playbook = _playbook(AGENDA_STEPS)
@@ -715,16 +739,23 @@ async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record()
             seams=_Seams(llm=AsyncMock(side_effect=TimeoutError("model"))),
         )
 
-    assert result.ok is False
+    assert result.ok is True
+    assert result.failure is None
     assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
+    assert result.narration_failed == "the narration raised TimeoutError: model"
+    # The delivered text has to stand in for the summary nobody wrote: why it is
+    # missing, and every step that ran, so the user is not told a blank page.
+    assert result.narration_failed in result.text
+    for line in result.completed:
+        assert f"- {line}" in result.text
     assert len(result.completed) == 2
-    assert result.failure is not None
-    assert result.failure.startswith(
-        "Playbook stopped at step 2 (narration): the narration raised TimeoutError: model."
-    )
+    # No verdict was written, so there is none to report: the narration is what
+    # judges a run, and it never spoke.
+    assert result.suspect is None
+    assert result.suspect_source is None
     assert result.llm_calls == 0
-    # Which of the run's two model calls died, and on what: the failure text
-    # says it to the agent, the event says it to whoever is watching the fleet.
+    # The call still died, and the fleet still hears about it — the run being
+    # deliverable is not the same as the model call being fine.
     assert log.exception.call_args.args == (f"{LogTag.WORKFLOW} Playbook model call raised",)
     assert log.exception.call_args.kwargs == {
         "playbook_id": playbook.playbook_id,
@@ -732,6 +763,37 @@ async def test_a_narration_that_raises_stops_the_run_with_every_step_on_record()
         "call": "narration",
         "error_type": "TimeoutError",
     }
+
+
+async def test_a_narration_failure_still_counts_the_ask_call_that_did_return() -> None:
+    """``llm_calls`` is the replay's cost line: the ask fill was billed, the
+    narration that raised was not."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the body")},
+            ),
+        ]
+    )
+
+    result, _ = await _run(
+        playbook,
+        registry,
+        seams=_Seams(
+            llm=AsyncMock(
+                side_effect=[_ask_fill({"mail.body": "Here it is."}), RuntimeError("boom")]
+            )
+        ),
+    )
+
+    assert result.ok is True
+    assert result.narration_failed == "the narration raised RuntimeError: boom"
+    assert result.llm_calls == 1
 
 
 async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_it() -> None:
@@ -743,10 +805,11 @@ async def test_a_mid_run_ask_fill_that_raises_stops_before_the_step_that_needed_
         [
             PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             PlaybookStep(
-                id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the body")},
             ),
-        ],
-        ask={"body": PlaybookAsk(prompt="Write the body", uses=["events"])},
+        ]
     )
 
     result, _ = await _run(
@@ -847,16 +910,17 @@ class TestNarrationCall:
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
-            ],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+            ]
         )
 
         result, llm = await _run(
             playbook,
             registry,
-            ask_fill=_ask_fill(body="Twelve today."),
+            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
             seams=_Seams(runnable=runnable),
         )
 
@@ -904,12 +968,30 @@ class TestNarrationCall:
             'mail (send_email {"to":"team@example.com"}) -> sent',
         ]
         assert playbook.description in prompt
-        assert playbook.synthesize in prompt
+        assert playbook.result_brief in prompt
         assert "\n".join(result.completed) in prompt
         # Narrated at the end, so nothing is outstanding: the prompt has no
         # still-to-run section at all, rather than an empty one the model could
         # read as "some steps are missing".
         assert "<still_to_run>" not in prompt
+
+    async def test_the_end_call_is_given_the_result_brief_as_the_brief_to_write_to(self) -> None:
+        """The brief is the only instruction on HOW to write the user's result.
+
+        It is where classification, judgement and summarising live now that a
+        playbook has no ask table to hide them in, so a narration prompt that
+        drops it produces a competent summary of the wrong thing on every fire.
+        """
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        playbook = _playbook(AGENDA_STEPS)
+
+        result, llm = await _run(playbook, registry)
+
+        assert result.ok is True, result.failure
+        assert f"written to this brief (result_brief): {playbook.result_brief}" in _result_prompt(
+            llm
+        )
 
     async def test_a_mid_run_ask_fill_is_told_what_has_not_happened_yet(self) -> None:
         """An ask written before the last step has to know what it is for.
@@ -923,14 +1005,17 @@ class TestNarrationCall:
         playbook = _playbook(
             [
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.summary"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Summarise the day.")},
                 ),
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-            ],
-            ask={"summary": PlaybookAsk(prompt="Summarise the day.", uses=[])},
+            ]
         )
 
-        result, llm = await _run(playbook, registry, ask_fill=_ask_fill(summary="A quiet day."))
+        result, llm = await _run(
+            playbook, registry, ask_fill=_ask_fill({"mail.body": "A quiet day."})
+        )
 
         assert result.ok is True, result.failure
         prompt = _ask_prompt(llm)
@@ -939,34 +1024,39 @@ class TestNarrationCall:
         # "the run did nothing" rather than "the run has not started".
         assert _prompt_block(prompt, "ran") == "nothing yet"
 
-    async def test_the_prompt_states_every_declared_ask_and_its_budget(self) -> None:
-        """One call fills every ask, so the per-ask instruction can only travel in its prompt."""
+    async def test_the_prompt_states_every_slot_and_its_budget(self) -> None:
+        """One call fills every slot, so the per-slot instruction and its budget
+        can only travel in this prompt. The budget is the slot's own, not the
+        default: a slot that asks for a line and is shown the 1024-token default
+        gets a page, and the argument that carries it is the one that grows."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
-        ask = PlaybookAsk(prompt="Write the digest.", uses=["events"])
         playbook = _playbook(
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.", 256)},
                 ),
-            ],
-            ask={"body": ask},
+            ]
         )
 
-        result, llm = await _run(playbook, registry, ask_fill=_ask_fill(body="Twelve today."))
+        result, llm = await _run(
+            playbook, registry, ask_fill=_ask_fill({"mail.body": "Twelve today."})
+        )
 
         assert result.ok is True, result.failure
         prompt = _ask_prompt(llm)
-        assert f"- body: {ask.prompt}" in prompt
-        assert f"budget: about {ask.max_tokens} tokens" in prompt
+        assert "- mail.body: Write the digest." in prompt
+        assert "budget: about 256 tokens" in prompt
 
-    async def test_an_ask_the_model_ignored_is_named_on_the_wide_event(self) -> None:
-        """A silently unwritten ask produces a run that reads as fine and is not.
+    async def test_a_slot_the_model_ignored_is_named_on_the_wide_event(self) -> None:
+        """A silently unwritten slot produces a run that reads as fine and is not.
 
-        The step addressing it fails with a placeholder error far from the cause,
-        so the only way to see that the model skipped a field it was asked for is
-        this warning.
+        The step carrying it fails when its arguments are filled, far from the
+        cause, so the only way to see that the model skipped a slot it was
+        listed is this warning, which names the slot by its key.
         """
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
@@ -974,20 +1064,21 @@ class TestNarrationCall:
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
-            ],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+            ]
         )
 
         with patch(f"{MODULE}.log") as log:
             result, _ = await _run(playbook, registry, ask_fill=_ask_fill())
 
         assert result.ok is False
-        assert "$ask.body" in (result.failure or "")
+        assert "mail.body was never written" in (result.failure or "")
         assert log.warning.call_count == 1
-        assert "wrote nothing for declared asks" in log.warning.call_args.args[0]
-        assert log.warning.call_args.kwargs["missing_asks"] == ["body"]
+        assert "wrote nothing for some slots" in log.warning.call_args.args[0]
+        assert log.warning.call_args.kwargs["missing_asks"] == ["mail.body"]
         assert log.warning.call_args.kwargs["playbook_id"] == playbook.playbook_id
         assert log.warning.call_args.kwargs["workflow_id"] == "wf_1"
 
@@ -1089,14 +1180,15 @@ async def test_a_run_that_stops_after_the_ask_fill_still_reports_the_call_it_mad
     playbook = _playbook(
         [
             PlaybookStep(
-                id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.summary"}
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Summarise the day.")},
             ),
             PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-        ],
-        ask={"summary": PlaybookAsk(prompt="Summarise the day.", uses=[])},
+        ]
     )
 
-    result, llm = await _run(playbook, registry, ask_fill=_ask_fill(summary="A quiet day."))
+    result, llm = await _run(playbook, registry, ask_fill=_ask_fill({"mail.body": "A quiet day."}))
 
     assert result.ok is False
     assert llm.await_count == 1
@@ -1223,7 +1315,9 @@ class TestNarrationSections:
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
                 PlaybookStep(
                     handoff="calendar_agent",
@@ -1231,14 +1325,13 @@ class TestNarrationSections:
                         PlaybookStep(id="more", tool="list_events", args={"calendar_id": "second"})
                     ],
                 ),
-            ],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=[])},
+            ]
         )
 
         result, llm = await _run(
             playbook,
             registry,
-            ask_fill=_ask_fill(body="Twelve today."),
+            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
             seams=_Seams(subagent=_FakeSubagent()),
         )
 
@@ -1249,7 +1342,7 @@ class TestNarrationSections:
             "mail (send_email)\nhandoff to calendar_agent\nmore (list_events)"
         )
 
-    async def test_a_playbook_with_no_asks_says_so_rather_than_leaving_it_blank(self) -> None:
+    async def test_a_playbook_with_no_slots_says_so_rather_than_leaving_it_blank(self) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
@@ -1258,63 +1351,74 @@ class TestNarrationSections:
         assert result.ok is True, result.failure
         assert _prompt_block(str(llm.await_args.args[1]), "asks") == "none"
 
-    async def test_each_ask_arrives_with_its_budget_and_the_steps_it_works_from(self) -> None:
-        """An ask names the steps it is written from, and they must reach the model.
+    async def test_a_slot_is_listed_with_its_budget_and_nothing_it_cannot_have(self) -> None:
+        """A slot is two lines and no more.
 
-        Without them the model writes the field from the whole run, which is the
-        difference between "the digest of the calendar" and "a summary of
-        everything that happened".
+        It has no set of steps to read: it is written from everything listed as
+        already run, because an inline slot has no way to name a subset of it.
+        The block is pinned whole, so a third line reappearing — a works-from
+        naming steps the slot cannot address — fails here rather than silently
+        narrowing what the model writes from.
         """
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
-        ask = PlaybookAsk(prompt="Write the digest.", uses=["events", "mail"])
         playbook = _playbook(
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(id="mail", tool="send_email", args={"to": "$trigger.to"}),
                 PlaybookStep(
-                    id="note", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="note",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
-            ],
-            ask={"body": ask},
+            ]
         )
 
-        result, llm = await _run(playbook, registry, ask_fill=_ask_fill(body="Twelve today."))
+        result, llm = await _run(
+            playbook, registry, ask_fill=_ask_fill({"note.body": "Twelve today."})
+        )
 
         assert result.ok is True, result.failure
         assert _prompt_block(_ask_prompt(llm), "asks") == "\n".join(
             [
-                f"- body: {ask.prompt}",
-                f"  budget: about {ask.max_tokens} tokens",
-                '  works from: events (list_events {"calendar_id":"primary"}) -> {"count": 12}; mail (send_email {"to":"team@example.com"}) -> sent',
+                "- note.body: Write the digest.",
+                f"  budget: about {DEFAULT_ASK_MAX_TOKENS} tokens",
             ]
         )
         # One step per line: run together, two calls read as one call whose
-        # result is the other's, and the field is written from that.
+        # result is the other's, and the slot is written from that.
         assert _prompt_block(_ask_prompt(llm), "ran") == (
             'events (list_events {"calendar_id":"primary"}) -> {"count": 12}\n'
             'mail (send_email {"to":"team@example.com"}) -> sent'
         )
 
-    async def test_an_ask_inside_a_list_argument_still_triggers_the_ask_fill(self) -> None:
-        """Placeholders are found wherever they are, not only at the top level.
+    async def test_a_slot_inside_a_list_argument_still_triggers_the_ask_fill(self) -> None:
+        """Slots are found wherever they are, not only at the top level.
 
-        A step whose ``$ask`` sits inside a list would otherwise run before the
-        model ever wrote the field, and fail on a placeholder that was going to
-        be filled one line later.
+        A step whose slot sits inside a list would otherwise run before the
+        model ever wrote it, and send the slot's own dict as the argument. The
+        key names the position: the list index is part of the address.
         """
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
         playbook = _playbook(
-            [PlaybookStep(id="notes", tool="file_notes", args={"items": ["intro", "$ask.body"]})],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=[])},
+            [
+                PlaybookStep(
+                    id="notes",
+                    tool="file_notes",
+                    args={"items": ["intro", _slot("Write the digest.")]},
+                )
+            ]
         )
 
-        result, llm = await _run(playbook, registry, ask_fill=_ask_fill(body="Twelve today."))
+        result, llm = await _run(
+            playbook, registry, ask_fill=_ask_fill({"notes.items.1": "Twelve today."})
+        )
 
         assert result.ok is True, result.failure
         assert llm.await_count == 2
         assert recorder.calls[0][1]["items"] == ["intro", "Twelve today."]
+        assert "- notes.items.1: Write the digest." in _ask_prompt(llm)
 
 
 # --- when each model call happens ------------------------------------------
@@ -1323,8 +1427,8 @@ class TestNarrationSections:
 class TestCallOrder:
     """When the two model calls fire, relative to the steps.
 
-    Seen live on "write a note ($ask.note), then create_todo with it": one call
-    filled the ask AND wrote the result AND judged the run, before create_todo
+    Seen live on "write a note (an $ask slot), then create_todo with it": one call
+    filled the slot AND wrote the result AND judged the run, before create_todo
     ran. The verdict said "the create_todo step had not run, so no todo was
     created", the replay was distrusted and the agent redid the fire. The ask
     has to be written before the step that needs it; the result and the verdict
@@ -1333,18 +1437,19 @@ class TestCallOrder:
 
     ASK_STEPS: ClassVar[list[PlaybookStep]] = [
         PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-        PlaybookStep(id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}),
+        PlaybookStep(
+            id="mail",
+            tool="send_email",
+            args={"to": "$trigger.to", "body": {"$ask": "Write the digest."}},
+        ),
     ]
-    ASK: ClassVar[dict[str, PlaybookAsk]] = {
-        "body": PlaybookAsk(prompt="Write the digest.", uses=["events"])
-    }
 
     async def test_the_ask_call_precedes_its_step_and_the_result_call_follows_the_last(
         self,
     ) -> None:
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
-        answers = [_ask_fill(body="Twelve today."), _narration()]
+        answers = [_ask_fill({"mail.body": "Twelve today."}), _narration()]
         tools_run_before_each_call: list[list[str]] = []
 
         async def model(runnable: object, prompt: object, **kwargs: object) -> object:
@@ -1352,7 +1457,7 @@ class TestCallOrder:
             return answers[len(tools_run_before_each_call) - 1]
 
         result, llm = await _run(
-            _playbook(self.ASK_STEPS, ask=self.ASK),
+            _playbook(self.ASK_STEPS),
             registry,
             seams=_Seams(llm=AsyncMock(side_effect=model)),
         )
@@ -1376,7 +1481,7 @@ class TestCallOrder:
         registry = _FakeRegistry(_tools(recorder))
 
         result, llm = await _run(
-            _playbook(self.ASK_STEPS, ask=self.ASK), registry, ask_fill=_ask_fill(body="x")
+            _playbook(self.ASK_STEPS), registry, ask_fill=_ask_fill({"mail.body": "x"})
         )
 
         assert result.ok is True, result.failure
@@ -1387,15 +1492,15 @@ class TestCallOrder:
         assert _prompt_block(_ask_prompt(llm), "still_to_run") == "mail (send_email)"
 
     async def test_the_ask_calls_answers_resolve_the_later_steps_arguments(self) -> None:
-        """``$ask.<name>`` is read from the ask call, not from the result call,
-        which returns no asks at all."""
+        """A slot's text is read from the ask call, not from the result call,
+        which writes no slots at all."""
         recorder = _Recorder()
         registry = _FakeRegistry(_tools(recorder))
 
         result, _ = await _run(
-            _playbook(self.ASK_STEPS, ask=self.ASK),
+            _playbook(self.ASK_STEPS),
             registry,
-            ask_fill=_ask_fill(body="Written by the ask call."),
+            ask_fill=_ask_fill({"mail.body": "Written by the ask call."}),
             narration=_narration("Written by the result call."),
         )
 
@@ -1408,13 +1513,13 @@ class TestCallOrder:
         registry = _FakeRegistry(_tools(recorder))
 
         result, llm = await _run(
-            _playbook(self.ASK_STEPS, ask=self.ASK),
+            _playbook(self.ASK_STEPS),
             registry,
-            ask_fill=_ask_fill(body="Twelve today."),
+            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
         )
 
         assert result.ok is True, result.failure
-        assert _prompt_block(_result_prompt(llm), "asks") == "- body: Twelve today."
+        assert _prompt_block(_result_prompt(llm), "asks") == "- mail.body: Twelve today."
 
 
 # --- what a stopped run reports --------------------------------------------
@@ -1805,12 +1910,13 @@ class TestNonStringResults:
         assert "twelve events" in result.trace[0].result_digest
 
 
-async def test_a_handoff_child_can_address_an_ask() -> None:
+async def test_a_handoff_child_can_carry_a_slot() -> None:
     """The ask fill a child triggers is the parent playbook's, not the handoff's.
 
     A handoff's children are run against the same playbook, so a child that
-    needs a ``$ask`` fills it from the whole playbook. Filling it from anything
-    else has nothing to write the field from.
+    carries a slot fills it from the whole playbook. Filling it from anything
+    else has nothing to write from. The key is the CHILD's id, not the
+    handoff's: a key built from the handoff would name a step with no arguments.
     """
     recorder = _Recorder()
     registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
@@ -1819,17 +1925,20 @@ async def test_a_handoff_child_can_address_an_ask() -> None:
             PlaybookStep(
                 handoff="calendar_agent",
                 steps=[
-                    PlaybookStep(id="more", tool="list_events", args={"calendar_id": "$ask.which"})
+                    PlaybookStep(
+                        id="more",
+                        tool="list_events",
+                        args={"calendar_id": _slot("Which calendar?")},
+                    )
                 ],
             )
-        ],
-        ask={"which": PlaybookAsk(prompt="Which calendar?", uses=[])},
+        ]
     )
 
     result, llm = await _run(
         playbook,
         registry,
-        ask_fill=_ask_fill(which="primary"),
+        ask_fill=_ask_fill({"more.calendar_id": "primary"}),
         seams=_Seams(subagent=_FakeSubagent()),
     )
 
@@ -2004,17 +2113,18 @@ class TestSuspectVerdict:
         playbook = _playbook(
             [
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
-            ],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=[])},
+            ]
         )
 
         result, llm = await _run(
             playbook,
             registry,
-            ask_fill=_ask_fill(body="Twelve today."),
+            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
@@ -2268,10 +2378,11 @@ class TestSuspectVerdict:
             [
                 PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
                 PlaybookStep(
-                    id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                    id="mail",
+                    tool="send_email",
+                    args={"to": "$trigger.to", "body": _slot("Write the digest.")},
                 ),
-            ],
-            ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+            ]
         )
         narration = PlaybookNarration(
             result="Twelve events, but the mail did not go out.",
@@ -2280,7 +2391,10 @@ class TestSuspectVerdict:
         )
 
         result, llm = await _run(
-            playbook, registry, ask_fill=_ask_fill(body="Twelve today."), narration=narration
+            playbook,
+            registry,
+            ask_fill=_ask_fill({"mail.body": "Twelve today."}),
+            narration=narration,
         )
 
         assert result.ok is True, result.failure
@@ -2338,10 +2452,10 @@ async def test_a_replay_that_finished_without_a_narration_refuses_to_report_a_re
     assert str(raised.value) == "playbook replay finished every step without a narration"
 
 
-async def test_the_asks_are_filled_once_however_many_steps_address_them() -> None:
-    """The fill is remembered, so the second step reads what the first wrote.
+async def test_the_slots_are_filled_once_however_many_steps_carry_them() -> None:
+    """The fill is remembered, so the third step reads what the one call wrote.
 
-    Forgetting it costs another model call mid-run and lets one field be
+    Forgetting it costs another model call mid-run and lets one instruction be
     answered two different ways inside a single replay: the mail says one thing
     and the note filed about it says another.
     """
@@ -2351,22 +2465,204 @@ async def test_the_asks_are_filled_once_however_many_steps_address_them() -> Non
         [
             PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
             PlaybookStep(
-                id="mail", tool="send_email", args={"to": "$trigger.to", "body": "$ask.body"}
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the digest.")},
             ),
             PlaybookStep(
-                id="note", tool="send_email", args={"to": "$user.email", "body": "$ask.body"}
+                id="note",
+                tool="send_email",
+                args={"to": "$user.email", "body": _slot("Write the digest.")},
             ),
-        ],
-        ask={"body": PlaybookAsk(prompt="Write the digest.", uses=["events"])},
+        ]
     )
 
-    result, llm = await _run(playbook, registry, ask_fill=_ask_fill(body="Twelve today."))
+    result, llm = await _run(
+        playbook,
+        registry,
+        ask_fill=_ask_fill({"mail.body": "Twelve today.", "note.body": "Twelve today."}),
+    )
 
     assert result.ok is True, result.failure
     assert llm.await_count == 2
     assert result.llm_calls == 2
     assert recorder.calls[1][1]["body"] == "Twelve today."
     assert recorder.calls[2][1]["body"] == "Twelve today."
+
+
+# --- one fill, every slot ---------------------------------------------------
+
+
+async def test_one_ask_call_fills_every_slot_including_a_later_steps_and_a_childs() -> None:
+    """One mid-run call writes every slot the playbook holds, wherever it sits.
+
+    Slots are addressed by key, so a later step's slot and a slot inside a
+    handoff's recorded child are written by the same call that the first slot
+    triggered. A fill that covered only the step that triggered it would cost a
+    model call per step with a slot, and each one would answer the same playbook
+    from a different half of the run.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder), spaces={"calendar": ["list_events"]})
+    playbook = _playbook(
+        [
+            PlaybookStep(
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the digest.")},
+            ),
+            PlaybookStep(
+                id="note",
+                tool="send_email",
+                args={"to": "$user.email", "body": _slot("Write the note.")},
+            ),
+            PlaybookStep(
+                handoff="calendar_agent",
+                steps=[
+                    PlaybookStep(
+                        id="more",
+                        tool="list_events",
+                        args={"calendar_id": _slot("Which calendar?")},
+                    )
+                ],
+            ),
+        ]
+    )
+
+    result, llm = await _run(
+        playbook,
+        registry,
+        ask_fill=_ask_fill(
+            {
+                "mail.body": "Twelve events today.",
+                "note.body": "Filed for the record.",
+                "more.calendar_id": "second",
+            }
+        ),
+        seams=_Seams(subagent=_FakeSubagent()),
+    )
+
+    assert result.ok is True, result.failure
+    assert llm.await_count == 2
+    assert result.llm_calls == 2
+    assert recorder.calls[0][1]["body"] == "Twelve events today."
+    assert recorder.calls[1][1]["body"] == "Filed for the record."
+    assert recorder.calls[2][1]["calendar_id"] == "second"
+    # Listed in execution order, handoff children included, keyed by
+    # ``<step id>.<argument path>`` — the key the answers are looked back up by.
+    assert _prompt_block(_ask_prompt(llm), "asks").splitlines()[::2] == [
+        "- mail.body: Write the digest.",
+        "- note.body: Write the note.",
+        "- more.calendar_id: Which calendar?",
+    ]
+
+
+async def test_the_ask_fill_fires_at_the_first_step_with_a_slot_and_not_again() -> None:
+    """One fill, at the first step that carries a slot — not one per such step.
+
+    A run whose first and third steps both carry slots still makes exactly one
+    fill call, before anything has run. A second fill mid-run buys another model
+    call and lets one instruction be answered two different ways inside a single
+    replay.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the digest.")},
+            ),
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="note",
+                tool="send_email",
+                args={"to": "$user.email", "body": _slot("Write the note.")},
+            ),
+        ]
+    )
+    answers = [_ask_fill({"mail.body": "Twelve today.", "note.body": "Filed."}), _narration()]
+    tools_run_before_each_call: list[list[str]] = []
+
+    async def model(runnable: object, prompt: object, **kwargs: object) -> object:
+        tools_run_before_each_call.append([name for name, _ in recorder.calls])
+        return answers[len(tools_run_before_each_call) - 1]
+
+    result, llm = await _run(playbook, registry, seams=_Seams(llm=AsyncMock(side_effect=model)))
+
+    assert result.ok is True, result.failure
+    # The fill ran before step 1, and the only call after it is the end-of-run
+    # one: the third step's slot did not trigger a second fill.
+    assert tools_run_before_each_call == [[], ["send_email", "list_events", "send_email"]]
+    assert llm.await_count == 2
+    assert result.llm_calls == 2
+    assert recorder.calls[2][1]["body"] == "Filed."
+
+
+async def test_a_slot_is_filled_before_the_placeholder_beside_it_is_resolved() -> None:
+    """Filling runs first, so a slot and a ``$steps`` reference in one argument
+    both arrive resolved.
+
+    The order is load-bearing in both directions: resolution first would meet the
+    slot's own dict and stop the run, and a fill that did not leave an ordinary
+    string behind would send the placeholder next to it as literal text.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="notes",
+                tool="file_notes",
+                args={
+                    "items": [_slot("Write the digest."), "Found $steps.events.count events"],
+                },
+            ),
+        ]
+    )
+
+    result, _ = await _run(
+        playbook, registry, ask_fill=_ask_fill({"notes.items.0": "Twelve today."})
+    )
+
+    assert result.ok is True, result.failure
+    assert recorder.calls[1][1]["items"] == ["Twelve today.", "Found 12 events"]
+
+
+async def test_a_fill_that_omits_a_slot_stops_the_run_at_that_step_naming_the_key() -> None:
+    """A slot with no text is a hole in a real tool call, so the step must not run.
+
+    The report names the key the model was listed, which is the only thing that
+    says which of the slots came back empty, and it lists the steps that DID run
+    so the agent finishing the fire does not repeat their side effects.
+    """
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": _slot("Write the digest.")},
+            ),
+        ]
+    )
+
+    result, _ = await _run(
+        playbook, registry, ask_fill=_ask_fill({"mail.elsewhere": "Twelve today."})
+    )
+
+    assert result.ok is False
+    assert result.failure is not None
+    assert result.failure.startswith(
+        "Playbook stopped at step 2 (send_email): mail.body was never written."
+    )
+    # The step never ran; the one before it did, and the report says so.
+    assert [name for name, _ in recorder.calls] == ["list_events"]
+    assert result.completed == ['events (list_events {"calendar_id":"primary"}) -> {"count": 12}']
 
 
 async def test_a_refusal_carrying_content_blocks_is_quoted_rather_than_lost() -> None:
@@ -2611,8 +2907,8 @@ class TestGuardsOnStatesTheModelsRuleOut:
         assert failure.position == 1
         assert failure.reason == "no tool named '' exists"
 
-    def test_a_playbook_with_no_asks_renders_them_as_a_word(self) -> None:
-        assert _render_asks({}, []) == "none"
+    def test_a_playbook_with_no_slots_renders_them_as_a_word(self) -> None:
+        assert _render_asks([]) == "none"
 
     def test_a_record_verdict_is_reported_as_the_records(self) -> None:
         run = _bare_run()

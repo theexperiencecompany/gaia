@@ -964,7 +964,7 @@ def _failed_playbook() -> PlaybookDocument:
         workflow_hash="h",
         description="d",
         steps=[PlaybookStep(id="events", tool="list_events", args={})],
-        synthesize="s",
+        result_brief="s",
         last_run_status=PlaybookRunStatus.FAILED,
         last_run_reason="stopped at step 2 (send_email)",
         created_at=now,
