@@ -2054,6 +2054,37 @@ result_brief: x
             )
         ]
 
+    async def test_a_handoff_child_never_takes_a_top_level_call_of_the_same_tool(self) -> None:
+        """The run's results hold nothing for a subagent's calls (the handoff
+        record carries their args, not their outputs), so a child is not matched
+        at all. Matching it anyway let a child consume the one recorded top-level
+        call of the same tool, and the real top-level step behind it was refused
+        as a call the run never made."""
+        body = _body(
+            """
+description: The subagent listed events, then the executor did too
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: theirs
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mine
+    tool: list_events
+    args:
+      calendar_id: primary
+result_brief: x
+"""
+        )
+        results = [_call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e1"}]})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
     async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
         """The refusal above is about cardinality, not repetition: a run that
         genuinely made the call twice left two records, and two steps may each

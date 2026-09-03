@@ -195,7 +195,12 @@ class _Walk:
 
 
 async def _check_steps(
-    steps: Sequence[PlaybookStep], path: str, space: ToolSpace, walk: _Walk
+    steps: Sequence[PlaybookStep],
+    path: str,
+    space: ToolSpace,
+    walk: _Walk,
+    *,
+    in_handoff: bool = False,
 ) -> None:
     """Walk the steps in document order, so a reference can only resolve
     backwards: ``declared_steps`` holds exactly what ran before this node.
@@ -207,7 +212,7 @@ async def _check_steps(
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
         if step.tool:
-            _check_tool_step(step, here, space, walk)
+            _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
         else:
             handoff = step.handoff
             if handoff is None:
@@ -223,7 +228,9 @@ async def _check_steps(
                     )
                 )
             else:
-                await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
+                await _check_steps(
+                    step.steps, f"{here}.steps", handoff_tool_space(subagent), walk, in_handoff=True
+                )
         if step.id:
             # The runner keys its record on the id, so a second step with the
             # same id would overwrite the first's result for every later $steps.
@@ -239,7 +246,9 @@ async def _check_steps(
             walk.declared_steps.add(step.id)
 
 
-def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk) -> None:
+def _check_tool_step(
+    step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk, *, in_handoff: bool
+) -> None:
     if step.tool is None:
         # exactly_one_shape forbids a tool-less step reaching here; this guard
         # narrows the type where mypy cannot see the validator.
@@ -250,8 +259,14 @@ def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Wal
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
-    if walk.results is not None:
-        _check_recorded_call(step, tool_name, path, space, walk)
+    # A handoff's children are not matched at all. The record a handoff appends
+    # (``call_record.py``) carries the subagent's tool names and args but NOT
+    # their outputs, so the run's results hold nothing for them — and matching
+    # them anyway would let a child consume a top-level call of the same tool.
+    # Said by the walk, not read off the space: a subagent without a config
+    # yields a space whose subagent_id is None, and a child is still a child.
+    if walk.results is not None and not in_handoff:
+        _check_recorded_call(step, tool_name, path, walk)
 
     schema: dict[str, Any] = space.tools[tool_name].args
     _check_required_args(step, tool_name, path, space, walk)
@@ -309,32 +324,24 @@ def _check_tool_step(step: PlaybookStep, path: str, space: ToolSpace, walk: _Wal
             _check_value_type(value, arg_schema, where, walk.issues)
 
 
-def _check_recorded_call(
-    step: PlaybookStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
-) -> None:
-    """Check one tool step against the call it froze in the run writing it.
+def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _Walk) -> None:
+    """Check one top-level tool step against the call it froze in the run writing it.
 
     Matching the step back to a recorded call is also what makes the ``$steps``
     references checkable: the matched result is what later steps read from.
-
-    A handoff's children are exempt from "did not run". The record a handoff
-    appends (``call_record.py``) carries the subagent's tool names and args but
-    NOT their outputs, so this run's results hold nothing for them and their
-    absence is evidence of nothing.
     """
     matched = _matched_call(step, walk)
     if matched is None:
-        if space.subagent_id is None:
-            ran = sum(1 for call in walk.results or () if call.tool_name == tool_name)
-            problem = (
-                f"{tool_name} did not run in this run; a playbook freezes calls "
-                "that ran and produced their result — run it, or drop the step"
-                if ran == 0
-                else f"{tool_name} ran {ran} time(s) in this run and earlier steps froze every "
-                "one of them; a step cannot replay a call the run did not make — drop this "
-                "step, or run it again"
-            )
-            walk.issues.append(PlaybookIssue(where=path, problem=problem))
+        ran = sum(1 for call in walk.results or () if call.tool_name == tool_name)
+        problem = (
+            f"{tool_name} did not run in this run; a playbook freezes calls "
+            "that ran and produced their result — run it, or drop the step"
+            if ran == 0
+            else f"{tool_name} ran {ran} time(s) in this run and earlier steps froze every "
+            "one of them; a step cannot replay a call the run did not make — drop this "
+            "step, or run it again"
+        )
+        walk.issues.append(PlaybookIssue(where=path, problem=problem))
         return
     index, call = matched
     walk.consumed.add(index)
