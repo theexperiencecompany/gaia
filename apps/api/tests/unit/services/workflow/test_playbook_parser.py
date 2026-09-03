@@ -1990,6 +1990,107 @@ result_brief: x
             "$steps.agenda.threadId is not in step 'agenda''s result" + expected_hint
         ]
 
+    async def test_an_unknown_arg_is_answered_with_the_tools_whole_arg_list(self) -> None:
+        """The list is what the author rewrites from, so it has to be the real
+        one: every arg, sorted, comma-separated. A one-arg tool cannot show the
+        separator, which is how a broken join went unnoticed."""
+        body = _body(
+            """
+description: A misspelt recipient field
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+      recipient: c@d.com
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.recipient",
+                "send_email takes no arg 'recipient'; it takes: retries, subject, to",
+            )
+        ]
+
+    async def test_a_call_the_run_made_once_cannot_be_frozen_twice(self) -> None:
+        """Two steps with one tool and the same args both matched the single
+        recorded call, and the replay then sent the mail twice for a run that
+        sent it once. The second step must be refused, and the message must say
+        how many times the tool really ran so the author can tell a duplicate
+        from a call that was dropped from the record."""
+        body = _body(
+            """
+description: The same mail, listed twice
+steps:
+  - id: first
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+  - id: again
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [_call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]})]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1]",
+                "send_email ran 1 time(s) in this run and earlier steps froze every one of "
+                "them; a step cannot replay a call the run did not make — drop this step, "
+                "or run it again",
+            )
+        ]
+
+    async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
+        """The refusal above is about cardinality, not repetition: a run that
+        genuinely made the call twice left two records, and two steps may each
+        take one. A third step has nothing left and says so with the count."""
+        body = _body(
+            """
+description: Two mails, then one too many
+steps:
+  - id: first
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+  - id: second
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+  - id: third
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "1"}]}),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, {"sent": [{"id": "2"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [issue.where for issue in result.issues] == ["steps[2]"]
+        assert result.issues[0].problem.startswith("send_email ran 2 time(s) in this run")
+
     async def test_a_reference_deeper_than_one_field_is_still_read_from_its_step(self) -> None:
         """``$steps.agenda.organizer.email`` names the step ``agenda`` and the
         path ``organizer.email``. Split from the other end the step is called

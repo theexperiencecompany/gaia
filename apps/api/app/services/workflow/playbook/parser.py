@@ -188,6 +188,10 @@ class _Walk:
     #: the step. A ``$steps`` reference is checked against this, so it can only
     #: ever read a step that ran before it — the same rule the replay enforces.
     step_results: dict[str, StepResult] = field(default_factory=dict)
+    #: Positions in ``results`` that a step has already frozen. A recorded call
+    #: is one call; two steps matched to it would replay it twice and double a
+    #: side effect the run performed once.
+    consumed: set[int] = field(default_factory=set)
 
 
 async def _check_steps(
@@ -318,17 +322,22 @@ def _check_recorded_call(
     NOT their outputs, so this run's results hold nothing for them and their
     absence is evidence of nothing.
     """
-    call = _matched_call(step, walk)
-    if call is None:
+    matched = _matched_call(step, walk)
+    if matched is None:
         if space.subagent_id is None:
-            walk.issues.append(
-                PlaybookIssue(
-                    where=path,
-                    problem=f"{tool_name} did not run in this run; a playbook freezes calls "
-                    "that ran and produced their result — run it, or drop the step",
-                )
+            ran = sum(1 for call in walk.results or () if call.tool_name == tool_name)
+            problem = (
+                f"{tool_name} did not run in this run; a playbook freezes calls "
+                "that ran and produced their result — run it, or drop the step"
+                if ran == 0
+                else f"{tool_name} ran {ran} time(s) in this run and earlier steps froze every "
+                "one of them; a step cannot replay a call the run did not make — drop this "
+                "step, or run it again"
             )
+            walk.issues.append(PlaybookIssue(where=path, problem=problem))
         return
+    index, call = matched
+    walk.consumed.add(index)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
     refusal = _result_refusal(tool_name, call)
@@ -336,8 +345,9 @@ def _check_recorded_call(
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
 
 
-def _matched_call(step: PlaybookStep, walk: _Walk) -> RecordedResult | None:
-    """The recorded call this step froze, or ``None`` when the tool never ran.
+def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
+    """The recorded call this step froze, with its position, or ``None`` when
+    no call of that tool is left for it.
 
     A step's args are the only evidence of WHICH call it froze: a tool called
     three times with different queries left three results, and checking the step
@@ -348,13 +358,20 @@ def _matched_call(step: PlaybookStep, walk: _Walk) -> RecordedResult | None:
     parts that say nothing. The LAST call wins, both among the calls that agree
     and as the fallback when none does: a run that repeats a tool settles on its
     final call, which is the one worth freezing.
+
+    A call already frozen by an earlier step is not offered again: the run made
+    it once, and a playbook listing it twice would replay it twice.
     """
-    calls = [call for call in (walk.results or ()) if call.tool_name == step.tool]
+    calls = [
+        (index, call)
+        for index, call in enumerate(walk.results or ())
+        if call.tool_name == step.tool and index not in walk.consumed
+    ]
     if not calls:
         return None
     agreeing = [
-        call
-        for call in calls
+        (index, call)
+        for index, call in calls
         if all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
         )
