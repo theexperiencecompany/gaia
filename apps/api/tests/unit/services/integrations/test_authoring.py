@@ -10,11 +10,15 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 import contextlib
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+import uuid
 
 import pytest
 
+from app.constants.log_tags import LogTag
+from app.models.cli_config import CliAuthSpec
 from app.models.integration_models import CreateCustomIntegrationRequest
 from app.services.integrations.authoring import (
     CliBlueprint,
@@ -24,6 +28,7 @@ from app.services.integrations.authoring import (
 )
 from app.services.integrations.authoring.cli_author import CliIntegrationAuthor
 from app.services.integrations.authoring.mcp_author import McpIntegrationAuthor
+from tests.helpers import captured_wide_event
 
 USER = "user-1"
 MCP_MODULE = "app.services.integrations.authoring.mcp_author"
@@ -397,3 +402,174 @@ class TestIconFromHomepage:
 
         fetch.assert_awaited_once_with("http://localhost:8080/")
         assert authored.integration.icon_url is None
+
+
+CLI_MODULE = "app.services.integrations.authoring.cli_author"
+
+
+@contextlib.contextmanager
+def cli_creation(attach_error: Exception | None = None) -> Iterator[SimpleNamespace]:
+    """Patch the CLI author's two write boundaries: the catalog and the attach."""
+    with (
+        patch(f"{CLI_MODULE}.integration_repository") as repo,
+        patch(f"{CLI_MODULE}.add_user_integration", AsyncMock(side_effect=attach_error)) as attach,
+        patch(f"{CLI_MODULE}.fetch_favicon_safely", AsyncMock(return_value=None)),
+    ):
+        repo.create = AsyncMock()
+        repo.delete = AsyncMock()
+        yield SimpleNamespace(repo=repo, attach=attach)
+
+
+def _stored(created: SimpleNamespace):
+    """The catalog document the author wrote."""
+    return created.repo.create.await_args.args[0]
+
+
+class TestTheStoredCliDocument:
+    """What the author actually writes to the catalog.
+
+    The blueprint comes from a model reading a vendor's help text, and this
+    document is what every later step reads: the connect flow reads the auth
+    spec, the marketplace reads the visibility flags, and the tool factory
+    reads the command. Nothing downstream can recover a field dropped here.
+    """
+
+    async def test_the_auth_spec_is_stored_whole(self):
+        # The connect state machine branches on every one of these: the login
+        # command it runs detached, the verify command that decides "connected",
+        # the variable it exports the pasted token as, and the copy the dialog
+        # shows. A dropped field surfaces as a connect that hangs or a token
+        # dialog with no label.
+        with cli_creation() as created:
+            await create_integration(
+                USER,
+                cli_blueprint(
+                    auth_kind="token",
+                    login_command="gh auth login --with-token",
+                    logout_command="gh auth logout",
+                    verify_command="gh auth status",
+                    token_env="GH_TOKEN",
+                    token_label="GitHub token",
+                    token_help_url="https://github.test/tokens",
+                ),
+            )
+
+        assert _stored(created).cli_config.auth == CliAuthSpec(
+            kind="token",
+            login_command="gh auth login --with-token",
+            verify_command="gh auth status",
+            logout_command="gh auth logout",
+            token_env="GH_TOKEN",
+            token_label="GitHub token",
+            token_help_url="https://github.test/tokens",
+        )
+
+    async def test_each_authored_integration_gets_its_own_id(self):
+        # The id is the document's identity, the CLI's sandbox directory and
+        # its tool-name digest. Two integrations sharing one would share an
+        # install and a login.
+        with cli_creation() as first:
+            await create_integration(USER, cli_blueprint())
+        with cli_creation() as second:
+            await create_integration(USER, cli_blueprint())
+
+        first_id = _stored(first).integration_id
+        assert uuid.UUID(first_id)
+        assert first_id != _stored(second).integration_id
+
+    async def test_the_row_and_the_attachment_name_the_same_integration(self):
+        # Two writes, one id. Attaching a different id would leave a catalog
+        # row nobody owns and a workspace entry pointing at nothing.
+        with cli_creation() as created:
+            await create_integration(USER, cli_blueprint())
+
+        created.attach.assert_awaited_once_with(
+            USER, _stored(created).integration_id, initial_status="created"
+        )
+
+    async def test_an_authored_integration_starts_private_and_unpublished(self):
+        # Authoring is not publishing. A row that arrived in the marketplace
+        # featured, cloned and public would expose a user's own tool to
+        # everyone without them ever choosing to share it.
+        with cli_creation() as created:
+            await create_integration(USER, cli_blueprint())
+
+        stored = _stored(created)
+        assert stored.is_public is False
+        assert stored.is_featured is False
+        assert stored.display_priority == 0
+        assert stored.clone_count == 0
+        assert stored.published_at is None
+
+    async def test_the_creation_time_is_recorded_in_utc(self):
+        # Read back as an aware timestamp everywhere; a naive local time here
+        # is silently off by the server's offset for every downstream sort.
+        with cli_creation() as created:
+            await create_integration(USER, cli_blueprint())
+
+        created_at = _stored(created).created_at
+        assert created_at.tzinfo is not None
+        assert created_at.utcoffset() == timedelta(0)
+
+    async def test_a_cli_that_needs_a_credential_is_stored_as_requiring_auth(self):
+        # The card renders a Connect button off this, and the resolver reads it
+        # back. Stored False, a CLI needing a token looks ready to use.
+        with cli_creation() as created:
+            await create_integration(USER, cli_blueprint())
+
+        assert _stored(created).requires_auth is True
+
+
+class TestTheAuthorsAnswerToTheCaller:
+    """The caller is a chat tool, so the note is what the model tells the user."""
+
+    async def test_a_cli_with_a_login_says_the_connect_installs_and_signs_in(self):
+        with cli_creation():
+            authored = await create_integration(USER, cli_blueprint())
+
+        assert authored.needs_connection is True
+        assert authored.note == "Connect it to install gh and sign in."
+
+    async def test_a_cli_with_no_login_says_the_connect_only_installs(self):
+        # Still needs a connect — the CLI has to be installed — but promising a
+        # sign-in step that does not exist sends the user looking for a dialog.
+        with cli_creation():
+            authored = await create_integration(
+                USER, cli_blueprint(auth_kind="none", token_env=None, token_label=None)
+            )
+
+        assert authored.needs_connection is True
+        assert authored.note == "Connect it once to install gh."
+
+
+class TestRollbackWhenAttachingFails:
+    async def test_the_orphaned_row_is_deleted_and_the_failure_recorded(self):
+        # A catalog row nobody owns is a marketplace entry that cannot be
+        # connected or deleted; the wide event is the only record of which one
+        # was rolled back and for whom.
+        with cli_creation(attach_error=RuntimeError("mongo down")) as created:
+            async with captured_wide_event() as event:
+                with pytest.raises(RuntimeError):
+                    await create_integration(USER, cli_blueprint())
+
+        integration_id = _stored(created).integration_id
+        created.repo.delete.assert_awaited_once_with(integration_id)
+        (failure,) = event["errors"]
+        assert failure == {
+            "msg": f"{LogTag.INTEGRATION} Failed to attach authored CLI integration, rolling back",
+            "integration_id": integration_id,
+            "user_id": USER,
+        }
+
+
+class TestTheWrongBlueprintKind:
+    async def test_it_names_the_author_and_the_kind(self):
+        # Unreachable through the registry, which dispatches on kind. It is the
+        # guard that makes a future author wired to the wrong kind fail loudly
+        # instead of quietly creating the wrong sort of integration.
+        with pytest.raises(TypeError) as exc_info:
+            await CliIntegrationAuthor().create(
+                USER, McpBlueprint(name="Acme", server_url="https://mcp.example.test")
+            )
+
+        assert str(exc_info.value) == "CliIntegrationAuthor cannot author a 'mcp' blueprint"

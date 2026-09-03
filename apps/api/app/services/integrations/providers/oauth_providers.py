@@ -10,15 +10,22 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from app.config.token_repository import token_repository
 from app.models.integration_provider import ManagedBy
 from app.schemas.integrations.responses import ConnectIntegrationResponse
+from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.integration_connection_service import (
     McpConnectRequest,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
+    delete_if_user_authored,
+    require_provider,
 )
+from app.services.integrations.integration_resolver import ResolvedIntegration
 from app.services.integrations.providers.base import ConnectContext, IntegrationProvider
+from app.services.integrations.user_integrations import remove_user_integration
+from app.services.mcp.mcp_client import get_mcp_client
 
 
 class McpIntegrationProvider(IntegrationProvider):
@@ -41,6 +48,18 @@ class McpIntegrationProvider(IntegrationProvider):
             )
         )
 
+    async def disconnect(self, user_id: str, resolved: ResolvedIntegration) -> None:
+        """Drop the MCP session and the user's record of the server.
+
+        A server the user added themselves also loses its catalog document; a
+        platform one is shared, so only the link goes.
+        """
+        mcp_client = await get_mcp_client(user_id=user_id)
+        await mcp_client.disconnect(resolved.integration_id)
+        await remove_user_integration(user_id, resolved.integration_id)
+        if resolved.source == "custom":
+            await delete_if_user_authored(user_id, resolved)
+
 
 class ComposioIntegrationProvider(IntegrationProvider):
     """A connection brokered and hosted by Composio."""
@@ -57,6 +76,13 @@ class ComposioIntegrationProvider(IntegrationProvider):
             integration_name=ctx.resolved.name,
             provider=provider,
             redirect_path=ctx.redirect_path,
+        )
+
+    async def disconnect(self, user_id: str, resolved: ResolvedIntegration) -> None:
+        """Delete the connected account Composio holds for this provider."""
+        composio_service = get_composio_service()
+        await composio_service.delete_connected_account(
+            user_id=user_id, provider=require_provider(resolved)
         )
 
 
@@ -77,3 +103,7 @@ class SelfIntegrationProvider(IntegrationProvider):
             provider=provider,
             redirect_path=ctx.redirect_path,
         )
+
+    async def disconnect(self, user_id: str, resolved: ResolvedIntegration) -> None:
+        """Revoke the OAuth token GAIA obtained itself."""
+        await token_repository.revoke_token(user_id=user_id, provider=require_provider(resolved))

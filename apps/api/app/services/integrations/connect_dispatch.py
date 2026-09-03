@@ -1,4 +1,4 @@
-"""The one place an integration connection is started, for every entry point.
+"""The one place an integration connection is started or torn down.
 
 Both the authenticated ``POST /connect/{id}`` endpoint and the login-free
 ``GET /connect-link`` redemption land here, so a transport is wired into all of
@@ -10,10 +10,15 @@ provider.
 from __future__ import annotations
 
 from app.constants.log_tags import LogTag
-from app.schemas.integrations.responses import ConnectIntegrationResponse
+from app.schemas.integrations.responses import (
+    ConnectIntegrationResponse,
+    IntegrationSuccessResponse,
+)
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.integrations.integration_connection_service import _invalidate_caches
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.providers import ConnectContext, get_provider
+from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
 
 
@@ -104,3 +109,37 @@ async def initiate_integration_connection(
             {"integration_id": integration_id, "managed_by": resolved.managed_by},
         )
     return result
+
+
+async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
+    """Disconnect an integration for the user."""
+    log.set(integration={"provider": integration_id, "action": "disconnect"})
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if not resolved:
+        raise ValueError(f"Integration {integration_id} not found")
+
+    # Same registry the connect path uses. Two hand-written dispatches is how a
+    # transport ends up wired into one and not the other -- which is what this
+    # function used to be.
+    provider = get_provider(resolved.managed_by)
+    if provider is None:
+        raise ValueError(f"Integration {integration_id} disconnect not supported")
+    await provider.disconnect(user_id, resolved)
+
+    await _invalidate_caches(user_id, integration_id, resolved.managed_by)
+
+    # Reflect the reduced connected set in the user's workspace VFS.
+    schedule_user_integrations_sync(user_id)
+
+    log.set(
+        integration={
+            "provider": integration_id,
+            "action": "disconnect",
+            "managed_by": resolved.managed_by,
+            "status": "disconnected",
+        }
+    )
+    return IntegrationSuccessResponse(
+        message=f"Successfully disconnected {resolved.name}",
+        integration_id=integration_id,
+    )

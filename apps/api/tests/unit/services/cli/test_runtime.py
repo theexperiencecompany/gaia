@@ -9,10 +9,12 @@ shell in the user's sandbox, or an install that silently never happens.
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 from unittest.mock import AsyncMock, MagicMock
 
+from e2b import CommandExitException
 import pytest
 
 from app.constants.cli_integrations import app_dir, home_dir, launcher_path
@@ -34,6 +36,26 @@ def make_config(**overrides: object) -> CliConfig:
     }
     base.update(overrides)
     return CliConfig(**base)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
+
+
+def _token_config(**overrides: object) -> CliConfig:
+    """A token-shape CLI: the only shape that has a secret to write."""
+    spec: dict[str, object] = {
+        "kind": "token",
+        "verify_command": "gh auth status",
+        "token_env": "GH_TOKEN",
+        "token_label": "GitHub token",
+    }
+    spec.update(overrides)
+    return make_config(command="gh", auth=CliAuthSpec(**spec))  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
+
+
+def _token_sandbox() -> MagicMock:
+    """A sandbox where every command succeeds, so only the writes vary."""
+    sandbox = MagicMock()
+    sandbox.commands.run = AsyncMock(return_value=MagicMock(exit_code=0, stdout="", stderr=""))
+    sandbox.files.write = AsyncMock()
+    return sandbox
 
 
 def assert_valid_shell(script: str) -> None:
@@ -249,6 +271,95 @@ class TestWriteToken:
         for call in sandbox.commands.run.await_args_list:
             assert secret not in call.args[0]
 
+    async def test_the_env_file_exports_the_configured_variable(self):
+        # The launcher sources this file and the CLI reads its own vendor-native
+        # variable name; export the wrong one and the CLI is simply never
+        # authenticated, with no error anywhere to say why.
+        sandbox = _token_sandbox()
+        config = _token_config(token_env="CLOUDFLARE_API_TOKEN")
+
+        await runtime.write_token(sandbox, "wrangler", config, "cf-secret")
+
+        path, body = sandbox.files.write.await_args.args
+        assert path == f"{home_dir('wrangler')}/.gaia-env"
+        assert body == "export CLOUDFLARE_API_TOKEN=cf-secret\n"
+
+    async def test_a_token_containing_shell_metacharacters_cannot_break_out(self):
+        # The file is sourced by the launcher on every invocation, so an
+        # unquoted value is arbitrary shell running before every CLI call.
+        sandbox = _token_sandbox()
+        nasty = "abc'; rm -rf / #"
+
+        await runtime.write_token(sandbox, "gh", _token_config(), nasty)
+
+        _path, body = sandbox.files.write.await_args.args
+        assert_valid_shell(body)
+        # The payload survives as data, not as a second command.
+        assert body == f"export GH_TOKEN={shlex.quote(nasty)}\n"
+
+    async def test_the_credential_file_is_locked_down(self):
+        sandbox = _token_sandbox()
+
+        await runtime.write_token(sandbox, "gh", _token_config(), "secret")
+
+        path = f"{home_dir('gh')}/.gaia-env"
+        chmods = [
+            call.args[0]
+            for call in sandbox.commands.run.await_args_list
+            if call.args[0].startswith("chmod")
+        ]
+        assert chmods == [f"chmod 0600 {shlex.quote(path)}"]
+
+    async def test_a_failed_install_never_writes_the_token(self):
+        # The install is what creates the durable HOME and the launcher that
+        # sources this file. Writing first would drop a credential into a
+        # directory nothing reads, and report success.
+        sandbox = MagicMock()
+        sandbox.files.write = AsyncMock()
+        sandbox.commands.run = AsyncMock(
+            return_value=MagicMock(
+                exit_code=runtime.INSTALL_FAILED_EXIT_CODE, stdout="", stderr="npm ERR! 404"
+            )
+        )
+
+        result = await runtime.write_token(sandbox, "gh", _token_config(), "secret")
+
+        assert result.ok is False
+        assert "404" in result.stderr
+        sandbox.files.write.assert_not_awaited()
+
+    async def test_exporting_the_variable_is_the_whole_login_when_no_login_command(self):
+        # Most token CLIs need nothing else. Running a login command that was
+        # never configured would fail the connect for a CLI that is in fact
+        # authenticated.
+        sandbox = _token_sandbox()
+        config = _token_config()
+        assert config.auth.login_command is None
+
+        result = await runtime.write_token(sandbox, "gh", config, "secret")
+
+        assert result.ok is True
+        assert not [
+            call.args[0]
+            for call in sandbox.commands.run.await_args_list
+            if "auth login" in call.args[0]
+        ]
+
+    async def test_a_configured_login_command_is_run_with_the_token_in_place(self):
+        # `gh auth login --with-token` materialises the CLI's own config from
+        # the exported variable, so it has to run AFTER the env file exists.
+        sandbox = _token_sandbox()
+        config = _token_config(login_command="gh auth login --with-token")
+
+        await runtime.write_token(sandbox, "gh", config, "secret")
+
+        scripts = [call.args[0] for call in sandbox.commands.run.await_args_list]
+        login = [s for s in scripts if "gh auth login --with-token" in s]
+        assert len(login) == 1
+        assert scripts.index(login[0]) > scripts.index(
+            next(s for s in scripts if s.startswith("chmod"))
+        )
+
 
 class TestUserVisibleOutput:
     """CLI output is relayed to the user verbatim, minus GAIA's own plumbing."""
@@ -349,3 +460,98 @@ class TestLoginLifecycleHardening:
         kill_index = script.index("kill ")
         remove_index = script.index("rm -f")
         assert kill_index < remove_index, "the predecessor must die before its pid file is removed"
+
+
+class TestRunningAScriptInTheSandbox:
+    """``_run`` is the single door to the sandbox, and the only place e2b's
+    exception-on-nonzero is turned back into a result.
+
+    A CLI exiting non-zero is ordinary — not signed in, no such repo — and the
+    connect state machine reads the exit code to decide what to do next. An
+    escaped exception would surface as "failed to connect" for a CLI that
+    merely answered "no".
+    """
+
+    async def test_the_callers_timeout_and_directory_reach_the_sandbox(self):
+        # The timeout is the only bound on a hung vendor CLI, and the cwd is
+        # what puts anything the CLI writes into the turn's session directory.
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(return_value=MagicMock(exit_code=0, stdout="", stderr=""))
+
+        await runtime._run(sandbox, "echo hi", timeout=45, cwd="/workspace/session-7")
+
+        sandbox.commands.run.assert_awaited_once_with(
+            "echo hi", timeout=45, cwd="/workspace/session-7"
+        )
+
+    async def test_absent_output_is_reported_as_empty_not_as_missing(self):
+        # e2b returns None for a stream that produced nothing. Callers slice and
+        # search these, and `user_visible_output` splits them.
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(
+            return_value=MagicMock(exit_code=0, stdout=None, stderr=None)
+        )
+
+        result = await runtime._run(sandbox, "true", timeout=5)
+
+        assert result.stdout == ""
+        assert result.stderr == ""
+        assert result.exit_code == 0
+
+    async def test_output_that_exists_is_passed_through_untouched(self):
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(
+            return_value=MagicMock(exit_code=0, stdout="hello", stderr="warn")
+        )
+
+        result = await runtime._run(sandbox, "true", timeout=5)
+
+        assert result.stdout == "hello"
+        assert result.stderr == "warn"
+
+    async def test_a_non_zero_exit_becomes_a_result_carrying_the_reason(self):
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(
+            side_effect=CommandExitException(
+                stderr="gh: not logged in", stdout="partial", exit_code=4, error=None
+            )
+        )
+
+        result = await runtime._run(sandbox, "gh auth status", timeout=5)
+
+        assert result.ok is False
+        assert result.exit_code == 4
+        assert result.stdout == "partial"
+        assert result.stderr == "gh: not logged in"
+
+    async def test_a_non_zero_exit_with_no_output_still_reports_empty_strings(self):
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(
+            side_effect=CommandExitException(stderr="", stdout="", exit_code=1, error=None)
+        )
+
+        result = await runtime._run(sandbox, "false", timeout=5)
+
+        assert result.exit_code == 1
+        assert result.stdout == ""
+        assert result.stderr == ""
+
+
+class TestExecuteForwardsTheCallersIntent:
+    async def test_the_command_runs_for_this_integration_with_its_bounds(self):
+        # `execute` is what the agent's CLI tool calls: the integration decides
+        # which launcher is on PATH, and the timeout/cwd come from the call.
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(return_value=MagicMock(exit_code=0, stdout="", stderr=""))
+        config = make_config()
+
+        await runtime.execute(
+            sandbox, "stripe_link", config, "link-cli --version", timeout=30, cwd="/workspace/s1"
+        )
+
+        script, kwargs = (
+            sandbox.commands.run.await_args.args[0],
+            sandbox.commands.run.await_args.kwargs,
+        )
+        assert kwargs == {"timeout": 30, "cwd": "/workspace/s1"}
+        assert script == runtime._wrap("stripe_link", config, "link-cli --version")

@@ -23,10 +23,12 @@ from app.schemas.integrations.responses import (
 )
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
 from app.services.connect_link_service import resolve_and_consume_connect_code
-from app.services.integrations.connect_dispatch import initiate_integration_connection
+from app.services.integrations.connect_dispatch import (
+    disconnect_integration,
+    initiate_integration_connection,
+)
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
-    disconnect_integration,
 )
 from app.services.integrations.my_integrations import (
     get_integration_tools,

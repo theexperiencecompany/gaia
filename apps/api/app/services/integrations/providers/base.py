@@ -64,6 +64,15 @@ class IntegrationProvider(ABC):
         a user can double-click Connect on any of them.
         """
 
+    @abstractmethod
+    async def disconnect(self, user_id: str, resolved: ResolvedIntegration) -> None:
+        """Undo a connection: revoke upstream, and drop what GAIA stored.
+
+        The mirror of :meth:`connect`, and on the same interface for the same
+        reason: a transport that is reachable from one and not the other is
+        exactly the drift the registry exists to prevent.
+        """
+
     def error(self, ctx: ConnectContext, message: str) -> ConnectIntegrationResponse:
         """A terminal failure in this transport's connect flow."""
         return ConnectIntegrationResponse(

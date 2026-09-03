@@ -4,11 +4,16 @@ from __future__ import annotations
 
 from typing import ClassVar, Literal
 
+from app.constants.log_tags import LogTag
 from app.models.integration_provider import ManagedBy
 from app.schemas.integrations.responses import CliConnectDetail, ConnectIntegrationResponse
-from app.services.cli import advance
+from app.services.cli import advance, disconnect as cli_disconnect
 from app.services.cli.connect import CliConnectOutcome
+from app.services.integrations.integration_connection_service import delete_if_user_authored
+from app.services.integrations.integration_resolver import ResolvedIntegration
 from app.services.integrations.providers.base import ConnectContext, IntegrationProvider
+from app.services.integrations.user_integrations import remove_user_integration
+from shared.py.wide_events import log
 
 
 class CliIntegrationProvider(IntegrationProvider):
@@ -32,6 +37,27 @@ class CliIntegrationProvider(IntegrationProvider):
 
         outcome = await advance(ctx.user_id, ctx.integration_id, config, token=ctx.secret or None)
         return _to_response(ctx, outcome)
+
+    async def disconnect(self, user_id: str, resolved: ResolvedIntegration) -> None:
+        """Tear down the CLI's sandbox state, then detach it from the user."""
+        # `cli_config` is pinned by the catalog validator for this transport.
+        if resolved.cli_config:
+            try:
+                await cli_disconnect(user_id, resolved.integration_id, resolved.cli_config)
+            except Exception as e:
+                # Best-effort cleanup: the durable HOME is per-integration and is
+                # recreated on the next connect anyway. Letting an unreachable
+                # sandbox abort the disconnect would leave the user owning an
+                # integration they cannot remove until it comes back.
+                log.warning(
+                    f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
+                    integration_id=resolved.integration_id,
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+        await remove_user_integration(user_id, resolved.integration_id)
+        await delete_if_user_authored(user_id, resolved)
 
 
 def _to_response(ctx: ConnectContext, outcome: CliConnectOutcome) -> ConnectIntegrationResponse:

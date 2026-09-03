@@ -42,6 +42,7 @@ from app.schemas.integrations.responses import (
     CommunityIntegrationItem,
     IntegrationSuccessResponse,
 )
+from app.services.integrations.connect_dispatch import disconnect_integration
 from app.services.integrations.custom_crud import (
     create_and_connect_custom_integration,
     create_custom_integration,
@@ -56,7 +57,6 @@ from app.services.integrations.integration_connection_service import (
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
-    disconnect_integration,
 )
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
@@ -2414,23 +2414,23 @@ class TestConnectSelfIntegration:
 
 class TestDisconnectIntegration:
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.remove_user_integration",
+        "app.services.integrations.providers.oauth_providers.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.delete_custom_integration",
+        "app.services.integrations.providers.oauth_providers.delete_if_user_authored",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_mcp_client",
+        "app.services.integrations.providers.oauth_providers.get_mcp_client",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_custom_integration_owned(
@@ -2466,19 +2466,19 @@ class TestDisconnectIntegration:
         mock_delete_custom.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.remove_user_integration",
+        "app.services.integrations.providers.oauth_providers.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_mcp_client",
+        "app.services.integrations.providers.oauth_providers.get_mcp_client",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_custom_not_owned_skips_delete(
@@ -2508,27 +2508,27 @@ class TestDisconnectIntegration:
         mock_remove_user.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.remove_user_integration",
+        "app.services.integrations.providers.cli_provider.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.delete_custom_integration",
+        "app.services.integrations.providers.cli_provider.delete_if_user_authored",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_mcp_client",
+        "app.services.integrations.providers.oauth_providers.get_mcp_client",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.cli_disconnect",
+        "app.services.integrations.providers.cli_provider.cli_disconnect",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_cli_wins_over_the_custom_source_branch(
@@ -2559,19 +2559,19 @@ class TestDisconnectIntegration:
         mock_delete_custom.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.remove_user_integration",
+        "app.services.integrations.providers.cli_provider.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.cli_disconnect",
+        "app.services.integrations.providers.cli_provider.cli_disconnect",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_cli_teardown_failure_still_removes_the_record(
@@ -2588,7 +2588,7 @@ class TestDisconnectIntegration:
         mock_remove_user.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_not_found_raises(self, mock_resolve):
@@ -2598,14 +2598,14 @@ class TestDisconnectIntegration:
             await disconnect_integration(USER_ID, "nonexistent")
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_composio_service",
+        "app.services.integrations.providers.oauth_providers.get_composio_service",
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_composio_integration(
@@ -2642,14 +2642,14 @@ class TestDisconnectIntegration:
         )
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_composio_service",
+        "app.services.integrations.providers.oauth_providers.get_composio_service",
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_composio_no_provider_raises(
@@ -2675,14 +2675,14 @@ class TestDisconnectIntegration:
             await disconnect_integration(USER_ID, "bad")
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.token_repository",
+        "app.services.integrations.providers.oauth_providers.token_repository",
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_self_managed_integration(
@@ -2713,11 +2713,11 @@ class TestDisconnectIntegration:
         mock_token_repo.revoke_token.assert_awaited_once_with(user_id=USER_ID, provider="google")
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_self_no_provider_raises(self, mock_resolve, mock_invalidate):
@@ -2740,19 +2740,19 @@ class TestDisconnectIntegration:
             await disconnect_integration(USER_ID, "x")
 
     @patch(
-        "app.services.integrations.integration_connection_service._invalidate_caches",
+        "app.services.integrations.connect_dispatch._invalidate_caches",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.remove_user_integration",
+        "app.services.integrations.providers.oauth_providers.remove_user_integration",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.get_mcp_client",
+        "app.services.integrations.providers.oauth_providers.get_mcp_client",
         new_callable=AsyncMock,
     )
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_platform_mcp_integration(
@@ -2784,7 +2784,7 @@ class TestDisconnectIntegration:
         mock_remove_user.assert_awaited_once()
 
     @patch(
-        "app.services.integrations.integration_connection_service.IntegrationResolver.resolve",
+        "app.services.integrations.connect_dispatch.IntegrationResolver.resolve",
         new_callable=AsyncMock,
     )
     async def test_disconnect_unsupported_managed_by_raises(self, mock_resolve):

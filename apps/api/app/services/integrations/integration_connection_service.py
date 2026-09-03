@@ -13,7 +13,6 @@ from app.config.oauth_config import (
     get_integration_by_id,
     get_integration_scopes,
 )
-from app.config.token_repository import token_repository
 from app.constants.integrations import MANAGED_BY_CLI, MANAGED_BY_MCP
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
@@ -23,13 +22,10 @@ from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationConfigItem,
     IntegrationsConfigResponse,
-    IntegrationSuccessResponse,
 )
-from app.services.cli import disconnect as cli_disconnect
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
 from app.services.integrations.integration_resolver import (
-    IntegrationResolver,
     ResolvedIntegration,
 )
 from app.services.integrations.user_integration_status import (
@@ -39,7 +35,6 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
-from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
@@ -416,7 +411,7 @@ async def connect_self_integration(
     )
 
 
-def _require_provider(resolved: ResolvedIntegration) -> str:
+def require_provider(resolved: ResolvedIntegration) -> str:
     """The upstream provider slug, or a loud failure.
 
     Composio and the self-managed OAuth flow both revoke by provider, and a
@@ -429,7 +424,7 @@ def _require_provider(resolved: ResolvedIntegration) -> str:
     return provider
 
 
-async def _delete_if_user_authored(user_id: str, resolved: ResolvedIntegration) -> None:
+async def delete_if_user_authored(user_id: str, resolved: ResolvedIntegration) -> None:
     """Drop the catalog document too, but only for the user who authored it.
 
     A custom integration cloned from someone else's is removed from this user
@@ -441,96 +436,6 @@ async def _delete_if_user_authored(user_id: str, resolved: ResolvedIntegration) 
         and resolved.custom_doc.get("created_by") == user_id
     ):
         await delete_custom_integration(user_id, resolved.integration_id)
-
-
-async def _disconnect_cli(user_id: str, resolved: ResolvedIntegration) -> None:
-    """Tear down the CLI's sandbox state, then detach it from the user."""
-    # `cli_config` is pinned by the catalog validator for this transport.
-    if resolved.cli_config:
-        try:
-            await cli_disconnect(user_id, resolved.integration_id, resolved.cli_config)
-        except Exception as e:
-            # Best-effort cleanup: the durable HOME is per-integration and is
-            # recreated on the next connect anyway. Letting an unreachable
-            # sandbox abort the disconnect would leave the user owning an
-            # integration they cannot remove until it comes back.
-            log.warning(
-                f"{LogTag.INTEGRATION} CLI teardown failed; removing the record anyway",
-                integration_id=resolved.integration_id,
-                user_id=user_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-    await remove_user_integration(user_id, resolved.integration_id)
-    await _delete_if_user_authored(user_id, resolved)
-
-
-async def _disconnect_mcp(user_id: str, resolved: ResolvedIntegration) -> None:
-    """Drop the MCP session and the user's record of the server."""
-    mcp_client = await get_mcp_client(user_id=user_id)
-    await mcp_client.disconnect(resolved.integration_id)
-    await remove_user_integration(user_id, resolved.integration_id)
-
-
-async def _disconnect_custom_mcp(user_id: str, resolved: ResolvedIntegration) -> None:
-    """An MCP server the user added themselves: also drop the catalog document."""
-    await _disconnect_mcp(user_id, resolved)
-    await _delete_if_user_authored(user_id, resolved)
-
-
-async def _disconnect_composio(user_id: str, resolved: ResolvedIntegration) -> None:
-    """Delete the connected account Composio holds for this provider."""
-    composio_service = get_composio_service()
-    await composio_service.delete_connected_account(
-        user_id=user_id, provider=_require_provider(resolved)
-    )
-
-
-async def _disconnect_self(user_id: str, resolved: ResolvedIntegration) -> None:
-    """Revoke the OAuth token GAIA obtained itself."""
-    await token_repository.revoke_token(user_id=user_id, provider=_require_provider(resolved))
-
-
-async def disconnect_integration(user_id: str, integration_id: str) -> IntegrationSuccessResponse:
-    """Disconnect an integration for the user."""
-    log.set(integration={"provider": integration_id, "action": "disconnect"})
-    resolved = await IntegrationResolver.resolve(integration_id)
-    if not resolved:
-        raise ValueError(f"Integration {integration_id} not found")
-
-    if resolved.managed_by == MANAGED_BY_CLI:
-        # Checked before the custom-source branch: a user-authored CLI
-        # integration is `source == "custom"` too, and the MCP teardown would be
-        # both wrong and a no-op for it.
-        await _disconnect_cli(user_id, resolved)
-    elif resolved.source == "custom":
-        await _disconnect_custom_mcp(user_id, resolved)
-    elif resolved.managed_by == "composio":
-        await _disconnect_composio(user_id, resolved)
-    elif resolved.managed_by == "self":
-        await _disconnect_self(user_id, resolved)
-    elif resolved.managed_by == "mcp":
-        await _disconnect_mcp(user_id, resolved)
-    else:
-        raise ValueError(f"Integration {integration_id} disconnect not supported")
-
-    await _invalidate_caches(user_id, integration_id, resolved.managed_by)
-
-    # Reflect the reduced connected set in the user's workspace VFS.
-    schedule_user_integrations_sync(user_id)
-
-    log.set(
-        integration={
-            "provider": integration_id,
-            "action": "disconnect",
-            "managed_by": resolved.managed_by,
-            "status": "disconnected",
-        }
-    )
-    return IntegrationSuccessResponse(
-        message=f"Successfully disconnected {resolved.name}",
-        integration_id=integration_id,
-    )
 
 
 async def _invalidate_caches(user_id: str, integration_id: str, managed_by: str) -> None:

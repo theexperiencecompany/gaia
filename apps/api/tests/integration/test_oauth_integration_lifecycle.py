@@ -43,13 +43,13 @@ from app.models.integration_models import (
 from app.models.integration_provider import ManagedBy
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
+from app.services.integrations.connect_dispatch import disconnect_integration
 from app.services.integrations.integration_connection_service import (
     McpConnectRequest,
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
-    disconnect_integration,
 )
 from app.services.integrations.integration_resolver import (
     IntegrationResolver,
@@ -679,13 +679,20 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_composio_service",
+                "app.services.integrations.providers.oauth_providers.get_composio_service",
                 return_value=mock_composio,
             ),
             patch(
                 "app.services.integrations.integration_connection_service.delete_cache",
                 AsyncMock(),
             ),
+            patch(
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
+                AsyncMock(return_value=True),
+            ),
+            # A platform Composio integration's record is removed by
+            # _invalidate_caches, which still lives in the connection service --
+            # the provider only revokes upstream.
             patch(
                 "app.services.integrations.integration_connection_service.remove_user_integration",
                 AsyncMock(return_value=True),
@@ -727,11 +734,11 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_mcp_client",
+                "app.services.integrations.providers.oauth_providers.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.remove_user_integration",
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
                 AsyncMock(return_value=True),
             ),
             patch(
@@ -776,11 +783,11 @@ class TestDisconnectIntegration:
         with (
             patch.object(IntegrationResolver, "resolve", AsyncMock(return_value=resolved)),
             patch(
-                "app.services.integrations.integration_connection_service.get_mcp_client",
+                "app.services.integrations.providers.oauth_providers.get_mcp_client",
                 AsyncMock(return_value=mock_mcp_client),
             ),
             patch(
-                "app.services.integrations.integration_connection_service.remove_user_integration",
+                "app.services.integrations.providers.oauth_providers.remove_user_integration",
                 mock_remove,
             ),
             patch(

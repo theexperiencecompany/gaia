@@ -15,6 +15,7 @@ import pytest
 
 from app.agents.llm.client import SILENT_LLM_CONFIG, StructuredCallOptions
 from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
+from app.constants.log_tags import LogTag
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
     _classify_with_llm,
@@ -24,6 +25,8 @@ from app.services.hil.classification import (
 )
 from app.services.hil.prompts import CLI_COMMAND_CLASSIFY_PROMPT, TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
+from shared.py.wide_events import log as wide_log
+from tests.helpers import captured_wide_event
 
 from .conftest import make_tool
 
@@ -218,6 +221,10 @@ class TestRegistryAndCache:
         assert result is True
         assert persisted.is_destructive is True
         assert persisted.tool_name == "wipe_db"
+        # Not a CLI call, so there is no command to record. The stored shape is
+        # part of what a later lookup matches on, and a placeholder here would
+        # be a cache entry nothing ever hits again.
+        assert persisted.command_shape == ""
         registry.mark_tool_destructive.assert_called_once_with("wipe_db", True)
 
 
@@ -363,3 +370,123 @@ class TestCliCommandClassification:
             name="run_gh", description="Run the gh CLI.", command="gh repo delete"
         )
         assert llm.await_args.kwargs["label"] == "hil_tool_classification"
+
+
+class TestTheCacheKeyIdentifiesWhatWasJudged:
+    """A verdict is stored per (tool, subject) and reused forever, so both halves
+    of that key have to be the real ones. A key that ignores half its input hands
+    one tool's answer to another question."""
+
+    async def test_the_lookup_is_scoped_to_the_tool_that_asked(self) -> None:
+        # Verdicts are shared across every user, so a lookup that ignored the
+        # tool name would hand `wipe_db`'s "destructive" answer to every other
+        # unclassified tool with the same description.
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(None))),
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=False)),
+            ),
+        ):
+            repo.find_classification = AsyncMock(
+                side_effect=lambda tool_name, subject_hash: (
+                    HILToolRiskRecord(
+                        tool_name=tool_name, description_hash=subject_hash, is_destructive=True
+                    )
+                    if tool_name == "wipe_db"
+                    else None
+                )
+            )
+            repo.upsert_classification = AsyncMock()
+
+            hit = await is_tool_destructive("wipe_db", "Wipes the database.")
+            miss = await is_tool_destructive("list_files", "Wipes the database.")
+
+        assert hit is True
+        assert miss is False
+
+    async def test_a_reworded_description_reclassifies_the_same_command(self) -> None:
+        # The description is what the classifier is actually shown alongside the
+        # command, so a changed description is a changed question. Keying on the
+        # command alone would serve a verdict earned under the old wording.
+        seen: list[str] = []
+        with (
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=False)),
+            ),
+        ):
+            repo.find_classification = AsyncMock(
+                side_effect=lambda _tool, subject_hash: seen.append(subject_hash)
+            )
+            repo.upsert_classification = AsyncMock()
+
+            await is_tool_destructive("run_gh", "Run the gh CLI.", command_shape="gh pr list")
+            await is_tool_destructive("run_gh", "Run GitHub's CLI.", command_shape="gh pr list")
+
+        first, second = seen
+        assert first != second
+
+    async def test_two_commands_of_one_tool_do_not_share_a_key(self) -> None:
+        seen: list[str] = []
+        with (
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=False)),
+            ),
+        ):
+            repo.find_classification = AsyncMock(
+                side_effect=lambda _tool, subject_hash: seen.append(subject_hash)
+            )
+            repo.upsert_classification = AsyncMock()
+
+            await is_tool_destructive("run_gh", "Run the gh CLI.", command_shape="gh pr list")
+            await is_tool_destructive("run_gh", "Run the gh CLI.", command_shape="gh repo delete")
+
+        first, second = seen
+        assert first != second
+
+
+class TestWhatTheCommandClassifierIsAsked:
+    async def test_the_prompt_carries_the_tool_the_description_and_the_command(self) -> None:
+        # Reached through `is_tool_destructive`, not `_classify_with_llm`, so
+        # this also pins what the CLI branch forwards: get any of the three
+        # wrong and the LLM judges a question nobody asked.
+        with (
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(
+                f"{MODULE}.ainvoke_structured",
+                new=AsyncMock(return_value=_ClassifyResult(is_destructive=True)),
+            ) as llm,
+        ):
+            repo.find_classification = AsyncMock(return_value=None)
+            repo.upsert_classification = AsyncMock()
+
+            await is_tool_destructive("run_gh", "Run the gh CLI.", command_shape="gh repo delete")
+
+        _schema, prompt = llm.await_args.args
+        assert prompt == CLI_COMMAND_CLASSIFY_PROMPT.format(
+            name="run_gh", description="Run the gh CLI.", command="gh repo delete"
+        )
+
+    async def test_an_unshapeable_command_records_why_it_gated(self) -> None:
+        # Gating with no explanation is indistinguishable from the classifier
+        # deciding the command is dangerous; this warning is the only signal
+        # that the shaper, not the model, made the call.
+        with (
+            patch(f"{MODULE}.log", wide_log),
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
+            patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()),
+        ):
+            repo.find_classification = AsyncMock(return_value=None)
+            async with captured_wide_event() as event:
+                assert await is_tool_destructive("run_gh", "Run gh.", command_shape="") is True
+
+        (warning,) = event["warnings"]
+        assert warning == {
+            "msg": f"{LogTag.HIL} Unshapeable CLI command, failing closed",
+            "tool_name": "run_gh",
+        }
