@@ -126,8 +126,15 @@ EXEC_MAX_TIMEOUT_SECONDS = 1800
 VERIFY_TIMEOUT_SECONDS = 60
 
 # How long a device-code login may stay pending before the connect flow gives
-# up. Vendor device codes typically expire in 5–15 minutes.
-LOGIN_TIMEOUT_SECONDS = 900
+# up and starts a fresh one. Vendor device codes typically expire in 5–15
+# minutes; 600s sits inside that for every CLI surveyed.
+#
+# An integration's own login command must not stop polling BEFORE this window
+# elapses. The gap between the two is time in which the CLI has given up but
+# GAIA still believes the login is live, so the user is shown a code that can
+# no longer be redeemed. Keep a polling login command's timeout at or above
+# this value.
+LOGIN_TIMEOUT_SECONDS = 600
 
 # Maximum characters of captured CLI output surfaced in a connect status
 # response. Login output is instructions for a human ("go to <url>, enter

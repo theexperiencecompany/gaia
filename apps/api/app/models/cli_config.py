@@ -61,6 +61,9 @@ class CliAuthSpec(BaseModel):
     # run detached because it blocks for minutes and sandbox commands are
     # serialised per user (a foreground poll would freeze every other tool
     # call for that user).
+    # If it takes its own polling timeout, set that at or above
+    # ``LOGIN_TIMEOUT_SECONDS``: a shorter one leaves a window where the CLI
+    # has stopped polling but GAIA still shows the code as live.
     #
     # For ``token`` it is optional: when set it runs once with the pasted
     # secret available under ``token_env``; when unset, exporting that variable

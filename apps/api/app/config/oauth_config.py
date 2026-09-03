@@ -117,6 +117,7 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.constants.cli_integrations import LOGIN_TIMEOUT_SECONDS
 from app.constants.hil_destructive_tools import (
     AIRTABLE_DESTRUCTIVE_TOOLS,
     ASANA_DESTRUCTIVE_TOOLS,
@@ -2032,9 +2033,14 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 kind="device",
                 # --interval makes the CLI print the approval URL and then keep
                 # polling in the same process, so one detached login covers the
-                # whole flow. --timeout stays under LOGIN_TIMEOUT_SECONDS so the
-                # CLI gives up before GAIA declares the attempt stale.
-                login_command=("link-cli auth login --client-name GAIA --interval 5 --timeout 600"),
+                # whole flow. --timeout is bound to LOGIN_TIMEOUT_SECONDS rather
+                # than repeated as a literal: if the CLI stopped polling first,
+                # the difference would be a window where GAIA still shows a code
+                # that can no longer be redeemed.
+                login_command=(
+                    "link-cli auth login --client-name GAIA --interval 5 "
+                    f"--timeout {LOGIN_TIMEOUT_SECONDS}"
+                ),
                 # `auth status` exits 0 whether or not you are signed in, so the
                 # exit code alone says nothing — the authenticated flag does.
                 verify_command=(
