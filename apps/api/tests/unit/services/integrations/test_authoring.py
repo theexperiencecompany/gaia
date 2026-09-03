@@ -36,7 +36,7 @@ def cli_blueprint(**overrides: object) -> CliBlueprint:
         "token_label": "GitHub token",
     }
     base.update(overrides)
-    return CliBlueprint(**base)  # type: ignore[arg-type]
+    return CliBlueprint(**base)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
 
 
 class TestAuthorRegistry:

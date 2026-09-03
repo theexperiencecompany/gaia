@@ -9,7 +9,7 @@ from app.models.cli_config import CliAuthSpec, CliConfig
 def _auth(**overrides: object) -> CliAuthSpec:
     base: dict[str, object] = {"kind": "none", "verify_command": "tool --version"}
     base.update(overrides)
-    return CliAuthSpec(**base)  # type: ignore[arg-type]
+    return CliAuthSpec(**base)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
 
 
 class TestCliAuthSpecShapeInvariants:

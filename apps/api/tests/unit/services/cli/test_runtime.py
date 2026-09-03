@@ -33,7 +33,7 @@ def make_config(**overrides: object) -> CliConfig:
         ),
     }
     base.update(overrides)
-    return CliConfig(**base)  # type: ignore[arg-type]
+    return CliConfig(**base)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
 
 
 def assert_valid_shell(script: str) -> None:

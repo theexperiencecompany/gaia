@@ -58,7 +58,7 @@ def state(**overrides: object) -> CliState:
         "install_error": "",
     }
     base.update(overrides)
-    return CliState(**base)  # type: ignore[arg-type]
+    return CliState(**base)  # type: ignore[arg-type]  # kwargs dict widens to object; the model validates the real types
 
 
 @pytest.fixture
