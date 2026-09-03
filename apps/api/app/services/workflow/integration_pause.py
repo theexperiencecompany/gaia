@@ -11,9 +11,14 @@ on resume — a trigger left enabled on a dead account is upstream state GAIA no
 longer tracks.
 """
 
+from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.models.workflow_models import DeactivationReason
+from app.services.triggers.subscription_service import (
+    pause_subscriptions_for_trigger_names,
+    resync_subscriptions_for_trigger_names,
+)
 from app.services.workflow.integration_requirements import compute_required_integrations
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
@@ -47,6 +52,13 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
                 error_type=type(e).__name__,
             )
 
+    # Todo subscriptions on this integration's triggers die with the connection
+    # too. They pause rather than deactivate (todos have no activated flag) and
+    # their todos gain the blocking label, so a dead watch is visible.
+    await pause_subscriptions_for_trigger_names(
+        user_id, _trigger_names_for_integration(integration_id)
+    )
+
     if paused:
         log.info(
             f"{LogTag.WORKFLOW} Paused workflows for expired integration",
@@ -55,6 +67,18 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
             paused=len(paused),
         )
     return paused
+
+
+def _trigger_names_for_integration(integration_id: str) -> set[str]:
+    """The GAIA-facing trigger names an integration publishes."""
+    integration = get_integration_by_id(integration_id)
+    if integration is None:
+        return set()
+    return {
+        t.workflow_trigger_schema.slug
+        for t in integration.associated_triggers
+        if t.workflow_trigger_schema
+    }
 
 
 async def resume_workflows_for_reconnected_integration(user_id: str, integration_id: str) -> int:
@@ -85,6 +109,12 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                 error=str(e),
                 error_type=type(e).__name__,
             )
+
+    # Mirror of the pause side: the reconnect gives the subscriptions a fresh
+    # connected account, so they re-register and drop the blocking label.
+    await resync_subscriptions_for_trigger_names(
+        user_id, _trigger_names_for_integration(integration_id)
+    )
 
     if resumed:
         log.info(

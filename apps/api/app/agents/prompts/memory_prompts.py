@@ -1458,38 +1458,6 @@ WORKFLOW:
 
 
 # =============================================================================
-# INTERNAL REMINDERS MEMORY PROMPT
-# =============================================================================
-
-REMINDER_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
-    provider_name="Reminders",
-    entity_instructions="""
-## REMINDER-SPECIFIC EXTRACTION:
-
-1. TIMING PATTERNS:
-   - Preferred reminder times
-   - Recurring patterns
-
-2. CATEGORY PATTERNS:
-   - Types of reminders
-   - Priority levels
-""",
-    provider_specific_instructions="""
-## REMINDER-SPECIFIC MEMORIES:
-
-TIMING PREFERENCES:
-- Morning vs evening
-- Timezone handling
-- Snooze behavior
-
-MESSAGE PATTERNS:
-- Reminder message style
-- Notification channel preferences
-""",
-)
-
-
-# =============================================================================
 # MCP INTEGRATIONS MEMORY PROMPTS
 # =============================================================================
 

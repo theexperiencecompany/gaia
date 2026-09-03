@@ -65,7 +65,7 @@ from app.services.hil.approvals_store import (
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
-from shared.py.wide_events import get_trace_id, log, wide_task
+from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
@@ -113,6 +113,20 @@ async def run_executor_background(
         # and executor turns are the expensive ones, so the under-count lands
         # exactly where COGS-by-channel matters most.
         conversation_source=configurable.get("conversation_source"),
+        # The workflow run this executor is part of. The workflow task stamped
+        # it on ITS boundary; this one is fresh, so without carrying it over
+        # every model call the executor makes lands in the ledger with the
+        # workflow but no execution — and "what did this run cost" reads only
+        # the comms shell, a few percent of the real figure.
+        **(
+            {
+                "workflow": WorkflowContext(
+                    id=run.workflow_id, execution_id=run.workflow_execution_id
+                )
+            }
+            if run.workflow_id and run.workflow_execution_id
+            else {}
+        ),
     ):
         result_text = ""
         result_type = "final"
@@ -175,11 +189,9 @@ async def _record_pause(
     try:
         item = build_run_item(
             task=task,
-            task_id=run.task_id,
             configurable=configurable,
-            conversation_id=run.conversation_id,
-            user_message_id=run.user_message_id,
-            bot_message_id=run.bot_message_id,
+            identity=run.identity,
+            workflow_execution_id=run.workflow_execution_id,
         )
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)
@@ -383,6 +395,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_name": run.user.get("name", ""),
                     "user_timezone": run.user.get("timezone"),
                 },
+                workflow_execution_id=run.workflow_execution_id,
             )
     except Exception as e:  # a failed wake must not strand the queue handoff
         log.error(

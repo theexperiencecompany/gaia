@@ -436,14 +436,12 @@ class ToolRegistry:
             ),
             risk=CategoryRisk(destructive_tools=set()),
         )
+        # Reminder tools are executor-direct (no reminders subagent): a non-delegated
+        # category in the general space, so the executor discovers them through
+        # retrieve_tools like any other general tool (not statically bound).
         self._add_category(
             "reminders",
             tools=[*reminder_tool.tools],
-            options=CategoryOptions(
-                is_delegated=True,
-                integration_name="reminders",
-                space="reminders",
-            ),
             risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(

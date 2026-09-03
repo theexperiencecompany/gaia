@@ -202,6 +202,18 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         # the activity heatmap / percentile badges with runs nobody performed.
         counts_as_activity=False,
     ),
+    "trigger_todo_executions": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),  # Mirrors the workflow trial cap
+        pro=RateLimitConfig(day=1500, month=45000),
+        info=FeatureInfo(
+            title="Trigger Todo Executions",
+            description="Tracked todos executed by an integration event they subscribed to",
+        ),
+        # Separate from trigger_workflow_executions so a chatty subscription cannot
+        # exhaust the budget a user's workflows depend on, and vice versa.
+        # System-driven, so it does not count toward activity — same as workflows.
+        counts_as_activity=False,
+    ),
     # PRODUCTIVITY TOOLS (Generous - Core Value)
     "todo_operations": TieredRateLimits(
         free=RateLimitConfig(day=50, month=1000),  # Good trial experience

@@ -1206,3 +1206,70 @@ describe("DiscordAdapter - buildContext", () => {
     expect(ctx.profile).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// deliverOutbound — channel vs DM routing (backend-originated proactive sends)
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - deliverOutbound channel routing", () => {
+  type Deliverer = {
+    deliverOutbound: (
+      destinationId: string,
+      text: string,
+      isChannel: boolean,
+    ) => Promise<void>;
+    client: unknown;
+  };
+
+  it("sends to the channel via channels.fetch when isChannel", async () => {
+    const adapter = new DiscordAdapter() as unknown as Deliverer;
+    const channelSend = vi.fn().mockResolvedValue(undefined);
+    const userSend = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      channels: {
+        fetch: vi
+          .fn()
+          .mockResolvedValue({ isTextBased: () => true, send: channelSend }),
+      },
+      users: { fetch: vi.fn().mockResolvedValue({ send: userSend }) },
+    };
+    adapter.client = client;
+
+    await adapter.deliverOutbound("chan-1", "hi", true);
+
+    expect(client.channels.fetch).toHaveBeenCalledWith("chan-1");
+    expect(channelSend).toHaveBeenCalledWith("hi");
+    expect(client.users.fetch).not.toHaveBeenCalled();
+  });
+
+  it("throws when the channel is not a sendable text channel", async () => {
+    const adapter = new DiscordAdapter() as unknown as Deliverer;
+    const client = {
+      channels: {
+        fetch: vi.fn().mockResolvedValue({ isTextBased: () => false }),
+      },
+      users: { fetch: vi.fn() },
+    };
+    adapter.client = client;
+
+    await expect(adapter.deliverOutbound("chan-1", "hi", true)).rejects.toThrow(
+      /not a sendable text channel/,
+    );
+  });
+
+  it("DMs the user via users.fetch when not a channel", async () => {
+    const adapter = new DiscordAdapter() as unknown as Deliverer;
+    const userSend = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      channels: { fetch: vi.fn() },
+      users: { fetch: vi.fn().mockResolvedValue({ send: userSend }) },
+    };
+    adapter.client = client;
+
+    await adapter.deliverOutbound("user-1", "hi", false);
+
+    expect(client.users.fetch).toHaveBeenCalledWith("user-1");
+    expect(userSend).toHaveBeenCalledWith("hi");
+    expect(client.channels.fetch).not.toHaveBeenCalled();
+  });
+});

@@ -12,6 +12,7 @@ from fastapi import HTTPException
 import pytest
 
 from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.models.chat_models import ConversationSource
 from app.models.reminder_models import ReminderModel, StaticReminderPayload
 from app.services.analytics_service import AnalyticsEvents
 from app.tasks.reminder_tasks import (
@@ -249,6 +250,52 @@ class TestDeliverReminderToPlatforms:
         assert kwargs["user_id"] == "user-1"
         assert kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
+
+    async def test_source_conversation_delivered_and_excluded_from_fanout(self) -> None:
+        # The chat that created the reminder gets it on its own surface, and that
+        # surface is dropped from the channel fan-out so the user isn't doubled.
+        reminder = _reminder(source_conversation_id="conv-42")
+        with (
+            patch(
+                f"{MODULE}.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "user-1"},
+            ),
+            patch(
+                f"{MODULE}.deliver_message_to_conversation",
+                new_callable=AsyncMock,
+                return_value=ConversationSource.TELEGRAM,
+            ) as deliver_conv,
+            patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+        ):
+            await _deliver_reminder_to_platforms(reminder)
+
+        deliver_conv.assert_awaited_once()
+        assert deliver_conv.await_args.kwargs["conversation_id"] == "conv-42"
+        # The resolved owner is delivered to the source conversation, not some
+        # other id — the stamped user_id keys the langgraph record to this user.
+        assert deliver_conv.await_args.kwargs["user"]["user_id"] == "user-1"
+        assert deliver_conv.await_args.kwargs["text"] == "**Water the plants**\nNow"
+        assert deliver_conv.await_args.kwargs["origin"] == 'reminder "Water the plants" (id rem-1)'
+        assert deliver.await_args.kwargs["exclude_source"] == ConversationSource.TELEGRAM
+
+    async def test_no_source_conversation_delivers_only_to_channels(self) -> None:
+        reminder = _reminder()  # no source_conversation_id
+        with (
+            patch(
+                f"{MODULE}.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"_id": "user-1"},
+            ),
+            patch(
+                f"{MODULE}.deliver_message_to_conversation", new_callable=AsyncMock
+            ) as deliver_conv,
+            patch(f"{MODULE}.deliver_result_to_platforms", new_callable=AsyncMock) as deliver,
+        ):
+            await _deliver_reminder_to_platforms(reminder)
+
+        deliver_conv.assert_not_awaited()
+        assert deliver.await_args.kwargs["exclude_source"] is None
 
     async def test_origin_without_a_title(self) -> None:
         reminder = _reminder(payload=StaticReminderPayload(title="", body="Now"))
