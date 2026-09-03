@@ -11,11 +11,13 @@ notifications out of the user's night.
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from app.agents.core.agent import AgentRunOptions
+from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.models.agent_models import SilentRunResult
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -737,3 +739,113 @@ class TestHealthCheckAgentCall:
             result = await _call_health_check_agent("todo-1", "user-1", "is this todo alive?")
 
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Canvas bounding + per-todo containment
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCanvasBounding:
+    @pytest.mark.regression
+    async def test_an_oversized_canvas_does_not_break_the_health_check_request(self) -> None:
+        # Prod: one user's canvas grew past MAX_MESSAGE_LENGTH, so building the
+        # MessageRequestWithHistory inside _call_health_check_agent raised
+        # ValidationError *outside* every try/except. It propagated through
+        # _health_check_dormant into the dormant loop and aborted the whole cron:
+        # every later todo skipped, the digest never sent, for every user.
+        # call_agent_silent is the seam here on purpose — mocking
+        # _call_health_check_agent would mock away the failing construction.
+        tail = "FINAL CANVAS LINE"
+        canvas = "x" * (60_000 - len(tail)) + tail
+        captured: dict[str, MessageRequestWithHistory] = {}
+
+        async def fake_call_agent_silent(
+            request: MessageRequestWithHistory,
+            conversation_id: str,
+            user: AuthenticatedUser,
+            options: AgentRunOptions | None = None,
+        ) -> SilentRunResult:
+            captured["request"] = request
+            return SilentRunResult(message="NEEDS_ATTENTION: still stuck", tool_data={})
+
+        with (
+            patch(f"{MODULE}._read_canvas", AsyncMock(return_value=canvas)),
+            patch(f"{MODULE}.call_agent_silent", fake_call_agent_silent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            outcome = await _health_check_dormant(_doc(), _pool())
+
+        assert outcome == "needs_attention"
+        prompt = captured["request"].message
+        assert len(prompt) < MAX_MESSAGE_LENGTH
+
+        # The newest entries are appended to a canvas, so the tail is what survives,
+        # behind a marker accounting for everything dropped ahead of it.
+        marker = re.search(r"Canvas:\n\[earlier canvas trimmed: (\d+) characters\]\n", prompt)
+        assert marker is not None
+        kept = prompt.split(marker.group(0), 1)[1].split("\n\nIs there a clear", 1)[0]
+        assert kept.endswith(tail)
+        assert len(kept) + int(marker.group(1)) == len(canvas)
+
+    async def test_a_canvas_under_the_bound_reaches_the_agent_untouched(self) -> None:
+        canvas = "y" * 1_000
+        captured: dict[str, MessageRequestWithHistory] = {}
+
+        async def fake_call_agent_silent(
+            request: MessageRequestWithHistory,
+            conversation_id: str,
+            user: AuthenticatedUser,
+            options: AgentRunOptions | None = None,
+        ) -> SilentRunResult:
+            captured["request"] = request
+            return SilentRunResult(message="NEEDS_ATTENTION: still stuck", tool_data={})
+
+        with (
+            patch(f"{MODULE}._read_canvas", AsyncMock(return_value=canvas)),
+            patch(f"{MODULE}.call_agent_silent", fake_call_agent_silent),
+            patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"name": "User"})),
+        ):
+            await _health_check_dormant(_doc(), _pool())
+
+        prompt = captured["request"].message
+        assert f"Canvas:\n{canvas}\n" in prompt
+        assert "trimmed" not in prompt
+
+
+@pytest.mark.unit
+class TestSweepSurvivesOneFailingTodo:
+    async def test_a_raising_health_check_does_not_cost_the_other_todos_their_sweep(
+        self,
+    ) -> None:
+        # The dormant loop had no per-todo guard, so anything raising inside one
+        # health check took the whole cron down with it.
+        todos = [
+            _doc(id="dor-1", updated_at=datetime.now(UTC) - timedelta(days=10)),
+            _doc(id="dor-2", updated_at=datetime.now(UTC) - timedelta(days=10)),
+        ]
+        with _sweep(list=todos) as (_p, mocks), patch(f"{MODULE}.log") as log:
+            mocks["health"].side_effect = [
+                RuntimeError("boom"),
+                "NEEDS_ATTENTION: waiting on the user",
+            ]
+            summary = await maintenance_sweep_tracked_todos({})
+
+        assert (
+            summary == "archived:0 notified_expired:0 notified_overdue:0 requeued:0 digest_items:1"
+        )
+        # The survivor is digested; the failed todo is not notified on the
+        # strength of a check that never produced a verdict.
+        request = mocks["notify"].await_args.args[0]
+        assert request.content.title == "1 dormant todo needs attention"
+        assert request.content.actions[0].config.redirect.url == "/todos?todoId=dor-2"
+
+        # Failing loud is the other half of the fix — a silent skip would hide
+        # the next oversized canvas exactly as long as this one hid.
+        log.error.assert_called_once_with(
+            "maintenance_sweep.dormant_health_check_error",
+            todo_id="dor-1",
+            user_id="user-1",
+            error_type="RuntimeError",
+        )
