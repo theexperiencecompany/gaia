@@ -14,6 +14,7 @@ from pydantic import ValidationError
 import pytest
 
 from app.models.cli_config import CliAuthSpec, CliConfig
+from app.models.integration_models import IntegrationResponse
 from app.models.mcp_config import ComposioConfig
 from app.models.oauth_models import OAuthIntegration
 
@@ -93,3 +94,63 @@ class TestComposioTransportInvariant:
                 managed_by="mcp",
                 composio_config=ComposioConfig(auth_config_id="ac_1", toolkit="stripe"),
             )
+
+
+class TestPlatformCliRowRenderedForTheApi:
+    """``IntegrationResponse.from_oauth_integration`` is what the catalog
+    endpoint returns, so these two fields are what the marketplace card shows
+    for a CLI-backed platform integration."""
+
+    TOKEN_CLI = CliConfig(
+        command="gh",
+        install_command="npm install -g gh",
+        capabilities=["list pull requests", "create issues"],
+        auth=CliAuthSpec(
+            kind="token",
+            verify_command="gh auth status",
+            token_env="GH_TOKEN",
+            token_label="GitHub token",
+        ),
+    )
+
+    def test_a_cli_needing_a_token_is_reported_as_requiring_auth(self):
+        # The card renders a Connect button off this flag. Reported as False,
+        # a CLI the user must paste a token into looks ready to use.
+        response = IntegrationResponse.from_oauth_integration(
+            _integration(managed_by="cli", cli_config=self.TOKEN_CLI)
+        )
+
+        assert response.requires_auth is True
+
+    def test_a_cli_needing_no_credentials_is_not_reported_as_requiring_auth(self):
+        no_auth = CLI_CONFIG  # kind="none"
+        response = IntegrationResponse.from_oauth_integration(
+            _integration(managed_by="cli", cli_config=no_auth)
+        )
+
+        assert response.requires_auth is False
+
+    def test_the_declared_capabilities_are_the_displayed_tool_list(self):
+        # One tool wraps the whole CLI, so listing that tool tells the user
+        # nothing. The capabilities are the answer to "what can this do".
+        response = IntegrationResponse.from_oauth_integration(
+            _integration(managed_by="cli", cli_config=self.TOKEN_CLI)
+        )
+
+        assert [tool.name for tool in response.tools] == [
+            "list pull requests",
+            "create issues",
+        ]
+
+    def test_a_non_cli_row_lists_no_tools_here(self):
+        # Composio and MCP tool lists load live; baking an empty list in is
+        # deliberate, not an oversight.
+        response = IntegrationResponse.from_oauth_integration(
+            _integration(
+                managed_by="composio",
+                composio_config=ComposioConfig(auth_config_id="ac_1", toolkit="stripe"),
+            )
+        )
+
+        assert response.tools == []
+        assert response.requires_auth is True

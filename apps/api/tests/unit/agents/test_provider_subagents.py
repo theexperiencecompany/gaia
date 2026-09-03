@@ -6,12 +6,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.tools.core.registry import integration_destructive_tools
+from app.constants.cli_integrations import cli_tool_name
+from app.constants.log_tags import LogTag
 from app.models.cli_config import CliAuthSpec, CliConfig
 from app.models.integration_models import Integration
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
 from app.models.oauth_models import OAuthIntegration
 from app.models.subagent_models import Subagent
 from app.services.cli.tools import CliIntegration
+from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1028,7 +1031,10 @@ class TestCliSubagentTools:
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_integration_by_id",
-                return_value=integration,
+                # Keyed, not constant: the catalog entry carrying the CLI spec
+                # must be the one this subagent names, or the wrong CLI is
+                # registered under the right subagent.
+                side_effect=lambda iid: integration if iid == "stripe_link" else None,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.get_mcp_client",
@@ -1058,6 +1064,9 @@ class TestCliSubagentTools:
         assert options.is_delegated is True
         assert options.require_integration is True
         registry._index_category_tools.assert_awaited_once_with("stripe_link")
+        # The catalog entry's display name is what the tool description tells
+        # the model this CLI is for; without it the model gets a bare command.
+        assert "Test Integration" in category["tools"][0].description
 
         assert mock_factory.call_args.kwargs["config"].tool_space == "stripe_link"
 
@@ -1103,8 +1112,9 @@ class TestCliSubagentTools:
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents.resolve_cli_integration",
-                new_callable=AsyncMock,
-                return_value=integration,
+                # Keyed on the id: resolving anything else would build a
+                # subagent for an integration the caller never asked for.
+                side_effect=lambda iid: integration if iid == "custom_abc" else None,
             ),
             patch(
                 "app.agents.core.subagents.provider_subagents._create_custom_mcp_subagent",
@@ -1144,11 +1154,26 @@ class TestCliSubagentTools:
             ) as mock_factory,
         ):
             mock_repo.is_connected = AsyncMock(return_value=False)
-            with pytest.raises(SubagentUnavailableError, match="not connected"):
-                await _create_custom_cli_subagent(_cli_integration("custom_abc"), "user_123")
+            async with captured_wide_event() as event:
+                with pytest.raises(SubagentUnavailableError) as exc_info:
+                    await _create_custom_cli_subagent(_cli_integration("custom_abc"), "user_123")
 
         mock_get_registry.assert_not_called()
         mock_factory.assert_not_called()
+        # Scoped to this user AND this integration: a check against either one
+        # alone would let one user's connection unlock another's CLI.
+        mock_repo.is_connected.assert_awaited_once_with("user_123", "custom_abc")
+        # handoff relays this reason to the model verbatim, so it has to name
+        # the integration and say what the user must do.
+        assert str(exc_info.value) == (
+            "Stripe Link is not connected. Ask the user to connect it first."
+        )
+        (refusal,) = event["warnings"]
+        assert refusal == {
+            "msg": f"{LogTag.AGENT} Custom CLI subagent refused: integration not connected",
+            "integration_id": "custom_abc",
+            "user_id": "user_123",
+        }
 
     async def test_custom_cli_binds_its_single_tool_directly(self):
         from app.agents.core.subagents.provider_subagents import _create_custom_cli_subagent
@@ -1176,9 +1201,17 @@ class TestCliSubagentTools:
             ) as mock_factory,
         ):
             mock_repo.is_connected = AsyncMock(return_value=True)
-            result = await _create_custom_cli_subagent(_cli_integration("custom_abc"), "user_123")
+            async with captured_wide_event() as event:
+                result = await _create_custom_cli_subagent(
+                    _cli_integration("custom_abc"), "user_123"
+                )
 
         assert result is mock_graph
+        # The provider keys the subagent's tool lookups and its call records;
+        # the event is how a failed handoff is traced back to this graph.
+        assert mock_factory.call_args.kwargs["provider"] == "custom_abc"
+        assert mock_factory.call_args.kwargs["llm"] is not None
+        assert event["subagent"] == {"name": "custom_cli_custom_abc", "provider": "custom_abc"}
         # The id is the namespace: a CLI has no server URL to derive one from.
         assert registry._add_category.call_args.kwargs["options"].space == "custom_abc"
 
@@ -1189,3 +1222,84 @@ class TestCliSubagentTools:
         assert cfg.use_direct_tools is True
         assert cfg.disable_retrieve_tools is True
         assert cfg.source_label == "Stripe Link"
+
+
+class TestCliCategoryWiring:
+    """What ``register_cli_tools`` writes into the process-global registry.
+
+    One tool covers everything the CLI can do, so the category around it is the
+    only place the gating, the namespacing and the risk verdict are expressed.
+    Each field below is read by a different consumer, and a wrong value fails
+    somewhere far from here.
+    """
+
+    async def test_the_tool_is_built_from_this_integrations_own_spec(self):
+        # A custom integration's tool name carries a digest of its id so two
+        # users authoring `gh` do not collide in the process-global registry.
+        # Building it from the wrong id, or forgetting it is not a platform
+        # entry, hands one user's tool to the other.
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        registry = _cli_tool_registry()
+        integration = _cli_integration("custom_abc", is_platform=False)
+
+        await register_cli_tools(registry, integration, tool_space="custom_abc")
+
+        (tool,) = registry._add_category.call_args.kwargs["tools"]
+        assert tool.name == cli_tool_name("link-cli", "custom_abc", is_platform=False)
+        assert tool.name != cli_tool_name("link-cli", "custom_abc", is_platform=True)
+        # The display name is what tells the model what this CLI is for.
+        assert "Stripe Link" in tool.description
+
+    async def test_the_category_is_gated_on_this_integration(self):
+        # `require_integration` only locks the tool if the catalog knows WHICH
+        # integration to check; a wrong name reports it locked forever or
+        # unlocked always.
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        registry = _cli_tool_registry()
+
+        await register_cli_tools(registry, _cli_integration("custom_abc"), tool_space="space_x")
+
+        options = registry._add_category.call_args.kwargs["options"]
+        assert options.integration_name == "custom_abc"
+        assert options.require_integration is True
+        assert options.space == "space_x"
+
+    async def test_the_risk_set_is_looked_up_by_the_integrations_own_id(self):
+        # A curated id is used deliberately: it is the only way to observe that
+        # the lookup happened at all, since an unknown id and a dropped lookup
+        # both produce None (uncurated, which fails closed at gate time).
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        curated = integration_destructive_tools("linear")
+        assert curated, "fixture needs a catalog entry with a curated destructive set"
+        registry = _cli_tool_registry()
+
+        await register_cli_tools(registry, _cli_integration("linear"), tool_space="linear")
+
+        assert registry._add_category.call_args.kwargs["risk"].destructive_tools == curated
+
+    async def test_an_uncurated_integration_stays_uncurated(self):
+        # None is not "no destructive commands" — it is "nobody classified
+        # these", which sends every command to the HIL classifier. Turning it
+        # into an empty set would silently mark them all safe.
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        registry = _cli_tool_registry()
+
+        await register_cli_tools(registry, _cli_integration("custom_abc"), tool_space="custom_abc")
+
+        assert registry._add_category.call_args.kwargs["risk"].destructive_tools is None
+
+    async def test_the_wide_event_says_which_cli_was_registered(self):
+        # Registration is process-global and happens once; when the wrong tool
+        # is bound, this event is the only record of what was registered.
+        from app.agents.core.subagents.provider_subagents import register_cli_tools
+
+        async with captured_wide_event() as event:
+            await register_cli_tools(
+                _cli_tool_registry(), _cli_integration("custom_abc"), tool_space="custom_abc"
+            )
+
+        assert event["cli"] == {"integration_id": "custom_abc", "command": "link-cli"}

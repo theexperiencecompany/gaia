@@ -218,6 +218,51 @@ class TestGetMyIntegrations:
         assert item.status == "created"
         assert item.tool_count == 2
 
+    async def test_an_empty_stored_tool_list_falls_back_to_the_registry_count(
+        self, mock_deps, mock_redis_cache
+    ):
+        """A user record whose tool list was never populated must not blank the
+        card. The registry keys its counts by (often capitalised) category name
+        while the catalog keys by id, so the fallback has to match them
+        case-insensitively or every such integration silently shows nothing."""
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    integration=_integration_response(
+                        integration_id="github", name="GitHub", source="platform", tools=[]
+                    ),
+                )
+            ]
+        )
+        mock_deps.categories.return_value = {"Github": 4}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == 4
+
+    async def test_an_integration_nobody_can_count_reports_no_tools(
+        self, mock_deps, mock_redis_cache
+    ):
+        """Neither the user record nor the registry knows anything. Zero is the
+        honest answer; any invented number becomes "1 tool" on a card for an
+        integration that exposes none."""
+        mock_deps.user.return_value = UserIntegrationsListResponse(
+            integrations=[
+                _user_integration(
+                    integration_id="github",
+                    integration=_integration_response(
+                        integration_id="github", name="GitHub", source="platform", tools=[]
+                    ),
+                )
+            ]
+        )
+        mock_deps.categories.return_value = {}
+
+        result = await get_my_integrations(USER_ID)
+
+        assert result.integrations[0].tool_count == 0
+
     async def test_expired_platform_integration_carries_expired_at(
         self, mock_deps, mock_redis_cache
     ):

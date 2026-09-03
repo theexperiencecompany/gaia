@@ -97,8 +97,15 @@ class TestCliConfigCommandValidation:
         ],
     )
     def test_rejects_unsafe_command_names(self, bad: str):
-        with pytest.raises(ValidationError):
+        # The message has to say both which value was rejected and what a
+        # legal one looks like: the caller is often a model that read a
+        # vendor's docs, and "invalid command" alone gives it nothing to fix.
+        with pytest.raises(ValidationError) as exc_info:
             CliConfig(command=bad, install_command="true", auth=_auth())
+        assert _message(exc_info) == (
+            f"command {bad!r} must be a bare executable name "
+            "(letters, digits, dot, dash, underscore)"
+        )
 
     @pytest.mark.parametrize("good", ["gh", "link-cli", "wrangler", "tool.js", "a_b", "x1"])
     def test_accepts_plain_executable_names(self, good: str):
@@ -110,8 +117,9 @@ class TestCliConfigCommandValidation:
 
     @pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
     def test_rejects_blank_install_command(self, blank: str):
-        with pytest.raises(ValidationError, match="install_command cannot be empty"):
+        with pytest.raises(ValidationError) as exc_info:
             CliConfig(command="gh", install_command=blank, auth=_auth())
+        assert _message(exc_info) == "install_command cannot be empty"
 
     def test_capabilities_default_to_empty_not_shared(self):
         first = CliConfig(command="gh", install_command="true", auth=_auth())

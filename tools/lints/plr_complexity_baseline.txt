@@ -78,7 +78,6 @@ apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913
 apps/api/app/services/hil/bridge.py	PLR0913
-apps/api/app/services/integrations/custom_crud.py	PLR0912
 apps/api/app/services/mcp/langchain_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0912
 apps/api/app/services/mcp/resilient_adapter.py	PLR0915
