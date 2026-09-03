@@ -8,7 +8,7 @@ import {
   integrationConnectionState,
 } from "@shared/utils";
 import type React from "react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
@@ -18,6 +18,7 @@ import {
   getUniqueCategories,
   sortCategories,
 } from "../constants/categories";
+import { useCliConnectModal } from "../hooks/useCliConnectModal";
 import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
@@ -166,12 +167,7 @@ export const IntegrationsList: React.FC<{
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
-  // The CLI connect flow. The integration is kept after closing so the modal
-  // still has a name to show while it animates out.
-  const [isCliModalOpen, setIsCliModalOpen] = useState(false);
-  const [cliIntegration, setCliIntegration] = useState<Integration | null>(
-    null,
-  );
+  const cliConnect = useCliConnectModal();
 
   const handleConnect = async (integrationId: string) => {
     const integration = integrations.find((i) => i.id === integrationId);
@@ -185,8 +181,7 @@ export const IntegrationsList: React.FC<{
     // a token), so they need a surface to show progress on rather than a single
     // fire-and-forget call.
     if (integration?.managedBy === "cli") {
-      setCliIntegration(integration);
-      setIsCliModalOpen(true);
+      cliConnect.open(integration);
       return;
     }
     try {
@@ -371,10 +366,10 @@ export const IntegrationsList: React.FC<{
       )}
 
       <CliConnectModal
-        isOpen={isCliModalOpen}
-        onClose={() => setIsCliModalOpen(false)}
-        integrationId={cliIntegration?.id ?? null}
-        integrationName={cliIntegration?.name ?? ""}
+        isOpen={cliConnect.isOpen}
+        onClose={cliConnect.close}
+        integrationId={cliConnect.integrationId}
+        integrationName={cliConnect.integrationName}
       />
     </div>
   );
