@@ -85,7 +85,6 @@ describe("useCliConnect", () => {
     renderHook(() =>
       useCliConnect({
         integrationId: "stripe_link",
-        isOpen: true,
         onConnected,
       }),
     );
