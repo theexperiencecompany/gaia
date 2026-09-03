@@ -1527,10 +1527,14 @@ result_brief: x
 
         assert result.issues == []
 
-    async def test_a_step_agreeing_with_no_call_falls_back_to_the_last_one(self) -> None:
-        """A step whose args match nothing recorded still has to be checked
-        against something; the run's final call is the one it settled on. If the
-        fallback picks the first instead, the empty call goes unreported."""
+    async def test_a_step_agreeing_with_no_call_is_refused_with_the_args_that_did_run(
+        self,
+    ) -> None:
+        """A step whose args match no recorded call is not a call the run made.
+        Handing it the run's last call anyway validated that call's result as
+        the step's own, so a `$steps` reference could be approved against a shape
+        the replayed args will never return. The refusal shows the args the run
+        actually used so the author can freeze the real call."""
         body = _body(
             """
 description: Read a third calendar
@@ -1550,9 +1554,52 @@ result_brief: x
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)
 
-        assert [issue.where for issue in result.issues] == ["steps[0]"]
-        assert result.issues[0].problem.startswith("list_events returned no items in this run")
-        assert '{"calendar_id": "primary"}' in result.issues[0].problem
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0]",
+                "list_events ran 2 time(s) in this run, but never with these args (the last "
+                'call used {"calendar_id": "primary"}); freeze the call that ran, with the '
+                "args that produced its result, or run it with these args",
+            )
+        ]
+
+    async def test_the_refusal_shows_the_args_of_the_last_call_still_unfrozen(self) -> None:
+        """Four calls, the first already frozen by an earlier step. The one to
+        show is the LAST still-unfrozen call — the run's final attempt — not the
+        first, not the second, and not the one another step already took."""
+        body = _body(
+            """
+description: Freeze the work calendar, then a calendar nobody read
+steps:
+  - id: work
+    tool: list_events
+    args:
+      calendar_id: work
+  - id: other
+    tool: list_events
+    args:
+      calendar_id: other
+result_brief: x
+"""
+        )
+        results = [
+            _call("list_events", {"calendar_id": "work"}, {"events": [{"id": "e1"}]}),
+            _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
+            _call("list_events", {"calendar_id": "shared"}, {"events": [{"id": "e3"}]}),
+            _call("list_events", {"calendar_id": "personal"}, {"events": [{"id": "e4"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1]",
+                "list_events ran 4 time(s) in this run, but never with these args (the last "
+                'call used {"calendar_id": "personal"}); freeze the call that ran, with the '
+                "args that produced its result, or run it with these args",
+            )
+        ]
 
     async def test_a_literal_nested_beside_a_placeholder_still_picks_the_call(self) -> None:
         """The two calls differ only inside ``filters``, which also carries a
@@ -1860,7 +1907,7 @@ result_brief: x
         results = [
             _call(
                 "list_events",
-                {"query": "café ☕", "after": datetime(2026, 9, 1)},
+                {"calendar_id": "primary", "query": "café ☕", "after": datetime(2026, 9, 1)},
                 {"events": []},
             )
         ]
@@ -1870,15 +1917,15 @@ result_brief: x
 
         assert result.issues[0].problem == (
             "list_events returned no items in this run "
-            '(args: {"query": "café ☕", "after": "2026-09-01 00:00:00"}); '
+            '(args: {"calendar_id": "primary", "query": "café ☕", "after": "2026-09-01 00:00:00"}); '
             "freeze a call that produced data — widen the args or decline the playbook"
         )
 
     @pytest.mark.parametrize(
         ("filler", "rendered"),
         [
-            (191, '{"q": "' + "x" * 191 + '"}'),
-            (192, '{"q": "' + "x" * 192 + '"...'),
+            (165, '{"calendar_id": "primary", "q": "' + "x" * 165 + '"}'),
+            (166, '{"calendar_id": "primary", "q": "' + "x" * 166 + '"...'),
         ],
         ids=["exactly-at-the-cap", "one-character-over"],
     )
@@ -1899,7 +1946,9 @@ steps:
 result_brief: x
 """
         )
-        results = [_call("list_events", {"q": "x" * filler}, {"events": []})]
+        results = [
+            _call("list_events", {"calendar_id": "primary", "q": "x" * filler}, {"events": []})
+        ]
 
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
             result = await validate_playbook(body, USER_ID, results)

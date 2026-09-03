@@ -332,16 +332,7 @@ def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _W
     """
     matched = _matched_call(step, walk)
     if matched is None:
-        ran = sum(1 for call in walk.results or () if call.tool_name == tool_name)
-        problem = (
-            f"{tool_name} did not run in this run; a playbook freezes calls "
-            "that ran and produced their result — run it, or drop the step"
-            if ran == 0
-            else f"{tool_name} ran {ran} time(s) in this run and earlier steps froze every "
-            "one of them; a step cannot replay a call the run did not make — drop this "
-            "step, or run it again"
-        )
-        walk.issues.append(PlaybookIssue(where=path, problem=problem))
+        walk.issues.append(PlaybookIssue(where=path, problem=_unmatched_problem(tool_name, walk)))
         return
     index, call = matched
     walk.consumed.add(index)
@@ -350,6 +341,33 @@ def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _W
     refusal = _result_refusal(tool_name, call)
     if refusal is not None:
         walk.issues.append(PlaybookIssue(where=path, problem=refusal))
+
+
+def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
+    """Why no recorded call answers to this step, told apart by what the run
+    did make: nothing, calls all frozen already, or calls with other args."""
+    same_tool = [
+        (index, call)
+        for index, call in enumerate(walk.results or ())
+        if call.tool_name == tool_name
+    ]
+    if not same_tool:
+        return (
+            f"{tool_name} did not run in this run; a playbook freezes calls "
+            "that ran and produced their result — run it, or drop the step"
+        )
+    left = [call for index, call in same_tool if index not in walk.consumed]
+    if not left:
+        return (
+            f"{tool_name} ran {len(same_tool)} time(s) in this run and earlier steps froze "
+            "every one of them; a step cannot replay a call the run did not make — drop "
+            "this step, or run it again"
+        )
+    return (
+        f"{tool_name} ran {len(same_tool)} time(s) in this run, but never with these args "
+        f"(the last call used {_rendered_args(left[-1].args)}); freeze the call that ran, "
+        "with the args that produced its result, or run it with these args"
+    )
 
 
 def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
@@ -362,28 +380,25 @@ def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult]
     structural (``_agrees``) rather than per-arg, because the deciding
     difference between two calls is routinely nested inside an arg that also
     carries a placeholder — treating that whole arg as a wildcard matches on the
-    parts that say nothing. The LAST call wins, both among the calls that agree
-    and as the fallback when none does: a run that repeats a tool settles on its
-    final call, which is the one worth freezing.
+    parts that say nothing. Among the calls that agree the LAST wins: a run
+    that repeats a tool settles on its final call, which is the one worth
+    freezing. A step that agrees with none is not matched at all — handing it
+    an unrelated call's result would validate a shape its own args do not
+    produce, and approve ``$steps`` references into that shape.
 
     A call already frozen by an earlier step is not offered again: the run made
     it once, and a playbook listing it twice would replay it twice.
     """
-    calls = [
-        (index, call)
-        for index, call in enumerate(walk.results or ())
-        if call.tool_name == step.tool and index not in walk.consumed
-    ]
-    if not calls:
-        return None
     agreeing = [
         (index, call)
-        for index, call in calls
-        if all(
+        for index, call in enumerate(walk.results or ())
+        if call.tool_name == step.tool
+        and index not in walk.consumed
+        and all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()
         )
     ]
-    return (agreeing or calls)[-1]
+    return agreeing[-1] if agreeing else None
 
 
 def _agrees(step_value: object, recorded_value: object) -> bool:
