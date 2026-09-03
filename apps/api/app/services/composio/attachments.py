@@ -79,7 +79,7 @@ def _upload_reference(
     # Imported lazily: the Composio hook package auto-imports this module, and
     # composio_service imports that package, so a module-level import here would
     # form a cycle.
-    from app.services.composio.composio_service import (  # noqa: PLC0415
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- lazy: avoids an import cycle
         get_composio_service,
     )
 
@@ -152,7 +152,7 @@ def upload_bytes_sync(
     (the byte-level counterpart of the public ``FileUploadable.from_path``).
     """
     # Lazy import: see _upload_reference for the cycle this avoids.
-    from app.services.composio.composio_service import (  # noqa: PLC0415
+    from app.services.composio.composio_service import (  # noqa: PLC0415 -- lazy: avoids an import cycle
         get_composio_service,
     )
 

@@ -45,6 +45,14 @@ class TestAttachmentsSchemaModifier:
         assert props["attachments"]["type"] == "array"
         assert "attachment" not in out.input_parameters["required"]
 
+    def test_safe_when_no_native_attachment_present(self):
+        # A schema without the native `attachment` (in props or required) must not
+        # crash: popping with a default and the guarded remove are both no-ops.
+        schema = _schema({"subject": {"type": "string"}}, required=["subject"])
+        out = gmail_compose_attachments_schema_modifier("GMAIL_SEND_EMAIL", "gmail", schema)
+        assert out.input_parameters["properties"]["attachments"]["type"] == "array"
+        assert out.input_parameters["required"] == ["subject"]
+
 
 class TestResolveComposeAttachments:
     def test_no_attachments_is_noop(self):
