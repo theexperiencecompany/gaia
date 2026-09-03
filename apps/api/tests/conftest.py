@@ -694,3 +694,29 @@ def _reset_limit_origin() -> Iterator[None]:
     from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
     mark_run_origin(LimitHitOrigin.INTERACTIVE)
+
+
+@pytest.fixture(autouse=True)
+def _reset_integrations_catalog_cache() -> Iterator[None]:
+    """Keep a patched integrations catalog from leaking between tests.
+
+    ``build_integrations_config`` is ``lru_cache``d and the cache is
+    process-wide, so a test that patches ``OAUTH_INTEGRATIONS`` leaves a stale
+    catalog behind for every test that runs after it. That produced failures
+    that only appeared under certain orderings — the victim being whichever
+    later test read the catalog, never the one that poisoned it — and it showed
+    up under mutmut as an unexplained "no result" rather than a failure,
+    because per-mutant test selection changes the order.
+
+    Clearing before each test costs ~0.04ms (about 0.7s across the whole
+    suite), which is a fair price for removing an entire class of
+    order-dependence instead of asking each caller to remember.
+    """
+    # Imported here, not at module level: the integrations service pulls in the
+    # MCP client and Composio, which collection should not pay for.
+    from app.services.integrations.integration_connection_service import (
+        build_integrations_config,
+    )
+
+    build_integrations_config.cache_clear()
+    return
