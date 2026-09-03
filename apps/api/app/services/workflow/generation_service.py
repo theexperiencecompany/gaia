@@ -27,6 +27,7 @@ from app.models.workflow_models import (
     TriggerConfig,
     WorkflowStep,
 )
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 _MAX_GENERATION_ATTEMPTS = 2
@@ -316,6 +317,7 @@ class WorkflowGenerationService:
                     GeneratedWorkflow,
                     formatted_prompt,
                     label="workflow_generation",
+                    feature=AIFeature.WORKFLOW_GENERATION,
                     config=metered_config(user_id),
                 )
             except (ValidationError, OutputParserException) as e:
@@ -416,6 +418,7 @@ class WorkflowGenerationService:
             GeneratedPromptOutput,
             messages,
             label="workflow_prompt",
+            feature=AIFeature.WORKFLOW_GENERATION,
             config=metered_config(user_id),
         )
 

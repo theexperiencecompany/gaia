@@ -11,6 +11,7 @@ from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
+from app.services.analytics_service import AIFeature
 from app.services.conversation_service import (
     create_conversation_service,
     update_conversation_description,
@@ -34,6 +35,7 @@ async def _generate_description_from_message(
 
     try:
         response = await do_prompt_no_stream(
+            feature=AIFeature.TITLE_GENERATION,
             prompt=CONVERSATION_DESCRIPTION_GENERATOR.format(
                 user_message=user_message,
                 selectedTool=selectedTool,
@@ -137,6 +139,7 @@ async def generate_and_update_description(
 
 async def do_prompt_no_stream(
     prompt: str,
+    feature: AIFeature,
     system_prompt: str | None = None,
 ) -> dict[str, str]:
     """
@@ -144,6 +147,7 @@ async def do_prompt_no_stream(
 
     Args:
         prompt: The user prompt to send to the LLM
+        feature: Which capability this spend belongs to, for analytics
         system_prompt: Optional system message
 
     Returns:
@@ -152,7 +156,7 @@ async def do_prompt_no_stream(
     messages: list[AnyMessage] = [SystemMessage(content=system_prompt)] if system_prompt else []
     messages.append(HumanMessage(content=prompt))
 
-    response = await chatbot(messages)
+    response = await chatbot(messages, feature)
 
     # BaseMessage.text handles both plain-string and list-of-blocks content uniformly.
     ai_message = response["messages"][0]

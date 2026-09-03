@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, get_helper_llm
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.constants.log_tags import LogTag
+from app.services.analytics_service import AIFeature
 from shared.py.wide_events import log
 
 # Publish is user-initiated; cap the LLM call so a degraded provider can't
@@ -158,6 +159,7 @@ async def contains_profanity(**fields: str | None) -> bool:
                 structured_llm,
                 [HumanMessage(content=prompt)],
                 label="profanity",
+                feature=AIFeature.MODERATION,
                 options=LLMInvokeOptions(max_attempts=1),
             ),
             timeout=_MODERATION_TIMEOUT_SECONDS,

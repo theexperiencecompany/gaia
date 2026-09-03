@@ -6,6 +6,7 @@ from langchain_core.messages import BaseMessage
 
 from app.agents.llm.client import ainvoke_llm, get_vision_llm, metered_config
 from app.constants.log_tags import LogTag
+from app.services.analytics_service import AIFeature
 from app.utils.multimodal import image_content_block
 from shared.py.wide_events import log
 
@@ -15,6 +16,7 @@ async def describe_image(
     mime_type: str,
     prompt: str,
     label: str = "vision_fallback",
+    feature: AIFeature = AIFeature.VISION,
     user_id: str | None = None,
 ) -> str | None:
     """Describe an image with a one-off call on the dedicated vision model.
@@ -43,6 +45,7 @@ async def describe_image(
                 }
             ],
             label=label,
+            feature=feature,
             config=metered_config(user_id) if user_id else None,
         )
     except Exception as exc:  # any provider failure degrades gracefully

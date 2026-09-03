@@ -145,7 +145,7 @@ class TestFollowUpActionsNode:
 
         captured_llm_inputs = []
 
-        async def capture_invoke(_schema, msgs, *, label=None, config=None):
+        async def capture_invoke(_schema, msgs, *, label=None, feature=None, config=None):
             captured_llm_inputs.append(msgs)
             return follow_up
 
@@ -234,7 +234,7 @@ class TestFollowUpActionsNode:
         captured_invocations = []
         follow_up = FollowUpActions(actions=["action1"])
 
-        async def capture_invoke(_schema, msgs, *, label=None, config=None):
+        async def capture_invoke(_schema, msgs, *, label=None, feature=None, config=None):
             captured_invocations.append(msgs)
             return follow_up
 

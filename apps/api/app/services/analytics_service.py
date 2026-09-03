@@ -146,6 +146,39 @@ class AnalyticsEvents(StrEnum):
 
     USAGE_QUERIED = "usage:queried"
 
+    # Background LLM spend only. Agent-graph calls are already covered by
+    # PostHog's own $ai_generation, so this never duplicates them.
+    AI_LLM_CALL_COMPLETED = "ai:llm_call_completed"
+
+
+class AIFeature(StrEnum):
+    """The product capability a metered model call was made on behalf of.
+
+    Deliberately coarser than the call's ``label``: seven onboarding one-shots
+    roll up to ``ONBOARDING`` while keeping their own labels. Which integration
+    ran is ``agent_name``, an open string, because that set is not ours to close.
+    """
+
+    CHAT = "chat"
+    WORKFLOW = "workflow"
+    INTEGRATION = "integration"
+    MEMORY = "memory"
+    VISION = "vision"
+    MAIL = "mail"
+    HIL = "hil"
+    ONBOARDING = "onboarding"
+    PROFILE = "profile"
+    INTEGRATION_INFERENCE = "integration_inference"
+    WORKFLOW_GENERATION = "workflow_generation"
+    FILE_EXTRACTION = "file_extraction"
+    FOLLOW_UPS = "follow_ups"
+    RESEARCH = "research"
+    MODERATION = "moderation"
+    TITLE_GENERATION = "title_generation"
+    IMAGE = "image"
+    # Reaching this means an auxiliary caller was added without a feature.
+    UNATTRIBUTED = "unattributed"
+
 
 def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""

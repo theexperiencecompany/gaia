@@ -46,7 +46,11 @@ from app.models.mail_models import (
     UnstarEmailsResponse,
     UntrashEmailsResponse,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_context_event
+from app.services.analytics_service import (
+    AIFeature,
+    AnalyticsEvents,
+    capture_context_event,
+)
 from app.services.mail.email_importance_service import (
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
     get_email_importance_summaries as get_importance_summaries_service,
@@ -273,6 +277,7 @@ async def process_email(
             ComposedEmailOutput,
             prompt,
             label="mail_compose",
+            feature=AIFeature.MAIL,
             config=metered_config(str(user_id)),
         )
         capture_context_event(AnalyticsEvents.EMAIL_COMPOSED)

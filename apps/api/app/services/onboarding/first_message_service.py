@@ -18,6 +18,7 @@ from app.models.onboarding_models import (
     OnboardingWorkflowSummary,
     WritingStyleProfile,
 )
+from app.services.analytics_service import AIFeature
 from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
 
@@ -106,7 +107,10 @@ async def generate_first_message(
         llm = get_helper_llm()
         t_llm = time.monotonic()
         response = await ainvoke_llm(
-            llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
+            llm,
+            [HumanMessage(content=prompt)],
+            label="onboarding_first_message",
+            feature=AIFeature.ONBOARDING,
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
         message = cast(BaseMessage, response).text.strip()

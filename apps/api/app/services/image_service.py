@@ -11,6 +11,7 @@ from fastapi import HTTPException, UploadFile
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from app.services.analytics_service import AIFeature
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
 from shared.py.wide_events import get_trace_id, log, log_context
@@ -46,6 +47,7 @@ async def api_generate_image(message: str, improve_prompt: bool = True) -> Image
         if improve_prompt:
             improved_prompt = await do_prompt_no_stream(
                 prompt=IMAGE_PROMPT_REFINER.format(message=message),
+                feature=AIFeature.IMAGE,
             )
             refined_text = ", ".join(
                 part.strip()

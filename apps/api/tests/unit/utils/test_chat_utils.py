@@ -6,6 +6,7 @@ from langchain_core.messages import AIMessage
 import pytest
 
 from app.models.message_models import MessageDict
+from app.services.analytics_service import AIFeature
 from app.utils.chat_utils import _generate_description_from_message, do_prompt_no_stream
 
 
@@ -56,4 +57,4 @@ class TestDoPromptNoStream:
         mock_ainvoke.side_effect = ConnectionError("provider down")
 
         with pytest.raises(ConnectionError, match="provider down"):
-            await do_prompt_no_stream(prompt="refine this")
+            await do_prompt_no_stream(prompt="refine this", feature=AIFeature.IMAGE)
