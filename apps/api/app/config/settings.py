@@ -123,6 +123,11 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
+    # Experiment: swap the executor's `handoff` for `activate_integration`, which
+    # loads an integration's tools and prompt into the executor's own context
+    # instead of routing work to a per-integration subagent graph. Delegation
+    # then goes through the generic `spawn_subagent`, which inherits those tools.
+    ENABLE_INTEGRATION_ACTIVATION: bool = False
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod

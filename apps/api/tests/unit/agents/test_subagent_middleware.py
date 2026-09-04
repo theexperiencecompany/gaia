@@ -339,7 +339,7 @@ class TestSpawnSubagentTool:
         h.recover.assert_awaited_once()
         h.execute.assert_not_awaited()
 
-    async def test_spawn_context_isolates_the_thread_and_drops_excluded_tools(self):
+    async def test_spawn_context_isolates_the_thread_and_starts_lean(self):
         mw = _ready_middleware(excluded_tool_names={"handoff"})
         with _spawn_harness(outcomes=[_done("ok")]) as h:
             await mw.tools[0].coroutine(
@@ -351,7 +351,7 @@ class TestSpawnSubagentTool:
 
         ctx = h.execute.await_args.kwargs["ctx"]
         assert ctx.config["configurable"]["thread_id"] == "spawn_conv-9_call_abc"
-        assert ctx.initial_state["selected_tool_ids"] == ["read"]
+        assert ctx.initial_state["selected_tool_ids"] == []
 
 
 # ---------------------------------------------------------------------------

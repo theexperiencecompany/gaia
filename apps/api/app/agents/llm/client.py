@@ -2,6 +2,8 @@ import asyncio
 from functools import cache
 from typing import Any, TypeVar, cast
 
+import httpx
+
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
@@ -79,7 +81,13 @@ def without_sdk_retry(llm: ChatOpenRouter) -> ChatOpenRouter:
     """Leave retrying to :func:`with_llm_retry`; the SDK's own loop nests under
     ours and turned 3 attempts into 40 requests. ``max_retries=0`` does NOT
     disable it — the SDK then applies a one-hour default; only this does."""
-    llm.client.sdk_configuration.retry_config = RetryConfig(
+    sdk_client = getattr(llm, "client", None)
+    sdk_config = getattr(sdk_client, "sdk_configuration", None)
+    if sdk_config is None:
+        # Not an OpenRouter-SDK client (e.g. ChatOpenAI on the custom lane):
+        # nothing SDK-side to disable, retries are already ours alone.
+        return llm
+    sdk_config.retry_config = RetryConfig(
         # Any strategy but "backoff" skips the retry path, so the (required)
         # backoff values below are never read.
         strategy="none",
@@ -246,21 +254,40 @@ def init_custom_llm() -> LanguageModelLike:
     """DEV-ONLY: the env-defined custom provider — any OpenRouter/OpenAI-compatible
     endpoint, with base URL, key, and model all from the DEV_LLM_* settings. Routes
     bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
-    models) without spending real credits. ChatOpenRouter works against such
-    endpoints unchanged, including reasoning parsing — only the base URL and key
-    differ. Registered only when ENV=development (see register_llm_providers).
+    models) without spending real credits. Registered only when ENV=development
+    (see register_llm_providers).
+
+    Deliberately ChatOpenAI, not ChatOpenRouter: the openrouter SDK strictly
+    validates the response envelope (it requires ``system_fingerprint``), and
+    OpenAI-compatible lanes that omit it — e.g. OpenCode Zen — fail response
+    validation on every call. The openai SDK tolerates the missing field. The
+    tradeoff is no reasoning-block parsing on this lane; acceptable for dev.
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
+    # Some discounted lanes sit behind Cloudflare, which 403s (error 1010)
+    # programmatic User-Agents. A browser UA on the underlying httpx clients
+    # passes the check; ChatOpenAI takes them directly (unlike ChatOpenRouter,
+    # whose default_headers path crashes — see init_openrouter_llm).
+    from langchain_openai import ChatOpenAI  # noqa: PLC0415
+
+    browser_headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    }
     llm = without_sdk_retry(
-        ChatOpenRouter(
+        ChatOpenAI(
             model=PROVIDER_MODELS[LLMProviderName.CUSTOM],
             temperature=DEFAULT_LLM_TEMPERATURE,
             streaming=True,
             stream_usage=True,
             max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            # Unlike the OpenRouter SDK (see without_sdk_retry), the OpenAI
+            # SDK honors max_retries=0, so retries stay solely with with_llm_retry.
+            max_retries=0,
             api_key=settings.DEV_LLM_API_KEY,
             base_url=settings.DEV_LLM_BASE_URL,
+            http_client=httpx.Client(headers=browser_headers),
+            http_async_client=httpx.AsyncClient(headers=browser_headers),
         )
     )
     # Fractional-window middleware (the summarization/compaction triggers)
@@ -269,7 +296,12 @@ def init_custom_llm() -> LanguageModelLike:
     # default model and _sim_llm for the stub. The DEV_LLM_* model is env-defined
     # and has no curated registry entry, so pin the shared default window here.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return _openrouter_wire_configurables(llm)
+    # Only the model pin: the custom lane's binding keys omit reasoning and
+    # model_kwargs (see ModelLane.binding_keys), so the full OpenRouter-wire
+    # field set would expose pins nothing ever sets on this lane. Note the
+    # field name is model_name here — ChatOpenAI's attribute, where
+    # ChatOpenRouter (used by every other lane) calls it model.
+    return llm.configurable_fields(model_name=_MODEL_FIELD)
 
 
 def init_llm(

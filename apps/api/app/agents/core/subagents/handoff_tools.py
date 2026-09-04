@@ -67,9 +67,7 @@ from app.models.subagent_models import Subagent
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.oauth.oauth_service import (
-    check_integration_status,
-)
+from app.services.oauth.oauth_service import check_integration_status
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -125,7 +123,13 @@ async def check_integration_connection(
     integration_id: str,
     user_id: str,
 ) -> str | None:
-    """Return the connect prompt when the integration isn't connected, else None."""
+    """Return the connect prompt when the integration isn't connected, else None.
+
+    Lives here rather than in ``integration_checker`` beside
+    ``request_integration_connection``: it needs ``check_integration_status`` from
+    ``oauth_service``, and ``oauth_service`` reaches ``integration_checker`` through
+    composio, so moving it down closes a real import cycle.
+    """
     subagent = get_subagent_by_id(integration_id)
     if not subagent:
         return None

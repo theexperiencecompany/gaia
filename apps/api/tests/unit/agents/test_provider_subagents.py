@@ -342,6 +342,90 @@ class TestCreateSubagent:
 
 
 # ---------------------------------------------------------------------------
+# register_integration_tools
+# ---------------------------------------------------------------------------
+
+
+class TestRegisterIntegrationTools:
+    """The returned category is how `activate_integration` finds the tools it just
+    loaded — a wrong or missing name leaves the executor believing an integration
+    has no tools, so it is asserted here rather than inferred from create_subagent."""
+
+    async def test_composio_returns_the_toolkit_category(self):
+        from app.agents.core.subagents.provider_subagents import register_integration_tools
+        from app.models.mcp_config import ComposioConfig
+
+        subagent = _make_subagent(integration_id="gmail", managed_by="composio")
+        integration = _make_integration(
+            "gmail",
+            managed_by="composio",
+            composio_config=ComposioConfig(auth_config_id="a", toolkit="GMAIL"),  # type: ignore[arg-type]  # helper types this param as MagicMock
+        )
+
+        with (
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.provider_subagents.get_integration_by_id",
+                return_value=integration,
+            ),
+        ):
+            assert await register_integration_tools(subagent) == "GMAIL"
+
+    async def test_mcp_returns_the_integration_id_category(self):
+        from app.agents.core.subagents.provider_subagents import register_integration_tools
+
+        subagent = _make_subagent(
+            integration_id="deepwiki",
+            managed_by="mcp",
+            mcp_config=MCPConfig(server_url="https://example.com", requires_auth=False),
+        )
+        registry = AsyncMock()
+        registry._categories = {"deepwiki": MagicMock()}
+
+        with patch(
+            "app.agents.core.subagents.provider_subagents.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=registry,
+        ):
+            assert await register_integration_tools(subagent) == "deepwiki"
+
+    async def test_internal_has_no_category_of_its_own(self):
+        from app.agents.core.subagents.provider_subagents import register_integration_tools
+
+        subagent = _make_subagent(integration_id="todos", managed_by="internal")
+
+        with patch(
+            "app.agents.core.subagents.provider_subagents.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=AsyncMock(),
+        ):
+            assert await register_integration_tools(subagent) is None
+
+    async def test_auth_required_mcp_refuses_to_register(self):
+        """Its tools are per-user and never enter the process-global registry;
+        registering them there would expose one user's session to every other."""
+        from app.agents.core.subagents.provider_subagents import register_integration_tools
+
+        subagent = _make_subagent(
+            integration_id="perplexity",
+            managed_by="mcp",
+            mcp_config=MCPConfig(server_url="https://example.com", requires_auth=True),
+        )
+
+        with patch(
+            "app.agents.core.subagents.provider_subagents.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=AsyncMock(),
+        ):
+            with pytest.raises(ValueError, match="requires authentication"):
+                await register_integration_tools(subagent)
+
+
+# ---------------------------------------------------------------------------
 # create_subagent_for_user
 # ---------------------------------------------------------------------------
 

@@ -18,6 +18,7 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
+from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
@@ -33,11 +34,38 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.config.settings import settings
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
+
+#: The handoff delegation pair. `wait_for_subagents` belongs to `handoff`, not to
+#: delegation in general: it collects `handoff(background=True)` dispatches, and a
+#: spawn returns inline, so under activation it could only block on an empty set.
+HANDOFF_ONLY_TOOL_IDS = frozenset({"handoff", WAIT_FOR_SUBAGENTS_NAME})
+
+#: Tools the executor binds before its first turn, ahead of any retrieve_tools call.
+#: Under ENABLE_INTEGRATION_ACTIVATION the HANDOFF_ONLY_TOOL_IDS drop out and
+#: "activate_integration" leads instead — see build_executor_graph.
+EXECUTOR_INITIAL_TOOL_IDS = [
+    "handoff",
+    "plan_tasks",
+    "update_tasks",
+    "read",
+    "bash",
+    "deep_research",
+    "wait_for_subagents",
+    "read_manual",
+    "create_tracked_todo",
+    "update_tracked_todo",
+    "update_tracked_todo_canvas",
+    "complete_tracked_todo",
+    "search_todo_context",
+    "list_tracked_todos",
+    "save_learned_skill",
+]
 
 
 @asynccontextmanager
@@ -57,14 +85,30 @@ async def build_executor_graph(
     todo_tools = create_todo_tools(source="executor")
 
     tool_dict = tool_registry.get_tool_dict()
-    tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
+
+    # Under the experiment there are no per-integration graphs to hand off to:
+    # activate_integration loads an integration's tools into the executor's own
+    # space, and spawn_subagent (already bound by SubagentMiddleware) is the
+    # generic worker that inherits them. wait_for_subagents goes with handoff —
+    # it exists solely to collect handoff(background=True) dispatches, and a
+    # spawn returns its result inline, so under activation it can only ever
+    # block on an empty set.
+    activation_mode = settings.ENABLE_INTEGRATION_ACTIVATION
+    if activation_mode:
+        tool_dict.update({"activate_integration": activate_integration})
+    else:
+        tool_dict.update(
+            {"handoff": handoff_tool, WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool}
+        )
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
+    excluded_subagent_tools = {
+        "activate_integration" if activation_mode else "handoff",
+        WAIT_FOR_SUBAGENTS_NAME,
+    }
 
     middleware = create_executor_middleware(
         chat_llm=chat_llm,
@@ -89,28 +133,20 @@ async def build_executor_graph(
 
     pre_model_hooks = worker_pre_model_hooks(todo_hook)
 
+    if activation_mode:
+        initial_tools = [
+            "activate_integration",
+            *(n for n in EXECUTOR_INITIAL_TOOL_IDS if n not in HANDOFF_ONLY_TOOL_IDS),
+        ]
+    else:
+        initial_tools = list(EXECUTOR_INITIAL_TOOL_IDS)
+
     builder = create_agent(
         llm=chat_llm,
         agent_name="executor_agent",
         tool_registry=tool_dict,
         retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=[
-            "handoff",
-            "plan_tasks",
-            "update_tasks",
-            "read",
-            "bash",
-            "deep_research",
-            "wait_for_subagents",
-            "read_manual",
-            "create_tracked_todo",
-            "update_tracked_todo",
-            "update_tracked_todo_canvas",
-            "complete_tracked_todo",
-            "search_todo_context",
-            "list_tracked_todos",
-            "save_learned_skill",
-        ],
+        initial_tool_ids=initial_tools,
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
         require_finish_to_end=True,

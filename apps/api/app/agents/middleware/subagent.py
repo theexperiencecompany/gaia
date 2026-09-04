@@ -290,6 +290,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
     ) -> SubagentExecutionContext:
+        del inherited_tool_names
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
         if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
@@ -353,14 +354,12 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             initial_state={
                 "messages": messages,
                 "todos": [],
-                # Inherit whatever the parent has bound this turn. acall_model
-                # unions initial_tool_ids with state["selected_tool_ids"], so
-                # seeding the channel here is what carries the inheritance over.
-                "selected_tool_ids": [
-                    name
-                    for name in (inherited_tool_names or [])
-                    if name not in self._excluded_tools
-                ],
+                # Lean start: no inheritance of the parent's bound set. The
+                # spawn's graph binds its own minimal operational set via its
+                # ToolRuntimeConfig (read/bash/finish_task) and retrieves the
+                # rest on demand, so it keeps full powers without carrying
+                # the parent's ~14k of activated-integration schemas.
+                "selected_tool_ids": [],
             },
             user_id=user_id,
             stream_id=configurable.get("stream_id"),

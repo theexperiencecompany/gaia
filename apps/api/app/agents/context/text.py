@@ -65,6 +65,20 @@ BUILTIN_CAPABILITY_OVERLAPS: Final[tuple[BuiltinOverlap, ...]] = (
 #: Renders to ``- Todos: GAIA's own todo list, not Todoist (todos)``.
 BUILTIN_OVERLAP_LINE: Final[str] = "- {description}, not {providers} ({subagent_id})"
 
+#: The activation variant of the header above. Same guarantee (call the tool even
+#: for an unlisted integration, because the call is what renders the connect card),
+#: but the executor acts on the integration itself instead of routing to a subagent.
+EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER = (
+    "CONNECTED INTEGRATIONS (live snapshot of the user's currently connected accounts as of "
+    "this turn; this is the latest connected set, so trust it over retrieve_tools for what is "
+    "connected). To act on one, call activate_integration with the id in parentheses, then use "
+    "its tools yourself. If the user asks for an integration that is NOT listed here, STILL "
+    "call activate_integration on it: that call is what shows the user the connect card. "
+    "Telling the user to connect WITHOUT calling it leaves them hunting for a button that was "
+    "never rendered. Built-in integrations (reminders, todos, gaia_knowledge_guide, docgen) "
+    "are always available and are not listed here:"
+)
+
 MEMORY_RECALL_HEADER = (
     "Based on our previous conversations (bracketed dates say when "
     "something happened / was last mentioned):"

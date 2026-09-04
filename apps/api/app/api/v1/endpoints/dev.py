@@ -106,7 +106,9 @@ async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, skipping the comms agent."""
     log.set(dev={"operation": "run_executor", "email": payload.email})
     try:
-        result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
+        result = await run_executor_direct(
+            payload.email, payload.task, payload.conversation_id, payload.model
+        )
     except GraphRecursionError as e:
         # The agent looped without converging. That is a result about the agent,
         # not a server fault: raising 500 made callers classify it as
@@ -130,7 +132,7 @@ async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> DevAgen
     """Run one subagent directly with a task, skipping comms and the executor."""
     log.set(dev={"operation": "run_subagent", "email": payload.email, "subagent_id": subagent_id})
     result = await run_subagent_direct(
-        payload.email, subagent_id, payload.task, payload.conversation_id
+        payload.email, subagent_id, payload.task, payload.conversation_id, payload.model
     )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result

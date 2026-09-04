@@ -144,7 +144,10 @@ STICKY_FLIP_RETRY_MIN_INPUT = 8_000
 # The replay's premise — sticky routing that re-reads the chain the first
 # attempt wrote — is OpenRouter-wire behaviour. Gemini has no sticky routing,
 # so a replay there is a second full-price call with no possible upside.
-STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
+# CUSTOM is excluded too: the custom lane runs ChatOpenAI (the OpenRouter SDK
+# rejects Zen's envelope), and session_id as a top-level kwarg is an
+# unsupported argument on AsyncCompletions.create.
+STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"

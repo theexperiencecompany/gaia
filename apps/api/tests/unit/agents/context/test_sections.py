@@ -300,7 +300,7 @@ class TestProviderMetadata:
         unobservable, and a separator that stopped separating would run the
         provider's identity fields together into one unreadable line."""
         with patch(
-            "app.agents.context.sections.get_provider_metadata",
+            "app.agents.context.fetchers.get_provider_metadata",
             AsyncMock(return_value={"email": "ada@example.com", "login": "ada"}),
         ):
             rendered = await section("provider_metadata").fetch(
@@ -313,7 +313,7 @@ class TestProviderMetadata:
         """The provider comes from the resolved integration, not the raw id —
         asking the wrong provider returns another account's identity."""
         metadata = AsyncMock(return_value={})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
@@ -322,7 +322,7 @@ class TestProviderMetadata:
 
     async def test_an_unknown_user_is_never_looked_up(self) -> None:
         metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             rendered = await section("provider_metadata").fetch(
                 SectionContext(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
             )
@@ -334,7 +334,7 @@ class TestProviderMetadata:
         """A subagent id that resolves to no integration has no provider to ask
         about; querying anyway would be a lookup on a guess."""
         metadata = AsyncMock(return_value={"email": "ada@example.com"})
-        with patch("app.agents.context.sections.get_provider_metadata", metadata):
+        with patch("app.agents.context.fetchers.get_provider_metadata", metadata):
             rendered = await section("provider_metadata").fetch(
                 ctx(AgentTier.PROVIDER_SUBAGENT, integration_id="not-a-real-integration")
             )
@@ -343,7 +343,7 @@ class TestProviderMetadata:
         metadata.assert_not_awaited()
 
     async def test_no_metadata_yields_no_block(self) -> None:
-        with patch("app.agents.context.sections.get_provider_metadata", AsyncMock(return_value={})):
+        with patch("app.agents.context.fetchers.get_provider_metadata", AsyncMock(return_value={})):
             assert (
                 await section("provider_metadata").fetch(
                     ctx(AgentTier.PROVIDER_SUBAGENT, integration_id=INTEGRATION_ID)
@@ -354,7 +354,7 @@ class TestProviderMetadata:
     async def test_a_failed_lookup_is_visible_in_the_wide_event(self) -> None:
         async with captured_wide_event() as event:
             with patch(
-                "app.agents.context.sections.get_provider_metadata",
+                "app.agents.context.fetchers.get_provider_metadata",
                 AsyncMock(side_effect=RuntimeError("composio down")),
             ):
                 rendered = await section("provider_metadata").fetch(

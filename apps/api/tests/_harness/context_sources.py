@@ -124,7 +124,7 @@ def fake_context_sources(sources: ContextSources) -> Iterator[None]:
         )
         enter(
             patch(
-                "app.agents.context.sections.get_provider_metadata",
+                "app.agents.context.fetchers.get_provider_metadata",
                 AsyncMock(return_value=dict(sources.provider_metadata)),
             )
         )

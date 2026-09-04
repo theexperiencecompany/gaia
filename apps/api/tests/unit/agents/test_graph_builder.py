@@ -415,6 +415,94 @@ class TestBuildExecutorGraph:
         assert kwargs["require_finish_to_end"] is True
         assert "save_learned_skill" in kwargs["initial_tool_ids"]
 
+    async def test_handoff_is_the_delegation_tool_by_default(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert "handoff" in kwargs["initial_tool_ids"]
+        assert "handoff" in kwargs["tool_registry"]
+        assert "activate_integration" not in kwargs["initial_tool_ids"]
+
+    async def test_activation_flag_replaces_handoff_with_activate_integration(self, monkeypatch):
+        """Under the experiment there are no per-integration graphs to hand off to.
+
+        Leaving ``handoff`` bound would let the executor route work to a subagent
+        graph the experiment is meant to remove — the swap has to be exclusive,
+        in both the bound set and the registry it binds from.
+        """
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert "activate_integration" in kwargs["initial_tool_ids"]
+        assert "activate_integration" in kwargs["tool_registry"]
+        assert "handoff" not in kwargs["initial_tool_ids"]
+        assert "handoff" not in kwargs["tool_registry"]
+
+    async def test_activation_flag_keeps_the_rest_of_the_initial_tool_set(self, monkeypatch):
+        """Only the delegation slot changes — the tools around it must survive."""
+        from app.agents.core.graph_builder.build_graph import (
+            EXECUTOR_INITIAL_TOOL_IDS,
+            HANDOFF_ONLY_TOOL_IDS,
+        )
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        expected = [
+            "activate_integration",
+            *(n for n in EXECUTOR_INITIAL_TOOL_IDS if n not in HANDOFF_ONLY_TOOL_IDS),
+        ]
+        assert kwargs["initial_tool_ids"] == expected
+
+    async def test_activation_flag_also_drops_wait_for_subagents(self, monkeypatch):
+        """wait_for_subagents exists only to collect handoff(background=True).
+
+        A spawn returns its result inline, so under activation this tool can only
+        block on an empty set and report that nothing ran — which reads to the model
+        like the work failed.
+        """
+        from app.config.settings import settings
+        from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        assert WAIT_FOR_SUBAGENTS_NAME not in kwargs["initial_tool_ids"]
+        assert WAIT_FOR_SUBAGENTS_NAME not in kwargs["tool_registry"]
+
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()

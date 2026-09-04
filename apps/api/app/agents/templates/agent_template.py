@@ -20,8 +20,10 @@ from app.agents.prompts.comms_prompts import (
     EXECUTOR_AGENT_PROMPT,
     _strip_openui_section,
 )
+from app.agents.prompts.executor_activation_prompt import build_activation_executor_prompt
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.workspace.operational_docs import GAIA_CORE
+from app.config.settings import settings
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 # Base comms prompt with the embedded OpenUI component-instructions section
@@ -144,4 +146,9 @@ COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
 # read_manual topic routing. It is appended here (not interpolated per user) so
 # the whole executor prompt stays byte-identical across users and rides the
 # provider's prompt cache.
-EXECUTOR_PROMPT_TEMPLATE: Final[str] = EXECUTOR_AGENT_PROMPT + "\n\n" + GAIA_CORE
+_EXECUTOR_BASE_PROMPT: Final[str] = (
+    build_activation_executor_prompt()
+    if settings.ENABLE_INTEGRATION_ACTIVATION
+    else EXECUTOR_AGENT_PROMPT
+)
+EXECUTOR_PROMPT_TEMPLATE: Final[str] = _EXECUTOR_BASE_PROMPT + "\n\n" + GAIA_CORE
