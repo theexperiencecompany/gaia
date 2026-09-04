@@ -397,10 +397,12 @@ class PlaybookHandoffStepInput(BaseModel):
         default=None,
         description=(
             "Repeat this step once per element of a list, with $item addressing the "
-            "element ($item.field for a field of it). Either a placeholder naming a "
-            'previous step\'s list, e.g. $steps.inbox.messages, or {"$ask": "which '
-            'of the above to act on"} for a list a model picks at replay. Use this '
-            "when the NUMBER of calls depends on what the run found; it is not a "
+            "element ($item.field for a field of it). This is the WHOLE value and "
+            "nothing else: either one placeholder naming a previous step's list, e.g. "
+            '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
+            "list a model picks at replay. A placeholder inside a longer string, like "
+            "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
+            "this when the NUMBER of calls depends on what the run found; it is not a "
             "reason to decline."
         ),
     )
@@ -465,10 +467,12 @@ class PlaybookStepInput(BaseModel):
         default=None,
         description=(
             "Repeat this step once per element of a list, with $item addressing the "
-            "element ($item.field for a field of it). Either a placeholder naming a "
-            'previous step\'s list, e.g. $steps.inbox.messages, or {"$ask": "which '
-            'of the above to act on"} for a list a model picks at replay. Use this '
-            "when the NUMBER of calls depends on what the run found; it is not a "
+            "element ($item.field for a field of it). This is the WHOLE value and "
+            "nothing else: either one placeholder naming a previous step's list, e.g. "
+            '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
+            "list a model picks at replay. A placeholder inside a longer string, like "
+            "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
+            "this when the NUMBER of calls depends on what the run found; it is not a "
             "reason to decline."
         ),
     )

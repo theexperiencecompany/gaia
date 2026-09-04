@@ -2544,3 +2544,87 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
         )
 
         assert child.to_step().args == {"subject": {"$ask": "Write the digest."}}
+
+
+@pytest.mark.unit
+class TestForEachSource:
+    """A for_each has to name a list. Seen live on the first real authoring run:
+    a model wrote ``for_each: "overdue-items-from-$steps.list"`` — prose with a
+    placeholder inside it, which resolves to a STRING. The runner refused it
+    correctly, but only on the replay, so a whole agentic run was spent before
+    anyone found out. The write is where that is knowable.
+    """
+
+    async def test_a_for_each_woven_into_prose_is_refused(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: overdue-items-from-$steps.agenda
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert any("for_each" in issue.problem for issue in result.issues), result.issues
+
+    async def test_a_bare_steps_placeholder_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.agenda.items
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+    async def test_an_ask_slot_source_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: which of the events above need a note
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues

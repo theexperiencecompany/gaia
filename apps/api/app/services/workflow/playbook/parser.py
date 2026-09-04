@@ -194,6 +194,34 @@ class _Walk:
     consumed: set[int] = field(default_factory=set)
 
 
+def _check_for_each_source(step: PlaybookStep, where: str, walk: _Walk) -> None:
+    """A for_each has to name a list, and only two shapes ever can.
+
+    Either the whole value is one placeholder (``$steps.<id>.<field>``), or it is
+    an ``{"$ask": ...}`` a model fills with the elements. Anything else is text:
+    a placeholder woven into prose interpolates into a STRING, which the runner
+    then refuses because a string is not a list. That refusal is correct but it
+    lands on the replay, a full agentic run after the mistake was made, so the
+    write is where it belongs. Seen on the first real authoring run:
+    ``for_each: overdue-items-from-$steps.list``.
+    """
+    source = step.for_each
+    if source is None or isinstance(source, AskSlot):
+        return
+    if PLACEHOLDER_TOKEN.fullmatch(source):
+        return
+    walk.issues.append(
+        PlaybookIssue(
+            where=f"{where}.for_each",
+            problem=(
+                f"for_each must be the whole value, either one placeholder naming a list "
+                f"($steps.<step_id>.<field>) or an $ask slot, but it is {source!r}. A "
+                "placeholder inside a longer string resolves to text, and text is not a list."
+            ),
+        )
+    )
+
+
 async def _check_steps(
     steps: Sequence[PlaybookStep],
     path: str,
@@ -211,6 +239,7 @@ async def _check_steps(
     """
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
+        _check_for_each_source(step, here, walk)
         if step.tool:
             _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
         else:

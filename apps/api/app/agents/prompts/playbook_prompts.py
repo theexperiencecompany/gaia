@@ -39,7 +39,7 @@ steps:
       query_text: {"$ask": "one web search that would give background on the most important mail listed above"}
 result_brief: Lead with what the unread mail is about, then what the search added. Two short paragraphs.
 
-If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). The list is either a previous step's, or one a model picks at replay:
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay:
 
   - id: replies
     tool: GMAIL_CREATE_EMAIL_DRAFT
@@ -55,7 +55,7 @@ If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, 
 - blocked_missing_integration, with the integration ids: the work could not run because the user has not connected something. The workflow is paused until they do, and this does not count against it.
 - blocked_auth_expired, with the integration ids: connected, but its authorisation is dead.
 - blocked_no_budget: the allowance was spent before any call ran.
-- order_branches, with branch_on naming the ONE call that runs on some days and not others. If you cannot name that call, the order does not branch and you should be writing a playbook instead.
+- order_branches, with branch_on naming the ONE call that runs on some days and not others. Before you pick this, check it is not a fan-out: a call that runs once per thing you found, including zero times on a day when you found nothing, is a for_each step and NOT a branch. "It made three create calls today and none yesterday" is a for_each over an empty list, not a changing order. Pick order_branches only when a DIFFERENT call, not just a different count of the same call, happens on another day. If you cannot name that call, the order does not branch and you should be writing a playbook instead.
 - unstable_discovery: you had to work something out mid-run that a later run would have to work out differently.
 There is no kind for "the arguments were different", because question 2 already handled that.
 
