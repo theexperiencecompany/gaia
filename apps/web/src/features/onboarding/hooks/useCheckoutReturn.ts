@@ -40,15 +40,41 @@ interface CheckoutReturn {
  * webhook (polled by `useAwaitPaidStatus`) and, when that is late or lost, a
  * verify call that hands the server the subscription id off the return URL so
  * it can settle the question with Dodo directly. This hook runs the second,
- * times the wait, reads a failed outcome straight off the URL, and clears the
- * marker once the subscription is real so a reload never replays the
- * confirming state.
+ * times the wait, and reads a failed outcome straight off the URL. The query
+ * is consumed on first render and removed from the address bar immediately.
  */
-export function useCheckoutReturn(): CheckoutReturn {
-  const params = useSearchParams();
+interface ReturnParams {
+  returned: boolean;
+  failed: boolean;
+  subscriptionId?: string;
+}
+
+const NOT_RETURNED: ReturnParams = { returned: false, failed: false };
+
+function readReturnParams(params: URLSearchParams): ReturnParams {
   const returned = params.get(CHECKOUT_RETURNED_PARAM) === "returned";
-  const failed = returned && params.get(STATUS_PARAM) === "failed";
-  const subscriptionId = params.get(SUBSCRIPTION_ID_PARAM) ?? undefined;
+  if (!returned) return NOT_RETURNED;
+  return {
+    returned,
+    failed: params.get(STATUS_PARAM) === "failed",
+    subscriptionId: params.get(SUBSCRIPTION_ID_PARAM) ?? undefined,
+  };
+}
+
+const CLEAN_PATH = "/onboarding";
+
+export function useCheckoutReturn(): CheckoutReturn {
+  const searchParams = useSearchParams();
+  // Read Dodo's query once, into state, then strip it from the URL right
+  // away: the outcome lives here for the rest of the visit, and nothing that
+  // reloads, shares or bookmarks the page can replay a stale checkout.
+  const [{ returned, failed, subscriptionId }, setReturnParams] = useState(() =>
+    readReturnParams(new URLSearchParams(searchParams.toString())),
+  );
+  useEffect(() => {
+    if (window.location.search)
+      window.history.replaceState(null, "", CLEAN_PATH);
+  }, []);
   const { isPaid } = useIsPaid();
   const { verifyPayment, refetchSubscription } = usePricing();
   const [isLate, setIsLate] = useState(false);
@@ -78,18 +104,11 @@ export function useCheckoutReturn(): CheckoutReturn {
     };
   }, [waiting]);
 
-  // Not a redirect: the wizard stays put and only the marker leaves the URL,
-  // so a later reload does not replay the confirming state.
-  useEffect(() => {
-    if (returned && isPaid)
-      window.history.replaceState(null, "", "/onboarding");
-  }, [returned, isPaid]);
-
   const retry = () => {
     setIsLate(false);
     setTimedOut(false);
     verifiedRef.current = false;
-    window.history.replaceState(null, "", "/onboarding");
+    setReturnParams(NOT_RETURNED);
   };
 
   return { returned, isLate, failed, timedOut, retry };

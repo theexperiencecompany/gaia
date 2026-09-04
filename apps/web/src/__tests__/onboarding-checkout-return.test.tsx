@@ -50,11 +50,22 @@ describe("useCheckoutReturn", () => {
     expect(result.current.timedOut).toBe(true);
   });
 
-  it("retry clears the marker from the URL", () => {
+  it("strips Dodo's query from the address bar as soon as it is read", () => {
     search = "checkout=returned&status=failed";
+    window.history.replaceState(null, "", `/onboarding?${search}`);
     const spy = vi.spyOn(window.history, "replaceState");
     const { result } = renderHook(() => useCheckoutReturn());
-    act(() => result.current.retry());
     expect(spy).toHaveBeenCalledWith(null, "", "/onboarding");
+    // The outcome survives the strip: it lives in state, not in the URL.
+    expect(result.current.failed).toBe(true);
+    spy.mockRestore();
+  });
+
+  it("retry leaves the confirming state without touching the URL again", () => {
+    search = "checkout=returned&status=failed";
+    const { result } = renderHook(() => useCheckoutReturn());
+    act(() => result.current.retry());
+    expect(result.current.returned).toBe(false);
+    expect(result.current.failed).toBe(false);
   });
 });

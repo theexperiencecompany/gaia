@@ -33,15 +33,19 @@ export function OnboardingPacedBubbles({
         />
       )}
       {isTyping && (
-        <m.output
-          aria-label="GAIA is typing"
-          className="chat_bubble ml-10.75 items-center bg-zinc-800 py-3"
-          initial={{ opacity: 0, y: 4, scale: 0.96 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.2, ease: EASE_OUT_QUART }}
-        >
-          <Spinner variant="dots" color="default" size="sm" />
-        </m.output>
+        // The same bubble a text part renders in (iMessage chrome, tail, avatar
+        // lane), holding the dots instead of words.
+        <div className="chatbubblebot_parent pl-10.75">
+          <m.output
+            aria-label="GAIA is typing"
+            className="imessage-bubble imessage-from-them imessage-grouped-last flex w-fit items-center py-2.5"
+            initial={{ opacity: 0, y: 4, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2, ease: EASE_OUT_QUART }}
+          >
+            <Spinner variant="dots" color="default" size="md" />
+          </m.output>
+        </div>
       )}
     </div>
   );
