@@ -23,8 +23,9 @@ export function PaywallNotice() {
 
   return (
     // `searchbar` carries the composer's own width rule (50% desktop / 95%
-    // phone) so this notice lines up with the box below it.
-    <div className="searchbar mb-2 flex items-center justify-between gap-3 rounded-2xl bg-zinc-800 px-4 py-2.5">
+    // phone) so this notice lines up with the box below it. The bottom margin
+    // clears the integrations pill, which peeks 2.25rem above the composer.
+    <div className="searchbar mb-10 flex items-center justify-between gap-3 rounded-2xl bg-zinc-800 px-4 py-2.5">
       <p className="text-xs text-zinc-400">{copy.composer}</p>
       <Button
         size="sm"

@@ -395,6 +395,13 @@ export default function SettingsMenu({
         isOpen={isMenuOpen}
         onOpenChange={(open) => {
           setIsMenuOpen(open);
+          // The flyouts are anchored to menu items that unmount with the
+          // menu; left open, one keeps floating after the menu is gone.
+          if (!open) {
+            for (const menu of Object.values(submenuByKey)) {
+              menu.setIsOpen(false);
+            }
+          }
           onOpenChange?.(open);
         }}
       >

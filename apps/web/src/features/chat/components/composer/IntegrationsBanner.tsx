@@ -39,24 +39,12 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
   }
 
   return (
-    // Normal-flow sibling directly above the composer box — NOT absolutely
-    // positioned against it. Absolute positioning anchored a fixed -top-9 to
-    // the composer box alone, so its reach upward never adapted to whatever
-    // rendered above it (e.g. PaywallNotice growing to two lines at a narrow
-    // width): the pill's fixed reach then intruded into the notice's own
-    // rendered text instead of just the empty margin above it. Sitting in
-    // flow means the pill always starts right after its actual previous
-    // sibling, at any height. The composer box (`.searchbar`, z-2) still
-    // paints over the small `-mb-8` tuck below, which is the only
-    // intentional overlap — with the composer itself, not with a sibling.
-    // `searchbar` (globals.css) is the width rule the composer box itself uses
-    // — 50% desktop / 95% phone. Wearing it here keeps the pill locked to the
-    // composer's width at every breakpoint instead of spanning the full
-    // container, which is what `w-full` did once this moved out of the box.
-    <div className="searchbar relative z-0 flex justify-center pointer-events-none pt-2 pb-6 -mb-8">
+    // No z-index here — z-auto means DOM order, so indicators rendered after paint on top.
+    // pointer-events-none so the pb-10 overlap doesn't block the searchbar below.
+    <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
       <button
         type="button"
-        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 px-8 py-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer"
+        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
         onClick={onToggleSlashCommand}
       >
         <span className="text-xs whitespace-nowrap shrink-0">
