@@ -36,7 +36,9 @@ RESPONSE_SCHEMA_METADATA_KEYS = ("output_parameters", "response_schema", "output
 # TTL is the bash command's own timeout plus this buffer, so a call started
 # near the deadline still completes but the token never outlives the run by
 # more than a minute.
-SANDBOX_CLIENT_DIR = "/tmp/.gaia"  # nosec B108 -- path inside the E2B sandbox, not this host
+# Inside GAIA's own dot-dir in the sandbox workspace (alongside .gaia/runs,
+# .gaia/gaia-tasks): persistent when JuiceFS is mounted, ephemeral otherwise.
+SANDBOX_CLIENT_DIR = "/workspace/.gaia"
 SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS = 60
 # Server-side blast-radius bounds per token (enforced on the callback route):
 # a runaway or injected script hits a hard wall instead of unlimited calls.
@@ -62,8 +64,8 @@ TOOL_SHAPE_MAX_KEYS_PER_OBJECT = 25
 TOOL_SHAPE_MAX_CHARS = 20000
 
 # On-demand tool docs inside the sandbox: gaia.schema() caches fetched docs as
-# one file per tool. Files are disposable TTL caches of the host-side store
-# (single Mongo record per tool, user-agnostic); when the E2B<->JuiceFS mount
-# is reliable this dir becomes a symlink to a shared read-only mount.
-SANDBOX_TOOL_DOCS_DIR = "/tmp/.gaia/tools"  # nosec B108 -- path inside the E2B sandbox, not this host
+# one file per tool. Files are disposable TTL caches of the host-side store;
+# when the E2B<->JuiceFS mount is reliable, global-scope docs move to the
+# shared _system overlay and this dir symlinks the common set.
+SANDBOX_TOOL_DOCS_DIR = f"{SANDBOX_CLIENT_DIR}/tools"
 SANDBOX_SCHEMA_CACHE_TTL_SECONDS = 900

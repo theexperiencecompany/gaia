@@ -19,7 +19,7 @@ CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
 EXECUTE_ENV = {
     "GAIA_EXECUTE_URL": "https://api.test/api/v1/sandbox/execute",
     "GAIA_EXECUTE_TOKEN": "tok-1",
-    "PYTHONPATH": "/tmp/.gaia",
+    "PYTHONPATH": "/workspace/.gaia",
 }
 
 
