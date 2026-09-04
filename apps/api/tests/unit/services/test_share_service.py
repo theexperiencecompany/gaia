@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+from itsdangerous import URLSafeTimedSerializer
 import pytest
 
 from app.config.settings import settings
@@ -92,8 +93,100 @@ class TestMintShareUrl:
         ):
             mint_share_url(user_id="u1", workspace_path="a.txt")
 
+    def test_a_secret_of_exactly_the_minimum_length_is_accepted(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # 32 is the floor, not the first rejected length — an off-by-one here
+        # takes file sharing down for anyone who set exactly 32 characters.
+        monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "a" * 32)
+
+        assert _mint_url(tmp_path)
+
+    def test_a_secret_one_character_short_is_refused(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "a" * 31)
+        with pytest.raises(AppError):
+            _mint_url(tmp_path)
+
+    def test_the_unconfigured_error_names_the_setting_and_how_to_set_it(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # This one lands in an operator's log, not a user's screen: the why/fix
+        # are the whole remediation, so an empty pair leaves them guessing.
+        monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", None)
+        with pytest.raises(AppError) as exc:
+            _mint_url(tmp_path)
+
+        assert exc.value.message == "File sharing is not configured."
+        assert exc.value.why == (
+            "The share signing secret (SHARE_GRANT_SECRET) is missing or too short."
+        )
+        assert exc.value.fix == "Set SHARE_GRANT_SECRET to 32+ random characters and retry."
+
+    def test_grants_are_signed_in_their_own_namespace(self, _secret: None) -> None:
+        # The salt keeps a signature minted here from validating anywhere else
+        # that signs with the same secret, and vice versa.
+        assert _serializer().salt == b"file-share-grant"
+
     def test_same_file_mints_distinct_tokens(self, _secret: None, tmp_path: Path) -> None:
         assert _mint_url(tmp_path) != _mint_url(tmp_path)  # nonce per grant
+
+    def test_a_zero_second_lifetime_is_refused_like_a_negative_one(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # A grant that expires the instant it is minted is never redeemable, so
+        # it must fail at the call site rather than 404 later at fetch time.
+        with pytest.raises(AppError):
+            _mint_url(tmp_path, ttl_seconds=0)
+
+    def test_the_shortest_positive_lifetime_still_mints(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        assert _mint_url(tmp_path, ttl_seconds=1)
+
+    def test_the_invalid_lifetime_error_says_what_to_do_about_it(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # AppError's why/fix are rendered to whoever hit this, so they are the
+        # product here, not decoration; the status is what the client branches on.
+        with pytest.raises(AppError) as exc:
+            _mint_url(tmp_path, ttl_seconds=0)
+
+        assert exc.value.status_code == 400
+        assert exc.value.message == "Invalid share lifetime."
+        assert exc.value.why == "ttl_seconds must be positive."
+        assert exc.value.fix == "Pass a positive ttl_seconds and retry."
+
+    def test_an_unconfigured_secret_reads_as_unavailable_not_bad_input(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # 503: the caller sent nothing wrong, the server is missing config.
+        monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", None)
+        with pytest.raises(AppError) as exc:
+            _mint_url(tmp_path)
+
+        assert exc.value.status_code == 503
+
+    def test_the_grant_records_the_tool_that_asked_for_it(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # The signed payload is the audit trail for a bearer that bypasses auth:
+        # without the attribution nothing says which tool call minted it.
+        url = _mint_url(tmp_path, tool="OUTLOOK_SEND_EMAIL", toolkit="outlook")
+        payload = ShareGrantPayload.model_validate(_serializer().loads(_token_of(url)))
+
+        assert (payload.tool, payload.toolkit) == ("OUTLOOK_SEND_EMAIL", "outlook")
+
+    def test_an_unguessable_extension_falls_back_to_a_binary_mimetype(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # The grant's mimetype is what the fetch serves; an empty one would make
+        # the download unusable to whatever asked for it.
+        url = _mint_url(tmp_path, filename="notes.qqq")
+        payload = ShareGrantPayload.model_validate(_serializer().loads(_token_of(url)))
+
+        assert payload.mimetype == "application/octet-stream"
 
 
 class TestRedeemShareGrant:
@@ -109,6 +202,39 @@ class TestRedeemShareGrant:
     async def test_tampered_token_is_none(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
         assert await redeem_share_grant(token[:-2] + "AA") is None
+
+    async def test_a_token_signed_for_another_purpose_is_rejected(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # The salt is domain separation: another signer holding the same secret
+        # (any other itsdangerous use in this app) must not mint file grants.
+        url = _mint_url(tmp_path)
+        payload = _serializer().loads(_token_of(url))
+        unsalted = URLSafeTimedSerializer(settings.SHARE_GRANT_SECRET).dumps(payload)
+
+        assert await redeem_share_grant(unsalted) is None
+
+    async def test_the_grants_byte_cap_reaches_the_reader(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        # The cap is per-grant and signed into the token; reading without it
+        # would serve a file the grant never authorised in full.
+        url = _mint_url(tmp_path, max_bytes=1234)
+        with patch(f"{MODULE}.read_user_file_bytes", return_value=b"x") as reader:
+            await redeem_share_grant(_token_of(url))
+
+        assert reader.call_args.kwargs == {"max_bytes": 1234}
+
+    async def test_a_grant_is_still_valid_at_its_expiry_instant(
+        self, _secret: None, tmp_path: Path
+    ) -> None:
+        url = _mint_url(tmp_path)
+        payload = ShareGrantPayload.model_validate(_serializer().loads(_token_of(url)))
+        with (
+            patch(f"{MODULE}.time.time", return_value=payload.expires_at),
+            patch(f"{MODULE}.read_user_file_bytes", return_value=b"x"),
+        ):
+            assert await redeem_share_grant(_token_of(url)) is not None
 
     async def test_nonpositive_ttl_raises_at_mint(self, _secret: None, tmp_path: Path) -> None:
         host = tmp_path / "a.txt"

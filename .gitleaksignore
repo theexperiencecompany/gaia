@@ -1,0 +1,8 @@
+# Per-finding allowlist for gitleaks. One fingerprint per line
+# (commit:path:rule:line), each with the reason it is not a credential.
+#
+# The value is a fake HMAC secret a test fixture assigns to SHARE_GRANT_SECRET;
+# it authenticates nothing and exists only to satisfy the service's 32-character
+# floor. The current file no longer carries a high-entropy literal, but gitleaks
+# scans the PR's commits, so the original one stays reachable in history.
+d57c64207d2a4275bbd922fc7fe898a4419298a6:apps/api/tests/integration/api/test_share_download_flow.py:generic-api-key:46

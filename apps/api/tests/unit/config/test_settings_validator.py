@@ -14,6 +14,7 @@ from app.config.settings_validator import SettingsGroup, SettingsValidator
 from tests.helpers import captured_wide_event
 
 POSTHOG_GROUP = "Posthog Analytics"
+SHARE_GROUP = "File Sharing"
 POSTHOG_FIELDS = {name for name in CommonSettings.model_fields if name.startswith("POSTHOG_")}
 
 
@@ -68,3 +69,55 @@ async def test_missing_posthog_is_warned_about_outside_production() -> None:
 
     posthog_warnings = [w for w in event["warnings"] if w["group_name"] == POSTHOG_GROUP]
     assert [set(w["missing_keys"]) for w in posthog_warnings] == [POSTHOG_FIELDS]
+
+
+def _group(validator: SettingsValidator, name: str) -> SettingsGroup:
+    return next(group for group in validator.groups if group.name == name)
+
+
+def test_the_share_group_publishes_the_prose_an_operator_reads() -> None:
+    """``description`` reaches no runtime code path — scripts/dump_config_schema.py
+    lifts it straight off this module's AST into the config schema — so this is
+    the only place its content is checked at all."""
+    group = _group(SettingsValidator(), SHARE_GROUP)
+
+    assert group.description == "HMAC signing secret for single-purpose file-share grants"
+    assert (
+        group.affected_features
+        == "File attachments fetched by Composio during tool execution"
+    )
+
+
+def test_a_configured_share_secret_is_not_reported_missing() -> None:
+    """Same contract as the posthog group: the key must be the settings
+    attribute name verbatim, or the group is reported missing however the app
+    is configured — and a share secret that reads as missing is one an operator
+    will go set again."""
+    settings_obj = SimpleNamespace(SHARE_GRANT_SECRET="set")
+
+    missing = SettingsValidator().validate_settings(settings_obj)
+
+    assert _missing_keys(missing, SHARE_GROUP) is None
+
+
+def test_an_unconfigured_share_secret_is_reported_missing() -> None:
+    missing = SettingsValidator().validate_settings(SimpleNamespace())
+
+    assert _missing_keys(missing, SHARE_GROUP) == ["SHARE_GRANT_SECRET"]
+
+
+async def test_a_missing_share_secret_names_what_it_breaks() -> None:
+    """The warning is all an operator gets: without the affected-features line
+    it says a key is missing but not that file attachments stop working."""
+    validator = SettingsValidator()
+    validator.configure(show_warnings=True, is_production=False)
+    validator.validate_settings(SimpleNamespace())
+
+    async with captured_wide_event() as event:
+        validator.log_validation_results()
+
+    warnings = [w for w in event["warnings"] if w["group_name"] == SHARE_GROUP]
+    assert len(warnings) == 1
+    assert warnings[0]["missing_keys"] == ["SHARE_GRANT_SECRET"]
+    assert "attachments" in warnings[0]["affected_features"].lower()
+    assert "Composio" in warnings[0]["affected_features"]

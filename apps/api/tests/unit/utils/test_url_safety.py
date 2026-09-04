@@ -115,6 +115,27 @@ def test_sync_guard_rejects_private_resolution(resolved_ip: str) -> None:
         assert_public_http_url_sync("https://rebind.example.com/")
 
 
+def test_sync_guard_resolves_the_host_and_port_it_parsed() -> None:
+    # The whole anti-rebinding property is that we validate the very endpoint
+    # the caller is about to dial; resolving a different host:port would grade
+    # an address nobody connects to.
+    with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]) as resolve:
+        assert_public_http_url_sync("https://example.com/download?x=1")
+    assert resolve.call_args.args == ("example.com", 443)
+
+
+def test_sync_guard_defaults_the_port_from_the_scheme() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]) as resolve:
+        assert_public_http_url_sync("http://example.com/")
+    assert resolve.call_args.args == ("example.com", 80)
+
+
+def test_sync_guard_keeps_an_explicit_port() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]) as resolve:
+        assert_public_http_url_sync("https://example.com:8443/")
+    assert resolve.call_args.args == ("example.com", 8443)
+
+
 def test_sync_guard_rejects_bad_scheme_before_resolving() -> None:
     with patch("app.utils.url_safety._resolve") as mock_resolve:
         with pytest.raises(ValueError, match="scheme"):

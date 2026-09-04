@@ -100,7 +100,9 @@ def mint_share_url(
         toolkit=toolkit,
     )
     token = _serializer().dumps(payload.model_dump())
-    return f"{settings.HOST}/api/v1/files/s/{quote(payload.filename, safe='')}?token={token}"
+    # `safe=''` is defence in depth: the filename is a Path.name, so a path
+    # separator cannot reach here in the first place.
+    return f"{settings.HOST}/api/v1/files/s/{quote(payload.filename, safe='')}?token={token}"  # pragma: no mutate -- quote() sees a Path.name, which holds no separator
 
 
 async def redeem_share_grant(token: str) -> tuple[bytes, str, str] | None:

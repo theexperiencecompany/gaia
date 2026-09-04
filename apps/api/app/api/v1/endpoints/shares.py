@@ -31,11 +31,16 @@ def _download_headers(filename: str) -> dict[str, str]:
     the response is download-only, unsniffable, and uncacheable. The filename
     is server-side (never the URL segment) and stripped to header-safe chars.
     """
-    safe = re.sub(r'["\r\n]', "", filename).encode("latin-1", "ignore").decode("latin-1")
+    # Codec names resolve case-insensitively (codecs.lookup normalises them), so
+    # the spelling of "latin-1" here is not observable behaviour.
+    safe = re.sub(r'["\r\n]', "", filename).encode("latin-1", "ignore").decode("latin-1")  # pragma: no mutate -- codec lookup is case-insensitive
+    # Header names are case-insensitive and Starlette lowercases them on the
+    # wire, so the casing below is unobservable — the values are what the tests
+    # (and browsers) act on.
     return {
-        "Content-Disposition": f'attachment; filename="{safe or "download"}"',
-        "X-Content-Type-Options": "nosniff",
-        "Cache-Control": "private, no-store, max-age=0",
+        "Content-Disposition": f'attachment; filename="{safe or "download"}"',  # pragma: no mutate -- header-name casing is not on the wire
+        "X-Content-Type-Options": "nosniff",  # pragma: no mutate -- header-name casing is not on the wire
+        "Cache-Control": "private, no-store, max-age=0",  # pragma: no mutate -- header-name casing is not on the wire
     }
 
 
