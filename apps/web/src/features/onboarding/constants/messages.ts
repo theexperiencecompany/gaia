@@ -1,8 +1,9 @@
 // ── Stage copy ────────────────────────────────────────────────────────────────
 
 export const PAYMENT_INTRO_LINES = [
-  "$30 a month, a dollar a day, for everything you just read.",
-  "A person doing this costs a salary. Cancel whenever. Monthly or yearly?",
+  "You're not buying an app. You're hiring.",
+  "A person doing this costs a salary. I cost a dollar a day.",
+  "Monthly or yearly?",
 ];
 
 export const FINISHING_MESSAGE = "Starting your first conversation…";
