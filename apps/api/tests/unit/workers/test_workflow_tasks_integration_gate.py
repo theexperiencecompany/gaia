@@ -13,8 +13,18 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.models.notification.notification_models import (
+    ActionStyle,
+    ActionType,
+    NotificationSourceEnum,
+    NotificationType,
+)
 from app.models.workflow_models import DeactivationReason, IntegrationRef
-from app.workers.tasks.workflow_tasks import _notify_workflow_failed, execute_workflow_by_id
+from app.workers.tasks.workflow_tasks import (
+    _notify_workflow_failed,
+    _notify_workflow_paused_for_integrations,
+    execute_workflow_by_id,
+)
 
 MODULE = "app.workers.tasks.workflow_tasks"
 PAUSE_MODULE = "app.services.workflow.integration_pause"
@@ -71,6 +81,7 @@ async def _run_task(
 
 
 GMAIL = [IntegrationRef(id="gmail", name="Gmail")]
+GMAIL_AND_NOTION = [*GMAIL, IntegrationRef(id="notion", name="Notion")]
 
 
 class TestADisconnectedIntegrationPausesTheWorkflow:
@@ -88,8 +99,20 @@ class TestADisconnectedIntegrationPausesTheWorkflow:
         _, _, notify, _ = await _run_task(_workflow(), GMAIL, {"trigger_type": "schedule"})
 
         assert notify.await_count == 1
-        request = notify.await_args.args[0]
-        assert "Gmail" in request.content.body
+        assert notify.await_args.args[0].content.body == (
+            "'Morning roadmap digest' needs Gmail, which isn't connected. "
+            "It's paused and will run again once you reconnect."
+        )
+
+    async def test_the_skip_reason_names_every_integration_the_fire_lacked(self) -> None:
+        """The reason is the run's only record of why nothing happened; a fire
+        that named one of two missing integrations sends the operator after the
+        wrong one."""
+        result, _, _, _ = await _run_task(
+            _workflow(), GMAIL_AND_NOTION, {"trigger_type": "schedule"}
+        )
+
+        assert result == "Workflow wf-1 paused — not connected: gmail, notion"
 
     async def test_a_trigger_fire_is_gated_too(self) -> None:
         """Composio/email trigger fires reach the same task and repeated just as
@@ -150,3 +173,93 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
         notify = await self._notify(already_sent=True)
 
         notify.assert_not_awaited()
+
+
+class TestTheNoticeTellsTheUserWhatToReconnect:
+    """The pause is only useful if the notice is actionable: the workflow that
+    stopped, the integration that stopped it, and one click to fix it. These
+    pin the copy and the link, because a notice that says the right thing about
+    the wrong integration is the loop it was written to end."""
+
+    @staticmethod
+    async def _sent(missing: list[IntegrationRef]) -> Any:
+        with patch(
+            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
+        ) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), missing)
+        return notify.await_args.args[0]
+
+    async def test_it_names_the_workflow_and_every_integration_it_waits_on(self) -> None:
+        request = await self._sent(GMAIL_AND_NOTION)
+
+        assert request.content.title == "Workflow Paused: Morning roadmap digest"
+        assert request.content.body == (
+            "'Morning roadmap digest' needs Gmail, Notion, which isn't connected. "
+            "It's paused and will run again once you reconnect."
+        )
+
+    async def test_the_button_connects_the_first_missing_integration_in_place(self) -> None:
+        request = await self._sent(GMAIL_AND_NOTION)
+
+        (action,) = request.content.actions
+        assert action.label == "Connect Gmail"
+        assert action.type == ActionType.REDIRECT
+        assert action.style == ActionStyle.PRIMARY
+        assert action.config.redirect.url == "/integrations?id=gmail"
+        assert action.config.redirect.open_in_new_tab is False
+        assert action.config.redirect.close_notification is True
+
+    async def test_it_reaches_this_user_as_an_integration_warning(self) -> None:
+        request = await self._sent(GMAIL_AND_NOTION)
+
+        assert request.user_id == "user-1"
+        assert request.source == NotificationSourceEnum.INTEGRATION_EXPIRED
+        assert request.type == NotificationType.WARNING
+        assert request.metadata == {
+            "workflow_id": "wf-1",
+            "missing_integrations": "gmail,notion",
+        }
+
+    async def test_a_notice_that_cannot_be_delivered_is_recorded_not_raised(self) -> None:
+        """The workflow is already paused; turning a lost message into a worker
+        error would retry the whole fire for nothing."""
+        with (
+            patch(
+                f"{MODULE}.notification_service.create_notification",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("mongo down"),
+            ),
+            patch(f"{MODULE}.log") as mock_log,
+        ):
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL)
+
+        mock_log.warning.assert_called_once()
+        assert mock_log.warning.call_args.args == (
+            "[WORKER] Could not send the integration-paused notice",
+        )
+        assert mock_log.warning.call_args.kwargs == {
+            "workflow_id": "wf-1",
+            "error": "mongo down",
+            "error_type": "RuntimeError",
+        }
+
+
+class TestTheLimitNoticeIsClaimedPerWorkflow:
+    async def test_the_claim_is_made_for_this_workflow_and_its_owner(self) -> None:
+        """The claim is a SET NX per workflow: keyed on the wrong id it would
+        silence a different workflow's first notice, and keyed on the wrong user
+        it would silence everyone's."""
+        with (
+            patch(
+                f"{MODULE}.workflow_repository.claim_limit_notice",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as claim,
+            patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
+        ):
+            await _notify_workflow_failed(
+                RateLimitExceededException(feature="trigger_workflow_executions"),
+                _workflow(user_id="user-9"),
+            )
+
+        claim.assert_awaited_once_with("user-9", "wf-1")
