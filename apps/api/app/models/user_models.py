@@ -100,7 +100,7 @@ class OnboardingPreferences(BaseModel):
         description="What the user wants GAIA to help with (onboarding Q2)",
     )
     response_style: str | None = Field(
-        None,
+        default=None,
         description="Preferred communication style: brief, detailed, casual, professional",
     )
     other_need: str | None = Field(
@@ -109,7 +109,7 @@ class OnboardingPreferences(BaseModel):
         description="What the user typed under 'Something else' in onboarding Q2, verbatim",
     )
     custom_instructions: str | None = Field(
-        None, max_length=500, description="Custom instructions for the AI assistant"
+        default=None, max_length=500, description="Custom instructions for the AI assistant"
     )
     # Removed timezone field - now only stored at user.timezone root level
 

@@ -34,6 +34,7 @@ from app.services.onboarding.first_question import (
     first_question_cache_key,
     prewarm_first_question,
     resolve_first_question,
+    seeded_chips,
 )
 
 MODULE = "app.services.onboarding.first_question"
@@ -590,3 +591,49 @@ class TestResolveBranches:
             assert await resolve_first_question("u1", _prefs(), None) is None
 
         compose.assert_awaited_once()
+
+
+class TestSeededChips:
+    """The agent's prompt reads back the chips the seeded turn actually offered,
+    from the same cache key the seed was built from. Nothing is guessed."""
+
+    async def test_reads_the_seed_key_and_returns_its_chips_as_a_list(self) -> None:
+        cached = FirstQuestion(question=GOOD_QUESTION, chips=GOOD_CHIPS)
+        getter = AsyncMock(return_value=cached)
+        with patch(f"{MODULE}.redis_cache.get", getter):
+            chips = await seeded_chips("u1", _prefs())
+
+        assert chips == list(GOOD_CHIPS)
+        assert chips is not cached.chips
+        assert getter.await_args.args == (first_question_cache_key("u1", _prefs()), FirstQuestion)
+        assert getter.await_args.kwargs == {}
+
+    async def test_a_different_user_or_answer_set_reads_a_different_key(self) -> None:
+        getter = AsyncMock(return_value=None)
+        with patch(f"{MODULE}.redis_cache.get", getter):
+            await seeded_chips("u2", _prefs(profession="Dentist"))
+
+        assert getter.await_args.args[0] == first_question_cache_key(
+            "u2", _prefs(profession="Dentist")
+        )
+        assert getter.await_args.args[0] != first_question_cache_key("u1", _prefs())
+
+    async def test_an_expired_key_yields_no_chips_rather_than_a_guess(self) -> None:
+        with patch(f"{MODULE}.redis_cache.get", AsyncMock(return_value=None)):
+            assert await seeded_chips("u1", _prefs()) == []
+
+    async def test_a_cache_outage_is_logged_with_its_cause_and_yields_no_chips(self) -> None:
+        boom = ConnectionError("redis down")
+        warning = MagicMock()
+        with (
+            patch(f"{MODULE}.redis_cache.get", AsyncMock(side_effect=boom)),
+            patch(f"{MODULE}.log.warning", warning),
+        ):
+            assert await seeded_chips("u1", _prefs()) == []
+
+        warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} seeded chips unreadable — prompt goes without them",
+            user_id="u1",
+            error="redis down",
+            error_type="ConnectionError",
+        )

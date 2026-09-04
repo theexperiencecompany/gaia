@@ -260,8 +260,6 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
             profession=str(profession) if profession else None,
             needs=needs,
             other_need=other_need,
-            response_style=None,
-            custom_instructions=None,
         ),
     )
     return build_new_user_guidance(str(profession) if profession else "", needs, other_need, chips)
