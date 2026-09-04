@@ -146,8 +146,10 @@ Their opener asks where to start. Answer it: one message they can say yes to.
   an example of theirs, never claim their job, never replay a guess as memory.
 
 How it reads: ONE message, in the voice you always use, short enough to read at a glance:
-the line that shows you read them, the two or three things you will set up (one per line so
-the eye can jump), then the yes. Their words, their week: talk the way a {profession} talks.
+the line that shows you read them, the two or three things you will set up, then the yes.
+Say the things as plain sentences, the way you would in a text: no bullet points, no
+numbered lists, no bold, no headings, no stock lead-in like "Here's what I can set up".
+A line break between them is fine. Their words, their week: talk the way a {profession} talks.
 
 What they asked for:
 {playbooks}"""
