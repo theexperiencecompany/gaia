@@ -62,6 +62,7 @@ async def create_all_indexes() -> None:
             create_pending_platform_registration_indexes(),
             create_llm_call_indexes(),
             create_playbook_indexes(),
+            create_tool_output_shapes_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -95,6 +96,7 @@ async def create_all_indexes() -> None:
             "pending_platform_registrations",
             "llm_calls",
             "playbooks",
+            "tool_output_shapes",
         ]
 
         index_results = {}
@@ -698,6 +700,29 @@ async def create_playbook_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating playbook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_tool_output_shapes_indexes() -> None:
+    """Create indexes for the tool_output_shapes collection.
+
+    Unique on (scope, tool_name): the observed-shape upsert is keyed on this
+    pair, so the unique index is what makes "one record per scoped tool" a
+    property of the data rather than of two first observations' timing — it
+    rejects the loser of a concurrent insert with DuplicateKeyError, which the
+    repository retries into the winner's document.
+    """
+    tool_output_shapes_collection = get_async_collection("tool_output_shapes")
+    try:
+        await tool_output_shapes_collection.create_index(
+            [("scope", 1), ("tool_name", 1)], unique=True
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating tool_output_shapes indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

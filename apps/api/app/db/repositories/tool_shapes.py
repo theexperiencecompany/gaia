@@ -5,8 +5,11 @@ never surfaces above this boundary. ``scope`` is what keeps a private MCP
 server's shapes invisible to other users (see ResolvedTool.shape_scope).
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
+
+from pymongo.errors import DuplicateKeyError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
@@ -25,17 +28,28 @@ class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputSh
         return await self._find_one({"scope": scope, "tool_name": tool_name})
 
     async def record(self, scope: str, tool_name: str, output_schema: dict[str, Any]) -> None:
-        """Store the merged schema for one more observation of ``tool_name``."""
-        await self._apply_raw_update(
-            {"scope": scope, "tool_name": tool_name},
-            {
-                "$set": {"output_schema": output_schema, "last_seen": datetime.now(UTC)},
-                "$inc": {"call_count": 1},
-            },
-            scope=REPO_GLOBAL_SCOPE,
-            upsert=True,
-            return_document=False,
-        )
+        """Store the merged schema for one more observation of ``tool_name``.
+
+        Two first observations of the same scoped tool can both miss the upsert
+        match and both insert; the unique ``(scope, tool_name)`` index
+        (``app.db.mongodb.indexes``) rejects the loser with ``DuplicateKeyError``,
+        and the retry then matches the winner and merges into it — one document,
+        never a duplicate that would split ``call_count`` and leave ``find_one``
+        picking an arbitrary incomplete schema.
+        """
+        key = {"scope": scope, "tool_name": tool_name}
+        update: dict[str, Mapping[str, object]] = {
+            "$set": {"output_schema": output_schema, "last_seen": datetime.now(UTC)},
+            "$inc": {"call_count": 1},
+        }
+        try:
+            await self._apply_raw_update(
+                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
+            )
+        except DuplicateKeyError:
+            await self._apply_raw_update(
+                key, update, scope=REPO_GLOBAL_SCOPE, upsert=True, return_document=False
+            )
 
 
 tool_shapes_repository = ToolShapesRepository()
