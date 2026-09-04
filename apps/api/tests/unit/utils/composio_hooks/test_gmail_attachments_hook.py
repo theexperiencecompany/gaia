@@ -451,10 +451,13 @@ class TestBeforeHookUsesTheRecordedParamName:
         resolved = [{"name": "y.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
         sent: list[dict] = []
         with (
-            patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved),
+            patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved) as res,
             patch(f"{HOOKS}.get_stream_writer", return_value=sent.append),
         ):
             out = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        # The upload is attributed to the invoking tool/toolkit, which is what
+        # scopes it in Composio's store.
+        assert res.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
         assert out["arguments"]["file"] == resolved[0]
         assert "attachment" not in out["arguments"]
         assert sent[0]["email_sent_data"][0]["attachments"] == [

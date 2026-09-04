@@ -128,6 +128,7 @@ class TestResolveAttachmentsSync:
             patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
             patch(f"{MODULE}.assert_public_http_url_sync"),
             patch(f"{MODULE}.FileUploadable") as fu_cls,
+            patch(f"{MODULE}.log") as log,
         ):
             fu_cls.from_url.side_effect = [
                 _fake_uploadable("ok", "text/plain", "k/ok"),
@@ -137,6 +138,24 @@ class TestResolveAttachmentsSync:
                 resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
         assert "SECRET" not in exc.value.message
         assert "file 2" in exc.value.message
+        # The URL is not lost, only moved: the wide event is where an operator
+        # can see which reference failed and why, and it is not user-visible.
+        assert log.error.call_args.kwargs == {
+            "error": "boom",
+            "user_id": "u1",
+            "source": "https://drive/file?token=SECRET",
+        }
+
+    def test_a_failed_workspace_reference_reports_its_path_on_the_event(self):
+        refs = [AttachmentReference(workspace_path="sessions/c/deck.pdf")]
+        with (
+            patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.resolve_user_file_sync", side_effect=FileNotFoundError("gone")),
+            patch(f"{MODULE}.log") as log,
+        ):
+            with pytest.raises(AppError):
+                resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
+        assert log.error.call_args.kwargs["source"] == "sessions/c/deck.pdf"
 
     def test_workspace_reference_is_labelled_by_path(self):
         refs = [AttachmentReference(workspace_path="sessions/c/deck.pdf")]

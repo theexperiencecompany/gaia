@@ -17,6 +17,7 @@ from unittest.mock import patch
 from pydantic import BaseModel
 import pytest
 
+from app.constants.email import EMAIL_ATTACHMENTS_PARAM_DESCRIPTION
 from app.models.mail_models import AttachmentReference
 from app.utils.composio_hooks import file_upload_hooks
 from app.utils.composio_hooks.file_upload_hooks import (
@@ -128,6 +129,62 @@ class TestFindNativeUploadParam:
             == "files"
         )
 
+    def test_marker_under_one_of_matches(self):
+        assert (
+            find_native_upload_param(
+                _schema({"attachment": {"oneOf": [_native_attachment_schema(), {"type": "null"}]}})
+            )
+            == "attachment"
+        )
+
+    def test_marker_under_all_of_matches(self):
+        assert (
+            find_native_upload_param(
+                _schema({"attachment": {"allOf": [_native_attachment_schema()]}})
+            )
+            == "attachment"
+        )
+
+    def test_marker_in_tuple_form_items_matches(self):
+        # JSON Schema also allows `items` as a list (positional/tuple form).
+        assert (
+            find_native_upload_param(
+                _schema({"files": {"type": "array", "items": [_native_attachment_schema()]}})
+            )
+            == "files"
+        )
+
+    def test_array_of_unmarked_items_does_not_match(self):
+        # An `items` dict is only interesting when the item itself is marked;
+        # claiming every array param would delete params tools depend on.
+        assert (
+            find_native_upload_param(
+                _schema({"attachment": {"type": "array", "items": {"type": "string"}}})
+            )
+            is None
+        )
+
+    def test_non_dict_property_does_not_match(self):
+        assert find_native_upload_param(_schema({"attachment": "not-a-schema"})) is None
+
+    def test_unmarked_variants_do_not_match(self):
+        # Every branch walked, nothing marked: the walk must not claim the param.
+        assert (
+            find_native_upload_param(
+                _schema(
+                    {
+                        "attachment": {
+                            "anyOf": [{"type": "string"}],
+                            "oneOf": [{"type": "integer"}],
+                            "allOf": [{"type": "null"}],
+                            "items": [{"type": "boolean"}],
+                        }
+                    }
+                )
+            )
+            is None
+        )
+
     def test_composite_param_merely_containing_a_file_does_not_match(self):
         # Claiming `message` would delete the param the tool needs and write a
         # bare {name, mimetype, s3key} back under it — the tool becomes uncallable.
@@ -186,6 +243,31 @@ class TestFileUploadSchemaModifier:
     def test_passthrough_records_nothing(self):
         file_upload_schema_modifier("SLACK_SEND_MESSAGE", "slack", _schema({"attachments": {}}))
         assert file_upload_hooks._swapped_upload_params == {}
+
+    def test_friendly_param_carries_the_agent_facing_instructions(self):
+        # The description is the only instruction the model gets on how to
+        # reference a file; an empty one leaves it guessing at the shape.
+        schema = _schema({"attachment": _native_attachment_schema()})
+        out = file_upload_schema_modifier("OUTLOOK_SEND_EMAIL", "outlook", schema)
+        assert (
+            out.input_parameters["properties"]["attachments"]["description"]
+            == EMAIL_ATTACHMENTS_PARAM_DESCRIPTION
+        )
+
+    def test_friendly_param_is_a_valid_array_of_reference_objects(self):
+        # The whole JSON-Schema skeleton is the contract the model fills: a
+        # wrong key or type here leaves it unable to pass a file at all, and
+        # nothing else in the stack would notice.
+        schema = _schema({"attachment": _native_attachment_schema()})
+        out = file_upload_schema_modifier("OUTLOOK_SEND_EMAIL", "outlook", schema)
+        friendly = out.input_parameters["properties"]["attachments"]
+        assert set(friendly) == {"type", "description", "items"}
+        assert friendly["type"] == "array"
+        assert set(friendly["items"]) == {"type", "properties"}
+        assert friendly["items"]["type"] == "object"
+        item_props = friendly["items"]["properties"]
+        assert set(item_props) == {"workspace_path", "url", "name"}
+        assert all(prop["type"] == "string" for prop in item_props.values())
 
     def test_item_properties_derive_from_the_reference_model(self):
         schema = _schema({"attachment": _native_attachment_schema()})
@@ -350,6 +432,14 @@ class TestResolveToolAttachments:
             resolve_tool_attachments("T", "tk", params, native_param="attachment")
         assert len(res.call_args.args[1]) == 1
 
+    def test_display_falls_back_to_empty_strings_per_field(self):
+        # Composio's uploader always sets both, but the card renders whatever is
+        # here — a missing key must not put "None" in front of the user.
+        params = {"arguments": {"attachment": {"s3key": "k"}}, "user_id": "u1"}
+        assert resolve_tool_attachments("T", "tk", params, native_param="attachment") == [
+            {"name": "", "mimetype": ""}
+        ]
+
     def test_no_attachments_derives_display_from_native(self):
         params = {
             "arguments": {
@@ -435,10 +525,12 @@ class TestGenericBeforeHook:
         )
         params = {"arguments": {"attachments": [{"url": "https://x/y.png"}]}, "user_id": "u1"}
         resolved = [{"name": "y.png", "mimetype": "image/png", "s3key": "k/1"}]
-        with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved):
+        with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved) as res:
             out = file_upload_before_hook("SLACK_UPLOAD_FILE", "slack", params)
         assert out["arguments"]["file"] == resolved[0]
         assert "attachments" not in out["arguments"]
+        # The upload is scoped to the invoking tool/toolkit in Composio's store.
+        assert res.call_args.kwargs == {"tool": "SLACK_UPLOAD_FILE", "toolkit": "slack"}
 
     def test_swapped_tool_aborts_on_garbage(self):
         file_upload_schema_modifier(

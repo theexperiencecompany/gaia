@@ -59,6 +59,17 @@ class TestOutlookAttachmentBeforeHook:
         assert mint.called is False
         assert out["arguments"] is arguments
 
+    def test_plain_http_url_passes_through(self):
+        # Both schemes are already fetchable by Composio; treating an http URL
+        # as a workspace path would send it to the grant minter, which would
+        # either fail or hand Outlook a grant for a file that is not ours.
+        arguments = {"attachment": "http://drive/download/1"}
+        params = {"arguments": arguments, "user_id": "u1"}
+        with patch(f"{HOOKS}.mint_share_url") as mint:
+            out = outlook_attachment_before_hook("OUTLOOK_SEND_EMAIL", "outlook", params)
+        assert mint.called is False
+        assert out["arguments"] is arguments
+
     def test_url_list_passes_through(self):
         arguments = {"attachment": ["https://x/a.pdf"]}
         params = {"arguments": arguments, "user_id": "u1"}

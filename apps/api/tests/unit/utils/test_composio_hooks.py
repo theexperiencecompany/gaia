@@ -505,6 +505,51 @@ class TestCallIdentityResolution:
         params: Any = {"arguments": "not-a-dict"}
         assert "user_id" not in self._run(params)
 
+    def _logged(self, params: Any) -> Any:
+        """The wide-event log calls the master hook made for one tool call."""
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        with (
+            patch("app.utils.composio_hooks.registry.log") as log,
+            patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p),
+        ):
+            master_before_execute_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        return log
+
+    def _warnings(self, params: Any) -> list[Any]:
+        """Every warning the identity resolution emitted for this call."""
+        return self._logged(params).warning.call_args_list
+
+    def test_every_call_is_attributed_to_its_tool_on_the_wide_event(self) -> None:
+        # The only place a Composio call's tool/toolkit reach the event; without
+        # them a failing tool is unattributable in production.
+        log = self._logged(self._with_config("u1", "u1"))
+        assert log.set.call_args.kwargs == {
+            "composio_tool": "GMAIL_SEND_EMAIL",
+            "composio_toolkit": "gmail",
+        }
+
+    def test_an_overwritten_identity_is_reported_on_the_wide_event(self) -> None:
+        # The overwrite is a security-relevant event — a user_id reached the hook
+        # that was not the one our server injected — so it must leave a trace
+        # naming the tool it happened on, not be silently corrected.
+        calls = self._warnings(self._with_config("attacker", "u1"))
+        assert len(calls) == 1
+        message, kwargs = calls[0].args[0], calls[0].kwargs
+        assert "user_id" in message and "RunnableConfig" in message
+        assert kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
+
+    def test_no_warning_when_the_identities_agree(self) -> None:
+        assert self._warnings(self._with_config("u1", "u1")) == []
+
+    def test_no_warning_when_nothing_was_bound_to_overwrite(self) -> None:
+        # The agent flow binds user_id="" and names the user per invocation;
+        # filling that in is the normal path, not a conflict.
+        assert self._warnings(self._with_config("", "u1")) == []
+
 
 # ============================================================================
 # 5. Gmail hooks — schema modifiers

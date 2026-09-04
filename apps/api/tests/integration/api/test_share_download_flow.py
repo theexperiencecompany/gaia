@@ -43,7 +43,9 @@ def _workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     (user_dir / "report.pdf").write_bytes(b"%PDF-1.4 composition")
     monkeypatch.setattr(settings, "JUICEFS_HOST_MOUNT_PATH", str(tmp_path))
     monkeypatch.setattr("app.services.storage.juicefs._is_mounted", lambda: True)
-    monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "composition-test-secret-0123456789abcdef")
+    # Long enough for the 32-char floor, but plain words: a high-entropy literal
+    # here reads as a real credential to the secret scanner.
+    monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "not-a-real-secret-only-for-this-test")
     return tmp_path
 
 

@@ -61,7 +61,9 @@ def outlook_attachment_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
     """Swap workspace-local ``attachment`` paths for grant URLs Composio can fetch."""
-    arguments: object = params.get("arguments", {})
+    # No `{}` default: the isinstance guard below already covers a missing key,
+    # and an empty dict would take the same early return one line later.
+    arguments: object = params.get("arguments")
     if not isinstance(arguments, dict):
         return params
     raw = arguments.get("attachment")

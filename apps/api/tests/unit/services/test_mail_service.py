@@ -137,6 +137,27 @@ class TestInvokeGmailTool:
 
         assert result.as_payload() == {"successful": True, "id": "msg1"}
         fake_tool.ainvoke.assert_awaited_once_with({"subject": "Hi"})
+        # The tool is fetched for this user, by name, with the agent-facing
+        # schema — a wrong value here silently sends the call to another
+        # mailbox or strips arguments off it.
+        assert mock_composio_service.get_tool.call_args.args == ("GMAIL_SEND_EMAIL",)
+        assert mock_composio_service.get_tool.call_args.kwargs == {
+            "use_before_hook": False,
+            "use_after_hook": False,
+            "use_schema_modifier": True,
+            "user_id": USER_ID,
+        }
+
+    async def test_native_schema_request_reaches_the_tool_fetch(self, mock_composio_service):
+        fake_tool = AsyncMock()
+        fake_tool.ainvoke = AsyncMock(return_value={"successful": True})
+        mock_composio_service.get_tool.return_value = fake_tool
+
+        await invoke_gmail_tool(
+            USER_ID, "GMAIL_SEND_EMAIL", {"subject": "Hi"}, use_schema_modifier=False
+        )
+
+        assert mock_composio_service.get_tool.call_args.kwargs["use_schema_modifier"] is False
 
     async def test_returns_error_dict_when_tool_not_found(self, mock_composio_service):
         mock_composio_service.get_tool.return_value = None
@@ -445,17 +466,21 @@ class TestAttachmentsSurviveArgumentValidation:
         delivered = self._args_reaching_the_tool(native, call)["attachment"]
         assert delivered.s3key == "k/1"
 
-        agent_facing = master_schema_modifier("GMAIL_SEND_EMAIL", "gmail", self._gmail_send_schema())
+        agent_facing = master_schema_modifier(
+            "GMAIL_SEND_EMAIL", "gmail", self._gmail_send_schema()
+        )
         assert "attachment" not in self._args_reaching_the_tool(agent_facing, call)
 
-    async def test_send_with_attachments_asks_for_the_native_schema(
-        self, mock_invoke_gmail_tool
-    ):
+    async def test_send_with_attachments_asks_for_the_native_schema(self, mock_invoke_gmail_tool):
         import io
 
         mock_invoke_gmail_tool.return_value = GmailToolResult.model_validate({"successful": True})
         upload = MagicMock()
-        upload.filename, upload.content_type, upload.file = ("d.pdf", "application/pdf", io.BytesIO(b"x"))
+        upload.filename, upload.content_type, upload.file = (
+            "d.pdf",
+            "application/pdf",
+            io.BytesIO(b"x"),
+        )
 
         with patch(
             "app.services.mail.mail_service.upload_bytes_sync",
