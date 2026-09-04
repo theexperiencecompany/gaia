@@ -148,7 +148,7 @@ class TestDeclaredChains:
 
         hooks = await self._hooks_for("build_executor_graph")
 
-        assert len(hooks) == 4
+        assert len(hooks) == 5
         assert hooks[-1] is manage_system_prompts_node
 
     async def test_comms_slots_the_executor_status_before_the_prompt_manager(self):

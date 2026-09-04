@@ -397,6 +397,22 @@ class TestWorkflowTaskExecution:
                 return_value=("conv-789", []),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
+            # The fire claims its workflow's conversation before it spends
+            # anything; nobody else holds it here.
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-789",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
 
@@ -458,6 +474,20 @@ class TestWorkflowTaskExecution:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_service,
             patch("app.workers.tasks.workflow_tasks.notification_service") as mock_notif,
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value="conv-fail",
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.release_lock_if_owned",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_wf_service.increment_execution_count = AsyncMock()
             mock_notif.create_notification = AsyncMock()

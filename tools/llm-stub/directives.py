@@ -70,6 +70,27 @@ _CLOSE = "]]"
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
 _JSON_DECODER = json.JSONDecoder()
 
+# Agent tiers frame internal payloads in XML-ish tags (see app/constants/agents.py
+# ``wrap_agent_payload``). A real model reads those as quoted context, never as new
+# commands — but a cancelled run's record and other notices echo the ORIGINAL
+# request verbatim, ``[[tool:...]]`` directives and all. Only ``<user_interjection>``
+# is the user genuinely speaking new work into a live run; every other tag is an
+# echo whose directives must NOT be re-executed. Strip those blocks before parsing
+# so the stub stops re-firing quoted work (phantom todos, a re-dispatched cancel).
+USER_INTERJECTION_TAG = "user_interjection"
+_ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
+
+
+def _strip_echoed_payloads(text: str) -> str:
+    """Remove every internal-tag block except ``<user_interjection>``."""
+    return _ECHO_BLOCK_RE.sub(
+        lambda m: m.group(0) if m.group(1) == USER_INTERJECTION_TAG else "", text
+    )
+
+
+def _is_interjection(text: str) -> bool:
+    return text.lstrip().startswith(f"<{USER_INTERJECTION_TAG}")
+
 
 class DirectiveError(ValueError):
     """A directive is present but malformed. Surfaced as HTTP 500 (fail loud)."""
@@ -201,7 +222,9 @@ def _script_message_index(messages: Sequence[dict[str, Any]]) -> int | None:
     a test scripted. A malformed directive raises here — fail loud."""
     for idx in range(len(messages) - 1, -1, -1):
         message = messages[idx]
-        if message.get("role") == "user" and parse_directives(message_text(message)):
+        if message.get("role") == "user" and parse_directives(
+            _strip_echoed_payloads(message_text(message))
+        ):
             return idx
     return None
 
@@ -247,37 +270,67 @@ def _cursor(
     return di
 
 
-def resolve_response(
-    messages: Sequence[dict[str, Any]],
-    available_tools: frozenset[str] = frozenset(),
-) -> Response:
-    """Pick the next scripted action for this invocation (stateless)."""
-    latest = _script_message_index(messages)
-    if latest is None:
-        return SayResponse(DEFAULT_REPLY)
+def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
+    """Newest non-interjection user message carrying directives — the current task.
 
-    user_text = message_text(messages[latest])
-    directives = parse_directives(user_text)
-    tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
-    say = next((d for d in directives if isinstance(d, SayDirective)), None)
+    Newest, not first: an executor thread persists per conversation, so a later
+    run's context still holds earlier runs' tasks. The task in flight is the most
+    recent genuine (non-interjection, echo-stripped) instruction; steers for it
+    arrive after it."""
+    for idx in range(len(messages) - 1, -1, -1):
+        message = messages[idx]
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        if _is_interjection(text):
+            continue
+        if parse_directives(_strip_echoed_payloads(text)):
+            return idx
+    return None
+
+
+def _collect_work_directives(
+    messages: Sequence[dict[str, Any]],
+) -> tuple[list[ToolDirective], SayDirective | None, int | None]:
+    """The current task's directives PLUS every steer folded into its run.
+
+    A run works through the whole plan — the original tool directives and each
+    ``<user_interjection>`` the drain hook injected, in order, each once — then
+    the final say. This is what lets a burst of steers all land in one run and
+    the plan survive a mid-run steer (a real model keeps its plan; the old
+    "newest scripted message wins" made the stub drop it)."""
+    primary_idx = _work_primary_index(messages)
+    if primary_idx is None:
+        return [], None, None
+    genuine: list[Directive] = list(
+        parse_directives(_strip_echoed_payloads(message_text(messages[primary_idx])))
+    )
+    for message in messages[primary_idx + 1 :]:
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        if _is_interjection(text):
+            genuine.extend(parse_directives(_strip_echoed_payloads(text)))
+    tool_dirs = [d for d in genuine if isinstance(d, ToolDirective)]
+    say = next((d for d in reversed(genuine) if isinstance(d, SayDirective)), None)
+    return tool_dirs, say, primary_idx
+
+
+def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
+    """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
+    tool_dirs, say, primary_idx = _collect_work_directives(messages)
     if not tool_dirs and say is None:
         return SayResponse(DEFAULT_REPLY)
 
-    emitted = _emitted_tool_names(messages[latest + 1 :])
-    di = _cursor(tool_dirs, emitted, available_tools)
-
+    tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
+    di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
         if nxt.name not in available_tools:
-            if CALL_EXECUTOR_TOOL in available_tools:
-                # acceptance_criteria became required with the structured handoff.
-                return ToolCallResponse(
-                    name=CALL_EXECUTOR_TOOL,
-                    args={"task": user_text, "acceptance_criteria": SCRIPTED_CRITERIA},
-                )
             if EXECUTE_TOOL in available_tools:
                 # Integration tools never bind under the execute cutover; the
                 # proxy is how a real model runs them, so the stub does too.
+                # Ahead of retrieval on purpose: binding one would loop forever.
                 return ToolCallResponse(
                     name=EXECUTE_TOOL,
                     args={
@@ -292,8 +345,53 @@ def resolve_response(
                     args={"query": nxt.name, "exact_tool_names": [nxt.name]},
                 )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
-
     return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+
+
+def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
+    """Front-door tier: forward / cancel the newest genuine instruction this turn.
+
+    One user message per comms turn (each steer is its own request), so newest —
+    not aggregated. Echo-stripping keeps comms from forwarding a quoted
+    ``<executor_cancelled>`` record as if it were fresh work."""
+    latest = _script_message_index(messages)
+    if latest is None:
+        return SayResponse(DEFAULT_REPLY)
+
+    task_text = _strip_echoed_payloads(message_text(messages[latest]))
+    directives = parse_directives(task_text)
+    tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
+    say = next((d for d in directives if isinstance(d, SayDirective)), None)
+    if not tool_dirs and say is None:
+        return SayResponse(DEFAULT_REPLY)
+
+    di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
+    if di < len(tool_dirs):
+        nxt = tool_dirs[di]
+        # Only the executor tier runs a tool itself, so the execute/retrieve
+        # fallbacks live in _resolve_work. Comms forwards and is done.
+        if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
+            # acceptance_criteria became required with the structured handoff.
+            return ToolCallResponse(
+                name=CALL_EXECUTOR_TOOL,
+                args={"task": task_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+            )
+        return ToolCallResponse(name=nxt.name, args=nxt.args)
+    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+
+
+def resolve_response(
+    messages: Sequence[dict[str, Any]],
+    available_tools: frozenset[str] = frozenset(),
+) -> Response:
+    """Pick the next scripted action for this invocation (stateless).
+
+    The front door (``call_executor`` bound) forwards/cancels the newest
+    instruction; the tier that runs work aggregates the task and every steer
+    folded into its run."""
+    if CALL_EXECUTOR_TOOL in available_tools:
+        return _resolve_comms(messages, available_tools)
+    return _resolve_work(messages, available_tools)
 
 
 @dataclass(frozen=True)

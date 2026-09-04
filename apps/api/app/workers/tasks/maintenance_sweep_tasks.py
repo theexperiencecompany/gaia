@@ -623,17 +623,6 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         )
         return "NEEDS_ATTENTION: Health check failed"
 
-    # A queued dispatch is an acknowledgement, not a verdict: the check did not
-    # run, and reading the acknowledgement as its result would mark the todo
-    # healthy on the strength of work that has not happened.
-    if run.queued_task_id:
-        log.warning(
-            "maintenance_sweep.health_check_queued",
-            todo_id=todo_id,
-            queued_task_id=run.queued_task_id,
-        )
-        return "NEEDS_ATTENTION: Health check queued behind an in-flight run; not run"
-
     return (run.message or "").strip()
 
 

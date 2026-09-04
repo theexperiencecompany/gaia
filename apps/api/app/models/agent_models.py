@@ -8,6 +8,8 @@ from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 
+from app.constants.agents import AgentTag
+
 #: One entry of an agent's middleware stack.
 #:
 #: ``AgentMiddleware``'s ``StateT`` is erased here because a stack is genuinely
@@ -174,6 +176,11 @@ class AgentConfigurable(TypedDict, total=False):
     #: verbatim (``call_executor`` folds it into the heal brief) because comms
     #: cannot be trusted to transcribe "do not repeat these" into its task.
     playbook_fallback: str | None
+    #: The busy-lock value THIS fire reserved its workflow's conversation with,
+    #: before the turn started. ``call_executor`` adopts that reservation instead
+    #: of queueing behind it; every other run leaves it absent and acquires
+    #: normally.
+    executor_lock_reservation: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit
@@ -262,15 +269,31 @@ class AgentRunnableConfig(RunnableConfig):
 
 @dataclass(frozen=True)
 class SilentRunResult:
-    """What one ``call_agent_silent`` turn produced.
-
-    ``queued_task_id`` is set when the turn's comms agent delegated to the
-    executor and that dispatch was QUEUED behind an in-flight run for the same
-    conversation instead of running. The ``message`` is then an acknowledgement
-    of work that has not started, so a caller must not record the turn as work
-    done. It is ``None`` whenever an executor actually ran.
-    """
+    """What one ``call_agent_silent`` turn produced."""
 
     message: str
     tool_data: dict[str, Any]
-    queued_task_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InboxEntry:
+    """One thing the executor has not been told yet.
+
+    ``tag`` decides how it reads to the model: ordinary work is the user
+    speaking, an interruption is the system reporting that a task was stopped.
+    """
+
+    id: str
+    text: str
+    tag: AgentTag = AgentTag.USER_INTERJECTION
+
+
+@dataclass(frozen=True, slots=True)
+class InboxDrain:
+    """What a single drain pass decided to do."""
+
+    inject: list[InboxEntry]
+    retire: list[InboxEntry]
+
+    def __bool__(self) -> bool:
+        return bool(self.inject or self.retire)

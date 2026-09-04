@@ -492,25 +492,6 @@ async def _execute_via_agent(
         )
         raise
 
-    # The executor was busy, so the request was queued and answered with an
-    # acknowledgement, not a result. Nothing this run asked for has happened,
-    # so it gets no success marker; the queued task delivers on its own.
-    if run.queued_task_id:
-        queued_iso = datetime.now(UTC).isoformat()
-        log.warning(
-            "tracked_todo.agent_dispatch_queued",
-            todo_id=todo_id,
-            queued_task_id=run.queued_task_id,
-        )
-        await tracked_todo_service.append_canvas_timeline(
-            todo_id=todo_id,
-            user_id=user_id,
-            entry=(
-                f"⏸ {queued_iso} — scheduled run queued behind an in-flight run "
-                f"(task {run.queued_task_id}); not run"
-            ),
-        )
-        return ""
     complete_message = run.message
 
     # End marker: success

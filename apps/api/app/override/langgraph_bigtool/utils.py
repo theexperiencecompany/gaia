@@ -128,6 +128,25 @@ def pop_pruned_tombstones(state: State) -> list[RemoveMessage]:
     return [RemoveMessage(id=message_id) for message_id in pruned_ids]
 
 
+# In-memory relay from a pre-model hook to the model node, which commits the
+# messages alongside its response. Same mechanism as PRUNED_MESSAGE_IDS_KEY and
+# for the same reason: a hook's return shapes the model input for one call and
+# is then discarded, so a hook that pulls a message in from OUTSIDE the graph
+# (see ``drain_inbox_hook``) would show it to the model once and lose it.
+INJECTED_MESSAGES_KEY = "_injected_messages"
+
+
+def pop_injected_messages(state: State) -> list[AnyMessage]:
+    """Pop ``INJECTED_MESSAGES_KEY`` so the model node can commit its contents."""
+    raw = cast("dict[str, object]", state).pop(INJECTED_MESSAGES_KEY, None)
+    if raw is None:
+        # Absent is fine: the hook may not have run this call.
+        return []
+    if not isinstance(raw, list):
+        raise TypeError(f"{INJECTED_MESSAGES_KEY} must be a list, got {type(raw).__name__}")
+    return cast("list[AnyMessage]", raw)
+
+
 class RetrieveToolsResult(TypedDict):
     """Result from retrieve_tools function."""
 

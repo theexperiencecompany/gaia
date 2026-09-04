@@ -11,7 +11,9 @@ marked with a "BUG:" comment.
 """
 
 import asyncio
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta, tzinfo
+import threading
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -48,7 +50,9 @@ from app.models.calendar_models import (
     SingleEventInput,
 )
 from app.models.common_models import GatherContextInput
+from app.utils import concurrency
 from app.utils.calendar_utils import CALENDAR_API_BASE
+from app.utils.concurrency import remember_server_loop
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.calendar_tool"
@@ -280,6 +284,40 @@ class TestGetUserTimezone:
 
 
 class TestRunSync:
+    @pytest.fixture(autouse=True)
+    def _no_recorded_loop(self) -> Iterator[None]:
+        """The recorded server loop is process-wide; a test that records one
+        must not leak it into the next."""
+        concurrency._server_loop = None
+        yield
+        concurrency._server_loop = None
+
+    async def _on_daemon_thread(self, call: Callable[[], str], *, timeout: float = 10.0) -> str:
+        """Run a blocking call off the loop and wait for it, without ``to_thread``.
+
+        A pool worker is joined at loop shutdown, so a worker wedged on a
+        foreign loop would hang the whole suite instead of failing this test.
+        A daemon thread lets the assertion below lose the race and report it.
+        """
+        loop = asyncio.get_running_loop()
+        done = asyncio.Event()
+        outcome: list[str] = []
+        failure: list[BaseException] = []
+
+        def _run() -> None:
+            try:
+                outcome.append(call())
+            except BaseException as exc:
+                failure.append(exc)
+            finally:
+                loop.call_soon_threadsafe(done.set)
+
+        threading.Thread(target=_run, daemon=True).start()
+        await asyncio.wait_for(done.wait(), timeout)
+        if failure:
+            raise failure[0]
+        return outcome[0]
+
     async def _echo(self, value: str) -> str:
         await asyncio.sleep(0)
         return value
@@ -291,19 +329,20 @@ class TestRunSync:
         await asyncio.sleep(1.0)
         return "late"
 
-    def test_runs_coroutine_without_a_loop(self) -> None:
+    def test_runs_coroutine_with_no_app_running(self) -> None:
         assert _run_sync(self._echo("ok")) == "ok"
 
-    def test_propagates_exceptions_without_a_loop(self) -> None:
+    def test_propagates_exceptions_with_no_app_running(self) -> None:
         with pytest.raises(KeyError):
             _run_sync(self._boom())
 
-    async def test_runs_coroutine_inside_a_running_loop(self) -> None:
+    async def test_runs_on_a_worker_thread_with_no_recorded_loop(self) -> None:
         assert await asyncio.to_thread(lambda: _run_sync(self._echo("threaded"))) == "threaded"
 
-    async def test_propagates_exceptions_inside_a_running_loop(self) -> None:
+    async def test_propagates_exceptions_from_a_worker_thread(self) -> None:
+        remember_server_loop()
         with pytest.raises(KeyError):
-            _run_sync(self._boom())
+            await asyncio.to_thread(lambda: _run_sync(self._boom()))
 
     async def test_timeout_actually_bounds_the_wait(self) -> None:
         # BUG: the ThreadPoolExecutor was used as a context manager, so __exit__
@@ -311,10 +350,50 @@ class TestRunSync:
         # only after the coroutine finished, making `timeout` a no-op. The
         # timeout=5 guard around get_user_by_id in CUSTOM_GET_DAY_SUMMARY could
         # therefore block the tool for as long as Mongo hung.
+        remember_server_loop()
         started = time.monotonic()
-        with pytest.raises(asyncio.TimeoutError):
-            _run_sync(self._slow(), timeout=0.1)
+        with pytest.raises(TimeoutError):
+            await asyncio.to_thread(lambda: _run_sync(self._slow(), timeout=0.1))
         assert time.monotonic() - started < 0.6
+
+    async def test_loop_bound_singleton_survives_from_a_worker_thread(self) -> None:
+        """Regression: a sync tool body runs on a LangGraph worker thread with
+        no loop of its own, so the coroutine used to run on a fresh loop —
+        and anything already bound to the server loop (lazy-provider locks,
+        Motor clients) raised "attached to a different loop", which is how the
+        calendar check died. It must run on the server loop instead.
+
+        ``remember_server_loop`` is what ``unified_startup`` calls, so this is
+        the production hand-over and not a fixture standing in for one."""
+        remember_server_loop()
+
+        # A future created here IS bound to this loop, so awaiting it from a
+        # coroutine running anywhere else raises the exact production error.
+        bound = asyncio.get_running_loop().create_future()
+
+        async def guarded() -> str:
+            return str(await bound)
+
+        async def _settle() -> None:
+            await asyncio.sleep(0.2)
+            bound.set_result("ok")
+
+        settler = asyncio.ensure_future(_settle())
+        try:
+            assert await self._on_daemon_thread(lambda: _run_sync(guarded(), timeout=5)) == "ok"
+        finally:
+            await settler
+
+    async def test_inline_call_on_the_loop_thread_is_refused(self) -> None:
+        # BUG: this used to offload to a fresh loop, which is the very thing
+        # that breaks loop-bound singletons; the guard that was supposed to
+        # detect it compared against uvloop's non-existent ``_thread_id`` and
+        # never fired, so the call deadlocked instead. Blocking the loop this
+        # coroutine needs has no correct answer — say so.
+        coro = self._echo("inline")
+        with pytest.raises(RuntimeError, match="event loop thread"):
+            _run_sync(coro)
+        coro.close()
 
 
 # ---------------------------------------------------------------------------

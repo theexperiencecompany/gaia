@@ -282,6 +282,17 @@ class TestWorkerRejectsStaleFire:
                 "app.workers.tasks.workflow_tasks.playbook_repository.get_for_workflow",
                 AsyncMock(return_value=None),
             ),
+            # A fire claims its workflow's conversation before it spends
+            # anything; nobody else holds it in these tests.
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                AsyncMock(return_value="conv_1"),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.try_acquire_lock",
+                AsyncMock(return_value=True),
+            ),
+            patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
         ):
             mock_wf_svc.increment_execution_count = AsyncMock()
             result = await execute_workflow_by_id({}, workflow.id, context)

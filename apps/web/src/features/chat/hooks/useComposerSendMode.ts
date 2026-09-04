@@ -1,5 +1,6 @@
 "use client";
 
+import { useChatStore } from "@/stores/chatStore";
 import { useActiveComposerLocked } from "@/stores/streamStore";
 
 export type ComposerSendMode = "send" | "stop" | "queue";
@@ -9,19 +10,27 @@ export type ComposerSendMode = "send" | "stop" | "queue";
  *
  * A turn is "open" across both the initial response and the held window after
  * it (stream still open while a background executor runs over the same SSE).
- * Any send during that window is queued by the turn manager, so the button
- * must reflect that the entire time:
- *  - turn open + typed content → `queue`
+ * A send during that window steers the live run immediately, so the button
+ * stays on `send`:
+ *  - turn open + typed content → `send` (steers)
  *  - turn open + empty composer → `stop`
  *  - otherwise → `send`
+ *
+ * The `queue` mode survives only for not-yet-created conversations, where the
+ * backend has no id to fold into and the turn manager still holds the send.
  *
  * Shared by `SendStopButton` (the button itself) and `ComposerRight` (the
  * tooltip), so the two never drift apart.
  */
 export function useComposerSendMode(hasContent: boolean) {
   const isStreaming = useActiveComposerLocked();
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
 
-  const showQueue = isStreaming && hasContent;
+  const canSteer =
+    activeConversationId != null && activeConversationId !== "new";
+  const showQueue = isStreaming && hasContent && !canSteer;
   const showStop = isStreaming && !hasContent;
   let mode: ComposerSendMode = "send";
   if (showStop) mode = "stop";
