@@ -120,6 +120,7 @@ out
 postman/
 
 .agents/plans/
+.agents/prod-convos/
 .agents/recording/
 .agents/sim/
 
