@@ -150,7 +150,12 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         # Only the Mongo ``_id`` identity is wrapped as an ObjectId; a business-key
         # identity (conversation_id, a UUID id) is matched as the plain string.
         if self.identity_field == "_id" and self.uses_object_id:
-            return ObjectId(doc_id)
+            # A malformed id is not a valid ObjectId, so it can identify no
+            # document. Match it as the plain string it is: an ObjectId ``_id``
+            # never equals a string in Mongo, so the read/update/delete misses
+            # and returns None/False instead of raising ``bson.InvalidId``. One
+            # guard here covers every ObjectId-keyed repository at once.
+            return ObjectId(doc_id) if ObjectId.is_valid(doc_id) else doc_id
         return doc_id
 
     def _identity_filter(self, doc_id: str) -> dict[str, object]:

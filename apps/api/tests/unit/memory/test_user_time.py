@@ -80,10 +80,9 @@ class TestLocalToday:
 @pytest.mark.unit
 class TestRepositoryFailureFallsBackToUTC:
     async def test_a_repository_error_resolves_to_utc_instead_of_raising(self) -> None:
-        """The repository raises for a malformed user id (bson InvalidId) and
-        for infra failures; timezone resolution is enrichment, so a lookup
-        failure must degrade to UTC — raising here crashed every retain in the
-        real-infra suite, whose synthetic user ids are not ObjectIds."""
+        """The repository can raise on an infra failure; timezone resolution is
+        enrichment, so a lookup failure must degrade to UTC rather than crash the
+        retain that asked for it."""
         with patch.object(
             user_time.user_repository, "get", AsyncMock(side_effect=ValueError("bad id"))
         ):
