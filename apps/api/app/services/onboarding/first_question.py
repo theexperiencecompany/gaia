@@ -82,7 +82,10 @@ def comms_voice_rules() -> str:
     """
     start = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_START)
     end = COMMS_AGENT_PROMPT.find(_VOICE_SECTION_END, start + 1)
-    if start == -1 or end == -1:
+    # One membership test rather than two comparisons: `start == -1` on its own
+    # is unobservable (when the start marker is missing the slice below is empty
+    # anyway), so no test can pin it and a silent edit to it is free.
+    if -1 in (start, end):
         return ""
     return COMMS_AGENT_PROMPT[start:end].strip()
 
