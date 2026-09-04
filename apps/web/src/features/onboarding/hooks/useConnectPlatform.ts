@@ -14,14 +14,13 @@
 
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { type Dispatch, useCallback, useEffect, useState } from "react";
 import type { PhoneLinkTarget } from "@/components/shared/PhoneLinkModal";
 import { BOT_AUTH_COMMAND, type BotPlatform } from "@/config/botPlatforms";
 import { BOT_LINKS } from "@/features/bots/constants";
 import { apiService } from "@/lib/api/service";
 import { toast } from "@/lib/toast";
-import { useComposerStore } from "@/stores/composerStore";
 import { type LinkCodeResponse, mintLinkCode } from "../api/onboardingApi";
 import type { Action } from "../state/types";
 
@@ -35,7 +34,7 @@ interface PlatformConnectResponse {
 
 interface UseConnectPlatformReturn {
   connect: (platform: BotPlatform) => void;
-  skip: () => Promise<void>;
+  skip: () => void;
   phoneModalOpen: boolean;
   phoneTarget: PhoneLinkTarget | null;
   isSubmittingPhone: boolean;
@@ -70,8 +69,6 @@ export function useConnectPlatform(
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [phoneTarget, setPhoneTarget] = useState<PhoneLinkTarget | null>(null);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
-  const setPendingPrompt = useComposerStore((s) => s.setPendingPrompt);
-  const queryClient = useQueryClient();
 
   // Minted on stage entry rather than per click: `window.open` in a click
   // handler must be synchronous or the browser blocks it as a popup. The code
@@ -159,26 +156,13 @@ export function useConnectPlatform(
       dispatch({ type: "platformConnected", platform: "imessage" });
   }, [dispatch, phoneTarget]);
 
-  const skip = useCallback(async () => {
-    // No platform, so the composed opener is sent on the web instead — as the
-    // user's own turn, once the redirect to /c lands. A fast skipper can beat
-    // the mint that composes it, so wait on the in-flight request rather than
-    // read whatever has resolved by now; a mint that genuinely failed is the
-    // only case that advances without a first message.
-    let code = linkCode;
-    if (!code && preferencesPersisted) {
-      try {
-        code = await queryClient.ensureQueryData({
-          queryKey: LINK_CODE_QUERY_KEY,
-          queryFn: mintLinkCode,
-        });
-      } catch {
-        code = null;
-      }
-    }
-    if (code) setPendingPrompt(code.first_message, true);
+  // Skipping just advances the wizard. The web no longer stages the composed
+  // opener as the user's own turn: completion seeds GAIA's "Getting started"
+  // conversation server-side and the guard lands them in it. The bot surfaces
+  // still send `code.first_message` as the user's first turn.
+  const skip = useCallback(() => {
     dispatch({ type: "skipPlatforms" });
-  }, [dispatch, linkCode, preferencesPersisted, queryClient, setPendingPrompt]);
+  }, [dispatch]);
 
   return {
     connect,

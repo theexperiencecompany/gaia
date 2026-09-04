@@ -35,7 +35,6 @@ const MainChat = React.memo(function MainChat() {
 
   const {
     hasMessages,
-    isWelcomeConversation,
     chatRef,
     dummySectionRef,
     inputRef,
@@ -88,8 +87,7 @@ const MainChat = React.memo(function MainChat() {
   // Voice mode forces the messages layout so the gradient + bar always have
   // a stable container; the user can speak from a fresh /c without flipping
   // layouts mid-call.
-  const useMessagesLayout =
-    voiceModeActive || hasMessages || isWelcomeConversation;
+  const useMessagesLayout = voiceModeActive || hasMessages;
 
   if (voiceModeActive) {
     return (

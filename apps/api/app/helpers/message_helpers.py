@@ -21,7 +21,6 @@ from app.agents.templates.agent_template import (
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.message_models import (
     FileData,
@@ -279,27 +278,13 @@ async def get_onboarding_system_prompt_if_applicable(
     conversation_id: str,
     latest_user_message: str | None = None,
 ) -> str | None:
-    """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
+    """Return the onboarding system prompt for a run-now demo turn, else ``None``."""
     try:
-        probe = await conversation_repository.get_onboarding_probe(conversation_id)
-        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
-
-        if not is_tagged_onboarding and not is_run_now_demo:
+        if not is_run_now_demo:
             return None
-
-        if is_tagged_onboarding:
-            message_count = probe.message_count if probe else 0
-            if message_count >= 7:
-                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
-                log.info(
-                    "[onboarding_prompt] Auto-completed onboarding for after messages",
-                    user_id=user_id,
-                    message_count=message_count,
-                )
-                return None
 
         user_doc = await user_repository.get(user_id)
         if not user_doc:

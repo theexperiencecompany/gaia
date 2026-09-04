@@ -22,7 +22,6 @@ import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUs
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
-import { WelcomeChat } from "@/features/chat/components/welcome/WelcomeChat";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useMessageHighlight } from "@/features/chat/hooks/useMessageHighlight";
@@ -303,10 +302,6 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
-  // Read off the conversation, not userStore, to avoid a stale-rehydrate race.
-  const isWelcomeConversation =
-    conversation?.is_onboarding_conversation === true;
-
   // Handle retry callback. `retryMessage` gets a new identity on most renders
   // (its deps chain up to an unstable `sendMessage`), so we read it through a
   // ref to keep `handleRetry` — and therefore messagePropsOptions and the whole
@@ -450,7 +445,6 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-      {isWelcomeConversation && <WelcomeChat />}
       {messagesWithDeduplicatedToolCalls?.map(
         (message: MessageType, index: number) => {
           // Consecutive bot bubble grouping (iMessage-style):

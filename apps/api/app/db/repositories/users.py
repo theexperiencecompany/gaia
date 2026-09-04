@@ -32,6 +32,7 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
+    FIRST_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
 )
@@ -272,6 +273,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields[f"onboarding.preferences.{field}"] = value
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
+        )
+
+    async def set_first_conversation_id(
+        self, user_id: str, conversation_id: str
+    ) -> UserDocument | None:
+        """Record the seeded "Getting started" conversation on the onboarding subdoc."""
+        return await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {f"onboarding.{FIRST_CONVERSATION_ID_FIELD}": conversation_id}},
+            scope=REPO_GLOBAL_SCOPE,
         )
 
     async def reset_onboarding(self, user_id: str) -> None:

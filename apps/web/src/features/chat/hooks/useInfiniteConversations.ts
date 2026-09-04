@@ -47,7 +47,6 @@ export const useInfiniteConversations = () => {
             userId: conv.user_id,
             starred: conv.starred ?? false,
             isSystemGenerated: conv.is_system_generated ?? false,
-            isOnboardingConversation: conv.is_onboarding_conversation ?? false,
             systemPurpose: conv.system_purpose ?? null,
             isUnread: conv.is_unread ?? false,
             createdAt: new Date(conv.createdAt),

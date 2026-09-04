@@ -346,9 +346,9 @@ class TestDeliveredResultsReachTheSessionThread:
             )
         assert recorder.await_args.args[1].startswith("[Delivered to the user on WhatsApp —")
 
-    async def test_imessage_uses_capitalized_fallback(self) -> None:
-        """iMessage has no entry in PLATFORM_DISPLAY_NAMES — the fallback
-        ``source.value.capitalize()`` must be used rather than ``None``."""
+    async def test_imessage_is_spelled_the_way_apple_spells_it(self) -> None:
+        """iMessage is the one platform whose display name is not a plain
+        capitalization, so the map must carry it rather than fall back."""
         recorder = AsyncMock()
         with (
             patch(
@@ -370,7 +370,7 @@ class TestDeliveredResultsReachTheSessionThread:
                 notification_text="hello",
                 origin=self.ORIGIN,
             )
-        assert recorder.await_args.args[1].startswith("[Delivered to the user on Imessage —")
+        assert recorder.await_args.args[1].startswith("[Delivered to the user on iMessage —")
 
     @pytest.mark.regression
     async def test_a_result_that_was_not_delivered_is_not_recorded(self) -> None:

@@ -23,7 +23,15 @@ export const useOnboardingGuard = () => {
     // Submitting the answers IS completion now — nothing is generated
     // afterwards, so there is no processing phase to hold the user here.
     if (isOnboardingCompleted) {
-      redirect("/c", RedirectType.push);
+      // Completion seeds GAIA's "Getting started" conversation, so land the
+      // user inside it rather than on an empty composer. A seed that failed is
+      // never a reason to strand them — fall back to the chat home.
+      const seededConversationId =
+        user.onboarding?.first_message_conversation_id;
+      redirect(
+        seededConversationId ? `/c/${seededConversationId}` : "/c",
+        RedirectType.push,
+      );
     }
   } else if (!isOnboardingCompleted) {
     // If not on onboarding page but onboarding is not completed, redirect to onboarding

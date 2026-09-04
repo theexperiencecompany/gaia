@@ -3,7 +3,10 @@ from typing import Any
 from fastapi import HTTPException
 
 from app.constants.log_tags import LogTag
-from app.constants.onboarding import HOLO_CONVERSATION_ID_FIELD
+from app.constants.onboarding import (
+    FIRST_CONVERSATION_ID_FIELD,
+    HOLO_CONVERSATION_ID_FIELD,
+)
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
@@ -22,8 +25,11 @@ from app.services.analytics_service import AnalyticsEvents, capture_event, ident
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
+from app.services.onboarding.first_conversation import compose_first_conversation
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
+from app.services.platform_link_service import linked_platforms_of
 from app.services.workflow.service import WorkflowService
+from app.utils.seeding_utils import seed_first_conversation
 from shared.py.wide_events import log
 
 
@@ -103,8 +109,10 @@ async def complete_onboarding(
             {"profession": onboarding_data.profession, "onboarding_completed": True},
         )
 
+        seeded_user = await _seed_first_conversation(updated_user, preferences)
+
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)
-        return _serialize_user(updated_user)
+        return _serialize_user(seeded_user or updated_user)
 
     except HTTPException:
         raise
@@ -117,6 +125,37 @@ async def complete_onboarding(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
+
+
+async def _seed_first_conversation(
+    user: UserDocument, preferences: OnboardingPreferences
+) -> UserDocument | None:
+    """Seed GAIA's opening conversation and stamp its id on the onboarding subdoc.
+
+    Best-effort by design: the welcome is a nicety, and a user whose completion
+    write already landed must not be bounced back into the wizard because a
+    conversation could not be created. Returns the re-read user document when the
+    id was stored, so the completion response carries it.
+    """
+    user_id = user.id
+    try:
+        # Linking happens on the platform-pick step, before the answers are
+        # submitted, so the link is already on the document we just wrote. A user
+        # who skipped that step simply gets no platform line.
+        connected_platform = next(iter(linked_platforms_of(user)), None)
+        composed = compose_first_conversation(preferences, connected_platform)
+        conversation_id = await seed_first_conversation(user_id, composed)
+        if conversation_id is None:
+            return None
+        return await user_repository.set_first_conversation_id(user_id, conversation_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.ONBOARDING} complete_onboarding failed to seed the first conversation",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
 
 
 async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
@@ -136,7 +175,7 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
             preferences=OnboardingPreferences.model_validate(
                 onboarding_data.get("preferences") or {}
             ),
-            first_message_conversation_id=onboarding_data.get("first_message_conversation_id"),
+            first_message_conversation_id=onboarding_data.get(FIRST_CONVERSATION_ID_FIELD),
         )
 
     except HTTPException:
@@ -230,7 +269,7 @@ async def reset_onboarding(user_id: str) -> OnboardingResetCounts:
     seeded_conversation_ids: list[str] = [
         cid
         for cid in (
-            onboarding.get("first_message_conversation_id"),
+            onboarding.get(FIRST_CONVERSATION_ID_FIELD),
             onboarding.get(HOLO_CONVERSATION_ID_FIELD),
         )
         if cid

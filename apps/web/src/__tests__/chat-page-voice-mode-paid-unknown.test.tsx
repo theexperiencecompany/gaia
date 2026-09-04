@@ -56,7 +56,6 @@ vi.mock(
 vi.mock("@/features/chat/components/interface/hooks/useChatLayout", () => ({
   useChatLayout: () => ({
     hasMessages: false,
-    isWelcomeConversation: false,
     chatRef: { current: null },
     dummySectionRef: { current: null },
     inputRef: { current: null },

@@ -10,6 +10,7 @@ export interface UserInfo {
     completed: boolean;
     completed_at?: string;
     phase?: string;
+    first_message_conversation_id?: string;
     preferences?: {
       profession?: string;
       response_style?: string;

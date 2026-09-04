@@ -25,6 +25,7 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
+    FIRST_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
@@ -204,6 +205,92 @@ class TestCompleteOnboarding:
 
         assert await queued_job_names(arq_pool) == []
         mock_seed.assert_not_awaited()
+
+    async def test_seeds_the_getting_started_conversation_and_persists_its_id(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        """The web routes the freshly onboarded user into this conversation, so
+        an id that never reaches `onboarding.first_message_conversation_id`
+        drops them on an empty composer instead."""
+        mock_repo.complete_onboarding.return_value = sample_user
+        mock_repo.set_first_conversation_id = AsyncMock(
+            return_value=_completed_user(sample_user_id, first_message_conversation_id="conv-1")
+        )
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
+            result = await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert seed.await_args.args[0] == sample_user_id
+        composed = seed.await_args.args[1]
+        assert composed.lines[0] == (
+            "So: engineer and drowning in email. That's most of a day. I can take a lot of it."
+        )
+        mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
+        assert result["onboarding"][FIRST_CONVERSATION_ID_FIELD] == "conv-1"
+
+    async def test_the_seeded_line_names_a_platform_linked_during_onboarding(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+    ) -> None:
+        """The link lands on the user doc before the answers are submitted, so
+        the platform line is composed from the document completion just wrote —
+        no second read."""
+        user = _completed_user(sample_user_id)
+        user.platform_links = {"telegram": {"id": "tg-1"}}
+        mock_repo.complete_onboarding.return_value = user
+        mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert seed.await_args.args[1].lines[2] == (
+            "And I'm in your Telegram now. Text me from there whenever. If something "
+            "needs you, I'll text first."
+        )
+
+    async def test_a_failed_seed_still_completes_onboarding(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        """Completion already landed. Failing the request here would bounce the
+        user back into the wizard over a welcome message."""
+        mock_repo.complete_onboarding.return_value = sample_user
+        mock_repo.set_first_conversation_id = AsyncMock()
+
+        with patch(
+            f"{SERVICE}.seed_first_conversation",
+            AsyncMock(side_effect=RuntimeError("mongo down")),
+        ):
+            result = await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert result["user_id"] == sample_user_id
+        assert result["onboarding"]["completed"] is True
+        mock_repo.set_first_conversation_id.assert_not_awaited()
+
+    async def test_a_seed_that_returned_no_id_writes_nothing(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = sample_user
+        mock_repo.set_first_conversation_id = AsyncMock()
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value=None)):
+            result = await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        assert result["user_id"] == sample_user_id
+        mock_repo.set_first_conversation_id.assert_not_awaited()
 
     async def test_captures_the_completion_event_deduped_per_user(
         self,

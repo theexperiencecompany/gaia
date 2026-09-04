@@ -25,5 +25,9 @@ LEGACY_PERSONALIZATION_MARKER = "house"
 # conversation, so a reset can tear it down again.
 HOLO_CONVERSATION_ID_FIELD = "holo_conversation_id"
 
+# Key inside the `onboarding` subdocument holding the seeded "Getting started"
+# conversation, so completion can hand it to the web and a reset can tear it down.
+FIRST_CONVERSATION_ID_FIELD = "first_message_conversation_id"
+
 # Start triage once this many emails are buffered, without waiting for the full fetch.
 TRIAGE_EARLY_THRESHOLD = 100

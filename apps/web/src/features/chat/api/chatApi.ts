@@ -130,7 +130,6 @@ export interface Conversation {
   description: string;
   starred?: boolean;
   is_system_generated?: boolean;
-  is_onboarding_conversation?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
   source?: ConversationSource;
@@ -162,7 +161,6 @@ export interface SyncedConversation {
   description: string;
   starred?: boolean;
   is_system_generated?: boolean;
-  is_onboarding_conversation?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
   createdAt: string;

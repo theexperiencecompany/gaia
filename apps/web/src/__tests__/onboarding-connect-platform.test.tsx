@@ -5,8 +5,8 @@
  *
  * What is pinned here: the minted code reaches every button (so nobody has to
  * type /auth), the mint failing still lets a user through on the old links,
- * and skipping hands the same composed message to the web chat as an
- * auto-send rather than dropping it in the composer.
+ * and skipping just advances the wizard — the post-onboarding opener is now a
+ * server-seeded conversation, not a prompt staged into the web composer.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -226,25 +226,26 @@ describe("useConnectPlatform", () => {
     });
   });
 
-  it("queues the composed first message for auto-send when platforms are skipped", async () => {
+  it("advances without staging any prompt when platforms are skipped", async () => {
     const { result, dispatch } = await renderConnect();
 
     await act(async () => {
-      await result.current.skip();
+      result.current.skip();
     });
 
-    // `true` is the auto-send flag: the message must land as the user's own
-    // turn, not sit unsent in the composer.
-    expect(setPendingPrompt).toHaveBeenCalledWith(FIRST_MESSAGE, true);
+    // The server seeds GAIA's "Getting started" conversation on completion and
+    // the guard lands the user in it, so staging the opener as the user's own
+    // turn here would replay onboarding into an unrelated chat.
+    expect(setPendingPrompt).not.toHaveBeenCalled();
     expect(dispatch).toHaveBeenCalledWith({ type: "skipPlatforms" });
   });
 
-  it("still advances on skip when there is no code to send", async () => {
+  it("still advances on skip when minting failed", async () => {
     mintLinkCode.mockRejectedValue(new Error("boom"));
     const { result, dispatch } = await renderConnect();
 
     await act(async () => {
-      await result.current.skip();
+      result.current.skip();
     });
 
     expect(setPendingPrompt).not.toHaveBeenCalled();
