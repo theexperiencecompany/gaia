@@ -12,14 +12,16 @@ EXECUTE_TOOL_NAME = "execute"
 # tokens — cap the doc, never inject a huge schema wholesale.
 SCHEMA_DOC_MAX_CHARS = 6000
 
-# Each schema section has its own budget inside the doc cap: an oversized
-# schema degrades to shallower levels (nested detail collapses to a "..."
-# marker) instead of eating the whole doc or being clipped mid-JSON. Args gets
-# the larger share — the model must construct valid arguments from it; the
-# response shape only guides how the result is consumed. The budgets plus
-# description and boilerplate stay under SCHEMA_DOC_MAX_CHARS by construction.
+# The args schema has its own budget inside the doc cap: an oversized schema
+# degrades to shallower levels (nested detail collapses to a "..." marker)
+# instead of eating the whole doc or being clipped mid-JSON. Args must render
+# inline — the model constructs calls from it.
 ARGS_SCHEMA_MAX_CHARS = 3000
-RESPONSE_SCHEMA_MAX_CHARS = 2000
+# The response shape only guides how results are consumed, so it renders inline
+# only when small; above this it becomes a one-line pointer to the on-demand
+# lookup (gaia.schema / the sandbox tool-docs folder) instead of re-paid
+# context on every later turn.
+RESPONSE_SCHEMA_INLINE_MAX_CHARS = 1000
 
 # Keys under which a tool's metadata may carry a provider-supplied response
 # schema. Rendered only when present — most tools do not document their output
@@ -40,3 +42,18 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600
+
+# Observed-shape learning (services/tool_shape_service.py): structure inferred
+# from real dispatch outputs. Arrays are sampled, and a dict wider than the key
+# threshold is treated as a map so value-derived keys (emails, ids) never
+# become schema property names. The char cap bounds one tool's stored record.
+TOOL_SHAPE_ARRAY_SAMPLE = 5
+TOOL_SHAPE_MAX_KEYS_PER_OBJECT = 25
+TOOL_SHAPE_MAX_CHARS = 20000
+
+# On-demand tool docs inside the sandbox: gaia.schema() caches fetched docs as
+# one file per tool. Files are disposable TTL caches of the host-side store
+# (single Mongo record per tool, user-agnostic); when the E2B<->JuiceFS mount
+# is reliable this dir becomes a symlink to a shared read-only mount.
+SANDBOX_TOOL_DOCS_DIR = "/tmp/.gaia/tools"  # nosec B108 -- path inside the E2B sandbox, not this host
+SANDBOX_SCHEMA_CACHE_TTL_SECONDS = 900

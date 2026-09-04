@@ -18,6 +18,7 @@ from fastapi import APIRouter, Header
 from pydantic import BaseModel, Field
 
 from app.agents.tools.execute.dispatch import DispatchError, dispatch_tool
+from app.agents.tools.execute.tool_info import ToolInfo, full_tool_info
 from app.constants.execute import (
     SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS,
     SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE,
@@ -87,12 +88,7 @@ def _audit(claims: SandboxExecuteClaims, tool_name: str, ok: bool) -> None:
     )
 
 
-@router.post("/execute")
-async def sandbox_execute(
-    payload: SandboxExecuteRequest,
-    authorization: str = Header(default=""),
-) -> SandboxExecuteResponse:
-    log.set(sandbox_execute={"tool_name": payload.tool_name})
+def _claims_from_authorization(authorization: str) -> SandboxExecuteClaims:
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise AppError(
@@ -102,7 +98,16 @@ async def sandbox_execute(
             "'Authorization: Bearer <token>'",
             status_code=401,
         )
-    claims = verify_execute_token(token)
+    return verify_execute_token(token)
+
+
+@router.post("/execute")
+async def sandbox_execute(
+    payload: SandboxExecuteRequest,
+    authorization: str = Header(default=""),
+) -> SandboxExecuteResponse:
+    log.set(sandbox_execute={"tool_name": payload.tool_name})
+    claims = _claims_from_authorization(authorization)
     log.set(user={"id": claims.user_id}, sandbox_execute={"run_id": claims.run_id})
     await _enforce_budget(claims.run_id)
 
@@ -128,3 +133,34 @@ async def sandbox_execute(
         output=result.output,
         error=result.error,
     )
+
+
+class SandboxToolSchemaRequest(BaseModel):
+    tool_name: str = Field(min_length=1)
+
+
+@router.post("/tool-schema")
+async def sandbox_tool_schema(
+    payload: SandboxToolSchemaRequest,
+    authorization: str = Header(default=""),
+) -> ToolInfo:
+    """The full tool contract behind the discovery doc's pointer.
+
+    Metadata only (no tool runs), but it shares the execute budget so a leaked
+    token cannot use it as an unmetered probe of the catalog.
+    """
+    log.set(sandbox_tool_schema={"tool_name": payload.tool_name})
+    claims = _claims_from_authorization(authorization)
+    log.set(user={"id": claims.user_id}, sandbox_tool_schema={"run_id": claims.run_id})
+    await _enforce_budget(claims.run_id)
+
+    info = await full_tool_info(claims.user_id, payload.tool_name)
+    if info is None:
+        raise AppError(
+            message=f"Unknown tool '{payload.tool_name}'",
+            why="the name resolved to no registry, MCP, or catalog tool",
+            fix="Use the exact tool name from retrieve_tools or the execute schema docs",
+            status_code=404,
+        )
+    log.set_ns("sandbox_tool_schema", resolved_name=info.tool_name)
+    return info

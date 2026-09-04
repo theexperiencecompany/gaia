@@ -2,10 +2,11 @@
 
 This is what replaces bind_tools for proxied tools: the model reads this doc
 and constructs `data` for execute() from it. Two hard rules from the spike:
-return shapes are documented ONLY when the provider supplies one (never
-invented), and every schema is budgeted — a multi-thousand-token schema
-degrades to shallower levels instead of being injected wholesale or clipped
-mid-JSON.
+return shapes are never invented (provider-supplied, or observed from real
+dispatches — see tool_shape_service), and everything is budgeted. The args
+schema depth-prunes when oversized (the model must construct calls from it
+inline); the response shape inlines only when small and otherwise becomes a
+one-line pointer to the on-demand lookup.
 """
 
 import json
@@ -17,8 +18,9 @@ from pydantic import BaseModel
 from app.constants.execute import (
     ARGS_SCHEMA_MAX_CHARS,
     EXECUTE_TOOL_NAME,
-    RESPONSE_SCHEMA_MAX_CHARS,
+    RESPONSE_SCHEMA_INLINE_MAX_CHARS,
     RESPONSE_SCHEMA_METADATA_KEYS,
+    SANDBOX_TOOL_DOCS_DIR,
     SCHEMA_DOC_MAX_CHARS,
 )
 from app.utils.general_utils import clip_text
@@ -27,10 +29,15 @@ from app.utils.general_utils import clip_text
 # signature; it is plumbing, never something the model supplies.
 _INTERNAL_ARG_NAMES = {"__runnable_config__"}
 _DESCRIPTION_MAX_CHARS = 600
+_RETURNS_POINTER_NAMES_MAX_CHARS = 300
 
 
-def render_tool_doc(tool: BaseTool) -> str:
-    """One tool's usage doc: description, args schema, returns (when known)."""
+def render_tool_doc(tool: BaseTool, observed_schema: dict[str, Any] | None = None) -> str:
+    """One tool's usage doc: description, args schema, returns (when known).
+
+    ``observed_schema`` is the shape learned from real dispatches; it fills in
+    when the provider documents no output shape.
+    """
     lines = [f"## {tool.name}"]
     description = (tool.description or "").strip()
     if description:
@@ -38,14 +45,34 @@ def render_tool_doc(tool: BaseTool) -> str:
     lines.append("Args schema for execute(tool_name=..., data={...}):")
     lines.append(_render_budgeted_schema(_args_schema_of(tool), ARGS_SCHEMA_MAX_CHARS))
     returns = _response_schema_of(tool)
+    if returns is None and observed_schema:
+        returns = _compact_schema(dict(observed_schema))
     if returns is not None:
-        lines.append("Returns:")
-        lines.append(_render_budgeted_schema(returns, RESPONSE_SCHEMA_MAX_CHARS))
+        rendered = _dumps(returns)
+        if len(rendered) <= RESPONSE_SCHEMA_INLINE_MAX_CHARS:
+            lines.append("Returns:")
+            lines.append(rendered)
+        else:
+            # Above the threshold the full schema is context re-paid every turn;
+            # a pointer keeps the doc cheap and the depth one lookup away.
+            lines.append(_returns_pointer(tool.name, returns))
     lines.append(
         f'Run it with: {EXECUTE_TOOL_NAME}(task_description="...", '
         f'tool_name="{tool.name}", data={{...}})'
     )
     return clip_text("\n".join(lines), SCHEMA_DOC_MAX_CHARS)
+
+
+def _returns_pointer(tool_name: str, schema: dict[str, Any]) -> str:
+    properties = schema.get("properties")
+    names = ", ".join(sorted(properties)) if isinstance(properties, dict) else ""
+    fields = (
+        f" top-level fields: {clip_text(names, _RETURNS_POINTER_NAMES_MAX_CHARS)}." if names else ""
+    )
+    return (
+        f'Returns:{fields} Full response schema: gaia.schema("{tool_name}") in a '
+        f"bash script, or read {SANDBOX_TOOL_DOCS_DIR}/{tool_name}.json"
+    )
 
 
 def _args_schema_of(tool: BaseTool) -> dict[str, Any]:

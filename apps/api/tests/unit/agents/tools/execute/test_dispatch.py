@@ -51,7 +51,10 @@ class TestDispatchTool:
     async def test_invalid_args_fail_loud_with_pydantic_detail_and_never_invoke(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -75,7 +78,10 @@ class TestDispatchTool:
     async def test_valid_args_invoke_with_coerced_supplied_fields_only(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -99,7 +105,10 @@ class TestDispatchTool:
     async def test_dict_schema_tool_invokes_with_raw_data(self) -> None:
         tool = _tool(name="MCP_DICT_TOOL", schema={"type": "object"})
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
             patch(f"{MODULE}.capture_event"),
         ):
             result = await dispatch_tool(
@@ -111,7 +120,10 @@ class TestDispatchTool:
     async def test_personless_run_skips_analytics_but_still_executes(self) -> None:
         tool = _tool()
         with (
-            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True))),
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
             patch(f"{MODULE}.capture_event") as capture,
         ):
             result = await dispatch_tool(
@@ -122,6 +134,50 @@ class TestDispatchTool:
             )
         assert result.ok is True
         capture.assert_not_called()
+
+
+@pytest.mark.unit
+class TestObservedShapeRecording:
+    async def test_a_successful_integration_dispatch_records_the_output_shape(self) -> None:
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.record_observed_shape") as record,
+            patch(f"{MODULE}.spawn_logged_task") as spawn,
+        ):
+            await dispatch_tool(
+                user_id="u1",
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+            )
+        record.assert_called_once_with("GMAIL_SEND_EMAIL", {"status": "sent"})
+        spawn.assert_called_once()
+
+    async def test_internal_tools_and_failures_record_nothing(self) -> None:
+        tool = _tool(name="create_todo")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool("create_todo", tool, is_integration=False)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.spawn_logged_task") as spawn,
+        ):
+            await dispatch_tool(
+                user_id="u1",
+                tool_name="create_todo",
+                data={"recipient": "x", "subject": "y"},
+                config=CONFIG,
+            )
+            await dispatch_tool(  # invalid args: never invoked, never recorded
+                user_id="u1", tool_name="create_todo", data={}, config=CONFIG
+            )
+        spawn.assert_not_called()
 
 
 @pytest.mark.unit

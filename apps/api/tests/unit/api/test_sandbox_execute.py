@@ -9,7 +9,13 @@ from app.agents.tools.execute.dispatch import (
     DispatchErrorKind,
     ToolExecutionResult,
 )
-from app.api.v1.endpoints.sandbox_execute import SandboxExecuteRequest, sandbox_execute
+from app.agents.tools.execute.tool_info import ToolInfo
+from app.api.v1.endpoints.sandbox_execute import (
+    SandboxExecuteRequest,
+    SandboxToolSchemaRequest,
+    sandbox_execute,
+    sandbox_tool_schema,
+)
 from app.services.sandbox import execute_token
 from app.services.sandbox.execute_token import mint_execute_token
 from app.utils.errors import AppError
@@ -60,6 +66,60 @@ class TestSandboxExecuteRoute:
         assert kwargs["user_id"] == "u1"
         assert kwargs["tool_name"] == "GMAIL_FETCH_EMAILS"
         assert kwargs["config"]["configurable"]["user_id"] == "u1"
+
+    async def test_tool_schema_requires_the_token_and_shares_the_budget(self) -> None:
+        with patch(f"{MODULE}.full_tool_info", new=AsyncMock()) as info:
+            with pytest.raises(AppError) as err:
+                await sandbox_tool_schema(
+                    SandboxToolSchemaRequest(tool_name="GMAIL_FETCH_EMAILS"), authorization=""
+                )
+        assert err.value.status_code == 401
+        info.assert_not_awaited()
+
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=10_000, rate=1)),
+            patch(f"{MODULE}.full_tool_info", new=AsyncMock()) as info,
+        ):
+            with pytest.raises(AppError) as err:
+                await sandbox_tool_schema(
+                    SandboxToolSchemaRequest(tool_name="GMAIL_FETCH_EMAILS"),
+                    authorization=f"Bearer {token}",
+                )
+        assert err.value.status_code == 429
+        info.assert_not_awaited()
+
+    async def test_tool_schema_returns_the_full_contract_for_the_token_user(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        contract = ToolInfo(
+            tool_name="GMAIL_FETCH_EMAILS",
+            description="Fetch emails.",
+            input_schema={"type": "object"},
+            observed_output_schema={"type": "object"},
+            observed_call_count=12,
+        )
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=contract)) as info,
+        ):
+            response = await sandbox_tool_schema(
+                SandboxToolSchemaRequest(tool_name="GMAIL_FETCH_EMAILS"),
+                authorization=f"Bearer {token}",
+            )
+        assert response is contract
+        info.assert_awaited_once_with("u1", "GMAIL_FETCH_EMAILS")
+
+    async def test_tool_schema_unknown_tool_is_404(self) -> None:
+        token = mint_execute_token("u1", "run-1", ttl_seconds=60)
+        with (
+            patch(f"{MODULE}.redis_cache", _redis_with_counts(total=1, rate=1)),
+            patch(f"{MODULE}.full_tool_info", new=AsyncMock(return_value=None)),
+        ):
+            with pytest.raises(AppError) as err:
+                await sandbox_tool_schema(
+                    SandboxToolSchemaRequest(tool_name="NOPE"), authorization=f"Bearer {token}"
+                )
+        assert err.value.status_code == 404
 
     async def test_dispatch_failure_shape_passes_through(self) -> None:
         token = mint_execute_token("u1", "run-1", ttl_seconds=60)

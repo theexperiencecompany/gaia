@@ -119,9 +119,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # One-click email unsubscribe — opened from mail clients with no
             # session; the HMAC-signed token authenticates the user itself.
             "/api/v1/notifications/unsubscribe",
-            # Code mode's sandbox callback — the E2B script has no session; the
-            # route authenticates via the run's HMAC token (execute_token.py).
+            # Code mode's sandbox callbacks — the E2B script has no session; both
+            # routes authenticate via the run's HMAC token (execute_token.py).
             "/api/v1/sandbox/execute",
+            "/api/v1/sandbox/tool-schema",
             # Dev identity router (mounted only in development). Excluded so the
             # mint endpoint is reachable before any user exists — otherwise the
             # bypass would 401 the very request that bootstraps the first user.

@@ -1,0 +1,28 @@
+"""Observed tool output shapes — structure learned from real dispatches.
+
+Global (tools are user-agnostic); one document per tool name. ``output_schema``
+is a genson-inferred JSON schema of keys and types only — values are never
+stored, so nothing here can carry PII.
+"""
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict
+
+from app.db.repositories.base import MongoDocument
+
+
+class ToolOutputShapeDocument(MongoDocument):
+    tool_name: str
+    output_schema: dict[str, Any]
+    call_count: int = 0
+    last_seen: datetime
+
+
+class ToolOutputShapeUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    output_schema: dict[str, Any] | None = None
+    call_count: int | None = None
+    last_seen: datetime | None = None

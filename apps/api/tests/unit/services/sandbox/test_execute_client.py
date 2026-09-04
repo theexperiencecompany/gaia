@@ -1,5 +1,7 @@
 """execute_client — the bash-driven code-mode env: seeded client, scoped token."""
 
+import json
+import types
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -46,7 +48,9 @@ class TestExecuteClient:
         path, source = sbx.files.write.await_args.args
         assert path == f"{SANDBOX_CLIENT_DIR}/gaia.py"
         assert "def execute(" in source
+        assert "def schema(" in source
         assert "GAIA_EXECUTE_TOKEN" in source
+        assert "__TOOL_DOCS_DIR__" not in source  # placeholders resolved
 
     def test_env_carries_url_token_and_pythonpath(self) -> None:
         env = mint_execute_env(
@@ -57,6 +61,7 @@ class TestExecuteClient:
             command_timeout_seconds=120,
         )
         assert env["GAIA_EXECUTE_URL"] == URL
+        assert env["GAIA_SCHEMA_URL"] == "https://api.test/api/v1/sandbox/tool-schema"
         assert env["PYTHONPATH"] == SANDBOX_CLIENT_DIR
         claims = verify_execute_token(env["GAIA_EXECUTE_TOKEN"])
         assert claims.user_id == "u1"
@@ -78,3 +83,45 @@ class TestExecuteClient:
         remaining = claims.exp - int(time.time())
         assert remaining <= 30 + SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS
         assert remaining > 30
+
+
+def _load_client(tmp_path, ttl: int = 900):
+    """The real client template, executed with an isolated tool-docs dir."""
+    source = execute_client._CLIENT_TEMPLATE.replace("__TOOL_DOCS_DIR__", str(tmp_path)).replace(
+        "__SCHEMA_CACHE_TTL_SECONDS__", str(ttl)
+    )
+    module = types.ModuleType("gaia_under_test")
+    exec(source, module.__dict__)  # noqa: S102 -- executing our own template is the test subject
+    return module
+
+
+@pytest.mark.unit
+class TestSandboxSchemaLookup:
+    def test_schema_fetches_once_then_serves_from_the_file_cache(self, tmp_path) -> None:
+        gaia = _load_client(tmp_path)
+        calls: list[dict] = []
+
+        def fake_post(url_env: str, payload: dict) -> dict:
+            calls.append(payload)
+            return {"tool_name": payload["tool_name"], "input_schema": {"type": "object"}}
+
+        gaia._post = fake_post
+        first = gaia.schema("GMAIL_FETCH_EMAILS")
+        second = gaia.schema("GMAIL_FETCH_EMAILS")
+        assert first == second
+        assert len(calls) == 1  # the second read came from the file
+        cached = json.loads((tmp_path / "GMAIL_FETCH_EMAILS.json").read_text())
+        assert cached == first
+
+    def test_a_stale_cache_file_is_refetched(self, tmp_path) -> None:
+        gaia = _load_client(tmp_path, ttl=0)
+        calls: list[dict] = []
+
+        def fake_post(url_env: str, payload: dict) -> dict:
+            calls.append(payload)
+            return {"tool_name": payload["tool_name"]}
+
+        gaia._post = fake_post
+        gaia.schema("T")
+        gaia.schema("T")
+        assert len(calls) == 2

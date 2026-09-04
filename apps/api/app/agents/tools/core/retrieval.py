@@ -48,6 +48,7 @@ from app.services.integrations.integration_service import (
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
+from app.services.tool_shape_service import observed_shapes_for
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -88,6 +89,16 @@ async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool
 
 
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
+    try:
+        observed = await observed_shapes_for(names)
+    except Exception as e:
+        # Shape docs are enrichment; a store outage must not take down tool
+        # discovery (mirrors _resolve_for_retrieval) — but it is never silent.
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools: observed-shape lookup failed",
+            error_type=type(e).__name__,
+        )
+        observed = {}
     docs: list[str] = []
     for name in names:
         resolved = await _resolve_for_retrieval(user_id, name)
@@ -98,7 +109,13 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        docs.append(render_tool_doc(resolved.tool))
+        shape = observed.get(resolved.name)
+        docs.append(
+            render_tool_doc(
+                resolved.tool,
+                observed_schema=shape.output_schema if shape is not None else None,
+            )
+        )
     return docs
 
 

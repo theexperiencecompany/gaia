@@ -40,7 +40,10 @@ Python scripts you run here can call GAIA integration tools directly:
     emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
 `execute(tool_name, data)` returns the tool's parsed JSON output, or raises
 GaiaToolError whose message carries the exact validation errors: fix `data`
-and rerun. Get a tool's args schema from retrieve_tools first. Prefer ONE
+and rerun. Get a tool's args schema from retrieve_tools first. When its doc
+points to a full response schema, call `schema(tool_name)` (also importable
+from gaia) or read the cached file at /tmp/.gaia/tools/<TOOL_NAME>.json
+before writing code that consumes the output; never guess shapes. Prefer ONE
 script that fetches, filters/computes in Python, acts, and prints a concise
 summary; large payloads stay in variables instead of the conversation. Calls
 are budgeted per bash run; batch work rather than looping one call at a time.

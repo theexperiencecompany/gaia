@@ -24,7 +24,8 @@ from app.agents.tools.execute.resolver import resolve_tool
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.storage.metrics import _register_once
-from shared.py.wide_events import log
+from app.services.tool_shape_service import record_observed_shape
+from shared.py.wide_events import log, spawn_logged_task
 
 # THE health metric of the proxy migration: bind_tools gave provider-constrained
 # args (a malformed call was structurally impossible); execute moves that check
@@ -122,6 +123,15 @@ async def dispatch_tool(
 
     log.set_ns("execute", tool=resolved_name, outcome="ok")
     output = await tool.ainvoke(validated, config=config)
+
+    if resolved.is_integration:
+        # Observed-shape learning rides every real response; fire-and-forget so
+        # it can never slow or fail the dispatch it learns from.
+        spawn_logged_task(
+            "record_tool_output_shape",
+            record_observed_shape(resolved_name, output),
+            tool_name=resolved_name,
+        )
 
     _EXECUTE_DISPATCH_TOTAL.labels(outcome="ok").inc()
     if user_id:
