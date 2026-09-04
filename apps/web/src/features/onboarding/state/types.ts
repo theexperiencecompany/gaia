@@ -9,7 +9,6 @@ export type Stage =
   | "questions"
   | "payment"
   | "paidReveal"
-  | "greeting"
   | "platformPick"
   | "chat";
 
@@ -29,7 +28,6 @@ export interface OnboardingState {
   preferencesPersisted: boolean;
 
   paidRevealAcked: boolean;
-  greetingAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
 
@@ -44,7 +42,6 @@ export type Action =
   | { type: "submitNeeds" }
   | { type: "preferencesPersisted" }
   | { type: "ackPaidReveal" }
-  | { type: "ackGreeting" }
   | { type: "platformConnected"; platform: string }
   | { type: "skipPlatforms" }
   | { type: "restartStart" }

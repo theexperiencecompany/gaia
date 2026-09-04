@@ -45,9 +45,6 @@ describe("onboarding stage machine", () => {
     expect(getStage(state, paid)).toBe("paidReveal");
 
     state = apply(state, { type: "ackPaidReveal" });
-    expect(getStage(state, paid)).toBe("greeting");
-
-    state = apply(state, { type: "ackGreeting" });
     expect(getStage(state, paid)).toBe("platformPick");
 
     state = apply(state, { type: "skipPlatforms" });
@@ -69,7 +66,6 @@ describe("onboarding stage machine", () => {
     const acked = apply(
       answeredQuestions,
       { type: "ackPaidReveal" },
-      { type: "ackGreeting" },
       { type: "skipPlatforms" },
     );
     expect(getStage(acked, false)).toBe("payment");
@@ -79,7 +75,6 @@ describe("onboarding stage machine", () => {
     const state = apply(
       answeredQuestions,
       { type: "ackPaidReveal" },
-      { type: "ackGreeting" },
       { type: "platformConnected", platform: "telegram" },
     );
     expect(state.connectedPlatform).toBe("telegram");

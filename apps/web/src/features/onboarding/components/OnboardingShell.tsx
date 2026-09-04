@@ -40,7 +40,6 @@ function getContentFingerprint(state: OnboardingState, stage: Stage): string {
     state.questionIndex,
     state.selectedNeeds.length,
     state.paidRevealAcked ? 1 : 0,
-    state.greetingAcked ? 1 : 0,
     state.platformsConfirmed ? 1 : 0,
     state.connectedPlatform ?? "",
   ].join("|");

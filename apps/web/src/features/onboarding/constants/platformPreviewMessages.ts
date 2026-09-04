@@ -41,10 +41,10 @@ const PROFESSION_TO_ARCHETYPE: Record<string, ProfessionArchetype> = {
 };
 
 const PREVIEW_PLATFORMS: ReadonlySet<string> = new Set<PlatformPreviewPlatform>(
-  ["telegram", "whatsapp"],
+  ["telegram", "whatsapp", "imessage"],
 );
 
-/** Whether a platform has a preview script — iMessage does not. */
+/** Whether a platform has a preview script. */
 export function isPreviewPlatform(
   platform: string,
 ): platform is PlatformPreviewPlatform {
@@ -63,16 +63,19 @@ type ArchetypeScripts = Record<PlatformPreviewPlatform, PlatformScript>;
 export const PLATFORM_PREVIEW_ORDER: PlatformPreviewPlatform[] = [
   "telegram",
   "whatsapp",
+  "imessage",
 ];
 
 export const PLATFORM_LABELS: Record<PlatformPreviewPlatform, string> = {
   telegram: "Telegram",
   whatsapp: "WhatsApp",
+  imessage: "iMessage",
 };
 
 export const PLATFORM_ICONS: Record<PlatformPreviewPlatform, string> = {
   telegram: "/images/icons/macos/telegram.webp",
   whatsapp: "/images/icons/macos/whatsapp.webp",
+  imessage: "/images/icons/macos/imessage.webp",
 };
 
 const USER_PLACEHOLDER_NAME = "__user__";
@@ -131,6 +134,32 @@ const BUILDER: ArchetypeScripts = {
         from: "them",
         text: "sent! she picked 3pm. i blocked it on your calendar and added a quick agenda.",
         time: "11:04",
+      },
+    ],
+  },
+  imessage: {
+    title: "GAIA",
+    messages: [
+      {
+        from: "them",
+        text: "Heads up: the deploy you kicked off last night finished clean. Zero errors in the logs.",
+        time: "7:52",
+      },
+      {
+        from: "them",
+        text: "Two PRs are waiting on your review. I summarised both, the second one touches auth.",
+        time: "7:52",
+      },
+      {
+        from: "me",
+        text: "move standup to 10, I want to read the auth one first",
+        time: "7:55",
+        status: "read",
+      },
+      {
+        from: "them",
+        text: "Done. Standup is at 10, the team has the new invite.",
+        time: "7:55",
       },
     ],
   },
@@ -201,6 +230,32 @@ const OPERATOR: ArchetypeScripts = {
       },
     ],
   },
+  imessage: {
+    title: "GAIA",
+    messages: [
+      {
+        from: "them",
+        text: "Morning. Three things need you today, the rest I handled.",
+        time: "8:05",
+      },
+      {
+        from: "them",
+        text: "The Q3 forecast deck is due at 2. I pulled the numbers from the sheet and drafted the summary slide.",
+        time: "8:05",
+      },
+      {
+        from: "me",
+        text: "who's the 11am with again?",
+        time: "8:09",
+        status: "read",
+      },
+      {
+        from: "them",
+        text: "Priya from Northwind, renewal call. Her last email asked about the new pricing, brief is in your calendar.",
+        time: "8:09",
+      },
+    ],
+  },
 };
 
 const FOUNDER: ArchetypeScripts = {
@@ -259,6 +314,33 @@ const FOUNDER: ArchetypeScripts = {
         from: "them",
         text: "i also added a quick 5 minute prep summary to your calendar invite so you're not going in cold.",
         time: "4:14 PM",
+      },
+    ],
+  },
+  imessage: {
+    title: "GAIA",
+    messages: [
+      {
+        from: "them",
+        text: "Your investor update draft is ready, built from this week's numbers. Want to read it before it goes?",
+        time: "9:10",
+      },
+      {
+        from: "me",
+        text: "yes, and chase the two candidates who went quiet",
+        time: "9:12",
+        status: "read",
+      },
+      {
+        from: "them",
+        text: "Read it in the doc. Both candidates chased, one already replied: she can do Thursday.",
+        time: "9:12",
+      },
+      { from: "me", text: "book her", time: "9:14", status: "read" },
+      {
+        from: "them",
+        text: "Booked, Thursday 3pm, invite sent.",
+        time: "9:14",
       },
     ],
   },
@@ -335,6 +417,33 @@ const SCHOLAR: ArchetypeScripts = {
       },
     ],
   },
+  imessage: {
+    title: "GAIA",
+    messages: [
+      {
+        from: "them",
+        text: "Lecture moved to room 204. Your reading for it is summarised, the two key papers are up top.",
+        time: "8:30",
+      },
+      {
+        from: "me",
+        text: "when is the essay due again",
+        time: "8:31",
+        status: "read",
+      },
+      {
+        from: "them",
+        text: "Friday, 5pm. Outline is drafted from your notes, want it in the doc?",
+        time: "8:31",
+      },
+      { from: "me", text: "yes please", time: "8:32", status: "read" },
+      {
+        from: "them",
+        text: "In the doc. Reminder set for Thursday morning.",
+        time: "8:32",
+      },
+    ],
+  },
 };
 
 const DEFAULT_SCRIPTS: ArchetypeScripts = {
@@ -401,6 +510,33 @@ const DEFAULT_SCRIPTS: ArchetypeScripts = {
         time: "3:21 PM",
       },
       { from: "me", text: "yes please", time: "3:22 PM", status: "read" },
+    ],
+  },
+  imessage: {
+    title: "GAIA",
+    messages: [
+      {
+        from: "them",
+        text: "Morning. Your inbox is sorted, two emails need a reply from you and I drafted both.",
+        time: "8:15",
+      },
+      { from: "me", text: "what's on today?", time: "8:17", status: "read" },
+      {
+        from: "them",
+        text: "Dentist at 11, call with Sam at 3. Sam wants the proposal first, it's attached to the invite.",
+        time: "8:17",
+      },
+      {
+        from: "me",
+        text: "great, send the proposal now",
+        time: "8:18",
+        status: "read",
+      },
+      {
+        from: "them",
+        text: "Sent. I'll nudge you before the call.",
+        time: "8:18",
+      },
     ],
   },
 };

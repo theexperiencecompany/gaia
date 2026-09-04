@@ -1,6 +1,6 @@
 /**
  * Linear stage cursor. The flow is a fixed queue — Q1/Q2, then payment,
- * then the paid confirmation, greeting, platform pick and finally the
+ * then the receipt, the platform pick and finally the
  * handoff into chat. The user advances forward only, never sideways.
  *
  * `getStage` returns the first stage the user is not past. Payment is the
@@ -31,7 +31,6 @@ export function getStage(s: OnboardingState, isPaid: boolean): Stage {
   if (!isQuestionsComplete(s)) return "questions";
   if (!isPaid) return "payment";
   if (!s.paidRevealAcked) return "paidReveal";
-  if (!s.greetingAcked) return "greeting";
   if (!s.platformsConfirmed) return "platformPick";
   return "chat";
 }
@@ -40,12 +39,11 @@ const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
   payment: 2,
   paidReveal: 3,
-  greeting: 4,
-  platformPick: 5,
-  chat: 6,
+  platformPick: 4,
+  chat: 5,
 };
 
-export const PROGRESS_TOTAL_STEPS = 6;
+export const PROGRESS_TOTAL_STEPS = 5;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;

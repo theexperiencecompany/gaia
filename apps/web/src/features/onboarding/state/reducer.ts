@@ -49,9 +49,6 @@ export function reducer(
     case "ackPaidReveal":
       return { ...state, paidRevealAcked: true };
 
-    case "ackGreeting":
-      return { ...state, greetingAcked: true };
-
     case "platformConnected":
       return {
         ...state,

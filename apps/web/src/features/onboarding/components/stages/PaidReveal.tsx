@@ -16,11 +16,9 @@ import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { useReceiptPrinterStage } from "@/features/pricing/hooks/useReceiptPrinterStage";
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
-import { PAID_REVEAL_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { Action } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
-import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
 import { OnboardingCTAButton } from "../OnboardingCTAButton";
 
 const CONFETTI_DURATION_MS = 3500;
@@ -40,9 +38,6 @@ export function PaidReveal() {
 
   return (
     <m.div className="flex flex-col items-center gap-6" {...MOTION_FADE_UP}>
-      <div className="w-full">
-        <OnboardingBotBubbles lines={PAID_REVEAL_LINES} />
-      </div>
       <div className="w-full max-w-sm">
         <PostPaymentReceipt
           billingPeriod={receipt.billingPeriod}

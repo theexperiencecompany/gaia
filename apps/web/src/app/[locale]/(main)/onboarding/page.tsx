@@ -20,8 +20,6 @@ import { OnboardingIntro } from "@/features/onboarding/components/OnboardingIntr
 import { OnboardingShell } from "@/features/onboarding/components/OnboardingShell";
 import {
   Chat,
-  Greeting,
-  GreetingComposer,
   PaidReveal,
   PaidRevealComposer,
   Payment,
@@ -108,8 +106,6 @@ export default function Onboarding() {
         return <Payment />;
       case "paidReveal":
         return <PaidReveal />;
-      case "greeting":
-        return <Greeting />;
       case "platformPick":
         return <Platforms state={state} dispatch={dispatch} />;
       case "chat":
@@ -125,8 +121,6 @@ export default function Onboarding() {
         return null;
       case "paidReveal":
         return <PaidRevealComposer dispatch={dispatch} />;
-      case "greeting":
-        return <GreetingComposer dispatch={dispatch} />;
       case "platformPick":
         return <PlatformsComposer state={state} dispatch={dispatch} />;
     }

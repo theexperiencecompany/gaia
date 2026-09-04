@@ -9,7 +9,6 @@ export const initialState: OnboardingState = {
   preferencesPersisted: false,
 
   paidRevealAcked: false,
-  greetingAcked: false,
   platformsConfirmed: false,
   connectedPlatform: null,
 

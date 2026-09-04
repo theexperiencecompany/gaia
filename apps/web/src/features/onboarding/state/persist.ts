@@ -16,7 +16,6 @@ interface PersistedShape {
   otherNeed: string;
   preferencesPersisted: boolean;
   paidRevealAcked: boolean;
-  greetingAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
 }
@@ -29,7 +28,6 @@ function pick(state: OnboardingState): PersistedShape {
     otherNeed: state.otherNeed,
     preferencesPersisted: state.preferencesPersisted,
     paidRevealAcked: state.paidRevealAcked,
-    greetingAcked: state.greetingAcked,
     platformsConfirmed: state.platformsConfirmed,
     connectedPlatform: state.connectedPlatform,
   };
@@ -48,7 +46,6 @@ export function loadPersisted(userId: string): Partial<OnboardingState> | null {
       otherNeed: parsed.otherNeed ?? "",
       preferencesPersisted: parsed.preferencesPersisted ?? false,
       paidRevealAcked: parsed.paidRevealAcked ?? false,
-      greetingAcked: parsed.greetingAcked ?? false,
       platformsConfirmed:
         parsed.platformsConfirmed ?? !!parsed.connectedPlatform,
       connectedPlatform: parsed.connectedPlatform ?? null,

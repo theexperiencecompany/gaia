@@ -55,13 +55,13 @@ export function useOnboardingAnalytics(
   }, [state.questionIndex]);
 
   useEffect(() => {
-    if (stage !== "greeting" && stage !== "chat") return;
-    // Reaching `greeting` means the paid-reveal stage was cleared; reaching
+    if (stage !== "platformPick" && stage !== "chat") return;
+    // Reaching `platformPick` means the receipt stage was cleared; reaching
     // `chat` means the platform pick was.
     const step =
-      stage === "greeting" ? PAYMENT_STAGE_STEP : PLATFORM_STAGE_STEP;
+      stage === "platformPick" ? PAYMENT_STAGE_STEP : PLATFORM_STAGE_STEP;
     const name =
-      stage === "greeting" ? "payment_stage_completed" : "platform_pick";
+      stage === "platformPick" ? "payment_stage_completed" : "platform_pick";
     if (trackedStagesRef.current.has(stage)) return;
     trackedStagesRef.current.add(stage);
     trackOnboardingStep(step, name);
