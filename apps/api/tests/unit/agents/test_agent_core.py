@@ -18,7 +18,10 @@ from app.agents.core.agent import (
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.agents import (
+    PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    WORKFLOW_LOCK_CONTEXT_KEY,
+)
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -1276,6 +1279,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
             PLAYBOOK_FALLBACK_CONTEXT_KEY: {"reason": "hash_drift", "step": 3},
+            WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
         }
         patches = _common_patches()
         with (
@@ -1308,7 +1312,11 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
             "playbook_fallback": {"reason": "hash_drift", "step": 3},
-            "executor_lock_reservation": None,
+            # The claim its fire took on this conversation, carried through so
+            # ``call_executor`` adopts it instead of queueing the run behind it.
+            # Read under a different spelling here and every workflow run goes
+            # to the inbox of a live run that does not exist.
+            "executor_lock_reservation": ":fire-task-1",
         }
 
     @pytest.mark.asyncio
