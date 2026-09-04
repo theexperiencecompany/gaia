@@ -68,6 +68,9 @@ export function reducer(
     case "hydrate":
       return { ...state, ...action.partial };
 
+    case "hydrated":
+      return { ...state, hydratedFor: action.userId };
+
     case "reset":
       return initialState;
   }

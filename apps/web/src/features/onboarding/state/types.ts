@@ -32,6 +32,10 @@ export interface OnboardingState {
   connectedPlatform: string | null;
 
   isRestarting: boolean;
+
+  /** Which user's cache the reducer holds; `null` until the first load.
+   * Derived nowhere else, so the persistence hook needs no state of its own. */
+  hydratedFor: string | null;
 }
 
 export type Action =
@@ -47,4 +51,5 @@ export type Action =
   | { type: "restartStart" }
   | { type: "restartDone" }
   | { type: "hydrate"; partial: Partial<OnboardingState> }
+  | { type: "hydrated"; userId: string }
   | { type: "reset" };

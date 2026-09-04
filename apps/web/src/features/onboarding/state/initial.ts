@@ -13,4 +13,6 @@ export const initialState: OnboardingState = {
   connectedPlatform: null,
 
   isRestarting: false,
+
+  hydratedFor: null,
 };
