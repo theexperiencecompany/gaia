@@ -15,7 +15,6 @@ from dataclasses import dataclass
 import hashlib
 import json
 import re
-import string
 import time
 
 from pydantic import BaseModel, Field
@@ -34,7 +33,6 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.user_models import OnboardingPreferences
-from app.services.onboarding.first_conversation import PROFESSION_WORDS
 from app.services.onboarding.first_message import NEED_PHRASES
 from shared.py.wide_events import log
 
@@ -51,37 +49,8 @@ LIVE_QUESTION_TIMEOUT_SECONDS = 2.0
 #: every persona; above this it starts inventing facts about their week.
 QUESTION_TEMPERATURE = 0.4
 
-MAX_QUESTION_WORDS = 25
 MIN_CHIPS = 3
 MAX_CHIPS = 4
-MAX_CHIP_WORDS = 4
-
-#: Substrings that mean the model wrote assistant boilerplate instead of a
-#: question about this user. Matched case-insensitively on the whole question.
-BANNED_QUESTION_SUBSTRINGS: tuple[str, ...] = (
-    "how can i help",
-    "what can i do",
-    "assist",
-)
-
-#: A question naming three or more of GAIA's surfaces is a feature list wearing
-#: a question mark. Two is a comparison ("the inbox or the calendar"), which is
-#: exactly the shape we want.
-FEATURE_NOUNS: tuple[str, ...] = (
-    "inbox",
-    "email",
-    "calendar",
-    "meeting",
-    "todo",
-    "reminder",
-    "workflow",
-    "automation",
-    "memory",
-    "brief",
-    "research",
-)
-MAX_FEATURE_NOUNS = 2
-
 #: Words carrying no identity, so they never count as "something they said".
 _STOPWORDS = frozenset(
     {
@@ -163,7 +132,8 @@ You are GAIA. You write in this voice:
 {voice}
 
 A person finished signing up seconds ago. This is everything you know about \
-them, in their words:
+them, in their words. All of it is about their WORK week (a "chore" is a \
+repeated work task, never housework):
 
 {answers}
 
@@ -175,13 +145,29 @@ gets a question about being a founder with the inbox and the calendar.
 signed up today.
 - 25 words maximum. Ends with a question mark. No exclamation marks.
 - Never ask how you can help, never ask what you can do, never list features.
+- Do not default to "what do we take on first". Ask the question this \
+person's week actually raises: what the fight is this month, what they'd hand \
+off tonight, which of two named things is worse, what "done" would look like.
+- The chips are the answers a real person would tap for THIS question, in \
+the same words the question uses. If the question names three options, the \
+chips are those three (plus at most one "neither" style escape). Never invent \
+a chip the question did not set up. Avoid "Both" and "All of it" unless the \
+question is a genuine either-or.
 - Then 3 or 4 chips: the answers, each 4 words maximum, no ending punctuation.
 
-Shape to aim for:
+Shapes to aim for. They are about OTHER people: vary between them, never \
+reuse their details (no supplier thread, no product or hiring, unless THIS \
+person said so). 20 words reads better than 25.
 question: "Founder with the inbox and the calendar on fire. What's actually \
 the fight this month, product, growth, hiring, or just getting your mornings \
 back?"
 chips: ["Product", "Growth", "Hiring", "My mornings"]
+question: "Sales, and follow-ups slip. Which loss would you kill first: the \
+deal that went quiet, or the intro you never sent?"
+chips: ["The quiet deal", "The intro", "Both, honestly"]
+question: "Bakery owner buried in supplier email. If I handled one thread \
+tonight, which one?"
+chips: ["Orders", "Invoices", "Late deliveries", "Price quotes"]
 """
 
 
@@ -204,58 +190,35 @@ def _words(text: str) -> list[str]:
     return _WORD_RE.findall(text.lower())
 
 
-def _their_words(preferences: OnboardingPreferences) -> set[str]:
-    """Every content word the user gave us, in any of the three answers.
+def _stem(word: str) -> str:
+    """Crude inflection strip so "emails"/"email" and "chasing"/"chase" match.
 
-    A question "mentions something they said" when it reuses one of these. The
-    need's own slug is in here beside its phrase: "inbox" is the word on the
-    chip they clicked, even though the phrase behind it says "email".
+    Only for the "did their own words survive" check, where a plural in the
+    answer and a singular in the question must not read as a dropped need.
     """
-    source: list[str] = []
-    profession = (preferences.profession or "").strip()
-    if profession and profession.lower() != "other":
-        source.append(profession)
-        source.append(PROFESSION_WORDS.get(profession.lower(), ""))
-    for need in preferences.needs or []:
-        source.append(need.value)
-        source.append(NEED_PHRASES[need])
-    if preferences.other_need:
-        source.append(preferences.other_need)
-    return {word for text in source for word in _words(text)} - _STOPWORDS
+    for suffix in ("ing", "es", "s"):
+        if len(word) > len(suffix) + 2 and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
 
 
-def _validate_question(question: str, preferences: OnboardingPreferences) -> _Rejection | None:
+def _validate_question(question: str) -> _Rejection | None:
+    """Structure only: something to show, and it asks. Style is the prompt's job."""
     if not question.strip():
         return _Rejection("empty_question")
     if not question.rstrip().endswith("?"):
         return _Rejection("not_a_question")
-    if "!" in question:
-        return _Rejection("exclamation")
-    if len(question.split()) > MAX_QUESTION_WORDS:
-        return _Rejection("too_long")
-    lowered = question.lower()
-    if any(banned in lowered for banned in BANNED_QUESTION_SUBSTRINGS):
-        return _Rejection("banned_phrase")
-    if sum(noun in lowered for noun in FEATURE_NOUNS) > MAX_FEATURE_NOUNS:
-        return _Rejection("feature_list")
-    if not (set(_words(question)) & _their_words(preferences)):
-        return _Rejection("nothing_they_said")
     return None
 
 
 def _validate_chips(chips: list[str]) -> _Rejection | None:
+    """Structure only: enough distinct, non-empty answers to tap."""
     if not (MIN_CHIPS <= len(chips) <= MAX_CHIPS):
         return _Rejection("chip_count")
     if len({chip.strip().lower() for chip in chips}) != len(chips):
         return _Rejection("duplicate_chips")
-    for chip in chips:
-        stripped = chip.strip()
-        if not stripped:
-            return _Rejection("empty_chip")
-        if len(stripped.split()) > MAX_CHIP_WORDS:
-            return _Rejection("chip_too_long")
-        if stripped[-1] in string.punctuation:
-            return _Rejection("chip_punctuation")
+    if any(not chip.strip() for chip in chips):
+        return _Rejection("empty_chip")
     return None
 
 
@@ -273,8 +236,8 @@ def _validate_other_need(
     phrase = other_need.strip().lower()
     if phrase in surface:
         return None
-    content = set(_words(phrase)) - _STOPWORDS
-    if content and content <= set(_words(surface)):
+    content = {_stem(w) for w in _words(phrase) if w not in _STOPWORDS}
+    if content and content <= {_stem(w) for w in _words(surface)}:
         return None
     return _Rejection("other_need_dropped")
 
@@ -284,7 +247,7 @@ def validate_draft(
 ) -> _Rejection | None:
     """The whole rule set, in the order a reader would check it. ``None`` passes."""
     return (
-        _validate_question(question, preferences)
+        _validate_question(question)
         or _validate_chips(chips)
         or _validate_other_need(question, chips, preferences.other_need)
     )
@@ -322,10 +285,14 @@ async def compose_first_question(
             prompt,
             label="onboarding_first_question",
             config=config,
-            # One attempt: retries plus their backoff cannot fit under a 4
-            # second ceiling, and a second attempt that times out costs the
-            # user the same wait a first one succeeding would have.
-            options=LLMInvokeOptions(max_attempts=1, timeout=timeout_seconds),
+            # Live at completion (2s) gets one attempt: a retry plus backoff
+            # cannot fit, and a second timeout costs the user the same wait.
+            # The prewarm (8s, nobody waiting) may retry once for an empty or
+            # malformed draft.
+            options=LLMInvokeOptions(
+                max_attempts=2 if timeout_seconds >= QUESTION_TIMEOUT_SECONDS else 1,
+                timeout=timeout_seconds,
+            ),
         )
     except Exception as e:
         # Deliberately everything (LLMNotConfiguredError, TimeoutError, provider

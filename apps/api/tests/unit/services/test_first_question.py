@@ -62,34 +62,6 @@ class TestValidateDraft:
     def test_a_statement_is_not_a_question(self) -> None:
         assert _reason("Founder with the inbox on fire.", GOOD_CHIPS, _prefs()) == "not_a_question"
 
-    def test_an_exclamation_mark_is_rejected(self) -> None:
-        question = "Founder with the inbox on fire! What's the fight this month?"
-        assert _reason(question, GOOD_CHIPS, _prefs()) == "exclamation"
-
-    def test_over_twenty_five_words_is_rejected(self) -> None:
-        question = "Founder " + "and the inbox " * 9 + "what now?"
-        assert _reason(question, GOOD_CHIPS, _prefs()) == "too_long"
-
-    @pytest.mark.parametrize(
-        "question",
-        [
-            "Founder with the inbox. How can I help you today?",
-            "Founder with the inbox. What can I do for you first?",
-            "Founder with the inbox. What should I assist with first?",
-        ],
-    )
-    def test_assistant_boilerplate_is_rejected(self, question: str) -> None:
-        assert _reason(question, GOOD_CHIPS, _prefs()) == "banned_phrase"
-
-    def test_three_product_surfaces_is_a_feature_list(self) -> None:
-        question = "Founder, want the inbox, the calendar, or a morning brief first?"
-        assert _reason(question, GOOD_CHIPS, _prefs()) == "feature_list"
-
-    def test_a_question_about_nobody_in_particular_is_rejected(self) -> None:
-        assert _reason("So what are we starting on today?", GOOD_CHIPS, _prefs()) == (
-            "nothing_they_said"
-        )
-
     @pytest.mark.parametrize("chips", [["Product", "Growth"], ["A", "B", "C", "D", "E"]])
     def test_chips_outside_three_to_four_are_rejected(self, chips: list[str]) -> None:
         assert _reason(GOOD_QUESTION, chips, _prefs()) == "chip_count"
@@ -98,14 +70,13 @@ class TestValidateDraft:
         chips = ["Product", "product", "Hiring"]
         assert _reason(GOOD_QUESTION, chips, _prefs()) == "duplicate_chips"
 
-    def test_a_chip_over_four_words_is_rejected(self) -> None:
-        chips = ["Product", "Growth", "Just getting my mornings back"]
-        assert _reason(GOOD_QUESTION, chips, _prefs()) == "chip_too_long"
+    def test_an_empty_chip_is_rejected(self) -> None:
+        assert _reason(GOOD_QUESTION, ["Product", " ", "Hiring"], _prefs()) == "empty_chip"
 
-    def test_a_chip_ending_in_punctuation_is_rejected(self) -> None:
-        assert _reason(GOOD_QUESTION, ["Product.", "Growth", "Hiring"], _prefs()) == (
-            "chip_punctuation"
-        )
+    def test_a_plural_in_the_typed_need_still_counts_as_kept(self) -> None:
+        preferences = _prefs(other_need="supplier emails")
+        question = "Bakery owner buried in supplier email. Which thread first?"
+        assert _reason(question, GOOD_CHIPS, preferences) is None
 
     def test_the_typed_need_must_survive_into_what_they_see(self) -> None:
         preferences = _prefs(other_need="chasing invoices")
@@ -152,7 +123,8 @@ class TestComposeFirstQuestion:
             assert await compose_first_question(_prefs(), None) is None
 
     async def test_a_draft_breaking_a_rule_falls_back(self) -> None:
-        draft = _QuestionDraft(question="How can I help you today?", chips=GOOD_CHIPS)
+        # Structure, not style: a draft with no question mark is unusable.
+        draft = _QuestionDraft(question="Founder with the inbox on fire.", chips=GOOD_CHIPS)
         with (
             patch(f"{MODULE}.background_structured_runnable"),
             patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=draft)),

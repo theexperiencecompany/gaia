@@ -25,6 +25,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from uuid import uuid4
 
@@ -41,6 +42,7 @@ sys.path.insert(0, str(backend_dir))
 import httpx
 
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
+import app.services.onboarding.first_question as first_question_module
 from app.services.onboarding.first_question import (
     QUESTION_TIMEOUT_SECONDS,
     compose_first_question,
@@ -113,8 +115,18 @@ PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
 ]
 
 
+def _reporting_validate(question: str, chips: list[str], preferences: OnboardingPreferences):
+    """The validator, plus a line on stdout when it rejects: the wide event carries
+    the reason as a field the console format does not print."""
+    rejection = first_question_module.validate_draft(question, chips, preferences)
+    if rejection is not None:
+        print(f"  rejected ({rejection.reason}): {question!r} {chips}")
+    return rejection
+
+
 async def run_personas(timeout_seconds: float) -> list[tuple[str, object]]:
     """One model call per persona, concurrently — they share nothing."""
+    first_question_module.validate_draft = _reporting_validate  # type: ignore[assignment]
     results = await asyncio.gather(
         *(
             compose_first_question(prefs, platform, timeout_seconds=timeout_seconds)
@@ -178,6 +190,14 @@ async def _provision(api_url: str, email: str, preferences: OnboardingPreference
     """
     async with httpx.AsyncClient(timeout=60.0) as client:
         await client.post(f"{api_url}/api/v1/dev/users", json={"email": email, "name": "Persona"})
+        # The API is paid-only: a follow turn from a free user is a 402 before it
+        # reaches the agent, so each persona gets a dev subscription first.
+        await asyncio.to_thread(
+            subprocess.run,
+            [sys.executable, "scripts/grant_pro_access.py", "--email", email],
+            check=True,
+            capture_output=True,
+        )
         await client.patch(
             f"{api_url}/api/v1/onboarding/preferences",
             headers={"X-Dev-User": email},
