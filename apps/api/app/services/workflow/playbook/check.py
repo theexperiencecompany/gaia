@@ -24,10 +24,9 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     PlaybookStep,
 )
-from app.models.workflow_execution_models import RecordedCall, largest_list_len
+from app.models.workflow_execution_models import RecordedCall, carries_no_data
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.playbook.evaluator import parse_result
-from app.services.workflow.playbook.placeholders import placeholder_tokens
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
 
@@ -106,60 +105,32 @@ def heal_brief(playbook: PlaybookDocument, *, fallback_note: str | None = None) 
     return PLAYBOOK_HEAL_BRIEF.format(verdict=verdict, reason=reason, already_ran=already_ran)
 
 
-def _read_step_ids(playbook: PlaybookDocument) -> set[str]:
-    """The step ids something later in the playbook actually reads.
-
-    A step nothing addresses cannot hand the next step a gap, because there is no
-    next step holding out a hand. ``result_brief`` counts as a reader: the
-    narration is written from every step's result whether or not it names one.
-    """
-    read: set[str] = set()
-    for step in _walk(playbook.steps):
-        for match in placeholder_tokens(step.args):
-            if match.group("root") == "steps":
-                head = match.group("path").lstrip(".").split(".")[0]
-                if head:
-                    read.add(head)
-        if isinstance(step.for_each, str):
-            for match in placeholder_tokens(step.for_each):
-                if match.group("root") == "steps":
-                    head = match.group("path").lstrip(".").split(".")[0]
-                    if head:
-                        read.add(head)
-    return read
-
-
-def _walk(steps: Sequence[PlaybookStep]) -> Iterator[PlaybookStep]:
-    for step in steps:
-        yield step
-        yield from _walk(step.steps)
-
-
 def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -> str | None:
-    """Why a playbook written this run is already suspect: a frozen call that
-    something reads returned no items.
+    """Why a playbook written this run is already suspect: a frozen call came
+    back with nothing in it.
 
     Read by tool name, LAST match, the same way the replay's empty-vs-previous
     check reads the previous run: an attempt that came back empty and a retry
-    that found items is discovery, and the retry is what was frozen. A result
-    with no list in it at all (plain text, a single record) has nothing to be
-    empty of.
+    that found items is discovery, and the retry is what was frozen.
 
-    Only steps a later step addresses are checked. ``largest_list_len`` looks
-    past the top level, so ANY empty list anywhere in a result counts as empty,
-    and a write tool answers with the record it just created: ``create_todo``
-    returns a todo whose ``labels`` is ``[]`` when the caller passed none. Four
-    of the eight suspect playbooks in production were that, and each one cost a
-    full agentic heal run to answer a question about a list nobody was reading.
+    "Nothing in it" is :func:`carries_no_data`, not an empty list somewhere in
+    the result. A write tool answers with the record it just created, and that
+    record's own empty attributes are not the call returning nothing.
     """
-    read = _read_step_ids(playbook)
     for step in _walk(playbook.steps):
-        if not step.tool or (step.id and step.id not in read):
+        if not step.tool:
             continue
         call = next((c for c in reversed(trace) if c.tool_name == step.tool), None)
-        if call is not None and largest_list_len(parse_result(call.result_digest)) == 0:
+        if call is not None and carries_no_data(parse_result(call.result_digest)):
             return f"{step.tool} returned no items in the run that wrote this playbook"
     return None
+
+
+def _walk(steps: Sequence[PlaybookStep]) -> Iterator[PlaybookStep]:
+    """Every step in the document, handoff children included."""
+    for step in steps:
+        yield step
+        yield from _walk(step.steps)
 
 
 def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:
