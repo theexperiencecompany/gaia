@@ -34,6 +34,7 @@ import sys
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.workflows import workflow_repository
 from app.services.workflow.subscription_pause import (
@@ -57,13 +58,22 @@ class MigrationResult:
 
 
 async def find_free_user_candidates() -> list[FreeUserWorkflows]:
-    """Every user with at least one activated workflow but no active subscription."""
+    """Every user with at least one activated workflow and no billing protection.
+
+    Never touched: the ``system`` template owner, public template workflows, and
+    anyone with an active or on-hold subscription (on-hold is a payment retry in
+    flight, so those users are treated as still paying).
+    """
     candidates: list[FreeUserWorkflows] = []
 
     for user_id in await workflow_repository.distinct_users_with_activated_workflows():
-        if await subscription_repository.get_active_for_user(user_id):
+        if user_id == SYSTEM_USER_ID:
             continue
-        workflows = await workflow_repository.find_activated_for_user(user_id)
+        if await subscription_repository.get_billing_protected_for_user(user_id):
+            continue
+        workflows = [
+            w for w in await workflow_repository.find_activated_for_user(user_id) if not w.is_public
+        ]
         if not workflows:
             continue
         candidates.append(

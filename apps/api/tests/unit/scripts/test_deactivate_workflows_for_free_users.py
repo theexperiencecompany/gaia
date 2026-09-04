@@ -18,13 +18,57 @@ FREE_USER = "free-user-1"
 PRO_USER = "pro-user-1"
 
 
-def _workflow(workflow_id: str) -> MagicMock:
+def _workflow(workflow_id: str, *, is_public: bool = False) -> MagicMock:
     w = MagicMock()
     w.id = workflow_id
+    w.is_public = is_public
     return w
 
 
+def _repos(users: list[str], workflows: list[MagicMock]) -> tuple[MagicMock, MagicMock]:
+    workflow_repo = MagicMock()
+    workflow_repo.distinct_users_with_activated_workflows = AsyncMock(return_value=users)
+    workflow_repo.find_activated_for_user = AsyncMock(return_value=workflows)
+    subscription_repo = MagicMock()
+    subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
+    return workflow_repo, subscription_repo
+
+
 class TestFindFreeUserCandidates:
+    async def test_never_touches_the_system_template_owner(self) -> None:
+        """Public template workflows are owned by user_id "system"; it has no
+        subscription, so without this exclusion the migration would deactivate
+        every template in production."""
+        workflow_repo, subscription_repo = _repos(["system", FREE_USER], [_workflow("wf-1")])
+        with (
+            patch(f"{MODULE}.workflow_repository", workflow_repo),
+            patch(f"{MODULE}.subscription_repository", subscription_repo),
+        ):
+            candidates = await find_free_user_candidates()
+
+        assert [c.user_id for c in candidates] == [FREE_USER]
+        workflow_repo.find_activated_for_user.assert_awaited_once_with(FREE_USER)
+
+    async def test_skips_public_template_workflows_owned_by_a_free_user(self) -> None:
+        workflow_repo, subscription_repo = _repos(
+            [FREE_USER], [_workflow("tmpl", is_public=True), _workflow("wf-1")]
+        )
+        with (
+            patch(f"{MODULE}.workflow_repository", workflow_repo),
+            patch(f"{MODULE}.subscription_repository", subscription_repo),
+        ):
+            candidates = await find_free_user_candidates()
+
+        assert [c.workflow_ids for c in candidates] == [["wf-1"]]
+
+    async def test_a_user_with_only_public_templates_is_not_a_candidate(self) -> None:
+        workflow_repo, subscription_repo = _repos([FREE_USER], [_workflow("tmpl", is_public=True)])
+        with (
+            patch(f"{MODULE}.workflow_repository", workflow_repo),
+            patch(f"{MODULE}.subscription_repository", subscription_repo),
+        ):
+            assert await find_free_user_candidates() == []
+
     async def test_skips_users_with_an_active_subscription(self) -> None:
         with (
             patch(f"{MODULE}.workflow_repository") as workflow_repo,
@@ -33,7 +77,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER, PRO_USER]
             )
-            subscription_repo.get_active_for_user = AsyncMock(
+            subscription_repo.get_billing_protected_for_user = AsyncMock(
                 side_effect=lambda user_id: MagicMock() if user_id == PRO_USER else None
             )
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[_workflow("wf-1")])
@@ -53,7 +97,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[])
 
             candidates = await find_free_user_candidates()
@@ -68,7 +112,7 @@ class TestFindFreeUserCandidates:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(
                 return_value=[_workflow("wf-1"), _workflow("wf-2")]
             )
@@ -88,7 +132,7 @@ class TestRunMigration:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER]
             )
-            subscription_repo.get_active_for_user = AsyncMock(return_value=None)
+            subscription_repo.get_billing_protected_for_user = AsyncMock(return_value=None)
             workflow_repo.find_activated_for_user = AsyncMock(return_value=[_workflow("wf-1")])
             deactivate.return_value = 1
 
@@ -108,7 +152,7 @@ class TestRunMigration:
             workflow_repo.distinct_users_with_activated_workflows = AsyncMock(
                 return_value=[FREE_USER, PRO_USER]
             )
-            subscription_repo.get_active_for_user = AsyncMock(
+            subscription_repo.get_billing_protected_for_user = AsyncMock(
                 side_effect=lambda user_id: MagicMock() if user_id == PRO_USER else None
             )
             workflow_repo.find_activated_for_user = AsyncMock(
