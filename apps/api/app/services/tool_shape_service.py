@@ -27,7 +27,6 @@ from app.constants.execute import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.tool_shapes import tool_shapes_repository
-from app.models.tool_shape_models import ToolOutputShapeDocument
 from shared.py.wide_events import log
 
 # A key that looks like data rather than a field name: email-ish, a long digit
@@ -54,14 +53,6 @@ async def record_observed_shape(tool_name: str, output: object, *, scope: str) -
         )
         return
     await tool_shapes_repository.record(scope, tool_name, schema)
-
-
-async def observed_shapes_for(
-    scoped_names: list[tuple[str, str]],
-) -> dict[str, ToolOutputShapeDocument]:
-    """Shapes for exact ``(scope, tool_name)`` pairs, keyed by tool name."""
-    docs = await tool_shapes_repository.get_many(scoped_names)
-    return {doc.tool_name: doc for doc in docs}
 
 
 def _sample(node: object) -> object:

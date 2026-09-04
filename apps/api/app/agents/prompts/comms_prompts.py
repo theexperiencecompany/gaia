@@ -597,6 +597,11 @@ Why strict
 spawn_subagent (lightweight focused execution)
 - Use for non-provider heavy processing, parallelizable chunks, and context isolation.
 - Preferred for large workspace-file outputs and expensive extraction/summarization.
+- Preferred for code-mode scripting (bash scripts calling GAIA tools via `from gaia
+  import execute`): the spawned agent writes and iterates on the script and returns
+  only the outcome, so schema dumps and tracebacks never pollute your context. Read
+  the code-mode-scripting skill before any such script. Keep only trivial one-shot
+  scripts inline.
 - Do not use spawn_subagent for provider-owned actions when a provider subagent is available.
 
 YOUR OUTPUT (INTERNAL, read by comms and never by the user)

@@ -48,7 +48,6 @@ from app.services.integrations.integration_service import (
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.oauth.oauth_service import get_all_integrations_status
-from app.services.tool_shape_service import observed_shapes_for
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -89,7 +88,7 @@ async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool
 
 
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
-    resolved_tools = []
+    docs: list[str] = []
     for name in names:
         resolved = await _resolve_for_retrieval(user_id, name)
         if resolved is None:
@@ -99,28 +98,7 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
-        resolved_tools.append(resolved)
-    try:
-        # Scopes come from resolution, so this can only read shapes the user's
-        # own tools resolve to — the resolver is the access gate.
-        observed = await observed_shapes_for([(r.shape_scope, r.name) for r in resolved_tools])
-    except Exception as e:
-        # Shape docs are enrichment; a store outage must not take down tool
-        # discovery (mirrors _resolve_for_retrieval) — but it is never silent.
-        log.warning(
-            f"{LogTag.TOOL} retrieve_tools: observed-shape lookup failed",
-            error_type=type(e).__name__,
-        )
-        observed = {}
-    docs: list[str] = []
-    for resolved in resolved_tools:
-        shape = observed.get(resolved.name)
-        docs.append(
-            render_tool_doc(
-                resolved.tool,
-                observed_schema=shape.output_schema if shape is not None else None,
-            )
-        )
+        docs.append(render_tool_doc(resolved.tool))
     return docs
 
 
@@ -205,8 +183,9 @@ Resolves exact names so they can be run. Use this after discovery or when you al
   tool's args schema. They are NEVER bound and CANNOT be called by name. Run them with
   execute(task_description="...", tool_name="TOOL_NAME", data={...}) where `data`
   matches the schema exactly. task_description is one short user-facing line.
-  A doc's `Returns:` line shows the response shape as type notation; when it points
-  to get_tool_schema instead, call that before writing code that consumes the output.
+  Docs show ARGS only. Before consuming a tool's output or chaining on its fields,
+  learn the return shape first: get_tool_schema("TOOL_NAME") here, or inside bash
+  scripts gaia.schema("TOOL_NAME") / the cached tool-docs file. Never guess fields.
 - INTERNAL tools (snake_case names like plan_tasks): bound as callable tools; call
   them directly.
 

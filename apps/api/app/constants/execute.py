@@ -20,11 +20,6 @@ ARGS_SCHEMA_MAX_CHARS = 3000
 # The get_tool_schema tool's per-section output bound: full depth for almost
 # every tool, degrading by depth for the rare monster schema.
 TOOL_SCHEMA_RETURNS_MAX_CHARS = 4000
-# The response shape only guides how results are consumed, so it renders inline
-# only when small; above this it becomes a one-line pointer to the on-demand
-# lookup (gaia.schema / the sandbox tool-docs folder) instead of re-paid
-# context on every later turn.
-RESPONSE_SCHEMA_INLINE_MAX_CHARS = 1000
 
 # Keys under which a tool's metadata may carry a provider-supplied response
 # schema. Rendered only when present — most tools do not document their output

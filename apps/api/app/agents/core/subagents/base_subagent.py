@@ -19,9 +19,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
-from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import (
-    SubagentMiddleware,
     SubagentStackOptions,
     create_subagent_middleware,
 )
@@ -29,7 +27,6 @@ from app.agents.tools.coding import bash, grep, query_json, read
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
-    build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_provider_parent_tool_runtime_config,
 )
@@ -225,30 +222,11 @@ class SubAgentFactory:
             authoring_only=cfg.authoring_only,
         )
 
-        # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
-        # all parent tools, not just the provider's scoped tools.
-        # The provider agent itself uses scoped_tool_dict for its own tool access,
-        # but its SubagentMiddleware needs the full registry so that any child
-        # subagent it spawns can access tools like read, bash, web_search, etc.
-        full_tool_dict = tool_registry.get_tool_dict()
-
-        # An authoring-only subagent (the workflow assistant) just emits a draft;
-        # it must not spawn sub-subagents or plan/run tasks. Strip the spawn
-        # middleware and the todo (plan_tasks/update_tasks) tools + hook so it
-        # cannot drift into executing the workflow it is supposed to describe.
+        # Subagents can never spawn sub-subagents — create_subagent_middleware
+        # structurally omits the spawn middleware (only the executor spawns).
         middleware = create_subagent_middleware(
             agent_name=name,
-            subagent=SubagentStackOptions(
-                enabled=not cfg.authoring_only,
-                llm=llm,
-                registry=full_tool_dict,
-                tool_space=tool_space,
-            ),
-        )
-
-        subagent_mw = next(
-            (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
-            None,
+            subagent=SubagentStackOptions(llm=llm, tool_space=tool_space),
         )
 
         # Create todo tools and register them in the scoped tool registry
@@ -262,10 +240,6 @@ class SubAgentFactory:
         for todo_tool in todo_tools:
             scoped_tool_dict[todo_tool.name] = todo_tool
             todo_tool_names.append(todo_tool.name)
-
-        if subagent_mw is not None:
-            subagent_mw.set_store(store)
-            subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
         common_kwargs: dict[str, Any] = {
             "llm": llm,
@@ -325,25 +299,6 @@ class SubAgentFactory:
                 bindable_tool_names=set(scoped_tool_dict.keys()),
             )
         )
-
-        child_tool_runtime = build_child_tool_runtime_config(
-            parent_tool_runtime,
-            use_direct_tools=use_direct_tools,
-            disable_retrieve_tools=cfg.disable_retrieve_tools,
-            extra_initial_tool_names=extra_initial,
-        )
-        spawn_seed_tools = [
-            scoped_tool_dict[name]
-            for name in child_tool_runtime.initial_tool_names
-            if name in scoped_tool_dict
-        ]
-
-        if subagent_mw is not None:
-            subagent_mw.set_tools(
-                registry=full_tool_dict,
-                tools=spawn_seed_tools,
-                tool_runtime_config=child_tool_runtime,
-            )
 
         builder = create_agent(**common_kwargs)
 

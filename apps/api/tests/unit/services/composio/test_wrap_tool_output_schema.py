@@ -37,10 +37,9 @@ class TestWrapToolOutputSchema:
         wrapped = LangchainProvider().wrap_tool(make_composio_tool(), _noop_execute)
         assert wrapped.metadata is None
 
-    def test_the_wrapped_tool_renders_a_returns_section(self) -> None:
+    def test_the_discovery_doc_still_never_carries_the_returns(self) -> None:
+        # The metadata feeds get_tool_schema/gaia.schema, not the discovery doc.
         wrapped = LangchainProvider().wrap_tool(
             make_composio_tool(output_parameters=OUTPUT_SCHEMA), _noop_execute
         )
-        doc = render_tool_doc(wrapped)
-        assert "Returns:" in doc
-        assert "messages?:any[]" in doc  # rendered as compact type notation
+        assert "Returns" not in render_tool_doc(wrapped)

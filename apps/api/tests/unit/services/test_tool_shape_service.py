@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services import tool_shape_service
-from app.services.tool_shape_service import observed_shapes_for, record_observed_shape
+from app.services.tool_shape_service import record_observed_shape
 
 REPO = "app.services.tool_shape_service.tool_shapes_repository"
 SCOPE = "global"
@@ -129,18 +129,3 @@ class TestRecordObservedShape:
             await record_observed_shape("T", {"ts": datetime.now(UTC)}, scope=SCOPE)
         (_, _, schema), _ = repo.record.await_args
         assert schema["properties"]["ts"] == {"type": "string"}
-
-
-@pytest.mark.unit
-class TestObservedShapesFor:
-    async def test_passes_exact_scope_pairs_and_maps_by_tool_name(self) -> None:
-        doc = MagicMock()
-        doc.tool_name = "A"
-        repo = MagicMock()
-        repo.get_many = AsyncMock(return_value=[doc])
-        pairs = [("global", "A"), ("mcp:crm-123", "B")]
-        with patch(REPO, repo):
-            shapes = await observed_shapes_for(pairs)
-        # Exact pairs, never a bare-name query that could cross scopes.
-        repo.get_many.assert_awaited_once_with(pairs)
-        assert shapes == {"A": doc}

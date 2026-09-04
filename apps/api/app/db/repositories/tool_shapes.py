@@ -24,15 +24,6 @@ class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputSh
     async def get_shape(self, scope: str, tool_name: str) -> ToolOutputShapeDocument | None:
         return await self._find_one({"scope": scope, "tool_name": tool_name})
 
-    async def get_many(self, scoped_names: list[tuple[str, str]]) -> list[ToolOutputShapeDocument]:
-        """Documents for exact ``(scope, tool_name)`` pairs — never a scope the
-        caller did not name, which is what keeps reads inside the resolver gate."""
-        if not scoped_names:
-            return []
-        return await self._find(
-            {"$or": [{"scope": scope, "tool_name": name} for scope, name in scoped_names]}
-        )
-
     async def record(self, scope: str, tool_name: str, output_schema: dict[str, Any]) -> None:
         """Store the merged schema for one more observation of ``tool_name``."""
         await self._apply_raw_update(
