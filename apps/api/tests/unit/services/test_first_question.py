@@ -25,7 +25,6 @@ from app.services.onboarding.first_question import (
     first_question_cache_key,
     prewarm_first_question,
     resolve_first_question,
-    validate_draft,
 )
 
 MODULE = "app.services.onboarding.first_question"
@@ -47,45 +46,6 @@ def _prefs(
         needs=needs if needs is not None else [OnboardingNeed.INBOX, OnboardingNeed.CALENDAR],
         other_need=other_need,
     )
-
-
-def _reason(question: str, chips: list[str], preferences: OnboardingPreferences) -> str | None:
-    rejection = validate_draft(question, chips, preferences)
-    return rejection.reason if rejection else None
-
-
-@pytest.mark.unit
-class TestValidateDraft:
-    def test_the_target_shape_passes(self) -> None:
-        assert _reason(GOOD_QUESTION, GOOD_CHIPS, _prefs()) is None
-
-    def test_a_statement_is_not_a_question(self) -> None:
-        assert _reason("Founder with the inbox on fire.", GOOD_CHIPS, _prefs()) == "not_a_question"
-
-    @pytest.mark.parametrize("chips", [["Product", "Growth"], ["A", "B", "C", "D", "E"]])
-    def test_chips_outside_three_to_four_are_rejected(self, chips: list[str]) -> None:
-        assert _reason(GOOD_QUESTION, chips, _prefs()) == "chip_count"
-
-    def test_repeated_chips_are_rejected(self) -> None:
-        chips = ["Product", "product", "Hiring"]
-        assert _reason(GOOD_QUESTION, chips, _prefs()) == "duplicate_chips"
-
-    def test_an_empty_chip_is_rejected(self) -> None:
-        assert _reason(GOOD_QUESTION, ["Product", " ", "Hiring"], _prefs()) == "empty_chip"
-
-    def test_a_plural_in_the_typed_need_still_counts_as_kept(self) -> None:
-        preferences = _prefs(other_need="supplier emails")
-        question = "Bakery owner buried in supplier email. Which thread first?"
-        assert _reason(question, GOOD_CHIPS, preferences) is None
-
-    def test_the_typed_need_must_survive_into_what_they_see(self) -> None:
-        preferences = _prefs(other_need="chasing invoices")
-        assert _reason(GOOD_QUESTION, GOOD_CHIPS, preferences) == "other_need_dropped"
-
-    def test_the_typed_need_on_a_chip_is_enough(self) -> None:
-        preferences = _prefs(other_need="chasing invoices")
-        chips = ["Product", "Growth", "Chasing invoices"]
-        assert _reason(GOOD_QUESTION, chips, preferences) is None
 
 
 @pytest.mark.unit
@@ -119,15 +79,6 @@ class TestComposeFirstQuestion:
         with (
             patch(f"{MODULE}.background_structured_runnable"),
             patch(f"{MODULE}.ainvoke_llm", AsyncMock(side_effect=error)),
-        ):
-            assert await compose_first_question(_prefs(), None) is None
-
-    async def test_a_draft_breaking_a_rule_falls_back(self) -> None:
-        # Structure, not style: a draft with no question mark is unusable.
-        draft = _QuestionDraft(question="Founder with the inbox on fire.", chips=GOOD_CHIPS)
-        with (
-            patch(f"{MODULE}.background_structured_runnable"),
-            patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=draft)),
         ):
             assert await compose_first_question(_prefs(), None) is None
 

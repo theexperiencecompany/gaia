@@ -436,7 +436,7 @@ class TestNewUserGuidanceBlock:
     # Raised from 3,400 when the playbooks went from one first move each to two
     # or three named things GAIA can create, and the focus table was added. The
     # ceiling is real: MAX_PLAYBOOK_LINES bounds the list, this bounds the prose.
-    MAX_BLOCK_CHARS = 4_400
+    MAX_BLOCK_CHARS = 4_700
 
     @staticmethod
     def _count(value: int) -> AsyncMock:

@@ -11,10 +11,8 @@ answers "How can I help you today?" has produced something worse than the static
 copy, so a miss is a fallback, not a warning to ship anyway.
 """
 
-from dataclasses import dataclass
 import hashlib
 import json
-import re
 import time
 
 from pydantic import BaseModel, Field
@@ -49,42 +47,6 @@ LIVE_QUESTION_TIMEOUT_SECONDS = 2.0
 #: every persona; above this it starts inventing facts about their week.
 QUESTION_TEMPERATURE = 0.4
 
-MIN_CHIPS = 3
-MAX_CHIPS = 4
-#: Words carrying no identity, so they never count as "something they said".
-_STOPWORDS = frozenset(
-    {
-        "a",
-        "am",
-        "an",
-        "and",
-        "are",
-        "at",
-        "every",
-        "for",
-        "i",
-        "in",
-        "is",
-        "it",
-        "keep",
-        "me",
-        "my",
-        "of",
-        "on",
-        "single",
-        "the",
-        "they",
-        "to",
-        "want",
-        "wake",
-        "with",
-        "you",
-        "your",
-    }
-)
-
-_WORD_RE = re.compile(r"[a-z0-9']+")
-
 #: The voice section of the comms prompt, read out of the prompt itself so the
 #: seeded question and the agent the user talks to next cannot drift apart.
 _VOICE_SECTION_START = "## Voice"
@@ -99,17 +61,16 @@ class FirstQuestion(BaseModel):
 
 
 class _QuestionDraft(BaseModel):
-    """The raw model output, before any of the rules are applied."""
+    """The model's output. The schema IS the check: structured output cannot hand
+    back a missing question or the wrong number of chips, so nothing downstream
+    second-guesses the words."""
 
-    question: str = Field(description="One question, 25 words max, ending in a question mark.")
-    chips: list[str] = Field(description="3 or 4 answers to it, 4 words max each.")
-
-
-@dataclass(frozen=True)
-class _Rejection:
-    """Why a draft is not shippable. ``reason`` is the wide-event value."""
-
-    reason: str
+    question: str = Field(
+        min_length=1, description="One question, 25 words max, ending in a question mark."
+    )
+    chips: list[str] = Field(
+        min_length=3, max_length=4, description="3 or 4 answers to it, 4 words max each."
+    )
 
 
 def comms_voice_rules() -> str:
@@ -186,73 +147,6 @@ def _answers_block(preferences: OnboardingPreferences, connected_platform: str |
     return "\n".join(lines) or "- Nothing. They answered nothing."
 
 
-def _words(text: str) -> list[str]:
-    return _WORD_RE.findall(text.lower())
-
-
-def _stem(word: str) -> str:
-    """Crude inflection strip so "emails"/"email" and "chasing"/"chase" match.
-
-    Only for the "did their own words survive" check, where a plural in the
-    answer and a singular in the question must not read as a dropped need.
-    """
-    for suffix in ("ing", "es", "s"):
-        if len(word) > len(suffix) + 2 and word.endswith(suffix):
-            return word[: -len(suffix)]
-    return word
-
-
-def _validate_question(question: str) -> _Rejection | None:
-    """Structure only: something to show, and it asks. Style is the prompt's job."""
-    if not question.strip():
-        return _Rejection("empty_question")
-    if not question.rstrip().endswith("?"):
-        return _Rejection("not_a_question")
-    return None
-
-
-def _validate_chips(chips: list[str]) -> _Rejection | None:
-    """Structure only: enough distinct, non-empty answers to tap."""
-    if not (MIN_CHIPS <= len(chips) <= MAX_CHIPS):
-        return _Rejection("chip_count")
-    if len({chip.strip().lower() for chip in chips}) != len(chips):
-        return _Rejection("duplicate_chips")
-    if any(not chip.strip() for chip in chips):
-        return _Rejection("empty_chip")
-    return None
-
-
-def _validate_other_need(
-    question: str, chips: list[str], other_need: str | None
-) -> _Rejection | None:
-    """The thing they typed by hand has to survive into what they are shown.
-
-    They wrote it because no chip covered it; dropping it is the one failure
-    that reads as not having been listened to.
-    """
-    if not other_need:
-        return None
-    surface = " ".join([question, *chips]).lower()
-    phrase = other_need.strip().lower()
-    if phrase in surface:
-        return None
-    content = {_stem(w) for w in _words(phrase) if w not in _STOPWORDS}
-    if content and content <= {_stem(w) for w in _words(surface)}:
-        return None
-    return _Rejection("other_need_dropped")
-
-
-def validate_draft(
-    question: str, chips: list[str], preferences: OnboardingPreferences
-) -> _Rejection | None:
-    """The whole rule set, in the order a reader would check it. ``None`` passes."""
-    return (
-        _validate_question(question)
-        or _validate_chips(chips)
-        or _validate_other_need(question, chips, preferences.other_need)
-    )
-
-
 async def compose_first_question(
     preferences: OnboardingPreferences,
     connected_platform: str | None,
@@ -307,15 +201,6 @@ async def compose_first_question(
         return None
 
     chips = [chip.strip() for chip in draft.chips]
-    rejection = validate_draft(draft.question.strip(), chips, preferences)
-    if rejection is not None:
-        log.warning(
-            f"{LogTag.ONBOARDING} first question fell back",
-            outcome="fallback",
-            reason=rejection.reason,
-            duration_s=round(time.monotonic() - started, 3),
-        )
-        return None
 
     log.info(
         f"{LogTag.ONBOARDING} first question composed",
