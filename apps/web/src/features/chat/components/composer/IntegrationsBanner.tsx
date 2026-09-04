@@ -49,7 +49,11 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     // sibling, at any height. The composer box (`.searchbar`, z-2) still
     // paints over the small `-mb-8` tuck below, which is the only
     // intentional overlap — with the composer itself, not with a sibling.
-    <div className="relative z-0 flex w-full justify-center pointer-events-none pt-2 pb-6 -mb-8">
+    // `searchbar` (globals.css) is the width rule the composer box itself uses
+    // — 50% desktop / 95% phone. Wearing it here keeps the pill locked to the
+    // composer's width at every breakpoint instead of spanning the full
+    // container, which is what `w-full` did once this moved out of the box.
+    <div className="searchbar relative z-0 flex justify-center pointer-events-none pt-2 pb-6 -mb-8">
       <button
         type="button"
         className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 px-8 py-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer"
