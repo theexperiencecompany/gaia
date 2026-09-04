@@ -5,8 +5,9 @@
  * shared transcript + progress chrome live in `OnboardingShell` /
  * `MessagesRegion`.
  *
- * The `payment` stage is deliberately exclusive: the transcript is hidden
- * so nothing competes with the decision.
+ * The `payment` and `paidReveal` stages are deliberately exclusive: the
+ * transcript is hidden so nothing competes with the decision, and the receipt
+ * prints at the top of the screen instead of below a scroll of bubbles.
  */
 
 "use client";
@@ -147,7 +148,9 @@ export default function Onboarding() {
       >
         {introDone ? (
           <m.div {...INTRO_FADE_IN}>
-            {stage !== "payment" && <MessagesRegion state={state} />}
+            {stage !== "payment" && stage !== "paidReveal" && (
+              <MessagesRegion state={state} />
+            )}
             {stageContent}
           </m.div>
         ) : null}
