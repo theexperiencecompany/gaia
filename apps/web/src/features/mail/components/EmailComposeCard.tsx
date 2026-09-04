@@ -173,10 +173,9 @@ function AttachmentsRow({
 }) {
   return (
     <div className="flex flex-wrap gap-2 pt-1">
-      {attachments.map((attachment, index) => (
+      {attachments.map((attachment) => (
         <Chip
-          // biome-ignore lint/suspicious/noArrayIndexKey: read-only list, never reordered; two files can legitimately share a name
-          key={`${attachment.name}-${index}`}
+          key={`${attachment.name}-${attachment.mimetype}`}
           size="sm"
           variant="flat"
           startContent={
