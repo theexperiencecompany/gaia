@@ -167,6 +167,12 @@ class _Walk:
     user_id: str
     registry: ToolRegistry
     declared_steps: set[str] = field(default_factory=set)
+    #: The declared ids that are handoffs. A handoff records no result of its
+    #: own, so ``$steps.<handoff>...`` can never resolve; the runner keys a
+    #: child's result on the child's id. Seen live: a model wrote
+    #: ``$steps.sweep.list.todos`` for the ``list`` child of the ``sweep``
+    #: handoff, the write was accepted, and the replay stopped on it.
+    handoff_ids: set[str] = field(default_factory=set)
     issues: list[PlaybookIssue] = field(default_factory=list)
     #: The authoring run's calls, or ``None`` when there is no run to check
     #: against. ``None`` and an empty run are different: an empty run means
@@ -202,6 +208,8 @@ async def _check_steps(
         if not isinstance(step, HandoffStep):
             _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
         else:
+            if step.id:
+                walk.handoff_ids.add(step.id)
             subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
             if subagent is None:
                 walk.issues.append(
@@ -567,6 +575,18 @@ def _check_placeholder(match: re.Match[str], where: str, walk: _Walk) -> None:
             PlaybookIssue(
                 where=where,
                 problem=f"{token} points at a step that no earlier node declares",
+            )
+        )
+        return
+    if name in walk.handoff_ids:
+        child = path.split(".")[1] if "." in path else "<child>"
+        walk.issues.append(
+            PlaybookIssue(
+                where=where,
+                problem=(
+                    f"{token} addresses the handoff {name!r}, which records no result of "
+                    f"its own; address the call inside it by its own id, $steps.{child}..."
+                ),
             )
         )
         return

@@ -20,13 +20,14 @@ import yaml
 
 from app.agents.tools.playbook_tools import (
     _explain_validation_error,
+    _replayed_results,
     _run_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
     write_playbook,
 )
-from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.constants.agents import PLAYBOOK_DECLINE_LIMIT, PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
@@ -36,6 +37,7 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     playbook_body_from_input,
 )
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     PlaybookDiscard,
     TriggerConfig,
@@ -1716,3 +1718,68 @@ class TestDeclineKindArguments:
         two days, concentrated in the most expensive workflows."""
         assert "args_vary" not in {k.value for k in DeclineKind}
         assert "fan_out_varies" not in {k.value for k in DeclineKind}
+
+
+@pytest.mark.unit
+class TestOneDecisionPerRun:
+    """Seen live: one run called decline_playbook three times and burned all
+    three of the workflow's chances in a single fire. A run is one decision,
+    however many times the model voices it."""
+
+    async def test_a_second_decline_in_the_same_run_is_not_counted(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        first = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "d1", "name": "decline_playbook", "args": {"kind": "unstable_discovery"}}
+            ],
+        )
+        answered = ToolMessage(
+            content=json.dumps({"success": True, "data": {"declined": True}}), tool_call_id="d1"
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "unstable_discovery",
+                    "reason": "again",
+                    "state": {"messages": [first, answered]},
+                },
+                config=_config(),
+            )
+
+        assert result["success"] is True
+        assert result["data"]["counted"] is False
+        assert workflows.workflow.playbook_declines == 0, "the second voice of one decision is free"
+
+
+@pytest.mark.unit
+class TestAStoppedReplaysCallsCountAsThisRuns:
+    """Seen live: a replay ran list_todos, stopped, and the agent finishing the
+    fire, told not to repeat it, rewrote the playbook keeping that step. The
+    write was refused: "list_todos did not run in this run". It did. The
+    replay's calls reach the write now, structurally, and come first."""
+
+    def test_replayed_calls_are_prepended_to_the_runs_results(self) -> None:
+        replayed = RecordedCall(
+            tool_name="list_todos", args={"limit": 100}, result_digest='{"todos": [{"id": "a"}]}'
+        )
+        config = {
+            "configurable": {
+                **_config()["configurable"],
+                PLAYBOOK_REPLAYED_CALLS_KEY: [replayed.model_dump(mode="json")],
+            }
+        }
+
+        results = _replayed_results(config)
+
+        assert [(r.tool_name, r.args, r.result) for r in results] == [
+            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]})
+        ]
+
+    def test_no_replay_means_no_extra_results(self) -> None:
+        assert _replayed_results(_config()) == []

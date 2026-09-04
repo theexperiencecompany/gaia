@@ -66,6 +66,11 @@ INTERNAL_AGENT_TAG_PATTERN = re.compile(
 # ``format_workflow_execution_message`` — named once here because a drift
 # between those two sites is silent and the agent would re-run a side effect.
 PLAYBOOK_FALLBACK_CONTEXT_KEY = "playbook_fallback"
+#: The calls a replay made before it stopped, handed to the agent finishing the
+#: fire so a rewrite may freeze them. The fallback note tells the agent not to
+#: repeat them; without this the write validator, which reads only the agent's
+#: own messages, refused every rewrite that kept one ("did not run in this run").
+PLAYBOOK_REPLAYED_CALLS_KEY = "playbook_replayed_calls"
 
 # After this many consecutive suspect replays the worker disables the playbook.
 PLAYBOOK_SUSPECT_STREAK_LIMIT = 2

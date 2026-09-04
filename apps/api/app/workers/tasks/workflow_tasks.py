@@ -33,6 +33,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
+    PLAYBOOK_REPLAYED_CALLS_KEY,
     AgentTag,
     wrap_agent_payload,
 )
@@ -955,7 +956,13 @@ async def _finish_after_replay(
         # only when that is set, so there is no empty case left to name here.
         summary = REPLAY_FLAGGED_SUMMARY.format(reason=str(reason).rstrip("."))
     conversation_id, agent_trace = await execute_workflow_as_chat(
-        workflow, user, {**context, PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)}
+        workflow,
+        user,
+        {
+            **context,
+            PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result),
+            PLAYBOOK_REPLAYED_CALLS_KEY: [call.model_dump(mode="json") for call in result.trace],
+        },
     )
     # This was a heal run too: it carried the heal brief and ended with a
     # decision, so it spends an attempt on the body it healed (a rewrite moved

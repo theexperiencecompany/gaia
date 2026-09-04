@@ -2655,3 +2655,66 @@ class TestDumpKeepsTheLoop:
 
         assert "for_each" not in rendered
         assert "max_items" not in rendered
+
+
+@pytest.mark.unit
+class TestAHandoffIsNotAnAddress:
+    """Seen live: a model wrote ``$steps.sweep.list.todos`` for the ``list`` child
+    of the ``sweep`` handoff. The write was accepted, since ``sweep`` is a
+    declared id, and the replay stopped on it: a handoff records no result, so
+    the runner keys a child's result on the child's own id. The write is where
+    that is knowable, and the message has to say what to write instead."""
+
+    async def test_a_reference_through_the_handoff_is_refused_naming_the_child(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.sweep.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert any(
+            "addresses the handoff 'sweep'" in issue.problem and "$steps.agenda" in issue.problem
+            for issue in result.issues
+        ), result.issues
+
+    async def test_the_child_addressed_by_its_own_id_is_fine(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues

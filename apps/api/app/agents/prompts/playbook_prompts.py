@@ -39,7 +39,7 @@ steps:
       query_text: {"$ask": "one web search that would give background on the most important mail listed above"}
 result_brief: Lead with what the unread mail is about, then what the search added. Two short paragraphs.
 
-If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay:
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, so if only some of them should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run:
 
   - id: replies
     tool: GMAIL_CREATE_EMAIL_DRAFT

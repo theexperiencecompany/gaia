@@ -18,6 +18,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
+from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
@@ -30,6 +31,7 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     playbook_body_from_input,
 )
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import WorkflowUpdate
 from app.services.workflow.playbook.check import declined_for_good
 from app.services.workflow.playbook.evaluator import parse_result
@@ -84,6 +86,67 @@ def _explain_validation_error(error: ValidationError | LegacyValidationError) ->
     )
 
 
+def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any], object]]:
+    """Every tool call in the run's messages that has an answer: name, args, parsed answer.
+
+    Failed calls are kept, unlike the handoff record's successful-only lines
+    (``call_record.py``): a step frozen on a call that errored is precisely one
+    of the things the validator has to catch. A call with no answer is one still
+    in flight (this very tool call, in every real run) and is left out.
+    """
+    if state is None:
+        return []
+    messages = state.get("messages")
+    if not isinstance(messages, list):
+        return []
+    answers: dict[str, object] = {}
+    for message in messages:
+        if isinstance(message, ToolMessage) and message.tool_call_id:
+            content = message.content
+            answers[message.tool_call_id] = parse_result(
+                content if isinstance(content, str) else json.dumps(content, default=str)
+            )
+    calls: list[tuple[str, dict[str, Any], object]] = []
+    for message in messages:
+        for call in getattr(message, "tool_calls", None) or []:
+            call_id = call.get("id")
+            name = str(call.get("name") or "")
+            if name and call_id in answers:
+                calls.append((name, dict(call.get("args") or {}), answers[call_id]))
+    return calls
+
+
+def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
+    """The calls a stopped replay made this fire, as results a write may freeze.
+
+    They ran, they produced their results, and the fallback brief told the agent
+    not to run them again. They are this run's calls in every sense the
+    validator cares about.
+    """
+    raw = (config.get("configurable") or {}).get(PLAYBOOK_REPLAYED_CALLS_KEY) or []
+    replayed = [RecordedCall.model_validate(item) for item in raw]
+    return [
+        RecordedResult(
+            tool_name=call.tool_name, args=call.args, result=parse_result(call.result_digest)
+        )
+        for call in replayed
+    ]
+
+
+def _already_declined(state: Mapping[str, Any] | None) -> bool:
+    """Whether this run has already declined, successfully, once.
+
+    The brief says to call exactly one decision tool; nothing made a model do
+    so. Seen live: three decline calls in one run burned three of the
+    workflow's three chances, and the workflow was locked out of a playbook by
+    a single fire. A run is one decision, however many times it is voiced.
+    """
+    return any(
+        name == "decline_playbook" and isinstance(answer, Mapping) and answer.get("success") is True
+        for name, _args, answer in _answered_calls(state)
+    )
+
+
 def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
     """The authoring run's tool calls with what each one returned, in call order.
 
@@ -102,30 +165,10 @@ def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
     messages = state.get("messages")
     if not isinstance(messages, list):
         return None
-    answers: dict[str, object] = {}
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            content = message.content
-            answers[message.tool_call_id] = parse_result(
-                content if isinstance(content, str) else json.dumps(content, default=str)
-            )
-    results: list[RecordedResult] = []
-    for message in messages:
-        for call in getattr(message, "tool_calls", None) or []:
-            call_id = call.get("id")
-            name = str(call.get("name") or "")
-            # A call with no answer is one still in flight (this very
-            # write_playbook call, in every real run) — it froze nothing.
-            if not name or call_id not in answers:
-                continue
-            results.append(
-                RecordedResult(
-                    tool_name=name,
-                    args=dict(call.get("args") or {}),
-                    result=answers[call_id],
-                )
-            )
-    return results
+    return [
+        RecordedResult(tool_name=name, args=args, result=answer)
+        for name, args, answer in _answered_calls(state)
+    ]
 
 
 @tool
@@ -178,6 +221,9 @@ async def write_playbook(
         body = playbook_body_from_input(description, steps, result_brief)
 
         results = _run_results(state)
+        if results is not None:
+            # The replay's calls come first: they ran before anything the agent did.
+            results = [*_replayed_results(config), *results]
         # On the wide event because it is the one thing a rejected-or-accepted
         # write cannot show from its outcome: whether the run's own results
         # were in hand (None: no graph state reached the tool at all).
@@ -351,6 +397,7 @@ async def decline_playbook(
         "Required for order_branches: the ONE call that runs on some days and "
         "not others. If you cannot name such a call, the order does not branch.",
     ] = None,
+    state: Annotated[dict[str, Any] | None, InjectedState] = None,
 ) -> dict[str, Any]:
     """
     Record that this run's sequence is not worth freezing as a playbook.
@@ -399,6 +446,11 @@ async def decline_playbook(
             return error_response(
                 "not_asked",
                 "This workflow is no longer asked about a playbook; nothing to decline.",
+            )
+        if _already_declined(state):
+            return success_response(
+                {"declined": True, "counted": False},
+                "Already noted for this run. A run is one decision; nothing more to record.",
             )
 
         if kind in BLOCKED_DECLINE_KINDS:

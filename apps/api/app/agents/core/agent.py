@@ -27,7 +27,7 @@ from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.lane import AgentRole, dev_model_id, dev_option_for
 from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -218,6 +218,7 @@ async def _core_agent_logic(
             "workflow_notify_on_completion", True
         )
         configurable["playbook_fallback"] = trigger_context.get(PLAYBOOK_FALLBACK_CONTEXT_KEY)
+        configurable["playbook_replayed_calls"] = trigger_context.get(PLAYBOOK_REPLAYED_CALLS_KEY)
 
     log.set(
         agent={

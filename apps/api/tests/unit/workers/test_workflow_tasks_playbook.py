@@ -23,6 +23,7 @@ from app.agents.prompts.playbook_prompts import (
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
     PLAYBOOK_HEAL_ATTEMPT_LIMIT,
+    PLAYBOOK_REPLAYED_CALLS_KEY,
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
@@ -2080,7 +2081,14 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
             call(
                 workflow,
                 AGENT_USER,
-                {PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)},
+                {
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result),
+                    # The replay's calls travel with the note, structurally, so a
+                    # rewrite may freeze what the replay already ran.
+                    PLAYBOOK_REPLAYED_CALLS_KEY: [
+                        call.model_dump(mode="json") for call in result.trace
+                    ],
+                },
             )
         ]
 
