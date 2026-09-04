@@ -123,7 +123,7 @@ const MainChat = React.memo(function MainChat() {
           dragHandlers={dragHandlers}
           bottomBar={
             <>
-              <PaywallNotice />
+              <PaywallNotice className="mb-10" />
               <Composer {...composerProps} />
             </>
           }

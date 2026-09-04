@@ -26,11 +26,11 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
   return (
     <div className="relative flex w-full snap-start items-center justify-center px-4 pt-[25vh] scrollbar-default">
       <div className="flex w-full max-w-7xl flex-col items-center justify-center">
+        <PaywallNotice className="mb-8" />
         <div className="flex flex-col items-center gap-2">
           <StarterText />
         </div>
         <div className="mt-12 w-full max-w-7xl">
-          <PaywallNotice />
           <Composer {...composerProps} />
         </div>
 

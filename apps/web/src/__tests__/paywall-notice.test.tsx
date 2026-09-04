@@ -26,7 +26,7 @@ describe("PaywallNotice", () => {
     render(<PaywallNotice />);
 
     expect(screen.getByText(/your subscription ended/i)).not.toBeNull();
-    expect(screen.queryByText(/GAIA is paid-only right now/i)).toBeNull();
+    expect(screen.queryByText(/GAIA is paid only right now/i)).toBeNull();
     expect(
       screen.getByRole("button", { name: /^resubscribe$/i }),
     ).not.toBeNull();
@@ -35,7 +35,7 @@ describe("PaywallNotice", () => {
   it("renders the upgrade notice for a loaded free (non-subscribed) user", () => {
     render(<PaywallNotice />);
 
-    expect(screen.getByText(/GAIA is paid-only right now/i)).not.toBeNull();
+    expect(screen.getByText(/GAIA is paid only right now/i)).not.toBeNull();
     expect(
       screen.getByRole("button", { name: /upgrade to pro/i }),
     ).not.toBeNull();

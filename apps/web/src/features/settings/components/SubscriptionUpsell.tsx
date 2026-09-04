@@ -40,8 +40,8 @@ export function SubscriptionUpsell({
       <SettingsSection title={`${copy.cta} to GAIA Pro`}>
         <div className="px-4 py-4 space-y-3">
           <p className="text-sm text-zinc-400">
-            A subscription covers the server costs and unlocks chat, workflows,
-            priority support, and private Discord channels.
+            Subscribe and you get chat, workflows, priority support and the
+            private Discord.
           </p>
           <Button
             color="primary"

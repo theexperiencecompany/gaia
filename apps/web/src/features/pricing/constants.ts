@@ -99,7 +99,8 @@ const LAPSED_PAYWALL_COPY: PaywallCopy = {
   body: "Pick up right where you left off.",
   cta: "Resubscribe",
   subscribeCta: "Resubscribe to GAIA Pro",
-  composer: "Your subscription ended — resubscribe to keep chatting.",
+  composer:
+    "Your subscription ended. Resubscribe to pick up where you left off.",
   planLabel: "Subscription ended",
   sidebarBody: (monthlyPrice) =>
     `Resubscribe for $${monthlyPrice} a month to pick up where you left off`,
@@ -110,11 +111,10 @@ const MIGRATION_PAYWALL_COPY: PaywallCopy = {
   body: "Subscribe to GAIA Pro to keep chatting and running workflows.",
   cta: "Upgrade to Pro",
   subscribeCta: "Subscribe to GAIA Pro",
-  composer:
-    "GAIA is paid-only right now — subscriptions cover the server costs.",
+  composer: "GAIA is paid only right now, so you'll need a plan to chat.",
   planLabel: "Not subscribed",
   sidebarBody: (monthlyPrice) =>
-    `GAIA is paid-only — subscribe for $${monthlyPrice} a month to keep using it`,
+    `GAIA is paid only right now. $${monthlyPrice} a month gets you all of it.`,
 };
 
 /** Unknown status reads as the migration audience — never as lapsed. */
