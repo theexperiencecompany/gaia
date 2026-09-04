@@ -192,3 +192,28 @@ def compose_first_conversation(
         follow_ups=_follow_ups(preferences),
         gmail_card_line=GMAIL_CARD_LINE,
     )
+
+
+def with_closing_question(
+    composed: FirstConversation,
+    preferences: OnboardingPreferences,
+    question: str,
+    chips: list[str],
+) -> FirstConversation:
+    """The same conversation with a written question as its last turn.
+
+    ``LINE_4_TEMPLATE`` is the static version of exactly this move, so where it
+    was composed the question takes its place rather than following it; with no
+    "Something else" answer there is no such line and the question is appended.
+    Either way the chips answer the question, so they replace the static ones.
+    """
+    lines = composed.lines[:]
+    if preferences.other_need and lines:
+        lines[-1] = question
+    else:
+        lines.append(question)
+    return FirstConversation(
+        lines=lines,
+        follow_ups=chips,
+        gmail_card_line=composed.gmail_card_line,
+    )

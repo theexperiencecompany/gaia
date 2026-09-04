@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+# mypy: ignore-errors -- dev eval script; typing not maintained here
+"""
+Run `compose_first_question` over the onboarding answers we actually see.
+
+Not a test: it calls a real model, so it goes red when the provider is down and
+that would be a useless CI signal. It exists to read the copy — ten personas,
+their question, their chips, and whether the validator let the model's answer
+through or fell back to the static line.
+
+Usage (from apps/api/):
+    uv run python scripts/evals/first_question_personas.py
+    uv run python scripts/evals/first_question_personas.py --follow
+
+`--follow` takes each chip of the first three personas and sends it as the
+user's next message to the LOCALLY RUNNING API, so you can read GAIA's actual
+reply and judge whether a chip leads anywhere concrete. It needs `mise dev
+--agent` (or any boot with `DEV_AUTH_BYPASS_EMAIL` set) and a Pro dev user.
+"""
+
+import argparse
+import asyncio
+import json
+import os
+from pathlib import Path
+import sys
+from uuid import uuid4
+
+try:
+    from app.config.secrets import inject_infisical_secrets
+
+    inject_infisical_secrets()
+except Exception as e:
+    print(f"[warn] Could not inject Infisical secrets (expected in local dev): {e}")
+
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
+import httpx
+
+from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.services.onboarding.first_question import (
+    QUESTION_TIMEOUT_SECONDS,
+    compose_first_question,
+)
+
+DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:8000")
+DEFAULT_FOLLOW_USER = os.environ.get("GAIA_DEV_USER", "copy-check-0912@gaia.local")
+FOLLOW_PERSONA_COUNT = 3
+FOLLOW_TIMEOUT_SECONDS = 180.0
+
+PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
+    (
+        "founder + inbox + calendar",
+        OnboardingPreferences(
+            profession="founder", needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR]
+        ),
+        None,
+    ),
+    (
+        "sales + todos",
+        OnboardingPreferences(profession="sales", needs=[OnboardingNeed.TODOS]),
+        None,
+    ),
+    (
+        "student + research",
+        OnboardingPreferences(profession="student", needs=[OnboardingNeed.RESEARCH]),
+        None,
+    ),
+    (
+        "engineer + automation",
+        OnboardingPreferences(profession="engineering", needs=[OnboardingNeed.AUTOMATION]),
+        None,
+    ),
+    (
+        'typed "marketing lead" + other "content calendar"',
+        OnboardingPreferences(profession="marketing lead", other_need="content calendar"),
+        None,
+    ),
+    (
+        "executive + briefings + memory",
+        OnboardingPreferences(
+            profession="executive", needs=[OnboardingNeed.BRIEFINGS, OnboardingNeed.MEMORY]
+        ),
+        None,
+    ),
+    (
+        'typed "I run a bakery" + other "supplier emails"',
+        OnboardingPreferences(profession="I run a bakery", other_need="supplier emails"),
+        None,
+    ),
+    (
+        "creative + research",
+        OnboardingPreferences(profession="creative", needs=[OnboardingNeed.RESEARCH]),
+        "telegram",
+    ),
+    (
+        "finance + calendar",
+        OnboardingPreferences(profession="finance", needs=[OnboardingNeed.CALENDAR]),
+        None,
+    ),
+    (
+        'other, no needs, other "chasing invoices"',
+        OnboardingPreferences(profession="other", needs=[], other_need="chasing invoices"),
+        None,
+    ),
+]
+
+
+async def run_personas(timeout_seconds: float) -> list[tuple[str, object]]:
+    """One model call per persona, concurrently — they share nothing."""
+    results = await asyncio.gather(
+        *(
+            compose_first_question(prefs, platform, timeout_seconds=timeout_seconds)
+            for _, prefs, platform in PERSONAS
+        )
+    )
+    return list(zip([label for label, _, _ in PERSONAS], results, strict=True))
+
+
+def print_personas(rows: list[tuple[str, object]]) -> None:
+    fallbacks = 0
+    for label, result in rows:
+        print(f"\n=== {label}")
+        if result is None:
+            fallbacks += 1
+            print("  outcome: fallback (static line kept)")
+            continue
+        print("  outcome: llm")
+        print(f"  question: {result.question}")
+        print(f"  chips:    {result.chips}")
+    print(f"\nfallbacks: {fallbacks}/{len(rows)}")
+
+
+async def _send_turn(client: httpx.AsyncClient, api_url: str, message: str) -> str:
+    """One comms turn against the running API, joined from its SSE frames."""
+    body = {
+        "message": message,
+        "messages": [{"role": "user", "content": message}],
+        "conversation_id": str(uuid4()),
+        "turn_id": str(uuid4()),
+    }
+    chunks: list[str] = []
+    async with client.stream(
+        "POST", f"{api_url}/api/v1/chat-stream", json=body, timeout=FOLLOW_TIMEOUT_SECONDS
+    ) as response:
+        if response.status_code != 200:
+            await response.aread()
+            return f"[HTTP {response.status_code}] {response.text[:300]}"
+        async for line in response.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            try:
+                frame = json.loads(line[len("data: ") :])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(frame, dict) and isinstance(frame.get("response"), str):
+                chunks.append(frame["response"])
+    return "".join(chunks).strip() or "[no text in stream]"
+
+
+async def run_follow(rows: list[tuple[str, object]], api_url: str, dev_user: str) -> None:
+    """Each chip of the first personas, replayed as the user's next message."""
+    headers = {"X-Dev-User": dev_user}
+    async with httpx.AsyncClient(headers=headers, cookies={"dev_bypass_user": dev_user}) as client:
+        for label, result in rows[:FOLLOW_PERSONA_COUNT]:
+            print(f"\n\n######## follow: {label}")
+            if result is None:
+                print("  skipped (no question was composed)")
+                continue
+            print(f"  question: {result.question}")
+            for chip in result.chips:
+                reply = await _send_turn(client, api_url, chip)
+                print(f"\n  --- chip: {chip}")
+                print(f"  GAIA: {reply}")
+
+
+async def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--follow",
+        action="store_true",
+        help="Replay each chip through the running API's comms agent.",
+    )
+    parser.add_argument("--api-url", default=DEFAULT_API_URL)
+    parser.add_argument("--user", default=DEFAULT_FOLLOW_USER)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=QUESTION_TIMEOUT_SECONDS,
+        help="Override the 4s production ceiling when the local lane is slower.",
+    )
+    args = parser.parse_args()
+
+    rows = await run_personas(args.timeout)
+    print_personas(rows)
+    if args.follow:
+        await run_follow(rows, args.api_url.rstrip("/"), args.user)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

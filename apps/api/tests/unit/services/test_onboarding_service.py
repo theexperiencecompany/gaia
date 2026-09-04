@@ -40,6 +40,7 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.services.analytics_service import AnalyticsEvents
+from app.services.onboarding.first_question import FirstQuestion
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
     enqueue_gmail_personalization,
@@ -153,7 +154,61 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
     return mock_repo
 
 
+@pytest.fixture(autouse=True)
+def no_llm_question() -> Iterator[MagicMock]:
+    """No unit test reaches a model. The default is the static conversation;
+    the two cases that care patch the return value themselves."""
+    with patch(f"{SERVICE}.compose_first_question", AsyncMock(return_value=None)) as mock:
+        yield mock
+
+
 class TestCompleteOnboarding:
+    async def test_the_written_question_replaces_the_static_closing_line(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+        no_llm_question: MagicMock,
+    ) -> None:
+        """The chips ride the question they answer, so a seeded turn keeping the
+        static ones would offer answers to a question nobody asked."""
+        mock_repo.complete_onboarding.return_value = sample_user
+        mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
+        no_llm_question.return_value = FirstQuestion(
+            question="Engineer drowning in email. What actually breaks first, reviews or releases?",
+            chips=["Reviews", "Releases", "Neither"],
+        )
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        composed = seed.await_args.args[1]
+        assert composed.lines[-1] == (
+            "Engineer drowning in email. What actually breaks first, reviews or releases?"
+        )
+        assert composed.follow_ups == ["Reviews", "Releases", "Neither"]
+
+    async def test_no_written_question_leaves_the_static_conversation_alone(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = sample_user
+        mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        composed = seed.await_args.args[1]
+        assert composed.lines[-1] == (
+            "Start with Gmail. Connect it and I'll get into your inbox tonight, sort what "
+            "needs you from what doesn't, and have drafts waiting by morning."
+        )
+        assert composed.follow_ups == ["Sort my inbox"]
+
     async def test_successful_onboarding(
         self,
         mock_repo: MagicMock,

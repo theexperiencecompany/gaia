@@ -25,7 +25,11 @@ from app.services.analytics_service import AnalyticsEvents, capture_event, ident
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
-from app.services.onboarding.first_conversation import compose_first_conversation
+from app.services.onboarding.first_conversation import (
+    compose_first_conversation,
+    with_closing_question,
+)
+from app.services.onboarding.first_question import compose_first_question
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
 from app.services.workflow.service import WorkflowService
@@ -144,6 +148,14 @@ async def _seed_first_conversation(
         # who skipped that step simply gets no platform line.
         connected_platform = next(iter(linked_platforms_of(user)), None)
         composed = compose_first_conversation(preferences, connected_platform)
+        # The one model call in onboarding completion, capped at four seconds
+        # and returning None on any miss, so the static conversation above is
+        # what ships whenever the written question is not better than it.
+        question = await compose_first_question(preferences, connected_platform, user_id=user_id)
+        if question is not None:
+            composed = with_closing_question(
+                composed, preferences, question.question, question.chips
+            )
         conversation_id = await seed_first_conversation(user_id, composed)
         if conversation_id is None:
             return None
