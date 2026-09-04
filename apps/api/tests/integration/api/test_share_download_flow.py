@@ -67,9 +67,7 @@ def test_share_url_survives_real_fetch(
     server, thread, port = _serve(test_app)
     try:
         local = f"http://127.0.0.1:{port}/api/v1/files/s/report.pdf?token={token}"
-        filename, content, mimetype = asyncio.run(
-            asyncio.to_thread(_fetch_file_from_url, local)
-        )
+        filename, content, mimetype = asyncio.run(asyncio.to_thread(_fetch_file_from_url, local))
     finally:
         server.should_exit = True
         thread.join(timeout=10)
@@ -91,20 +89,13 @@ async def test_auth_middleware_excludes_share_downloads() -> None:
     async def _handler(request: FastAPIRequest) -> Response:
         return Response("served")
 
-    middleware = WorkOSAuthMiddleware(app=None)  # type: ignore[arg-type]
+    middleware = WorkOSAuthMiddleware(app=None)  # type: ignore[arg-type]  # only the path-exclusion check runs; no downstream app is dispatched to
 
     def _request(path: str) -> FastAPIRequest:
-        return FastAPIRequest(
-            {"type": "http", "method": "GET", "path": path, "headers": []}
-        )
+        return FastAPIRequest({"type": "http", "method": "GET", "path": path, "headers": []})
 
-    response = await middleware.dispatch(
-        _request("/api/v1/files/s/report.pdf"), _handler
-    )
+    response = await middleware.dispatch(_request("/api/v1/files/s/report.pdf"), _handler)
     assert response.status_code == 200
 
     # Only the share subtree is open — nothing else under /files rides along.
-    assert not any(
-        "/api/v1/files/top-secret".startswith(path)
-        for path in middleware.exclude_paths
-    )
+    assert not any("/api/v1/files/top-secret".startswith(path) for path in middleware.exclude_paths)

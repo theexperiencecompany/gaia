@@ -25,9 +25,7 @@ MODULE = "app.services.share_service"
 
 @pytest.fixture
 def _secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        settings, "SHARE_GRANT_SECRET", "test-only-share-secret-0123456789abcdef"
-    )
+    monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "test-only-share-secret-0123456789abcdef")
 
 
 def _mint_url(tmp_path: Path, filename: str = "report.pdf", **kwargs: Any) -> str:
@@ -94,9 +92,7 @@ class TestMintShareUrl:
         ):
             mint_share_url(user_id="u1", workspace_path="a.txt")
 
-    def test_same_file_mints_distinct_tokens(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    def test_same_file_mints_distinct_tokens(self, _secret: None, tmp_path: Path) -> None:
         assert _mint_url(tmp_path) != _mint_url(tmp_path)  # nonce per grant
 
 
@@ -105,22 +101,16 @@ class TestRedeemShareGrant:
         self, _secret: None, tmp_path: Path
     ) -> None:
         url = _mint_url(tmp_path)
-        with patch(
-            f"{MODULE}.read_user_file_bytes", return_value=b"%PDF-1.4 x"
-        ) as reader:
+        with patch(f"{MODULE}.read_user_file_bytes", return_value=b"%PDF-1.4 x") as reader:
             result = await redeem_share_grant(_token_of(url))
         assert result == (b"%PDF-1.4 x", "report.pdf", "application/pdf")
         assert reader.call_args.args == ("u1", "report.pdf")
 
-    async def test_tampered_token_is_none(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_tampered_token_is_none(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
         assert await redeem_share_grant(token[:-2] + "AA") is None
 
-    async def test_nonpositive_ttl_raises_at_mint(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_nonpositive_ttl_raises_at_mint(self, _secret: None, tmp_path: Path) -> None:
         host = tmp_path / "a.txt"
         host.write_bytes(b"x")
         with (
@@ -129,22 +119,16 @@ class TestRedeemShareGrant:
         ):
             mint_share_url(user_id="u1", workspace_path="a.txt", ttl_seconds=-1)
 
-    async def test_huge_ttl_clamps_to_max(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_huge_ttl_clamps_to_max(self, _secret: None, tmp_path: Path) -> None:
         host = tmp_path / "a.txt"
         host.write_bytes(b"x")
         with patch(f"{MODULE}.resolve_user_file_sync", return_value=host):
-            url = mint_share_url(
-                user_id="u1", workspace_path="a.txt", ttl_seconds=10**9
-            )
+            url = mint_share_url(user_id="u1", workspace_path="a.txt", ttl_seconds=10**9)
         payload = ShareGrantPayload.model_validate(_serializer().loads(_token_of(url)))
         assert payload.expires_at - time.time() <= SHARE_GRANT_MAX_TTL_SECONDS
         assert payload.expires_at - time.time() > SHARE_GRANT_MAX_TTL_SECONDS - 60
 
-    async def test_expired_grant_is_none(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_expired_grant_is_none(self, _secret: None, tmp_path: Path) -> None:
         # Crafted past-expiry payload (mint itself now refuses ttl<=0).
         payload = ShareGrantPayload(
             user_id="u1",
@@ -164,27 +148,27 @@ class TestRedeemShareGrant:
         monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", None)
         assert await redeem_share_grant(token) is None
 
-    async def test_missing_file_at_fetch_is_none(
-        self, _secret: None, tmp_path: Path
+    async def test_short_secret_redeem_is_closed_not_a_503(
+        self, _secret: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
+        # A secret too short to sign with is a misconfiguration, not an oracle:
+        # raising out of the route would let a prober tell it apart from a bad
+        # token, breaking the uniform-404 contract every other failure keeps.
         token = _token_of(_mint_url(tmp_path))
-        with patch(
-            f"{MODULE}.read_user_file_bytes", side_effect=FileNotFoundError("gone")
-        ):
+        monkeypatch.setattr(settings, "SHARE_GRANT_SECRET", "too-short")
+        assert await redeem_share_grant(token) is None
+
+    async def test_missing_file_at_fetch_is_none(self, _secret: None, tmp_path: Path) -> None:
+        token = _token_of(_mint_url(tmp_path))
+        with patch(f"{MODULE}.read_user_file_bytes", side_effect=FileNotFoundError("gone")):
             assert await redeem_share_grant(token) is None
 
-    async def test_oversize_at_fetch_is_none(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_oversize_at_fetch_is_none(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
-        with patch(
-            f"{MODULE}.read_user_file_bytes", side_effect=ValueError("too big")
-        ):
+        with patch(f"{MODULE}.read_user_file_bytes", side_effect=ValueError("too big")):
             assert await redeem_share_grant(token) is None
 
-    async def test_unavailable_mount_is_none(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_unavailable_mount_is_none(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
         with patch(
             f"{MODULE}.read_user_file_bytes",
@@ -192,9 +176,7 @@ class TestRedeemShareGrant:
         ):
             assert await redeem_share_grant(token) is None
 
-    async def test_unreadable_file_is_none_not_500(
-        self, _secret: None, tmp_path: Path
-    ) -> None:
+    async def test_unreadable_file_is_none_not_500(self, _secret: None, tmp_path: Path) -> None:
         token = _token_of(_mint_url(tmp_path))
         with patch(f"{MODULE}.read_user_file_bytes", side_effect=OSError("EIO")):
             assert await redeem_share_grant(token) is None

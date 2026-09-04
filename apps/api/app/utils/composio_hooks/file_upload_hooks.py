@@ -1,18 +1,19 @@
 """File-upload capability for every Composio tool, not one toolkit.
 
-Composio's native file param (``attachment`` of ``{name, mimetype, s3key}``) is
-unusable by the model — it cannot produce an s3key. Rather than teaching each
-toolkit its own workaround, this module gives the model one friendly
+Composio's native file param (an ``{name, mimetype, s3key}`` object the model
+cannot produce — it has no s3key) is unusable by an agent. Rather than teaching
+each toolkit its own workaround, this module gives the model one friendly
 ``attachments`` reference list everywhere it can work:
 
 - schema modifier (all tools, scoped by shape): any tool whose schema carries
-  Composio's ``file_uploadable`` marker gets its native ``attachment`` swapped
-  for ``attachments``. Outlook, Slack uploads, and future toolkits need zero
-  per-toolkit code.
-- before-hook (all tools, scoped by evidence): ``attachments`` references are
-  uploaded and rewritten to ``attachment`` before the tool runs. Anything that
-  is not our shape (Slack message blocks, legacy strings) passes through
-  untouched — the hook only engages on file evidence (``workspace_path``/``url``).
+  Composio's ``file_uploadable`` marker gets that param swapped for
+  ``attachments``, and the swap is recorded per tool. Outlook, Slack uploads,
+  and future toolkits need zero per-toolkit code — the marked param is found by
+  marker, not by name.
+- before-hook (only the tools we swapped): ``attachments`` references are
+  uploaded and written back under the tool's own native param name before it
+  runs. A tool we never swapped is left completely alone, even if it happens to
+  take an ``attachments`` argument of its own.
 
 Per-surface hooks (Gmail's compose card) keep only their display logic and call
 ``resolve_tool_attachments`` for the shared resolution.
@@ -43,6 +44,12 @@ from .registry import HookAbortError, register_before_hook, register_schema_modi
 NATIVE_UPLOAD_PARAM = "attachment"
 FRIENDLY_UPLOAD_PARAM = "attachments"
 
+# Tool slug -> the native upload param name this module swapped out of its
+# schema. Written by the schema modifier when tools are bound, read by the
+# before-hook at execution: it is the only evidence that ``attachments`` on a
+# call is the param we injected rather than one the tool already had.
+_swapped_upload_params: dict[str, str] = {}
+
 
 class AttachmentDisplay(TypedDict):
     """Per-file metadata safe for display/logging (never the s3key)."""
@@ -64,9 +71,7 @@ def _subtree_has_file_marker(node: object) -> bool:
         return True
     for key in ("anyOf", "oneOf", "allOf"):
         variants = node.get(key)
-        if isinstance(variants, list) and any(
-            _subtree_has_file_marker(v) for v in variants
-        ):
+        if isinstance(variants, list) and any(_subtree_has_file_marker(v) for v in variants):
             return True
     properties = node.get("properties")
     if isinstance(properties, dict) and any(
@@ -91,76 +96,69 @@ def _looks_like_legacy_upload_param(native: dict[str, Any]) -> bool:
     return isinstance(properties, dict) and "s3key" in properties
 
 
-def has_native_upload_param(schema: Tool) -> bool:
-    """Whether the schema carries Composio's native file-upload param."""
+def find_native_upload_param(schema: Tool) -> str | None:
+    """Name of the tool's native file-upload param, or None if it has none.
+
+    The marker is looked for under *every* property, not just one called
+    ``attachment``: Composio names the param per tool, so a name check would
+    silently skip every toolkit that picked a different one.
+    """
     input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
-        return False
+        return None
     props = input_params.get("properties")
     if not isinstance(props, dict):
-        return False
+        return None
     if FRIENDLY_UPLOAD_PARAM in props:
-        return False
-    native = props.get(NATIVE_UPLOAD_PARAM)
-    if not isinstance(native, dict):
-        return False
-    if _subtree_has_file_marker(native):
-        return True
+        return None
+    for name, prop in props.items():
+        if _subtree_has_file_marker(prop):
+            return str(name)
     # Legacy fallback: marker presence in live schemas is unverifiable offline,
     # so an s3key-fingerprinted object still swaps (logged) instead of silently
-    # dropping attach capability. Remove once live-verified.
-    if _looks_like_legacy_upload_param(native):
+    # dropping attach capability. Scoped to the conventional param name — an
+    # unmarked s3key shape anywhere in the schema is too weak a signal to act
+    # on. Remove once live-verified.
+    native = props.get(NATIVE_UPLOAD_PARAM)
+    if isinstance(native, dict) and _looks_like_legacy_upload_param(native):
         log.debug(
             f"{LogTag.COMPOSIO} Swapping unmarked attachment param",
         )
-        return True
-    return False
+        return NATIVE_UPLOAD_PARAM
+    return None
 
 
 @register_schema_modifier()
 def file_upload_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """Expose friendly ``attachments`` instead of Composio's raw ``attachment``.
+    """Expose friendly ``attachments`` instead of Composio's raw upload param.
 
     Runs for every tool but only acts on genuine file-upload params
     (``file_uploadable`` marker, or the legacy s3key shape). Scalar ids,
     Graph-style passthrough objects, Slack blocks/strings, and already-swapped
     schemas pass through untouched.
     """
-    if not has_native_upload_param(schema):
+    native_param = find_native_upload_param(schema)
+    if native_param is None:
         return schema
     input_params = schema.input_parameters
-    assert isinstance(input_params, dict)  # narrowed by has_native_upload_param
+    assert isinstance(input_params, dict)  # narrowed by find_native_upload_param
     props = input_params.get("properties")
-    assert isinstance(props, dict)  # narrowed by has_native_upload_param
-    props.pop(NATIVE_UPLOAD_PARAM)
+    assert isinstance(props, dict)  # narrowed by find_native_upload_param
+    props.pop(native_param)
     # Built fresh per call from AttachmentReference, so a field change reaches
     # every tool with no second edit (and no shared-mutable default).
     props[FRIENDLY_UPLOAD_PARAM] = attachment_references_param_schema(
         EMAIL_ATTACHMENTS_PARAM_DESCRIPTION
     )
     required = input_params.get("required")
-    if isinstance(required, list) and NATIVE_UPLOAD_PARAM in required:
-        required.remove(NATIVE_UPLOAD_PARAM)
+    if isinstance(required, list) and native_param in required:
+        required.remove(native_param)
+    _swapped_upload_params[tool] = native_param
     return schema
 
 
-def _has_file_evidence(item: object) -> bool:
-    """Whether the item looks like our file reference (not a foreign payload).
-
-    Key/attribute *presence* (not values) is the discriminator: Slack blocks and
-    similar never carry ``workspace_path``/``url`` at the top level, while our
-    references — dicts from REST or Composio-generated Pydantic models from the
-    agent path — always do, even when their values are invalid (those still fail
-    loud at validation instead of slipping through).
-    """
-    if isinstance(item, BaseModel):
-        fields = type(item).model_fields
-        return "workspace_path" in fields or "url" in fields
-    return isinstance(item, dict) and ("workspace_path" in item or "url" in item)
-
-
 def _display_from_native(native: object) -> list[AttachmentDisplay]:
-    """Display metadata off an already-resolved native ``attachment`` arg."""
+    """Display metadata off an already-resolved native upload arg."""
     items = native if isinstance(native, list) else [native]
     return [
         {"name": item.get("name") or "", "mimetype": item.get("mimetype") or ""}
@@ -170,9 +168,9 @@ def _display_from_native(native: object) -> list[AttachmentDisplay]:
 
 
 def resolve_tool_attachments(
-    tool: str, toolkit: str, params: ToolExecuteParams, *, strict: bool
+    tool: str, toolkit: str, params: ToolExecuteParams, *, native_param: str
 ) -> list[AttachmentDisplay]:
-    """Turn friendly ``attachments`` references into Composio's ``attachment`` arg.
+    """Turn friendly ``attachments`` references into the tool's native upload arg.
 
     Uploads each referenced file and rewrites ``arguments`` in place, collapsing
     one file to a bare object (Composio accepts a single FileUploadable or a
@@ -180,28 +178,20 @@ def resolve_tool_attachments(
     instead of running the tool with a missing file — a silently attachment-less
     send would be a data-loss bug.
 
-    ``strict`` is the Gmail contract: abort on anything unexpected in
-    ``attachments``. The generic hook runs lenient (``strict=False``) so foreign
-    payloads sharing the key name pass through untouched. Order-independent:
-    whichever hook runs first consumes ``attachments``; the other derives
-    display from the resolved ``attachment``.
+    Callers must already know ``attachments`` is the param this module injected
+    (the Gmail hook by tool identity, the generic hook via
+    ``_swapped_upload_params``), so anything unexpected in it aborts rather than
+    passing through. Order-independent: whichever hook runs first consumes
+    ``attachments``; the other derives display from the resolved native arg.
     """
     arguments = params.get("arguments", {})
     raw = arguments.get(FRIENDLY_UPLOAD_PARAM)
     if not raw:
-        return _display_from_native(arguments.get(NATIVE_UPLOAD_PARAM))
+        return _display_from_native(arguments.get(native_param))
     if isinstance(raw, dict):
-        if not _has_file_evidence(raw):
-            if strict:
-                raise HookAbortError(ATTACHMENTS_NOT_LIST_ERROR)
-            return []
         raw = [raw]
     elif not isinstance(raw, list):
-        if strict:
-            raise HookAbortError(ATTACHMENTS_NOT_LIST_ERROR)
-        return []
-    if not strict and not any(_has_file_evidence(item) for item in raw):
-        return []
+        raise HookAbortError(ATTACHMENTS_NOT_LIST_ERROR)
 
     user_id = params.get("user_id")
     if not user_id:
@@ -227,7 +217,7 @@ def resolve_tool_attachments(
     except AppError as exc:
         raise HookAbortError(exc.message) from exc
 
-    arguments[NATIVE_UPLOAD_PARAM] = resolved[0] if len(resolved) == 1 else resolved
+    arguments[native_param] = resolved[0] if len(resolved) == 1 else resolved
     del arguments[FRIENDLY_UPLOAD_PARAM]
     # Redundant: `arguments` is already `params["arguments"]` by reference.
     params["arguments"] = arguments  # pragma: no mutate
@@ -238,13 +228,17 @@ def resolve_tool_attachments(
 def file_upload_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
-    """Resolve friendly ``attachments`` on any tool that carries them.
+    """Resolve friendly ``attachments`` on the tools whose schema we swapped.
 
-    Lenient by design: foreign ``attachments`` payloads are not ours to judge,
-    so they pass through untouched. Genuine file references that fail still
-    abort via ``HookAbortError`` (re-raised by the registry, never swallowed).
+    A tool this module never swapped is left untouched — its ``attachments``
+    argument, if any, belongs to the tool and rewriting it would corrupt the
+    call. For the tools we did swap, a reference that fails to resolve aborts
+    via ``HookAbortError`` (re-raised by the registry, never swallowed).
     """
-    display = resolve_tool_attachments(tool, toolkit, params, strict=False)
+    native_param = _swapped_upload_params.get(tool)
+    if native_param is None:
+        return params
+    display = resolve_tool_attachments(tool, toolkit, params, native_param=native_param)
     if display:
         log.set(attachment_count=len(display))  # pragma: no mutate
     return params

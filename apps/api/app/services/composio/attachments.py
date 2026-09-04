@@ -8,8 +8,9 @@ that shape:
 
 - ``workspace_path`` — a file in the current session workspace (an upload, or a file an
   agent downloaded there). Read from the host JuiceFS mount and uploaded to Composio.
-- ``url`` — any fetchable URL, e.g. the download link GOOGLEDRIVE_DOWNLOAD_FILE returns
-  for a Google Drive file. Composio fetches and stores it.
+- ``url`` — any *publicly* fetchable URL, e.g. the download link
+  GOOGLEDRIVE_DOWNLOAD_FILE returns for a Google Drive file. Composio fetches and
+  stores it, from inside this process, so the URL passes our SSRF guard first.
 - raw ``bytes`` — via ``upload_bytes_sync`` for the REST multipart path, where the
   file arrives as bytes rather than a reference.
 
@@ -19,7 +20,7 @@ the whole action loudly instead of proceeding with a file the user asked for mis
 
 from pathlib import Path
 
-from composio.core.models._files import FileUploadable, _upload_bytes_to_s3
+from composio.core.models._files import FileUploadable
 
 from app.constants.email import (
     EMAIL_ATTACHMENT_FAIL_FIX,
@@ -29,6 +30,7 @@ from app.constants.email import (
 from app.models.mail_models import AttachmentReference, ComposioAttachment
 from app.services.storage.juicefs import resolve_user_file_sync, to_workspace_relative_path
 from app.utils.errors import AppError
+from app.utils.url_safety import assert_public_http_url_sync
 from shared.py.wide_events import log
 
 
@@ -67,6 +69,14 @@ def upload_file_reference(
     # ``url`` is guaranteed present here by AttachmentReference's validator; the
     # ``or ""`` only satisfies the type checker and is therefore unreachable.
     url = ref.url or ""  # pragma: no mutate
+    # The URL is model-supplied and Composio fetches it from *this* process with
+    # no scheme or address policy of its own, so the SSRF guard has to run here:
+    # without it, "attach http://169.254.169.254/..." exfiltrates instance
+    # metadata as a mail attachment. Composio's fetcher refuses redirects, so one
+    # pre-flight check covers the whole fetch (a DNS rebind between this resolve
+    # and Composio's remains theoretically possible; the redirect refusal is what
+    # keeps that window to a single re-resolution).
+    assert_public_http_url_sync(url)
     return FileUploadable.from_url(client=client, url=url, tool=tool, toolkit=toolkit)
 
 
@@ -87,7 +97,9 @@ def resolve_attachments_sync(
             uploaded = upload_file_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
         except Exception as exc:
             source = ref.workspace_path or ref.url
-            log.error(EMAIL_ATTACHMENT_FAIL_LOG, error=str(exc), user_id=user_id)  # pragma: no mutate
+            log.error(
+                EMAIL_ATTACHMENT_FAIL_LOG, error=str(exc), user_id=user_id
+            )  # pragma: no mutate
             message = f"Could not attach '{ref.name or source}': {exc}"  # pragma: no mutate
             raise AppError(
                 message=message,
@@ -105,26 +117,6 @@ def resolve_attachments_sync(
     return resolved
 
 
-def map_sandbox_path_for_upload(path: str, *, user_id: str) -> str:
-    """Map a model-supplied file reference to a host path Composio can upload.
-
-    Spike helper evaluating Composio-native auto-upload (``FileHelper`` +
-    ``before_file_upload``): ``/workspace/...`` sandbox paths resolve against
-    the user's own contained root (same guarantee as the manual upload path —
-    ``..``/symlink escape raises inside ``resolve_user_file_sync``); http(s)
-    URLs pass through for Composio to fetch itself. Anything else (absolute
-    host paths, ``/mnt/...`` cross-user reaches) raises instead of leaking into
-    the uploader — the static-dir allowlist alone cannot express per-user
-    containment, so this function is the boundary.
-    """
-    stripped = path.strip()
-    if stripped.startswith(("http://", "https://")):
-        return stripped
-    if stripped.startswith("/workspace/") or not stripped.startswith("/"):
-        return str(resolve_user_file_sync(user_id, to_workspace_relative_path(stripped)))
-    raise ValueError(f"refusing to upload non-workspace path: {stripped}")
-
-
 def upload_bytes_sync(
     content: bytes,
     filename: str,
@@ -137,9 +129,16 @@ def upload_bytes_sync(
 
     Used by the REST send path, where the file arrives as bytes rather than a
     workspace path or URL. ``_upload_bytes_to_s3`` is Composio's own bytes uploader
-    (the byte-level counterpart of the public ``FileUploadable.from_path``).
+    (the byte-level counterpart of the public ``FileUploadable.from_path``); it is
+    private and has no public equivalent that preserves the caller's mimetype, so
+    it is imported here rather than at module scope — a Composio release that moves
+    it then breaks this one upload path loudly instead of the whole API's boot.
     """
-    # Lazy import: see upload_file_reference for the cycle this avoids.
+    # Lazy imports: see upload_file_reference for the cycle the first one avoids.
+    from composio.core.models._files import (  # noqa: PLC0415 -- lazy: scopes a private-API break to this path
+        _upload_bytes_to_s3,
+    )
+
     from app.services.composio.composio_service import (  # noqa: PLC0415 -- lazy: avoids an import cycle
         get_composio_service,
     )

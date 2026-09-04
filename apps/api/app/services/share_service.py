@@ -41,9 +41,15 @@ from shared.py.wide_events import log
 _SALT = "file-share-grant"
 
 
-def _require_secret() -> str:
+def _configured_secret() -> str | None:
+    """The share signing secret, or None if it is unset or too short to use."""
     secret: object = settings.SHARE_GRANT_SECRET
-    if not isinstance(secret, str) or len(secret) < 32:
+    return secret if isinstance(secret, str) and len(secret) >= 32 else None
+
+
+def _require_secret() -> str:
+    secret = _configured_secret()
+    if secret is None:
         raise AppError(
             message="File sharing is not configured.",
             why="The share signing secret (SHARE_GRANT_SECRET) is missing or too short.",
@@ -104,7 +110,10 @@ async def redeem_share_grant(token: str) -> tuple[bytes, str, str] | None:
     (tampered, expired, missing, oversized, mount unavailable) — the route maps
     all of them to one uniform 404 so failures give no oracle.
     """
-    if not settings.SHARE_GRANT_SECRET:
+    # Misconfiguration is one of the failure modes, not an exception out of the
+    # route: a secret too short to sign with would otherwise surface as a 503 and
+    # tell a prober the difference between "bad token" and "server misconfigured".
+    if _configured_secret() is None:
         return None
     try:
         payload = ShareGrantPayload.model_validate(_serializer().loads(token))

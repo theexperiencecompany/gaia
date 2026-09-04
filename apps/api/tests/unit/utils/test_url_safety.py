@@ -9,7 +9,11 @@ from unittest.mock import patch
 
 import pytest
 
-from app.utils.url_safety import assert_public_http_url, assert_safe_url_shape
+from app.utils.url_safety import (
+    assert_public_http_url,
+    assert_public_http_url_sync,
+    assert_safe_url_shape,
+)
 
 # Addresses that must always be refused, by category. 169.254.169.254 is the
 # cloud metadata endpoint — the single most important target to keep blocked.
@@ -85,6 +89,45 @@ def test_shape_defers_hostnames_without_resolving() -> None:
     # allowed here; the resolving guard rejects it later at connect time.
     assert_safe_url_shape("https://example.com/mcp")
     assert_safe_url_shape("https://metadata.google.internal/")
+
+
+# ---------------------------------------------------------------------------
+# assert_public_http_url_sync — same policy for callers that cannot await
+# ---------------------------------------------------------------------------
+
+
+def test_sync_guard_allows_public_resolution() -> None:
+    with patch("app.utils.url_safety._resolve", return_value=["93.184.216.34"]):
+        assert_public_http_url_sync("https://example.com/")  # must not raise
+
+
+@pytest.mark.parametrize(
+    "resolved_ip",
+    ["169.254.169.254", "127.0.0.1", "10.0.0.5", "::1"],
+)
+def test_sync_guard_rejects_private_resolution(resolved_ip: str) -> None:
+    # The sync guard exists for Composio's hook chain, which fetches
+    # model-supplied URLs — it must enforce exactly the async policy.
+    with (
+        patch("app.utils.url_safety._resolve", return_value=[resolved_ip]),
+        pytest.raises(ValueError, match="non-public"),
+    ):
+        assert_public_http_url_sync("https://rebind.example.com/")
+
+
+def test_sync_guard_rejects_bad_scheme_before_resolving() -> None:
+    with patch("app.utils.url_safety._resolve") as mock_resolve:
+        with pytest.raises(ValueError, match="scheme"):
+            assert_public_http_url_sync("file:///etc/passwd")
+        mock_resolve.assert_not_called()
+
+
+def test_sync_guard_wraps_dns_failure_as_value_error() -> None:
+    with (
+        patch("app.utils.url_safety._resolve", side_effect=OSError("nxdomain")),
+        pytest.raises(ValueError, match="DNS resolution failed"),
+    ):
+        assert_public_http_url_sync("https://does-not-resolve.example.com/")
 
 
 # ---------------------------------------------------------------------------

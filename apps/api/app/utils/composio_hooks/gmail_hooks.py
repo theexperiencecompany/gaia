@@ -7,6 +7,7 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
@@ -19,6 +20,7 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
 )
 from app.constants.email import (
+    GMAIL_DRAFT_ID_MISSING_LOG,
     GMAIL_SKIP_STREAM_LOG,
     GMAIL_TO_MAPPED_LOG,
 )
@@ -35,7 +37,11 @@ from app.models.composio_schemas.google_people import (
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
-from .file_upload_hooks import AttachmentDisplay, resolve_tool_attachments
+from .file_upload_hooks import (
+    NATIVE_UPLOAD_PARAM,
+    AttachmentDisplay,
+    resolve_tool_attachments,
+)
 from .registry import (
     HookAbortError,
     register_after_hook,
@@ -51,6 +57,13 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
+
+# The draft compose card, built before the tool runs but streamed after it, once
+# Gmail has returned the draft id the card's Send button needs. Set and read
+# within one tool execution, so a ContextVar is the whole lifetime.
+_pending_draft_card: ContextVar[dict[str, Any] | None] = ContextVar(
+    "gmail_pending_draft_card", default=None
+)
 
 _PersonField = TypeVar("_PersonField", GooglePersonName, GooglePersonValue)
 
@@ -268,25 +281,38 @@ def _compose_recipients(tool: str, arguments: dict[str, Any]) -> list[str]:
     return [arguments.get("recipient_email", ""), *extra_recipients]
 
 
+def _compose_card(
+    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
+) -> dict[str, Any]:
+    """The compose/sent card payload for one Gmail compose call."""
+    return {
+        "to": _compose_recipients(tool, arguments),
+        "subject": arguments.get("subject", ""),
+        "body": arguments.get("body", ""),
+        "thread_id": arguments.get("thread_id", ""),
+        "bcc": arguments.get("bcc", []),
+        "cc": arguments.get("cc", []),
+        "is_html": arguments.get("is_html", False),
+        "attachments": attachment_display,
+    }
+
+
 def _stream_compose_preview(
     tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
 ) -> None:
-    """Stream the compose (draft) or sent card payload to the chat."""
-    writer = get_stream_writer()
-    emails_data = [
-        {
-            "to": _compose_recipients(tool, arguments),
-            "subject": arguments.get("subject", ""),
-            "body": arguments.get("body", ""),
-            "thread_id": arguments.get("thread_id", ""),
-            "bcc": arguments.get("bcc", []),
-            "cc": arguments.get("cc", []),
-            "is_html": arguments.get("is_html", False),
-            "attachments": attachment_display,
-        }
-    ]
-    key = "email_compose_data" if tool == "GMAIL_CREATE_EMAIL_DRAFT" else "email_sent_data"
-    writer({key: emails_data})
+    """Stream the sent card now; hold the draft card until its id exists.
+
+    A draft card's Send button sends the *draft* — attachments and all — which
+    needs the draft id Gmail only returns once the tool has run. Streaming the
+    card here would render one whose Send falls back to composing a fresh mail
+    from the card's fields, silently dropping every attachment, so the draft
+    card is handed to ``gmail_create_draft_after_hook`` instead.
+    """
+    card = _compose_card(tool, arguments, attachment_display)
+    if tool == "GMAIL_CREATE_EMAIL_DRAFT":
+        _pending_draft_card.set(card)
+        return
+    get_stream_writer()({"email_sent_data": [card]})
 
 
 @register_before_hook(
@@ -307,12 +333,17 @@ def gmail_compose_before_hook(
         # Shared file-upload resolution (strict: any garbage in ``attachments``
         # aborts). Raises HookAbortError (propagated below) if a file can't be
         # attached, so we never send mail missing a requested attachment.
-        attachment_display = resolve_tool_attachments(tool, toolkit, params, strict=True)
+        attachment_display = resolve_tool_attachments(
+            tool, toolkit, params, native_param=NATIVE_UPLOAD_PARAM
+        )
         if attachment_display:
             log.set(gmail_attachment_count=len(attachment_display))  # pragma: no mutate
         _normalize_compose_body(arguments)
         # Redundant: `arguments` is already `params["arguments"]` by reference.
         params["arguments"] = arguments  # pragma: no mutate
+        # Drop any card a previous draft call in this context left held, so an
+        # aborted run can never have its card streamed by a later one.
+        _pending_draft_card.set(None)
         if _compose_recipient_ready(tool, arguments):
             _stream_compose_preview(tool, arguments, attachment_display)
         return params
@@ -331,6 +362,32 @@ def gmail_compose_before_hook(
 
 # ====================== AFTER EXECUTE HOOKS ======================
 # These hooks process responses and send data to frontend after tool execution
+
+
+@register_after_hook(tools=["GMAIL_CREATE_EMAIL_DRAFT"])
+def gmail_create_draft_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> ToolExecutionResponse:
+    """Stream the held compose card, now carrying the id of the draft just created.
+
+    The id is what makes the card's Send button send *this draft* rather than
+    recompose it from the card's visible fields — the only path that keeps its
+    attachments. The response itself is passed through untouched.
+    """
+    card = _pending_draft_card.get()
+    _pending_draft_card.set(None)
+    if card is None:
+        return response
+    data: object = response["data"]
+    draft_id = data.get("id") if isinstance(data, dict) else None
+    if draft_id:
+        card["draft_id"] = draft_id
+    elif card["attachments"]:
+        log.warning(GMAIL_DRAFT_ID_MISSING_LOG, tool=tool)  # pragma: no mutate
+    writer = get_stream_writer()
+    if writer is not None:
+        writer({"email_compose_data": [card]})
+    return response
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])

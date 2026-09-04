@@ -4,9 +4,13 @@ OUTLOOK_SEND_EMAIL and OUTLOOK_CREATE_DRAFT take ``attachment`` as a path
 string Composio fetches itself — but it cannot read sandbox ``/workspace/...``
 paths (auto-upload is off), so a workspace-local value would fail downstream.
 This hook mints a minutes-lived single-purpose grant URL Composio fetches
-during execution instead. http(s) values, lists, and missing keys pass through
-untouched; mint failures abort loud — never send mail missing its file.
+during execution instead. http(s) values and missing keys pass through
+untouched; a list is minted per item, since every element reaches Composio the
+same way a bare string would. Mint failures abort loud — never send mail
+missing its file.
 """
+
+from typing import TypeGuard
 
 from composio.types import Tool, ToolExecuteParams
 
@@ -37,29 +41,41 @@ def outlook_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) 
     return schema
 
 
+def _needs_grant(value: object) -> TypeGuard[str]:
+    """A path string Composio would have to read from our sandbox itself."""
+    return isinstance(value, str) and not value.startswith(("http://", "https://"))
+
+
+def _mint_attachment(value: object, *, user_id: str, tool: str, toolkit: str) -> object:
+    """A fetchable grant URL for a workspace-local path; anything else unchanged."""
+    if not _needs_grant(value):
+        return value
+    try:
+        return mint_share_url(user_id=user_id, workspace_path=value, tool=tool, toolkit=toolkit)
+    except Exception as exc:
+        raise HookAbortError(f"Could not attach '{value}': {exc}") from exc
+
+
 @register_before_hook(tools=["OUTLOOK_SEND_EMAIL", "OUTLOOK_CREATE_DRAFT"])
 def outlook_attachment_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
-    """Swap a workspace-local ``attachment`` path for a grant URL Composio can fetch."""
+    """Swap workspace-local ``attachment`` paths for grant URLs Composio can fetch."""
     arguments: object = params.get("arguments", {})
     if not isinstance(arguments, dict):
         return params
     raw = arguments.get("attachment")
-    if not isinstance(raw, str) or raw.startswith(("http://", "https://")):
+    values = raw if isinstance(raw, list) else [raw]
+    if not any(_needs_grant(value) for value in values):
         return params
 
     user_id = params.get("user_id")
     if not user_id:
         raise HookAbortError(ATTACHMENTS_NO_USER_ERROR)
 
-    try:
-        arguments["attachment"] = mint_share_url(
-            user_id=user_id, workspace_path=raw, tool=tool, toolkit=toolkit
-        )
-    except HookAbortError:
-        raise
-    except Exception as exc:
-        raise HookAbortError(f"Could not attach '{raw}': {exc}") from exc
+    minted = [
+        _mint_attachment(value, user_id=user_id, tool=tool, toolkit=toolkit) for value in values
+    ]
+    arguments["attachment"] = minted if isinstance(raw, list) else minted[0]
     params["arguments"] = arguments  # pragma: no mutate
     return params

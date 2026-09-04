@@ -387,9 +387,7 @@ class TestEnforceHookIdentity:
         )
 
         params = self._with_config("attacker", "u1")
-        with patch.object(
-            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
-        ):
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
             master_before_execute_hook("T", "K", params)
         assert params["user_id"] == "u1"
 
@@ -416,9 +414,7 @@ class TestEnforceHookIdentity:
         )
 
         params = self._with_config("u1", None)
-        with patch.object(
-            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
-        ):
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
             master_before_execute_hook("T", "K", params)
         assert params["user_id"] == "u1"
 
@@ -431,9 +427,7 @@ class TestEnforceHookIdentity:
         params = _make_params({"subject": "s"})
         params["user_id"] = "u1"
         params["arguments"]["__runnable_config__"] = {"metadata": {}}
-        with patch.object(
-            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
-        ):
+        with patch.object(hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p):
             master_before_execute_hook("T", "K", params)
         assert params["user_id"] == "u1"
 
@@ -625,7 +619,10 @@ class TestGmailBeforeHooks:
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_draft_data(self, mock_writer: MagicMock) -> None:
-        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_before_hook,
+            gmail_create_draft_after_hook,
+        )
 
         writer = _noop_writer()
         mock_writer.return_value = writer
@@ -637,9 +634,12 @@ class TestGmailBeforeHooks:
             }
         )
         gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", params)
+        # The draft card is streamed by the after-hook, once its id exists.
+        gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", {"data": {"id": "d1"}})
         writer.assert_called_once()
         payload = writer.call_args[0][0]
         assert "email_compose_data" in payload
+        assert payload["email_compose_data"][0]["draft_id"] == "d1"
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_compose_before_hook_sends_email_sent_data(self, mock_writer: MagicMock) -> None:

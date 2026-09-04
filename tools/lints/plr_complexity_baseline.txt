@@ -51,8 +51,6 @@ apps/api/app/api/v1/endpoints/platform_auth.py	PLR0912
 apps/api/app/api/v1/endpoints/platform_auth.py	PLR0913
 apps/api/app/api/v1/endpoints/todos.py	PLR0912
 apps/api/app/api/v1/endpoints/todos.py	PLR0913
-apps/api/app/api/v1/middleware/auth.py	PLR0912
-apps/api/app/config/settings_validator.py	PLR0913
 apps/api/app/core/lazy_loader.py	PLR0912
 apps/api/app/core/lazy_loader.py	PLR0913
 apps/api/app/db/chroma/chroma_store.py	PLR0912

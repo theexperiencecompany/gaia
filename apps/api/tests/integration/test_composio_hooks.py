@@ -22,6 +22,7 @@ from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.utils.composio_hooks.gmail_hooks import (
     gmail_attachment_after_hook,
     gmail_compose_before_hook,
+    gmail_create_draft_after_hook,
     gmail_drafts_after_hook,
     gmail_message_detail_after_hook,
     gmail_send_email_schema_modifier,
@@ -435,7 +436,7 @@ class TestGmailBeforeHooks:
         assert result is params
 
     def test_compose_hook_streams_email_compose_data_for_draft(self) -> None:
-        """Creating a draft sends email_compose_data to the stream writer."""
+        """The before/after pair sends one email_compose_data carrying the draft id."""
 
         writer_mock = MagicMock()
         params = _make_params(
@@ -451,11 +452,18 @@ class TestGmailBeforeHooks:
             return_value=writer_mock,
         ):
             gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
+            # Nothing streams yet: the card's Send button needs the draft id,
+            # which only exists once the tool has run.
+            writer_mock.assert_not_called()
+            gmail_create_draft_after_hook(
+                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "draft-77"}}
+            )
 
         writer_mock.assert_called_once()
         payload = writer_mock.call_args[0][0]
         assert "email_compose_data" in payload
         assert payload["email_compose_data"][0]["subject"] == "Draft subject"
+        assert payload["email_compose_data"][0]["draft_id"] == "draft-77"
 
 
 # ---------------------------------------------------------------------------

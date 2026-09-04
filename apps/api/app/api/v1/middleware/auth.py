@@ -167,62 +167,13 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.new_session = None
 
         if wos_session:
-            try:
-                user_info, new_session = await self._authenticate_session(wos_session)
-                if user_info:
-                    request.state.user = user_info
-                    request.state.authenticated = True
-                    if new_session:
-                        request.state.new_session = new_session
-                else:
-                    # Session was present but rejected. We can't call
-                    # ``log.set()`` here — WorkOSAuthMiddleware runs outside
-                    # LoggingMiddleware's context (Starlette copies context at
-                    # call_next), so any wide event fields would be wiped by
-                    # ``log.reset()``. Stash the reason on request.state so the
-                    # route layer can log it inside the right context.
-                    request.state.auth_failure = "invalid_or_expired_session"
-
-            except Exception as e:
-                log.error(
-                    f"{LogTag.API} auth_middleware_error",
-                    auth_failure=type(e).__name__,
-                    path=request.url.path,
-                    method=request.method,
-                    session_present=bool(wos_session),
-                    error=str(e),
-                )
-                # Don't block request on auth failures - routes can handle this
+            await self._authenticate_wos_session(request, wos_session)
 
         accepts_agent_token = request.url.path in self.agent_only_paths or any(
             request.url.path.startswith(p) for p in self.agent_only_path_prefixes
         )
         if not request.state.authenticated and accepts_agent_token:
-            auth_header = request.headers.get("Authorization")
-            agent_info = None
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ", 1)[1]
-                agent_info = verify_agent_token(token)
-            if agent_info:
-                try:
-                    user_data = await user_repository.get(str(agent_info["user_id"]))
-                except Exception as e:
-                    log.error(
-                        f"{LogTag.API} Invalid user_id in agent token",
-                        error_type=type(e).__name__,
-                        error=str(e),
-                    )
-                    user_data = None
-                if user_data is not None:
-                    # Same shape as the WorkOS session path — the shared builder
-                    # spreads the full doc so the agent token carries timezone +
-                    # onboarding (custom instructions, preferences, writing style).
-                    # Hand-picking fields here dropped them, so voice mode lost the
-                    # user's system instructions.
-                    request.state.user = build_user_context(
-                        user_to_legacy_dict(user_data), auth_provider="workos", impersonated=True
-                    )
-                    request.state.authenticated = True
+            await self._authenticate_agent_token(request)
 
         self._publish_user(request)
         response = await call_next(request)
@@ -238,6 +189,63 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             )
 
         return response
+
+    async def _authenticate_wos_session(self, request: Request, wos_session: str) -> None:
+        """Resolve a WorkOS session cookie/bearer onto ``request.state``."""
+        try:
+            user_info, new_session = await self._authenticate_session(wos_session)
+        except Exception as e:
+            log.error(
+                f"{LogTag.API} auth_middleware_error",
+                auth_failure=type(e).__name__,
+                path=request.url.path,
+                method=request.method,
+                session_present=True,
+                error=str(e),
+            )
+            # Don't block request on auth failures - routes can handle this
+            return
+        if not user_info:
+            # Session was present but rejected. We can't call ``log.set()``
+            # here — WorkOSAuthMiddleware runs outside LoggingMiddleware's
+            # context (Starlette copies context at call_next), so any wide
+            # event fields would be wiped by ``log.reset()``. Stash the reason
+            # on request.state so the route layer can log it inside the right
+            # context.
+            request.state.auth_failure = "invalid_or_expired_session"
+            return
+        request.state.user = user_info
+        request.state.authenticated = True
+        if new_session:
+            request.state.new_session = new_session
+
+    async def _authenticate_agent_token(self, request: Request) -> None:
+        """Resolve an agent bearer token onto ``request.state``, if it carries one."""
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            return
+        agent_info = verify_agent_token(auth_header.split(" ", 1)[1])
+        if not agent_info:
+            return
+        try:
+            user_data = await user_repository.get(str(agent_info["user_id"]))
+        except Exception as e:
+            log.error(
+                f"{LogTag.API} Invalid user_id in agent token",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return
+        if user_data is None:
+            return
+        # Same shape as the WorkOS session path — the shared builder spreads the
+        # full doc so the agent token carries timezone + onboarding (custom
+        # instructions, preferences, writing style). Hand-picking fields here
+        # dropped them, so voice mode lost the user's system instructions.
+        request.state.user = build_user_context(
+            user_to_legacy_dict(user_data), auth_provider="workos", impersonated=True
+        )
+        request.state.authenticated = True
 
     async def _dispatch_dev_bypass(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]

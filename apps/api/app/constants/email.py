@@ -52,14 +52,19 @@ NO_SUBJECT = "[No Subject]"
 # log/error call); the tests assert behaviour, not this wording.
 EMAIL_ATTACHMENT_FAIL_LOG = "File attachment could not be resolved"  # pragma: no mutate
 EMAIL_ATTACHMENT_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
-EMAIL_ATTACHMENT_FAIL_FIX = "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
+EMAIL_ATTACHMENT_FAIL_FIX = (
+    "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
+)
 
 # Gmail compose hooks (app/utils/composio_hooks/gmail_hooks.py) — same single-line
 # rule as above. Import LogTag so the f-string prefix stays identical.
 GMAIL_TO_MAPPED_LOG = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"  # pragma: no mutate
 GMAIL_SKIP_STREAM_LOG = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"  # pragma: no mutate
+GMAIL_DRAFT_ID_MISSING_LOG = f"{LogTag.COMPOSIO} Draft response carried no id; compose card cannot send its attachments"  # pragma: no mutate
 ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references."  # pragma: no mutate
-ATTACHMENTS_NO_USER_ERROR = "Cannot resolve file attachments without a user context."  # pragma: no mutate
+ATTACHMENTS_NO_USER_ERROR = (
+    "Cannot resolve file attachments without a user context."  # pragma: no mutate
+)
 
 # Agent-facing description for the friendly ``attachments`` array param (the schema
 # itself is derived from AttachmentReference in mail_models, so field changes land

@@ -14,6 +14,7 @@ from app.utils.errors import AppError
 
 MODULE = "app.services.composio.attachments"
 SERVICE = "app.services.composio.composio_service"
+COMPOSIO_FILES = "composio.core.models._files"
 
 
 class TestAttachmentReferenceValidation:
@@ -84,6 +85,7 @@ class TestResolveAttachmentsSync:
         svc.composio.client = "CLIENT"
         with (
             patch(f"{SERVICE}.get_composio_service", return_value=svc),
+            patch(f"{MODULE}.assert_public_http_url_sync"),
             patch(f"{MODULE}.FileUploadable") as fu_cls,
         ):
             fu_cls.from_url.return_value = _fake_uploadable("dl", "application/pdf", "k/2")
@@ -102,6 +104,7 @@ class TestResolveAttachmentsSync:
         refs = [AttachmentReference(url="https://drive/broken")]
         with (
             patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.assert_public_http_url_sync"),
             patch(f"{MODULE}.FileUploadable") as fu_cls,
         ):
             fu_cls.from_url.side_effect = RuntimeError("404 not found")
@@ -122,6 +125,7 @@ class TestResolveAttachmentsSync:
         ]
         with (
             patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.assert_public_http_url_sync"),
             patch(f"{MODULE}.FileUploadable") as fu_cls,
         ):
             fu_cls.from_url.side_effect = [
@@ -132,13 +136,69 @@ class TestResolveAttachmentsSync:
                 resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
 
 
+class TestUrlIsGuardedBeforeComposioFetches:
+    """Composio fetches an attachment URL from *this* process, with no address
+    policy of its own — so a model-supplied URL is an SSRF primitive unless the
+    guard runs here. Literal IPs keep these hermetic: no DNS is performed."""
+
+    def _resolve_url(self, url: str) -> AppError:
+        with (
+            patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.FileUploadable") as fu_cls,
+            pytest.raises(AppError) as exc,
+        ):
+            resolve_attachments_sync(
+                "u1",
+                [AttachmentReference(url=url)],
+                tool="GMAIL_SEND_EMAIL",
+                toolkit="gmail",
+            )
+        assert fu_cls.from_url.called is False  # refused before any fetch
+        return exc.value
+
+    def test_cloud_metadata_address_is_refused(self):
+        # The exfiltration path: "attach this URL" pointed at instance metadata,
+        # fetched by our own process and mailed out as an attachment.
+        assert (
+            "non-public"
+            in self._resolve_url(
+                "http://169.254.169.254/latest/meta-data/iam/security-credentials/role"
+            ).message
+        )
+
+    def test_loopback_address_is_refused(self):
+        assert "non-public" in self._resolve_url("http://127.0.0.1:8000/internal").message
+
+    def test_private_network_address_is_refused(self):
+        assert "non-public" in self._resolve_url("http://10.0.0.5/secrets").message
+
+    def test_non_http_scheme_is_refused(self):
+        assert "scheme" in self._resolve_url("file:///etc/passwd").message
+
+    def test_public_address_is_allowed_through(self):
+        svc = MagicMock()
+        svc.composio.client = "CLIENT"
+        with (
+            patch(f"{SERVICE}.get_composio_service", return_value=svc),
+            patch(f"{MODULE}.FileUploadable") as fu_cls,
+        ):
+            fu_cls.from_url.return_value = _fake_uploadable("y.pdf", "application/pdf", "k/5")
+            out = resolve_attachments_sync(
+                "u1",
+                [AttachmentReference(url="https://93.184.216.34/y.pdf")],
+                tool="GMAIL_SEND_EMAIL",
+                toolkit="gmail",
+            )
+        assert out[0]["s3key"] == "k/5"
+
+
 class TestUploadBytesSync:
     def test_uploads_bytes_and_returns_attachment(self):
         svc = MagicMock()
         svc.composio.client = "CLIENT"
         with (
             patch(f"{SERVICE}.get_composio_service", return_value=svc),
-            patch(f"{MODULE}._upload_bytes_to_s3", return_value="k/3") as up,
+            patch(f"{COMPOSIO_FILES}._upload_bytes_to_s3", return_value="k/3") as up,
         ):
             out = upload_bytes_sync(
                 b"hello", "note.txt", "text/plain", tool="GMAIL_SEND_EMAIL", toolkit="gmail"
@@ -157,7 +217,7 @@ class TestUploadBytesSync:
     def test_defaults_mimetype_when_missing(self):
         with (
             patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
-            patch(f"{MODULE}._upload_bytes_to_s3", return_value="k/4"),
+            patch(f"{COMPOSIO_FILES}._upload_bytes_to_s3", return_value="k/4"),
         ):
             out = upload_bytes_sync(b"x", "blob", None, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
         assert out["mimetype"] == "application/octet-stream"

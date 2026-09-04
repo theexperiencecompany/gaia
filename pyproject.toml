@@ -421,9 +421,6 @@ unfixable = [
 # positionally to every registered custom tool handler regardless of whether
 # a given handler needs it.
 "apps/api/app/services/composio/custom_tools/gmail_tools.py" = ["ARG001"]
-# ARG002: FastAPI injects the cosmetic {filename} path segment by name into the
-# share-download handler; resolution uses only the token, so it is unread by design.
-"apps/api/app/api/v1/endpoints/shares.py" = ["ARG002"]
 # ANN401: generic decorator/proxy/settings surfaces that genuinely accept or
 # return arbitrary data -- Any is the correct type here, not a shortcut.
 "apps/api/app/db/redis.py" = ["ANN401"]
