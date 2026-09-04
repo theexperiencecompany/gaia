@@ -863,7 +863,9 @@ function UpgradeBanner({
         <SparklesIcon className="text-primary" size={18} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-white">Upgrade to Pro</p>
+        <p className="text-sm font-semibold text-white">
+          Subscribe to GAIA Pro
+        </p>
         <p className="truncate text-[13px] text-zinc-500">{reason}</p>
       </div>
       <Button

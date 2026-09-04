@@ -107,9 +107,9 @@ const LAPSED_PAYWALL_COPY: PaywallCopy = {
 };
 
 const MIGRATION_PAYWALL_COPY: PaywallCopy = {
-  heading: "GAIA is Pro-only",
+  heading: "GAIA is paid only",
   body: "Subscribe to GAIA Pro to keep chatting and running workflows.",
-  cta: "Upgrade to Pro",
+  cta: "Subscribe",
   subscribeCta: "Subscribe to GAIA Pro",
   composer: "GAIA is paid only right now, so you'll need a plan to chat.",
   planLabel: "Not subscribed",

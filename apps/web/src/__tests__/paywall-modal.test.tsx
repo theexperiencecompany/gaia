@@ -169,7 +169,7 @@ describe("PaywallModal", () => {
     render(<PaywallModal />);
 
     await screen.findByRole("dialog");
-    expect(screen.getByText("GAIA is Pro-only")).not.toBeNull();
+    expect(screen.getByText("GAIA is paid only")).not.toBeNull();
     expect(screen.queryByText(/your subscription ended/i)).toBeNull();
   });
 
@@ -183,7 +183,7 @@ describe("PaywallModal", () => {
     expect(
       screen.getByText(/pick up right where you left off/i),
     ).not.toBeNull();
-    expect(screen.queryByText("GAIA is Pro-only")).toBeNull();
+    expect(screen.queryByText("GAIA is paid only")).toBeNull();
   });
 
   it("keeps the migration copy while the status is still unknown", async () => {
@@ -192,7 +192,7 @@ describe("PaywallModal", () => {
     render(<PaywallModal />);
 
     await screen.findByRole("dialog");
-    expect(screen.getByText("GAIA is Pro-only")).not.toBeNull();
+    expect(screen.getByText("GAIA is paid only")).not.toBeNull();
   });
 
   it("shows the 7-day cancellation line next to the CTA", async () => {

@@ -304,7 +304,7 @@ export default function SettingsMenu({
             items: [
               {
                 key: "upgrade_to_pro",
-                label: "Upgrade to Pro",
+                label: "Subscribe to GAIA Pro",
                 action: () =>
                   openPaywallModal(undefined, { dismissible: true }),
                 icon: CircleArrowUp02Icon,

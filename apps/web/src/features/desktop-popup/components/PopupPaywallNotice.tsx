@@ -37,7 +37,7 @@ export default function PopupPaywallNotice() {
   return (
     <div className="flex flex-col gap-3 rounded-2xl bg-zinc-800 p-4">
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-sm text-zinc-100">GAIA is Pro-only</p>
+        <p className="font-medium text-sm text-zinc-100">GAIA is paid only</p>
         <p className="text-xs text-zinc-400">
           {offer?.message ??
             "Subscribe to GAIA Pro to keep chatting from the popup."}

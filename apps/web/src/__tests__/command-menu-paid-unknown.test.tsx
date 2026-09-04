@@ -81,14 +81,14 @@ describe("CommandMenu — Upgrade to Pro item vs. plan status unknown", () => {
   it("shows 'Upgrade to Pro' for a known-free user", () => {
     render(<CommandMenu open onOpenChange={vi.fn()} />);
 
-    expect(screen.getByText("Upgrade to Pro")).not.toBeNull();
+    expect(screen.getByText("Subscribe to GAIA Pro")).not.toBeNull();
   });
 
   it("hides 'Upgrade to Pro' for a known-paid user", () => {
     isPaid = true;
     render(<CommandMenu open onOpenChange={vi.fn()} />);
 
-    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
+    expect(screen.queryByText("Subscribe to GAIA Pro")).toBeNull();
   });
 
   it("hides 'Upgrade to Pro' while the plan status is still unknown, instead of showing the free-tier CTA (cold-cache race)", () => {
@@ -99,6 +99,6 @@ describe("CommandMenu — Upgrade to Pro item vs. plan status unknown", () => {
     // Before the fix, `subscriptionStatus?.is_subscribed` read as
     // `undefined` (falsy) in this exact window, so the item stayed visible
     // for a paying user reloading mid-fetch.
-    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
+    expect(screen.queryByText("Subscribe to GAIA Pro")).toBeNull();
   });
 });

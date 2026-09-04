@@ -36,9 +36,7 @@ describe("PaywallNotice", () => {
     render(<PaywallNotice />);
 
     expect(screen.getByText(/GAIA is paid only right now/i)).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: /upgrade to pro/i }),
-    ).not.toBeNull();
+    expect(screen.getByRole("button", { name: /subscribe/i })).not.toBeNull();
   });
 
   it("does not render while the subscription status is still unknown", () => {
@@ -58,7 +56,7 @@ describe("PaywallNotice", () => {
   it("opens the paywall modal store when the upgrade button is pressed", () => {
     render(<PaywallNotice />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /subscribe/i }));
 
     expect(usePaywallModalStore.getState().open).toBe(true);
     // Enforcement — the composer's paywall notice is itself a consequence of
