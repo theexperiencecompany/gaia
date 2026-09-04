@@ -436,7 +436,16 @@ class TestNewUserGuidanceBlock:
     # Raised from 3,400 when the playbooks went from one first move each to two
     # or three named things GAIA can create, and the focus table was added. The
     # ceiling is real: MAX_PLAYBOOK_LINES bounds the list, this bounds the prose.
-    MAX_BLOCK_CHARS = 4_700
+    # Raised again from 4,700 for the writing rules the persona eval showed the
+    # block could not carry without: the sentence/opener rules that stop stacked
+    # fragments and the "<chip>, got it." echo, the conditional markdown rule that
+    # replaced a blanket ban, the worked TARGET_REPLY_EXAMPLE, and the expanded
+    # "a yes means DO it" line. Each is a measured failure mode, not padding.
+    # Raised once more to 6,600 for the expanded accept-turn rule: every one of
+    # the five worst replies in the persona eval was a "yes" answered with
+    # "On it, setting that up now" and no tool, so that turn needed spelling out
+    # (call the tool first, report in past tense, no acknowledgement opener).
+    MAX_BLOCK_CHARS = 6_600
 
     @staticmethod
     def _count(value: int) -> AsyncMock:
