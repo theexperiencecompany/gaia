@@ -10,6 +10,7 @@ from bson import ObjectId
 import pytest
 
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.constants.agents import WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.models.agent_models import SilentRunResult
 from app.models.notification.notification_models import (
@@ -36,6 +37,10 @@ from app.workers.tasks.workflow_tasks import (
     process_workflow_generation_task,
     regenerate_workflow_steps,
 )
+
+#: The busy-lock value a fire reserves its conversation with. Tests that drive
+#: ``execute_workflow_as_chat`` directly stand in for the fire that took it.
+RESERVATION = ":fire-task-1"
 
 
 @pytest.fixture(autouse=True)
@@ -366,7 +371,10 @@ class TestExecuteWorkflowById:
             result = await execute_workflow_by_id(ctx, workflow.id, context=context)
 
         assert "executed successfully" in result
-        execute_chat.assert_awaited_once_with(workflow, {"user_id": workflow.user_id}, context)
+        # The reservation is minted per fire, so it is asserted by shape: what
+        # matters is that the run is handed the claim its own fire took.
+        assert execute_chat.await_args.args == (workflow, {"user_id": workflow.user_id}, context)
+        assert UUID(execute_chat.await_args.kwargs["reservation"].lstrip(":")).version == 4
         complete_exec.assert_awaited_once_with(
             execution_id=execution_id,
             status="success",
@@ -936,7 +944,7 @@ class TestExecuteWorkflowAsChat:
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {}
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
             )
 
         # Conversation was fetched for this workflow and user
@@ -979,7 +987,7 @@ class TestExecuteWorkflowAsChat:
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {}
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
             )
 
         assert conversation_id == "conv_123"
@@ -1010,7 +1018,9 @@ class TestExecuteWorkflowAsChat:
                 return_value=SilentRunResult(message="Done", tool_data={}),
             ) as mock_call_agent,
         ):
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+            )
 
         trigger_context = mock_call_agent.call_args.kwargs["options"].trigger_context
         assert trigger_context["workflow_id"] == workflow.id
@@ -1043,7 +1053,9 @@ class TestExecuteWorkflowAsChat:
             ),
         ):
             with pytest.raises(RuntimeError, match="Agent crashed"):
-                await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+                await execute_workflow_as_chat(
+                    workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+                )
 
     async def test_get_user_by_id_failure_falls_back_to_utc(self):
         """When get_user_by_id raises, the function falls back gracefully and still
@@ -1073,7 +1085,7 @@ class TestExecuteWorkflowAsChat:
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {}
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
             )
 
         # Execution completes successfully despite user fetch failing
@@ -1110,7 +1122,9 @@ class TestExecuteWorkflowAsChat:
                 return_value=SilentRunResult(message="Done", tool_data={}),
             ) as mock_call_agent,
         ):
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+            )
 
         request_arg = mock_call_agent.call_args.kwargs["request"]
         assert request_arg.selectedWorkflow is not None
@@ -1148,7 +1162,7 @@ class TestExecuteWorkflowAsChat:
             ) as mock_call_agent,
         ):
             conversation_id, _trace = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {}
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
             )
 
         assert conversation_id == "conv_none"
@@ -1180,7 +1194,9 @@ class TestExecuteWorkflowAsChat:
                 return_value=SilentRunResult(message="OK", tool_data={}),
             ),
         ):
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+            )
 
         stored_messages = mock_store.call_args.kwargs["workflow_execution_messages"]
         user_msg = stored_messages[0]
@@ -1215,7 +1231,9 @@ class TestExecuteWorkflowAsChat:
                 return_value=SilentRunResult(message="Done", tool_data={}),
             ),
         ):
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+            )
 
         reset_threads.assert_awaited_once_with("conv_reset")
 
@@ -1257,7 +1275,7 @@ class TestExecuteWorkflowAsChat:
             ),
         ):
             _conversation_id, trace = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {}
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
             )
 
         assert [c.tool_name for c in trace] == ["GMAIL_FETCH"]
@@ -2441,7 +2459,9 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
                 AsyncMock(return_value=SilentRunResult(message="Result text", tool_data={})),
             ) as agent,
         ):
-            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+            await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}, reservation=RESERVATION
+            )
         return conversation, agent
 
     async def test_the_conversation_is_opened_for_this_workflow_user_and_title(self):
@@ -2510,12 +2530,16 @@ class TestTheChatRunsTriggerTurnIsBuiltExactly:
             ) as agent,
         ):
             await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, {"trigger_batch": "b1"}
+                workflow,
+                {"user_id": workflow.user_id},
+                {"trigger_batch": "b1"},
+                reservation=RESERVATION,
             )
 
         options = agent.await_args.kwargs["options"]
         assert options.trigger_context == {
             "trigger_batch": "b1",
+            WORKFLOW_LOCK_CONTEXT_KEY: RESERVATION,
             "workflow_id": workflow.id,
             "workflow_title": workflow.title,
             "workflow_notify_on_completion": True,

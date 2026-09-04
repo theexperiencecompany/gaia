@@ -300,29 +300,6 @@ class TestInboxStorage:
     async def test_clear_empty_returns_zero(self, inbox: ExecutorInbox) -> None:
         assert await inbox.clear() == 0
 
-    async def test_take_undelivered_removes_only_unshown(self, inbox: ExecutorInbox) -> None:
-        shown = await inbox.append("shown", "seen by the model")
-        await inbox.append("pending", "arrived too late")
-        await inbox.mark_delivered([shown])
-        taken = await inbox.take_undelivered()
-        assert [e.id for e in taken] == ["pending"]
-        # The shown entry stays: delivered but not yet committed to the thread,
-        # so the drain — not the carry — owns retiring it.
-        assert [e.id for e in await inbox.read()] == ["shown"]
-
-    async def test_take_undelivered_empty_when_all_shown(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.append("e-1", "a")
-        await inbox.mark_delivered([entry])
-        assert await inbox.take_undelivered() == []
-        # Delivered-but-unretired rows stay until the drain sees the commit.
-        assert await inbox.count() == 1
-
-    async def test_take_undelivered_empty_inbox(self, inbox: ExecutorInbox) -> None:
-        assert await inbox.take_undelivered() == []
-
-    async def test_mark_delivered_empty_list_is_safe(self, inbox: ExecutorInbox) -> None:
-        await inbox.mark_delivered([])
-
     async def test_discard_removes_named_ids(self, inbox: ExecutorInbox) -> None:
         await inbox.append("task-1", "a")
         await inbox.append("task-2", "b")
@@ -425,28 +402,29 @@ class TestInboxWithoutRedis:
 
 class TestAnnounceInterruption:
     async def test_notice_names_the_interrupt(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.announce_interruption()
+        (entry,) = await inbox.announce_interruption()
         assert "INTERRUPTED" in entry.text
         assert entry.tag == AgentTag.EXECUTOR_INTERRUPTED
 
     async def test_notice_forbids_resume(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.announce_interruption()
+        (entry,) = await inbox.announce_interruption()
         assert "Do not resume" in entry.text
 
-    async def test_redirect_message_is_carried(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.announce_interruption("work on billing instead")
-        assert "work on billing instead" in entry.text
-        assert "What the user wants instead" in entry.text
+    async def test_redirect_is_its_own_entry(self, inbox: ExecutorInbox) -> None:
+        notice, redirect = await inbox.announce_interruption("work on billing instead")
+        assert "work on billing instead" not in notice.text
+        assert redirect.text == "work on billing instead"
+        assert redirect.tag == AgentTag.USER_INTERJECTION
 
-    async def test_no_redirect_has_no_instead_block(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.announce_interruption()
-        assert "instead" not in entry.text.lower().replace("do not resume it, retry it", "")
+    async def test_a_bare_stop_writes_the_notice_alone(self, inbox: ExecutorInbox) -> None:
+        assert len(await inbox.announce_interruption()) == 1
+        assert await inbox.count() == 1
 
     async def test_notice_is_readable_from_the_inbox(self, inbox: ExecutorInbox) -> None:
-        entry = await inbox.announce_interruption("redirect")
-        (stored,) = await inbox.read()
-        assert stored.id == entry.id
-        assert stored.tag == AgentTag.EXECUTOR_INTERRUPTED
+        notice, redirect = await inbox.announce_interruption("redirect")
+        stored = await inbox.read()
+        assert [e.id for e in stored] == [notice.id, redirect.id]
+        assert stored[0].tag == AgentTag.EXECUTOR_INTERRUPTED
 
 
 # ---------------------------------------------------------------------------
@@ -814,14 +792,14 @@ class TestDrainHookMatrix:
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in staged] == want_staged
         assert [e.id for e in await inbox.read()] == want_left
 
-    async def test_mark_delivered_before_commit(self, inbox) -> None:
-        """Injecting records delivery immediately; the thread commit is what
-        later retires. Between the two, take_undelivered must not carry it."""
+    async def test_injecting_leaves_the_entry_pending(self, inbox) -> None:
+        """Staging is not committing. The entry stays until a later pass sees it
+        in the thread, so a run that dies at the model call loses nothing."""
         from app.agents.core.background.executor_channel import drain_inbox_hook
 
         await inbox.append("e-1", "steer")
         await drain_inbox_hook({"messages": [_plain("go")]}, _hook_config(), None)
-        assert await inbox.take_undelivered() == []
+        assert [e.id for e in await inbox.read()] == ["e-1"]
 
     async def test_no_conversation_id_returns_state(self, inbox) -> None:
         from app.agents.core.background.executor_channel import drain_inbox_hook

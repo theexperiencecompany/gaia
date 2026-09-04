@@ -20,3 +20,24 @@ def _no_playbook():
         AsyncMock(return_value=None),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _free_conversation():
+    """Default every workflow fire to "nobody else holds this conversation".
+
+    A fire claims its workflow's conversation before it spends anything, so
+    without this every existing test would reach Mongo for the conversation and
+    Redis for the lock. The overlap tests patch the same seams to say it is
+    held.
+    """
+    with (
+        patch(
+            "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+            AsyncMock(return_value="conv_1"),
+        ),
+        patch("app.workers.tasks.workflow_tasks.try_acquire_lock", AsyncMock(return_value=True)),
+        patch("app.workers.tasks.workflow_tasks.release_lock_if_owned", AsyncMock()),
+        patch("app.workers.tasks.workflow_tasks.get_lock_holder", AsyncMock(return_value=None)),
+    ):
+        yield

@@ -1308,6 +1308,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
             "playbook_fallback": {"reason": "hash_drift", "step": 3},
+            "executor_lock_reservation": None,
         }
 
     @pytest.mark.asyncio
@@ -1346,6 +1347,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "",
             "workflow_notify_on_completion": True,
             "playbook_fallback": None,
+            "executor_lock_reservation": None,
         }
 
 

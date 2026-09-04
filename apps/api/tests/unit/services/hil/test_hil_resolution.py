@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis.aioredis
 import pytest
 
+from app.agents.core.background.executor_queue import LockClaim
 from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.resolution import (
     CANCELLED_FEEDBACK,
@@ -170,6 +171,21 @@ class TestTheResumeSlotIsExclusive:
         assert await claim_resume_dispatch(CONVERSATION_ID) is True
 
         assert await claim_resume_dispatch("conv-someone-else") is True
+
+
+class TestResumeSeizesTheConversation:
+    async def test_a_resume_takes_the_lock_its_paused_run_still_holds(self, resume: Any) -> None:
+        """The paused run holds this conversation's lock ON PURPOSE while it
+        waits on the user, so a resume must seize it. Acquiring — correct for
+        every other detached run — would make every approval a no-op."""
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=make_record())),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock()),
+            patch(f"{MODULE}.mark_resumed", new=AsyncMock()),
+        ):
+            await resolve_approval(approval_id="appr-1", user_id=USER_ID, kind="approve")
+
+        assert resume.prepare.await_args.kwargs["claim"] is LockClaim.SEIZE
 
 
 class TestUnresumableRecords:

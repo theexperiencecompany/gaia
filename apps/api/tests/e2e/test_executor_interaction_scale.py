@@ -237,9 +237,9 @@ class TestConversationIsolation:
 
 
 class TestTooLateEntries:
-    async def test_entry_after_the_last_step_stays_undelivered(self, inbox) -> None:
-        """Nothing left to drain into: the entry must sit pending, marked
-        undelivered, so finalize carries it instead of losing it."""
+    async def test_entry_after_the_last_step_stays_pending(self, inbox) -> None:
+        """Nothing left to drain into: the entry must sit pending, absent from
+        the thread, so finalize carries it instead of losing it."""
         async with executor_graph(["done"]) as graph:
             config = _config()
             async for _mode, payload in graph.astream(
@@ -251,13 +251,14 @@ class TestTooLateEntries:
                     await inbox.append("too-late", "arrived at the end")
 
         assert [e.id for e in await inbox.read()] == ["too-late"]
-        assert await inbox.take_undelivered() != []
 
-    async def test_delivered_entry_is_never_carried(self, inbox) -> None:
+    async def test_an_absorbed_entry_is_retired_not_carried(self, inbox) -> None:
+        """Committed to the thread on an earlier pass, so a later pass retires
+        it — there is nothing left for finalize to carry into a second run."""
         async with executor_graph([plan("work"), "done"]) as graph:
             await _drive(graph, "go", {1: [("e-1", "absorbed")]})
 
-        assert await inbox.take_undelivered() == []
+        assert await inbox.read() == []
 
 
 class TestDiscardThenDrain:
@@ -320,9 +321,13 @@ class TestInterruptionCommitted:
             for m in state.values["messages"]
             if getattr(m, "additional_kwargs", None) and m.additional_kwargs.get(INBOX_ENTRY_ID)
         ]
-        assert len(stamped) == 1
-        assert AgentTag.EXECUTOR_INTERRUPTED in str(stamped[0].content) or True
-        assert "do billing instead" in str(stamped[0].content)
+        # Two, not one: the stop and the redirect are separate entries, so a
+        # BARE stop can never look like work and start a run of its own.
+        notice, redirect = stamped
+        assert f"<{AgentTag.EXECUTOR_INTERRUPTED}>" in str(notice.content)
+        assert "do billing instead" not in str(notice.content)
+        assert f"<{AgentTag.USER_INTERJECTION}>" in str(redirect.content)
+        assert "do billing instead" in str(redirect.content)
 
     async def test_interrupt_clears_with_clear(self, inbox) -> None:
         await inbox.append("e-1", "work")

@@ -15,6 +15,7 @@ from langchain_core.tools import tool
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import (
+    adopt_lock,
     build_lock_value,
     decode_raw_item,
     parse_lock_value,
@@ -211,7 +212,15 @@ async def _dispatch_executor(
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(stream_id, task_id)
 
-    if not await try_acquire_lock(lock_key, lock_value):
+    # A workflow fire reserves its conversation before the turn that dispatches
+    # this executor (see ``_reserve_conversation``), so the lock it finds held is
+    # its own claim, taken early to keep a second fire out. Adopting it is what
+    # makes that reservation a hand-off rather than a self-inflicted queue.
+    acquired = await try_acquire_lock(lock_key, lock_value)
+    if not acquired and (reserved := configurable.get("executor_lock_reservation")):
+        acquired = await adopt_lock(conversation_id, reserved, lock_value)
+
+    if not acquired:
         # The lock is held. Distinguish two cases by the holder's stream_id:
         #   - SAME stream_id → the comms model called call_executor twice within
         #     ONE turn. Queuing it would run the whole task a SECOND time

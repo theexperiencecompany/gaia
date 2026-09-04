@@ -810,11 +810,14 @@ class TestCancelAnnouncesTheInterruption:
             config=config_for(), task_ids=[], message="book the 4pm slot instead"
         )
 
-        entries = await inbox().read()
-        assert len(entries) == 1
-        assert entries[0].tag == AgentTag.EXECUTOR_INTERRUPTED
-        assert "INTERRUPTED by the user" in entries[0].text
-        assert "book the 4pm slot instead" in entries[0].text
+        notice, redirect = await inbox().read()
+        assert notice.tag == AgentTag.EXECUTOR_INTERRUPTED
+        assert "INTERRUPTED by the user" in notice.text
+        # The redirect is its own entry, not folded into the notice: a stop
+        # notice must never look like pending work, or finalize starts a run
+        # for it (a bare Stop then spawned a run whose task WAS the notice).
+        assert redirect.tag == AgentTag.USER_INTERJECTION
+        assert redirect.text == "book the 4pm slot instead"
 
     async def test_a_plain_stop_announces_the_interruption_without_a_redirect(
         self,
@@ -1175,3 +1178,60 @@ class TestSparedRunHearsNoInterruption:
         await run_cancel_executor(config=config_for(), task_ids=["running-task"])
 
         assert [entry.tag for entry in await inbox().read()] == [AgentTag.EXECUTOR_INTERRUPTED]
+
+
+class TestAWorkflowFiresReservationIsAdopted:
+    """A workflow fire claims its conversation before the comms turn that
+    dispatches the executor, so no second fire can slip into that window.
+
+    The executor this turn spawns is the run that claim was made FOR. Reading
+    the held lock as somebody else's would send the fire's own task into the
+    inbox of a live run that does not exist: nothing would ever run it, and the
+    fire would still complete as a success.
+    """
+
+    async def test_the_executor_takes_over_its_own_fires_claim(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        reservation = ":fire-1"
+        await fake_redis.set(LOCK_KEY, reservation, ex=EXECUTOR_BUSY_TTL)
+
+        response = await call_executor_with(
+            config_for(executor_lock_reservation=reservation),
+            "Send the digest",
+        )
+        await drain_background_tasks()
+
+        assert len(spawned_runs) == 1, "the run must start live, not go to the inbox"
+        assert await inbox().count() == 0
+        assert await fake_redis.get(LOCK_KEY) == f"stream-1:{task_id_from(response)}"
+
+    async def test_a_stale_reservation_still_queues_behind_a_real_run(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """The claim can lapse on TTL and be taken by a genuinely different run.
+        Adopting then would put two executors on one conversation."""
+        await fake_redis.set(LOCK_KEY, "other-stream:task-9", ex=EXECUTOR_BUSY_TTL)
+
+        await call_executor_with(
+            config_for(executor_lock_reservation=":fire-1"),
+            "Send the digest",
+        )
+        await drain_background_tasks()
+
+        assert spawned_runs == []
+        assert await inbox().count() == 1
+        assert await fake_redis.get(LOCK_KEY) == "other-stream:task-9"
+
+    async def test_a_chat_turn_carries_no_reservation_and_still_queues(
+        self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        """Only a workflow fire reserves. An ordinary turn finding the lock held
+        must behave exactly as before."""
+        await fake_redis.set(LOCK_KEY, "other-stream:task-9", ex=EXECUTOR_BUSY_TTL)
+
+        await call_executor_with(config_for(), "Send the digest")
+        await drain_background_tasks()
+
+        assert spawned_runs == []
+        assert await inbox().count() == 1

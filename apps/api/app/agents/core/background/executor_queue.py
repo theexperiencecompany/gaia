@@ -17,6 +17,8 @@ from enum import StrEnum
 from typing import Any, TypedDict, cast
 from uuid import uuid4
 
+from redis.exceptions import WatchError
+
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -137,6 +139,37 @@ async def try_acquire_lock(lock_key: str, lock_value: str) -> bool:
             nx=True,
         ),
     )
+
+
+async def adopt_lock(conversation_id: str, reserved_value: str, lock_value: str) -> bool:
+    """Take over a lock this run's own reservation holds. Returns whether it did.
+
+    A workflow fire reserves its conversation before it starts, so no second fire
+    can slip into the window before the first one dispatches an executor. That
+    executor is the run the reservation was made FOR, not a rival, so it adopts
+    the lock instead of handing its task to a live run that does not exist.
+
+    Compare-and-set under WATCH, not a plain SET: a reservation can lapse on TTL
+    and be re-taken by a genuinely different run, and overwriting that would put
+    two executors on one conversation — the exact failure the lock exists to
+    stop. Falls back to True (allow execution) if Redis is unavailable, like
+    :func:`try_acquire_lock`, which is also the only way to reach here.
+    """
+    if not redis_cache.client:
+        return True
+    lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
+    async with redis_cache.client.pipeline() as pipe:
+        await pipe.watch(lock_key)
+        if await pipe.get(lock_key) != reserved_value:
+            return False
+        pipe.multi()
+        pipe.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
+        try:
+            await pipe.execute()
+        except WatchError:
+            # Someone wrote the key between the read and the set; they own it now.
+            return False
+    return True
 
 
 async def get_lock_state(conversation_id: str, stream_id: str, task_id: str | None) -> LockState:

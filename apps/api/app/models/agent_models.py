@@ -174,6 +174,11 @@ class AgentConfigurable(TypedDict, total=False):
     #: verbatim (``call_executor`` folds it into the heal brief) because comms
     #: cannot be trusted to transcribe "do not repeat these" into its task.
     playbook_fallback: str | None
+    #: The busy-lock value THIS fire reserved its workflow's conversation with,
+    #: before the turn started. ``call_executor`` adopts that reservation instead
+    #: of queueing behind it; every other run leaves it absent and acquires
+    #: normally.
+    executor_lock_reservation: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit
