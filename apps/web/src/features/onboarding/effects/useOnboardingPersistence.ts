@@ -21,16 +21,17 @@ export function useOnboardingPersistence(
   state: OnboardingState,
   dispatch: Dispatch<Action>,
 ): boolean {
-  const hydratedForRef = useRef<string | null>(null);
+  // Which user's cache the reducer currently holds; `null` until the first
+  // load. State, not a ref, because callers re-render on it.
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
   // Set when a reset/hydrate has been dispatched but not yet rendered: the
   // save effect below still sees the previous user's state in that render.
   const awaitingHydratedStateRef = useRef(false);
 
   useEffect(() => {
-    if (!userId || hydratedForRef.current === userId) return;
+    if (!userId || hydratedFor === userId) return;
     const partial = loadPersisted(userId);
-    if (hydratedForRef.current !== null) {
+    if (hydratedFor !== null) {
       dispatch({ type: "reset" });
       awaitingHydratedStateRef.current = true;
     }
@@ -38,19 +39,18 @@ export function useOnboardingPersistence(
       dispatch({ type: "hydrate", partial });
       awaitingHydratedStateRef.current = true;
     }
-    hydratedForRef.current = userId;
     setHydratedFor(userId);
-  }, [userId, dispatch]);
+  }, [userId, hydratedFor, dispatch]);
 
   useEffect(() => {
-    if (hydratedForRef.current !== userId) return;
+    if (hydratedFor !== userId) return;
     if (awaitingHydratedStateRef.current) {
       awaitingHydratedStateRef.current = false;
       return;
     }
     if (state === initialState) return;
     savePersisted(userId, state);
-  }, [userId, state]);
+  }, [userId, hydratedFor, state]);
 
   return hydratedFor === userId && userId !== "";
 }

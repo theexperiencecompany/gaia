@@ -1,14 +1,14 @@
 // ChatBubbleBot.tsx
-import { splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import Image from "next/image";
-import { type ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useMemo, useRef } from "react";
 
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatBubble_Actions";
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import {
+  logoDelayFor,
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
   type PartChoreography,
@@ -18,10 +18,11 @@ import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils"
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
-
+import { describeBotBubbleContent } from "./botBubbleContent";
 import FollowUpActions from "./FollowUpActions";
 import ImageBubble from "./ImageBubble";
 import TextBubble from "./TextBubble";
+import { useActionsHover } from "./useActionsHover";
 
 export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
@@ -58,20 +59,10 @@ export default function ChatBubbleBot(
   const partChoreography = resolvePartChoreography(props.partChoreography);
 
   const actionsRef = useRef<HTMLDivElement>(null);
-
-  const handleMouseOver = useCallback(() => {
-    if (actionsRef.current && !disableActions) {
-      actionsRef.current.style.opacity = "1";
-      actionsRef.current.style.visibility = "visible";
-    }
-  }, [disableActions]);
-
-  const handleMouseOut = useCallback(() => {
-    if (actionsRef.current && !disableActions) {
-      actionsRef.current.style.opacity = "0";
-      actionsRef.current.style.visibility = "hidden";
-    }
-  }, [disableActions]);
+  const { handleMouseOver, handleMouseOut } = useActionsHover(
+    actionsRef,
+    disableActions,
+  );
 
   // Not memoized on purpose: `props` is rebuilt by getMessageProps every
   // render, so a useMemo keyed on it never hits. Real render protection lives
@@ -88,31 +79,28 @@ export default function ChatBubbleBot(
     systemPurpose,
   );
 
-  const logoDelay = useMemo(() => {
-    if (!itShouldShowTextBubble) return 0;
-    const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;
-    if (!cleanText) return 0;
-    const parts = splitMessageByBreaks(cleanText);
-    return Math.max(0, parts.length - 1) * partChoreography.staggerSeconds;
-  }, [text, itShouldShowTextBubble, partChoreography.staggerSeconds]);
+  const logoDelay = useMemo(
+    () =>
+      itShouldShowTextBubble
+        ? logoDelayFor(
+            parseThinkingFromText(text?.toString() || "").cleanText,
+            partChoreography.staggerSeconds,
+          )
+        : 0,
+    [text, itShouldShowTextBubble, partChoreography.staggerSeconds],
+  );
 
   // A failed turn with no response text still shows the quiet error bubble.
-  const hasError = shouldShowTextBubble(
-    text,
+  const { hasError, hasContent } = describeBotBubbleContent({
+    text: text?.toString(),
+    showsTextBubble: itShouldShowTextBubble,
+    error,
+    imageData: image_data,
     isConvoSystemGenerated,
     systemPurpose,
-  )
-    ? false
-    : !!error;
-
-  // Check if there's actual content to display
-  const hasContent =
-    image_data ||
-    !!text ||
-    hasError ||
-    (isConvoSystemGenerated &&
-      systemPurpose === SystemPurpose.EMAIL_PROCESSING) ||
-    props.tool_data?.length;
+    toolDataLength: props.tool_data?.length,
+    emailProcessingPurpose: SystemPurpose.EMAIL_PROCESSING,
+  });
 
   // Don't render the full bubble structure if only loading with no content
   // Let ChatRenderer's loading indicator handle it
