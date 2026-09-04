@@ -12,6 +12,8 @@ copy, so a miss is a fallback, not a warning to ship anyway.
 """
 
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 import string
 import time
@@ -25,16 +27,25 @@ from app.agents.llm.client import (
     metered_config,
 )
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
+from app.constants.cache import (
+    FIRST_QUESTION_CACHE_PREFIX,
+    FIRST_QUESTION_CACHE_TTL,
+)
 from app.constants.log_tags import LogTag
+from app.db.redis import redis_cache
 from app.models.user_models import OnboardingPreferences
 from app.services.onboarding.first_conversation import PROFESSION_WORDS
 from app.services.onboarding.first_message import NEED_PHRASES
 from shared.py.wide_events import log
 
-#: One call, on a hard latency budget: this sits inside onboarding completion,
-#: so the user waits for it. Anything slower than this is worth less than the
-#: static line it would replace.
-QUESTION_TIMEOUT_SECONDS = 4.0
+#: The ceiling for the call made AHEAD of time, while the user is still clicking
+#: through the wizard. Nobody is waiting on it, so it gets room to succeed.
+QUESTION_TIMEOUT_SECONDS = 8.0
+
+#: The ceiling for the call made at completion, when the prewarm missed. The
+#: user is watching a spinner here, so this is a last chance rather than a real
+#: attempt: past two seconds the static line is the better product.
+LIVE_QUESTION_TIMEOUT_SECONDS = 2.0
 
 #: Low but not zero. At 0 the question collapses onto the same two shapes for
 #: every persona; above this it starts inventing facts about their week.
@@ -347,3 +358,116 @@ async def compose_first_question(
         duration_s=round(time.monotonic() - started, 3),
     )
     return FirstQuestion(question=draft.question.strip(), chips=chips)
+
+
+def answers_fingerprint(preferences: OnboardingPreferences) -> str:
+    """A stable hash of the three answers the question is written from.
+
+    Part of the cache key rather than a stored field, so changing an answer
+    cannot read a question written for the old one: the new answers hash to a
+    key nobody has written yet, and the prewarm for them writes that key. No
+    explicit invalidation exists because none can be forgotten.
+    """
+    payload = json.dumps(
+        {
+            "profession": (preferences.profession or "").strip().lower(),
+            "needs": [need.value for need in preferences.needs or []],
+            "other_need": (preferences.other_need or "").strip().lower(),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def first_question_cache_key(user_id: str, preferences: OnboardingPreferences) -> str:
+    return f"{FIRST_QUESTION_CACHE_PREFIX}{user_id}:{answers_fingerprint(preferences)}"
+
+
+async def prewarm_first_question(
+    user_id: str,
+    preferences: OnboardingPreferences,
+    connected_platform: str | None,
+) -> None:
+    """Write the question while the user is still in the wizard.
+
+    Fire-and-forget: this runs detached from the request that saved the answers,
+    so it owns its own failures and raises nothing. A question that is not ready
+    by the time completion is pressed simply is not used.
+    """
+    try:
+        question = await compose_first_question(preferences, connected_platform, user_id=user_id)
+        if question is None:
+            return
+        await redis_cache.set(
+            first_question_cache_key(user_id, preferences),
+            question,
+            ttl=FIRST_QUESTION_CACHE_TTL,
+            model=FirstQuestion,
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.ONBOARDING} first question prewarm failed",
+            user_id=user_id,
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+        )
+
+
+async def resolve_first_question(
+    user_id: str,
+    preferences: OnboardingPreferences,
+    connected_platform: str | None,
+) -> FirstQuestion | None:
+    """The question to close the seeded conversation with, at completion time.
+
+    Prefers whatever :func:`prewarm_first_question` already wrote, because that
+    call cost the user nothing. A miss (they answered and completed in the same
+    breath, Redis was down, the prewarm lost its race) gets ONE short live
+    attempt, and then the static line.
+    """
+    cached = await redis_cache.get(first_question_cache_key(user_id, preferences), FirstQuestion)
+    if cached is not None:
+        log.info(
+            f"{LogTag.ONBOARDING} first question resolved",
+            user_id=user_id,
+            outcome="cached",
+        )
+        return cached
+
+    live = await compose_first_question(
+        preferences,
+        connected_platform,
+        user_id=user_id,
+        timeout_seconds=LIVE_QUESTION_TIMEOUT_SECONDS,
+    )
+    log.info(
+        f"{LogTag.ONBOARDING} first question resolved",
+        user_id=user_id,
+        outcome="live" if live is not None else "fallback",
+    )
+    return live
+
+
+async def seeded_chips(user_id: str, preferences: OnboardingPreferences) -> list[str]:
+    """The chips the seeded conversation offered this user, for the agent's prompt.
+
+    Read back from the same cache key the seeded turn was built from, so the
+    agent meeting "Growth" as a first message knows it is looking at an answer
+    to its own question. An expired key returns nothing rather than guessing: a
+    wrong list of chips would tell the model a choice was offered that was not.
+    """
+    try:
+        cached = await redis_cache.get(
+            first_question_cache_key(user_id, preferences), FirstQuestion
+        )
+    except Exception as e:
+        # A cache outage must not take the prompt down with it; the agent just
+        # loses the "these were your chips" hint for this turn.
+        log.warning(
+            f"{LogTag.ONBOARDING} seeded chips unreadable — prompt goes without them",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return []
+    return list(cached.chips) if cached else []

@@ -15,7 +15,8 @@ Usage (from apps/api/):
 `--follow` takes each chip of the first three personas and sends it as the
 user's next message to the LOCALLY RUNNING API, so you can read GAIA's actual
 reply and judge whether a chip leads anywhere concrete. It needs `mise dev
---agent` (or any boot with `DEV_AUTH_BYPASS_EMAIL` set) and a Pro dev user.
+--agent` (or any boot with `DEV_AUTH_BYPASS_EMAIL` set); it mints one dev user per
+persona, which must be able to pass the paid-only gate.
 """
 
 import argparse
@@ -23,6 +24,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import re
 import sys
 from uuid import uuid4
 
@@ -45,8 +47,12 @@ from app.services.onboarding.first_question import (
 )
 
 DEFAULT_API_URL = os.environ.get("GAIA_API_URL", "http://localhost:8000")
-DEFAULT_FOLLOW_USER = os.environ.get("GAIA_DEV_USER", "copy-check-0912@gaia.local")
-FOLLOW_PERSONA_COUNT = 3
+#: One minted dev user per persona. Sharing a user leaked context between them
+#: (a "the writing" turn answered with the previous persona's unconnected-Gmail
+#: thread), which made the replies unreadable as a signal about the chip.
+FOLLOW_USER_TEMPLATE = os.environ.get("GAIA_DEV_USER_TEMPLATE", "fq-{slug}@gaia.local")
+FOLLOW_PERSONA_COUNT = 5
+REPLY_PREVIEW_WORDS = 40
 FOLLOW_TIMEOUT_SECONDS = 180.0
 
 PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
@@ -159,20 +165,54 @@ async def _send_turn(client: httpx.AsyncClient, api_url: str, message: str) -> s
     return "".join(chunks).strip() or "[no text in stream]"
 
 
-async def run_follow(rows: list[tuple[str, object]], api_url: str, dev_user: str) -> None:
-    """Each chip of the first personas, replayed as the user's next message."""
-    headers = {"X-Dev-User": dev_user}
-    async with httpx.AsyncClient(headers=headers, cookies={"dev_bypass_user": dev_user}) as client:
-        for label, result in rows[:FOLLOW_PERSONA_COUNT]:
-            print(f"\n\n######## follow: {label}")
-            if result is None:
-                print("  skipped (no question was composed)")
-                continue
-            print(f"  question: {result.question}")
+def _slug(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")[:40]
+
+
+async def _provision(api_url: str, email: str, preferences: OnboardingPreferences) -> None:
+    """A fresh dev user carrying this persona's answers.
+
+    The answers are saved through the real PATCH, so the same prewarm that runs
+    in the product writes this persona's question and chips into the cache the
+    agent's new-user guidance reads them back from.
+    """
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        await client.post(f"{api_url}/api/v1/dev/users", json={"email": email, "name": "Persona"})
+        await client.patch(
+            f"{api_url}/api/v1/onboarding/preferences",
+            headers={"X-Dev-User": email},
+            json=preferences.model_dump(mode="json", exclude_none=True),
+        )
+
+
+def _preview(reply: str) -> str:
+    words = reply.split()
+    trimmed = " ".join(words[:REPLY_PREVIEW_WORDS])
+    return trimmed + ("..." if len(words) > REPLY_PREVIEW_WORDS else "")
+
+
+async def run_follow(rows: list[tuple[str, object]], api_url: str) -> None:
+    """Each chip of the first personas, replayed as the user's next message.
+
+    Every persona gets its own minted dev user, so one persona's threads can
+    never surface in another's reply.
+    """
+    for index, (label, result) in enumerate(rows[:FOLLOW_PERSONA_COUNT]):
+        print(f"\n\n######## follow: {label}")
+        if result is None:
+            print("  skipped (no question was composed)")
+            continue
+        email = FOLLOW_USER_TEMPLATE.format(slug=f"{index}-{_slug(label)}")
+        await _provision(api_url, email, PERSONAS[index][1])
+        print(f"  user: {email}")
+        print(f"  question: {result.question}")
+        async with httpx.AsyncClient(
+            headers={"X-Dev-User": email}, cookies={"dev_bypass_user": email}
+        ) as client:
             for chip in result.chips:
                 reply = await _send_turn(client, api_url, chip)
                 print(f"\n  --- chip: {chip}")
-                print(f"  GAIA: {reply}")
+                print(f"  GAIA: {_preview(reply)}")
 
 
 async def main() -> None:
@@ -183,7 +223,6 @@ async def main() -> None:
         help="Replay each chip through the running API's comms agent.",
     )
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
-    parser.add_argument("--user", default=DEFAULT_FOLLOW_USER)
     parser.add_argument(
         "--timeout",
         type=float,
@@ -195,7 +234,7 @@ async def main() -> None:
     rows = await run_personas(args.timeout)
     print_personas(rows)
     if args.follow:
-        await run_follow(rows, args.api_url.rstrip("/"), args.user)
+        await run_follow(rows, args.api_url.rstrip("/"))
 
 
 if __name__ == "__main__":

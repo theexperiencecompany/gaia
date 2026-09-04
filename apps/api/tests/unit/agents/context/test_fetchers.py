@@ -38,7 +38,12 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
 )
 from app.agents.context.tiers import AgentTier
-from app.agents.prompts.new_user_prompts import NEED_PLAYBOOKS, build_new_user_guidance
+from app.agents.prompts.new_user_prompts import (
+    FOCUS_PLAYBOOKS,
+    MAX_PLAYBOOK_LINES,
+    NEED_PLAYBOOKS,
+    build_new_user_guidance,
+)
 from app.agents.workspace.paths import session_dir
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.memory_models import MemorySearchResult
@@ -428,7 +433,10 @@ class TestNewUserGuidanceBlock:
 
     #: A ceiling, not a measurement. The block rides every early comms turn, so
     #: an edit that doubles it should fail here rather than show up as a bill.
-    MAX_BLOCK_CHARS = 3_400
+    # Raised from 3,400 when the playbooks went from one first move each to two
+    # or three named things GAIA can create, and the focus table was added. The
+    # ceiling is real: MAX_PLAYBOOK_LINES bounds the list, this bounds the prose.
+    MAX_BLOCK_CHARS = 4_300
 
     @staticmethod
     def _count(value: int) -> AsyncMock:
@@ -502,7 +510,7 @@ class TestNewUserGuidanceBlock:
             await build_new_user_guidance_block(
                 ctx(user_preferences={"profession": "Founder", "needs": ["inbox"], "other_need": 7})
             )
-        build.assert_called_once_with("Founder", [OnboardingNeed.INBOX], None)
+        build.assert_called_once_with("Founder", [OnboardingNeed.INBOX], None, [])
 
     async def test_the_block_stops_once_the_user_is_no_longer_new(self) -> None:
         with self._patch_count(self._count(NEW_USER_CONVERSATION_LIMIT + 1)):
@@ -631,9 +639,60 @@ class TestNewUserGuidanceBlock:
         replace, so it must be empty string, not an empty shell."""
         assert build_new_user_guidance("Founder", []) == ""
 
+    async def test_a_business_shaped_chip_gets_its_own_playbook(self) -> None:
+        """ "Growth" maps to no need, so without the focus table the model met it
+        with nothing and answered by fetching an inbox."""
+        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["Growth"])
+        assert FOCUS_PLAYBOOKS["growth"] in block
+
+    async def test_a_chip_is_matched_through_the_words_around_it(self) -> None:
+        """The written chips are "Late payers" and "The pipeline", never the bare
+        table key, so exact matching would render nothing at all."""
+        block = build_new_user_guidance(
+            "Founder", [OnboardingNeed.INBOX], None, ["Late payers", "The pipeline"]
+        )
+        assert FOCUS_PLAYBOOKS["late payers"] in block
+        assert FOCUS_PLAYBOOKS["pipeline"] in block
+
+    async def test_a_chip_matching_nothing_adds_no_playbook(self) -> None:
+        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["Bananas"])
+        for playbook in FOCUS_PLAYBOOKS.values():
+            assert playbook not in block
+
+    async def test_the_same_playbook_is_never_rendered_twice(self) -> None:
+        block = build_new_user_guidance(
+            "Founder", [OnboardingNeed.INBOX], None, ["Growth", "growth plan"]
+        )
+        assert block.count(FOCUS_PLAYBOOKS["growth"]) == 1
+
+    async def test_the_playbook_list_is_capped_in_pick_order(self) -> None:
+        """Their own picks lead, so truncation drops the least-wanted lines."""
+        block = build_new_user_guidance(
+            "Founder", list(OnboardingNeed), "chasing invoices", list(FOCUS_PLAYBOOKS)
+        )
+        rendered = [p for p in NEED_PLAYBOOKS.values() if p in block]
+        rendered += [p for p in FOCUS_PLAYBOOKS.values() if p in block]
+        assert len(rendered) == MAX_PLAYBOOK_LINES
+        assert NEED_PLAYBOOKS[OnboardingNeed.INBOX] in block
+        assert NEED_PLAYBOOKS[OnboardingNeed.REACH] not in block
+
+    async def test_the_chips_rule_names_the_chips_that_were_offered(self) -> None:
+        """The model has to see the exact words it offered, or a one-word first
+        message reads as a fragment rather than the choice it is."""
+        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, ["My mornings"])
+        assert '"My mornings"' in block
+
+    async def test_no_chips_renders_no_chips_rule(self) -> None:
+        """An expired cache must not tell the model a choice was offered."""
+        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
+        assert "You already asked them a question" not in block
+
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
-        """Every need at once is the largest this can ever be."""
-        block = build_new_user_guidance("Founder", list(OnboardingNeed))
+        """Every need at once, plus a seeded chip for every focus playbook and a
+        typed need, is the largest this can ever be."""
+        block = build_new_user_guidance(
+            "Founder", list(OnboardingNeed), "chasing invoices", list(FOCUS_PLAYBOOKS)
+        )
         assert len(block) <= self.MAX_BLOCK_CHARS, f"guidance block grew to {len(block)} chars"
 
 

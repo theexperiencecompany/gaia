@@ -191,3 +191,11 @@ VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 # One-shot gate (SET NX) for the "priority compute used this month" in-app notice,
 # so a degraded pro user is told once per month, not once per turn.
 COST_BUDGET_NOTIFIED_KEY = "cost_budget_notified:{user_id}:{window}"
+
+# The onboarding question written ahead of time. Keyed by user plus a hash of
+# the answers it was written from, so re-answering Q1/Q2 with anything different
+# reads a key that was never written rather than a stale question. Two hours is
+# the gap between the answers being saved and completion being pressed, with
+# room for a wizard someone walked away from.
+FIRST_QUESTION_CACHE_PREFIX = "onboarding:first_question:"
+FIRST_QUESTION_CACHE_TTL = 2 * ONE_HOUR_TTL

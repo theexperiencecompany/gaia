@@ -29,10 +29,14 @@ from app.services.onboarding.first_conversation import (
     compose_first_conversation,
     with_closing_question,
 )
-from app.services.onboarding.first_question import compose_first_question
+from app.services.onboarding.first_question import (
+    prewarm_first_question,
+    resolve_first_question,
+)
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
 from app.services.workflow.service import WorkflowService
+from app.utils.background_tasks import spawn_background_task
 from app.utils.seeding_utils import seed_first_conversation
 from shared.py.wide_events import log
 
@@ -148,10 +152,10 @@ async def _seed_first_conversation(
         # who skipped that step simply gets no platform line.
         connected_platform = next(iter(linked_platforms_of(user)), None)
         composed = compose_first_conversation(preferences, connected_platform)
-        # The one model call in onboarding completion, capped at four seconds
-        # and returning None on any miss, so the static conversation above is
-        # what ships whenever the written question is not better than it.
-        question = await compose_first_question(preferences, connected_platform, user_id=user_id)
+        # Almost always a Redis read: the answers PATCH that preceded this
+        # fired the model call in the background, so the user pays for it while
+        # they are still clicking. A miss costs at most two seconds.
+        question = await resolve_first_question(user_id, preferences, connected_platform)
         if question is not None:
             composed = with_closing_question(
                 composed, preferences, question.question, question.chips
@@ -230,6 +234,27 @@ async def update_onboarding_preferences(
         updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
+
+        # Detached on purpose: the wizard's next screens are the latency budget
+        # for the one model call the seeded conversation needs, and the PATCH
+        # that saved the answers is where that budget starts. Failures stay
+        # inside the task; a settings save must never fail over a nicety.
+        try:
+            spawn_background_task(
+                prewarm_first_question(
+                    user_id,
+                    preferences,
+                    next(iter(linked_platforms_of(updated_user)), None),
+                ),
+                name=f"prewarm_first_question:{user_id}",
+            )
+        except Exception as e:
+            log.warning(
+                f"{LogTag.ONBOARDING} could not start the first question prewarm",
+                user_id=user_id,
+                error=str(e)[:200],
+                error_type=type(e).__name__,
+            )
 
         log.info(
             f"{LogTag.ONBOARDING} Onboarding preferences updated successfully for user",

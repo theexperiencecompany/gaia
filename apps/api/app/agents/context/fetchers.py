@@ -33,9 +33,10 @@ from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingNeed
+from app.models.user_models import OnboardingNeed, OnboardingPreferences
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.onboarding.first_question import seeded_chips
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
@@ -250,7 +251,20 @@ async def build_new_user_guidance_block(ctx: SectionContext) -> str:
     if conversations > NEW_USER_CONVERSATION_LIMIT:
         return ""
     profession = ctx.user_preferences.get("profession")
-    return build_new_user_guidance(str(profession) if profession else "", needs, other_need)
+    # The chips GAIA itself offered at the end of the seeded conversation. Their
+    # first message is usually one of them, and without this the model treats a
+    # one-word choice as a fragment it has to ask about.
+    chips = await seeded_chips(
+        ctx.user_id,
+        OnboardingPreferences(
+            profession=str(profession) if profession else None,
+            needs=needs,
+            other_need=other_need,
+            response_style=None,
+            custom_instructions=None,
+        ),
+    )
+    return build_new_user_guidance(str(profession) if profession else "", needs, other_need, chips)
 
 
 async def build_background_banner(ctx: SectionContext) -> str:

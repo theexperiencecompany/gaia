@@ -25,9 +25,16 @@ LEGACY_PERSONALIZATION_MARKER = "house"
 # conversation, so a reset can tear it down again.
 HOLO_CONVERSATION_ID_FIELD = "holo_conversation_id"
 
-# Key inside the `onboarding` subdocument holding the seeded "Getting started"
-# conversation, so completion can hand it to the web and a reset can tear it down.
+# Key inside the `onboarding` subdocument holding the conversation the
+# pre-relocation onboarding seeded. Nothing writes it any more, but a user who
+# ran that flow still carries it, so a reset must still tear it down.
 FIRST_CONVERSATION_ID_FIELD = "first_message_conversation_id"
+
+# Key inside the `onboarding` subdocument holding the seeded "Getting started"
+# conversation, so completion can hand it to the web and a reset can tear it
+# down. Deliberately NOT the legacy field above: a returning user carries both,
+# and one field cannot hold two conversations without orphaning one of them.
+GETTING_STARTED_CONVERSATION_ID_FIELD = "first_conversation_id"
 
 # Start triage once this many emails are buffered, without waiting for the full fetch.
 TRIAGE_EARLY_THRESHOLD = 100
