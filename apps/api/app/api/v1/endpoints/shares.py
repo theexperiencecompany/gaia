@@ -33,7 +33,9 @@ def _download_headers(filename: str) -> dict[str, str]:
     """
     # Codec names resolve case-insensitively (codecs.lookup normalises them), so
     # the spelling of "latin-1" here is not observable behaviour.
-    safe = re.sub(r'["\r\n]', "", filename).encode("latin-1", "ignore").decode("latin-1")  # pragma: no mutate -- codec lookup is case-insensitive
+    safe = (
+        re.sub(r'["\r\n]', "", filename).encode("latin-1", "ignore").decode("latin-1")
+    )  # pragma: no mutate -- codec lookup is case-insensitive
     # Header names are case-insensitive and Starlette lowercases them on the
     # wire, so the casing below is unobservable — the values are what the tests
     # (and browsers) act on.

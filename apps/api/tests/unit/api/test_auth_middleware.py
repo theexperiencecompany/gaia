@@ -437,9 +437,7 @@ class TestAuthenticateAgentTokenDirectly:
         # Everything after the first space is the token; splitting anywhere else
         # hands the verifier a fragment and every agent request stops working.
         request = _bare_request(headers={"Authorization": "Bearer aaa bbb"})
-        with patch(
-            "app.api.v1.middleware.auth.verify_agent_token", return_value=None
-        ) as verify:
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
             await _middleware()._authenticate_agent_token(request)
 
         assert verify.call_args.args == ("aaa bbb",)
@@ -450,9 +448,7 @@ class TestAuthenticateAgentTokenDirectly:
         # fails. Loosening this to a whitespace split would silently start
         # accepting headers we reject today.
         request = _bare_request(headers={"Authorization": "Bearer  jwt"})
-        with patch(
-            "app.api.v1.middleware.auth.verify_agent_token", return_value=None
-        ) as verify:
+        with patch("app.api.v1.middleware.auth.verify_agent_token", return_value=None) as verify:
             await _middleware()._authenticate_agent_token(request)
 
         assert verify.call_args.args == (" jwt",)

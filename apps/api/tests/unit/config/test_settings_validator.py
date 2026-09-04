@@ -82,10 +82,7 @@ def test_the_share_group_publishes_the_prose_an_operator_reads() -> None:
     group = _group(SettingsValidator(), SHARE_GROUP)
 
     assert group.description == "HMAC signing secret for single-purpose file-share grants"
-    assert (
-        group.affected_features
-        == "File attachments fetched by Composio during tool execution"
-    )
+    assert group.affected_features == "File attachments fetched by Composio during tool execution"
 
 
 def test_a_configured_share_secret_is_not_reported_missing() -> None:
