@@ -1190,7 +1190,18 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
     if not graded:
         print("nothing to report")
         return
+    scored = [r for r in graded if r.verdict]
+    counts = Counter(f for r in scored for f in r.failed)
+    _print_transcripts(graded, conversations)
+    _print_totals(graded, scored, conversations)
+    _print_histogram(counts, scored)
+    _print_per_persona(graded, conversations)
+    _print_worst_turns(scored)
+    _print_ranked_causes(counts)
+    _print_render_failures(graded)
 
+
+def _print_transcripts(graded: list[Graded], conversations: list[Conversation]) -> None:
     print("\n\n======== transcripts")
     for conversation in conversations:
         rows = [r for r in graded if r.persona == conversation.persona.slug]
@@ -1209,7 +1220,10 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
             back = "YES" if conversation.comeback.would_come_back else "NO"
             print(f"  would come back: {back} - {conversation.comeback.why}")
 
-    scored = [r for r in graded if r.verdict]
+
+def _print_totals(
+    graded: list[Graded], scored: list[Graded], conversations: list[Conversation]
+) -> None:
     clean = [r for r in scored if not r.failed]
     print("\n\n======== totals")
     print(f"  personas run:        {len(conversations)}")
@@ -1225,14 +1239,17 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
     else:
         print("  would come back:     n/a (no conversation graded)")
 
+
+def _print_histogram(counts: Counter[str], scored: list[Graded]) -> None:
     print("\n======== failure histogram")
-    counts = Counter(f for r in scored for f in r.failed)
     if not counts:
         print("  (no failures recorded)")
     for name, count in counts.most_common():
         pct = 100.0 * count / len(scored) if scored else 0.0
         print(f"  {name:<32} {count:>3}  {pct:5.1f}% of turns")
 
+
+def _print_per_persona(graded: list[Graded], conversations: list[Conversation]) -> None:
     print("\n======== per-persona")
     print(f"{'persona':<46} {'turns':>5} {'clean':>6} {'back':>5}")
     for conversation in conversations:
@@ -1249,6 +1266,8 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
             f"{conversation.persona.slug[:45]:<46} {len(rows):>5} {100.0 * ok / len(rows):>5.0f}% {back:>5}"
         )
 
+
+def _print_worst_turns(scored: list[Graded]) -> None:
     print(f"\n======== worst {WORST_TURN_COUNT} turns (verbatim)")
     worst = sorted(scored, key=lambda r: -len(r.failed))[:WORST_TURN_COUNT]
     for row in worst:
@@ -1261,6 +1280,8 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
         print(f"    note:   {row.verdict.note}")
         print(f"    reply:  {row.turn.reply}")
 
+
+def _print_ranked_causes(counts: Counter[str]) -> None:
     print("\n======== ranked causes")
     for bucket in ("prompt", "code/tool"):
         print(f"\n  {bucket} gaps:")
@@ -1271,6 +1292,8 @@ def print_report(graded: list[Graded], conversations: list[Conversation]) -> Non
             print(f"    {count:>3}x {name}")
             print(f"         look at: {CAUSES[name][1]}")
 
+
+def _print_render_failures(graded: list[Graded]) -> None:
     broken = [(r.persona, r.turn_number, b) for r in graded for b in r.turn.openui if not b.ok]
     if broken:
         print("\n  code/tool: OpenUI blocks that would NOT render")

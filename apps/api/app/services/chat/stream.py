@@ -49,7 +49,7 @@ from app.models.stream_events import (
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.chat.artifact_forwarder import forward_artifact_events
-from app.services.chat.chunks import process_data_chunk
+from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
     save_conversation_async,
@@ -586,10 +586,12 @@ async def _consume_agent_stream(
                 state.follow_up_actions, _ = await process_data_chunk(
                     stream_id,
                     chunk,
-                    state.tool_data,
-                    state.tool_outputs,
-                    state.todo_progress_accumulated,
-                    state.follow_up_actions,
+                    ChunkAccumulators(
+                        tool_data=state.tool_data,
+                        tool_outputs=state.tool_outputs,
+                        todo_progress=state.todo_progress_accumulated,
+                        follow_up_actions=state.follow_up_actions,
+                    ),
                 )
             except Exception as e:  # fall back to passthrough
                 log.error(

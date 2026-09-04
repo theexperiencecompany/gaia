@@ -63,7 +63,6 @@ apps/api/app/memory/pg_store/graph.py	PLR0912
 apps/api/app/memory/reconciliation.py	PLR0912
 apps/api/app/patches/langchain_merge_dicts_model_name_patch.py	PLR0912
 apps/api/app/services/_vfs_scheduler.py	PLR0913
-apps/api/app/services/chat/chunks.py	PLR0913
 apps/api/app/services/chat/persistence.py	PLR0913
 apps/api/app/services/composio/proxy_client.py	PLR0913
 apps/api/app/services/hil/approvals_store.py	PLR0913

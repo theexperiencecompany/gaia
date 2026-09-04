@@ -20,7 +20,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.constants.cache import STREAM_PROGRESS_PREFIX
-from app.services.chat.chunks import process_data_chunk
+from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
 from app.services.chat.state import recover_stream_state
 from app.utils.message_breaks import split_message_bubbles
 
@@ -69,7 +69,9 @@ async def _recover(chunks: list[str]) -> str:
     fake = _FakeRedisCache()
     with patch("app.core.stream_manager.redis_cache", new=fake):
         for chunk in chunks:
-            await process_data_chunk(STREAM, chunk, {"tool_data": []}, {}, {}, [])
+            await process_data_chunk(
+                STREAM, chunk, ChunkAccumulators({"tool_data": []}, {}, {}, [])
+            )
         message, _ = await recover_stream_state(STREAM, "", {"tool_data": []})
     return message
 

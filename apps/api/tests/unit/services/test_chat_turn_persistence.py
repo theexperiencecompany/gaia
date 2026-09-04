@@ -21,13 +21,17 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.chat import EMPTY_RESPONSE_FALLBACK
+from app.constants import chat as chat_constants
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
-from app.services.chat.chunks import process_data_chunk
+from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
+
+# Read lazily so this module still collects on a base revision that predates the
+# fix (regression-proof runs it there and expects a failing assertion, not an error).
+EMPTY_RESPONSE_FALLBACK = getattr(chat_constants, "EMPTY_RESPONSE_FALLBACK", None)
 
 USER = {"user_id": "u1", "email": "u1@test.local"}
 CONV = "conv-1"
@@ -115,10 +119,12 @@ class TestPersistedTurnMatchesTheLiveStream:
                 state.follow_up_actions, _ = await process_data_chunk(
                     "s1",
                     f"data: {json.dumps(chunk)}\n\n",
-                    state.tool_data,
-                    state.tool_outputs,
-                    state.todo_progress_accumulated,
-                    state.follow_up_actions,
+                    ChunkAccumulators(
+                        state.tool_data,
+                        state.tool_outputs,
+                        state.todo_progress_accumulated,
+                        state.follow_up_actions,
+                    ),
                 )
         return published, state
 
