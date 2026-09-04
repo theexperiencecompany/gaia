@@ -179,7 +179,7 @@ class DodoPaymentService:
                 error_type=type(e).__name__,
                 user_id=user_id,
             )
-            raise HTTPException(502, f"Payment service error: {e!s}")
+            raise HTTPException(502, f"Payment service error: {e!s}") from e
 
         # Look up plan name for richer logging
         plan_name: str | None = None
@@ -235,7 +235,7 @@ class DodoPaymentService:
                 error_type=type(e).__name__,
                 error=str(e),
             )
-            raise HTTPException(502, f"Payment service error: {e!s}")
+            raise HTTPException(502, f"Payment service error: {e!s}") from e
 
         # Mirror Dodo's authoritative state locally. cancelled_at is only set
         # when Dodo supplied one — leaving it unset keeps it out of the $set.

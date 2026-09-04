@@ -125,37 +125,42 @@ function IntegrationListSection({
     return (
       <div
         key={integration.id}
-        className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700 cursor-pointer"
-        onClick={() => handleIntegrationClick(integration.id)}
+        className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700"
       >
-        <div className="shrink-0 pt-0.5">
-          {getToolCategoryIcon(
-            integration.id,
-            {
-              size: 20,
-              width: 20,
-              height: 20,
-              showBackground: false,
-            },
-            integration.iconUrl,
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">
-              {integration.name}
-            </span>
-            {isConnected && (
-              <Chip size="sm" variant="flat" color="success">
-                Connected
-              </Chip>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-left"
+          onClick={() => handleIntegrationClick(integration.id)}
+        >
+          <div className="shrink-0 pt-0.5">
+            {getToolCategoryIcon(
+              integration.id,
+              {
+                size: 20,
+                width: 20,
+                height: 20,
+                showBackground: false,
+              },
+              integration.iconUrl,
             )}
           </div>
-          <p className="mt-1 text-xs text-zinc-400">
-            {integration.description}
-          </p>
-        </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-white">
+                {integration.name}
+              </span>
+              {isConnected && (
+                <Chip size="sm" variant="flat" color="success">
+                  Connected
+                </Chip>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-zinc-400">
+              {integration.description}
+            </p>
+          </div>
+        </button>
 
         {/* Show connect button for all available integrations */}
         {!isConnected && isAvailable && (
@@ -181,35 +186,40 @@ function IntegrationListSection({
     return (
       <div
         key={suggestion.id}
-        className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700 cursor-pointer"
-        onClick={() => handleSuggestedClick(suggestion)}
+        className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700"
       >
-        <div className="shrink-0 pt-0.5">
-          {getToolCategoryIcon(
-            suggestion.id,
-            {
-              size: 20,
-              width: 20,
-              height: 20,
-              showBackground: false,
-            },
-            suggestion.iconUrl,
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-white">
-              {suggestion.name}
-            </span>
-            <Chip size="sm" variant="flat" color="secondary">
-              Community
-            </Chip>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 text-left"
+          onClick={() => handleSuggestedClick(suggestion)}
+        >
+          <div className="shrink-0 pt-0.5">
+            {getToolCategoryIcon(
+              suggestion.id,
+              {
+                size: 20,
+                width: 20,
+                height: 20,
+                showBackground: false,
+              },
+              suggestion.iconUrl,
+            )}
           </div>
-          <p className="mt-1 line-clamp-2 text-xs text-zinc-400">
-            {suggestion.description}
-          </p>
-        </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-white">
+                {suggestion.name}
+              </span>
+              <Chip size="sm" variant="flat" color="secondary">
+                Community
+              </Chip>
+            </div>
+            <p className="mt-1 line-clamp-2 text-xs text-zinc-400">
+              {suggestion.description}
+            </p>
+          </div>
+        </button>
 
         <Button
           size="sm"

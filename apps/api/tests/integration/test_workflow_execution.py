@@ -367,6 +367,7 @@ class TestExecutionTracking:
             summary="Completed all steps",
             error_message=None,
             conversation_id=None,
+            trace=None,
         )
 
     async def test_complete_execution_failure_with_error_message(self):
@@ -399,6 +400,7 @@ class TestExecutionTracking:
             summary=None,
             error_message="Step 2 timed out",
             conversation_id=None,
+            trace=None,
         )
 
     async def test_complete_execution_returns_false_for_missing(self):
@@ -483,7 +485,10 @@ class TestTriggerRegistration:
         assert connected is True
         mock_register.assert_awaited_once_with(
             user_id=FAKE_USER_ID,
-            workflow_id=FAKE_WORKFLOW_ID,
+            # The parameter is `owner_id` now: registration serves tracked todos
+            # as well as workflows, and naming it workflow_id made every handler's
+            # logging and error text lie for half its callers.
+            owner_id=FAKE_WORKFLOW_ID,
             trigger_name="calendar_event_created",
             trigger_config=trigger_config,
             raise_on_failure=True,
@@ -687,6 +692,7 @@ class TestExecutionFailure:
             summary=None,
             error_message="LLM API rate limit exceeded at step 3",
             conversation_id=None,
+            trace=None,
         )
 
     async def test_execution_count_incremented_on_failure(self):

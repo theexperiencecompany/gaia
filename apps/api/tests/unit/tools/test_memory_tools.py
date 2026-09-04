@@ -1128,20 +1128,60 @@ class TestGetJournal:
 
         assert result == "No journal entries for 2026-03-12."
 
+    @patch(f"{MODULE}.memory_engine")
+    @patch(f"{MODULE}.local_today", new_callable=AsyncMock)
+    async def test_omitted_date_defaults_to_the_users_local_today(
+        self, mock_local_today: AsyncMock, mock_engine: MagicMock, stream: MagicMock
+    ) -> None:
+        # A UTC+5:30 user asking "what did I do today" at 2am local must read
+        # THEIR today, not UTC's (which is still yesterday for them).
+        mock_local_today.return_value = date_type(2026, 8, 27)
+        mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
+
+        result = await get_journal.coroutine(config=_make_config(), date="")
+
+        mock_local_today.assert_awaited_once_with(FAKE_USER_ID)
+        mock_engine.get_episodes.assert_awaited_once_with(
+            FAKE_USER_ID, date_type(2026, 8, 27), date_type(2026, 8, 27)
+        )
+        assert result == "No journal entries for 2026-08-27."
+
+    @patch(f"{MODULE}.memory_engine")
+    @patch(f"{MODULE}.local_today", new_callable=AsyncMock)
+    async def test_calling_without_a_date_argument_defaults_to_local_today(
+        self, mock_local_today: AsyncMock, mock_engine: MagicMock, stream: MagicMock
+    ) -> None:
+        # The schema default is the empty string, so a model that omits the
+        # argument entirely must land on the local-today path — any other
+        # default would be parsed as a date and bounce with an error.
+        mock_local_today.return_value = date_type(2026, 8, 27)
+        mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
+
+        result = await get_journal.coroutine(config=_make_config())
+
+        mock_local_today.assert_awaited_once_with(FAKE_USER_ID)
+        assert result == "No journal entries for 2026-08-27."
+
     @pytest.mark.parametrize(
-        "bad_date", ["12/03/2026", "March 12", "2026-13-45", "", "2026-03-12T09:30:00"]
+        "bad_date", ["12/03/2026", "March 12", "2026-13-45", "2026-03-12T09:30:00"]
     )
+    @patch(f"{MODULE}.log")
     @patch(f"{MODULE}.memory_engine")
     async def test_unparseable_date_is_rejected_before_any_query(
-        self, mock_engine: MagicMock, bad_date: str
+        self, mock_engine: MagicMock, mock_log: MagicMock, bad_date: str
     ) -> None:
         mock_engine.get_episodes = AsyncMock()
 
         result = await get_journal.coroutine(config=_make_config(), date=bad_date)
 
-        assert f"Error: invalid date '{bad_date}'" in result
-        assert "YYYY-MM-DD" in result
+        # The exact model-facing refusal: the echoed input and the format hint.
+        assert result == f"Error: invalid date '{bad_date}'. Use YYYY-MM-DD."
         mock_engine.get_episodes.assert_not_awaited()
+        # The rejection is a queryable wide-event warning with the offending
+        # input attached — event name and kwargs are the alerting contract.
+        mock_log.warning.assert_called_once_with(
+            "memory_tool_invalid_date", operation="episodes", start=bad_date
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await get_journal.coroutine(config=_make_config_no_user(), date="2026-03-12")

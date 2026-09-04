@@ -47,19 +47,32 @@ const priorityColors = {
   [Priority.NONE]: "default",
 } as const;
 
-export const priorityTextColors = {
-  [Priority.HIGH]: "oklch(63.7% 0.237 25.331)",
-  [Priority.MEDIUM]: "oklch(79.5% 0.184 86.047)",
-  [Priority.LOW]: "oklch(62.3% 0.214 259.815)",
-  [Priority.NONE]: "oklch(55.2% 0.016 285.938)",
-} as const;
-
 const priorityRingColors = {
   [Priority.HIGH]: "border-red-500",
   [Priority.MEDIUM]: "border-yellow-500",
   [Priority.LOW]: "border-blue-500",
   [Priority.NONE]: "border-zinc-500",
 } as const;
+
+// Intl.DateTimeFormat is expensive to build; cache one per timezone instead
+// of rebuilding on every call.
+const scheduledLabelFormatters = new Map<string, Intl.DateTimeFormat>();
+
+const getScheduledLabelFormatter = (timeZone: string): Intl.DateTimeFormat => {
+  const cached = scheduledLabelFormatters.get(timeZone);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone,
+  });
+  scheduledLabelFormatters.set(timeZone, formatter);
+  return formatter;
+};
 
 const formatScheduledLabel = (
   scheduledAt: string | null | undefined,
@@ -68,15 +81,9 @@ const formatScheduledLabel = (
   if (!scheduledAt) return undefined;
   const resolvedTimezone =
     timezone && timezone.trim() !== "" ? timezone : getBrowserTimezone();
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-    timeZone: resolvedTimezone,
-  }).format(new Date(scheduledAt));
+  return getScheduledLabelFormatter(resolvedTimezone).format(
+    new Date(scheduledAt),
+  );
 };
 
 // Fanned-out category icons shown on the right edge of a todo row.
@@ -165,17 +172,22 @@ export default memo(function TodoItem({
   return (
     <div
       className={cn(
-        "pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group",
+        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 group",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
         className,
       )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
-      onClick={() => onClick?.(todo)}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
-      <div className="flex h-full items-start gap-2">
-        <div onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-label={`Open todo ${todo.title}`}
+        className="absolute inset-0 z-10 rounded-xl"
+        onClick={() => onClick?.(todo)}
+      />
+      <div className="pointer-events-none relative z-20 flex h-full items-start gap-2">
+        <div className="pointer-events-auto">
           <Checkbox
             isSelected={todo.completed}
             onChange={handleToggleComplete}

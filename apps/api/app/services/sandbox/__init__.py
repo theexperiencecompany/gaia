@@ -4,8 +4,8 @@ The agent layer interacts with this package exclusively. Shard routing, pool
 caching, pause/resume, and canary verification are all encapsulated here.
 """
 
+from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.lifecycle import (
-    SandboxAcquisitionError,
     acquire_sandbox,
     mark_sandbox_dead,
     pause_sandbox_for_user,

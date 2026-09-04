@@ -49,7 +49,7 @@ class MCPTokenStore:
             except Exception as e:
                 raise ValueError(
                     f"MCP_ENCRYPTION_KEY is not a valid Fernet key (must be 32 url-safe base64-encoded bytes): {e}"
-                )
+                ) from e
         return self._cipher
 
     def _encrypt(self, data: str) -> str:

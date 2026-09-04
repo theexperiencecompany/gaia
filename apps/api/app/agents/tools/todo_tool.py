@@ -207,7 +207,7 @@ async def create_todo(
     due_date_timezone: Annotated[
         str | None, "Timezone for the due date (e.g., 'America/New_York')"
     ] = None,
-    priority: Annotated[str | None, "Priority level: high, medium, low, or none"] = None,
+    priority: Annotated[Priority | None, "Priority level"] = None,
     project_id: Annotated[str | None, "Project ID to assign the todo to"] = None,
 ) -> TodoResult:
     try:
@@ -218,8 +218,7 @@ async def create_todo(
         if not user_id:
             return {"error": "User authentication required", "todo": None}
 
-        # Convert priority string to enum if provided
-        priority_enum = Priority(priority) if priority else Priority.NONE
+        priority_enum = priority or Priority.NONE
 
         todo_data = TodoModel(
             title=title,
@@ -269,7 +268,7 @@ async def list_todos(
     config: RunnableConfig,
     project_id: Annotated[str | None, "Filter by specific project ID"] = None,
     completed: Annotated[bool | None, "Filter by completion status"] = None,
-    priority: Annotated[str | None, "Filter by priority: high, medium, low, or none"] = None,
+    priority: Annotated[Priority | None, "Filter by priority"] = None,
     has_due_date: Annotated[bool | None, "Filter todos with/without due dates"] = None,
     overdue: Annotated[bool | None, "Filter overdue uncompleted todos"] = None,
     skip: Annotated[int, "Number of records to skip for pagination"] = 0,
@@ -286,13 +285,11 @@ async def list_todos(
         # Ensure limit is reasonable
         limit = min(limit, 100)
 
-        priority_value = Priority(priority) if priority else None
-
         results = await get_all_todos_service(
             user_id,
             project_id=project_id,
             completed=completed,
-            priority=priority_value,
+            priority=priority,
             has_due_date=has_due_date,
             overdue=overdue,
             skip=skip,
@@ -335,7 +332,7 @@ async def update_todo(
     labels: Annotated[list[str] | None, "New list of labels"] = None,
     due_date: Annotated[datetime | None, "New due date"] = None,
     due_date_timezone: Annotated[str | None, "New timezone for due date"] = None,
-    priority: Annotated[str | None, "New priority: high, medium, low, or none"] = None,
+    priority: Annotated[Priority | None, "New priority"] = None,
     project_id: Annotated[str | None, "Move to different project"] = None,
     completed: Annotated[bool | None, "Mark as complete/incomplete"] = None,
 ) -> TodoResult:
@@ -354,7 +351,7 @@ async def update_todo(
             labels=labels,
             due_date=due_date,
             due_date_timezone=due_date_timezone,
-            priority=Priority(priority) if priority is not None else None,
+            priority=priority,
             project_id=project_id,
             completed=completed,
         )
@@ -479,7 +476,7 @@ async def semantic_search_todos(
     limit: Annotated[int, "Maximum number of results to return"] = 20,
     project_id: Annotated[str | None, "Filter by specific project ID"] = None,
     completed: Annotated[bool | None, "Filter by completion status"] = None,
-    priority: Annotated[str | None, "Filter by priority: high, medium, low, or none"] = None,
+    priority: Annotated[Priority | None, "Filter by priority"] = None,
 ) -> SemanticSearchResult:
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
@@ -498,7 +495,7 @@ async def semantic_search_todos(
             limit=limit,
             project_id=project_id,
             completed=completed,
-            priority=Priority(priority) if priority else None,
+            priority=priority,
         )
 
         todos_data = [todo.model_dump(mode="json") for todo in results]

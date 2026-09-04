@@ -5,13 +5,62 @@ packages:
   - libs/*
   - libs/shared/*
 
+# ─── Supply-chain hardening ───────────────────────────────────────────────────
+# All of these are resolution/install-time settings for pnpm >=10.16 (we pin
+# 10.17.1 via packageManager). They live here rather than in package.json's
+# `pnpm` field or .npmrc because pnpm 10 treats pnpm-workspace.yaml as the
+# canonical config file and warns on the package.json form.
+
+# Do not resolve a version that was published to the registry less than 3 days
+# (4320 minutes) ago. Poisoned releases (stolen maintainer token, malicious
+# postinstall) are usually reported and unpublished within hours to days; a
+# release age floor means `pnpm add`/`pnpm update` cannot pick one up in that
+# window. Only affects resolution: `pnpm install --frozen-lockfile` (CI, Docker)
+# reads pnpm-lock.yaml and is not slowed down or changed by this. Dependabot has
+# the matching `cooldown: default-days: 7` in .github/dependabot.yml.
+minimumReleaseAge: 4320
+# Packages exempt from the age floor: things we publish ourselves and want to
+# consume the moment they are released. Same key accepts glob patterns
+# (e.g. "@heygaia/*"). Escape hatch for a one-off urgent bump:
+#   pnpm add foo@1.2.3 --config.minimum-release-age=0
+minimumReleaseAgeExclude:
+  - "@heygaia/*"
+
+# Re-check package tarball integrity against the lockfile hashes on every
+# install (pnpm default; set explicitly so a stray .npmrc cannot switch it off).
+verifyStoreIntegrity: true
+
+# Install scripts (preinstall/install/postinstall) are the main way a malicious
+# package executes code on a developer machine or CI runner. pnpm 10 refuses to
+# run them unless the package is listed in onlyBuiltDependencies; with
+# strictDepBuilds the install FAILS (instead of just warning) when a dependency
+# has scripts that are neither allowed below nor explicitly ignored, so a new
+# transitive dep with a postinstall cannot slip in unreviewed.
+strictDepBuilds: true
+
+# Dependencies that genuinely need their install script: native addons
+# (node-gyp / prebuild download) or binary downloaders. Enumerated on
+# 2026-08-29 by installing with the allowlist emptied and reading pnpm's
+# "Ignored build scripts" report, plus the previous lists from package.json
+# and this file. Adding an entry here = code review of that package's scripts.
 onlyBuiltDependencies:
-  - "@heroui/shared-utils"
-  - "@parcel/watcher"
-  - "@sentry/cli"
-  - canvas
-  - core-js
-  - electron
-  - esbuild
-  - nx
-  - sharp
+  - "@heroui/shared-utils" # postinstall generates its runtime utils
+  - "@parcel/watcher"      # native fs watcher (prebuild download / node-gyp)
+  - "@sentry/cli"          # downloads the sentry-cli binary
+  - "@swc/core"            # native binding, falls back to wasm without it
+  - canvas                 # native (cairo) addon
+  - core-js                # postinstall (funding banner + feature detection)
+  - electron               # downloads the Electron binary
+  - esbuild                # native binary download / verification
+  - nx                     # native rust binding
+  - protobufjs             # postinstall generates bundled type definitions
+  - sharp                  # libvips native binding
+  - workerd                # downloads the workerd binary (wrangler)
+
+# Dependencies that have an install script we deliberately do NOT run. Listed
+# so strictDepBuilds stays green and the decision is recorded.
+ignoredBuiltDependencies:
+  - "@bundled-es-modules/glob" # postinstall: patch-package; ships prebundled, dev-only (style-dictionary)
+  - less                       # postinstall prints a message only; dev-only via @nx/web
+  - onnxruntime-node           # postinstall only fetches optional CUDA binaries; CPU binaries ship in the tarball
+  - style-dictionary           # postinstall: patch-package / husky; dev-only design-token build

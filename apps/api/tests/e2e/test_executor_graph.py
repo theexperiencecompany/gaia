@@ -36,8 +36,8 @@ from tests.e2e._harness.graph_run import (
 pytestmark = pytest.mark.e2e
 
 
-def plan(*contents: str, id: str = "p1") -> dict[str, Any]:
-    return call("plan_tasks", {"tasks": [{"content": c} for c in contents]}, id)
+def plan(*contents: str, plan_id: str = "p1") -> dict[str, Any]:
+    return call("plan_tasks", {"tasks": [{"content": c} for c in contents]}, plan_id)
 
 
 class TestToolsBoundFromTurnOne:
@@ -60,7 +60,7 @@ class TestToolsBoundFromTurnOne:
         ],
     )
     async def test_a_core_tool_needs_no_retrieval(self, tool: str):
-        async with executor_graph([call(tool, {}, id="c1"), "ok"]) as graph:
+        async with executor_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "do the thing")
 
         assert REJECT_NODE not in run.nodes(), f"{tool} was treated as unbound"
@@ -77,7 +77,7 @@ class TestToolsBoundFromTurnOne:
         ``initial_tool_ids`` turns this test red; adding an unregistered name
         does not, because the binder skips ids the registry does not know.
         """
-        async with executor_graph([call(tool, {}, id="c1"), "ok"]) as graph:
+        async with executor_graph([call(tool, {}, call_id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "do the thing")
 
         assert REJECT_NODE in run.nodes()
@@ -192,7 +192,7 @@ class TestTodoState:
         async with executor_graph(
             [
                 plan("first", "second"),
-                call("update_tasks", {"updates": [{"content": "third"}]}, id="u1"),
+                call("update_tasks", {"updates": [{"content": "third"}]}, call_id="u1"),
                 "Done.",
             ]
         ) as graph:
@@ -212,7 +212,7 @@ class TestTodoState:
 
     async def test_planning_nothing_leaves_the_channel_empty(self):
         """An empty plan must not crash the tool or fabricate a task."""
-        async with executor_graph([call("plan_tasks", {"tasks": []}, id="p1"), "ok"]) as graph:
+        async with executor_graph([call("plan_tasks", {"tasks": []}, call_id="p1"), "ok"]) as graph:
             run = await run_graph(graph, "nothing to do")
 
         assert run.todos == []
@@ -277,7 +277,7 @@ class TestTermination:
         tool's ``result`` becomes the message the parent reads, not the model's
         trailing prose."""
         async with executor_graph(
-            [call("finish_task", {"result": "Booked for Tuesday."}, id="f1"), "unreachable"]
+            [call("finish_task", {"result": "Booked for Tuesday."}, call_id="f1"), "unreachable"]
         ) as graph:
             run = await run_graph(graph, "book me a table")
 
@@ -319,7 +319,7 @@ class TestTermination:
     async def test_finish_task_without_a_result_still_terminates(self):
         """Models omit optional args. A missing ``result`` must yield a usable
         completion message, not an empty one the parent reports as the answer."""
-        async with executor_graph([call("finish_task", {}, id="f1")]) as graph:
+        async with executor_graph([call("finish_task", {}, call_id="f1")]) as graph:
             run = await run_graph(graph, "wrap up")
 
         assert run.results_from(FINISH_NODE) == ["Task completed."]
@@ -332,7 +332,7 @@ class TestRecursionWrapup:
         gets to summarise what it found — injected per call, never persisted, so
         the only place it is observable is the prompt itself."""
         async with executor_graph(
-            [call("plan_tasks", {"tasks": []}, id=f"c{i}") for i in range(30)]
+            [call("plan_tasks", {"tasks": []}, call_id=f"c{i}") for i in range(30)]
         ) as graph:
             run = await run_graph(graph, "a long job", recursion_limit=10)
 
@@ -378,8 +378,8 @@ class TestTheCompletionGuardIsPerDelegation:
         task's ToolMessages must not satisfy it."""
         async with executor_graph(
             [
-                call("retrieve_tools", {"exact_tool_names": ["web_search_tool"]}, id="r1"),
-                call("web_search_tool", {"query": "cats"}, id="c1"),
+                call("retrieve_tools", {"exact_tool_names": ["web_search_tool"]}, call_id="r1"),
+                call("web_search_tool", {"query": "cats"}, call_id="c1"),
                 "Did the work.",
                 "Flat answer.",
             ]

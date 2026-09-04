@@ -1,6 +1,6 @@
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException
 
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
@@ -29,6 +29,7 @@ from app.models.mail_models import (
     GmailLabelsResponse,
     GmailMessageResponse,
     GmailMessagesResponse,
+    GmailSearchFilters,
     GmailThreadResponse,
     LabelRequest,
     MarkAsReadResponse,
@@ -36,6 +37,7 @@ from app.models.mail_models import (
     ModifyLabelsResponse,
     MoveToInboxResponse,
     SendDraftResponse,
+    SendEmailForm,
     SendEmailRequest,
     SendEmailResponse,
     SendEmailWithAttachmentsResponse,
@@ -51,6 +53,8 @@ from app.services.mail.email_importance_service import (
     get_single_email_importance_summary as get_single_importance_summary_service,
 )
 from app.services.mail.mail_service import (
+    EmailContent,
+    LabelChanges,
     apply_labels,
     archive_messages,
     create_draft,
@@ -74,7 +78,7 @@ from app.services.mail.mail_service import (
     unstar_messages,
     untrash_messages,
     update_draft,
-    update_label,
+    update_label as update_label_service,
 )
 from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.user_preferences_utils import format_writing_style_for_prompt
@@ -168,21 +172,33 @@ async def get_email_by_id(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+def _build_gmail_query(filters: GmailSearchFilters) -> str:
+    """Translate the advanced-search filters into one Gmail query string."""
+    parts: list[str] = [filters.query] if filters.query else []
+    prefixed = {
+        "from:": filters.sender,
+        "to:": filters.recipient,
+        "subject:": filters.subject,
+        "filename:": filters.attachment_type,
+        "after:": filters.date_from,
+        "before:": filters.date_to,
+        "label:": filters.label,
+    }
+    parts += [f"{prefix}{value}" for prefix, value in prefixed.items() if value]
+    if filters.has_attachment is not None:
+        parts.append("has:attachment" if filters.has_attachment else "-has:attachment")
+    if filters.is_read is not None:
+        parts.append("is:read" if filters.is_read else "is:unread")
+    return " ".join(parts)
+
+
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
-    # Keyword-only: FastAPI binds query parameters by NAME, so the star costs
-    # nothing at the wire and keeps the signature honest about how it is called.
-    *,
-    query: str | None = None,
-    sender: str | None = None,
-    recipient: str | None = None,
-    subject: str | None = None,
-    has_attachment: bool | None = None,
-    attachment_type: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    label: str | None = None,
-    is_read: bool | None = None,
+    # Bound as a dependency, not Query(): FastAPI 0.139 does not flatten
+    # query-models through include_router, so a Query()-bound model 422s every
+    # request expecting a JSON `filters=` param. Depends() binds each field
+    # as its own flattened query param.
+    filters: Annotated[GmailSearchFilters, Depends()],
     max_results: int = 20,
     page_token: str | None = None,
     user_id: str = Depends(require_integration_user_id("gmail")),
@@ -191,51 +207,14 @@ async def search_emails(
     Search Gmail messages with advanced query parameters.
     Note: max_results is capped at 20 to avoid Composio payload size limits.
 
-    - **query**: Free text search query
-    - **sender**: Filter by sender email
-    - **recipient**: Filter by recipient email
-    - **subject**: Filter by subject
-    - **has_attachment**: Filter for messages with attachments
-    - **attachment_type**: Filter by attachment type (e.g., pdf, doc)
-    - **date_from**: Filter messages after this date (YYYY/MM/DD)
-    - **date_to**: Filter messages before this date (YYYY/MM/DD)
-    - **label**: Filter by label
-    - **is_read**: Filter by read/unread status
-    - **max_results**: Maximum number of results to return
-    - **page_token**: Token for pagination
-
     Returns a list of messages matching the search criteria and a next page token if more results are available.
     """
+    log.set(operation="search_emails", user={"id": user_id})
     try:
         # Cap max_results to avoid Composio 413 payload-too-large errors
         max_results = min(max_results, 20)
 
-        # Build Gmail query string from parameters
-        query_parts = []
-
-        if query:
-            query_parts.append(f"{query}")
-        if sender:
-            query_parts.append(f"from:{sender}")
-        if recipient:
-            query_parts.append(f"to:{recipient}")
-        if subject:
-            query_parts.append(f"subject:{subject}")
-        if has_attachment is not None:
-            query_parts.append("has:attachment" if has_attachment else "-has:attachment")
-        if attachment_type:
-            query_parts.append(f"filename:{attachment_type}")
-        if date_from:
-            query_parts.append(f"after:{date_from}")
-        if date_to:
-            query_parts.append(f"before:{date_to}")
-        if label:
-            query_parts.append(f"label:{label}")
-        if is_read is not None:
-            query_parts.append("is:read" if is_read else "is:unread")
-
-        # Combine all query parts
-        gmail_query = " ".join(query_parts)
+        gmail_query = _build_gmail_query(filters)
 
         response = await search_messages(
             user_id=user_id,
@@ -247,8 +226,8 @@ async def search_emails(
         log.set(
             operation="search_emails",
             result_count=len(response.messages),
-            has_attachment=has_attachment,
-            label=label,
+            has_attachment=filters.has_attachment,
+            label=filters.label,
             outcome="success",
         )
         return response
@@ -305,13 +284,7 @@ async def process_email(
 @router.post("/gmail/send", summary="Send an email using Gmail API")
 @tiered_rate_limit("mail_actions")
 async def send_email_route(
-    to: str = Form(...),
-    subject: str = Form(...),
-    body: str = Form(...),
-    thread_id: str | None = Form(None),
-    cc: str | None = Form(None),
-    bcc: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
+    form: Annotated[SendEmailForm, Form()],
     user_id: str = Depends(require_integration_user_id("gmail")),
 ) -> SendEmailWithAttachmentsResponse:
     """
@@ -326,21 +299,23 @@ async def send_email_route(
     """
     try:
         # Parse recipients
-        to_list = [email.strip() for email in to.split(",") if email.strip()]
-        cc_list = [email.strip() for email in cc.split(",")] if cc else None
-        bcc_list = [email.strip() for email in bcc.split(",")] if bcc else None
+        to_list = [email.strip() for email in form.to.split(",") if email.strip()]
+        cc_list = [email.strip() for email in form.cc.split(",")] if form.cc else None
+        bcc_list = [email.strip() for email in form.bcc.split(",")] if form.bcc else None
 
         # Send the email using the new async function
         sent_message = await send_email(
             user_id=user_id,
             to=to_list[0],
-            extra_recipients=to_list[1:],
-            subject=subject,
-            body=body,
-            cc_list=cc_list,
-            bcc_list=bcc_list,
-            attachments=attachments,
-            thread_id=thread_id,
+            content=EmailContent(
+                subject=form.subject,
+                body=form.body,
+                extra_recipients=to_list[1:],
+                cc_list=cc_list,
+                bcc_list=bcc_list,
+            ),
+            attachments=form.attachments,
+            thread_id=form.thread_id,
         )
 
         if not sent_message.successful:
@@ -350,24 +325,24 @@ async def send_email_route(
             )
 
         capture_context_event(
-            AnalyticsEvents.EMAIL_REPLIED if thread_id else AnalyticsEvents.EMAIL_SENT,
+            AnalyticsEvents.EMAIL_REPLIED if form.thread_id else AnalyticsEvents.EMAIL_SENT,
             {
-                "has_attachments": bool(attachments),
-                "attachment_count": len(attachments) if attachments else 0,
+                "has_attachments": bool(form.attachments),
+                "attachment_count": len(form.attachments) if form.attachments else 0,
             },
         )
         log.set(
             operation="send_email",
-            thread_id=thread_id,
-            has_attachment=bool(attachments),
-            attachments_count=len(attachments) if attachments else 0,
+            thread_id=form.thread_id,
+            has_attachment=bool(form.attachments),
+            attachments_count=len(form.attachments) if form.attachments else 0,
             outcome="success",
         )
         # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
         return SendEmailWithAttachmentsResponse(
             message_id=(sent_message.data or {}).get("id"),
             status="Email sent successfully",
-            attachments_count=len(attachments) if attachments else 0,
+            attachments_count=len(form.attachments) if form.attachments else 0,
         )
     except HTTPException:
         raise
@@ -399,12 +374,13 @@ async def send_email_json(
         sent_message = await send_email(
             user_id=user_id,
             to=request.to[0],
-            extra_recipients=request.to[1:],
-            subject=request.subject,
-            body=request.body,
-            cc_list=request.cc,
-            bcc_list=request.bcc,
-            attachments=None,
+            content=EmailContent(
+                subject=request.subject,
+                body=request.body,
+                extra_recipients=request.to[1:],
+                cc_list=request.cc,
+                bcc_list=request.bcc,
+            ),
         )
 
         if not sent_message.successful:
@@ -787,12 +763,16 @@ async def update_label_route(
     """
     try:
         # Update label using the new async function
-        updated_label = await update_label(
+        updated_label = await update_label_service(
             user_id=user_id,
             label_id=label_id,
-            name=request.name,
-            label_list_visibility=request.label_list_visibility,
-            message_list_visibility=request.message_list_visibility,
+            changes=LabelChanges(
+                name=request.name,
+                label_list_visibility=request.label_list_visibility,
+                message_list_visibility=request.message_list_visibility,
+                background_color=request.background_color,
+                text_color=request.text_color,
+            ),
         )
         log.set(
             operation="update_label",
@@ -1030,10 +1010,12 @@ async def update_draft_route(
             user_id=user_id,
             draft_id=draft_id,
             to_list=request.to,
-            subject=request.subject,
-            body=request.body,
-            cc_list=request.cc,
-            bcc_list=request.bcc,
+            content=EmailContent(
+                subject=request.subject,
+                body=request.body,
+                cc_list=request.cc,
+                bcc_list=request.bcc,
+            ),
         )
 
         log.set(

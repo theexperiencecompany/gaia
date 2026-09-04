@@ -72,10 +72,6 @@ _PHRASE_REWRITES: tuple[tuple[str, str], ...] = (
         "spawn independent subagents together (one spawn_subagent per independent chunk)",
     ),
     (
-        "REMINDER (handoff to subagent:reminders)",
-        'REMINDER (activate_integration("reminders"), then act)',
-    ),
-    (
         "TODO (handoff to subagent:todos)",
         'TODO (activate_integration("todos"), then act)',
     ),
@@ -133,8 +129,8 @@ _PHRASE_REWRITES: tuple[tuple[str, str], ...] = (
         "missing the hackernews integration.",
     ),
     (
-        "NEVER route a reminder to subagent:todos.",
-        'NEVER route a reminder to the "todos" integration.',
+        "NEVER route a reminder\n     to subagent:todos.",
+        'NEVER route a reminder\n     to the "todos" integration.',
     ),
     (
         "never name a provider in a task you send to subagent:todos.",

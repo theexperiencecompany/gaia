@@ -74,6 +74,8 @@ export const ChatTab: FC<ChatTabProps> = ({
       className="relative z-0 flex"
       onMouseOut={() => setButtonHovered(false)}
       onMouseOver={() => setButtonHovered(true)}
+      onFocus={() => setButtonHovered(true)}
+      onBlur={() => setButtonHovered(false)}
     >
       <Button
         className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}

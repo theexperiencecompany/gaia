@@ -76,6 +76,11 @@ class AnalyticsEvents(StrEnum):
     # value is what the frontend's TODOS_TOGGLED already emits.
     TODO_TOGGLED = "todos:toggled"
     TODO_DELETED = "todos:deleted"
+    # Trigger subscriptions. `todos:` (plural) matches the events above — the
+    # domain half of the name is the surface, not the individual record.
+    TODO_SUBSCRIPTION_REGISTERED = "todos:subscription_registered"
+    TODO_SUBSCRIPTION_FAILED = "todos:subscription_failed"
+    TODO_TRIGGER_FIRED = "todos:trigger_fired"
 
     CALENDAR_EVENT_CREATED = "calendar:event_created"
     CALENDAR_EVENT_UPDATED = "calendar:event_updated"
@@ -128,6 +133,10 @@ class AnalyticsEvents(StrEnum):
 
     # Settings / profile
     SETTINGS_PREFERENCES_CHANGED = "settings:preferences_changed"
+
+    # Account-center mutations made through the agent's account tools
+    ACCOUNT_SETTING_CHANGED = "account:setting_changed"
+    ACCOUNT_PLATFORM_DISCONNECTED = "account:platform_disconnected"
 
     # Worker / agent lifecycle
     AGENT_RUN_STARTED = "agent:run_started"

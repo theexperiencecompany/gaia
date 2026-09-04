@@ -2,6 +2,17 @@ import tinycolor from "tinycolor2";
 
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
+// Module-scope Intl formatters — constructing them is slow, so build each
+// configuration once instead of on every call.
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+});
+const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
 // Group events by a date string like "day dayOfWeek"
 export function groupEventsByDate(
   events: GoogleCalendarEvent[],
@@ -21,13 +32,21 @@ export function groupEventsByDate(
   return grouped;
 }
 
+// Format a date as an abbreviated weekday (e.g. "Mon").
+export function formatWeekdayShort(date: Date): string {
+  return WEEKDAY_FORMATTER.format(date);
+}
+
+// Format a single date-time as a locale time string (e.g. "5:30 PM").
+export function formatEventTime(date: Date): string {
+  return TIME_FORMATTER.format(date);
+}
+
 // Format the day and day of week from an event's start date.
 export function formatDateDay(event: GoogleCalendarEvent): [string, string] {
   const startDate = new Date(event.start.date || event.start.dateTime || "");
   const day = startDate.getDate().toString();
-  const dayOfWeek = new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-  }).format(startDate);
+  const dayOfWeek = formatWeekdayShort(startDate);
 
   return [day, dayOfWeek];
 }
@@ -38,15 +57,7 @@ export function formatEventDate(event: GoogleCalendarEvent): string | null {
     const startDateTime = new Date(event.start.dateTime);
     const endDateTime = new Date(event.end.dateTime);
 
-    return `${new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(startDateTime)} - ${new Intl.DateTimeFormat("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(endDateTime)}`;
+    return `${formatEventTime(startDateTime)} - ${formatEventTime(endDateTime)}`;
   }
 
   return null;

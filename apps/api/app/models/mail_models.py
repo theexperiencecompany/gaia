@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal, TypedDict
 
+from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument
@@ -28,6 +29,33 @@ class SendEmailRequest(BaseModel):
     body: str
     cc: list[str] | None = None
     bcc: list[str] | None = None
+
+
+class GmailSearchFilters(BaseModel):
+    """Advanced-search filters for the Gmail search endpoint."""
+
+    query: str | None = None
+    sender: str | None = None
+    recipient: str | None = None
+    subject: str | None = None
+    has_attachment: bool | None = None
+    attachment_type: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    label: str | None = None
+    is_read: bool | None = None
+
+
+class SendEmailForm(BaseModel):
+    """Multipart-form fields for the Gmail send endpoint."""
+
+    to: str
+    subject: str
+    body: str
+    thread_id: str | None = None
+    cc: str | None = None
+    bcc: str | None = None
+    attachments: list[UploadFile] | None = None
 
 
 class EmailReadStatusRequest(BaseModel):

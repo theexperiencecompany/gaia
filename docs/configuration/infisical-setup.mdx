@@ -124,7 +124,7 @@ ENV=development
 
 ## Production: Machine Identity
 
-Production authenticates with a **single machine identity** shared by every service (see `infra/docker/docker-compose.prod.yml`).
+Production authenticates with a **single machine identity** shared by every service (see `docker/docker-compose.prod.yml` in the private `gaia-infra` repo).
 
 1. In Infisical: **Organization Access Control → Identities → Create Identity** (Universal Auth)
 2. Grant it read access to the project, environment `production`

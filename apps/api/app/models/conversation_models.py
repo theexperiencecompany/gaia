@@ -146,11 +146,12 @@ class _SourceRow(BaseModel):
 
 
 class _SystemGeneratedRow(BaseModel):
-    """Projection of just a conversation's system-generated flag."""
+    """Projection of a conversation's system-generated flag and why it exists."""
 
     model_config = ConfigDict(extra="ignore")
 
     is_system_generated: bool | None = None
+    system_purpose: SystemPurpose | None = None
 
 
 class _ConversationIdRow(BaseModel):

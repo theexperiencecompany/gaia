@@ -21,6 +21,37 @@ export interface PromoBannerProps {
   secondaryAction?: PromoBannerAction;
 }
 
+/** Renders a promo action as a link button when it has an href, else a press button. */
+function renderAction(action: PromoBannerAction, isPrimary: boolean) {
+  const variant = action.variant ?? (isPrimary ? "solid" : "flat");
+  const color = action.color ?? (isPrimary ? "primary" : "default");
+
+  if (action.href) {
+    return (
+      <Button
+        as={Link}
+        href={action.href}
+        variant={variant}
+        color={color}
+        endContent={action.icon}
+      >
+        {action.label}
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      variant={variant}
+      color={color}
+      endContent={action.icon}
+      onPress={action.onPress}
+    >
+      {action.label}
+    </Button>
+  );
+}
+
 export function PromoBanner({
   icon,
   title,
@@ -28,36 +59,6 @@ export function PromoBanner({
   primaryAction,
   secondaryAction,
 }: PromoBannerProps) {
-  const renderAction = (action: PromoBannerAction, isPrimary: boolean) => {
-    const variant = action.variant ?? (isPrimary ? "solid" : "flat");
-    const color = action.color ?? (isPrimary ? "primary" : "default");
-
-    if (action.href) {
-      return (
-        <Button
-          as={Link}
-          href={action.href}
-          variant={variant}
-          color={color}
-          endContent={action.icon}
-        >
-          {action.label}
-        </Button>
-      );
-    }
-
-    return (
-      <Button
-        variant={variant}
-        color={color}
-        endContent={action.icon}
-        onPress={action.onPress}
-      >
-        {action.label}
-      </Button>
-    );
-  };
-
   return (
     <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
       <div className="relative z-10 flex items-center justify-between gap-6 p-4">

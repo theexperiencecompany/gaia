@@ -16,7 +16,7 @@ from redis.asyncio import Redis
 
 from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
-from tests.helpers import worker_redis_url
+from tests.helpers import pg_advisory_lock, worker_redis_url
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
@@ -50,7 +50,8 @@ async def memory_saver():
         )
         await pool.open(wait=True, timeout=30)
         checkpointer = AsyncPostgresSaver(conn=pool)
-        await checkpointer.setup()
+        async with pg_advisory_lock(_POSTGRES_URL):
+            await checkpointer.setup()
         yield checkpointer
         await pool.close()
     else:

@@ -23,6 +23,7 @@ import pytest
 
 from app.config.settings import settings
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
+from app.services.integrations.integration_expiry import ExpiryOptions
 from app.services.triggers.batching import PER_EMAIL_FALLBACK_WINDOW_SECONDS
 from app.services.workflow.queue_service import WorkflowQueueService
 from shared.py.wide_events import spawn_logged_task
@@ -182,7 +183,7 @@ class TestTriggerDeliveryToQueuedExecution:
                 AsyncMock(return_value=[]),
             ),
             patch(
-                "app.services.tracked_todo_service.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value="todo context"),
             ),
             patch("app.services.triggers.base.buffer_trigger_event", buffer),
@@ -209,6 +210,55 @@ class TestTriggerDeliveryToQueuedExecution:
         assert context["trigger_type"] == TriggerType.INTEGRATION.value
         assert context["tracked_todos_context"] == "todo context"
         queue.assert_not_awaited()
+
+    async def test_a_signed_delivery_also_hands_the_event_to_subscribed_todos(
+        self,
+        unauthenticated_client: AsyncClient,
+        _webhook_secret: None,
+        _redis: MagicMock,
+        _spawned: list,
+    ) -> None:
+        """A tracked todo can be waiting on the same event a workflow matched.
+
+        The hand-off is queued from inside ``process_event``, before its
+        no-matching-workflow return — the return that would otherwise drop the
+        reply a todo has been waiting for.
+        """
+        enqueue = AsyncMock()
+        body = _gmail_delivery()
+        with (
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_integration_workflows",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                f"{GMAIL_HANDLER_MODULE}.workflow_repository.find_active_by_composio_trigger",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.triggers.base.get_signal_matching_context",
+                AsyncMock(return_value=""),
+            ),
+            patch("app.services.triggers.base.RedisPoolManager.get_pool", AsyncMock()),
+            patch("app.services.triggers.base.enqueue_worker_job", enqueue),
+        ):
+            response = await unauthenticated_client.post(
+                ENDPOINT,
+                content=json.dumps(body).encode(),
+                headers=_signed_headers(body, "wh-e2e-todo-1"),
+            )
+            await _drain(_spawned)
+
+        assert response.status_code == 200
+
+        # No workflow matched, and the event still reached the todo side.
+        enqueue.assert_awaited_once()
+        _pool, task_name, trigger_names, trigger_id, user_id, payload = enqueue.await_args.args
+        assert task_name == "dispatch_todo_subscriptions"
+        assert "gmail_new_message" in trigger_names
+        assert user_id == USER_ID
+        assert payload["payload"]["message_id"] == "msg-1"
+        assert trigger_id is not None
 
     async def test_a_bad_signature_is_refused_and_never_reaches_the_handler(
         self,
@@ -263,7 +313,7 @@ class TestTriggerDeliveryToQueuedExecution:
                 AsyncMock(return_value=[]),
             ),
             patch(
-                "app.services.tracked_todo_service.tracked_todo_service.get_signal_matching_context",
+                "app.services.triggers.base.get_signal_matching_context",
                 AsyncMock(return_value=""),
             ),
             patch("app.services.triggers.base.buffer_trigger_event", buffer),
@@ -315,11 +365,13 @@ class TestConnectionExpiryDelivery:
         expire.assert_awaited_once_with(
             USER_ID,
             "googlecalendar",
-            reason="refresh_token_revoked",
-            trigger="webhook",
-            notify=True,
-            connected_account_id="ca_xxxxxxxxxxxx",
-            paused_workflows=3,
+            ExpiryOptions(
+                reason="refresh_token_revoked",
+                trigger="webhook",
+                notify=True,
+                connected_account_id="ca_xxxxxxxxxxxx",
+                paused_workflows=3,
+            ),
         )
 
     async def test_an_unrecognised_toolkit_is_acked_without_touching_any_user(

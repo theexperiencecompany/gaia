@@ -273,6 +273,26 @@ def _json_dump(value: object) -> str:
     return json.dumps(value)
 
 
+def _token_matches(
+    message: _CorpusMessage, token: str, labels: Iterable[str], haystack: str
+) -> bool:
+    """One search token's verdict for ``message`` — False disqualifies the message."""
+    if token.startswith("is:"):
+        flag = token.split(":", 1)[1]
+        if flag == "unread" and not message.unread:
+            return False
+        if flag == "read" and message.unread:
+            return False
+        return True
+    if token.startswith("from:"):
+        return token.split(":", 1)[1] in message.sender.lower()
+    if token.startswith("subject:"):
+        return token.split(":", 1)[1] in message.subject.lower()
+    if token.startswith("in:"):
+        return not (token.split(":", 1)[1] == "inbox" and "INBOX" not in labels)
+    return token in haystack or token in message.urgency
+
+
 def _match_query(message: _CorpusMessage, query: str, labels: Iterable[str]) -> bool:
     tokens = [t for t in query.strip().lower().split() if t]
     if not tokens:
@@ -282,26 +302,7 @@ def _match_query(message: _CorpusMessage, query: str, labels: Iterable[str]) -> 
         token = raw.strip("\"'()[]{}")
         if not token or token in {"or", "and", "not"}:
             continue
-        if token.startswith("is:"):
-            flag = token.split(":", 1)[1]
-            if flag == "unread" and not message.unread:
-                return False
-            if flag == "read" and message.unread:
-                return False
-            continue
-        if token.startswith("from:"):
-            if token.split(":", 1)[1] not in message.sender.lower():
-                return False
-            continue
-        if token.startswith("subject:"):
-            if token.split(":", 1)[1] not in message.subject.lower():
-                return False
-            continue
-        if token.startswith("in:"):
-            if token.split(":", 1)[1] == "inbox" and "INBOX" not in labels:
-                return False
-            continue
-        if token not in haystack and token not in message.urgency:
+        if not _token_matches(message, token, labels, haystack):
             return False
     return True
 
@@ -509,6 +510,13 @@ def _rest_result(
         return {"messages": _apply_labels(state, params, add=add)}
     if tool_name in ("GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_SEND_DRAFT"):
         return _rest_send(state, tool_name, params)
+    return _rest_metadata_result(state, tool_name, params)
+
+
+def _rest_metadata_result(
+    state: _MailboxState, tool_name: str, params: dict[str, object]
+) -> dict[str, object]:
+    """The draft/label/profile half of the REST seam's tool dispatch."""
     if tool_name == "GMAIL_CREATE_EMAIL_DRAFT":
         draft_id = f"draft_{uuid.uuid4().hex[:8]}"
         state.drafts.append(
@@ -699,6 +707,47 @@ def _pin_lane(provider: ProviderConfig) -> None:
     agent_helpers._resolve_model_config = _resolve_eval_model_config
 
 
+def _collect_update_tool_calls(
+    payload: object, seen_ids: set[str], tool_calls: list[dict[str, object]]
+) -> None:
+    """Tool calls the executor's own ``agent`` node emitted in an updates payload."""
+    if not isinstance(payload, dict):
+        return
+    for node_name, state_update in payload.items():
+        if node_name != "agent" or not isinstance(state_update, dict):
+            continue
+        for msg in state_update.get("messages", []):
+            for tc in getattr(msg, "tool_calls", None) or []:
+                tc_id = str(tc.get("id") or "")
+                if not tc_id or tc_id in seen_ids:
+                    continue
+                seen_ids.add(tc_id)
+                tool_calls.append({"name": tc.get("name"), "args": tc.get("args") or {}})
+
+
+def _collect_custom_tool_call(
+    payload: object, seen_ids: set[str], tool_calls: list[dict[str, object]]
+) -> None:
+    """The subagent tool call a custom ``tool_calls_data`` payload carries."""
+    if not isinstance(payload, dict):
+        return
+    tool_data = payload.get("tool_data")
+    if not (isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"):
+        return
+    data = tool_data.get("data")
+    if not isinstance(data, dict):
+        return
+    tc_id = str(data.get("tool_call_id") or "")
+    if tc_id and tc_id in seen_ids:
+        return
+    if tc_id:
+        seen_ids.add(tc_id)
+    inputs = data.get("inputs")
+    tool_calls.append(
+        {"name": data.get("tool_name"), "args": inputs if isinstance(inputs, dict) else {}}
+    )
+
+
 async def _drive_stream(
     graph: object, input_state: dict[str, object], config: RunnableConfig
 ) -> tuple[list[dict[str, object]], str]:
@@ -714,38 +763,9 @@ async def _drive_stream(
     )
     async for mode, payload in stream:
         if mode == "updates":
-            if not isinstance(payload, dict):
-                continue
-            for node_name, state_update in payload.items():
-                if node_name != "agent" or not isinstance(state_update, dict):
-                    continue
-                for msg in state_update.get("messages", []):
-                    for tc in getattr(msg, "tool_calls", None) or []:
-                        tc_id = str(tc.get("id") or "")
-                        if not tc_id or tc_id in seen_ids:
-                            continue
-                        seen_ids.add(tc_id)
-                        tool_calls.append({"name": tc.get("name"), "args": tc.get("args") or {}})
+            _collect_update_tool_calls(payload, seen_ids, tool_calls)
         elif mode == "custom":
-            if not isinstance(payload, dict):
-                continue
-            tool_data = payload.get("tool_data")
-            if not (
-                isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"
-            ):
-                continue
-            data = tool_data.get("data")
-            if not isinstance(data, dict):
-                continue
-            tc_id = str(data.get("tool_call_id") or "")
-            if tc_id and tc_id in seen_ids:
-                continue
-            if tc_id:
-                seen_ids.add(tc_id)
-            inputs = data.get("inputs")
-            tool_calls.append(
-                {"name": data.get("tool_name"), "args": inputs if isinstance(inputs, dict) else {}}
-            )
+            _collect_custom_tool_call(payload, seen_ids, tool_calls)
         elif mode == "messages":
             chunk, meta = payload
             if meta.get("silent") or not isinstance(chunk, AIMessageChunk):
@@ -854,37 +874,42 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
         if "count" in item:
             entries.append({"count": len(todos)})
             continue
-        match, matched_on = _matched_title(
-            todos, str(item.get("title") or ""), item.get("title_contains")
-        )
-        entry: dict[str, object] = {}
-        if "title" in item:
-            entry["title"] = str(item["title"]) if match is not None else ""
-        if "title_contains" in item:
-            entry["title_contains"] = matched_on if match is not None else None
-        if "completed" in item:
-            entry["completed"] = bool(getattr(match, "completed", False))
-        if "priority" in item:
-            term = str(item["priority"])
-            actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
-            entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
-        if "labels_contains" in item:
-            term = str(item["labels_contains"])
-            labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
-            entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
-        if "project" in item:
-            term = str(item["project"])
-            name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
-            entry["project"] = _term_if(match is not None and term.lower() in name, term)
-        subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
-        if "subtask_count" in item:
-            entry["subtask_count"] = len(subtasks)
-        if "subtasks_completed" in item:
-            entry["subtasks_completed"] = len(
-                [s for s in subtasks if getattr(s, "completed", False)]
-            )
-        entries.append(entry)
+        entries.append(_todo_entry(item, todos, project_names))
     return entries
+
+
+def _todo_entry(
+    item: dict[str, object], todos: Sequence[object], project_names: dict[str, str]
+) -> dict[str, object]:
+    """One expected todo entry projected against the stored todos."""
+    match, matched_on = _matched_title(
+        todos, str(item.get("title") or ""), item.get("title_contains")
+    )
+    entry: dict[str, object] = {}
+    if "title" in item:
+        entry["title"] = str(item["title"]) if match is not None else ""
+    if "title_contains" in item:
+        entry["title_contains"] = matched_on if match is not None else None
+    if "completed" in item:
+        entry["completed"] = bool(getattr(match, "completed", False))
+    if "priority" in item:
+        term = str(item["priority"])
+        actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
+        entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
+    if "labels_contains" in item:
+        term = str(item["labels_contains"])
+        labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
+        entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
+    if "project" in item:
+        term = str(item["project"])
+        name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
+        entry["project"] = _term_if(match is not None and term.lower() in name, term)
+    subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
+    if "subtask_count" in item:
+        entry["subtask_count"] = len(subtasks)
+    if "subtasks_completed" in item:
+        entry["subtasks_completed"] = len([s for s in subtasks if getattr(s, "completed", False)])
+    return entry
 
 
 async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, object]]:
@@ -1121,16 +1146,20 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
         elif key == "recalled":
             projected[key] = await _project_recalled(case, user_id)
         elif key in ("sent", "drafts", "labeled"):
-            state = _mailbox_state(user_id)
-            if key == "sent":
-                projected[key] = len(state.sent)
-            elif key == "drafts":
-                projected[key] = len(state.drafts)
-            else:
-                projected[key] = bool(state.applied_labels)
+            projected[key] = _project_mailbox(user_id, key)
         else:
             raise RuntimeError(f"capability end_state: no projection for key {key!r}")
     return projected
+
+
+def _project_mailbox(user_id: str, key: str) -> object:
+    """The Gmail fake's counter behind one of the mailbox end_state keys."""
+    state = _mailbox_state(user_id)
+    if key == "sent":
+        return len(state.sent)
+    if key == "drafts":
+        return len(state.drafts)
+    return bool(state.applied_labels)
 
 
 def _project_answer_contains(want: object, text: str) -> object:
@@ -1189,7 +1218,7 @@ class CapabilityTransport:
         from app.agents.core.subagents.subagent_runner import prepare_executor_execution
         from app.agents.llm.client import init_llm
         from app.core.lazy_loader import providers
-        from app.helpers.agent_helpers import build_agent_config
+        from app.helpers.agent_helpers import AgentIdentity, build_agent_config
         from app.models.agent_models import AgentUserContext
         from app.services.dev_service import mint_dev_user
 
@@ -1203,7 +1232,9 @@ class CapabilityTransport:
             "email": email,
             "name": user_doc.name,
         }
-        config = build_agent_config(conversation_id=cid, user=user, agent_name="executor_agent")
+        config = build_agent_config(
+            identity=AgentIdentity(conversation_id=cid, user=user, agent_name="executor_agent")
+        )
         config["callbacks"] = [tracker, *config.get("callbacks", [])]
 
         turns = [str(turn) for turn in (case.setup.get("turns") or [case.prompt])]

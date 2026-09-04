@@ -5,13 +5,15 @@ Purely storage: no LLM calls, no embedding calls. Lineage rules live here
 filter); everything semantic happens upstream in the engine.
 """
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import uuid
 
 from sqlalchemy import ColumnElement, Select, func, or_, select, update
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
+    AGENDA_ITEM_TTL_DAYS,
     FORGET_REASON_MAX_CHARS,
     MemoryRelationType,
 )
@@ -329,14 +331,49 @@ async def get_agenda_memories(user_id: str, limit: int) -> list[MemoryRecord]:
         return list(result.scalars().all())
 
 
-async def sweep_expired_memories(user_id: str | None = None) -> list[str]:
-    """Forget every row whose ``forget_after`` has passed; returns their owners.
+async def backfill_agenda_expiry() -> int:
+    """Stamp ``forget_after`` on live agenda rows that never got one; returns count.
+
+    Agenda rows written before the task shelf-life shipped were stored durable
+    with no expiry, so the sweep could never retire them — production carried
+    year-old interviews and long-closed follow-ups in the always-injected
+    agenda block. Stamping ``created_at + AGENDA_ITEM_TTL_DAYS`` gives legacy
+    rows the exact window a new agenda item gets; already-overdue ones are
+    retired by the sweep that runs right after.
+    """
+    async with memory_session() as session:
+        result = await session.execute(
+            update(MemoryRecord)
+            .where(
+                MemoryRecord.is_forgotten.is_(False),
+                MemoryRecord.category_path == AGENDA_CATEGORY_PATH,
+                MemoryRecord.forget_after.is_(None),
+            )
+            .values(forget_after=MemoryRecord.created_at + timedelta(days=AGENDA_ITEM_TTL_DAYS))
+        )
+        await session.commit()
+        return rowcount(result)
+
+
+@dataclass(frozen=True)
+class SweptMemory:
+    """One row retired by the expiry sweep: its owner and its id."""
+
+    user_id: str
+    memory_id: str
+
+
+async def sweep_expired_memories(user_id: str | None = None) -> list[SweptMemory]:
+    """Forget every row whose ``forget_after`` has passed; returns the swept rows.
 
     Expiry was enforced only at read time, so an expired row stayed live in the
     folder tree, the free-plan cap count, the ``/workspace/memory`` projection
-    and every rendered document forever. The owner of each swept row comes back
-    so the caller can repair exactly those users' derived state. ``user_id``
-    scopes the sweep for the repair script; the nightly task sweeps everyone.
+    and every rendered document forever. Each swept row comes back as
+    ``(owner, id)`` so the caller can repair exactly those users' derived state
+    and retire the same rows' Chroma flags — Postgres alone flipping
+    ``is_forgotten`` leaves the vector matchable, and reconciliation would keep
+    swallowing identical restatements as DUPLICATE. ``user_id`` scopes the
+    sweep for the repair script; the nightly task sweeps everyone.
     """
     filters: list[ColumnElement[bool]] = [
         MemoryRecord.is_forgotten.is_(False),
@@ -350,10 +387,13 @@ async def sweep_expired_memories(user_id: str | None = None) -> list[str]:
             update(MemoryRecord)
             .where(*filters)
             .values(is_forgotten=True, forget_reason=_EXPIRY_FORGET_REASON)
-            .returning(MemoryRecord.user_id)
+            .returning(MemoryRecord.user_id, MemoryRecord.id)
         )
         await session.commit()
-        return [owner for (owner,) in result.all()]
+        return [
+            SweptMemory(user_id=owner, memory_id=str(memory_id))
+            for owner, memory_id in result.all()
+        ]
 
 
 async def get_all_live_memories(user_id: str) -> list[MemoryRecord]:

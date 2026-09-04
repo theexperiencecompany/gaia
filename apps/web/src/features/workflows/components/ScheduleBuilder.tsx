@@ -10,6 +10,7 @@ import {
   describeCron,
   parseCronExpression,
 } from "../utils/cronUtils";
+import type { TimezoneAutocompleteProps } from "./TimezoneAutocomplete";
 import { TimezoneAutocomplete } from "./TimezoneAutocomplete";
 
 interface ScheduleBuilderProps {
@@ -102,6 +103,195 @@ const to24Hour = (hour12: number, ampm: "AM" | "PM"): number => {
   if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
   return hour12 === 12 ? 12 : hour12 + 12;
 };
+
+// =============================================================================
+// PRESENTATIONAL PIECES (stateless — state lives in ScheduleBuilder)
+// =============================================================================
+
+/** The timezone picker both schedule modes share. */
+function ScheduleTimezone({
+  timezone,
+  options,
+  onTimezoneChange,
+}: Pick<ScheduleBuilderProps, "timezone" | "onTimezoneChange"> & {
+  options: TimezoneAutocompleteProps["options"];
+}) {
+  return (
+    <div className="flex-1 min-w-18">
+      <TimezoneAutocomplete
+        timezone={timezone}
+        options={options}
+        onChange={onTimezoneChange}
+        className="w-full"
+      />
+    </div>
+  );
+}
+
+function DayOfWeekSelect({
+  value,
+  onSelect,
+}: {
+  value: string;
+  onSelect: (day: string) => void;
+}) {
+  return (
+    <Select
+      size="sm"
+      selectedKeys={new Set([value])}
+      onSelectionChange={(keys) => onSelect(Array.from(keys)[0] as string)}
+      className="w-22 shrink-0"
+      classNames={SELECT_CLASSNAMES}
+    >
+      <SelectItem key="1" textValue="Monday">
+        Monday
+      </SelectItem>
+      <SelectItem key="2" textValue="Tuesday">
+        Tuesday
+      </SelectItem>
+      <SelectItem key="3" textValue="Wednesday">
+        Wednesday
+      </SelectItem>
+      <SelectItem key="4" textValue="Thursday">
+        Thursday
+      </SelectItem>
+      <SelectItem key="5" textValue="Friday">
+        Friday
+      </SelectItem>
+      <SelectItem key="6" textValue="Saturday">
+        Saturday
+      </SelectItem>
+      <SelectItem key="0" textValue="Sunday">
+        Sunday
+      </SelectItem>
+    </Select>
+  );
+}
+
+function DayOfMonthSelect({
+  value,
+  onSelect,
+}: {
+  value: string;
+  onSelect: (day: string) => void;
+}) {
+  return (
+    <Select
+      aria-label="Select day of the month"
+      size="sm"
+      selectionMode="single"
+      selectedKeys={new Set([value])}
+      onSelectionChange={(keys) => {
+        onSelect(Array.from(keys)[0] as string);
+      }}
+      className="w-16 shrink-0"
+      classNames={SELECT_CLASSNAMES}
+      placeholder="Day"
+    >
+      {Array.from({ length: 31 }, (_, i) => (
+        <SelectItem key={(i + 1).toString()} textValue={(i + 1).toString()}>
+          {i + 1}
+        </SelectItem>
+      ))}
+    </Select>
+  );
+}
+
+interface TimeOfDayInputProps {
+  hour12: number;
+  minute: string;
+  ampm: "AM" | "PM";
+  onHour12Change: (hour12: string) => void;
+  onMinuteChange: (minute: string) => void;
+  onAmpmChange: (ampm: "AM" | "PM") => void;
+}
+
+function TimeOfDayInput({
+  hour12,
+  minute,
+  ampm,
+  onHour12Change,
+  onMinuteChange,
+  onAmpmChange,
+}: TimeOfDayInputProps) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <Input
+        size="sm"
+        type="number"
+        min="1"
+        max="12"
+        value={hour12.toString()}
+        onChange={(e) => onHour12Change(e.target.value)}
+        className="w-12"
+      />
+      <span className="text-zinc-500">:</span>
+      <Input
+        size="sm"
+        type="number"
+        min="0"
+        max="59"
+        value={minute.padStart(2, "0")}
+        onChange={(e) => onMinuteChange(e.target.value)}
+        className="w-12"
+      />
+      <Select
+        aria-label="Select AM or PM"
+        size="sm"
+        selectedKeys={new Set([ampm])}
+        onSelectionChange={(keys) =>
+          onAmpmChange(Array.from(keys)[0] as "AM" | "PM")
+        }
+        className="w-17"
+        classNames={SELECT_CLASSNAMES}
+      >
+        <SelectItem key="AM" textValue="AM">
+          AM
+        </SelectItem>
+        <SelectItem key="PM" textValue="PM">
+          PM
+        </SelectItem>
+      </Select>
+    </div>
+  );
+}
+
+/** Plain-English preview / format hint for the raw cron expression. */
+function CronPreview({
+  description,
+  showError,
+}: {
+  description?: string;
+  showError: boolean;
+}) {
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs">
+      {description && !showError ? (
+        // Valid expression: show the clock + a plain-English preview.
+        <>
+          <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+          <span className="text-zinc-400">{description}</span>
+        </>
+      ) : (
+        // Otherwise: info icon + the field format, tinted red when invalid.
+        <>
+          <InformationCircleIcon
+            className={`h-3.5 w-3.5 shrink-0 ${
+              showError ? "text-danger" : "text-zinc-500"
+            }`}
+          />
+          <span className={showError ? "text-danger" : "text-zinc-500"}>
+            minute hour day-of-month month day-of-week
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// SCHEDULE BUILDER
+// =============================================================================
 
 export const ScheduleBuilder = ({
   value,
@@ -277,39 +467,12 @@ export const ScheduleBuilder = ({
             {simpleSchedule.interval === "week" && (
               <>
                 <span className="shrink-0 text-zinc-400">on</span>
-                <Select
-                  size="sm"
-                  selectedKeys={new Set([simpleSchedule.dayOfWeek])}
-                  onSelectionChange={(keys) =>
-                    handleSimpleScheduleChange({
-                      dayOfWeek: Array.from(keys)[0] as string,
-                    })
+                <DayOfWeekSelect
+                  value={simpleSchedule.dayOfWeek}
+                  onSelect={(day) =>
+                    handleSimpleScheduleChange({ dayOfWeek: day })
                   }
-                  className="w-22 shrink-0"
-                  classNames={SELECT_CLASSNAMES}
-                >
-                  <SelectItem key="1" textValue="Monday">
-                    Monday
-                  </SelectItem>
-                  <SelectItem key="2" textValue="Tuesday">
-                    Tuesday
-                  </SelectItem>
-                  <SelectItem key="3" textValue="Wednesday">
-                    Wednesday
-                  </SelectItem>
-                  <SelectItem key="4" textValue="Thursday">
-                    Thursday
-                  </SelectItem>
-                  <SelectItem key="5" textValue="Friday">
-                    Friday
-                  </SelectItem>
-                  <SelectItem key="6" textValue="Saturday">
-                    Saturday
-                  </SelectItem>
-                  <SelectItem key="0" textValue="Sunday">
-                    Sunday
-                  </SelectItem>
-                </Select>
+                />
               </>
             )}
 
@@ -318,83 +481,32 @@ export const ScheduleBuilder = ({
                 <span className="shrink-0 text-nowrap text-zinc-400">
                   on the
                 </span>
-                <Select
-                  aria-label="Select day of the month"
-                  size="sm"
-                  selectionMode="single"
-                  selectedKeys={new Set([simpleSchedule.dayOfMonth])}
-                  onSelectionChange={(keys) => {
-                    const selectedDay = Array.from(keys)[0] as string;
-                    handleSimpleScheduleChange({
-                      dayOfMonth: selectedDay,
-                    });
-                  }}
-                  className="w-16 shrink-0"
-                  classNames={SELECT_CLASSNAMES}
-                  placeholder="Day"
-                >
-                  {Array.from({ length: 31 }, (_, i) => (
-                    <SelectItem
-                      key={(i + 1).toString()}
-                      textValue={(i + 1).toString()}
-                    >
-                      {i + 1}
-                    </SelectItem>
-                  ))}
-                </Select>
+                <DayOfMonthSelect
+                  value={simpleSchedule.dayOfMonth}
+                  onSelect={(day) =>
+                    handleSimpleScheduleChange({ dayOfMonth: day })
+                  }
+                />
               </>
             )}
 
             <span className="shrink-0 text-zinc-400">at</span>
-            <div className="flex shrink-0 items-center gap-1">
-              <Input
-                size="sm"
-                type="number"
-                min="1"
-                max="12"
-                value={hour12.toString()}
-                onChange={(e) => handleHour12Change(e.target.value)}
-                className="w-12"
-              />
-              <span className="text-zinc-500">:</span>
-              <Input
-                size="sm"
-                type="number"
-                min="0"
-                max="59"
-                value={simpleSchedule.minute.padStart(2, "0")}
-                onChange={(e) =>
-                  handleSimpleScheduleChange({ minute: e.target.value })
-                }
-                className="w-12"
-              />
-              <Select
-                aria-label="Select AM or PM"
-                size="sm"
-                selectedKeys={new Set([ampm])}
-                onSelectionChange={(keys) =>
-                  handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
-                }
-                className="w-17"
-                classNames={SELECT_CLASSNAMES}
-              >
-                <SelectItem key="AM" textValue="AM">
-                  AM
-                </SelectItem>
-                <SelectItem key="PM" textValue="PM">
-                  PM
-                </SelectItem>
-              </Select>
-            </div>
+            <TimeOfDayInput
+              hour12={hour12}
+              minute={simpleSchedule.minute}
+              ampm={ampm}
+              onHour12Change={handleHour12Change}
+              onMinuteChange={(minute) =>
+                handleSimpleScheduleChange({ minute })
+              }
+              onAmpmChange={handleAmpmChange}
+            />
             <span className="shrink-0 text-zinc-500">in</span>
-            <div className="flex-1 min-w-18">
-              <TimezoneAutocomplete
-                timezone={normalizedTimezone}
-                options={timezoneOptions}
-                onChange={onTimezoneChange}
-                className="w-full"
-              />
-            </div>
+            <ScheduleTimezone
+              timezone={normalizedTimezone}
+              options={timezoneOptions}
+              onTimezoneChange={onTimezoneChange}
+            />
           </>
         )}
 
@@ -410,40 +522,20 @@ export const ScheduleBuilder = ({
               className="w-40 shrink-0"
             />
             <span className="shrink-0 text-nowrap text-zinc-500">in</span>
-            <div className="flex-1 min-w-18">
-              <TimezoneAutocomplete
-                timezone={normalizedTimezone}
-                options={timezoneOptions}
-                onChange={onTimezoneChange}
-                className="w-full"
-              />
-            </div>
+            <ScheduleTimezone
+              timezone={normalizedTimezone}
+              options={timezoneOptions}
+              onTimezoneChange={onTimezoneChange}
+            />
           </>
         )}
       </div>
 
       {simpleSchedule.frequency === "custom" && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs">
-          {cronPreview.description && !showCronError ? (
-            // Valid expression: show the clock + a plain-English preview.
-            <>
-              <Clock01Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-              <span className="text-zinc-400">{cronPreview.description}</span>
-            </>
-          ) : (
-            // Otherwise: info icon + the field format, tinted red when invalid.
-            <>
-              <InformationCircleIcon
-                className={`h-3.5 w-3.5 shrink-0 ${
-                  showCronError ? "text-danger" : "text-zinc-500"
-                }`}
-              />
-              <span className={showCronError ? "text-danger" : "text-zinc-500"}>
-                minute hour day-of-month month day-of-week
-              </span>
-            </>
-          )}
-        </div>
+        <CronPreview
+          description={cronPreview.description}
+          showError={showCronError}
+        />
       )}
     </div>
   );

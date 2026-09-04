@@ -124,6 +124,8 @@ export default function ChatBubbleBot(
         id={message_id}
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
+        onFocus={handleMouseOver}
+        onBlur={handleMouseOut}
         className={`relative flex flex-col ${isGroupedWithPrev ? "mt-1.5" : ""}`}
       >
         {/*

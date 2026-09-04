@@ -44,6 +44,13 @@ SPAWN_AGENT_NAME = "spawned_subagent"
 # on them — a drift between the two would silently strand every spawn thread.
 SPAWN_THREAD_PREFIX = "spawn_"
 
+# Thread-id prefix for the executor's checkpoint thread (`executor_<conversation>`),
+# which a handoff subagent further wraps as `<namespace>_executor_<conversation>`.
+# Shared because prepare_executor_execution mints these and the workflow thread
+# reset selects on them — a drift between the two would leave a workflow replaying
+# its whole history out of a thread the reset failed to recognize.
+EXECUTOR_THREAD_PREFIX = "executor_"
+
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 

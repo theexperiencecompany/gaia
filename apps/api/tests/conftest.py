@@ -18,7 +18,33 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from hypothesis import HealthCheck, settings as _hypothesis_settings
 import pytest
+
+# Hypothesis profiles. Profiled: 20 hypothesis tests were 10.4s of the 10.8s
+# of test time in tests/unit/utils — 100 examples each. PR lanes select the
+# "ci" profile (HYPOTHESIS_PROFILE=ci) to keep the feedback loop short; the
+# default (full) profile runs on master and locally, so nothing is lost.
+# The property tests do not set ``max_examples`` themselves (a per-test value
+# would silently override the profile); ``deadline=None`` stays per-test.
+# differing_executors: hypothesis flags a @given method whose class is
+# instantiated anew between calls — exactly what mutmut's in-process runner
+# does when it re-runs the suite per mutant (the "clean" run of the registry
+# shard failed on test_property_cron_datetime). The explicit per-test
+# @settings(max_examples=...) used to mask it; the profiles carry it now.
+_hypothesis_settings.register_profile(
+    "ci",
+    max_examples=25,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.register_profile(
+    "default",
+    max_examples=200,
+    deadline=None,
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
@@ -83,6 +109,15 @@ os.environ["LANGFUSE_HOST"] = ""
 # child died on SIGTRAP (exit -5) before writing a byte, so every mutant of
 # chroma_store came back "suspicious" and the module could never be graded.
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
+# darwin getproxies() falls through to the SystemConfiguration framework
+# (_scproxy), which is not fork-safe: mutmut forks a child per mutant, and any
+# child that builds an httpx client segfaults inside that native call, leaving
+# the mutant without a verdict. A non-empty proxy var makes
+# getproxies_environment() truthy and short-circuits the native path, and
+# NO_PROXY=* is behavior-neutral: httpx returns no proxies for it, which is
+# what a hermetic suite gets on Linux anyway.
+os.environ["no_proxy"] = "*"
+os.environ["NO_PROXY"] = "*"
 
 # HOST leaks into the model's context: fetchers.py renders the public artifact
 # URL from it, so the effective prompt — and the recorded context snapshots —
@@ -119,7 +154,6 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
@@ -312,8 +346,11 @@ def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None
     leaked = {
         key: (baseline.get(key), os.environ.get(key))
         for key in set(os.environ) | set(baseline)
-        if key.startswith("PYTEST_") is False and baseline.get(key) != os.environ.get(key)
+        if key.startswith(("PYTEST_", "KMP_")) is False and baseline.get(key) != os.environ.get(key)
     }
+    # KMP_*: set by the OpenMP runtime (onnxruntime/fastembed) on first import,
+    # not by a test. Only visible when embeddings run in-process (no sidecar,
+    # i.e. GitHub-hosted lanes).
     assert not leaked, f"tests leaked environment changes: {leaked}"
 
 
@@ -650,4 +687,30 @@ def _reset_limit_origin() -> Iterator[None]:
     later cases mail the wrong email.
     """
     yield
+    # Imported here, not at module level: limit_upsell -> email senders ->
+    # constants.llm -> langchain_core.language_models, whose ``base`` module
+    # eagerly imports ``transformers`` (~0.85s). Collection and workers that
+    # never run a test should not pay for it.
+    from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
+
     mark_run_origin(LimitHitOrigin.INTERACTIVE)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_wide_event_state() -> Iterator[None]:
+    """Keep one test's wide-event boundary from leaking into the next.
+
+    ``log.reset()`` (used bare in ~8 unit test files to simulate a request)
+    seeds the runner ContextVar with a shared, MUTABLE ``_EventState``. A later
+    async test's ``log.set(...)`` mutates that same object in place — the async
+    context copy shares the reference — so its fields surface back in the sync
+    runner context and bleed into subsequent tests. That is how a workflow
+    execution id set in one test made ``current_workflow_execution_id()`` return
+    non-None in a test that opened no boundary at all. Reset to the module
+    defaults after every test so no shared object survives.
+    """
+    from shared.py import wide_events
+
+    yield
+    wide_events._event_state.set(None)
+    wide_events._trace_id.set("")

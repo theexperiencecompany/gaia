@@ -30,6 +30,7 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.triggers.subscription_service import teardown_subscriptions
 from app.services.user_todos_fs import schedule_user_todos_sync
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
@@ -369,6 +370,11 @@ class TodoService:
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
+
+        # Unregister before the document goes: once it is deleted nothing names
+        # the Composio trigger any more, so the registration would leak forever.
+        if doc.trigger_subscriptions:
+            await teardown_subscriptions(todo_id, user_id, reason="deleted")
 
         # Tracked-todo canvas/log content lives on the doc, so it disappears with
         # the delete below — only the ChromaDB canvas embedding needs cleanup.

@@ -16,6 +16,7 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
+from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 from langgraph.errors import GraphRecursionError
@@ -26,6 +27,7 @@ from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.comms_narrator import record_executor_cancellation
 from app.agents.core.background.executor_capture import (
     build_returned_to_frontend_note,
+    drain_executor_tool_data,
     teardown_executor_capture,
 )
 from app.agents.core.background.executor_queue import (
@@ -54,6 +56,7 @@ from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable
+from app.models.chat_models import ToolDataEntry
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.hil.approvals_store import (
     list_parked_subagents_for_conversation,
@@ -62,7 +65,7 @@ from app.services.hil.approvals_store import (
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
-from shared.py.wide_events import get_trace_id, log, wide_task
+from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out
 #: exactly the runs a turn handed off, not every background task in the process.
@@ -104,6 +107,26 @@ async def run_executor_background(
         conversation_id=run.conversation_id,
         stream_id=run.stream_id,
         task_id=run.task_id,
+        # The surface the turn came from, carried on the boundary so auxiliary
+        # calls made INSIDE this run can still name it. They are handed a bare
+        # config, so without this a user's web turn is metered as ``system`` —
+        # and executor turns are the expensive ones, so the under-count lands
+        # exactly where COGS-by-channel matters most.
+        conversation_source=configurable.get("conversation_source"),
+        # The workflow run this executor is part of. The workflow task stamped
+        # it on ITS boundary; this one is fresh, so without carrying it over
+        # every model call the executor makes lands in the ledger with the
+        # workflow but no execution — and "what did this run cost" reads only
+        # the comms shell, a few percent of the real figure.
+        **(
+            {
+                "workflow": WorkflowContext(
+                    id=run.workflow_id, execution_id=run.workflow_execution_id
+                )
+            }
+            if run.workflow_id and run.workflow_execution_id
+            else {}
+        ),
     ):
         result_text = ""
         result_type = "final"
@@ -166,11 +189,9 @@ async def _record_pause(
     try:
         item = build_run_item(
             task=task,
-            task_id=run.task_id,
             configurable=configurable,
-            conversation_id=run.conversation_id,
-            user_message_id=run.user_message_id,
-            bot_message_id=run.bot_message_id,
+            identity=run.identity,
+            workflow_execution_id=run.workflow_execution_id,
         )
         for approval_id in approval_ids:
             await set_resume_item(approval_id, item)
@@ -284,6 +305,15 @@ async def _finalize_executor_run(
     build_note = not was_cancelled and run.renders_native_cards
     returned_note = build_returned_to_frontend_note(run.stream_id) if build_note else ""
 
+    # Snapshot the cards delivery will persist, for the same reason and BEFORE
+    # the same signal: every comms consumer — the chat stream and the silent
+    # workflow path alike — drains the session and tears it down the moment
+    # done_event fires, so a read from inside delivery comes back empty. That is
+    # how a scheduled workflow saved a bot message with no tool cards while its
+    # execution record listed every call. ``None`` means a live run, whose cards
+    # the comms stream owns and attaches to its own message.
+    tool_data = drain_executor_tool_data(run.stream_id) if run.executor_owns_tool_data else None
+
     # Signal SSE consumer that tool events are done so it can drain the session
     # into the comms ack and publish [DONE]. Comms re-narration runs in parallel.
     signal_executor_done(run.stream_id)
@@ -293,7 +323,15 @@ async def _finalize_executor_run(
     # its TTL. The lock lifecycle is the load-bearing step — always run it.
     try:
         await _deliver_terminal_outcome(
-            run, task, result_text, result_type, was_cancelled, returned_note
+            run,
+            task,
+            TerminalOutcome(
+                result_text=result_text,
+                result_type=result_type,
+                was_cancelled=was_cancelled,
+                returned_note=returned_note,
+                tool_data=tool_data,
+            ),
         )
     except Exception as e:  # never let delivery failure strand the queue
         log.error(
@@ -357,6 +395,7 @@ async def _queue_collection_if_uncollected(run: ExecutorRun, task: str) -> None:
                     "user_name": run.user.get("name", ""),
                     "user_timezone": run.user.get("timezone"),
                 },
+                workflow_execution_id=run.workflow_execution_id,
             )
     except Exception as e:  # a failed wake must not strand the queue handoff
         log.error(
@@ -405,37 +444,53 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
     )
 
 
+@dataclass(frozen=True)
+class TerminalOutcome:
+    """The terminal facts of one executor run, as ``_finalize_run`` snapshotted them.
+
+    ``tool_data`` is ``None`` for a live run, whose cards the comms stream owns.
+    """
+
+    result_text: str
+    result_type: str
+    was_cancelled: bool
+    returned_note: str
+    tool_data: list[ToolDataEntry] | None
+
+
 async def _deliver_terminal_outcome(
     run: ExecutorRun,
     task: str,
-    result_text: str,
-    result_type: str,
-    was_cancelled: bool,
-    returned_note: str,
+    outcome: TerminalOutcome,
 ) -> None:
     """Route the run's terminal outcome to exactly one delivery entry point.
 
     A cancelled run's already-streamed cards must not vanish: self-owning runs
     (queued / background workflow) persist them here, while live runs defer to
-    the comms path's attach step (persisting here too would duplicate cards). A
-    completed run with text narrates and delivers.
+    the comms path's attach step (persisting here too would duplicate cards) —
+    which is what a ``None`` snapshot means. A completed run with text narrates
+    and delivers.
     """
-    if was_cancelled:
+    if outcome.was_cancelled:
         # Regardless of who owns the tool_data, comms' context must record the
         # cancellation — otherwise its last knowledge stays 'Task accepted...
         # I'm on it' and later turns claim the task is still running or done.
         await record_executor_cancellation(run.conversation_id, run.task_id, task)
-        if run.executor_owns_tool_data:
-            await persist_cancelled_run(run)
-        else:
+        if outcome.tool_data is None:
             log.info(
                 f"{LogTag.AGENT} Live executor cancelled; comms stream owns tool_data persistence",
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )
-    elif result_text:
+        else:
+            await persist_cancelled_run(run, outcome.tool_data)
+    elif outcome.result_text:
         notification_text, message_id = await deliver_result(
-            run, result_text, result_type, returned_note
+            run,
+            outcome.result_text,
+            outcome.result_type,
+            outcome.returned_note,
+            tool_data=outcome.tool_data,
         )
         await _publish_voice_tts(run.stream_id, notification_text, message_id)
 

@@ -940,17 +940,19 @@ export class TurnSession {
         [])
       : [];
 
-    const history = stored
-      .filter(
-        (message) =>
-          message.role !== "system" &&
-          message.id !== optimisticId &&
-          message.content.trim().length > 0,
-      )
-      .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: message.content,
-      }));
+    const history: { role: "user" | "assistant"; content: string }[] = [];
+    for (const message of stored) {
+      if (
+        message.role !== "system" &&
+        message.id !== optimisticId &&
+        message.content.trim().length > 0
+      ) {
+        history.push({
+          role: message.role as "user" | "assistant",
+          content: message.content,
+        });
+      }
+    }
 
     if (this.args.userMessage.response.trim().length > 0) {
       history.push({ role: "user", content: this.args.userMessage.response });

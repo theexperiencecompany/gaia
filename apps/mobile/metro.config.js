@@ -29,8 +29,10 @@ config.resolver.extraNodeModules = {
   "@/assets": path.resolve(projectRoot, "assets"),
   // Mirror the web alias pattern, but point @icons to the RN-safe wrapper.
   "@icons": path.resolve(projectRoot, "src/lib/gaia-icons.tsx"),
-  // Workspace package not symlinked in node_modules — resolve directly.
-  // Sub-path imports like @gaia/shared/icons resolve to src/icons/index.ts.
+  // Resolve to the TS source rather than the package entry. The workspace
+  // symlink exists under the isolated linker, but this keeps sub-path imports
+  // like @gaia/shared/icons resolving to src/icons/index.ts without relying on
+  // Metro's package-exports resolution.
   "@gaia/shared": path.resolve(workspaceRoot, "libs/shared/ts/src"),
 };
 

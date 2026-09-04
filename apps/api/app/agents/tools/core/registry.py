@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
-from typing import cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
 from langchain_core.tools import BaseTool
 
@@ -8,9 +9,26 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
-from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from app.services.composio.composio_service import ComposioService
+
+
+def get_composio_service() -> "ComposioService":
+    """Resolve the Composio service at call time. Importing
+    ``app.services.composio.composio_service`` at module level drags the
+    Composio SDK, ``app.patches`` and every custom tool in behind it (~4s of
+    import per process/xdist worker) into everything that merely imports the
+    tool registry; the registry only needs the service inside the async
+    provider-registration paths."""
+    from app.services.composio.composio_service import (
+        get_composio_service as _get_composio_service,
+    )
+
+    return _get_composio_service()
+
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
 # are gated to desktop-app conversations in retrieval.py.
@@ -108,6 +126,7 @@ class Tool:
         name: str | None = None,
         is_core: bool = False,
         destructive: bool | None = None,
+        always_gate: bool = False,
     ):
         self.tool = tool
         self.name = name or tool.name
@@ -116,6 +135,44 @@ class Tool:
         # None = unclassified (custom/MCP tools until the LLM classifier decides);
         # True/False = reviewed (internal tools + curated integration slugs).
         self.destructive = destructive
+        # Forced-ask stamp: this tool pauses for user approval in EVERY HIL mode,
+        # ignoring ``always_allow`` and per-tool overrides. Stronger than
+        # ``destructive`` (which only shapes auto-mode judging). For settings on
+        # the user's own account and similar product invariants.
+        self.always_gate = always_gate
+
+
+@dataclass(frozen=True)
+class CategoryOptions:
+    """Category-level placement and visibility metadata.
+
+    Grouped so ``ToolCategory`` and ``ToolRegistry._add_category`` describe the
+    same cluster of settings with one object instead of five parallel arguments.
+    """
+
+    space: str = "general"
+    # True for integration-specific categories (Composio toolkits) that need
+    # the user to have connected that integration; core built-in categories
+    # leave it False. `get_core_categories` filters on this flag.
+    require_integration: bool = False
+    integration_name: str | None = None
+    is_delegated: bool = False
+    # Internal categories hold agent-only plumbing tools (sandbox, control
+    # flow, instruction loading) that must never surface in the user-facing
+    # tool/slash-command listings, but stay available to the executor.
+    internal: bool = False
+
+
+@dataclass(frozen=True)
+class CategoryRisk:
+    """Curated HIL classification sets for a category's tools.
+
+    ``destructive_tools`` is the curated risk set (see ``ToolCategory.add_tools``);
+    ``always_gate_tools`` names members that ask in every HIL mode.
+    """
+
+    destructive_tools: set[str] | None = None
+    always_gate_tools: set[str] | None = None
 
 
 class ToolCategory:
@@ -124,24 +181,21 @@ class ToolCategory:
     def __init__(
         self,
         name: str,
-        space: str = "general",
-        require_integration: bool = False,
-        integration_name: str | None = None,
-        is_delegated: bool = False,
-        internal: bool = False,
+        options: CategoryOptions | None = None,
     ):
+        options = options or CategoryOptions()
         self.name = name
-        self.space = space
+        self.space = options.space
         # True for integration-specific categories (Composio toolkits) that need
         # the user to have connected that integration; core built-in categories
         # leave it False. `get_core_categories` filters on this flag.
-        self.require_integration = require_integration
-        self.integration_name = integration_name
-        self.is_delegated = is_delegated
+        self.require_integration = options.require_integration
+        self.integration_name = options.integration_name
+        self.is_delegated = options.is_delegated
         # Internal categories hold agent-only plumbing tools (sandbox, control
         # flow, instruction loading) that must never surface in the user-facing
         # tool/slash-command listings, but stay available to the executor.
-        self.internal = internal
+        self.internal = options.internal
         self.tools: list[Tool] = []
 
     def add_tool(
@@ -150,15 +204,25 @@ class ToolCategory:
         is_core: bool = False,
         name: str | None = None,
         destructive: bool | None = None,
+        always_gate: bool = False,
     ) -> None:
         """Add a tool to this category."""
-        self.tools.append(Tool(tool=tool, name=name, is_core=is_core, destructive=destructive))
+        self.tools.append(
+            Tool(
+                tool=tool,
+                name=name,
+                is_core=is_core,
+                destructive=destructive,
+                always_gate=always_gate,
+            )
+        )
 
     def add_tools(
         self,
         tools: Sequence[BaseTool],
         is_core: bool = False,
         destructive_tools: set[str] | None = None,
+        always_gate_tools: set[str] | None = None,
     ) -> None:
         """Add multiple tools to this category.
 
@@ -166,10 +230,14 @@ class ToolCategory:
         every tool is stamped destructive by membership (so an empty set marks
         the whole category reviewed-safe); when ``None`` the tools stay
         unclassified and fall to the HIL LLM classifier at gate time.
+        ``always_gate_tools`` stamps forced-ask members (see ``Tool.always_gate``).
         """
+        gated = always_gate_tools or set()
         for tool in tools:
             destructive = None if destructive_tools is None else (tool.name in destructive_tools)
-            self.add_tool(tool, is_core=is_core, destructive=destructive)
+            self.add_tool(
+                tool, is_core=is_core, destructive=destructive, always_gate=tool.name in gated
+            )
 
     def get_tool_objects(self) -> list[BaseTool]:
         """Get the actual tool objects for binding."""
@@ -210,35 +278,40 @@ class ToolRegistry:
         name: str,
         tools: Sequence[BaseTool] | None = None,
         core_tools: Sequence[BaseTool] | None = None,
-        space: str = "general",
-        require_integration: bool = False,
-        integration_name: str | None = None,
-        is_delegated: bool = False,
-        internal: bool = False,
-        destructive_tools: set[str] | None = None,
+        options: CategoryOptions | None = None,
+        risk: CategoryRisk | None = None,
     ) -> None:
         """Helper to create and register a category.
 
-        ``destructive_tools`` is the curated HIL risk set for this category
+        ``risk.destructive_tools`` is the curated HIL risk set for this category
         (see ``ToolCategory.add_tools``). Every internal category MUST pass an
         explicit set (empty if none are destructive) so in-repo tools are never
         left unclassified; ``None`` is reserved for uncurated (custom MCP /
         provider) tools that the HIL LLM classifier resolves at gate time.
+        ``risk.always_gate_tools`` names members that ask in every HIL mode.
         """
+        options = options or CategoryOptions()
+        risk = risk or CategoryRisk()
+        space = options.space
+        destructive_tools = risk.destructive_tools
+        always_gate_tools = risk.always_gate_tools
         replacing = name in self._categories
         prior_tools_count = len(self._categories[name].tools) if replacing else 0
         category = ToolCategory(
             name=name,
-            space=space,
-            require_integration=require_integration,
-            integration_name=integration_name,
-            is_delegated=is_delegated,
-            internal=internal,
+            options=options,
         )
         if core_tools:
-            category.add_tools(core_tools, is_core=True, destructive_tools=destructive_tools)
+            category.add_tools(
+                core_tools,
+                is_core=True,
+                destructive_tools=destructive_tools,
+                always_gate_tools=always_gate_tools,
+            )
         if tools:
-            category.add_tools(tools, destructive_tools=destructive_tools)
+            category.add_tools(
+                tools, destructive_tools=destructive_tools, always_gate_tools=always_gate_tools
+            )
         self._categories[name] = category
         if replacing:
             # Drop the replaced category's entries so removed tools don't linger.
@@ -281,6 +354,7 @@ class ToolRegistry:
 
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
+            account_tools,
             context_tool,
             desktop_tools,
             download_tool,
@@ -293,6 +367,7 @@ class ToolRegistry:
             manual_tool,
             memory_tools,
             notification_tool,
+            playbook_tools,
             reminder_tool,
             research_tool,
             skill_tools,
@@ -313,107 +388,153 @@ class ToolRegistry:
                 research_tool.deep_research,
                 *download_tool.tools,
             ],
-            destructive_tools=set(),
+            risk=CategoryRisk(destructive_tools=set()),
         )
 
         self._add_category(
             "documents",
             tools=[file_tools.search_uploaded_files],
-            destructive_tools=set(),
+            risk=CategoryRisk(destructive_tools=set()),
         )
 
         self._add_category(
             "notifications",
             tools=[*notification_tool.tools],
-            destructive_tools={"send_notification"},
+            risk=CategoryRisk(destructive_tools={"send_notification"}),
         )
+        # Account-center mutations: settings on the user's own account. The
+        # settings tools are forced-ask — they change state the user owns
+        # outright, so no approval mode or per-tool override may wave them
+        # through. manage_linked_account is argument-gated instead (disconnect
+        # asks, generate_link doesn't) — see hil/policy.ARGUMENT_GATED_TOOLS.
+        self._add_category(
+            "account",
+            tools=[*account_tools.tools],
+            risk=CategoryRisk(
+                destructive_tools=set(),
+                always_gate_tools={
+                    "update_notification_settings",
+                    "update_preferences",
+                    "update_custom_instructions",
+                    "set_selected_voice",
+                },
+            ),
+        )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)
         self._add_category(
             "tracked_todos",
             tools=[*tracked_todo_tools.tools],
-            space="tasks",
-            destructive_tools=set(),
+            options=CategoryOptions(space="tasks"),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "todos",
             tools=[*todo_tool.tools],
-            is_delegated=True,
-            integration_name="todos",
-            space="todos",
-            destructive_tools=set(),
+            options=CategoryOptions(
+                is_delegated=True,
+                integration_name="todos",
+                space="todos",
+            ),
+            risk=CategoryRisk(destructive_tools=set()),
         )
+        # Reminder tools are executor-direct (no reminders subagent): a non-delegated
+        # category in the general space, so the executor discovers them through
+        # retrieve_tools like any other general tool (not statically bound).
         self._add_category(
             "reminders",
             tools=[*reminder_tool.tools],
-            is_delegated=True,
-            integration_name="reminders",
-            space="reminders",
-            destructive_tools=set(),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "skills",
             tools=skill_tools.tools,
-            is_delegated=True,
-            integration_name="skills",
-            space="skills",
-            destructive_tools=set(),
+            options=CategoryOptions(
+                is_delegated=True,
+                integration_name="skills",
+                space="skills",
+            ),
+            risk=CategoryRisk(destructive_tools=set()),
         )
 
         # General tools - directly accessible by executor
         self._add_category(
             "workflows",
             tools=workflow_tool.tools,
-            destructive_tools={"execute_workflow"},
+            risk=CategoryRisk(destructive_tools={"execute_workflow"}),
+        )
+        self._add_category(
+            "playbooks",
+            tools=playbook_tools.tools,
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "control",
             tools=[finish_task_tool.finish_task],
-            internal=True,
-            destructive_tools=set(),
+            options=CategoryOptions(internal=True),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "support",
             tools=[support_tool.create_support_ticket],
-            destructive_tools=set(),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         # A checkout link is inert until the user chooses to pay it, so nothing
         # here is destructive — gating "show me how to upgrade" behind an
         # approval prompt would be absurd.
-        self._add_category("billing", tools=[*subscription_tool.tools], destructive_tools=set())
-        self._add_category("manual", tools=[*manual_tool.tools], destructive_tools=set())
-        self._add_category("memory", tools=memory_tools.tools, destructive_tools=set())
+        self._add_category(
+            "billing",
+            tools=[*subscription_tool.tools],
+            risk=CategoryRisk(destructive_tools=set()),
+        )
+        self._add_category(
+            "manual", tools=[*manual_tool.tools], risk=CategoryRisk(destructive_tools=set())
+        )
+        self._add_category(
+            "memory", tools=memory_tools.tools, risk=CategoryRisk(destructive_tools=set())
+        )
         self._add_category(
             "integrations",
             tools=integration_tool.tools,
-            destructive_tools={"connect_integration"},
+            risk=CategoryRisk(destructive_tools={"connect_integration"}),
         )
         self._add_category(
             "integration_instructions",
             tools=[*integration_instructions_tools.tools],
-            internal=True,
-            destructive_tools=set(),
+            options=CategoryOptions(internal=True),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         from app.agents.tools import coding
 
         # Sandbox coding tools (bash/read/write/edit) are agent-only plumbing
         # that act only inside the user's isolated sandbox.
         self._add_category(
-            "development", tools=[*coding.tools], internal=True, destructive_tools=set()
+            "development",
+            tools=[*coding.tools],
+            options=CategoryOptions(internal=True),
+            risk=CategoryRisk(destructive_tools=set()),
         )
         self._add_category(
             "creative",
             tools=[image_tool.generate_image, flowchart_tool.create_flowchart],
-            destructive_tools=set(),
+            risk=CategoryRisk(destructive_tools=set()),
         )
-        self._add_category("weather", tools=[weather_tool.get_weather], destructive_tools=set())
-        self._add_category("context", tools=[context_tool.gather_context], destructive_tools=set())
+        self._add_category(
+            "weather",
+            tools=[weather_tool.get_weather],
+            risk=CategoryRisk(destructive_tools=set()),
+        )
+        self._add_category(
+            "context",
+            tools=[context_tool.gather_context],
+            risk=CategoryRisk(destructive_tools=set()),
+        )
         # Desktop-executed tools live in their own space so discovery can be
         # gated to conversations that originate from the desktop app. They act on
         # the user's own machine and are reversible, so none are destructive.
         self._add_category(
             DESKTOP_TOOL_CATEGORY,
             tools=[*desktop_tools.tools],
-            space=DESKTOP_TOOL_SPACE,
-            destructive_tools=set(),
+            options=CategoryOptions(space=DESKTOP_TOOL_SPACE),
+            risk=CategoryRisk(destructive_tools=set()),
         )
 
     async def register_provider_tools(
@@ -450,11 +571,13 @@ class ToolRegistry:
         self._add_category(
             name=toolkit_name,
             tools=tools,
-            require_integration=True,
-            integration_name=toolkit_name,
-            is_delegated=True,
-            space=space_name,
-            destructive_tools=integration_destructive_tools(toolkit_name),
+            options=CategoryOptions(
+                require_integration=True,
+                integration_name=toolkit_name,
+                is_delegated=True,
+                space=space_name,
+            ),
+            risk=CategoryRisk(destructive_tools=integration_destructive_tools(toolkit_name)),
         )
 
         await self._index_category_tools(toolkit_name)

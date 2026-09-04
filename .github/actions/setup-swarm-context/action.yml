@@ -1,27 +1,42 @@
 name: Set up Docker Swarm context
 description: >
-  Configures SSH access to the production VM and creates a Docker
-  context pointing at it. The private key, host, and username are pulled
-  from GitHub secrets.
+  Joins the tailnet as an ephemeral tag:ci node and creates a Docker context
+  for the production VM over Tailscale SSH. There is no SSH key: the VM's
+  public firewall (Hetzner) has no SSH rule, port 22 is reachable only from
+  the tailnet, and tailscaled authenticates the connection by tailnet
+  identity — the ACL's ssh section grants tag:ci exactly one login (the
+  deploy user on tag:prod). ssh_host must be the VM's Tailscale address.
 
 inputs:
-  ssh_key:
-    description: Private SSH key for the production VM
+  tailscale_oauth_client_id:
+    description: Tailscale OAuth client (scope auth_keys:write, tag:ci only)
+    required: true
+  tailscale_oauth_secret:
+    description: Secret of that OAuth client
     required: true
   ssh_host:
-    description: Hostname or IP of the production VM
+    description: Tailscale address of the production VM
     required: true
   ssh_user:
-    description: SSH username on the production VM
+    description: Deploy user on the production VM (must match the ACL ssh grant)
     required: true
 
 runs:
   using: composite
   steps:
+    # The OAuth client mints a throwaway auth key per job (no long-lived key
+    # to rotate); the node is ephemeral and removed when the job ends.
+    - name: Join the tailnet
+      uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+      with:
+        oauth-client-id: ${{ inputs.tailscale_oauth_client_id }}
+        oauth-secret: ${{ inputs.tailscale_oauth_secret }}
+        tags: tag:ci
+        hostname: gaia-deploy-${{ github.run_id }}
+
     - name: Configure SSH and Docker context
       shell: bash
       env:
-        SSH_KEY: ${{ inputs.ssh_key }}
         SSH_HOST: ${{ inputs.ssh_host }}
         SSH_USER: ${{ inputs.ssh_user }}
       run: |
@@ -30,22 +45,17 @@ runs:
         mkdir -p ~/.ssh
         chmod 700 ~/.ssh
 
-        printf '%s\n' "$SSH_KEY" > ~/.ssh/prod_vm_key
-        chmod 600 ~/.ssh/prod_vm_key
-
-        # Trust the host (avoid interactive prompt) and pin the key to this host.
+        # Tailscale SSH presents a host key like any sshd; pin it on first use.
         ssh-keyscan -T 10 "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
         cat >> ~/.ssh/config <<EOF
         Host $SSH_HOST
           User $SSH_USER
-          IdentityFile ~/.ssh/prod_vm_key
-          IdentitiesOnly yes
           StrictHostKeyChecking accept-new
         EOF
         chmod 600 ~/.ssh/config
 
-        # Sanity check — fail fast if the VM is unreachable.
+        # Sanity check — fail fast if the VM is unreachable over the tailnet.
         ssh -o BatchMode=yes "$SSH_USER@$SSH_HOST" "docker info >/dev/null"
 
         docker context create prod \

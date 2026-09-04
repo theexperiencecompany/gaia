@@ -9,23 +9,21 @@ from uuid import uuid4
 
 from arq.connections import ArqRedis
 
-from app.agents.core.agent import call_agent_silent
+from app.agents.core.agent import AgentRunOptions, call_agent_silent
+from app.constants.chat import MAX_MESSAGE_LENGTH
+from app.constants.todos import BLOCKING_LABELS
 from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
-    ActionConfig,
-    ActionStyle,
-    ActionType,
-    NotificationAction,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
-    RedirectConfig,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.notification_service import notification_service
+from app.services.todos.todo_notifications import todo_redirect_action
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
@@ -35,6 +33,15 @@ from shared.py.wide_events import log
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
 MAX_HEALTH_CHECKS_PER_USER = 10  # Max agent health-check calls per user per sweep
+
+# A health-check prompt is carried by MessageRequestWithHistory, whose `message`
+# field pydantic caps at MAX_MESSAGE_LENGTH. One user's oversized canvas raised
+# ValidationError there and aborted the whole cron mid-sweep, so the canvas gets
+# its own budget derived from that cap: a literal here could drift out of sync
+# with the model silently. Two fifths leaves 30k characters of headroom, orders
+# of magnitude more than the few hundred the prompt scaffolding and trim marker
+# ever need.
+HEALTH_CHECK_CANVAS_MAX_CHARS = MAX_MESSAGE_LENGTH * 2 // 5
 
 # Escalating backoff between repeat notifications for the same todo: notify, then
 # wait 1 day, then 3, then 7 before each repeat. After the schedule is exhausted
@@ -50,8 +57,6 @@ SECONDS_PER_DAY = 86400
 # so reminders never arrive in the middle of the night.
 DAYTIME_START_HOUR = 9
 DAYTIME_END_HOUR = 21
-
-BLOCKING_LABELS = {"waiting-for-reply", "waiting-for-approval", "blocked"}
 
 # What a tier's health check decided, so the caller's counter branches are checked.
 ExpiredOutcome = Literal["archived", "notified", "muted"]
@@ -157,13 +162,26 @@ async def _process_expired(
     notified_expired = 0
     for todo in expired:
         uid = todo.user_id
-        # Defer to a daytime sweep — no cooldown consumed, retried later.
+        # Defer to a daytime sweep: no cooldown consumed, retried later.
         if not await _is_user_daytime(uid, now, daytime_cache):
             continue
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             continue
-        result = await _health_check_expired(todo, pool)
+        # Counted before the call: a failed check has still spent the budget.
         health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
+        try:
+            result = await _health_check_expired(todo, pool)
+        except Exception as exc:
+            # One todo must never abort the sweep for every other user: an
+            # oversized canvas once raised here and killed the whole cron. No
+            # cooldown was consumed, so this todo is retried next sweep.
+            log.error(
+                "maintenance_sweep.expired_health_check_error",
+                todo_id=todo.id,
+                user_id=uid,
+                error_type=type(exc).__name__,
+            )
+            continue
         if result == "archived":
             archived += 1
         elif result == "notified":
@@ -183,7 +201,19 @@ async def _process_overdue(
         uid = todo.user_id
         if not await _is_user_daytime(uid, now, daytime_cache):
             continue
-        if await _notify_overdue(todo, pool):
+        try:
+            notified = await _notify_overdue(todo, pool)
+        except Exception as exc:
+            # Same containment as the health-check tiers: one todo's failure
+            # cannot cost every other user their sweep.
+            log.error(
+                "maintenance_sweep.overdue_error",
+                todo_id=todo.id,
+                user_id=uid,
+                error_type=type(exc).__name__,
+            )
+            continue
+        if notified:
             notified_overdue += 1
     return notified_overdue
 
@@ -211,8 +241,22 @@ async def _process_dormant(
         if health_checks_used.get(uid, 0) >= MAX_HEALTH_CHECKS_PER_USER:
             needs_attention_candidates.append(todo)
             continue
-        result = await _health_check_dormant(todo, pool)
+        # Counted before the call: a failed check has still spent the budget.
         health_checks_used[uid] = health_checks_used.get(uid, 0) + 1
+        try:
+            result = await _health_check_dormant(todo, pool)
+        except Exception as exc:
+            # One todo must never abort the sweep for every other user: an
+            # oversized canvas once raised here and the digest never went out.
+            # The todo keeps its cooldown-free state and is retried next sweep
+            # rather than being digested on the strength of a check that failed.
+            log.error(
+                "maintenance_sweep.dormant_health_check_error",
+                todo_id=todo.id,
+                user_id=uid,
+                error_type=type(exc).__name__,
+            )
+            continue
         if result == "requeued":
             requeued += 1
         else:
@@ -230,7 +274,7 @@ def _has_upcoming_schedule(todo: TodoDocument, now: datetime) -> bool:
     """Return True if the todo has a genuine upcoming execution.
 
     A recurring todo with a stale scheduled_at (>2 days old) is NOT considered
-    to have an upcoming schedule — it's likely orphaned.
+    to have an upcoming schedule: it's likely orphaned.
     """
     scheduled_at = todo.scheduled_at
     if scheduled_at and scheduled_at > now:
@@ -241,9 +285,9 @@ def _has_upcoming_schedule(todo: TodoDocument, now: datetime) -> bool:
         if scheduled_at:
             days_since_scheduled = (now - scheduled_at).days
             if days_since_scheduled <= 2:
-                # Recently executed recurring todo — next run is coming
+                # Recently executed recurring todo: next run is coming
                 return True
-        # Recurrence set but scheduled_at is missing or stale — orphaned
+        # Recurrence set but scheduled_at is missing or stale: orphaned
         return False
 
     return False
@@ -256,7 +300,7 @@ def _is_dormant(todo: TodoDocument, now: datetime) -> bool:
     A todo is dormant when:
     - updated_at is more than DORMANT_DAYS ago
     - no upcoming schedule
-    - no blocking label — UNLESS the blocking label has been there
+    - no blocking label: UNLESS the blocking label has been there
       for more than WAITING_LABEL_MAX_DAYS days (at which point it
       is considered stuck and should surface)
     """
@@ -275,7 +319,7 @@ def _is_dormant(todo: TodoDocument, now: datetime) -> bool:
     if not blocking:
         return True
 
-    # Blocking label present — only surface if it has been stuck too long
+    # Blocking label present: only surface if it has been stuck too long
     # Use idle_days as proxy for label age (label changes trigger updated_at)
     return idle_days > WAITING_LABEL_MAX_DAYS
 
@@ -291,7 +335,7 @@ async def _health_check_expired(todo: TodoDocument, pool: ArqRedis) -> ExpiredOu
     user_id = todo.user_id
     title = todo.title
 
-    canvas = await _read_canvas(todo)
+    canvas = _bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has expired.\n"
@@ -346,7 +390,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
 
     idle_days = (now - updated_at).days if updated_at else DORMANT_DAYS
 
-    canvas = await _read_canvas(todo)
+    canvas = _bounded_canvas(await _read_canvas(todo))
 
     prompt = (
         f"A tracked todo has been dormant for {idle_days} days.\n"
@@ -361,7 +405,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
     response = await _call_health_check_agent(todo_id, user_id, prompt)
 
     if response.startswith("EXECUTE:"):
-        jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245 — non-crypto scheduling jitter
+        jitter_seconds = random.randint(10, 120)  # nosec B311  # NOSONAR python:S2245: non-crypto scheduling jitter
         scheduled_at = now + timedelta(seconds=jitter_seconds)
         await tracked_todo_service.schedule_execution(todo_id, scheduled_at)
         action = response[len("EXECUTE:") :].strip()
@@ -371,7 +415,7 @@ async def _health_check_dormant(todo: TodoDocument, pool: ArqRedis) -> DormantOu
             "maintenance_requeued",
             f"Dormant todo re-queued by maintenance sweep (idle {idle_days}d). Action: {action}",
         )
-        # Re-queued for execution, not notified — a short cooldown avoids
+        # Re-queued for execution, not notified: a short cooldown avoids
         # re-processing before the scheduled run; no escalation strike consumed.
         await _set_cooldown(pool, todo_id, NOTIFICATION_BACKOFF_DAYS[0])
         log.info(
@@ -424,23 +468,6 @@ async def _notify_overdue(todo: TodoDocument, pool: ArqRedis) -> bool:
     return True
 
 
-def _todo_redirect_action(label: str, todo_id: str | None) -> NotificationAction:
-    """Build a primary REDIRECT action to the todos page.
-
-    Deep-links the specific todo via ``?todoId`` when one is given (single-item
-    notifications), otherwise lands on the todos list (multi-item digest).
-    """
-    url = f"/todos?todoId={todo_id}" if todo_id else "/todos"
-    return NotificationAction(
-        type=ActionType.REDIRECT,
-        label=label,
-        style=ActionStyle.PRIMARY,
-        config=ActionConfig(
-            redirect=RedirectConfig(url=url, open_in_new_tab=False, close_notification=True)
-        ),
-    )
-
-
 async def _send_dormant_digest(todos: list[TodoDocument]) -> None:
     """Send a single digest notification for all dormant todos that need attention."""
     if not todos:
@@ -448,7 +475,7 @@ async def _send_dormant_digest(todos: list[TodoDocument]) -> None:
 
     now = datetime.now(UTC)
 
-    # Collect user_ids — send one digest per user
+    # Collect user_ids: send one digest per user
     by_user: dict[str, list[TodoDocument]] = {}
     for todo in todos:
         if todo.user_id:
@@ -470,7 +497,7 @@ async def _send_user_dormant_digest(
     count = len(user_todos)
     body = "\n".join(lines)
     # Deep-link the single todo; land on the list when the digest bundles several.
-    action = _todo_redirect_action(
+    action = todo_redirect_action(
         "View todo" if count == 1 else "Review todos",
         user_todos[0].id if count == 1 else None,
     )
@@ -528,6 +555,23 @@ async def _read_canvas(todo: TodoDocument) -> str:
         return ""
 
 
+def _bounded_canvas(canvas: str) -> str:
+    """Trim an oversized canvas to its head and tail, within ``HEALTH_CHECK_CANVAS_MAX_CHARS``.
+
+    A canvas is sectioned markdown: ``Key Details`` and ``Current State`` sit
+    near the top and are patched in place, while activity-log and timeline
+    entries are appended to the bottom. Both ends carry what a health check
+    needs, so the middle is what gets dropped, behind a marker that keeps the
+    agent from reading the cut as a gap in the todo's history.
+    """
+    if len(canvas) <= HEALTH_CHECK_CANVAS_MAX_CHARS:
+        return canvas
+
+    half = HEALTH_CHECK_CANVAS_MAX_CHARS // 2
+    trimmed = len(canvas) - 2 * half
+    return f"{canvas[:half]}\n[middle of canvas trimmed: {trimmed} characters]\n{canvas[-half:]}"
+
+
 async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> str:
     """
     Call call_agent_silent with a health-check prompt.
@@ -538,7 +582,7 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
 
     try:
         # The legacy bridge dict is a spread of a validated UserDocument plus the
-        # user_id stamped below — AuthenticatedUser's shape by construction
+        # user_id stamped below: AuthenticatedUser's shape by construction
         # (Type Safety item 12).
         user_data = cast(AuthenticatedUser, await get_user_by_id(user_id) or {})
         if user_data:
@@ -560,14 +604,16 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
     )
 
     try:
-        complete_message, _tool_data = await call_agent_silent(
+        run = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
-            trigger_context={
-                "trigger_type": "maintenance_health_check",
-                "todo_id": todo_id,
-            },
+            options=AgentRunOptions(
+                trigger_context={
+                    "trigger_type": "maintenance_health_check",
+                    "todo_id": todo_id,
+                }
+            ),
         )
     except Exception as exc:
         log.warning(
@@ -577,7 +623,18 @@ async def _call_health_check_agent(todo_id: str, user_id: str, prompt: str) -> s
         )
         return "NEEDS_ATTENTION: Health check failed"
 
-    return (complete_message or "").strip()
+    # A queued dispatch is an acknowledgement, not a verdict: the check did not
+    # run, and reading the acknowledgement as its result would mark the todo
+    # healthy on the strength of work that has not happened.
+    if run.queued_task_id:
+        log.warning(
+            "maintenance_sweep.health_check_queued",
+            todo_id=todo_id,
+            queued_task_id=run.queued_task_id,
+        )
+        return "NEEDS_ATTENTION: Health check queued behind an in-flight run; not run"
+
+    return (run.message or "").strip()
 
 
 async def _send_individual_notification(
@@ -597,7 +654,7 @@ async def _send_individual_notification(
                 content=NotificationContent(
                     title=title,
                     body=body,
-                    actions=[_todo_redirect_action("View todo", todo_id)],
+                    actions=[todo_redirect_action("View todo", todo_id)],
                 ),
                 metadata={"todo_id": todo_id},
             )
@@ -630,7 +687,7 @@ async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
 
     Returns True if a notification should be sent now and sets the next cooldown
     from ``NOTIFICATION_BACKOFF_DAYS``. Returns False once the schedule is
-    exhausted — the todo is muted for ``NOTIFICATION_MUTE_DAYS`` and the caller
+    exhausted: the todo is muted for ``NOTIFICATION_MUTE_DAYS`` and the caller
     must not send. The strike counter outlives each cooldown so the escalation
     level survives between notifications, resetting only after ``STRIKE_TTL_DAYS``
     of silence.

@@ -53,6 +53,7 @@ from app.decorators.rate_limiting import build_rate_limit_card
 from app.memory.engine import memory_engine
 from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
+from app.memory.user_time import local_today
 from app.models.memory_models import MemoryDocument, MemoryEntry, MemoryEpisode
 from app.models.payment_models import PlanType
 from app.templates.docstrings.memory_tool_docs import (
@@ -605,17 +606,23 @@ async def search_conversations(
 @with_doc(GET_JOURNAL)
 async def get_journal(
     config: RunnableConfig,
-    date: Annotated[str, "The day to read, as YYYY-MM-DD"],
+    date: Annotated[str, "The day to read, as YYYY-MM-DD; omit for the user's local today"] = "",
 ) -> str:
     user_id = get_user_id_from_config(config)
     if not user_id:
         return _ERR_NO_USER_ID
 
-    try:
-        day = date_type.fromisoformat(date)
-    except ValueError:
-        log.warning("memory_tool_invalid_date", operation="episodes", start=date)
-        return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
+    if date:
+        try:
+            day = date_type.fromisoformat(date)
+        except ValueError:
+            log.warning("memory_tool_invalid_date", operation="episodes", start=date)
+            return f"Error: invalid date '{date}'. Use YYYY-MM-DD."
+    else:
+        # Journal days bucket on the user's wall clock: at 2am IST "today" is
+        # still UTC's yesterday, so the default must be the LOCAL day.
+        day = await local_today(user_id)
+        date = day.isoformat()
 
     try:
         response = await memory_engine.get_episodes(user_id, day, day)

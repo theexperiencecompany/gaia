@@ -89,6 +89,14 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
+    // Python virtualenvs: the repo root is a uv workspace, so any root-level
+    // `uv run` materializes .venv/ here. Vendored site-packages ships thousands
+    // of JS bundles (litellm's Next.js static chunks, cloudinary widgets) that
+    // knip reads as project files; uv self-ignores them via an inner
+    // .gitignore, which knip does not honor.
+    ".venv/**",
+    ".venv311/**",
+
     // Wide-event conformance emitters: run as subprocesses from
     // scripts/ci/wide-event-conformance/run.py (python3/pnpm exec tsx), never
     // imported as modules — so knip reads them as unused files.
@@ -97,6 +105,11 @@ const config: KnipConfig = {
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
+
+    // "entire" checkpoint tooling: editor-loaded plugins (opencode, pi), never
+    // imported by the workspace.
+    ".opencode/**",
+    ".pi/**",
 
     // Builtin docgen skill templates: .mjs/.typ/.py/.tex files materialized into
     // the agent workspace and executed by the skills' build.sh scripts (e.g.
@@ -225,13 +238,16 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Peer dependency of @testing-library/react v16 (it no longer bundles
+        // the DOM adapter); required at install time but never imported directly.
+        "@testing-library/dom",
         // Imported by scripts/ci/lib/bots-facts.mjs (the bots evlog-map AST
         // scanner). Declared in apps/mobile + apps/web; resolved here via
         // pnpm workspace hoisting, so knip reads them as unlisted at the root.
         "@babel/parser",
         "@babel/traverse",
         // Invoked dynamically as `pnpm exec jscpd` inside
-        // scripts/ci/check-duplication.mjs, so knip can't see the usage.
+        // scripts/ci/checks.mjs duplication, so knip can't see the usage.
         "jscpd",
         // Imported by scripts/openui/generate-prompt.ts (the OpenUI prompt
         // codegen). Declared in apps/web; resolved here via pnpm workspace
@@ -283,8 +299,6 @@ const config: KnipConfig = {
         "@icons",
         // HeroUI ships per-component subpackages pulled in transitively.
         "@heroui/.*",
-        // Workspace package resolved via pnpm workspace, not always traced.
-        "@gaia/shared",
         // Next.js image optimization (implicitly required, no direct import)
         "sharp",
         // Used by SWC compilation (no direct import in source)
@@ -381,6 +395,11 @@ const config: KnipConfig = {
         "@gaia/bot-slack",
         "@gaia/bot-telegram",
         "@gaia/bot-whatsapp",
+        // Test-only: `vi.mock("amqplib")` in __tests__ must resolve the same
+        // module id the shared OutboundConsumer imports, which under the
+        // isolated linker requires apps/bots to declare it. Tests are excluded
+        // from the reference graph above, so knip cannot see that use.
+        "amqplib",
       ],
     },
 

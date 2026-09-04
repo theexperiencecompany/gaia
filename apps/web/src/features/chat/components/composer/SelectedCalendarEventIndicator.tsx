@@ -57,7 +57,6 @@ export default function SelectedCalendarEventIndicator({
           type: "spring",
           damping: 20,
           stiffness: 300,
-          duration: 0.2,
         }}
         className="relative mx-3 mt-2 mb-1 flex w-fit max-w-lg items-center gap-2 overflow-hidden rounded-xl px-2 py-2"
       >

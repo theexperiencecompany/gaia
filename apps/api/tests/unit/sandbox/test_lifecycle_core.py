@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 import re
@@ -33,9 +34,9 @@ import pytest
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
-from app.services.sandbox import lifecycle
+from app.services.sandbox import lifecycle, pool as pool_module
 from app.services.sandbox.artifact_watcher import ArtifactWatcher
-from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
+from app.services.sandbox.pool import PooledSandbox, SandboxPool, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
 
@@ -1000,3 +1001,49 @@ async def test_a_users_recorded_shard_is_honoured_instead_of_being_recomputed() 
             assert repo.record_acquisition.await_args.kwargs["shard_id"] == 3
         finally:
             get_sandbox_pool().evict(uid)
+
+
+async def test_distributed_lock_keys_both_layers_by_user_id() -> None:
+    # The wrapper composes two locks — a per-user asyncio.Lock (this pod) and the
+    # cross-replica Redis lease — and BOTH must key on the SAME user_id, or one
+    # user's acquisition would serialize against another's (or none at all).
+    pool = SandboxPool()
+
+    @asynccontextmanager
+    async def _fake_redis_lock(user_id: str):
+        yield
+
+    with (
+        patch.object(pool, "get_lock", new=AsyncMock(return_value=asyncio.Lock())) as get_lock,
+        patch.object(pool_module, "_redis_user_lock", side_effect=_fake_redis_lock) as redis_lock,
+    ):
+        async with pool.distributed_lock("user-42"):
+            pass
+
+    get_lock.assert_awaited_once_with("user-42")
+    redis_lock.assert_called_once_with("user-42")
+
+
+async def test_a_finished_acquisition_schedules_the_pause_under_the_user_lock() -> None:
+    # The whole acquisition runs under the user's cross-replica lease, and on
+    # release it arms the idle pause for THIS user + entry — a mutant that keys
+    # either on the wrong value would lock/pause the wrong sandbox.
+    uid = _uid()
+    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x")
+    pool = get_sandbox_pool()
+
+    @asynccontextmanager
+    async def _fake_lock(user_id: str):
+        yield
+
+    with (
+        patch.object(lifecycle, "_acquire_or_create", AsyncMock(return_value=entry)),
+        patch.object(lifecycle, "e2b_sandbox_repository", AsyncMock()),
+        patch.object(lifecycle, "_schedule_pause") as schedule_pause,
+        patch.object(pool, "distributed_lock", side_effect=_fake_lock) as dlock,
+    ):
+        async with lifecycle.acquire_sandbox(uid):
+            pass
+
+    dlock.assert_called_once_with(uid)
+    schedule_pause.assert_called_once_with(uid, entry)

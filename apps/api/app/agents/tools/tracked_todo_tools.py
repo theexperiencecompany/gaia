@@ -5,6 +5,7 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -14,9 +15,25 @@ from langchain_core.tools import tool
 
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import todo_repository
+from app.models.agent_models import agent_configurable
 from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.trigger_subscription_models import (
+    OPERATORS_BY_FIELD_TYPE,
+    ConditionMatch,
+    ConditionOperator,
+    SubscriptionAction,
+    SubscriptionCondition,
+    SubscriptionStatus,
+)
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
+from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
+from app.services.triggers.subscription_service import (
+    DEFAULT_COOLDOWN_SECONDS,
+    SubscriptionError,
+    register_subscription,
+    unregister_subscription,
+)
 from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
@@ -225,14 +242,12 @@ def _build_clearable_datetime_update(
     return None
 
 
-def _build_priority_update(priority: str | None, update_fields: dict[str, object]) -> str | None:
-    """Validate + apply a priority update."""
-    if priority is None:
-        return None
-    try:
-        update_fields["priority"] = Priority(priority).value
-    except ValueError:
-        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
+def _build_priority_update(
+    priority: Priority | None, update_fields: dict[str, object]
+) -> str | None:
+    """Apply a priority update."""
+    if priority is not None:
+        update_fields["priority"] = priority.value
     return None
 
 
@@ -321,6 +336,51 @@ async def _build_recurrence_update(
     return None
 
 
+@dataclass(frozen=True)
+class _UpdateFieldInputs:
+    """The raw agent-supplied field values for update_tracked_todo, bundled so the
+    validator chain that consumes them is one small helper instead of six inline
+    guards on the tool body."""
+
+    labels: list[str] | None
+    due_date: str | None
+    priority: Priority | None
+    scheduled_at: str | None
+    recurrence: str | None
+    expires_at: str | None
+
+
+async def _apply_field_updates(
+    inputs: _UpdateFieldInputs,
+    user_id: str,
+    update_fields: dict[str, object],
+    notes: list[str],
+) -> str | None:
+    """Run each field validator in order, short-circuiting on the first error so the
+    async _get_user_tz Mongo lookup in the recurrence validator never runs after an
+    earlier field already failed. Populates update_fields/notes in place.
+
+    _build_labels_update can never actually return an error today (there is no label
+    validation yet); the check is kept for the same shape as the others so adding one
+    later needs no restructuring.
+    """
+    if error := _build_labels_update(inputs.labels, update_fields):  # pragma: no cover
+        return error
+    if error := _build_clearable_datetime_update(inputs.due_date, "due_date", update_fields):
+        return error
+    if error := _build_priority_update(inputs.priority, update_fields):
+        return error
+    if error := _build_scheduled_at_update(inputs.scheduled_at, update_fields):
+        return error
+    if error := await _build_recurrence_update(
+        inputs.recurrence, inputs.scheduled_at, user_id, update_fields, notes
+    ):
+        return error
+    if error := _build_clearable_datetime_update(inputs.expires_at, "expires_at", update_fields):
+        return error
+    return None
+
+
 def _build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
     """Build the pipe-separated detail fragments shown on the second line of each todo."""
     parts: list[str] = []
@@ -357,7 +417,55 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
         parts.append(f"  {' | '.join(detail_parts)}")
+    parts.extend(f"  {line}" for line in _format_subscription_lines(doc))
     return "\n".join(parts)
+
+
+def _format_subscription_lines(doc: TodoDocument) -> list[str]:
+    """Render a todo's watches, with the ids unsubscribing needs.
+
+    Shown here rather than behind a separate list tool: the model already reads
+    this block, and a watch it cannot see is one it will duplicate.
+    """
+    lines = []
+    for sub in doc.trigger_subscriptions:
+        joiner = " OR " if sub.match is ConditionMatch.ANY else " AND "
+        conditions = (
+            joiner.join(f"{c.field_name} {c.operator} {c.value}" for c in sub.conditions)
+            or "any event"
+        )
+        paused = (
+            " (PAUSED: integration disconnected)" if sub.status is SubscriptionStatus.PAUSED else ""
+        )
+        lines.append(
+            f"Watching {sub.trigger_name} -> {sub.action} when {conditions}"
+            f" (subscription: {sub.id}){paused}"
+        )
+    return lines
+
+
+def _render_catalog(trigger_name: str) -> str:
+    """The matchable fields for a trigger, as the model should see them."""
+    entry = get_matchable_trigger(trigger_name)
+    if entry is None:
+        available = ", ".join(sorted(MATCHABLE_TRIGGERS))
+        return f"'{trigger_name}' is not a subscribable trigger. Available triggers: {available}"
+
+    lines = [f"Matchable fields for {trigger_name}:"]
+    lines.extend(
+        f"  {f.name} ({f.type}): {f.description}. Example: {f.example}" for f in entry.fields
+    )
+    if entry.excluded:
+        lines.append("Not matchable:")
+        lines.extend(f"  {name}: {reason}" for name, reason in sorted(entry.excluded.items()))
+    lines.append(
+        "Operators by type: "
+        + "; ".join(
+            f"{field_type} -> {', '.join(sorted(ops))}"
+            for field_type, ops in OPERATORS_BY_FIELD_TYPE.items()
+        )
+    )
+    return "\n".join(lines)
 
 
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
@@ -428,10 +536,7 @@ async def create_tracked_todo(
         list[str] | None,
         "Optional labels for categorization (gaia-tracked is added automatically)",
     ] = None,
-    priority: Annotated[
-        str,
-        "Priority: 'high', 'medium', 'low', or 'none'",
-    ] = "none",
+    priority: Annotated[Priority, "Priority"] = Priority.NONE,
     scheduled_at: Annotated[
         str | None,
         "ISO datetime for a ONE-TIME future execution. "
@@ -499,9 +604,15 @@ async def create_tracked_todo(
                 Different from due_date: due_date = deadline (overdue = still needs doing),
                 expires_at = relevance window (expired = no longer worth tracking).
     """
-    user_id = config.get("metadata", {}).get("user_id")
+    metadata = config.get("metadata", {})
+    user_id = metadata.get("user_id")
     if not user_id:
         return _ERR_NO_USER_ID
+    # The chat this tracked todo was created in, captured for a later push back
+    # into it. build_agent_config puts conversation_id in `configurable` (not
+    # `metadata`), so read it there — matching reminder_tool. None for a non-chat
+    # root (onboarding/REST).
+    source_conversation_id = agent_configurable(config).get("conversation_id")
 
     # Recurrence is always evaluated in the user's stored timezone. We only
     # look it up here to (a) compute the first cron fire correctly and (b)
@@ -512,18 +623,14 @@ async def create_tracked_todo(
     if error:
         return error
 
-    try:
-        parsed_priority = Priority(priority)
-    except ValueError:
-        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
-
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
         title=title,
         description=description,
         initial_canvas=initial_canvas,
         labels=labels,
-        priority=parsed_priority,
+        priority=priority,
+        source_conversation_id=source_conversation_id,
     )
 
     persist_error = await _persist_scheduling_fields(
@@ -692,10 +799,7 @@ async def update_tracked_todo(
         str | None,
         "ISO datetime string for the deadline. Set to empty string '' to clear.",
     ] = None,
-    priority: Annotated[
-        str | None,
-        "Priority: 'high', 'medium', 'low', or 'none'.",
-    ] = None,
+    priority: Annotated[Priority | None, "Priority"] = None,
     scheduled_at: Annotated[
         str | None,
         "ISO datetime for one-shot scheduled execution, or first-fire anchor for "
@@ -743,27 +847,15 @@ async def update_tracked_todo(
 
     update_fields: dict[str, object] = {}
     notes: list[str] = []
-
-    # Validate each field sequentially with short-circuit so we don't keep doing
-    # work (in particular the async _get_user_tz Mongo lookup inside the
-    # recurrence validator) after an earlier field has already failed.
-    # _build_labels_update can never actually return an error today (there is
-    # no label validation yet) — the check-and-return is kept for the same
-    # shape as every other field below, so adding label validation later
-    # doesn't require restoring this line.
-    if error := _build_labels_update(labels, update_fields):  # pragma: no cover
-        return error
-    if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
-        return error
-    if error := _build_priority_update(priority, update_fields):
-        return error
-    if error := _build_scheduled_at_update(scheduled_at, update_fields):
-        return error
-    if error := await _build_recurrence_update(
-        recurrence, scheduled_at, user_id, update_fields, notes
-    ):
-        return error
-    if error := _build_clearable_datetime_update(expires_at, "expires_at", update_fields):
+    inputs = _UpdateFieldInputs(
+        labels=labels,
+        due_date=due_date,
+        priority=priority,
+        scheduled_at=scheduled_at,
+        recurrence=recurrence,
+        expires_at=expires_at,
+    )
+    if error := await _apply_field_updates(inputs, user_id, update_fields, notes):
         return error
 
     if not update_fields:
@@ -830,6 +922,186 @@ async def list_tracked_todos(
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
 
 
+@tool
+async def list_trigger_fields(
+    trigger_name: Annotated[
+        str,
+        "GAIA trigger slug, e.g. 'gmail_new_message', 'calendar_event_starting_soon', "
+        "'slack_new_message'. Call with a wrong name to get the full list of "
+        "subscribable triggers back.",
+    ],
+) -> str:
+    """Show exactly what an integration trigger delivers, before subscribing to it.
+
+    Returns the trigger's matchable fields with types, descriptions and example
+    values, which fields are deliberately not matchable and why, and the operators
+    each type accepts. Call this first whenever you are about to watch a trigger
+    you have not used in this conversation: the conditions you write must name
+    real fields, and this is where you learn what they are instead of guessing.
+    """
+    return _render_catalog(trigger_name)
+
+
+@tool
+async def subscribe_todo_to_trigger(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the tracked todo that should watch for this event"],
+    trigger_name: Annotated[str, "GAIA trigger slug to watch, e.g. 'gmail_new_message'"],
+    action: Annotated[
+        str,
+        "What to do when it fires: 'execute' (run the todo with the event in its "
+        "context), 'notify' (tell the user, change nothing), 'complete' (mark the "
+        "todo done), or 'unblock' (clear its waiting label).",
+    ],
+    conditions: Annotated[
+        list[dict[str, str | int | float]] | None,
+        "Narrowing tests. Each is "
+        "{'field_name': ..., 'operator': ..., 'value': ...} using fields from "
+        "list_trigger_fields. Omit to fire on every event for this trigger, which is only "
+        "sensible for a trigger already scoped to one channel or calendar.",
+    ] = None,
+    match: Annotated[
+        str,
+        "How the conditions combine: 'all' (every condition must hold, the "
+        "default) or 'any' (fire if any one holds). For an OR of several ANDs, "
+        "make several 'all' subscriptions instead.",
+        # _parse_match lowercases before ConditionMatch(), so the default's CASE
+        # is unobservable ("ALL" behaves identically to "all") — mutating it is a
+        # provably-equivalent mutant with no possible killing test.
+    ] = "all",  # pragma: no mutate
+    cooldown_seconds: Annotated[
+        int, "Minimum gap between two fires of this subscription."
+    ] = DEFAULT_COOLDOWN_SECONDS,
+    minutes_before_start: Annotated[
+        int | None,
+        "For 'calendar_event_starting_soon' only: how long before the event to "
+        "fire (1-1440). This is registration config, not a condition, so use one "
+        "subscription per reminder window.",
+    ] = None,
+) -> str:
+    """Make a tracked todo react to an integration event instead of only a schedule.
+
+    Use when a todo is waiting on something outside GAIA: a reply to an email you
+    sent, a calendar event about to start, a Linear issue changing, a row landing
+    in a sheet. The todo then wakes itself when that happens.
+
+    Write conditions against real payload fields. Call list_trigger_fields first
+    if you are unsure what a trigger delivers. Obvious mistakes (a camelCased
+    field name, an operator that cannot apply to the field's type, a number sent
+    as text) are repaired automatically and reported back. Anything ambiguous is
+    rejected with the fields that do exist, so you can correct it and call again;
+    nothing is ever quietly widened to make it fit.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    parsed_action = _parse_action(action)
+    if parsed_action is None:
+        valid = ", ".join(a.value for a in SubscriptionAction)
+        return f"Error: '{action}' is not a valid action. Valid actions: {valid}."
+
+    parsed_match = _parse_match(match)
+    if parsed_match is None:
+        valid = ", ".join(m.value for m in ConditionMatch)
+        return f"Error: '{match}' is not a valid match mode. Valid modes: {valid}."
+
+    parsed_conditions, condition_error = _parse_conditions(conditions or [])
+    if condition_error:
+        return f"Error: {condition_error}\n\n{_render_catalog(trigger_name)}"
+
+    trigger_data = (
+        {"minutes_before_start": minutes_before_start} if minutes_before_start is not None else None
+    )
+
+    try:
+        subscription, outcome = await register_subscription(
+            todo_id=todo_id,
+            user_id=user_id,
+            trigger_name=trigger_name,
+            conditions=parsed_conditions,
+            action=parsed_action,
+            match=parsed_match,
+            cooldown_seconds=cooldown_seconds,
+            trigger_data=trigger_data,
+        )
+    except SubscriptionError as e:
+        # The catalog rides along on failure so the retry has what it needs.
+        return f"Could not subscribe: {e}\n\n{_render_catalog(trigger_name)}"
+
+    lines = [
+        f"Todo {todo_id} is now watching {trigger_name} and will {parsed_action} when it fires.",
+        f"Subscription id: {subscription.id}",
+    ]
+    if outcome.repairs:
+        lines.append("Repaired automatically: " + "; ".join(r.reason for r in outcome.repairs))
+    return "\n".join(lines)
+
+
+@tool
+async def unsubscribe_todo_from_trigger(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the tracked todo"],
+    subscription_id: Annotated[
+        str, "Subscription id, as shown by list_tracked_todos on the todo's Watching line"
+    ],
+) -> str:
+    """Stop a tracked todo watching one event it subscribed to.
+
+    Use when the thing it was waiting for is no longer relevant but the todo is
+    still open. Completing a todo tears its watches down on its own, so you do not
+    need to call this first.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+
+    removed = await unregister_subscription(todo_id, user_id, subscription_id)
+    if not removed:
+        return f"No subscription {subscription_id} on todo {todo_id}."
+    return f"Todo {todo_id} has stopped watching {removed.trigger_name}."
+
+
+def _parse_action(action: str) -> SubscriptionAction | None:
+    try:
+        return SubscriptionAction(action.strip().lower())
+    except ValueError:
+        return None
+
+
+def _parse_match(match: str) -> ConditionMatch | None:
+    try:
+        return ConditionMatch(match.strip().lower())
+    except ValueError:
+        return None
+
+
+def _parse_conditions(
+    raw: list[dict[str, str | int | float]],
+) -> tuple[list[SubscriptionCondition], str | None]:
+    """Turn the tool's loose condition dicts into typed conditions.
+
+    Shape errors are caught here and reported with the catalog rather than raising
+    a validation traceback the model cannot read.
+    """
+    parsed: list[SubscriptionCondition] = []
+    for item in raw:
+        field_name = item.get("field_name")
+        operator = item.get("operator")
+        value = item.get("value")
+        if not isinstance(field_name, str) or not isinstance(operator, str) or value is None:
+            return [], (f"each condition needs 'field_name', 'operator' and 'value'; got {item!r}")
+        try:
+            parsed_operator = ConditionOperator(operator.strip().lower())
+        except ValueError:
+            valid = ", ".join(o.value for o in ConditionOperator)
+            return [], f"'{operator}' is not a valid operator. Valid operators: {valid}."
+        parsed.append(
+            SubscriptionCondition(field_name=field_name, operator=parsed_operator, value=value)
+        )
+    return parsed, None
+
+
 tools = [
     create_tracked_todo,
     search_todo_context,
@@ -837,4 +1109,7 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
+    list_trigger_fields,
+    subscribe_todo_to_trigger,
+    unsubscribe_todo_from_trigger,
 ]

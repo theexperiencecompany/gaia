@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import delete, func, select
 
 from app.memory.pg_store._session import memory_session, rowcount
+from app.memory.pg_store.memories import _not_expired_clause
 from app.models.memory_db_models import (
     MemoryDocument,
     MemoryEntity,
@@ -36,6 +37,7 @@ async def get_overview_counts(user_id: str) -> MemoryOverviewCounts:
                     MemoryRecord.user_id == user_id,
                     MemoryRecord.is_latest.is_(True),
                     MemoryRecord.is_forgotten.is_(False),
+                    _not_expired_clause(),
                 )
             )
         ).scalar_one()
@@ -52,6 +54,7 @@ async def get_overview_counts(user_id: str) -> MemoryOverviewCounts:
                     MemoryRecord.user_id == user_id,
                     MemoryRecord.is_latest.is_(True),
                     MemoryRecord.is_forgotten.is_(False),
+                    _not_expired_clause(),
                 )
             )
         ).scalar_one()

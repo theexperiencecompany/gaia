@@ -400,6 +400,7 @@ describe("handleNewConversation", () => {
       "telegram",
       "user-42",
       "chan-1",
+      undefined,
     );
     expect(result).toContain("new conversation");
     expect(result).toContain("previous conversation");

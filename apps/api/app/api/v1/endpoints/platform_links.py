@@ -1,13 +1,10 @@
 from collections.abc import Mapping
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX
 from app.db.redis import redis_cache
-from app.decorators import enforce_rate_limit
 from app.models.platform_models import (
     DisconnectPlatformResponse,
     GetPlatformLinksResponse,
@@ -17,16 +14,15 @@ from app.models.platform_models import (
     LinkPlatformResponse,
 )
 from app.models.user_models import AuthenticatedUser
+from app.services.account_fs import schedule_account_sync
 from app.services.analytics_service import AnalyticsEvents, capture_context_event
-from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
-from app.services.photon.photon_client import redirect_deep_link, register_shared_user
 from app.services.platform_link_service import (
-    IMESSAGE_REGISTRATION_FEATURE_KEY,
     Platform,
     PlatformLinkService,
-    register_pending_imessage_number,
+    disconnect_platform_account,
     require_platform_plan,
+    start_platform_connect,
 )
 from app.utils.errors import create_error
 from shared.py.wide_events import log
@@ -150,6 +146,7 @@ async def link_platform(
         )
         if result.is_new_link:
             await notify_account_linked(platform, user_id)
+        schedule_account_sync(user_id)
         log.set(outcome="success")
         capture_context_event(
             AnalyticsEvents.INTEGRATION_CONNECTED,
@@ -175,6 +172,9 @@ async def link_platform(
         raise HTTPException(status_code=409, detail=str(e)) from e
 
 
+# The unlink is audited inside platform_link_service.disconnect_platform_account
+# (shared with the agent tool path) so every entry point writes one audit trail.
+# evlog-map-disable-next-line audit -- audited in disconnect_platform_account
 @router.delete("/{platform}")
 async def disconnect_platform(
     platform: str,
@@ -190,39 +190,9 @@ async def disconnect_platform(
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="disconnect_platform", platform=platform)
 
-    # Read platform_user_id before unlinking so we can clear the bot auth cache
-    existing = await PlatformLinkService.get_linked_platforms(user_id)
-    platform_entry = existing.get(platform)
-    platform_user_id = platform_entry["platformUserId"] if platform_entry else None
-
-    try:
-        result = await PlatformLinkService.unlink_account(user_id, platform)
-    except ValueError as e:
-        log.audit(
-            "platform account unlink rejected",
-            actor=user_id,
-            resource=platform_user_id,
-            provider=platform,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    log.audit(
-        "platform account unlinked",
-        actor=user_id,
-        resource=platform_user_id,
-        provider=platform,
-    )
+    result = await disconnect_platform_account(user_id, platform)
+    schedule_account_sync(user_id)
     log.set(outcome="success")
-    capture_context_event(
-        AnalyticsEvents.INTEGRATION_DISCONNECTED,
-        {"integration_id": platform},
-    )
-
-    if platform_user_id:
-        cache_key = f"bot_user:{platform}:{platform_user_id}"
-        await redis_cache.client.delete(cache_key)
-
     return result
 
 
@@ -250,96 +220,6 @@ async def initiate_platform_connect(
     user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
 
-    await require_platform_plan(user_id, platform)
-
-    # Discord OAuth flow
-    if platform == "discord" and settings.DISCORD_OAUTH_CLIENT_ID:
-        state = await create_oauth_state(
-            user_id=user_id,
-            redirect_path="/settings?section=linked-accounts",
-            integration_id="discord",
-        )
-
-        auth_url = (
-            f"https://discord.com/api/oauth2/authorize"
-            f"?client_id={settings.DISCORD_OAUTH_CLIENT_ID}"
-            f"&redirect_uri={quote(settings.DISCORD_OAUTH_REDIRECT_URI)}"
-            f"&response_type=code"
-            f"&scope=identify"
-            f"&state={state}"
-        )
-        log.set(outcome="success", auth_type="oauth")
-        return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
-        )
-
-    # Slack OAuth flow
-    if platform == "slack" and settings.SLACK_OAUTH_CLIENT_ID:
-        state = await create_oauth_state(
-            user_id=user_id,
-            redirect_path="/settings?section=linked-accounts",
-            integration_id="slack",
-        )
-
-        auth_url = (
-            f"https://slack.com/oauth/v2/authorize"
-            f"?client_id={settings.SLACK_OAUTH_CLIENT_ID}"
-            f"&redirect_uri={quote(settings.SLACK_OAUTH_REDIRECT_URI)}"
-            f"&user_scope=identity.basic"
-            f"&state={state}"
-        )
-        log.set(outcome="success", auth_type="oauth")
-        return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
-        )
-
-    # Telegram manual flow (no OAuth)
-    if platform == "telegram":
-        bot_username = settings.TELEGRAM_BOT_USERNAME or "gaia_bot"
-        log.set(outcome="success", auth_type="manual")
-        return InitiatePlatformConnectResponse(
-            auth_url=None,
-            auth_type="manual",
-            instructions=f"Open Telegram and message @{bot_username} with /auth to link your account.",
-            action_link=f"https://t.me/{bot_username}",
-        )
-
-    # WhatsApp manual flow (no OAuth)
-    if platform == "whatsapp":
-        phone_number = settings.WHATSAPP_PHONE_NUMBER
-        log.set(outcome="success", auth_type="manual")
-        return InitiatePlatformConnectResponse(
-            auth_url=None,
-            auth_type="manual",
-            instructions="Open WhatsApp and send /auth to the GAIA WhatsApp number to link your account.",
-            action_link=f"https://wa.me/{phone_number}" if phone_number else None,
-        )
-
-    # iMessage manual flow: Photon's shared pool only delivers to registered
-    # numbers, so the user's phone must be allowlisted before they can text.
-    if platform == "imessage":
-        if not body.phone:
-            raise HTTPException(
-                status_code=422,
-                detail="A phone number in E.164 format (e.g. +15551234567) is required for iMessage.",
-            )
-        await enforce_rate_limit(user_id, IMESSAGE_REGISTRATION_FEATURE_KEY)
-        photon_user = await register_shared_user(body.phone)
-        # Recorded before the user is sent off to text /auth: an unrecorded
-        # registration that is never linked holds its pool seat with nothing
-        # left pointing at it.
-        await register_pending_imessage_number(user_id, body.phone)
-        log.audit(
-            "imessage number registered for linking",
-            actor=user_id,
-            provider=platform,
-        )
-        log.set(outcome="success", auth_type="manual")  # pragma: no mutate
-        return InitiatePlatformConnectResponse(
-            auth_type="manual",
-            instructions="Text /auth to your GAIA iMessage number from the phone you just registered.",
-            action_link=redirect_deep_link(photon_user.id),
-            contact_number=photon_user.assignedPhoneNumber,
-        )
-
-    raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")
+    result = await start_platform_connect(user_id, platform, phone=body.phone)
+    log.set(outcome="success", auth_type=result.auth_type)
+    return result

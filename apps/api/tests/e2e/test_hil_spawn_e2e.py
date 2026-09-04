@@ -33,8 +33,8 @@ import pytest
 
 from app.agents.core.subagents import spawn_agent
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
-from app.agents.middleware.factory import create_subagent_middleware
-from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.middleware.factory import SubagentStackOptions, create_subagent_middleware
+from app.agents.middleware.subagent import SubagentMiddleware, SubagentMiddlewareConfig
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
@@ -193,16 +193,18 @@ class SpawnDriver:
 
     def _middleware(self) -> SubagentMiddleware:
         middleware = SubagentMiddleware(
-            llm=self._llm,
-            tool_registry=self._tools,
-            tool_space="general",
-            tool_runtime_config=self._runtime,
-            # The REAL middleware stack: its tool-invocation wrap chain is what
-            # re-raises GraphInterrupt as control flow. A bare tool node turns the
-            # pause into an error ToolMessage and no approval ever happens.
-            spawn_middleware_factory=lambda space: create_subagent_middleware(
-                enable_subagent=False, subagent_tool_space=space
-            ),
+            SubagentMiddlewareConfig(
+                llm=self._llm,
+                tool_registry=self._tools,
+                tool_space="general",
+                tool_runtime_config=self._runtime,
+                # The REAL middleware stack: its tool-invocation wrap chain is what
+                # re-raises GraphInterrupt as control flow. A bare tool node turns the
+                # pause into an error ToolMessage and no approval ever happens.
+                spawn_middleware_factory=lambda space: create_subagent_middleware(
+                    subagent=SubagentStackOptions(enabled=False, tool_space=space)
+                ),
+            )
         )
         middleware.set_spawn_graph_provider(self._provider)
         return middleware

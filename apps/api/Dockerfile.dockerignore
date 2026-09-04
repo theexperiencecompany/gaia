@@ -1,0 +1,65 @@
+# apps/api/Dockerfile.dockerignore — BuildKit uses THIS file (not the root
+# .dockerignore) whenever the api image is built with `-f apps/api/Dockerfile`;
+# it replaces the root list, so it carries a full copy plus the api-only
+# excludes. `apps/web` and `docs` used to sit in the root file, which also
+# removed apps/web from the WEB image's context (docker-web: "docker-entrypoint.sh
+# not found", 2026-08-29). Keep the shared part in sync with /.dockerignore.
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Node
+**/node_modules
+.pnpm-store
+
+# Build outputs
+**/.next/*
+**/dist
+**/build
+**/out
+.nx
+
+# Docker
+infra/docker/data
+
+# Git
+.git
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# Misc
+.DS_Store
+*.log
+coverage
+.nyc_output
+.env
+.env.*
+!.env.example
+
+**/test-results
+**/.turbo
+# Anchored AND nested: a bare `__pycache__` only matches at the context root, so
+# libs/shared/py/__pycache__/*.pyc (rewritten by every test lane, different
+# bytes per workspace) rode into the `libs` bind mount of the uv sync layer and
+# re-keyed it on every runner change — measured 2026-08-28: 48-72 s uv sync +
+# ~3 min of dependent layers on an app-only change.
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.venv
+
+# Not inputs of the api image; keeps the cold build context small.
+apps/web
+docs

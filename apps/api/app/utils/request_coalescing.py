@@ -5,6 +5,10 @@ When multiple concurrent requests hit an expensive operation (like building
 the tools list) simultaneously, only one request executes the work while
 others wait for its result. This prevents redundant expensive work.
 
+Coalescing is per-process, so N replicas can each run the work once. That is
+fine: the factories are idempotent and their cache writes are last-write-wins,
+so the cost is a duplicate upstream call, not a wrong result.
+
 Usage:
     result = await coalesce_request(
         key="global_tools",

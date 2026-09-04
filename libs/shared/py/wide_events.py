@@ -231,6 +231,7 @@ class MemoryContext(TypedDict, total=False):
     # retain/consolidate write-path outcome.
     facts_extracted: int
     episode_entries: int
+    episode_entries_deduped: int
     entities_linked: int
     edges_added: int
     new_count: int
@@ -340,7 +341,6 @@ class FileContext(TypedDict, total=False):
 
     operation: str  # "upload"|"delete"|"update"|"seed"|"descriptions"
     file_id: str
-    filename: str
     content_type: str
     size_bytes: int
     conversation_id: str
@@ -846,6 +846,21 @@ async def _wide_event_boundary(
         _loguru.bind(logger_name=logger_name, **log.get()).log(level, event_name)
         _event_state.set(outer_state)
         _trace_id.set(outer_trace_id)
+
+
+def current_workflow_execution_id() -> str | None:
+    """The workflow execution the code in flight belongs to, if any.
+
+    The workflow task stamps ``workflow.execution_id`` on its boundary and
+    nothing else carries it — it is not in ``config.configurable``. Anything
+    that needs to attribute work to a run (the ledger, a run spawned from
+    inside the workflow) reads it from here, so the two can never disagree.
+    """
+    workflow = log.get().get("workflow")
+    if not isinstance(workflow, dict):
+        return None
+    execution_id = workflow.get("execution_id")
+    return str(execution_id) if execution_id else None
 
 
 def wide_task(

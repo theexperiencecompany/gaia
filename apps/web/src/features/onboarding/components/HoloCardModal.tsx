@@ -12,7 +12,7 @@ import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
 import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TwitterShareButton } from "react-share";
 import { TwitterIcon } from "@/components/shared/icons";
 import { HoloCardEditor } from "@/components/ui/holo-card/HoloCardEditor";
@@ -63,29 +63,35 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   }, [personalizationData?.holo_card_id]);
 
-  // Reset reveal state when modal closes
+  // Fallback join date resolved after mount so locale/timezone formatting
+  // never runs during render (server and browser would disagree).
+  const [fallbackMemberSince, setFallbackMemberSince] = useState("");
   useEffect(() => {
-    if (!isOpen) {
-      setIsCardRevealed(false);
-      hasShownConfetti.current = false;
-    }
-  }, [isOpen]);
+    setFallbackMemberSince(
+      new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    );
+  }, []);
 
   // Trigger confetti only after card is revealed
   useEffect(() => {
-    if (isCardRevealed && !hasShownConfetti.current) {
-      hasShownConfetti.current = true;
+    if (!isCardRevealed || hasShownConfetti.current) return;
+    hasShownConfetti.current = true;
 
-      // Small delay to let the card animation complete
-      setTimeout(() => {
-        confetti({
-          particleCount: 300,
-          spread: 500,
-          origin: { y: 0.4 },
-          colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
-        });
-      }, 200);
-    }
+    // Small delay to let the card animation complete
+    const confettiTimer = setTimeout(() => {
+      confetti({
+        particleCount: 300,
+        spread: 500,
+        origin: { y: 0.4 },
+        colors: ["#00bbff", "#a855f7", "#ec4899", "#f59e0b"],
+      });
+    }, 200);
+
+    return () => clearTimeout(confettiTimer);
   }, [isCardRevealed]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
@@ -96,12 +102,14 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
         window.open(
           `https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}`,
           "_blank",
+          "noopener,noreferrer",
         );
         break;
       case "linkedin":
         window.open(
           `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`,
           "_blank",
+          "noopener,noreferrer",
         );
         break;
       case "copy":
@@ -111,26 +119,35 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
     }
   };
 
-  const holoCardData: HoloCardDisplayData = {
-    house: selectedHouse,
-    name: user.name || "User",
-    personality_phrase:
-      personalizationData?.personality_phrase || "Curious Adventurer",
-    user_bio:
-      personalizationData?.user_bio ||
-      "A passionate individual exploring new possibilities and making an impact.",
-    account_number: `#${personalizationData?.account_number || "00000"}`,
-    member_since:
-      personalizationData?.member_since ||
-      new Date().toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
-    overlay_opacity: personalizationData?.overlay_opacity ?? 40,
-    holo_card_id: personalizationData?.holo_card_id,
+  // Reset per-session state in the close event itself (HeroUI routes every
+  // dismissal path — ESC, backdrop, buttons — through this callback), instead
+  // of adjusting state after the isOpen prop changes.
+  const handleModalClose = () => {
+    setIsCardRevealed(false);
+    hasShownConfetti.current = false;
+    onClose();
   };
+
+  // Memoized so identity is stable across unrelated re-renders — the editor's
+  // render-phase reset keys on object identity (same contract as
+  // ProfileCardSettings' displayData).
+  const holoCardData: HoloCardDisplayData = useMemo(
+    () => ({
+      house: selectedHouse,
+      name: user.name || "User",
+      personality_phrase:
+        personalizationData?.personality_phrase || "Curious Adventurer",
+      user_bio:
+        personalizationData?.user_bio ||
+        "A passionate individual exploring new possibilities and making an impact.",
+      account_number: `#${personalizationData?.account_number || "00000"}`,
+      member_since: personalizationData?.member_since || fallbackMemberSince,
+      overlay_color: personalizationData?.overlay_color || "rgba(0,0,0,0)",
+      overlay_opacity: personalizationData?.overlay_opacity ?? 40,
+      holo_card_id: personalizationData?.holo_card_id,
+    }),
+    [selectedHouse, user.name, personalizationData, fallbackMemberSince],
+  );
 
   const shareTitle = "Check out my Personal Card made using GAIA";
 
@@ -147,7 +164,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleModalClose}
       size="full"
       isDismissable={true}
       backdrop="blur"
@@ -172,9 +189,9 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 </>
               ) : (
                 (personalizationData?.suggested_workflows || []).map(
-                  (workflow, index) => (
+                  (workflow) => (
                     <UnifiedWorkflowCard
-                      key={workflow.id || index}
+                      key={workflow.id}
                       title={workflow.title}
                       description={workflow.description}
                       variant="explore"
@@ -192,7 +209,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
               }
             </SimpleChatBubbleBot>
             <div className="mt-8 ml-12 space-x-2">
-              <RaisedButton className="font-medium" onClick={onClose}>
+              <RaisedButton className="font-medium" onClick={handleModalClose}>
                 Let's Go!
                 <Rocket01Icon width={18} height={18} />
               </RaisedButton>

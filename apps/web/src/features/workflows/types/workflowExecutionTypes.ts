@@ -8,7 +8,7 @@ export interface WorkflowExecution {
   execution_id: string;
   workflow_id: string;
   user_id: string;
-  status: "running" | "success" | "failed";
+  status: "running" | "success" | "failed" | "skipped";
   started_at: string;
   completed_at?: string;
   duration_seconds?: number;

@@ -37,6 +37,7 @@ from app.services.files import FileService
 from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import Platform, PlatformLinkService
 from app.services.todos.todo_service import create_todo
+from app.services.triggers.subscription_service import teardown_subscriptions
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
@@ -208,6 +209,13 @@ async def delete_dev_user(email: str) -> DeleteDevUserResponse:
     """Remove a dev user and the todos/conversations/projects it owns."""
     user = await require_dev_user(email)
     user_id = user.id
+
+    # Same rule as every other delete path: unregister while the documents still
+    # name their Composio triggers. Dev accounts are exactly where orphaned
+    # triggers accumulate unnoticed, because nobody is watching that Composio org.
+    for todo in await todo_repository.list_for_user(user_id):
+        if todo.trigger_subscriptions and todo.id:
+            await teardown_subscriptions(todo.id, user_id, reason="user_deleted")
 
     todos_deleted = await todo_repository.delete_all_for_user(user_id)
     conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))

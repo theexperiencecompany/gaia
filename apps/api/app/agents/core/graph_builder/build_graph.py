@@ -38,6 +38,11 @@ from app.config.settings import settings
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.override.langgraph_bigtool.agent_config import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+)
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
 
@@ -64,7 +69,19 @@ EXECUTOR_INITIAL_TOOL_IDS = [
     "complete_tracked_todo",
     "search_todo_context",
     "list_tracked_todos",
+    "list_trigger_fields",
+    "subscribe_todo_to_trigger",
+    "unsubscribe_todo_from_trigger",
     "save_learned_skill",
+    # Bound statically, not left to retrieve_tools: the <playbook_check>
+    # and heal briefs name these directly, so a run whose semantic
+    # retrieval happens to miss them would read the instruction, be
+    # unable to act on it, and silently never decide. A tool a prompt
+    # names by hand has to be reachable by hand.
+    "write_playbook",
+    "decline_playbook",
+    "read_playbook",
+    "disable_playbook",
 ]
 
 
@@ -142,14 +159,17 @@ async def build_executor_graph(
         initial_tools = list(EXECUTOR_INITIAL_TOOL_IDS)
 
     builder = create_agent(
-        llm=chat_llm,
-        agent_name="executor_agent",
-        tool_registry=tool_dict,
-        retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=initial_tools,
-        middleware=middleware,
-        pre_model_hooks=pre_model_hooks,
-        require_finish_to_end=True,
+        chat_llm,
+        tool_dict,
+        tools_config=ToolRetrievalConfig(
+            retrieve_tools_coroutine=get_retrieve_tools_function(),
+            initial_tool_ids=initial_tools,
+        ),
+        hooks_config=HookConfig(
+            pre_model_hooks=pre_model_hooks,
+            require_finish_to_end=True,
+        ),
+        agent_config=AgentConfig(agent_name="executor_agent", middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -216,24 +236,27 @@ async def build_comms_graph(
     pre_model_hooks = comms_pre_model_hooks()
 
     builder = create_agent(
-        llm=chat_llm,
-        agent_name="comms_agent",
-        tool_registry=tool_registry,
-        disable_retrieve_tools=True,
-        initial_tool_ids=[
-            "call_executor",
-            "cancel_executor",
-            *[memory_tool.name for memory_tool in memory_tools.tools],
-        ],
-        middleware=middleware,
-        pre_model_hooks=pre_model_hooks,
-        end_graph_hooks=[
-            follow_up_actions_node,
-            # Learn durable user memories from every comms turn (passive
-            # ingestion). Without this, only facts the agent explicitly saves
-            # via add_memory persist — conversational disclosures are lost.
-            memory_node,
-        ],
+        chat_llm,
+        tool_registry,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=[
+                "call_executor",
+                "cancel_executor",
+                *[memory_tool.name for memory_tool in memory_tools.tools],
+            ],
+        ),
+        hooks_config=HookConfig(
+            pre_model_hooks=pre_model_hooks,
+            end_graph_hooks=[
+                follow_up_actions_node,
+                # Learn durable user memories from every comms turn (passive
+                # ingestion). Without this, only facts the agent explicitly saves
+                # via add_memory persist — conversational disclosures are lost.
+                memory_node,
+            ],
+        ),
+        agent_config=AgentConfig(agent_name="comms_agent", middleware=middleware),
     )
 
     checkpointer_manager = await get_checkpointer_manager()

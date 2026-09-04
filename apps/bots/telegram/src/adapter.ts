@@ -443,9 +443,12 @@ export class TelegramAdapter extends BaseBotAdapter {
   protected async deliverOutbound(
     destinationId: string,
     text: string,
+    _isChannel: boolean,
   ): Promise<void> {
     // grammY accepts a string chat_id; passing the id through avoids the NaN
-    // that Number() would produce for any non-numeric destination.
+    // that Number() would produce for any non-numeric destination. A Telegram
+    // chat_id is polymorphic — a group/supergroup id routes to the group with no
+    // special handling, so _isChannel needs no branch here.
     await this.sendHtml(
       (t, opts) => this.bot.api.sendMessage(destinationId, t, opts),
       text,
@@ -580,6 +583,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           platform: "telegram",
           platformUserId: userId,
           channelId: chatId.toString(),
+          isDm: ctx.chat?.type === "private",
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -887,6 +891,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       platform: "telegram",
       userId,
       channelId: chatId?.toString(),
+      isDm: !isGroup,
       profile,
 
       send: async (text: string): Promise<SentMessage> => {

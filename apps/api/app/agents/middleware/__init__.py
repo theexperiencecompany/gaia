@@ -19,8 +19,7 @@ Usage in build_graph.py:
     middleware = create_middleware_stack()
 
     builder = create_agent(
-        llm=chat_llm,
-        middleware=middleware,
+        agent_config=AgentConfig(middleware=middleware),
         ...
     )
 """
@@ -29,6 +28,10 @@ from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.middleware.factory import (
+    AccountingOptions,
+    ContextOptions,
+    LoopGuardOptions,
+    SubagentStackOptions,
     create_comms_middleware,
     create_executor_middleware,
     create_middleware_stack,
@@ -61,6 +64,10 @@ __all__ = [
     "WorkspaceCompactionMiddleware",
     "create_comms_middleware",
     "create_executor_middleware",
+    "AccountingOptions",
+    "ContextOptions",
+    "LoopGuardOptions",
+    "SubagentStackOptions",
     "create_middleware_stack",
     "create_model_request",
     "create_subagent_middleware",

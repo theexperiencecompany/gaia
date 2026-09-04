@@ -1,4 +1,3 @@
-import { useId } from "react";
 import type { Thing, WithContext } from "schema-dts";
 
 interface JsonLdProps {
@@ -29,17 +28,15 @@ function serializeSchema(schema: WithContext<Thing>): string | null {
  */
 export default function JsonLd({ data }: JsonLdProps) {
   const schemaArray = Array.isArray(data) ? data : [data];
-  const baseId = useId();
 
   return (
     <>
-      {schemaArray.map((schema, index) => {
+      {schemaArray.map((schema) => {
         const json = serializeSchema(schema);
         if (!json) return null;
         return (
           <script
-            // biome-ignore lint/suspicious/noArrayIndexKey: mapping json ld is fine
-            key={`jsonld-${baseId}-${index}`}
+            key={json}
             type="application/ld+json"
             dangerouslySetInnerHTML={{ __html: json }}
           />

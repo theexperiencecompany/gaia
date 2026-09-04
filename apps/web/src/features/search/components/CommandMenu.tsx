@@ -25,11 +25,141 @@ import {
   COMMAND_MENU_STYLES,
   MENU_SECTIONS,
   type MenuItemConfig,
+  type MenuSectionConfig,
 } from "../config/commandMenuConfig";
 
 interface CommandMenuProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+type CommandMenuItem = MenuItemConfig & { onSelect: () => void };
+type CommandMenuSection = Omit<MenuSectionConfig, "items"> & {
+  items: CommandMenuItem[];
+};
+
+/** Deep-link search results for conversations, capped at 3 entries. */
+function ConversationResults({
+  conversations,
+  onOpen,
+}: Readonly<{
+  conversations: ComprehensiveSearchResponse["conversations"];
+  onOpen: (conversationId: string) => void;
+}>) {
+  if (conversations.length === 0) return null;
+  return (
+    <Command.Group heading="Conversations">
+      {conversations.slice(0, 3).map((conversation) => (
+        <Command.Item
+          key={`conversation-${conversation.conversation_id}`}
+          value={conversation.description || "Conversation"}
+          onSelect={() => {
+            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+              result_type: "conversation",
+              conversation_id: conversation.conversation_id,
+            });
+            onOpen(conversation.conversation_id);
+          }}
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <MessageMultiple02Icon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitle}>
+              {conversation.description || "Conversation"}
+            </div>
+            <div className={COMMAND_MENU_STYLES.resultSubtitle}>
+              Conversation
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+/** Deep-link search results for messages, capped at 3 entries. */
+function MessageResults({
+  messages,
+  onOpen,
+}: Readonly<{
+  messages: ComprehensiveSearchResponse["messages"];
+  onOpen: (conversationId: string) => void;
+}>) {
+  if (messages.length === 0) return null;
+  return (
+    <Command.Group heading="Messages">
+      {messages.slice(0, 3).map((message) => (
+        <Command.Item
+          key={`message-${message.message.message_id}`}
+          value={message.snippet}
+          onSelect={() => {
+            trackEvent(ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED, {
+              result_type: "message",
+              conversation_id: message.conversation_id,
+              message_id: message.message.message_id,
+            });
+            onOpen(message.conversation_id);
+          }}
+          className={COMMAND_MENU_STYLES.item}
+        >
+          <SearchIcon width={16} height={16} />
+          <div className={COMMAND_MENU_STYLES.contentWrapper}>
+            <div className={COMMAND_MENU_STYLES.resultTitleClamp}>
+              {message.snippet}
+            </div>
+            <div
+              className={COMMAND_MENU_STYLES.resultSubtitle}
+              suppressHydrationWarning
+            >
+              {new Date(message.message.date).toLocaleDateString()}
+            </div>
+          </div>
+        </Command.Item>
+      ))}
+    </Command.Group>
+  );
+}
+
+/** The static (non-search) menu sections built from config. */
+function MenuSectionsList({
+  sections,
+  showSeparators,
+}: Readonly<{ sections: CommandMenuSection[]; showSeparators: boolean }>) {
+  return (
+    <>
+      {sections.map((section, sectionIndex) => (
+        <React.Fragment key={section.key}>
+          {sectionIndex > 0 && showSeparators && (
+            <Command.Separator className={COMMAND_MENU_STYLES.separator} />
+          )}
+          <Command.Group
+            heading={section.heading}
+            className="pt-1! pb-3!"
+            style={{ padding: 0 }}
+          >
+            {section.items.map((item) => (
+              <Command.Item
+                key={item.id}
+                value={item.label}
+                onSelect={item.onSelect}
+                className={COMMAND_MENU_STYLES.item}
+              >
+                {item.icon}
+                <span className={COMMAND_MENU_STYLES.flexOne}>
+                  {item.label}
+                </span>
+                {item.shortcut && (
+                  <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
+                    {item.shortcut}
+                  </kbd>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        </React.Fragment>
+      ))}
+    </>
+  );
 }
 
 export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
@@ -50,13 +180,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Reset and focus
   useEffect(() => {
-    if (open) {
-      trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
+    if (!open) {
       setSearch("");
       setSearchResults({ conversations: [], messages: [], notes: [] });
+      return;
     }
+    trackEvent(ANALYTICS_EVENTS.SEARCH_GLOBAL_OPENED);
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(focusTimer);
   }, [open]);
 
   // SearchIcon with debouncing
@@ -84,11 +215,13 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   }, [search, handleSearch]);
 
   const openRef = useRef(open);
-  openRef.current = open;
   const onOpenChangeRef = useRef(onOpenChange);
-  onOpenChangeRef.current = onOpenChange;
   const routerRef = useRef(router);
-  routerRef.current = router;
+  useEffect(() => {
+    openRef.current = open;
+    onOpenChangeRef.current = onOpenChange;
+    routerRef.current = router;
+  });
 
   // Keyboard shortcuts — registered once, reads latest values via refs
   useEffect(() => {
@@ -128,6 +261,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     onOpenChange(false);
   }, [router, onOpenChange]);
 
+  const openConversation = useCallback(
+    (conversationId: string) => {
+      router.push(`/c/${conversationId}`);
+      onOpenChange(false);
+    },
+    [router, onOpenChange],
+  );
+
   // Build menu items from config
   const buildMenuItem = useCallback(
     (config: MenuItemConfig): MenuItemConfig & { onSelect: () => void } => {
@@ -147,6 +288,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
             window.open(
               link?.href || `https://${config.externalUrl}.heygaia.io`,
               "_blank",
+              "noopener,noreferrer",
             );
             onOpenChange(false);
           },
@@ -175,24 +317,30 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
     [handleNewChat, router, onOpenChange],
   );
 
-  // Get filtered menu sections
+  // Get filtered menu sections — built in a single pass over sections/items
   const menuSections = useMemo(() => {
-    return MENU_SECTIONS.map((section) => ({
-      ...section,
-      items: section.items
-        .filter((item) => {
-          // Filter out upgrade if subscribed
-          if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
-            return false;
-          }
-          // Filter by search
-          if (search) {
-            return item.label.toLowerCase().includes(search.toLowerCase());
-          }
-          return true;
-        })
-        .map(buildMenuItem),
-    })).filter((section) => section.items.length > 0);
+    const sections: CommandMenuSection[] = [];
+    for (const section of MENU_SECTIONS) {
+      const items: CommandMenuItem[] = [];
+      for (const item of section.items) {
+        // Filter out upgrade if subscribed
+        if (item.hideWhenSubscribed && subscriptionStatus?.is_subscribed) {
+          continue;
+        }
+        // Filter by search
+        if (
+          search &&
+          !item.label.toLowerCase().includes(search.toLowerCase())
+        ) {
+          continue;
+        }
+        items.push(buildMenuItem(item));
+      }
+      if (items.length > 0) {
+        sections.push({ ...section, items });
+      }
+    }
+    return sections;
   }, [search, subscriptionStatus, buildMenuItem]);
 
   return (
@@ -237,90 +385,15 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 {/* Search Results */}
                 {search && (
                   <>
-                    {searchResults.conversations.length > 0 && (
-                      <Command.Group heading="Conversations">
-                        {searchResults.conversations
-                          .slice(0, 3)
-                          .map((conversation) => (
-                            <Command.Item
-                              key={`conversation-${conversation.conversation_id}`}
-                              value={conversation.description || "Conversation"}
-                              onSelect={() => {
-                                trackEvent(
-                                  ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                  {
-                                    result_type: "conversation",
-                                    conversation_id:
-                                      conversation.conversation_id,
-                                  },
-                                );
-                                router.push(
-                                  `/c/${conversation.conversation_id}`,
-                                );
-                                onOpenChange(false);
-                              }}
-                              className={COMMAND_MENU_STYLES.item}
-                            >
-                              <MessageMultiple02Icon width={16} height={16} />
-                              <div
-                                className={COMMAND_MENU_STYLES.contentWrapper}
-                              >
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultTitle}
-                                >
-                                  {conversation.description || "Conversation"}
-                                </div>
-                                <div
-                                  className={COMMAND_MENU_STYLES.resultSubtitle}
-                                >
-                                  Conversation
-                                </div>
-                              </div>
-                            </Command.Item>
-                          ))}
-                      </Command.Group>
-                    )}
+                    <ConversationResults
+                      conversations={searchResults.conversations}
+                      onOpen={openConversation}
+                    />
 
-                    {searchResults.messages.length > 0 && (
-                      <Command.Group heading="Messages">
-                        {searchResults.messages.slice(0, 3).map((message) => (
-                          <Command.Item
-                            key={`message-${message.message.message_id}`}
-                            value={message.snippet}
-                            onSelect={() => {
-                              trackEvent(
-                                ANALYTICS_EVENTS.SEARCH_RESULT_CLICKED,
-                                {
-                                  result_type: "message",
-                                  conversation_id: message.conversation_id,
-                                  message_id: message.message.message_id,
-                                },
-                              );
-                              router.push(`/c/${message.conversation_id}`);
-                              onOpenChange(false);
-                            }}
-                            className={COMMAND_MENU_STYLES.item}
-                          >
-                            <SearchIcon width={16} height={16} />
-                            <div className={COMMAND_MENU_STYLES.contentWrapper}>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultTitleClamp}
-                              >
-                                {message.snippet}
-                              </div>
-                              <div
-                                className={COMMAND_MENU_STYLES.resultSubtitle}
-                                suppressHydrationWarning
-                              >
-                                {new Date(
-                                  message.message.date,
-                                ).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </Command.Item>
-                        ))}
-                      </Command.Group>
-                    )}
+                    <MessageResults
+                      messages={searchResults.messages}
+                      onOpen={openConversation}
+                    />
 
                     <Command.Separator
                       className={COMMAND_MENU_STYLES.separator}
@@ -329,39 +402,10 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 )}
 
                 {/* Menu Sections */}
-                {menuSections.map((section, sectionIndex) => (
-                  <React.Fragment key={section.key}>
-                    {sectionIndex > 0 && !search && (
-                      <Command.Separator
-                        className={COMMAND_MENU_STYLES.separator}
-                      />
-                    )}
-                    <Command.Group
-                      heading={section.heading}
-                      className="pt-1! pb-3!"
-                      style={{ padding: 0 }}
-                    >
-                      {section.items.map((item) => (
-                        <Command.Item
-                          key={item.id}
-                          value={item.label}
-                          onSelect={item.onSelect}
-                          className={COMMAND_MENU_STYLES.item}
-                        >
-                          {item.icon}
-                          <span className={COMMAND_MENU_STYLES.flexOne}>
-                            {item.label}
-                          </span>
-                          {item.shortcut && (
-                            <kbd className={COMMAND_MENU_STYLES.itemShortcut}>
-                              {item.shortcut}
-                            </kbd>
-                          )}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  </React.Fragment>
-                ))}
+                <MenuSectionsList
+                  sections={menuSections}
+                  showSeparators={!search}
+                />
               </Command.List>
 
               {/* Footer */}

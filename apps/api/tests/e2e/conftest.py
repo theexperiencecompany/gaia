@@ -37,9 +37,14 @@ import pytest
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.core.lazy_loader import providers
-from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.create_agent import (
+    AgentConfig,
+    HookConfig,
+    ToolRetrievalConfig,
+    create_agent,
+)
 from app.override.langgraph_bigtool.hooks import HookType
-from tests.helpers import BindableToolsFakeModel, skip_items_without_real_services
+from tests.helpers import BindableToolsFakeModel, pg_advisory_lock, skip_items_without_real_services
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
@@ -65,14 +70,19 @@ _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """HIL e2e files need real Mongo/Redis; skip them at collection otherwise.
+    """Some e2e files need real Mongo/Redis; skip them at collection otherwise.
 
     These are the only e2e files that request the real-infra fixtures from
-    tests/integration/real/db_fixtures (verified by grep). Everything else in
-    this directory runs hermetic with MemorySaver + fake LLM.
+    tests/integration/real/db_fixtures (verified by grep): the HIL journeys and
+    the trigger-dispatch fan-out. Everything else in this directory runs hermetic
+    with MemorySaver + fake LLM.
     """
 
-    real_infra_files = {"test_hil_barrier_e2e.py", "test_hil_spawn_e2e.py"}
+    real_infra_files = {
+        "test_hil_barrier_e2e.py",
+        "test_hil_spawn_e2e.py",
+        "test_todo_trigger_dispatch_e2e.py",
+    }
     dir_root = Path(__file__).resolve().parent
     skip_items_without_real_services(
         [
@@ -80,7 +90,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             for item in items
             if item.path.is_relative_to(dir_root) and item.path.name in real_infra_files
         ],
-        reason="HIL e2e requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
+        reason="requires USE_REAL_SERVICES=1 (real Mongo/Redis)",
     )
 
 
@@ -113,12 +123,13 @@ def build_gaia_test_graph(
 
     builder = create_agent(
         llm=fake_llm,
-        agent_name="test_agent",
         tool_registry=tool_registry,
-        disable_retrieve_tools=True,
-        initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
-        middleware=None,
-        pre_model_hooks=pre_model_hooks,
+        tools_config=ToolRetrievalConfig(
+            disable_retrieve_tools=True,
+            initial_tool_ids=initial_tool_ids or list(tool_registry.keys()),
+        ),
+        hooks_config=HookConfig(pre_model_hooks=pre_model_hooks),
+        agent_config=AgentConfig(agent_name="test_agent"),
     )
 
     resolved_store = store or InMemoryStore()
@@ -147,7 +158,8 @@ async def memory_saver():
         )
         await pool.open(wait=True, timeout=30)
         checkpointer = AsyncPostgresSaver(conn=pool)
-        await checkpointer.setup()
+        async with pg_advisory_lock(_POSTGRES_URL):
+            await checkpointer.setup()
         yield checkpointer
         await pool.close()
     else:
@@ -165,7 +177,8 @@ async def in_memory_store():
         from langgraph.store.postgres import AsyncPostgresStore
 
         async with AsyncPostgresStore.from_conn_string(_POSTGRES_URL) as store:
-            await store.setup()
+            async with pg_advisory_lock(_POSTGRES_URL):
+                await store.setup()
             yield store
     else:
         yield InMemoryStore()

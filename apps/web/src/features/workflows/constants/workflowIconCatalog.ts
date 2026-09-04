@@ -75,6 +75,45 @@ export function workflowIconLabel(name: string): string {
     .trim();
 }
 
+/** Score one whitespace term against an icon's name + keywords (0 = no match). */
+function scoreTermForIcon(
+  term: string,
+  def: WorkflowIconDef,
+  normalizedName: string,
+  nameWords: string[],
+): number {
+  let score = 0;
+  if (normalizedName === term || normalizedName.startsWith(term)) {
+    return 5;
+  }
+  if (nameWords.some((word) => word.startsWith(term))) return 4;
+  if (normalizedName.includes(term)) return 3;
+  if (def.keywords.some((keyword) => keyword.startsWith(term))) return 2;
+  if (def.keywords.some((keyword) => keyword.includes(term))) score = 1;
+  return score;
+}
+
+/** Best score across a term's plural/possessive variants. */
+function bestVariantScore(
+  rawTerm: string,
+  def: WorkflowIconDef,
+  normalizedName: string,
+  nameWords: string[],
+): number {
+  const variants =
+    singularize(rawTerm) === rawTerm
+      ? [rawTerm]
+      : [rawTerm, singularize(rawTerm)];
+  let best = 0;
+  for (const variant of variants) {
+    best = Math.max(
+      best,
+      scoreTermForIcon(variant, def, normalizedName, nameWords),
+    );
+  }
+  return best;
+}
+
 /** Ranked search: exact/prefix name match > name substring > keyword prefix > keyword substring. Every whitespace-separated query term must match; empty query returns the full catalog. */
 export function searchWorkflowIcons(query: string): WorkflowIconDef[] {
   const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -91,27 +130,12 @@ export function searchWorkflowIcons(query: string): WorkflowIconDef[] {
     let matchesAllTerms = true;
 
     for (const rawTerm of terms) {
-      const variants =
-        singularize(rawTerm) === rawTerm
-          ? [rawTerm]
-          : [rawTerm, singularize(rawTerm)];
-      let termScore = 0;
-      for (const term of variants) {
-        let variantScore = 0;
-        if (normalizedName === term || normalizedName.startsWith(term)) {
-          variantScore = 5;
-        } else if (nameWords.some((word) => word.startsWith(term))) {
-          variantScore = 4;
-        } else if (normalizedName.includes(term)) {
-          variantScore = 3;
-        } else if (def.keywords.some((keyword) => keyword.startsWith(term))) {
-          variantScore = 2;
-        } else if (def.keywords.some((keyword) => keyword.includes(term))) {
-          variantScore = 1;
-        }
-        termScore = Math.max(termScore, variantScore);
-      }
-
+      const termScore = bestVariantScore(
+        rawTerm,
+        def,
+        normalizedName,
+        nameWords,
+      );
       if (termScore === 0) {
         matchesAllTerms = false;
         break;

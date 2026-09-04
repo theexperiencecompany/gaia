@@ -29,18 +29,20 @@ function generateContent(
   _config: unknown,
   pages: PageInfo[] | undefined,
 ): string {
-  const enriched = (pages ?? [])
-    .filter((p) => !p.route.includes("["))
-    .map((page) => {
-      if (page.config?.title) return page;
-      const meta = extractMetadata(page.filePath);
-      if (!meta) return null;
-      return { ...page, config: { ...meta } };
-    })
-    .filter((p): p is PageInfo => p !== null && !!p.config?.title)
-    .sort((a, b) =>
-      (a.config?.title ?? "").localeCompare(b.config?.title ?? ""),
-    );
+  const enriched: PageInfo[] = [];
+  for (const page of pages ?? []) {
+    if (page.route.includes("[")) continue;
+    if (page.config?.title) {
+      enriched.push(page);
+      continue;
+    }
+    const meta = extractMetadata(page.filePath);
+    if (!meta) continue;
+    enriched.push({ ...page, config: { ...meta } });
+  }
+  enriched.sort((a, b) =>
+    (a.config?.title ?? "").localeCompare(b.config?.title ?? ""),
+  );
 
   const lines: string[] = [
     `# ${siteConfig.short_name}`,

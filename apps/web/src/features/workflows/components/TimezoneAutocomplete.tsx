@@ -11,7 +11,7 @@ interface TimezoneOption {
   offset: string;
 }
 
-interface TimezoneAutocompleteProps {
+export interface TimezoneAutocompleteProps {
   timezone: string;
   options: TimezoneOption[];
   onChange: (timezone: string) => void;

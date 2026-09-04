@@ -4,15 +4,32 @@ from typing import Any, ClassVar, TypeVar, cast
 from fastapi import WebSocket
 
 from app.constants.log_tags import LogTag
-from app.db.rabbitmq import get_rabbitmq_publisher
-from app.utils.worker_detection import is_main_app
+from app.constants.websocket import WEBSOCKET_BROADCAST_CHANNEL
+from app.db.redis import redis_cache
 from shared.py.wide_events import log
 
 T = TypeVar("T", bound="WebSocketManager")
 
 
+class WebSocketBroadcastError(RuntimeError):
+    """A broadcast could not be published to the fan-out channel."""
+
+
 class WebSocketManager:
-    """Manages WebSocket connections for real-time notifications"""
+    """The user WebSockets *this* process holds, plus the publisher that reaches the rest.
+
+    Sending is never a direct write. ``broadcast_to_user`` only publishes to
+    ``WEBSOCKET_BROADCAST_CHANNEL``; every replica's
+    ``websocket_broadcast_listener`` picks the message up and calls
+    ``deliver_local`` on its own sockets. That holds for the publishing replica
+    too — it delivers through its own subscription like any other.
+
+    Both halves of that are load-bearing. Publishing (rather than writing
+    locally) is what lets a broadcast raised on replica A or in an ARQ worker
+    reach a user whose socket lives on replica B. *Only* publishing is what
+    keeps the publishing replica from delivering the same message twice, once
+    directly and once off its own subscription.
+    """
 
     _instance: ClassVar["WebSocketManager | None"] = None
 
@@ -48,18 +65,32 @@ class WebSocketManager:
         log.info(f"{LogTag.STARTUP} Removed WebSocket connection for user", user_id=user_id)
 
     async def broadcast_to_user(self, user_id: str, message: dict[str, Any]) -> None:
-        """Broadcast message to all connections for a user"""
+        """Publish a message to every replica holding one of this user's sockets.
 
-        # If we don't have websocket pool (not main app), publish to RabbitMQ
-        if not is_main_app():
-            await self._publish_to_rabbitmq(user_id, message)
-            return
+        Callable from anywhere — request handlers, ARQ workers, schedulers. It
+        does not write to this process's sockets; the listener does that.
+        """
+        client = redis_cache.redis
+        if client is None:
+            raise WebSocketBroadcastError(
+                "Redis is not configured; WebSocket broadcasts cannot be delivered"
+            )
+        await client.publish(
+            WEBSOCKET_BROADCAST_CHANNEL,
+            json.dumps({"user_id": user_id, "message": message}),
+        )
 
-        if user_id not in self.connections:
-            return
+    async def deliver_local(self, user_id: str, message: dict[str, Any]) -> int:
+        """Write a broadcast to this process's sockets; returns how many survived.
 
-        disconnected = set()
-        for websocket in self.connections[user_id]:
+        Sockets that fail the write are already gone (the peer dropped without a
+        close frame), so they are pruned rather than retried.
+        """
+        sockets = self.connections.get(user_id)
+        if not sockets:
+            return 0
+        disconnected: set[WebSocket] = set()
+        for websocket in sockets:
             try:
                 await websocket.send_json(message)
             except Exception as e:
@@ -70,40 +101,11 @@ class WebSocketManager:
                     user_id=user_id,
                 )
                 disconnected.add(websocket)
-
-        # Remove disconnected websockets
         for ws in disconnected:
-            self.connections[user_id].discard(ws)
-
-    async def _publish_to_rabbitmq(self, user_id: str, message: dict[str, Any]) -> None:
-        """Publish WebSocket message to RabbitMQ for main app to broadcast."""
-        try:
-            publisher = await get_rabbitmq_publisher()
-
-            # Create message for WebSocket broadcasting
-            rabbitmq_message = {
-                "type": "websocket_broadcast",
-                "user_id": user_id,
-                "message": message,
-            }
-
-            message_body = json.dumps(rabbitmq_message).encode("utf-8")
-            # Publisher now handles connection health automatically
-            await publisher.publish("websocket-events", message_body)
-
-            log.debug(
-                f"{LogTag.STARTUP} Published WebSocket message for user to RabbitMQ",
-                user_id=user_id,
-            )
-
-        except Exception as e:
-            log.error(
-                f"{LogTag.STARTUP} Failed to publish WebSocket message to RabbitMQ",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                exc_info=True,
-            )
+            sockets.discard(ws)
+        if not sockets:
+            del self.connections[user_id]
+        return len(sockets)
 
 
 # Create a singleton instance of WebSocketManager

@@ -10,6 +10,7 @@ import {
   CurrentTimeLabel,
   CurrentTimeLine,
 } from "@/features/calendar/components/CurrentTimeIndicator";
+import { formatEventTime } from "@/features/calendar/utils/calendarUtils";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 
 interface MultiDayCalendarGridProps {
@@ -36,34 +37,46 @@ interface MultiDayCalendarGridProps {
 const PX_PER_MINUTE = 64 / 60;
 const DAY_START_HOUR = 0;
 
-const getEventPositions = (events: GoogleCalendarEvent[], targetDate: Date) => {
+interface EventPosition {
+  event: GoogleCalendarEvent;
+  top: number;
+  height: number;
+  left: number;
+  width: number;
+}
+
+const getEventPositions = (
+  events: GoogleCalendarEvent[],
+  targetDate: Date,
+): { timedEvents: EventPosition[] } => {
   const targetDateStr = targetDate.toDateString();
+  const timedEvents: EventPosition[] = [];
 
-  const timedEvents = events
-    .filter((event) => {
-      const eventDateStr = event.start.dateTime
-        ? new Date(event.start.dateTime).toDateString()
-        : null;
-      return eventDateStr === targetDateStr && event.start.dateTime;
-    })
-    .map((event) => {
-      const startTime = new Date(event.start.dateTime!);
-      const endTime = new Date(event.end.dateTime!);
+  for (const event of events) {
+    const startDateTime = event.start.dateTime;
+    const endDateTime = event.end.dateTime;
+    if (!startDateTime || !endDateTime) continue;
 
-      const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
-      const endMinutes = endTime.getHours() * 60 + endTime.getMinutes();
+    const startDate = new Date(startDateTime);
+    if (startDate.toDateString() !== targetDateStr) {
+      continue;
+    }
+    const endDate = new Date(endDateTime);
 
-      const top = (startMinutes - DAY_START_HOUR * 60) * PX_PER_MINUTE;
-      const height = (endMinutes - startMinutes) * PX_PER_MINUTE;
+    const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+    const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
 
-      return {
-        event,
-        top,
-        height,
-        left: 0,
-        width: 100,
-      };
+    const top = (startMinutes - DAY_START_HOUR * 60) * PX_PER_MINUTE;
+    const height = (endMinutes - startMinutes) * PX_PER_MINUTE;
+
+    timedEvents.push({
+      event,
+      top,
+      height,
+      left: 0,
+      width: 100,
     });
+  }
 
   return { timedEvents };
 };
@@ -206,9 +219,10 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                       {day.timedEvents.map((eventPos) => {
                         const eventColor = getEventColor(eventPos.event);
                         return (
-                          <div
+                          <button
+                            type="button"
                             key={`event-${eventPos}`}
-                            className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-white backdrop-blur-3xl transition-all duration-200 hover:opacity-80"
+                            className="absolute ml-0.5 flex min-h-fit cursor-pointer overflow-hidden rounded-lg text-left text-white backdrop-blur-3xl transition-opacity duration-200 hover:opacity-80"
                             style={{
                               top: `${eventPos.top}px`,
                               height: `${eventPos.height}px`,
@@ -231,25 +245,17 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                               {eventPos.event.start.dateTime &&
                                 eventPos.event.end.dateTime && (
                                   <div className="mt-1 text-xs text-zinc-400">
-                                    {new Date(
-                                      eventPos.event.start.dateTime,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    })}{" "}
+                                    {formatEventTime(
+                                      new Date(eventPos.event.start.dateTime),
+                                    )}{" "}
                                     –{" "}
-                                    {new Date(
-                                      eventPos.event.end.dateTime,
-                                    ).toLocaleTimeString("en-US", {
-                                      hour: "numeric",
-                                      minute: "2-digit",
-                                      hour12: true,
-                                    })}
+                                    {formatEventTime(
+                                      new Date(eventPos.event.end.dateTime),
+                                    )}
                                   </div>
                                 )}
                             </div>
-                          </div>
+                          </button>
                         );
                       })}
                     </div>

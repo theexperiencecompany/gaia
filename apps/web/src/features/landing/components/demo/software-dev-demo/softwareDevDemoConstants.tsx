@@ -48,24 +48,6 @@ export const PR_TOOLS: ToolStep[] = [
   },
 ];
 
-export const INCIDENT_TOOLS: ToolStep[] = [
-  {
-    category: "sentry",
-    name: "sentry_list_issues",
-    message: "Scanning error reports",
-  },
-  {
-    category: "github",
-    name: "github_list_commits",
-    message: "Checking recent deploys",
-  },
-  {
-    category: "slack",
-    name: "slack_create_message",
-    message: "Alerting #oncall",
-  },
-];
-
 // ─── Message Arrays ──────────────────────────────────────────────────
 
 export const PROACTIVE_MESSAGES: ChatMessage[] = [

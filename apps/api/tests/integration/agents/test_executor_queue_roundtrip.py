@@ -18,8 +18,9 @@ import json
 import pytest
 
 from app.agents.core.background.executor_queue import build_run_item
+from app.agents.core.background.session import RunIdentity, RunKind
 from app.agents.llm.lane import ModelLane
-from app.helpers.agent_helpers import build_agent_config
+from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.models.agent_models import AgentConfigurable, agent_configurable
 
 #: A paid user's resolved lane: the paid model on the pinned first-party route.
@@ -55,10 +56,14 @@ def _redis_roundtrip(configurable: AgentConfigurable) -> AgentConfigurable:
     """Exactly what the queue does: serialize the item, store it, read it back."""
     item = build_run_item(
         task="send the email",
-        task_id="task-1",
         configurable=configurable,
-        conversation_id="conv-1",
-        user_message_id="msg-1",
+        identity=RunIdentity(
+            stream_id="",
+            conversation_id="conv-1",
+            kind=RunKind.QUEUED,
+            task_id="task-1",
+            user_message_id="msg-1",
+        ),
     )
     return json.loads(json.dumps(item))["configurable"]
 
@@ -79,11 +84,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 
@@ -98,11 +107,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 
@@ -116,11 +129,15 @@ class TestQueuedRunRebuild:
 
         executor = agent_configurable(
             await build_agent_config(
-                conversation_id="conv-1",
-                user={"user_id": "u1"},
-                agent_name="executor_agent",
-                thread_id="executor_conv-1",
-                base_configurable=restored,
+                identity=AgentIdentity(
+                    conversation_id="conv-1",
+                    user={"user_id": "u1"},
+                    agent_name="executor_agent",
+                ),
+                thread=AgentThread(
+                    thread_id="executor_conv-1",
+                    base_configurable=restored,
+                ),
             )
         )
 
