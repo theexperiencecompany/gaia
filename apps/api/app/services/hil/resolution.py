@@ -23,6 +23,7 @@ from langgraph.types import Command
 
 from app.agents.core.background.executor_queue import (
     ExecutorRunItem,
+    LockClaim,
     is_executor_busy,
     prepare_run_from_item,
 )
@@ -347,7 +348,12 @@ async def _dispatch_resume(
     # hands it back as a plain dict. cast rather than isinstance (item 12) —
     # ExecutorRunItem is total=False, so {} is a valid empty item.
     prepared = await prepare_run_from_item(
-        record.conversation_id, cast(ExecutorRunItem, record.resume_item or {})
+        record.conversation_id,
+        cast(ExecutorRunItem, record.resume_item or {}),
+        # SEIZE: the paused run still holds this conversation's lock on purpose
+        # (it is parked on the approval this decision answers), so the resume has
+        # to take it over rather than wait for a conversation nobody holds.
+        claim=LockClaim.SEIZE,
     )
     if prepared is None:
         log.error(f"{LogTag.HIL} Could not prepare resume run", approval_id=record.approval_id)

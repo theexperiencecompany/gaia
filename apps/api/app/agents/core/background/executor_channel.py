@@ -48,6 +48,14 @@ from shared.py.wide_events import log
 #: to be kept in sync with it.
 INBOX_ENTRY_ID = "inbox_entry_id"
 
+#: What a stopped run tells the run that follows it. Carries no instruction of
+#: its own, which is why it never counts as work (see ``announce_interruption``).
+INTERRUPTION_NOTICE = (
+    "The task you were working on was INTERRUPTED by the user. Do not "
+    "resume it, retry it, or finish what it left half-done unless the "
+    "user asks for it again."
+)
+
 
 @dataclass(frozen=True, slots=True)
 class InboxEntry:
@@ -110,17 +118,14 @@ class ExecutorInbox:
 
     Not a queue: see the module docstring. Reads are non-destructive and
     ``retire`` is the only removal, so the inbox is safe to read from a run that
-    may die at any point.
+    may die at any point — and what has actually been delivered is read off the
+    executor's thread (:func:`decide_drain`), never off a marker here that could
+    disagree with it.
     """
 
     def __init__(self, conversation_id: str) -> None:
         self.conversation_id = conversation_id
         self._key = f"{EXECUTOR_INBOX_PREFIX}{conversation_id}"
-        #: Ids a run has already put in front of the model. An entry stays on the
-        #: list until a LATER pass sees it committed, so without this a run that
-        #: injects on its final model call would look, at finalize, exactly like
-        #: work nobody ever picked up — and get carried into a duplicate run.
-        self._delivered_key = f"{EXECUTOR_INBOX_PREFIX}{conversation_id}:delivered"
 
     @staticmethod
     def _encode(entry: InboxEntry) -> str:
@@ -150,7 +155,6 @@ class ExecutorInbox:
         """Drop an entry that is now committed to the executor's thread."""
         if redis_cache.client:
             await redis_cache.client.lrem(self._key, 1, self._encode(entry))
-            await redis_cache.client.lrem(self._delivered_key, 0, entry.id)
 
     async def count(self) -> int:
         """How much work is waiting. Cheap enough to ask before every decision."""
@@ -160,10 +164,10 @@ class ExecutorInbox:
         """Drop everything pending. Returns how many entries went."""
         pending = await self.count()
         if redis_cache.client:
-            await redis_cache.client.delete(self._key, self._delivered_key)
+            await redis_cache.client.delete(self._key)
         return pending
 
-    async def announce_interruption(self, message: str | None = None) -> InboxEntry:
+    async def announce_interruption(self, message: str | None = None) -> list[InboxEntry]:
         """Tell the next run that the one before it was force-stopped.
 
         The executor's thread is per-conversation and persists, so a cancelled
@@ -171,44 +175,19 @@ class ExecutorInbox:
         the next run reads it as unfinished business and picks it straight back
         up — which is exactly what the user stopped. Committing the stop into the
         same thread is what makes an interrupt actually mean stop.
+
+        A redirect ("stop that, do X instead") is appended as its own entry
+        rather than folded into the notice. The notice is context for whatever
+        the user does next and is never work in its own right; folding them
+        together made a bare Stop look like pending work, and finalize started
+        a fresh run whose task WAS the stop notice.
         """
-        notice = (
-            "The task you were working on was INTERRUPTED by the user. Do not "
-            "resume it, retry it, or finish what it left half-done unless the "
-            "user asks for it again."
-        )
+        entries = [
+            await self.append(str(uuid4()), INTERRUPTION_NOTICE, AgentTag.EXECUTOR_INTERRUPTED)
+        ]
         if message:
-            notice = f"{notice}\n\nWhat the user wants instead:\n{message}"
-        return await self.append(str(uuid4()), notice, AgentTag.EXECUTOR_INTERRUPTED)
-
-    async def mark_delivered(self, entries: list[InboxEntry]) -> None:
-        """Record that a run has shown these to the model."""
-        if entries and redis_cache.client:
-            # A list rather than a set: the typed async client surface exposes
-            # list commands only, and duplicates are harmless here — membership
-            # is all this is ever asked, and ``retire`` removes every copy.
-            await redis_cache.client.rpush(self._delivered_key, *[e.id for e in entries])
-            await redis_cache.client.expire(self._delivered_key, EXECUTOR_INBOX_TTL)
-
-    async def take_undelivered(self) -> list[InboxEntry]:
-        """Remove and return work no run has shown the model yet.
-
-        Used when a run ends: anything left here arrived too late for its last
-        reasoning step, so a new run has to carry it. Entries a run DID inject
-        are left alone — they are already in that thread, and re-running them
-        would answer the same request twice.
-        """
-        delivered = await self._delivered_ids()
-        entries = [entry for entry in await self.read() if entry.id not in delivered]
-        for entry in entries:
-            await self.retire(entry)
+            entries.append(await self.append(str(uuid4()), message))
         return entries
-
-    async def _delivered_ids(self) -> set[str]:
-        if not redis_cache.client:
-            return set()
-        raw = await redis_cache.client.lrange(self._delivered_key, 0, -1)
-        return {member if isinstance(member, str) else bytes(member).decode() for member in raw}
 
     async def discard(self, entry_ids: set[str]) -> list[str]:
         """Drop the named entries. Returns the ids actually removed.
@@ -274,7 +253,6 @@ async def drain_inbox_hook(state: State, config: RunnableConfig, store: BaseStor
         if not drain.inject:
             return state
 
-        await inbox.mark_delivered(drain.inject)
         injected = [as_interjection(entry) for entry in drain.inject]
         log.set(executor_inbox_injected=len(injected))
         return cast(

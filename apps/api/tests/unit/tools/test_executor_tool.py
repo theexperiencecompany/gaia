@@ -340,14 +340,15 @@ class TestCallExecutorLockContention:
         )
         await drain_background_tasks()
 
-        handed_id = task_id_from(response)
-        assert response == (
-            "I'm already working on a task for this conversation and I've "
-            f"passed this to that run (task_id: {handed_id}) — it will pick it "
-            "up as it goes and cover it in the same answer."
+        handed_over = (
+            "It's been added to the work already in progress and will be "
+            "covered in the same answer. Confirm briefly in plain words — "
+            "never mention runs, task ids, queues, or waiting."
         )
+        assert response == handed_over
         assert len(spawned_runs) == 1  # handed-over work must NOT start its own run
         entries = await inbox().read()
+        handed_id = entries[0].id
         assert entries == [
             InboxEntry(
                 id=handed_id,
@@ -389,7 +390,7 @@ class TestCallExecutorLockContention:
         started = time.monotonic()
         response = await call_executor_with(config=config_for("stream-2"), task="b")
 
-        assert response.startswith("I'm already working on a task")
+        assert response.startswith("It's been added to the work already in progress")
         assert time.monotonic() - started < 0.1
         assert await fake_redis.llen(INBOX_KEY) == 1
 
@@ -454,7 +455,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
-        assert response.startswith("I'm already working on a task")
+        assert response.startswith("It's been added to the work already in progress")
         assert 0.1 <= elapsed < 0.4  # DETECT (0.1) reached, WAIT (0.5) not
         assert await fake_redis.llen(INBOX_KEY) == 1
 
@@ -471,7 +472,7 @@ class TestRedirectAcquire:
         response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
-        assert response.startswith("I'm already working on a task")
+        assert response.startswith("It's been added to the work already in progress")
         assert elapsed >= 0.5  # waited the full budget because a cancel was seen
         assert await fake_redis.llen(INBOX_KEY) == 1
         assert spawned_runs == []

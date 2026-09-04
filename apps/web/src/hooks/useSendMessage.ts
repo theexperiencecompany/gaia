@@ -202,10 +202,16 @@ export const useSendMessage = () => {
         replyToMessage: ctx.replyToMessage ?? undefined,
       };
 
-      // A send landing while this conversation's turn is open gets queued by
-      // the turn manager — its optimistic bubble renders greyed-out until
-      // dispatch flips it to "sending".
-      const willQueue = turnManager.isTurnActive(ctx.conversationId);
+      // A send landing while this conversation's turn is open steers the live
+      // run instead of waiting: its optimistic bubble sends immediately. Only
+      // a not-yet-created conversation still queues — with no id the backend
+      // has nothing to fold into.
+      const canSteer =
+        ctx.conversationId != null &&
+        ctx.conversationId !== "new" &&
+        turnManager.isTurnActive(ctx.conversationId);
+      const willQueue =
+        !canSteer && turnManager.isTurnActive(ctx.conversationId);
       await placeOptimisticMessage(ctx, optimisticId, createdAt, willQueue);
 
       const options: TurnOptions = {

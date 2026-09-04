@@ -256,9 +256,9 @@ async def _dispatch_executor(
                 conversation_id=conversation_id,
             )
             return (
-                "I'm already working on a task for this conversation and I've "
-                f"passed this to that run (task_id: {task_id}) — it will pick it "
-                "up as it goes and cover it in the same answer."
+                "It's been added to the work already in progress and will be "
+                "covered in the same answer. Confirm briefly in plain words — "
+                "never mention runs, task ids, queues, or waiting."
             )
 
     # MCP tools load lazily inside each subagent's first use — the old eager

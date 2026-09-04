@@ -14,6 +14,7 @@ import asyncio
 from contextlib import ExitStack, contextmanager
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.messages import HumanMessage
 import pytest
 
 from app.agents.core.background import (
@@ -96,8 +97,9 @@ class _Boundaries:
         #: handed over too late for this run's last model call. Empty by default.
         self.pending: list[InboxEntry] = []
         self.inbox_cls = stack.enter_context(patch.object(er, "ExecutorInbox"))
-        self.take_undelivered = AsyncMock(side_effect=lambda: list(self.pending))
-        self.inbox_cls.return_value.take_undelivered = self.take_undelivered
+        self.read_inbox = AsyncMock(side_effect=lambda: list(self.pending))
+        self.inbox_cls.return_value.read = self.read_inbox
+        self.inbox_cls.return_value.retire = AsyncMock()
         self.prepare = stack.enter_context(
             patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
         )
@@ -140,7 +142,7 @@ class TestCancelledRouting:
         # and the inbox still rechecked (cancel-all clears the inbox itself
         # before this runs).
         boundaries.release.assert_awaited_once()
-        boundaries.take_undelivered.assert_awaited_once()
+        boundaries.read_inbox.assert_awaited_once()
         # Queued sessions are torn down by finalize.
         assert get_session("s1") is None
 
@@ -265,9 +267,9 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
             return_value=False
         )
         stack.enter_context(patch.object(er, "release_lock_if_owned", new_callable=AsyncMock))
-        stack.enter_context(
-            patch.object(er, "ExecutorInbox")
-        ).return_value.take_undelivered = AsyncMock(return_value=[])
+        stack.enter_context(patch.object(er, "ExecutorInbox")).return_value.read = AsyncMock(
+            return_value=[]
+        )
         stack.enter_context(
             patch.object(rd, "narrate_executor_result", new_callable=AsyncMock, return_value="done")
         )
@@ -332,7 +334,9 @@ class TestCancelStillCarriesHandedOverWork:
             await asyncio.sleep(0)
 
         boundaries.inbox_cls.assert_called_with("conv-1")
-        assert boundaries.prepare.await_args.args[1]["task"] == "the handed-over ask"
+        assert boundaries.prepare.await_args.args[1]["task"] == wrap_agent_payload(
+            AgentTag.USER_INTERJECTION, "the handed-over ask"
+        )
         spawn.assert_awaited_once()
 
 
@@ -389,7 +393,7 @@ class TestFinalizeDeliveryFailureDoesNotStrandTheHandoff:
             await asyncio.sleep(0)
 
         boundaries.release.assert_awaited_once()  # and the lock still goes
-        boundaries.take_undelivered.assert_awaited_once()
+        boundaries.read_inbox.assert_awaited_once()
         spawn.assert_awaited_once()  # the handed-over work still gets a run
 
     async def test_a_swallowed_delivery_failure_is_named_in_the_wide_event(
@@ -440,7 +444,7 @@ class TestLockThenInboxHandoff:
 
         boundaries.release.assert_awaited_once()
         boundaries.inbox_cls.assert_called_with("conv-1")
-        boundaries.take_undelivered.assert_awaited_once()
+        boundaries.read_inbox.assert_awaited_once()
 
     async def test_carried_work_is_spawned_as_a_fresh_run(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)
@@ -494,7 +498,7 @@ class TestThePausedRunKeepsItsLock:
         # Nothing to deliver, and nothing may be carried into a second run — this
         # thread still holds the work the approval is gating.
         boundaries.deliver.assert_not_awaited()
-        boundaries.take_undelivered.assert_not_awaited()
+        boundaries.read_inbox.assert_not_awaited()
         # The turn's SSE must still close, or the user watches a spinner instead
         # of the approval card.
         assert session.done_event.is_set()
@@ -544,9 +548,9 @@ def _real_lock_lifecycle(cache: _FakeRedisCache):
         stack.enter_context(
             patch.object(er, "_queue_collection_if_uncollected", new_callable=AsyncMock)
         )
-        stack.enter_context(
-            patch.object(er, "ExecutorInbox")
-        ).return_value.take_undelivered = AsyncMock(return_value=[])
+        stack.enter_context(patch.object(er, "ExecutorInbox")).return_value.read = AsyncMock(
+            return_value=[]
+        )
         yield
 
 
@@ -646,37 +650,113 @@ class _FakeInboxCache:
         self.client = _FakeInboxRedisClient()
 
 
-class TestFinalizeCarriesOnlyWorkNoRunHasSeen:
-    """The duplicate-run bug the ``delivered`` marker exists to stop.
+class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
+    """What a run actually delivered is read off its THREAD, not off a marker.
 
-    An entry stays on the inbox until a LATER drain pass sees it committed to the
-    thread — so a hand-off injected on a run's FINAL model call still looks
-    pending at finalize. Carrying everything pending therefore started a second
-    run answering a request the finishing run had already answered. Only work no
-    run has put in front of the model may be carried.
+    An entry stays on the inbox until a LATER drain pass sees it committed, so a
+    hand-off injected on a run's FINAL model call still looks pending at
+    finalize. Carrying everything pending started a second run answering a
+    request the finishing run had already answered; trusting a "delivered"
+    marker written BEFORE the model call dropped work whenever that call failed.
+    The checkpoint is the only thing that can tell those two apart.
     """
 
-    async def test_injected_work_is_not_re_run_but_late_work_is(self) -> None:
+    @staticmethod
+    def _committed(entry_id: str) -> HumanMessage:
+        return HumanMessage(content="x", additional_kwargs={ec.INBOX_ENTRY_ID: entry_id})
+
+    async def test_committed_work_is_not_re_run_but_late_work_is(self) -> None:
         cache = _FakeInboxCache()
 
         with ExitStack() as stack:
             stack.enter_context(patch.object(ec, "redis_cache", cache))
             inbox = ec.ExecutorInbox("conv-1")
-            injected = await inbox.append("e1", "also check my calendar")
-            await inbox.mark_delivered([injected])  # the run showed the model this one
-            await inbox.append("e2", "and book the flight")  # landed after the last model call
+            await inbox.append("e1", "also check my calendar")  # committed on the last call
+            await inbox.append("e2", "and book the flight")  # landed after it
+            stack.enter_context(
+                patch.object(er, "thread_messages", AsyncMock(return_value=[self._committed("e1")]))
+            )
             prepare = stack.enter_context(
                 patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
             )
 
-            await er._carry_pending_into_new_run(_run(RunKind.QUEUED))
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), object())
             still_pending = [entry.id for entry in await inbox.read()]
 
         prepare.assert_awaited_once()
-        assert prepare.await_args.args[1]["task"] == "and book the flight"
-        # The carried entry leaves the inbox; the injected one stays for the drain
-        # hook to retire once it sees it in the thread.
-        assert still_pending == ["e1"]
+        assert prepare.await_args.args[1]["task"] == wrap_agent_payload(
+            AgentTag.USER_INTERJECTION, "and book the flight"
+        )
+        # e1 is in the thread, so it is retired here. e2 stays: the claim was
+        # lost, and work must never be destroyed before a run exists to take it.
+        assert still_pending == ["e2"]
+
+    async def test_work_staged_into_a_model_call_that_failed_is_still_carried(self) -> None:
+        """BUG: the run marked an entry delivered BEFORE the model call, so a
+        call that then failed left it neither answered nor carried — it sat in
+        Redis until its TTL. Nothing is in the thread, so it carries."""
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            await inbox.append("e1", "also check my calendar")
+            stack.enter_context(patch.object(er, "thread_messages", AsyncMock(return_value=[])))
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), object())
+
+        assert prepare.await_args.args[1]["task"] == wrap_agent_payload(
+            AgentTag.USER_INTERJECTION, "also check my calendar"
+        )
+
+    async def test_a_bare_stop_starts_no_run(self) -> None:
+        """BUG: cancel_executor appends its interruption notice, and the
+        cancelled run's own finalize read it back as pending work — so pressing
+        Stop spawned a fresh run whose task WAS "the task you were working on
+        was INTERRUPTED". The notice is context for the next run, not work."""
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            await inbox.announce_interruption(None)
+            prepare = stack.enter_context(
+                patch.object(er, "prepare_run_from_item", new_callable=AsyncMock, return_value=None)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), None)
+            still_pending = [entry.text for entry in await inbox.read()]
+
+        prepare.assert_not_awaited()
+        assert still_pending == [ec.INTERRUPTION_NOTICE]
+
+    async def test_a_redirect_starts_a_run_and_carries_the_notice_framed_with_it(self) -> None:
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            inbox = ec.ExecutorInbox("conv-1")
+            await inbox.announce_interruption("book the flight instead")
+            prepare = stack.enter_context(
+                patch.object(
+                    er, "prepare_run_from_item", new_callable=AsyncMock, return_value=AsyncMock()
+                )
+            )
+            spawn = stack.enter_context(patch.object(er, "_spawn_detached_run"))
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), None)
+            still_pending = await inbox.read()
+
+        spawn.assert_called_once()
+        # Each entry keeps its own tag: a stop notice and the instruction that
+        # follows it must not merge into one unframed blob.
+        assert prepare.await_args.args[1]["task"] == wrap_agent_payload(
+            AgentTag.EXECUTOR_INTERRUPTED, ec.INTERRUPTION_NOTICE
+        ) + wrap_agent_payload(AgentTag.USER_INTERJECTION, "book the flight instead")
+        assert still_pending == []
 
 
 class TestTheCardNoteOnlyGoesWhereCardsRender:

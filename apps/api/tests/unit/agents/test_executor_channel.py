@@ -88,40 +88,6 @@ class TestInbox:
 
         assert [entry.id for entry in await inbox.read()] == ["t2"]
 
-    async def test_take_undelivered_returns_work_no_run_has_seen(
-        self, inbox: ExecutorInbox
-    ) -> None:
-        await inbox.append("t1", "first")
-        await inbox.append("t2", "second")
-
-        taken = await inbox.take_undelivered()
-
-        assert [entry.text for entry in taken] == ["first", "second"]
-        assert await inbox.count() == 0
-
-    async def test_delivered_work_is_never_carried_into_a_second_run(
-        self, inbox: ExecutorInbox
-    ) -> None:
-        """A run that injects on its LAST model call leaves the entry on the
-        list (retirement happens on a later pass). Carrying it would answer the
-        same request twice — once inside the run, once in a duplicate one."""
-        delivered = await inbox.append("t1", "already handled")
-        await inbox.append("t2", "arrived too late")
-        await inbox.mark_delivered([delivered])
-
-        taken = await inbox.take_undelivered()
-
-        assert [entry.text for entry in taken] == ["arrived too late"]
-
-    async def test_retiring_an_entry_forgets_it_was_delivered(self, inbox: ExecutorInbox) -> None:
-        """Ids must not accumulate forever behind a conversation."""
-        entry = await inbox.append("t1", "first")
-        await inbox.mark_delivered([entry])
-
-        await inbox.retire(entry)
-
-        assert await inbox._delivered_ids() == set()
-
     async def test_discard_removes_only_the_named_ids(self, inbox: ExecutorInbox) -> None:
         await inbox.append("t1", "first")
         await inbox.append("t2", "second")
@@ -140,20 +106,28 @@ class TestInbox:
 
         assert [entry.id for entry in await inbox.read()] == ["t1"]
 
-    async def test_interruption_carries_the_redirect(self, inbox: ExecutorInbox) -> None:
+    async def test_interruption_carries_the_redirect_as_its_own_entry(
+        self, inbox: ExecutorInbox
+    ) -> None:
+        """BUG: the redirect used to be folded into the notice text, so the two
+        were indistinguishable — and finalize, seeing pending work, started a
+        fresh run for a BARE stop whose task was the stop notice itself."""
         await inbox.announce_interruption("search my calendar instead")
 
-        (entry,) = await inbox.read()
-        assert entry.tag is AgentTag.EXECUTOR_INTERRUPTED
-        assert "INTERRUPTED" in entry.text
-        assert "search my calendar instead" in entry.text
+        notice, redirect = await inbox.read()
+        assert notice.tag is AgentTag.EXECUTOR_INTERRUPTED
+        assert "INTERRUPTED" in notice.text
+        assert "search my calendar instead" not in notice.text
+        assert redirect.tag is AgentTag.USER_INTERJECTION
+        assert redirect.text == "search my calendar instead"
 
-    async def test_interruption_without_a_redirect_still_says_do_not_resume(
+    async def test_interruption_without_a_redirect_is_a_notice_alone(
         self, inbox: ExecutorInbox
     ) -> None:
         await inbox.announce_interruption(None)
 
         (entry,) = await inbox.read()
+        assert entry.tag is AgentTag.EXECUTOR_INTERRUPTED
         assert "Do not" in entry.text or "do not" in entry.text
 
 
@@ -250,13 +224,15 @@ class TestDrainHook:
 
         assert result.get(INJECTED_MESSAGES_KEY, []) == []
 
-    async def test_injected_work_is_marked_delivered(self, inbox: ExecutorInbox) -> None:
-        """So finalize can tell "nobody saw this" from "seen, not yet retired"."""
+    async def test_injecting_does_not_remove_the_entry(self, inbox: ExecutorInbox) -> None:
+        """Staging is not committing: a run that dies at the model call must
+        leave the entry pending, so the thread stays the only record of what
+        was actually delivered."""
         await inbox.append("t1", "also check spam")
 
         await drain_inbox_hook({"messages": []}, CONFIG, None)
 
-        assert await inbox.take_undelivered() == []
+        assert [entry.id for entry in await inbox.read()] == ["t1"]
 
     async def test_a_committed_entry_is_retired_from_redis(self, inbox: ExecutorInbox) -> None:
         await inbox.append("t1", "also check spam")
