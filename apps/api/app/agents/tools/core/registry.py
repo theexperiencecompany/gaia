@@ -512,13 +512,13 @@ class ToolRegistry:
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )
-        from app.agents.tools.execute import execute_tool
+        from app.agents.tools.execute import execute_tool, schema_tool
 
         # The execute proxy is never classified by its own name: the HIL gate
         # unwraps args["tool_name"] and classifies the REAL tool (hil/utils).
         self._add_category(
             "execute",
-            tools=[execute_tool.execute],
+            tools=[execute_tool.execute, schema_tool.get_tool_schema],
             options=CategoryOptions(internal=True),
             risk=CategoryRisk(destructive_tools=set()),
         )

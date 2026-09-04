@@ -89,17 +89,7 @@ async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool
 
 
 async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
-    try:
-        observed = await observed_shapes_for(names)
-    except Exception as e:
-        # Shape docs are enrichment; a store outage must not take down tool
-        # discovery (mirrors _resolve_for_retrieval) — but it is never silent.
-        log.warning(
-            f"{LogTag.TOOL} retrieve_tools: observed-shape lookup failed",
-            error_type=type(e).__name__,
-        )
-        observed = {}
-    docs: list[str] = []
+    resolved_tools = []
     for name in names:
         resolved = await _resolve_for_retrieval(user_id, name)
         if resolved is None:
@@ -109,6 +99,21 @@ async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[st
                 tool_name=name,
             )
             continue
+        resolved_tools.append(resolved)
+    try:
+        # Scopes come from resolution, so this can only read shapes the user's
+        # own tools resolve to — the resolver is the access gate.
+        observed = await observed_shapes_for([(r.shape_scope, r.name) for r in resolved_tools])
+    except Exception as e:
+        # Shape docs are enrichment; a store outage must not take down tool
+        # discovery (mirrors _resolve_for_retrieval) — but it is never silent.
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools: observed-shape lookup failed",
+            error_type=type(e).__name__,
+        )
+        observed = {}
+    docs: list[str] = []
+    for resolved in resolved_tools:
         shape = observed.get(resolved.name)
         docs.append(
             render_tool_doc(
@@ -200,6 +205,8 @@ Resolves exact names so they can be run. Use this after discovery or when you al
   tool's args schema. They are NEVER bound and CANNOT be called by name. Run them with
   execute(task_description="...", tool_name="TOOL_NAME", data={...}) where `data`
   matches the schema exactly. task_description is one short user-facing line.
+  A doc's `Returns:` line shows the response shape as type notation; when it points
+  to get_tool_schema instead, call that before writing code that consumes the output.
 - INTERNAL tools (snake_case names like plan_tasks): bound as callable tools; call
   them directly.
 

@@ -48,12 +48,14 @@ def render_tool_doc(tool: BaseTool, observed_schema: dict[str, Any] | None = Non
     if returns is None and observed_schema:
         returns = _compact_schema(dict(observed_schema))
     if returns is not None:
-        rendered = _dumps(returns)
+        # Type notation, not schema JSON: 10-500x smaller on real Composio
+        # schemas (the bulk is descriptions and schema ceremony, not structure),
+        # which is what makes inline the common case instead of the exception.
+        rendered = render_compact_type(returns)
         if len(rendered) <= RESPONSE_SCHEMA_INLINE_MAX_CHARS:
-            lines.append("Returns:")
-            lines.append(rendered)
+            lines.append(f"Returns: {rendered}")
         else:
-            # Above the threshold the full schema is context re-paid every turn;
+            # Above the threshold the shape is context re-paid every turn;
             # a pointer keeps the doc cheap and the depth one lookup away.
             lines.append(_returns_pointer(tool.name, returns))
     lines.append(
@@ -70,9 +72,71 @@ def _returns_pointer(tool_name: str, schema: dict[str, Any]) -> str:
         f" top-level fields: {clip_text(names, _RETURNS_POINTER_NAMES_MAX_CHARS)}." if names else ""
     )
     return (
-        f'Returns:{fields} Full response schema: gaia.schema("{tool_name}") in a '
-        f"bash script, or read {SANDBOX_TOOL_DOCS_DIR}/{tool_name}.json"
+        f'Returns:{fields} Full shape: get_tool_schema("{tool_name}"); in bash '
+        f'scripts gaia.schema("{tool_name}") or read '
+        f"{SANDBOX_TOOL_DOCS_DIR}/{tool_name}.json"
     )
+
+
+def render_compact_type_budgeted(schema: dict[str, Any], budget: int) -> str:
+    """Compact type notation within budget, depth-collapsing when oversized."""
+    rendered = render_compact_type(schema)
+    if len(rendered) <= budget:
+        return rendered
+    for levels in _SCHEMA_PRUNE_LEVELS:
+        # Pruned properties render as bare `obj`, so depth degrades gracefully.
+        pruned = render_compact_type(cast(dict[str, Any], _prune_to_levels(schema, levels)))
+        if len(pruned) <= budget:
+            return f"{pruned}\n(deeper fields omitted for size; the real data has them)"
+    return clip_text(rendered, budget)
+
+
+def render_compact_type(node: dict[str, Any]) -> str:
+    """A JSON schema as terse type notation, e.g. ``{id:str, tags?:str[]}``.
+
+    Structure only — descriptions and schema ceremony are what make real
+    provider schemas thousands of tokens; the fields and types are not.
+    """
+    return _compact_type(node)
+
+
+def _compact_type(node: object) -> str:
+    if not isinstance(node, dict):
+        return "any"
+    variants = node.get("anyOf") or node.get("oneOf")
+    if isinstance(variants, list) and variants:
+        return "|".join(sorted({_compact_type(variant) for variant in variants}))
+    type_ = node.get("type")
+    if isinstance(type_, list):
+        return "|".join(sorted({_compact_type({**node, "type": t}) for t in type_}))
+    if type_ == "object" or (type_ is None and "properties" in node):
+        properties = node.get("properties")
+        if not isinstance(properties, dict) or not properties:
+            return "obj"
+        required = set(node.get("required") or [])
+        fields = ", ".join(
+            f"{name}{'' if name in required else '?'}:{_compact_type(sub)}"
+            for name, sub in properties.items()
+        )
+        return "{" + fields + "}"
+    if type_ == "array":
+        item = _compact_type(node.get("items", {}))
+        # Union item types need grouping so {a}|{b}[] cannot misread.
+        return (f"({item})" if "|" in item else item) + "[]"
+    enum = node.get("enum")
+    if isinstance(enum, list) and 0 < len(enum) <= _COMPACT_ENUM_MAX_MEMBERS:
+        return "|".join(json.dumps(value, default=str) for value in enum)
+    return _COMPACT_PRIMITIVES.get(str(type_), str(type_) if type_ else "any")
+
+
+_COMPACT_PRIMITIVES = {
+    "string": "str",
+    "integer": "int",
+    "number": "num",
+    "boolean": "bool",
+    "null": "null",
+}
+_COMPACT_ENUM_MAX_MEMBERS = 6
 
 
 def _args_schema_of(tool: BaseTool) -> dict[str, Any]:

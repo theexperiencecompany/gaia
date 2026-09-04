@@ -476,6 +476,7 @@ class TestBuildExecutorGraph:
             assert kwargs["tools_config"].initial_tool_ids == [
                 "handoff",
                 "execute",
+                "get_tool_schema",
                 "plan_tasks",
                 "update_tasks",
                 "read",

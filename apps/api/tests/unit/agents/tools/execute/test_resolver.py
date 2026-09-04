@@ -78,7 +78,11 @@ class TestResolveTool:
             patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
         ):
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
-        assert resolved == ResolvedTool("NOTION_MCP_SEARCH", mcp_tool, is_integration=True)
+        # MCP shapes are integration-scoped: a private server's observed shapes
+        # must never land in (or be read from) the global scope.
+        assert resolved == ResolvedTool(
+            "NOTION_MCP_SEARCH", mcp_tool, is_integration=True, shape_scope="mcp:notion-mcp"
+        )
 
     async def test_composio_materialization_for_catalog_slug_and_cached(self) -> None:
         catalog_tool = MagicMock()

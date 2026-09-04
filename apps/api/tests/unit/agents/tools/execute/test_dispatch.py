@@ -155,7 +155,7 @@ class TestObservedShapeRecording:
                 data={"recipient": "a@b.c", "subject": "hi"},
                 config=CONFIG,
             )
-        record.assert_called_once_with("GMAIL_SEND_EMAIL", {"status": "sent"})
+        record.assert_called_once_with("GMAIL_SEND_EMAIL", {"status": "sent"}, scope="global")
         spawn.assert_called_once()
 
     async def test_internal_tools_and_failures_record_nothing(self) -> None:

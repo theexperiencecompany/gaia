@@ -1,7 +1,8 @@
 """Repository for the ``tool_output_shapes`` collection — observed tool shapes.
 
-Global, keyed by the business ``tool_name``; the incidental Mongo ``_id`` never
-surfaces above this boundary.
+Keyed by the business ``(scope, tool_name)`` pair; the incidental Mongo ``_id``
+never surfaces above this boundary. ``scope`` is what keeps a private MCP
+server's shapes invisible to other users (see ResolvedTool.shape_scope).
 """
 
 from datetime import UTC, datetime
@@ -20,18 +21,22 @@ class ToolShapesRepository(MongoRepository[ToolOutputShapeDocument, ToolOutputSh
     identity_field = "tool_name"
     cache_policy = None
 
-    async def get_by_tool_name(self, tool_name: str) -> ToolOutputShapeDocument | None:
-        return await self._find_one({"tool_name": tool_name})
+    async def get_shape(self, scope: str, tool_name: str) -> ToolOutputShapeDocument | None:
+        return await self._find_one({"scope": scope, "tool_name": tool_name})
 
-    async def get_many(self, tool_names: list[str]) -> list[ToolOutputShapeDocument]:
-        if not tool_names:
+    async def get_many(self, scoped_names: list[tuple[str, str]]) -> list[ToolOutputShapeDocument]:
+        """Documents for exact ``(scope, tool_name)`` pairs — never a scope the
+        caller did not name, which is what keeps reads inside the resolver gate."""
+        if not scoped_names:
             return []
-        return await self._find({"tool_name": {"$in": tool_names}})
+        return await self._find(
+            {"$or": [{"scope": scope, "tool_name": name} for scope, name in scoped_names]}
+        )
 
-    async def record(self, tool_name: str, output_schema: dict[str, Any]) -> None:
+    async def record(self, scope: str, tool_name: str, output_schema: dict[str, Any]) -> None:
         """Store the merged schema for one more observation of ``tool_name``."""
         await self._apply_raw_update(
-            {"tool_name": tool_name},
+            {"scope": scope, "tool_name": tool_name},
             {
                 "$set": {"output_schema": output_schema, "last_seen": datetime.now(UTC)},
                 "$inc": {"call_count": 1},

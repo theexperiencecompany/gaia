@@ -17,6 +17,7 @@ from typing import NamedTuple
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.constants.execute import GLOBAL_SHAPE_SCOPE, MCP_SHAPE_SCOPE_PREFIX
 from app.constants.log_tags import LogTag
 from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_client import get_mcp_client
@@ -30,6 +31,11 @@ class ResolvedTool(NamedTuple):
     # True for Composio/MCP tools (the execute proxy's scope); False for
     # internal tools, which only run bound inside a graph.
     is_integration: bool
+    # Where this tool's observed output shape is stored and read. "global" for
+    # catalog tools (identical for every user); "mcp:<integration_id>" for MCP
+    # tools, so a private server's shapes are visible only to users who can
+    # resolve that integration — the resolver itself is the access gate.
+    shape_scope: str = GLOBAL_SHAPE_SCOPE
 
 
 # Composio tools materialized on demand outside a toolkit registration; process
@@ -90,7 +96,12 @@ async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool
         return None
     for tool in await mcp_client.get_tools(integration_id):
         if tool.name == tool_name:
-            return ResolvedTool(name=tool.name, tool=tool, is_integration=True)
+            return ResolvedTool(
+                name=tool.name,
+                tool=tool,
+                is_integration=True,
+                shape_scope=f"{MCP_SHAPE_SCOPE_PREFIX}{integration_id}",
+            )
     return None
 
 

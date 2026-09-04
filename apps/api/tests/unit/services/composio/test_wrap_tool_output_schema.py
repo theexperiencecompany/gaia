@@ -43,4 +43,4 @@ class TestWrapToolOutputSchema:
         )
         doc = render_tool_doc(wrapped)
         assert "Returns:" in doc
-        assert '"messages"' in doc
+        assert "messages?:any[]" in doc  # rendered as compact type notation

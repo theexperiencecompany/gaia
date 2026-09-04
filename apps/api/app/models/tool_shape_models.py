@@ -15,6 +15,9 @@ from app.db.repositories.base import MongoDocument
 
 class ToolOutputShapeDocument(MongoDocument):
     tool_name: str
+    # "global" for catalog tools; "mcp:<integration_id>" for MCP tools (see
+    # ResolvedTool.shape_scope). One record per (scope, tool_name).
+    scope: str = "global"
     output_schema: dict[str, Any]
     call_count: int = 0
     last_seen: datetime

@@ -102,6 +102,7 @@ async def build_executor_graph(
             initial_tool_ids=[
                 "handoff",
                 "execute",
+                "get_tool_schema",
                 "plan_tasks",
                 "update_tasks",
                 "read",

@@ -129,7 +129,7 @@ async def dispatch_tool(
         # it can never slow or fail the dispatch it learns from.
         spawn_logged_task(
             "record_tool_output_shape",
-            record_observed_shape(resolved_name, output),
+            record_observed_shape(resolved_name, output, scope=resolved.shape_scope),
             tool_name=resolved_name,
         )
 

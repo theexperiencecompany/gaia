@@ -17,6 +17,9 @@ SCHEMA_DOC_MAX_CHARS = 6000
 # instead of eating the whole doc or being clipped mid-JSON. Args must render
 # inline — the model constructs calls from it.
 ARGS_SCHEMA_MAX_CHARS = 3000
+# The get_tool_schema tool's per-section output bound: full depth for almost
+# every tool, degrading by depth for the rare monster schema.
+TOOL_SCHEMA_RETURNS_MAX_CHARS = 4000
 # The response shape only guides how results are consumed, so it renders inline
 # only when small; above this it becomes a one-line pointer to the on-demand
 # lookup (gaia.schema / the sandbox tool-docs folder) instead of re-paid
@@ -42,6 +45,13 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600
+
+# Shape-store scopes: catalog tools are user-agnostic so their observed shapes
+# are shared; MCP tools are scoped by integration so a private server's shapes
+# never cross users (a published MCP shares one integration doc, so its
+# subscribers share the scope naturally).
+GLOBAL_SHAPE_SCOPE = "global"
+MCP_SHAPE_SCOPE_PREFIX = "mcp:"
 
 # Observed-shape learning (services/tool_shape_service.py): structure inferred
 # from real dispatch outputs. Arrays are sampled, and a dict wider than the key
