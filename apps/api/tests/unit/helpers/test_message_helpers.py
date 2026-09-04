@@ -249,6 +249,44 @@ class TestFormatWorkflowExecutionMessage:
 # ---------------------------------------------------------------------------
 
 
+class TestSignalMatchingSectionRenders:
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_an_integration_fire_with_tracked_todos_renders_the_signal_section(
+        self,
+    ) -> None:
+        """Production: every ``calendar_event_starting_soon`` fire for a user with
+        tracked todos failed with ``KeyError: 'date'`` (54 in one day). The signal
+        matching instructions carry a literal example, ``"- {date}: {what happened}"``,
+        and ``str.format`` read it as two placeholders. The example must reach the
+        agent verbatim, braces and all, and the section must render at all.
+        """
+        selected = SelectedWorkflowData(
+            id="wf_meeting",
+            title="Meeting Reminder",
+            description="Remind me before meetings",
+            steps=[{"title": "Remind", "category": "calendar", "description": "send the reminder"}],
+        )
+        trigger_ctx = {
+            "type": "googlecalendar",
+            "trigger_type": "integration",
+            "tracked_todos_context": "- todo_1: Ship the launch post (Key Details: thread abc)",
+            "triggered_at": "2026-09-03T10:00:00Z",
+        }
+
+        with patch(
+            "app.helpers.message_helpers.WorkflowService.get_workflow",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await format_workflow_execution_message(
+                selected, user_id="u1", trigger_context=trigger_ctx
+            )
+
+        assert "Ship the launch post" in result
+        assert "- {date}: {what happened}" in result
+
+
 class TestFormatCalendarEventContext:
     def test_timed_event_with_content(self) -> None:
         event = SelectedCalendarEventData(

@@ -6,17 +6,22 @@ write always replaces what was there and a rejected write leaves the previous
 playbook untouched.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+import json
 from typing import Annotated, Any
 
+from langchain_core.messages import ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
+from pydantic import ValidationError
+from pydantic.v1 import ValidationError as LegacyValidationError
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
-    PlaybookAsk,
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
@@ -24,7 +29,13 @@ from app.models.playbook_models import (
 )
 from app.models.workflow_models import WorkflowUpdate
 from app.services.workflow.playbook.check import HEAL_STATUSES, declined_for_good
-from app.services.workflow.playbook.parser import dump_playbook, validate_playbook
+from app.services.workflow.playbook.evaluator import parse_result
+from app.services.workflow.playbook.parser import (
+    RecordedResult,
+    RunResults,
+    dump_playbook,
+    validate_playbook,
+)
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.utils.workflow_utils import (
     WorkflowConfigError,
@@ -36,6 +47,83 @@ from app.utils.workflow_utils import (
 from shared.py.wide_events import log
 
 
+def _render_location(location: tuple[int | str, ...]) -> str:
+    """One pydantic error location as the author wrote it: ``steps[0].tool``."""
+    rendered = ""
+    for part in location:
+        if isinstance(part, int):
+            rendered += f"[{part}]"
+        else:
+            rendered += f".{part}" if rendered else str(part)
+    return rendered or "arguments"
+
+
+def _explain_validation_error(error: ValidationError | LegacyValidationError) -> str:
+    """Hand a rejected call back as an answer the author can act on.
+
+    Without this, arguments that miss the schema come back as a framework-level
+    error the model cannot read, and it retries the same shape. Reported as the
+    tool's own ``error_response`` so a bad shape and a bad playbook read
+    identically: what was wrong, and that nothing was written.
+
+    Both pydantic generations are accepted because that is the signature
+    langchain's hook declares; either one reports ``loc``/``msg`` the same way.
+    """
+    problems = "; ".join(
+        f"{_render_location(item['loc'])}: {item['msg']}" for item in error.errors()
+    )
+    return json.dumps(
+        error_response(
+            "invalid_playbook",
+            "The playbook was not written. Fix these and call write_playbook again: " + problems,
+        )
+    )
+
+
+def _run_results(state: Mapping[str, Any] | None) -> RunResults | None:
+    """The authoring run's tool calls with what each one returned, in call order.
+
+    ``None`` when there is no run to read: the dev ``/dev/executor`` route and
+    the unit tests build these tools without a graph, and a playbook written
+    there is validated exactly as it was before rather than refused for a run
+    that was never recorded. An empty list is NOT the same answer — it means the
+    run really made no calls, and a playbook freezing calls is wrong.
+
+    Failed calls are kept, unlike the handoff record's successful-only lines
+    (``call_record.py``): a step frozen on a call that errored is precisely one
+    of the things the validator has to catch.
+    """
+    if state is None:
+        return None
+    messages = state.get("messages")
+    if not isinstance(messages, list):
+        return None
+    answers: dict[str, object] = {}
+    for message in messages:
+        if isinstance(message, ToolMessage) and message.tool_call_id:
+            content = message.content
+            answers[message.tool_call_id] = parse_result(
+                content if isinstance(content, str) else json.dumps(content, default=str)
+            )
+    results: list[RecordedResult] = []
+    for message in messages:
+        for call in getattr(message, "tool_calls", None) or []:
+            call_id = call.get("id")
+            name = str(call.get("name") or "")
+            # A call with no answer is one still in flight (this very
+            # write_playbook call, in every real run) — it froze nothing.
+            if not name or call_id not in answers:
+                continue
+            results.append(
+                RecordedResult(
+                    tool_name=name,
+                    args=dict(call.get("args") or {}),
+                    result=answers[call_id],
+                )
+            )
+    return results
+
+
 @tool
 async def write_playbook(
     config: RunnableConfig,
@@ -44,24 +132,30 @@ async def write_playbook(
         list[PlaybookStepInput],
         "The calls to replay, in the order you made them: only the calls that did "
         "the work, never discovery or dead ends. Writing the result is not a step; "
-        "that is what synthesize is for.",
+        "that is what result_brief is for.",
     ],
-    synthesize: Annotated[str, "How to write the run's result for the user."],
-    ask: Annotated[
-        dict[str, PlaybookAsk] | None,
-        "Named slots a model fills at replay, for text you had to write rather "
-        "than copy out of a result. Reference one as $ask.<name>.",
-    ] = None,
+    result_brief: Annotated[
+        str,
+        "How to write the run's result for the user from the steps' results. "
+        "Classification, judgement and summarising go here.",
+    ],
+    #: The run's own messages, injected by the graph and absent from the schema
+    #: the model sees. Defaulted because a tool built without a graph (the dev
+    #: executor route, the unit tests) is called with arguments only.
+    state: Annotated[dict[str, Any] | None, InjectedState] = None,
 ) -> dict[str, Any]:
     """
     Freeze this workflow run's settled tool sequence as a playbook, so later runs
     execute it instead of reasoning it out again. The playbook attaches to the
     workflow this run is executing; there is no id to supply.
 
-    The steps are checked against the real tools before anything is stored: if a
-    tool or an argument does not exist, NOTHING is written and the problems come
-    back so you can fix them and call this again. A successful write replaces the
-    workflow's previous playbook entirely, which is also how you revise one.
+    The steps are checked against the real tools AND against what this run's
+    calls actually returned before anything is stored: if a tool or an argument
+    does not exist, if a step froze a call this run never made or one that came
+    back empty, or if a $steps reference reads a field the result does not have,
+    NOTHING is written and the problems come back so you can fix them and call
+    this again. A successful write replaces the workflow's previous playbook
+    entirely, which is also how you revise one.
 
     Only write a playbook when the same order of calls would work tomorrow
     unchanged. A run whose order depends on what it finds is not a playbook.
@@ -77,9 +171,14 @@ async def write_playbook(
         if workflow is None:
             return error_response("workflow_not_found", f"No workflow {workflow_id} for this user.")
 
-        body = playbook_body_from_input(description, steps, synthesize, ask)
+        body = playbook_body_from_input(description, steps, result_brief)
 
-        validation = await validate_playbook(body, user_id)
+        results = _run_results(state)
+        # On the wide event because it is the one thing a rejected-or-accepted
+        # write cannot show from its outcome: whether the run's own results
+        # were in hand (None: no graph state reached the tool at all).
+        log.set_ns("playbook", checked_against_calls=None if results is None else len(results))
+        validation = await validate_playbook(body, user_id, results)
         if not validation.valid:
             # The issues themselves, not just how many. A refused playbook is
             # diagnosed from the reason, and a count in a structured field that
@@ -106,15 +205,17 @@ async def write_playbook(
                 updated_at=now,
                 description=body.description,
                 steps=body.steps,
-                ask=body.ask,
-                synthesize=body.synthesize,
+                result_brief=body.result_brief,
             )
         )
-        # A written playbook answers the question the declines were about.
+        # A written playbook answers the question the declines were about, and
+        # supersedes the discard that recorded why the last one was thrown away.
         await workflow_repository.update_for_user(
             workflow_id,
             user_id,
-            WorkflowUpdate(playbook_declines=0, playbook_declined_hash=None),
+            WorkflowUpdate(
+                playbook_declines=0, playbook_declined_hash=None, last_playbook_discard=None
+            ),
         )
         log.set_ns("playbook", id=stored.playbook_id, steps=len(stored.steps))
         return success_response(
@@ -126,6 +227,12 @@ async def write_playbook(
             f"{LogTag.TOOL} write_playbook: exception", error_type=type(e).__name__, exc_info=True
         )
         return error_response("write_failed", str(e))
+
+
+#: Arguments that miss the schema never reach the body above — langchain raises
+#: before the coroutine runs — so the explanation is attached to the tool rather
+#: than written as a try/except inside it.
+write_playbook.handle_validation_error = _explain_validation_error
 
 
 @tool

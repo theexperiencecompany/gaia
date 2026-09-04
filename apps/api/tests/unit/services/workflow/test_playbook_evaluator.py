@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.models.playbook_models import ask_slot_key
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
 from app.services.workflow.playbook.evaluator import (
     PlaceholderError,
@@ -19,6 +20,7 @@ from app.services.workflow.playbook.evaluator import (
     RunContext,
     StepResult,
     _resolve_time,
+    fill_ask_slots,
     last_run_index,
     resolve_args,
     resolve_value,
@@ -111,9 +113,16 @@ def test_steps_resolve_by_id_and_by_file() -> None:
     assert resolve_value("$steps.inbox.file", context) == "/workspace/inbox.json"
 
 
-def test_ask_resolves_the_text_the_model_wrote() -> None:
-    context = _context(asks={"body": "Here is your morning digest."})
-    assert resolve_value("$ask.body", context) == "Here is your morning digest."
+def test_fill_ask_slots_substitutes_the_text_the_model_wrote_by_key() -> None:
+    """A slot is addressed by its step and its argument path, and comes out as
+    the plain text the ask call wrote. Substituting under any other key would
+    leave the slot's dict standing where a tool argument belongs."""
+    filled = fill_ask_slots(
+        {"to": "a@b.com", "subject": {"$ask": "Write a subject line"}},
+        {"mail.subject": "Here is your morning digest."},
+        key_prefix="mail",
+    )
+    assert filled == {"to": "a@b.com", "subject": "Here is your morning digest."}
 
 
 def test_last_run_resolves_a_cursor_from_the_previous_run() -> None:
@@ -330,14 +339,62 @@ def test_unknown_user_field_is_rejected_and_names_the_real_ones() -> None:
     assert caught.value.fix == "address one of those fields"
 
 
-def test_missing_ask_names_the_placeholder() -> None:
-    """An ask the model never wrote must stop the run by name, not send an empty string."""
+def test_a_slot_the_ask_call_never_wrote_stops_the_run_by_its_key() -> None:
+    """A slot the model never wrote must stop the run naming the key it was
+    listed under, not send the slot's dict or an empty string to the tool."""
     with pytest.raises(PlaceholderError) as caught:
-        resolve_value("$ask.body", _context(asks={"subject": "hi"}))
-    _assert_actionable(caught.value, "$ask.body")
-    assert caught.value.message == "$ask.body was never written"
-    assert caught.value.why == "the run's one model call produced no text for that ask"
-    assert caught.value.fix == "declare the ask in the playbook, or stop addressing it"
+        fill_ask_slots(
+            {"subject": {"$ask": "Write a subject line"}},
+            {"mail.body": "hi"},
+            key_prefix="mail",
+        )
+    _assert_actionable(caught.value, "mail.subject")
+    assert caught.value.message == "mail.subject was never written"
+    assert caught.value.why == "the run's ask call produced no text for that slot"
+    assert caught.value.fix == (
+        "write one entry per slot listed, keyed exactly as the slot is listed"
+    )
+
+
+def test_fill_ask_slots_reaches_a_slot_nested_in_a_list_inside_a_dict() -> None:
+    """Slots hide wherever an argument nests, and the key spells the whole path.
+
+    Filling only top-level arguments would leave the raw ``{"$ask": ...}`` dict
+    inside a structured payload, and the tool would receive it as data.
+    """
+    args = {"message": {"blocks": [{"text": {"$ask": "Write the digest body"}}]}}
+    key = ask_slot_key("send", ("message", "blocks", 0, "text"))
+    assert key == "send.message.blocks.0.text"
+
+    filled = fill_ask_slots(args, {key: "Three meetings today."}, key_prefix="send")
+
+    assert filled == {"message": {"blocks": [{"text": "Three meetings today."}]}}
+
+
+def test_a_slot_that_reached_resolution_unfilled_stops_the_run() -> None:
+    """``fill_ask_slots`` runs before ``resolve_args`` and leaves none behind, so
+    a slot met here means the step was resolved without being filled. Passing
+    the slot's dict through would send a tool ``{"$ask": ...}`` as an argument."""
+    with pytest.raises(PlaceholderError) as caught:
+        resolve_value({"$ask": "Write a subject line"}, _context())
+    _assert_actionable(caught.value, "$ask")
+    assert caught.value.message == "an $ask slot was not filled before resolution"
+    # The whole triple: this is a bug in the run's own order, and the two lines
+    # that say which order was skipped are the only thing pointing at it.
+    assert caught.value.why == (
+        "the run resolved this step's arguments without first filling its ask slots"
+    )
+    assert caught.value.fix == "fill the step's ask slots before resolving its arguments"
+
+
+def test_dollar_ask_in_a_string_is_literal_text_not_a_placeholder() -> None:
+    """``$ask`` left the placeholder vocabulary when asks moved inline: a slot is
+    a value, not a reference into a table. Resolving ``$ask.body`` as a token
+    again would either raise on a perfectly good literal or substitute text
+    where the author wrote characters."""
+    context = _context(asks={"mail.body": "Here is your digest."})
+    assert resolve_value("$ask.body", context) == "$ask.body"
+    assert resolve_value("Sent $ask.body today", context) == "Sent $ask.body today"
 
 
 def test_a_step_placeholder_with_no_field_resolves_to_the_whole_result() -> None:
