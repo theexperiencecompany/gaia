@@ -42,13 +42,17 @@ from app.agents.prompts.new_user_prompts import (
     FOCUS_PLAYBOOKS,
     MAX_PLAYBOOK_LINES,
     NEED_PLAYBOOKS,
+    NEW_USER_GUIDANCE_TEMPLATE,
+    SEEDED_CHIPS_RULE,
+    TARGET_REPLY_EXAMPLE,
     build_new_user_guidance,
 )
 from app.agents.workspace.paths import session_dir
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.models.memory_models import MemorySearchResult
 from app.models.todo_models import TodoDocument
-from app.models.user_models import OnboardingNeed
+from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.services.onboarding.first_question import FirstQuestion, first_question_cache_key
 from app.utils.artifact_utils import artifact_url_base
 
 
@@ -695,6 +699,108 @@ class TestNewUserGuidanceBlock:
         """An expired cache must not tell the model a choice was offered."""
         block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
         assert "You already asked them a question" not in block
+
+    async def test_the_chips_are_looked_up_under_this_user_and_these_exact_answers(
+        self,
+    ) -> None:
+        """The chips live under a key built from the user id and the three
+        answers. Any of them going astray reads a key nobody wrote — the block
+        silently loses the chips rule and a one-word first message reads as a
+        fragment again."""
+        with (
+            self._patch_count(self._count(1)),
+            patch("app.agents.context.fetchers.seeded_chips", AsyncMock(return_value=[])) as chips,
+        ):
+            await build_new_user_guidance_block(
+                ctx(
+                    user_id="user-9",
+                    user_preferences={
+                        "profession": "Founder",
+                        "needs": ["inbox"],
+                        "other_need": "chasing invoices",
+                    },
+                )
+            )
+
+        chips.assert_awaited_once_with(
+            "user-9",
+            OnboardingPreferences(
+                profession="Founder",
+                needs=[OnboardingNeed.INBOX],
+                other_need="chasing invoices",
+            ),
+        )
+
+    async def test_the_chips_the_seeded_turn_offered_reach_the_model(self) -> None:
+        """End to end through the real cache-key derivation: what the seeded
+        conversation wrote under these answers is what the block quotes back."""
+        cached = FirstQuestion(question="What should we start with?", chips=["My mornings"])
+        preferences = OnboardingPreferences(
+            profession="Founder",
+            needs=[OnboardingNeed.INBOX],
+            other_need="chasing invoices",
+        )
+        with (
+            self._patch_count(self._count(1)),
+            patch(
+                "app.services.onboarding.first_question.redis_cache.get",
+                AsyncMock(return_value=cached),
+            ) as cache_get,
+        ):
+            block = await build_new_user_guidance_block(
+                ctx(
+                    user_id="user-9",
+                    user_preferences={
+                        "profession": "Founder",
+                        "needs": ["inbox"],
+                        "other_need": "chasing invoices",
+                    },
+                )
+            )
+
+        assert cache_get.await_args.args[0] == first_question_cache_key("user-9", preferences)
+        assert '"My mornings"' in block
+
+    async def test_the_block_is_the_template_filled_with_every_one_of_its_slots(self) -> None:
+        """Asserted whole rather than by substring: the worked reply example and
+        the chips rule are separate slots, and a slot filled with the wrong value
+        (or with ``None``) still renders a plausible-looking block that no
+        substring check would notice."""
+        block = build_new_user_guidance(
+            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Growth"]
+        )
+
+        assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
+            profession="Founder",
+            playbooks=(
+                f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}\n"
+                f"- {FOCUS_PLAYBOOKS['mornings']}\n"
+                f"- {FOCUS_PLAYBOOKS['growth']}"
+            ),
+            target=TARGET_REPLY_EXAMPLE,
+            chips_rule=SEEDED_CHIPS_RULE.format(chips='"My mornings", "Growth"'),
+        )
+
+    async def test_two_chips_are_quoted_and_comma_separated(self) -> None:
+        """The model has to read them as two distinct offers; run together they
+        are one nonsense phrase it never matches the first message against."""
+        block = build_new_user_guidance(
+            "Founder", [OnboardingNeed.INBOX], None, ["My mornings", "Late payers"]
+        )
+
+        assert '"My mornings", "Late payers"' in block
+
+    async def test_a_user_offered_no_chips_gets_the_slot_closed_up_entirely(self) -> None:
+        """The empty case is a slot filled with nothing, not a placeholder: any
+        residue here is prose the model reads as an instruction."""
+        block = build_new_user_guidance("Founder", [OnboardingNeed.INBOX], None, [])
+
+        assert block == NEW_USER_GUIDANCE_TEMPLATE.format(
+            profession="Founder",
+            playbooks=f"- {NEED_PLAYBOOKS[OnboardingNeed.INBOX]}",
+            target=TARGET_REPLY_EXAMPLE,
+            chips_rule="",
+        )
 
     async def test_the_worst_case_block_stays_within_budget(self) -> None:
         """Every need at once, plus a seeded chip for every focus playbook and a

@@ -1190,6 +1190,27 @@ class TestUpdateOnboardingPreferences:
             error_type="RuntimeError",
         )
 
+    async def test_a_long_prewarm_failure_is_truncated_before_it_reaches_the_event(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The cause is attacker-influenced text of any length (a provider body,
+        a stack of nested messages). Unbounded, one failed prewarm can dominate
+        the wide event it shares with the rest of the request."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id}
+        )
+        cause = "x" * 250
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError(cause)),
+            patch(f"{SERVICE}.log") as log,
+        ):
+            await update_onboarding_preferences(
+                sample_user_id, OnboardingPreferences(profession="founder")
+            )
+
+        assert log.warning.call_args.kwargs["error"] == "x" * 200
+
     async def test_updates_preferences(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "onboarding": {"preferences": {"profession": "Designer"}}}
