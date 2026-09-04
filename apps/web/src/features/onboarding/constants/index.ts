@@ -82,10 +82,10 @@ export const questions: Question[] = [
   {
     id: "1",
     lines: () => [
-      "Hey, I'm GAIA. Nice to meet you.",
-      "Think about everything you did yesterday. Email, calendar, meetings, that's the obvious part. Then the research, the chasing, the spreadsheet, the booking, the thing you do every week and hate. All of it, done. Not by you.",
-      "A few hours a day back, at least. I take the work you don't like.",
-      "What do you do?",
+      "Hey! I'm GAIA. Nice to meet you.",
+      "Think about everything you did yesterday. Email, calendar, meetings, sure, that's the obvious stuff.",
+      "But also the research, the chasing people, the spreadsheet, the booking, that one thing you do every week and hate. I do all of that. Not you.",
+      "So, what do you do?",
     ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
@@ -93,7 +93,7 @@ export const questions: Question[] = [
     id: "2",
     lines: (responses) => [
       professionAck(responses),
-      "Where does your week disappear? Tap everything that's true.",
+      "Where does your week actually go? Tap whatever's true, all of it.",
     ],
     fieldName: FIELD_NAMES.NEEDS,
   },

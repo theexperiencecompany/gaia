@@ -141,7 +141,7 @@ export default function PaymentSuccessPage() {
                   Welcome to GAIA
                 </h1>
                 <p className="mb-6 text-balance text-sm font-light text-zinc-400">
-                  You're all set. Everything is unlocked. Let's get to work.
+                  You're all set, everything's unlocked. Let's go!
                 </p>
                 <RaisedButton
                   color="#00bbff"
