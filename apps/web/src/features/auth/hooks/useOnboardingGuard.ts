@@ -27,7 +27,7 @@ export const useOnboardingGuard = () => {
       // user inside it rather than on an empty composer. A seed that failed is
       // never a reason to strand them — fall back to the chat home.
       const seededConversationId =
-        user.onboarding?.first_message_conversation_id;
+        user.onboarding?.getting_started_conversation_id;
       redirect(
         seededConversationId ? `/c/${seededConversationId}` : "/c",
         RedirectType.push,

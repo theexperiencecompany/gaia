@@ -53,6 +53,7 @@ import pytest
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.onboarding import (
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
@@ -187,6 +188,15 @@ class _UserStore:
         if sub is not None:
             sub["bio_status"] = bio_status
 
+    async def set_first_conversation_id(
+        self, user_id: str, conversation_id: str
+    ) -> UserDocument | None:
+        sub = self._sub(user_id)
+        if sub is None:
+            return None
+        sub[GETTING_STARTED_CONVERSATION_ID_FIELD] = conversation_id
+        return await self.get(user_id)
+
     # -- job slot ----------------------------------------------------------
     async def set_active_job(self, user_id: str, field_path: str, job_id: str) -> None:
         sub = self._sub(user_id)
@@ -298,7 +308,9 @@ class _Externals:
     #: (conversation_id, description) per seeded conversation, and the bot turn
     #: appended to it — the announcement the user actually opens.
     seeded_conversations: list[tuple[str, str]] = field(default_factory=list)
-    seeded_messages: list[str] = field(default_factory=list)
+    #: bot turns per seeded conversation id — keyed, not flat, so a test can
+    #: assert one conversation's turns without the other's leaking in.
+    seeded_messages: dict[str, list[str]] = field(default_factory=dict)
     seeding_fails: bool = False
     notifications: list[str] = field(default_factory=list)
     conversations_deleted: list[str] = field(default_factory=list)
@@ -307,6 +319,24 @@ class _Externals:
     memories_cleared: int = 0
     integrations_connected: list[str] = field(default_factory=list)
     disconnected: list[str] = field(default_factory=list)
+
+
+#: The two conversations this flow seeds, by the description each carries. One
+#: is earned by submitting the form, the other by connecting Gmail — asserting
+#: on the description is what keeps a test from passing on the wrong one.
+GETTING_STARTED_DESCRIPTION = "Getting started"
+HOLO_CARD_DESCRIPTION = "Your holo card is ready"
+
+
+def seeded_descriptions(externals: _Externals) -> list[str]:
+    return [description for _, description in externals.seeded_conversations]
+
+
+def seeded_id_of(externals: _Externals, description: str) -> str:
+    """The id of the one seeded conversation carrying ``description``."""
+    ids = [cid for cid, desc in externals.seeded_conversations if desc == description]
+    assert len(ids) == 1, f"expected exactly one {description!r} conversation, got {ids}"
+    return ids[0]
 
 
 def _gmail_message(idx: int) -> dict[str, Any]:
@@ -407,9 +437,11 @@ def _enter_persistence_patches(stack: ExitStack, users: _UserStore, externals: _
         return conversation
 
     async def _append_messages(
-        _conversation_id: str, *, user_id: str, messages: list[Any]
+        conversation_id: str, *, user_id: str, messages: list[Any]
     ) -> list[str]:
-        externals.seeded_messages.extend(m.response for m in messages)
+        externals.seeded_messages.setdefault(conversation_id, []).extend(
+            m.response for m in messages
+        )
         return [f"msg-{i}" for i, _ in enumerate(messages)]
 
     async def _list_user_integrations(_user_id: str) -> list[Any]:
@@ -638,16 +670,31 @@ class TestSubmittingTheFormIsCompletion:
         assert response.status_code == 200
         assert users.onboarding_of(USER_ID)["phase"] == OnboardingPhase.COMPLETED.value
 
-    async def test_no_job_is_queued_and_nothing_is_seeded(
+    async def test_no_job_is_queued_and_only_the_opener_is_seeded(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals
     ):
-        """The pipeline, the starter todo and the announcement conversation are
-        all Gmail's to earn. Queued here they run for users with no inbox at
-        all, and hand every user a holo card built from nothing."""
+        """The pipeline and the holo-card announcement are Gmail's to earn.
+        Queued here they run for users with no inbox at all, and hand every user
+        a holo card built from nothing. GAIA's own opener is the one thing
+        completion does seed — it is composed from the answers, not the inbox."""
         await complete_submit(client)
 
         assert await queued_job_names(arq_pool) == []
-        assert externals.seeded_conversations == []
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
+
+    async def test_the_seeded_opener_is_recorded_on_its_own_field(
+        self, client: AsyncClient, users: _UserStore, externals: _Externals
+    ):
+        """The web lands the user in this conversation off the completion
+        response, and a reset tears it down by this id. Sharing the legacy
+        ``first_message_conversation_id`` would overwrite the conversation a
+        returning pre-relocation user still has, orphaning it forever."""
+        await complete_submit(client)
+
+        onboarding = users.onboarding_of(USER_ID)
+        seeded_id = seeded_id_of(externals, GETTING_STARTED_DESCRIPTION)
+        assert onboarding[GETTING_STARTED_CONVERSATION_ID_FIELD] == seeded_id
+        assert "first_message_conversation_id" not in onboarding
 
     async def test_the_submitted_choices_are_persisted(
         self, client: AsyncClient, users: _UserStore
@@ -759,9 +806,13 @@ class TestConnectingGmailEarnsThePersonalization:
     ):
         """Chat has no holo-card renderer, so the card travels as its public
         link. Losing the link leaves an announcement pointing at nothing."""
-        assert [desc for _, desc in externals.seeded_conversations] == ["Your holo card is ready"]
-        assert len(externals.seeded_messages) == 1
-        assert holo_card_url(USER_ID) in externals.seeded_messages[0]
+        assert seeded_descriptions(externals) == [
+            GETTING_STARTED_DESCRIPTION,
+            HOLO_CARD_DESCRIPTION,
+        ]
+        holo_turns = externals.seeded_messages[seeded_id_of(externals, HOLO_CARD_DESCRIPTION)]
+        assert len(holo_turns) == 1
+        assert holo_card_url(USER_ID) in holo_turns[0]
 
     async def test_the_notification_goes_out_too(self, externals: _Externals):
         assert externals.notifications == ["Check your memories — I just added a lot"]
@@ -772,10 +823,11 @@ class TestConnectingGmailEarnsThePersonalization:
         """The marker is what makes a reconnect a no-op, and the conversation id
         is what lets a reset tear the announcement back down."""
         onboarding = users.onboarding_of(USER_ID)
-        seeded_id = externals.seeded_conversations[0][0]
 
         assert onboarding[GMAIL_PERSONALIZATION_MARKER]
-        assert onboarding[HOLO_CONVERSATION_ID_FIELD] == seeded_id
+        assert onboarding[HOLO_CONVERSATION_ID_FIELD] == seeded_id_of(
+            externals, HOLO_CARD_DESCRIPTION
+        )
 
     async def test_the_job_slot_is_released_when_the_pipeline_finishes(self, users: _UserStore):
         """A stale id makes the next reset try to abort a job that is long gone."""
@@ -845,7 +897,7 @@ class TestThePipelineRunsAtMostOnce:
 
         await run_queued_jobs(arq_pool)
 
-        assert externals.seeded_conversations == []
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
         assert externals.notifications == []
 
 
@@ -865,7 +917,7 @@ class TestGmailIsNotActuallyConnected:
 
         onboarding = users.onboarding_of(USER_ID)
         assert GMAIL_PERSONALIZATION_MARKER not in onboarding
-        assert externals.seeded_conversations == []
+        assert seeded_descriptions(externals) == [GETTING_STARTED_DESCRIPTION]
 
 
 class TestThePipelineDegrades:
@@ -890,7 +942,10 @@ class TestThePipelineDegrades:
         assert stages.payload(OnboardingStage.WRITING_STYLE_READY)["style_summary"] is None
         assert "writing_style" not in users.onboarding_of(USER_ID)
         assert users.onboarding_of(USER_ID)["personality_phrase"] == HOLO_PHRASE
-        assert len(externals.seeded_conversations) == 1
+        assert seeded_descriptions(externals) == [
+            GETTING_STARTED_DESCRIPTION,
+            HOLO_CARD_DESCRIPTION,
+        ]
 
     async def test_an_empty_sent_folder_resolves_the_card_rather_than_spinning(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, stages: _StageSink
@@ -957,31 +1012,38 @@ class TestResettingOnboarding:
         again = await complete_submit(client)
         assert again.status_code == 200
 
-    async def test_the_holo_card_conversation_is_torn_down(
+    async def test_both_seeded_conversations_are_torn_down(
         self, client: AsyncClient, externals: _Externals, personalized: None
     ):
         """Left behind, the user restarts onboarding still holding a chat that
-        hands them a holo card built from the personalization they just wiped."""
-        seeded_id = externals.seeded_conversations[0][0]
-
+        hands them a holo card built from the personalization they just wiped,
+        and an opener written from the answers they just replaced. Completion
+        and the pipeline each seed one, so a reset that knows about only one
+        field always orphans the other."""
         body = (await client.post(RESET)).json()
 
-        assert externals.conversations_deleted == [seeded_id]
-        assert body["conversation_deleted"] == 1
+        assert externals.conversations_deleted == [
+            seeded_id_of(externals, GETTING_STARTED_DESCRIPTION),
+            seeded_id_of(externals, HOLO_CARD_DESCRIPTION),
+        ]
+        assert body["conversation_deleted"] == 2
 
     async def test_a_legacy_first_message_conversation_is_deleted_too(
         self, client: AsyncClient, externals: _Externals, users: _UserStore, personalized: None
     ):
-        """Users from the pre-relocation flow carry both. Deleting only the new
-        one leaves the old first-message chat orphaned forever — nothing else
-        ever looks at that field again."""
-        seeded_id = externals.seeded_conversations[0][0]
+        """Users from the pre-relocation flow carry that field as well. Nothing
+        writes it any more, so a reset is the only thing that will ever clear
+        it — skip it and the old first-message chat is orphaned forever."""
         users.docs[USER_ID]["onboarding"]["first_message_conversation_id"] = "conv-legacy"
 
         body = (await client.post(RESET)).json()
 
-        assert externals.conversations_deleted == ["conv-legacy", seeded_id]
-        assert body["conversation_deleted"] == 2
+        assert externals.conversations_deleted == [
+            "conv-legacy",
+            seeded_id_of(externals, GETTING_STARTED_DESCRIPTION),
+            seeded_id_of(externals, HOLO_CARD_DESCRIPTION),
+        ]
+        assert body["conversation_deleted"] == 3
 
     async def test_everything_the_pipeline_created_is_counted_as_deleted(
         self, client: AsyncClient, personalized: None

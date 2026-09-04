@@ -26,6 +26,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
     FIRST_CONVERSATION_ID_FIELD,
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
     INTELLIGENCE_TASK,
@@ -156,9 +157,9 @@ def persisting_repo(mock_repo: MagicMock, sample_user_id: str) -> MagicMock:
 
 @pytest.fixture(autouse=True)
 def no_llm_question() -> Iterator[MagicMock]:
-    """No unit test reaches a model. The default is the static conversation;
-    the two cases that care patch the return value themselves."""
-    with patch(f"{SERVICE}.compose_first_question", AsyncMock(return_value=None)) as mock:
+    """No unit test reaches a model or Redis. The default is the static
+    conversation; the two cases that care patch the return value themselves."""
+    with patch(f"{SERVICE}.resolve_first_question", AsyncMock(return_value=None)) as mock:
         yield mock
 
 
@@ -269,11 +270,13 @@ class TestCompleteOnboarding:
         sample_user: UserDocument,
     ) -> None:
         """The web routes the freshly onboarded user into this conversation, so
-        an id that never reaches `onboarding.first_message_conversation_id`
+        an id that never reaches `onboarding.getting_started_conversation_id`
         drops them on an empty composer instead."""
         mock_repo.complete_onboarding.return_value = sample_user
         mock_repo.set_first_conversation_id = AsyncMock(
-            return_value=_completed_user(sample_user_id, first_message_conversation_id="conv-1")
+            return_value=_completed_user(
+                sample_user_id, **{GETTING_STARTED_CONVERSATION_ID_FIELD: "conv-1"}
+            )
         )
 
         with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
@@ -285,7 +288,61 @@ class TestCompleteOnboarding:
             "So: engineer and drowning in email. That's most of a day. I can take a lot of it."
         )
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
-        assert result["onboarding"][FIRST_CONVERSATION_ID_FIELD] == "conv-1"
+        assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
+        # The legacy holo-card field is a different conversation; the seed must
+        # not squat on it.
+        assert FIRST_CONVERSATION_ID_FIELD not in result["onboarding"]
+
+    async def test_the_closing_question_is_resolved_for_this_user_and_these_answers(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        no_llm_question: AsyncMock,
+    ) -> None:
+        """All three are the cache key the answers PATCH prewarmed under. Resolve
+        on the wrong user, the wrong answers or the wrong platform and it is a
+        miss at best, and another user's question at worst."""
+        user = _completed_user(sample_user_id)
+        user.platform_links = {"telegram": {"id": "tg-1"}}
+        mock_repo.complete_onboarding.return_value = user
+        mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
+
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")):
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        user_arg, prefs_arg, platform_arg = no_llm_question.await_args.args
+        assert user_arg == sample_user_id
+        assert prefs_arg.profession == sample_onboarding_request.profession
+        assert prefs_arg.needs == sample_onboarding_request.needs
+        assert platform_arg == "telegram"
+
+    async def test_a_failed_seed_is_reported_with_its_cause(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_onboarding_request: OnboardingRequest,
+        sample_user: UserDocument,
+    ) -> None:
+        """Swallowed so completion still succeeds, so this warning is the only
+        trace that the user landed without their opening conversation."""
+        mock_repo.complete_onboarding.return_value = sample_user
+
+        with (
+            patch(
+                f"{SERVICE}.seed_first_conversation",
+                AsyncMock(side_effect=RuntimeError("mongo down")),
+            ),
+            patch(f"{SERVICE}.log") as log,
+        ):
+            await complete_onboarding(sample_user_id, sample_onboarding_request)
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} complete_onboarding failed to seed the first conversation",
+            user_id=sample_user_id,
+            error="mongo down",
+            error_type="RuntimeError",
+        )
 
     async def test_the_seeded_line_names_a_platform_linked_during_onboarding(
         self,
@@ -575,6 +632,45 @@ class TestResetOnboarding:
         assert counts.conversation_deleted == 2
         mock_repo.reset_onboarding.assert_awaited_once_with(sample_user_id)
 
+    async def test_deletes_the_getting_started_conversation_too(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """A returning user can carry all three at once. Reset has to take the
+        Getting-started one as well, or the next run seeds a second copy and
+        the first is orphaned in the sidebar forever."""
+        mock_repo.get.return_value = _completed_user(
+            sample_user_id,
+            first_message_conversation_id="conv-legacy",
+            **{
+                GETTING_STARTED_CONVERSATION_ID_FIELD: "conv-started",
+                HOLO_CONVERSATION_ID_FIELD: "conv-holo",
+            },
+        )
+
+        counts = await reset_onboarding(sample_user_id)
+
+        assert deleted_conversations == ["conv-legacy", "conv-started", "conv-holo"]
+        assert counts.conversation_deleted == 3
+
+    async def test_deletes_the_getting_started_conversation_on_its_own(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """The common case: a user who only ever ran the current flow."""
+        mock_repo.get.return_value = _completed_user(
+            sample_user_id, **{GETTING_STARTED_CONVERSATION_ID_FIELD: "conv-started"}
+        )
+
+        counts = await reset_onboarding(sample_user_id)
+
+        assert deleted_conversations == ["conv-started"]
+        assert counts.conversation_deleted == 1
+
     async def test_deletes_the_holo_conversation_on_its_own(
         self,
         mock_repo: MagicMock,
@@ -590,6 +686,119 @@ class TestResetOnboarding:
 
         assert deleted_conversations == ["conv-holo"]
         assert counts.conversation_deleted == 1
+
+    async def test_the_legacy_suggested_workflows_are_deleted_through_the_service(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """Read off that exact key: the pre-relocation flow generated real
+        workflows with scheduled executions and Composio triggers behind them,
+        and only the service teardown unwinds those."""
+        mock_repo.get.return_value = _completed_user(
+            sample_user_id, suggested_workflows=["wf-1", "wf-2"]
+        )
+
+        with patch(f"{SERVICE}.WorkflowService.delete_workflow", AsyncMock(return_value=True)) as d:
+            counts = await reset_onboarding(sample_user_id)
+
+        assert [c.args for c in d.await_args_list] == [
+            ("wf-1", sample_user_id),
+            ("wf-2", sample_user_id),
+        ]
+        assert counts.workflows_deleted == 2
+
+    async def test_a_failed_workflow_delete_is_reported_with_its_cause(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """The reset still reports success, so this warning is the only sign the
+        workflow (and its schedule) is still live."""
+        mock_repo.get.return_value = _completed_user(sample_user_id, suggested_workflows=["wf-1"])
+
+        with (
+            patch(
+                f"{SERVICE}.WorkflowService.delete_workflow",
+                AsyncMock(side_effect=RuntimeError("composio down")),
+            ),
+            patch(f"{SERVICE}.log") as log,
+        ):
+            counts = await reset_onboarding(sample_user_id)
+
+        assert counts.workflows_deleted == 0
+        log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} reset_onboarding failed to delete workflow",
+            wf_id="wf-1",
+            error="composio down",
+            error_type="RuntimeError",
+            user_id=sample_user_id,
+        )
+
+    async def test_a_missing_user_is_a_404_that_says_so(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.get.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await reset_onboarding(sample_user_id)
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "User not found"
+
+    async def test_a_failed_todo_delete_is_reported_with_its_cause(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """Counted as zero and reported as success, so without this warning the
+        onboarding todos silently survive into the user's fresh run."""
+        mock_repo.get.return_value = _completed_user(sample_user_id)
+
+        with (
+            patch(f"{SERVICE}.todo_repository") as todos,
+            patch(f"{SERVICE}.log") as log,
+        ):
+            todos.delete_onboarding_todos = AsyncMock(side_effect=RuntimeError("mongo down"))
+            counts = await reset_onboarding(sample_user_id)
+
+        assert counts.todos_deleted == 0
+        log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} reset_onboarding failed to delete todos",
+            error="mongo down",
+            error_type="RuntimeError",
+            user_id=sample_user_id,
+        )
+
+    async def test_a_failed_abort_is_reported_with_its_cause(
+        self,
+        mock_repo: MagicMock,
+        deleted_conversations: list[str],
+        sample_user_id: str,
+    ) -> None:
+        """The reset carries on and reports success, so this warning is the only
+        sign a live pipeline is still running and may write stage events onto
+        the document that was just wiped."""
+        mock_repo.get.return_value = _completed_user(sample_user_id)
+
+        with (
+            patch(
+                f"{SERVICE}.abort_active_intelligence_job",
+                AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+            patch(f"{SERVICE}.log") as log,
+        ):
+            await reset_onboarding(sample_user_id)
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} reset_onboarding failed to abort personalization job",
+            error="redis down",
+            error_type="RuntimeError",
+            user_id=sample_user_id,
+        )
 
     async def test_aborts_the_personalization_job_before_wiping(
         self,
@@ -890,6 +1099,97 @@ class TestGetUserOnboardingStatus:
 
 
 class TestUpdateOnboardingPreferences:
+    async def test_saving_the_answers_starts_writing_the_question(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The wizard's remaining screens are the whole latency budget for the
+        one model call completion needs, so it has to start here, detached."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id, "platform_links": {"telegram": {"id": "tg-1"}}}
+        )
+        prefs = OnboardingPreferences(profession="founder", needs=[OnboardingNeed.INBOX])
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task") as spawn,
+            patch(f"{SERVICE}.prewarm_first_question") as prewarm,
+        ):
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        spawn.assert_called_once()
+        assert prewarm.call_args.args == (sample_user_id, prefs, "telegram")
+        # The task name is how this shows up in the wide event; unnamed, a stuck
+        # prewarm is indistinguishable from every other background task.
+        assert spawn.call_args.kwargs["name"] == f"prewarm_first_question:{sample_user_id}"
+
+    async def test_a_user_with_no_linked_platform_prewarms_without_one(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """Linking is optional and happens on a later screen. With no default for
+        the lookup, the save raises instead of prewarming."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id}
+        )
+        prefs = OnboardingPreferences(profession="founder")
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task"),
+            patch(f"{SERVICE}.prewarm_first_question") as prewarm,
+        ):
+            await update_onboarding_preferences(sample_user_id, prefs)
+
+        assert prewarm.call_args.args == (sample_user_id, prefs, None)
+
+    async def test_a_missing_user_is_a_404_that_says_so(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """The settings page shows this detail verbatim."""
+        mock_repo.update_onboarding_preferences.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await update_onboarding_preferences(
+                sample_user_id, OnboardingPreferences(profession="founder")
+            )
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "User not found"
+
+    async def test_a_failed_prewarm_never_fails_the_save(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id}
+        )
+        prefs = OnboardingPreferences(profession="founder")
+
+        with patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError("no loop")):
+            result = await update_onboarding_preferences(sample_user_id, prefs)
+
+        assert result["user_id"] == sample_user_id
+
+    async def test_a_failed_prewarm_is_reported_with_its_cause(
+        self, mock_repo: MagicMock, sample_user_id: str
+    ) -> None:
+        """Swallowed by design, so this warning is the only trace. Without the
+        error and its type it says a prewarm failed and nothing about why."""
+        mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
+            {"id": sample_user_id}
+        )
+
+        with (
+            patch(f"{SERVICE}.spawn_background_task", side_effect=RuntimeError("no loop")),
+            patch(f"{SERVICE}.log") as log,
+        ):
+            await update_onboarding_preferences(
+                sample_user_id, OnboardingPreferences(profession="founder")
+            )
+
+        log.warning.assert_called_once_with(
+            f"{LogTag.ONBOARDING} could not start the first question prewarm",
+            user_id=sample_user_id,
+            error="no loop",
+            error_type="RuntimeError",
+        )
+
     async def test_updates_preferences(self, mock_repo: MagicMock, sample_user_id: str) -> None:
         mock_repo.update_onboarding_preferences.return_value = UserDocument.model_validate(
             {"id": sample_user_id, "onboarding": {"preferences": {"profession": "Designer"}}}
@@ -1016,6 +1316,7 @@ class TestOnboardingServiceLogPins:
                     "phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
                     "preferences": {"profession": "Engineer", "response_style": "casual"},
                     "first_message_conversation_id": "conv-9",
+                    GETTING_STARTED_CONVERSATION_ID_FIELD: "conv-started",
                 },
             }
         )
@@ -1027,6 +1328,9 @@ class TestOnboardingServiceLogPins:
         assert status.phase == OnboardingPhase.PERSONALIZATION_COMPLETE
         assert status.preferences.profession == "Engineer"
         assert status.first_message_conversation_id == "conv-9"
+        # Separately addressable: this is the id the web redirects into, and it
+        # must not be shadowed by the legacy holo-card one.
+        assert status.getting_started_conversation_id == "conv-started"
 
     async def test_get_status_generic_error_raises_500_with_exact_detail(
         self, mock_repo: MagicMock, sample_user_id: str

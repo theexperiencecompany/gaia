@@ -65,6 +65,44 @@ class TestComposeFirstConversationLines:
             "So: plumber and re-explaining yourself. That's most of a day. I can take a lot of it."
         )
 
+    def test_a_typed_sentence_profession_loses_its_final_punctuation(self) -> None:
+        """It is spliced mid-sentence, so a kept full stop reads "So: I do UX. and
+        drowning in email." Only the trailing stop goes — letters are not
+        punctuation, and "UX" must survive intact."""
+        composed = compose_first_conversation(_prefs("I do UX.", [OnboardingNeed.INBOX]), None)
+        assert composed.lines[0] == (
+            "So: I do UX and drowning in email. That's most of a day. I can take a lot of it."
+        )
+
+    def test_an_article_profession_keeps_every_word_after_the_article(self) -> None:
+        """Only the article is dropped. Splitting on every space (or from the
+        right) silently truncates a multi-word job to one word."""
+        composed = compose_first_conversation(
+            _prefs("A bakery owner", [OnboardingNeed.MEMORY]), None
+        )
+        assert composed.lines[0] == (
+            "So: bakery owner and re-explaining yourself. That's most of a day. "
+            "I can take a lot of it."
+        )
+
+    def test_a_double_spaced_article_profession_does_not_keep_the_extra_space(self) -> None:
+        """Free text carries typos; splitting on the literal space leaves the
+        second one glued to the front of the title, mid-sentence."""
+        composed = compose_first_conversation(
+            _prefs("A  bakery owner", [OnboardingNeed.MEMORY]), None
+        )
+        assert composed.lines[0] == (
+            "So: bakery owner and re-explaining yourself. That's most of a day. "
+            "I can take a lot of it."
+        )
+
+    def test_a_platform_with_no_display_name_is_capitalised(self) -> None:
+        """PLATFORM_DISPLAY_NAMES only spells the bot platforms. A known source
+        outside it still has to name itself — dropping the fallback puts "None"
+        in the line the user reads."""
+        composed = compose_first_conversation(_prefs("founder", []), "web")
+        assert composed.lines[2].startswith("And I'm in your Web now.")
+
     def test_a_typed_title_is_lowered_mid_sentence(self) -> None:
         composed = compose_first_conversation(_prefs("Engineer", [OnboardingNeed.INBOX]), None)
         assert composed.lines[0] == (

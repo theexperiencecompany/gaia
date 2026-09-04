@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
     FIRST_CONVERSATION_ID_FIELD,
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
     HOLO_CONVERSATION_ID_FIELD,
 )
 from app.db.repositories.conversations import conversation_repository
@@ -192,6 +193,9 @@ async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
                 onboarding_data.get("preferences") or {}
             ),
             first_message_conversation_id=onboarding_data.get(FIRST_CONVERSATION_ID_FIELD),
+            getting_started_conversation_id=onboarding_data.get(
+                GETTING_STARTED_CONVERSATION_ID_FIELD
+            ),
         )
 
     except HTTPException:
@@ -302,11 +306,12 @@ async def reset_onboarding(user_id: str) -> OnboardingResetCounts:
     # Legacy state: users who ran the pre-relocation onboarding still carry the
     # workflows it generated and the conversation it seeded. Nothing writes
     # either any more, but a reset must still clear them.
-    workflow_ids: list[str] = onboarding.get("suggested_workflows", []) or []
+    workflow_ids: list[str] = onboarding.get("suggested_workflows") or []
     seeded_conversation_ids: list[str] = [
         cid
         for cid in (
             onboarding.get(FIRST_CONVERSATION_ID_FIELD),
+            onboarding.get(GETTING_STARTED_CONVERSATION_ID_FIELD),
             onboarding.get(HOLO_CONVERSATION_ID_FIELD),
         )
         if cid

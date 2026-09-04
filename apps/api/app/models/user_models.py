@@ -386,7 +386,12 @@ class OnboardingStatusResponse(BaseModel):
     # a user past onboarding. A loose string is the safer honest type here.
     phase: str | None
     preferences: OnboardingPreferences
+    # The pre-relocation holo-card conversation. Still served because users who
+    # ran that flow carry it; nothing writes it any more.
     first_message_conversation_id: str | None
+    # The "Getting started" conversation seeded at completion — what the web
+    # redirects into once the wizard closes.
+    getting_started_conversation_id: str | None = None
 
 
 class AuthenticatedUserResponse(BaseModel):

@@ -124,7 +124,6 @@ apps/api/scripts/verify_sandbox_mounts.py	PLR0915
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0913
 apps/api/tests/integration/mcp/test_mcp_oauth_flow.py	PLR0915
 apps/api/tests/integration/real/memory/llm.py	PLR0913
-apps/api/tests/integration/real/test_schemathesis.py	PLR0912
 apps/api/tests/unit/agents/test_mail_templates.py	PLR0913
 apps/api/tests/unit/agents/test_messages.py	PLR0913
 apps/api/tests/unit/api/test_integrations_config_endpoint.py	PLR0913
@@ -148,7 +147,6 @@ scripts/dev/gaia_verify.py	PLR0915
 scripts/dev/pr_comments.py	PLR0912
 scripts/dev/pr_comments.py	PLR0915
 scripts/dev/tests/test_pr_comments.py	PLR0915
-scripts/test/mutation_classify.py	PLR0912
 scripts/test/mutmut_decorated_patch.py	PLR0911
 scripts/test/mutmut_decorated_patch.py	PLR0912
 tools/evlog_map/__main__.py	PLR0912

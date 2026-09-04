@@ -34,7 +34,7 @@ FIRST_CONVERSATION_ID_FIELD = "first_message_conversation_id"
 # conversation, so completion can hand it to the web and a reset can tear it
 # down. Deliberately NOT the legacy field above: a returning user carries both,
 # and one field cannot hold two conversations without orphaning one of them.
-GETTING_STARTED_CONVERSATION_ID_FIELD = "first_conversation_id"
+GETTING_STARTED_CONVERSATION_ID_FIELD = "getting_started_conversation_id"
 
 # Start triage once this many emails are buffered, without waiting for the full fetch.
 TRIAGE_EARLY_THRESHOLD = 100

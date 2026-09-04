@@ -90,6 +90,36 @@ def _body(name: str) -> list[str]:
     return []
 
 
+def _first_arg_end(joined: str, i: int) -> int:
+    """Index just past the first argument of a call whose ``(`` ends at ``i``.
+
+    Scans with bracket/quote balancing: an argument like ``dict[str, object] |
+    None`` (or a quoted forward ref) holds commas a regex stops at, and a
+    half-blanked call then reads as a real change. Returns the index of the
+    separating ``,``, or of the closing bracket when the call has a single
+    argument — the caller tells the two apart by looking at ``joined[i]``.
+    """
+    depth = 0
+    quote: str | None = None
+    while i < len(joined):
+        ch = joined[i]
+        if quote:
+            if ch == quote and joined[i - 1] != "\\":
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                break
+            depth -= 1
+        elif ch == "," and depth == 0:
+            break
+        i += 1
+    return i
+
+
 def _normalized(lines: list[str]) -> list[str]:
     """Blank the TYPE argument of every ``cast()``.
 
@@ -108,29 +138,8 @@ def _normalized(lines: list[str]) -> list[str]:
     out: list[str] = []
     pos = 0
     while (start := joined.find("cast(", pos)) != -1:
-        # Scan the FIRST argument with bracket/quote balancing: a type arg
-        # like ``dict[str, object] | None`` (or a quoted forward ref) holds
-        # commas a regex stops at, and a half-blanked cast then reads as a
-        # real change.
-        i = start + len("cast(")
-        depth = 0
-        quote: str | None = None
-        while i < len(joined):
-            ch = joined[i]
-            if quote:
-                if ch == quote and joined[i - 1] != "\\":
-                    quote = None
-            elif ch in "\"'":
-                quote = ch
-            elif ch in "([{":
-                depth += 1
-            elif ch in ")]}":
-                if depth == 0:
-                    break  # cast with one argument — not ours to touch
-                depth -= 1
-            elif ch == "," and depth == 0:
-                break
-            i += 1
+        i = _first_arg_end(joined, start + len("cast("))
+        # A one-argument cast stops on its closing bracket — not ours to touch.
         if i < len(joined) and joined[i] == ",":
             arg = joined[start + len("cast(") : i]
             out.append(joined[pos:start] + "cast(" + "\n" * arg.count("\n") + "_")
@@ -165,25 +174,7 @@ def _blank_call_next_arg(lines: list[str]) -> list[str]:
     pos = 0
     needle = "call_next("
     while (start := joined.find(needle, pos)) != -1:
-        i = start + len(needle)
-        depth = 0
-        quote: str | None = None
-        while i < len(joined):
-            ch = joined[i]
-            if quote:
-                if ch == quote and joined[i - 1] != "\\":
-                    quote = None
-            elif ch in "\"'":
-                quote = ch
-            elif ch in "([{":
-                depth += 1
-            elif ch in ")]}":
-                if depth == 0:
-                    break
-                depth -= 1
-            elif ch == "," and depth == 0:
-                break
-            i += 1
+        i = _first_arg_end(joined, start + len(needle))
         arg = joined[start + len(needle) : i]
         out.append(joined[pos:start] + needle + "\n" * arg.count("\n") + "_")
         pos = i

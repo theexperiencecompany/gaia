@@ -76,5 +76,7 @@ export interface PersonalizationData {
     source_email?: { sender: string; subject: string } | null;
   }> | null;
   first_message_conversation_id?: string;
+  /** The seeded "Getting started" conversation the wizard hands off into. */
+  getting_started_conversation_id?: string;
   first_message?: string | null;
 }

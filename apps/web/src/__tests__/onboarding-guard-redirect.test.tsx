@@ -40,7 +40,7 @@ const completedUser = (firstConversationId?: string) => ({
   onboarding: {
     completed: true,
     ...(firstConversationId
-      ? { first_message_conversation_id: firstConversationId }
+      ? { getting_started_conversation_id: firstConversationId }
       : {}),
   },
 });

@@ -32,7 +32,7 @@ from app.constants.cache import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
-    FIRST_CONVERSATION_ID_FIELD,
+    GETTING_STARTED_CONVERSATION_ID_FIELD,
     GMAIL_PERSONALIZATION_MARKER,
     HOLO_CONVERSATION_ID_FIELD,
 )
@@ -278,10 +278,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def set_first_conversation_id(
         self, user_id: str, conversation_id: str
     ) -> UserDocument | None:
-        """Record the seeded "Getting started" conversation on the onboarding subdoc."""
+        """Record the seeded "Getting started" conversation on the onboarding subdoc.
+
+        Its own field, not the legacy ``first_message_conversation_id``: a user
+        who ran the pre-relocation flow and onboards again carries both, and
+        reusing the one field would overwrite the legacy id and orphan the
+        conversation it points at.
+        """
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {f"onboarding.{FIRST_CONVERSATION_ID_FIELD}": conversation_id}},
+            {"$set": {f"onboarding.{GETTING_STARTED_CONVERSATION_ID_FIELD}": conversation_id}},
             scope=REPO_GLOBAL_SCOPE,
         )
 

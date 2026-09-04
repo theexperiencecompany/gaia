@@ -11,6 +11,8 @@ export interface UserInfo {
     completed_at?: string;
     phase?: string;
     first_message_conversation_id?: string;
+    /** The seeded "Getting started" conversation the wizard hands off into. */
+    getting_started_conversation_id?: string;
     preferences?: {
       profession?: string;
       response_style?: string;

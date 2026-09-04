@@ -143,7 +143,10 @@ def _profession_fragment(profession: str | None) -> str | None:
         return None
     if key.startswith(_SENTENCE_OPENERS):
         return cleaned.rstrip(".!")
-    title = cleaned.split(" ", 1)[1] if key.startswith(_ARTICLES) else cleaned
+    # split(maxsplit=1), not split(" ", 1): free text carries double spaces, and
+    # splitting on the literal space hands back a title with a leading one that
+    # then lands mid-sentence ("So:  bakery owner and ...").
+    title = cleaned.split(maxsplit=1)[1] if key.startswith(_ARTICLES) else cleaned
     return f"{title[0].lower()}{title[1:]}"
 
 
