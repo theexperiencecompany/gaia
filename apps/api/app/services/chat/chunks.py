@@ -64,6 +64,7 @@ async def process_data_chunk(
     if forward_subagents and chunk_json:
         lifecycle_forwarded = await _forward_subagent_lifecycle(stream_id, chunk_json, tool_data)
     accumulate_todo_progress(chunk_json, todo_progress_accumulated)
+    await _settle_boundary(stream_id, chunk_json)
 
     new_data = extract_tool_data(chunk_payload)
     if not new_data:
@@ -99,6 +100,24 @@ async def process_data_chunk(
         tool_data=new_data,
     )
     return follow_up_actions, True
+
+
+async def _settle_boundary(stream_id: str, chunk_json: dict[str, Any] | None) -> None:
+    """Apply a ``message_boundary`` frame to the Redis progress record.
+
+    The frame is the turn's own verdict on the message that just ended — kept,
+    or a discarded preamble to a tool call. The live client acts on it; the
+    progress record used for recovery has to act on it too, or a recovered turn
+    resurrects text the user was explicitly told to drop.
+    """
+    if not chunk_json:
+        return
+    boundary = chunk_json.get("message_boundary")
+    if not isinstance(boundary, dict):
+        return
+    await stream_manager.settle_message_progress(
+        stream_id, discarded=bool(boundary.get("discarded"))
+    )
 
 
 async def _forward_subagent_lifecycle(

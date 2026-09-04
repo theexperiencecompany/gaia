@@ -30,7 +30,11 @@ from app.agents.core.background.executor_capture import (
 )
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
-from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
+from app.constants.chat import (
+    EMPTY_RESPONSE_FALLBACK,
+    GENERIC_TURN_ERROR,
+    RECURSION_LIMIT_MESSAGE,
+)
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -692,6 +696,38 @@ async def _handle_stream_error(
     return user_error
 
 
+async def _substitute_empty_completion(stream_id: str, state: _StreamState) -> None:
+    """Replace a contentless turn with one honest line, and record why.
+
+    A turn reaches persistence with no text whenever the model returned no
+    content — reasoning-only output, ``max_tokens`` spent before the first
+    visible token, a content filter — and neither an error nor a cancellation
+    explains it. Persisting that empty string is what users read as being
+    ignored, so they resend; every renderer (web bubble, ``deliverBubble`` in
+    the bot streaming adapter) drops an empty body silently, which is why the
+    failure never surfaced anywhere but the conversation itself.
+
+    Turns that carry an error, a cancellation, or tool cards are content of
+    their own and are left alone.
+    """
+    if state.complete_message.strip() or state.error or state.is_cancelled:
+        return
+    if state.tool_data.get("tool_data"):
+        return
+
+    _, output_tokens, _ = aggregate_usage_metadata(state.usage_metadata)
+    log.error(
+        f"{LogTag.CHAT} Empty completion, substituting fallback reply",
+        stream_id=stream_id,
+        empty_completion_reason=(
+            "model_returned_no_text" if output_tokens else "model_produced_no_output"
+        ),
+        output_tokens=output_tokens,
+    )
+    state.complete_message = EMPTY_RESPONSE_FALLBACK
+    await stream_manager.publish_chunk(stream_id, format_sse_response(EMPTY_RESPONSE_FALLBACK))
+
+
 async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
@@ -711,6 +747,7 @@ async def _persist_turn(
     merge_tool_outputs(state.tool_data, state.tool_outputs)
     inject_todo_progress(state.tool_data, state.todo_progress_accumulated)
     reconstruct_subagent_groups(state.tool_data)
+    await _substitute_empty_completion(stream_id, state)
     await save_conversation_async(
         body=body,
         user=user,

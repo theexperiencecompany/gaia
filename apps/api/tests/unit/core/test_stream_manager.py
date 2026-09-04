@@ -30,6 +30,7 @@ from app.constants.streaming import (
     STREAM_ERROR_SIGNAL,
 )
 from app.core.stream_manager import StreamManager, StreamProgress
+from app.utils.message_breaks import split_message_bubbles
 from tests.helpers import captured_wide_event
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ def _progress_dict(**overrides: Any) -> dict[str, Any]:
         "conversation_id": "conv-1",
         "user_id": "user-1",
         "complete_message": "",
+        "pending_message": "",
         "tool_data": {},
         "started_at": "2026-01-01T00:00:00+00:00",
         "is_cancelled": False,
@@ -682,12 +684,44 @@ class TestUpdateProgress:
         yield
         patcher.stop()
 
-    async def test_appends_message_chunk(self) -> None:
-        self.progress["complete_message"] = "Hello "
+    async def test_appends_message_chunk_to_the_unsettled_message(self) -> None:
+        """Streamed text is held until its message ends: a message that turns
+        out to announce a tool call is a preamble the user is told to drop."""
+        self.progress["pending_message"] = "Hello "
         await StreamManager.update_progress("s1", message_chunk="World")
 
         saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "Hello World"
+        assert saved["pending_message"] == "Hello World"
+        assert saved["complete_message"] == ""
+
+    async def test_a_kept_message_becomes_a_bubble_of_the_reply(self) -> None:
+        self.progress["pending_message"] = "Here's the three-liner."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "Here's the three-liner."
+        assert saved["pending_message"] == ""
+
+    async def test_a_discarded_preamble_never_reaches_the_reply(self) -> None:
+        """The exact production artifact: "let me start by gathering context"
+        was streamed, retracted by its boundary, and still recovered from
+        Redis glued onto the real answer."""
+        self.progress["complete_message"] = ""
+        self.progress["pending_message"] = "Let me start by gathering context."
+        await StreamManager.settle_message_progress("s1", discarded=True)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == ""
+        assert saved["pending_message"] == ""
+
+    async def test_two_kept_messages_are_separate_bubbles_not_one_sentence(self) -> None:
+        self.progress["complete_message"] = "First."
+        self.progress["pending_message"] = "Second."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] != "First.Second."
+        assert split_message_bubbles(saved["complete_message"]) == ["First.", "Second."]
 
     async def test_merges_tool_data(self) -> None:
         self.progress["tool_data"] = {"existing": "data"}
@@ -717,11 +751,11 @@ class TestUpdateProgress:
         self.mock_set.assert_awaited_once()
 
     async def test_message_chunk_appends_to_empty(self) -> None:
-        self.progress["complete_message"] = ""
+        self.progress["pending_message"] = ""
         await StreamManager.update_progress("s1", message_chunk="first")
 
         saved = self.mock_set.call_args[0][1]
-        assert saved["complete_message"] == "first"
+        assert saved["pending_message"] == "first"
 
 
 # ---------------------------------------------------------------------------

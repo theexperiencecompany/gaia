@@ -345,19 +345,28 @@ CRITERIA: dict[str, str] = {
     ),
     "e_invited": (
         "Suggests a productivity setup ONLY when the message invites it. Small talk, a vent, a "
-        "thanks, or a general knowledge question must get NO pitch, no connect offer, no "
-        "workflow idea. Score 0 for any unprompted setup suggestion on those."
+        "thanks, or a general knowledge question must get NO list, no pitch, no connect card. "
+        'A gentle one-line offer after acknowledging how they feel ("want to vent, or should I '
+        'help lighten tomorrow?") is FINE and scores 1. Score 0 for a menu, a workflow idea, '
+        "or a card on those messages."
     ),
     "f_no_reoffer": (
         "Does not re-offer something the user already declined or already has. Score 0 if an "
         "earlier turn in this conversation shows the user said no, not now, or already "
         "answered, and this reply raises it again."
     ),
-    "g_not_question": (
-        "Does not reflexively end on a question. Score 0 if the reply ends with a question that "
-        "the conversation did not need, especially after a closing message or when the answer "
-        "was already complete. Score 1 when a question is genuinely required (a real choice, or "
-        "a missing detail she needs to act)."
+    "g_leads_on": (
+        "Leads somewhere. When the user is blocked (nothing connected, nothing to plan), the "
+        'reply ends on the ONE concrete next step with its link or card ("want me to connect '
+        'your calendar?" plus the card), never on a shrug. Never interrogates, never asks '
+        "something she could answer herself or that was already answered, and never ends a "
+        "closing message (thanks, ok cool) with a question. Score 1 when it either does the "
+        "thing or leads to the one next step."
+    ),
+    "k_no_dash_no_leak": (
+        "No em dash or en dash anywhere (hard 0). No leaked working notes: third person about "
+        'the user ("I\'ll plan Alex\'s week"), "let me start by gathering context", names '
+        "of internal machinery, or two drafts glued together in one reply (hard 0)."
     ),
     "h_formatting": (
         "Formatting fits the content. Prose when it is prose; bullets, headings, or bold only "
@@ -385,7 +394,8 @@ class _Verdict(BaseModel):
     d_one_move: int
     e_invited: int
     f_no_reoffer: int
-    g_not_question: int
+    g_leads_on: int
+    k_no_dash_no_leak: int
     h_formatting: int
     i_honest: int
     j_no_repeat: int

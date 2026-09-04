@@ -19,6 +19,9 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
+from app.constants.chat import EMPTY_RESPONSE_FALLBACK
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
@@ -38,21 +41,26 @@ def _body(message: str = "what's on my calendar?") -> MessageRequestWithHistory:
     )
 
 
-async def persist(state: _StreamState) -> MessageModel:
-    """Run the real persist path; return the bot message that would be saved."""
+async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
+    """Run the real persist path; return the saved bot message and what it published."""
+    published: list[str] = []
+    sm = AsyncMock()
+    sm.publish_chunk = AsyncMock(side_effect=lambda _sid, c: published.append(c))
+
     with (
         patch.object(
             chat_stream,
             "recover_stream_state",
             new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
         ),
+        patch.object(chat_stream, "stream_manager", sm),
         patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
     ):
         await _persist_turn("s1", _body(), USER, CONV, state)
 
     request = update.await_args.args[0]
     bot = next(m for m in request.messages if m.type == "bot")
-    return bot
+    return bot, published
 
 
 class TestFollowUpActions:
@@ -65,7 +73,7 @@ class TestFollowUpActions:
         state.complete_message = "You have two meetings."
         state.follow_up_actions = ["Draft a reply", "Add to calendar"]
 
-        bot = await persist(state)
+        bot, _ = await persist(state)
 
         assert bot.follow_up_actions == ["Draft a reply", "Add to calendar"]
 
@@ -76,7 +84,7 @@ class TestFollowUpActions:
         state = _StreamState()
         state.complete_message = "Done."
 
-        bot = await persist(state)
+        bot, _ = await persist(state)
 
         assert bot.follow_up_actions is None
 
@@ -189,7 +197,81 @@ class TestArtifactLinksSurviveTheSave:
         state = _StreamState()
         state.complete_message = "here's the chart: ./artifacts/chart.png"
 
-        bot = await persist(state)
+        bot, _ = await persist(state)
 
         assert f"/sessions/{CONV}/artifacts/chart.png" in bot.response
         assert "./artifacts/chart.png" not in bot.response
+
+
+class TestAnEmptyCompletionIsNeverSaved:
+    """41 empty bot messages across 14 production conversations came through
+    here: the model returned no text, nothing errored, and ``_persist_turn``
+    wrote the empty string as the turn. Every renderer drops an empty body
+    silently (the bot adapter's ``deliverBubble`` returns early on falsy text),
+    so the user saw nothing and resent the same message.
+    """
+
+    @pytest.mark.regression
+    async def test_a_model_that_returned_no_text_is_saved_as_one_honest_line(self):
+        state = _StreamState()
+        state.complete_message = ""
+
+        bot, _ = await persist(state)
+
+        assert bot.response == EMPTY_RESPONSE_FALLBACK
+
+    @pytest.mark.regression
+    async def test_the_fallback_line_is_also_streamed_so_the_live_turn_is_not_silent(self):
+        """Persisting it is not enough — the user watching the stream has to see
+        something before the turn closes, or they resend before any reload."""
+        state = _StreamState()
+        state.complete_message = ""
+
+        _, published = await persist(state)
+
+        assert any(EMPTY_RESPONSE_FALLBACK in chunk for chunk in published)
+
+    async def test_a_whitespace_only_completion_counts_as_empty(self):
+        state = _StreamState()
+        state.complete_message = "\n  \n"
+
+        bot, _ = await persist(state)
+
+        assert bot.response == EMPTY_RESPONSE_FALLBACK
+
+    async def test_a_failed_turn_keeps_its_error_text_and_gains_no_fallback(self):
+        """The error path already streamed an ``ErrorFrame`` and persists the
+        same text — adding "say it again?" on top would contradict it."""
+        state = _StreamState()
+        state.complete_message = ""
+        state.error = "Something went wrong while generating this response (TimeoutError)."
+
+        bot, published = await persist(state)
+
+        assert bot.response == ""
+        assert bot.error == state.error
+        assert published == []
+
+    async def test_a_cancelled_turn_is_not_answered_with_say_it_again(self):
+        """The user stopped this turn on purpose; nothing failed to come through."""
+        state = _StreamState()
+        state.complete_message = ""
+        state.is_cancelled = True
+
+        bot, published = await persist(state)
+
+        assert bot.response == ""
+        assert published == []
+
+    async def test_a_turn_whose_content_is_tool_cards_is_left_alone(self):
+        """An image or a card with no prose is a real answer, not silence."""
+        state = _StreamState()
+        state.complete_message = ""
+        state.tool_data = {
+            "tool_data": [{"tool_name": "image_tool", "data": {"url": "http://x/y.png"}}]
+        }
+
+        bot, published = await persist(state)
+
+        assert bot.response == ""
+        assert published == []

@@ -24,7 +24,12 @@ from datetime import UTC, datetime
 import re
 from typing import Any
 
-from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.constants.cache import (
+    REPO_GLOBAL_SCOPE,
+    WORKFLOW_LIMIT_NOTICE_PREFIX,
+    WORKFLOW_LIMIT_NOTICE_TTL,
+)
+from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
@@ -632,6 +637,29 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """Every user id that owns at least one activated workflow — the paid-only
         migration's candidate pool, checked one by one against subscription status."""
         return await self._distinct("user_id", {"activated": True})
+
+    async def claim_limit_notice(self, user_id: str, workflow_id: str) -> bool:
+        """Whether this run may send the workflow's limit-wall notice.
+
+        A daily quota or budget wall is hit again by every occurrence until it
+        resets, and each hit used to send its own identical notification. The
+        wall is one fact per day, so a Redis ``SET NX EX`` gate allows one
+        notice per workflow per window. Fails open: if Redis cannot answer, the
+        user gets the notice.
+        """
+        client = redis_cache.redis
+        if client is None:
+            return True
+        try:
+            acquired = await client.set(
+                f"{WORKFLOW_LIMIT_NOTICE_PREFIX}{user_id}:{workflow_id}",
+                "1",
+                nx=True,
+                ex=WORKFLOW_LIMIT_NOTICE_TTL,
+            )
+        except Exception:
+            return True
+        return bool(acquired)
 
 
 workflow_repository = WorkflowsRepository()

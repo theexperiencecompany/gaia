@@ -18,6 +18,7 @@ from typing import Any, NamedTuple
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry
+from app.utils.message_breaks import append_message_bubble
 from app.utils.stream_utils import apply_outputs_to_tool_data
 from shared.py.wide_events import log
 
@@ -73,7 +74,13 @@ async def recover_stream_state(
     if not progress:
         return complete_message, tool_data
 
+    # Settled bubbles, plus whatever was streaming when the run stopped — the
+    # same flush the graph driver does with its own held text. Joined as a
+    # bubble, never concatenated: two messages run together read as one
+    # sentence, which is how a planning preamble ended up glued to a reply.
     complete_message = progress.get("complete_message", "")
+    if pending := progress.get("pending_message", ""):
+        complete_message = append_message_bubble(complete_message, pending)
     progress_tool_data = progress.get("tool_data")
     if (
         isinstance(progress_tool_data, dict)

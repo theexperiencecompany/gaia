@@ -172,6 +172,13 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.
 HIL_DECLINED_PREFIX = "hil:declined:"
+# One workflow's "you're out of runs / out of budget" notice, keyed by
+# user+workflow. The wall it reports is a daily one, so it is the same true
+# statement for every occurrence until the reset — worth exactly one message,
+# not one per fire (a production thread ran to six in a row).
+WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
+WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
+
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"
