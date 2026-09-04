@@ -145,6 +145,16 @@ class SettingsValidator:
             )
         )
 
+        self.register_group(
+            SettingsGroup(
+                name="File Sharing",
+                keys=["SHARE_GRANT_SECRET"],
+                description="HMAC signing secret for single-purpose file-share grants",
+                affected_features="File attachments fetched by Composio during tool execution",
+                all_required=True,
+            )
+        )
+
         # Speech Processing
         self.register_group(
             SettingsGroup(

@@ -394,6 +394,8 @@ unfixable = [
 # must keep that exact 3-arg shape regardless of whether a given hook branches on
 # tool/toolkit, so unused params here are a framework contract, not dead code.
 "apps/api/app/utils/composio_hooks/gmail_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/file_upload_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
+"apps/api/app/utils/composio_hooks/outlook_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
 "apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]  # Composio's Modifier.apply() calls hooks positionally; params are framework contract
@@ -419,6 +421,9 @@ unfixable = [
 # positionally to every registered custom tool handler regardless of whether
 # a given handler needs it.
 "apps/api/app/services/composio/custom_tools/gmail_tools.py" = ["ARG001"]
+# ARG002: FastAPI injects the cosmetic {filename} path segment by name into the
+# share-download handler; resolution uses only the token, so it is unread by design.
+"apps/api/app/api/v1/endpoints/shares.py" = ["ARG002"]
 # ANN401: generic decorator/proxy/settings surfaces that genuinely accept or
 # return arbitrary data -- Any is the correct type here, not a shortcut.
 "apps/api/app/db/redis.py" = ["ANN401"]

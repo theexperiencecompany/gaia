@@ -1,81 +1,46 @@
-"""Resolve high-level file references into Composio email attachments.
+"""Resolve high-level file references into Composio file uploads.
 
-Composio's Gmail compose tools (GMAIL_CREATE_EMAIL_DRAFT / GMAIL_SEND_EMAIL) take an
-``attachment`` of ``{name, mimetype, s3key}`` — a file already uploaded to Composio's
-store — not raw bytes. This module turns a reference the agent or a user gives us into
+Composio's file-accepting tools (Gmail compose today — GMAIL_CREATE_EMAIL_DRAFT /
+GMAIL_SEND_EMAIL — any future toolkit with the same ``attachment`` of
+``{name, mimetype, s3key}``) take a file already uploaded to Composio's store,
+not raw bytes. This module turns a reference the agent or a user gives us into
 that shape:
 
 - ``workspace_path`` — a file in the current session workspace (an upload, or a file an
   agent downloaded there). Read from the host JuiceFS mount and uploaded to Composio.
 - ``url`` — any fetchable URL, e.g. the download link GOOGLEDRIVE_DOWNLOAD_FILE returns
   for a Google Drive file. Composio fetches and stores it.
+- raw ``bytes`` — via ``upload_bytes_sync`` for the REST multipart path, where the
+  file arrives as bytes rather than a reference.
 
 Resolution is all-or-nothing: if any reference fails, we raise so the caller can fail
-the whole compose action loudly instead of sending mail that is missing a file the user
-asked to attach.
+the whole action loudly instead of proceeding with a file the user asked for missing.
 """
 
 from pathlib import Path
-from typing import TypedDict
 
 from composio.core.models._files import FileUploadable, _upload_bytes_to_s3
-from pydantic import BaseModel, Field, model_validator
 
-from app.services.storage.juicefs import resolve_user_file_sync
+from app.constants.email import (
+    EMAIL_ATTACHMENT_FAIL_FIX,
+    EMAIL_ATTACHMENT_FAIL_LOG,
+    EMAIL_ATTACHMENT_FAIL_WHY,
+)
+from app.models.mail_models import AttachmentReference, ComposioAttachment
+from app.services.storage.juicefs import resolve_user_file_sync, to_workspace_relative_path
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
-_WORKSPACE_PREFIX = "/workspace/"
 
-# Observability / user-facing error prose. Kept as single-line module constants so
-# mutation testing can suppress them (it cannot suppress interior lines of a
-# multi-line log/error call); the tests assert behaviour, not this wording.
-_ATTACH_FAIL_LOG = "Email attachment could not be resolved"  # pragma: no mutate
-_ATTACH_FAIL_WHY = "The file could not be read or uploaded."  # pragma: no mutate
-_ATTACH_FAIL_FIX = "Check the workspace path or URL is correct, then retry."  # pragma: no mutate
-
-
-class AttachmentReference(BaseModel):
-    """One file to attach, referenced by exactly one source."""
-
-    workspace_path: str | None = Field(
-        default=None,
-        description="Path to a file in the current session workspace (relative to /workspace).",
-    )
-    url: str | None = Field(
-        default=None,
-        description="A fetchable URL to the file, e.g. a Google Drive download link.",
-    )
-    name: str | None = Field(
-        default=None, description="Optional filename to use for the attachment."
-    )
-
-    @model_validator(mode="after")
-    def _exactly_one_source(self) -> "AttachmentReference":
-        if bool(self.workspace_path) == bool(self.url):
-            raise ValueError("need exactly one of workspace_path or url")  # pragma: no mutate
-        return self
-
-
-class ComposioAttachment(TypedDict):
-    """The ``FileUploadable`` shape Composio's compose tools expect."""
-
-    name: str
-    mimetype: str
-    s3key: str
-
-
-def _normalize_workspace_path(path: str) -> str:
-    """Strip a leading ``/workspace/`` (or ``/``) so the path is workspace-relative."""
-    stripped = path.strip()  # pragma: no mutate -- defensive whitespace trim
-    if stripped.startswith(_WORKSPACE_PREFIX):
-        return stripped[len(_WORKSPACE_PREFIX) :]
-    return stripped.lstrip("/")  # pragma: no mutate -- "/"->"XX/XX" is an equivalent strip
-
-
-def _upload_reference(
+def upload_file_reference(
     ref: AttachmentReference, *, user_id: str, tool: str, toolkit: str
 ) -> FileUploadable:
+    """Upload one file reference to Composio's store for any toolkit's use.
+
+    General capability, not email-specific: ``tool``/``toolkit`` name the invoking
+    Composio tool so uploads are attributed correctly (Gmail today, Outlook/Slack
+    or any file-accepting tool tomorrow).
+    """
     # Imported lazily: the Composio hook package auto-imports this module, and
     # composio_service imports that package, so a module-level import here would
     # form a cycle.
@@ -89,7 +54,7 @@ def _upload_reference(
         # workspace root (defeats ../ and symlink escape), so Composio's generic
         # denylist/allowlist for untrusted paths is redundant here.
         host_path: Path = resolve_user_file_sync(
-            user_id, _normalize_workspace_path(ref.workspace_path)
+            user_id, to_workspace_relative_path(ref.workspace_path)
         )
         return FileUploadable.from_path(
             client=client,
@@ -119,13 +84,16 @@ def resolve_attachments_sync(
     resolved: list[ComposioAttachment] = []
     for ref in references:
         try:
-            uploaded = _upload_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
+            uploaded = upload_file_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
         except Exception as exc:
             source = ref.workspace_path or ref.url
-            log.error(_ATTACH_FAIL_LOG, error=str(exc), user_id=user_id)  # pragma: no mutate
+            log.error(EMAIL_ATTACHMENT_FAIL_LOG, error=str(exc), user_id=user_id)  # pragma: no mutate
             message = f"Could not attach '{ref.name or source}': {exc}"  # pragma: no mutate
             raise AppError(
-                message=message, why=_ATTACH_FAIL_WHY, fix=_ATTACH_FAIL_FIX, status_code=400
+                message=message,
+                why=EMAIL_ATTACHMENT_FAIL_WHY,
+                fix=EMAIL_ATTACHMENT_FAIL_FIX,
+                status_code=400,
             ) from exc
         resolved.append(
             {
@@ -135,6 +103,26 @@ def resolve_attachments_sync(
             }
         )
     return resolved
+
+
+def map_sandbox_path_for_upload(path: str, *, user_id: str) -> str:
+    """Map a model-supplied file reference to a host path Composio can upload.
+
+    Spike helper evaluating Composio-native auto-upload (``FileHelper`` +
+    ``before_file_upload``): ``/workspace/...`` sandbox paths resolve against
+    the user's own contained root (same guarantee as the manual upload path —
+    ``..``/symlink escape raises inside ``resolve_user_file_sync``); http(s)
+    URLs pass through for Composio to fetch itself. Anything else (absolute
+    host paths, ``/mnt/...`` cross-user reaches) raises instead of leaking into
+    the uploader — the static-dir allowlist alone cannot express per-user
+    containment, so this function is the boundary.
+    """
+    stripped = path.strip()
+    if stripped.startswith(("http://", "https://")):
+        return stripped
+    if stripped.startswith("/workspace/") or not stripped.startswith("/"):
+        return str(resolve_user_file_sync(user_id, to_workspace_relative_path(stripped)))
+    raise ValueError(f"refusing to upload non-workspace path: {stripped}")
 
 
 def upload_bytes_sync(
@@ -151,7 +139,7 @@ def upload_bytes_sync(
     workspace path or URL. ``_upload_bytes_to_s3`` is Composio's own bytes uploader
     (the byte-level counterpart of the public ``FileUploadable.from_path``).
     """
-    # Lazy import: see _upload_reference for the cycle this avoids.
+    # Lazy import: see upload_file_reference for the cycle this avoids.
     from app.services.composio.composio_service import (  # noqa: PLC0415 -- lazy: avoids an import cycle
         get_composio_service,
     )

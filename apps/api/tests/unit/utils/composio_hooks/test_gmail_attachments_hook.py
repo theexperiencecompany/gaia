@@ -1,11 +1,14 @@
 """Gmail attachment hook + registry abort-signal tests.
 
-Covers the agent-facing side of email attachments:
-- the schema modifier that swaps Composio's raw ``attachment`` for a friendly
-  ``attachments`` reference list,
-- the before-hook that resolves those references and, critically, ABORTS the tool
-  call (rather than sending mail without the file) when resolution fails,
+Covers the Gmail side of file attachments:
+- the compose before-hook, which resolves references through the shared
+  ``resolve_tool_attachments`` (strict: anything unexpected aborts) and streams
+  the compose/sent card,
 - the registry contract that lets a hook signal that abort.
+
+The generic capability itself (schema modifier for every toolkit, lenient
+resolution, foreign-payload passthrough) is tested in
+``test_file_upload_hooks.py``.
 """
 
 from types import SimpleNamespace
@@ -14,55 +17,43 @@ from unittest.mock import patch
 from pydantic import BaseModel
 import pytest
 
+from app.utils.composio_hooks.file_upload_hooks import resolve_tool_attachments
 from app.utils.composio_hooks.gmail_hooks import (
     _compose_recipient_ready,
     _compose_recipients,
     _normalize_compose_body,
-    _resolve_compose_attachments,
     _stream_compose_preview,
-    gmail_compose_attachments_schema_modifier,
     gmail_compose_before_hook,
 )
 from app.utils.composio_hooks.registry import ComposioHookRegistry, HookAbortError
 from app.utils.errors import AppError
 
 HOOKS = "app.utils.composio_hooks.gmail_hooks"
+SHARED = "app.utils.composio_hooks.file_upload_hooks"
 
 
 def _schema(props: dict, required: list[str] | None = None) -> SimpleNamespace:
     return SimpleNamespace(input_parameters={"properties": props, "required": required or []})
 
 
-class TestAttachmentsSchemaModifier:
-    def test_replaces_raw_attachment_with_references(self):
-        schema = _schema(
-            {"attachment": {"type": "object"}, "subject": {"type": "string"}},
-            required=["attachment"],
-        )
-        out = gmail_compose_attachments_schema_modifier("GMAIL_CREATE_EMAIL_DRAFT", "gmail", schema)
-        props = out.input_parameters["properties"]
-        assert "attachment" not in props
-        assert props["attachments"]["type"] == "array"
-        assert "attachment" not in out.input_parameters["required"]
+class TestStrictGmailResolution:
+    """Gmail resolves strict: anything unexpected in ``attachments`` aborts."""
 
-    def test_safe_when_no_native_attachment_present(self):
-        # A schema without the native `attachment` (in props or required) must not
-        # crash: popping with a default and the guarded remove are both no-ops.
-        schema = _schema({"subject": {"type": "string"}}, required=["subject"])
-        out = gmail_compose_attachments_schema_modifier("GMAIL_SEND_EMAIL", "gmail", schema)
-        assert out.input_parameters["properties"]["attachments"]["type"] == "array"
-        assert out.input_parameters["required"] == ["subject"]
-
-
-class TestResolveComposeAttachments:
     def test_no_attachments_is_noop(self):
         params = {"arguments": {"subject": "hi"}, "user_id": "u1"}
-        assert _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params) == []
+        assert (
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True) == []
+        )
         assert "attachment" not in params["arguments"]
 
     def test_missing_arguments_key_is_noop(self):
         # Exercises the `params.get("arguments", {})` fallback: no arguments at all.
-        assert _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", {"user_id": "u1"}) == []
+        assert (
+            resolve_tool_attachments(
+                "GMAIL_SEND_EMAIL", "gmail", {"user_id": "u1"}, strict=True
+            )
+            == []
+        )
 
     def test_single_reference_becomes_a_bare_object(self):
         params = {
@@ -70,8 +61,10 @@ class TestResolveComposeAttachments:
             "user_id": "u1",
         }
         resolved = [{"name": "y.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
-        with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved) as res:
-            display = _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+        with patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved) as res:
+            display = resolve_tool_attachments(
+                "GMAIL_SEND_EMAIL", "gmail", params, strict=True
+            )
 
         # The invoking tool/toolkit are threaded into the resolver.
         assert res.call_args.kwargs == {"tool": "GMAIL_SEND_EMAIL", "toolkit": "gmail"}
@@ -91,8 +84,8 @@ class TestResolveComposeAttachments:
             {"name": "a.pdf", "mimetype": "application/pdf", "s3key": "k/a"},
             {"name": "b.pdf", "mimetype": "application/pdf", "s3key": "k/b"},
         ]
-        with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved):
-            _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+        with patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved):
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
         assert params["arguments"]["attachment"] == resolved
 
     def test_generated_model_items_are_coerced(self):
@@ -108,8 +101,8 @@ class TestResolveComposeAttachments:
             "user_id": "u1",
         }
         resolved = [{"name": "y.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
-        with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved) as res:
-            _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+        with patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved) as res:
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
         # The generated model was normalised into an AttachmentReference before resolving.
         passed_refs = res.call_args.args[1]
         assert passed_refs[0].url == "https://x/y.pdf"
@@ -117,26 +110,26 @@ class TestResolveComposeAttachments:
     def test_missing_user_id_aborts(self):
         params = {"arguments": {"attachments": [{"url": "https://x"}]}}
         with pytest.raises(HookAbortError, match="user context"):
-            _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
 
     def test_non_list_attachments_aborts(self):
         params = {"arguments": {"attachments": "not-a-list"}, "user_id": "u1"}
         with pytest.raises(HookAbortError, match="must be a list"):
-            _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
 
     def test_invalid_reference_aborts(self):
         params = {"arguments": {"attachments": [{"name": "no-source"}]}, "user_id": "u1"}
         with pytest.raises(HookAbortError, match="Invalid attachment reference"):
-            _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+            resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
 
     def test_resolver_failure_becomes_abort(self):
         params = {"arguments": {"attachments": [{"url": "https://bad"}]}, "user_id": "u1"}
         with patch(
-            f"{HOOKS}.resolve_attachments_sync",
+            f"{SHARED}.resolve_attachments_sync",
             side_effect=AppError(message="upload failed", status_code=400),
         ):
             with pytest.raises(HookAbortError, match="upload failed"):
-                _resolve_compose_attachments("GMAIL_SEND_EMAIL", "gmail", params)
+                resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, strict=True)
 
 
 class TestBeforeHookPropagatesAbort:
@@ -153,7 +146,7 @@ class TestBeforeHookPropagatesAbort:
             "user_id": "u1",
         }
         with patch(
-            f"{HOOKS}.resolve_attachments_sync",
+            f"{SHARED}.resolve_attachments_sync",
             side_effect=AppError(message="nope", status_code=400),
         ):
             with pytest.raises(HookAbortError):
@@ -302,16 +295,11 @@ class TestBeforeHookHappyPath:
         }
         resolved = [{"name": "y.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
         with (
-            patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved) as mock_resolve,
+            patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved),
             patch(f"{HOOKS}.get_stream_writer", return_value=sent.append),
         ):
             out = gmail_compose_before_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", params)
 
-        # The compose tool + toolkit are threaded into the resolver.
-        assert mock_resolve.call_args.kwargs == {
-            "tool": "GMAIL_CREATE_EMAIL_DRAFT",
-            "toolkit": "gmail",
-        }
         args = out["arguments"]
         # A single attachment collapses to one FileUploadable object.
         assert args["attachment"] == resolved[0]

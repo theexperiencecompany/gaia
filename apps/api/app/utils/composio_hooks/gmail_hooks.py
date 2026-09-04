@@ -7,17 +7,20 @@ for customizing tool descriptions and defaults.
 """
 
 from collections.abc import Sequence
-from typing import Any, TypedDict, TypeVar
+from typing import Any, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
-from pydantic import BaseModel, ValidationError
 
 from app.agents.templates.mail_templates import (
     detailed_message_template,
     draft_template,
     process_get_thread_response,
     process_list_drafts_response,
+)
+from app.constants.email import (
+    GMAIL_SKIP_STREAM_LOG,
+    GMAIL_TO_MAPPED_LOG,
 )
 from app.constants.log_tags import LogTag
 from app.models.composio_schemas.google_people import (
@@ -29,15 +32,10 @@ from app.models.composio_schemas.google_people import (
     GooglePersonName,
     GooglePersonValue,
 )
-from app.services.composio.attachments import (
-    AttachmentReference,
-    ComposioAttachment,
-    resolve_attachments_sync,
-)
-from app.utils.errors import AppError
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
+from .file_upload_hooks import AttachmentDisplay, resolve_tool_attachments
 from .registry import (
     HookAbortError,
     register_after_hook,
@@ -53,14 +51,6 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
-
-# Log / error strings as single-line constants: mutation testing can suppress a
-# simple statement line but not the interior lines of a multi-line call, and this
-# wording is observability / user prose, not behaviour the tests assert.
-_LOG_MAPPED_TO = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"  # pragma: no mutate
-_LOG_SKIP_STREAM = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"  # pragma: no mutate
-_ERR_ATTACHMENTS_NOT_LIST = "`attachments` must be a list of file references."  # pragma: no mutate
-_ERR_NO_USER = "Cannot resolve email attachments without a user context."  # pragma: no mutate
 
 _PersonField = TypeVar("_PersonField", GooglePersonName, GooglePersonValue)
 
@@ -191,57 +181,6 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
     return schema
 
 
-_ATTACHMENTS_PARAM_SCHEMA: dict[str, Any] = {
-    "type": "array",
-    "description": (
-        "Files to attach to the email. Each item references ONE file by EITHER "
-        "'workspace_path' (a file in the current session workspace, e.g. one the user "
-        "uploaded or an agent saved there) OR 'url' (a fetchable link). To attach a "
-        "Google Drive file, first call GOOGLEDRIVE_DOWNLOAD_FILE and pass the download "
-        "URL it returns as 'url'. Total message size must stay under 25 MB."
-    ),
-    "items": {
-        "type": "object",
-        "properties": {
-            "workspace_path": {
-                "type": "string",
-                "description": "Path to a file in the current session workspace (relative to /workspace).",
-            },
-            "url": {
-                "type": "string",
-                "description": "A fetchable URL to the file, e.g. a GOOGLEDRIVE_DOWNLOAD_FILE download URL.",
-            },
-            "name": {
-                "type": "string",
-                "description": "Optional filename to use for the attachment.",
-            },
-        },
-    },
-}
-
-
-@register_schema_modifier(tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"])
-def gmail_compose_attachments_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
-    """Expose a friendly ``attachments`` param instead of Composio's raw ``attachment``.
-
-    Composio's native ``attachment`` takes a pre-uploaded ``{name, mimetype, s3key}``,
-    which an agent cannot produce. We swap it for ``attachments`` — a list of file
-    references (workspace path or URL) — that ``gmail_compose_before_hook`` resolves to
-    real Composio uploads before the tool runs.
-    """
-    input_params: object = schema.input_parameters
-    if not isinstance(input_params, dict):
-        return schema
-    props = input_params.get("properties")
-    if isinstance(props, dict):
-        props.pop("attachment", None)
-        props["attachments"] = _ATTACHMENTS_PARAM_SCHEMA
-    required = input_params.get("required")
-    if isinstance(required, list) and "attachment" in required:
-        required.remove("attachment")
-    return schema
-
-
 @register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
@@ -280,64 +219,6 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 # These hooks send progress/streaming data to frontend before tool execution
 
 
-class _AttachmentDisplay(TypedDict):
-    """The per-attachment metadata streamed to the compose card (never the s3key)."""
-
-    name: str
-    mimetype: str
-
-
-def _resolve_compose_attachments(
-    tool: str, toolkit: str, params: ToolExecuteParams
-) -> list[_AttachmentDisplay]:
-    """Turn the agent's ``attachments`` references into Composio's ``attachment`` arg.
-
-    Uploads each referenced file to Composio and rewrites ``arguments`` in place.
-    Raises ``HookAbortError`` on any failure so the compose tool does NOT run with a
-    missing file (a silently attachment-less draft would be a data-loss bug).
-    """
-    arguments = params.get("arguments", {})
-    raw = arguments.get("attachments")
-    if not raw:
-        return []
-    if not isinstance(raw, list):
-        raise HookAbortError(_ERR_ATTACHMENTS_NOT_LIST)
-
-    user_id = params.get("user_id")
-    if not user_id:
-        raise HookAbortError(_ERR_NO_USER)
-
-    try:
-        # Items arrive as dicts (REST) or as Composio's schema-generated Pydantic
-        # models (agent path, where langchain coerces the tool args) — normalise
-        # both to a plain mapping before validating into our reference model.
-        references = [
-            AttachmentReference.model_validate(
-                item.model_dump() if isinstance(item, BaseModel) else item
-            )
-            for item in raw
-        ]
-    except ValidationError as exc:
-        raise HookAbortError(f"Invalid attachment reference: {exc}") from exc
-
-    try:
-        resolved: list[ComposioAttachment] = resolve_attachments_sync(
-            user_id, references, tool=tool, toolkit=toolkit
-        )
-    except AppError as exc:
-        raise HookAbortError(exc.message) from exc
-
-    # Composio's Gmail ``attachment`` is a single FileUploadable OR a list. The
-    # pinned toolkit version only accepts the single-object form for one file, so
-    # send a bare object when there is exactly one and reserve the list for many.
-    arguments["attachment"] = resolved[0] if len(resolved) == 1 else resolved
-    del arguments["attachments"]
-    # Redundant: `arguments` is already `params["arguments"]` by reference.
-    params["arguments"] = arguments  # pragma: no mutate
-    log.set(gmail_attachment_count=len(resolved))  # pragma: no mutate
-    return [{"name": a["name"], "mimetype": a["mimetype"]} for a in resolved]
-
-
 def _normalize_compose_body(arguments: dict[str, Any]) -> None:
     """Convert the Markdown body to HTML in place and flag it (idempotent).
 
@@ -361,7 +242,7 @@ def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
         return True
     if "to" in arguments and "recipient_email" not in arguments:
         arguments["recipient_email"] = arguments["to"]
-        log.info(_LOG_MAPPED_TO, tool=tool)  # pragma: no mutate
+        log.info(GMAIL_TO_MAPPED_LOG, tool=tool)  # pragma: no mutate
     has_recipient = bool(
         arguments.get("recipient_email")
         or arguments.get("to")
@@ -370,7 +251,7 @@ def _compose_recipient_ready(tool: str, arguments: dict[str, Any]) -> bool:
     )
     has_content = bool(arguments.get("subject") or arguments.get("body"))
     if not has_recipient or not has_content:
-        log.warning(_LOG_SKIP_STREAM, tool=tool)  # pragma: no mutate
+        log.warning(GMAIL_SKIP_STREAM_LOG, tool=tool)  # pragma: no mutate
         return False
     return True
 
@@ -388,7 +269,7 @@ def _compose_recipients(tool: str, arguments: dict[str, Any]) -> list[str]:
 
 
 def _stream_compose_preview(
-    tool: str, arguments: dict[str, Any], attachment_display: list[_AttachmentDisplay]
+    tool: str, arguments: dict[str, Any], attachment_display: list[AttachmentDisplay]
 ) -> None:
     """Stream the compose (draft) or sent card payload to the chat."""
     writer = get_stream_writer()
@@ -423,10 +304,12 @@ def gmail_compose_before_hook(
     log.set(gmail_tool=tool, toolkit=toolkit)  # pragma: no mutate -- observability
     try:
         arguments = params.get("arguments", {})  # pragma: no mutate -- defensive default
-        # Resolve file references into real Composio uploads BEFORE the tool runs.
-        # Raises HookAbortError (propagated below) if a file can't be attached, so
-        # we never send mail missing a requested attachment.
-        attachment_display = _resolve_compose_attachments(tool, toolkit, params)
+        # Shared file-upload resolution (strict: any garbage in ``attachments``
+        # aborts). Raises HookAbortError (propagated below) if a file can't be
+        # attached, so we never send mail missing a requested attachment.
+        attachment_display = resolve_tool_attachments(tool, toolkit, params, strict=True)
+        if attachment_display:
+            log.set(gmail_attachment_count=len(attachment_display))  # pragma: no mutate
         _normalize_compose_body(arguments)
         # Redundant: `arguments` is already `params["arguments"]` by reference.
         params["arguments"] = arguments  # pragma: no mutate

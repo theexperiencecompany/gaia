@@ -368,6 +368,76 @@ class TestMasterHooks:
             assert result is schema
 
 
+class TestEnforceHookIdentity:
+    """master_before_execute_hook overwrites a conflicting user_id with the
+    server-known RunnableConfig identity — before any hook reads it."""
+
+    def _with_config(self, top_id: str | None, meta_id: str | None) -> Any:
+        params = _make_params({"subject": "s"})
+        if top_id is not None:
+            params["user_id"] = top_id
+        if meta_id is not None:
+            params["arguments"]["__runnable_config__"] = {"metadata": {"user_id": meta_id}}
+        return params
+
+    def test_conflict_resolves_to_metadata_identity(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("attacker", "u1")
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_match_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", "u1")
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ) as mock:
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+        assert mock.call_args.args[2] is params
+
+    def test_absent_metadata_leaves_params_untouched(self) -> None:
+        # Trigger-option flow binds the user at get_tool time (no metadata):
+        # nothing to enforce against, Composio-set identity stands.
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = self._with_config("u1", None)
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+    def test_metadata_without_user_leaves_params_untouched(self) -> None:
+        from app.utils.composio_hooks.registry import (
+            hook_registry,
+            master_before_execute_hook,
+        )
+
+        params = _make_params({"subject": "s"})
+        params["user_id"] = "u1"
+        params["arguments"]["__runnable_config__"] = {"metadata": {}}
+        with patch.object(
+            hook_registry, "execute_before_hooks", side_effect=lambda t, k, p: p
+        ):
+            master_before_execute_hook("T", "K", params)
+        assert params["user_id"] == "u1"
+
+
 # ============================================================================
 # 4. User ID hooks
 # ============================================================================

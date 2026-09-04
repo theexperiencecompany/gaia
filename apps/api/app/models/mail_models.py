@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from fastapi import UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.repositories.base import UserScopedDocument
 
@@ -380,3 +380,54 @@ class GmailDeletionResponse(BaseModel):
 
     status: Literal["success", "error"]
     message: str
+
+
+class AttachmentReference(BaseModel):
+    """One file to attach, referenced by exactly one source."""
+
+    workspace_path: str | None = Field(
+        default=None,
+        description="Path to a file in the current session workspace (relative to /workspace).",
+    )
+    url: str | None = Field(
+        default=None,
+        description="A fetchable URL to the file, e.g. a Google Drive download link.",
+    )
+    name: str | None = Field(
+        default=None, description="Optional filename to use for the attachment."
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self) -> "AttachmentReference":
+        if bool(self.workspace_path) == bool(self.url):
+            raise ValueError("need exactly one of workspace_path or url")  # pragma: no mutate
+        return self
+
+
+class ComposioAttachment(TypedDict):
+    """The ``FileUploadable`` shape Composio's compose tools expect."""
+
+    name: str
+    mimetype: str
+    s3key: str
+
+
+def attachment_references_param_schema(description: str) -> dict[str, Any]:
+    """Agent-facing schema for the friendly ``attachments`` array param.
+
+    Item properties are derived from ``AttachmentReference`` field descriptions,
+    so a field change lands in one place instead of drifting between the model
+    and a hand-written schema dict. Kept ``{"type": "string"}`` (not the model's
+    nullable anyOf) to match the shape agents already see.
+    """
+    return {
+        "type": "array",
+        "description": description,
+        "items": {
+            "type": "object",
+            "properties": {
+                name: {"type": "string", "description": field.description}
+                for name, field in AttachmentReference.model_fields.items()
+            },
+        },
+    }

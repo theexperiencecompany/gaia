@@ -155,6 +155,42 @@ class ComposioHookRegistry:
 hook_registry = ComposioHookRegistry()
 
 
+def _enforce_hook_identity(tool: str, toolkit: str, params: ToolExecuteParams) -> None:
+    """Overwrite a conflicting hook identity with the server-known user.
+
+    Hooks read identity from ``params["user_id"]``, but that field's provenance
+    is the Composio executor — a model-supplied ``user_id`` arg must never win
+    over the identity our own server injected into ``__runnable_config__``
+    metadata. On conflict the trusted id wins (logged); on match or absence
+    nothing changes, so trigger flows (no metadata) and well-formed calls are
+    untouched. Absence is never backfilled: hooks keep their fail-closed
+    behavior when no identity is present at all.
+    """
+    # Typed as object (not the declared arguments shape): real params arrive as
+    # plain dicts that may omit keys or carry non-dict values, and each guard
+    # below must stay reachable.
+    arguments: object = params.get("arguments")
+    if not isinstance(arguments, dict):
+        return
+    config = arguments.get("__runnable_config__")
+    if not isinstance(config, dict):
+        return
+    metadata = config.get("metadata")
+    if not isinstance(metadata, dict):
+        return
+    trusted = metadata.get("user_id")
+    if not trusted or not isinstance(trusted, str):
+        return
+    current = params.get("user_id")
+    if current is not None and current != trusted:
+        log.warning(
+            f"{LogTag.COMPOSIO} Hook user_id overwritten from RunnableConfig",
+            tool=tool,
+            toolkit=toolkit,
+        )
+        params["user_id"] = trusted
+
+
 def master_before_execute_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
@@ -166,6 +202,7 @@ def master_before_execute_hook(
     2. Frontend streaming setup
     3. All registered tool-specific hooks
     """
+    _enforce_hook_identity(tool, toolkit, params)
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 

@@ -119,6 +119,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             # One-click email unsubscribe — opened from mail clients with no
             # session; the HMAC-signed token authenticates the user itself.
             "/api/v1/notifications/unsubscribe",
+            # Single-purpose file-share downloads — fetched server-side by
+            # Composio during tool execution with no session; the unguessable
+            # token authenticates the grant itself. Trailing slash keeps this
+            # from matching anything else under /api/v1/files.
+            "/api/v1/files/s/",
             # Dev identity router (mounted only in development). Excluded so the
             # mint endpoint is reachable before any user exists — otherwise the
             # bypass would 401 the very request that bootstraps the first user.

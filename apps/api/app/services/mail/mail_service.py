@@ -8,6 +8,7 @@ from langchain_core.tools import StructuredTool
 
 from app.constants.log_tags import LogTag
 from app.models.mail_models import (
+    ComposioAttachment,
     GmailDraftsResponse,
     GmailEmailResult,
     GmailFetchEmailsData,
@@ -16,7 +17,7 @@ from app.models.mail_models import (
     GmailMessagesResponse,
     GmailToolResult,
 )
-from app.services.composio.attachments import ComposioAttachment, upload_bytes_sync
+from app.services.composio.attachments import upload_bytes_sync
 from app.services.composio.composio_service import (
     get_composio_service,
 )

@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.models.mail_models import AttachmentReference
 from app.services.composio.attachments import (
-    AttachmentReference,
     resolve_attachments_sync,
     upload_bytes_sync,
 )
