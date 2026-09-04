@@ -13,11 +13,11 @@ import { useEffect, useState } from "react";
 
 import { selectPaceDone, usePaceStore } from "../state/paceStore";
 
-const BASE_PAUSE_MS = 380;
-const PER_CHAR_MS = 11;
-const MAX_PAUSE_MS = 1400;
+const BASE_PAUSE_MS = 180;
+const PER_CHAR_MS = 3;
+const MAX_PAUSE_MS = 550;
 /** Breathing room between the last line landing and the reply appearing. */
-const SETTLE_MS = 260;
+const SETTLE_MS = 120;
 
 const INSTANT = process.env.NODE_ENV === "test";
 

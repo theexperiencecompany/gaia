@@ -1,16 +1,14 @@
 /**
- * GAIA's side of a turn, paced: lines land one at a time behind the wave
- * spinner (see `useTypedLines`). The spinner sits in the bubble lane, beside
- * where the next bubble will land, so it reads as GAIA working on the next
- * line rather than as a page loading.
+ * GAIA's side of a turn, paced: lines land one at a time behind a bubble
+ * holding the dots spinner (see `useTypedLines`), the way messaging apps show
+ * the other person typing.
  */
 
 "use client";
 
+import { Spinner } from "@heroui/spinner";
 import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import * as m from "motion/react-m";
-
-import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 
 import { EASE_OUT_QUART } from "../constants/motion";
 import { useTypedLines } from "../hooks/useTypedLines";
@@ -37,12 +35,12 @@ export function OnboardingPacedBubbles({
       {isTyping && (
         <m.output
           aria-label="GAIA is typing"
-          className="ml-10.75 flex w-fit py-1"
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: EASE_OUT_QUART }}
+          className="chat_bubble ml-10.75 items-center bg-zinc-800 py-3"
+          initial={{ opacity: 0, y: 4, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.2, ease: EASE_OUT_QUART }}
         >
-          <WaveSpinnerSquare />
+          <Spinner variant="dots" color="default" size="sm" />
         </m.output>
       )}
     </div>
