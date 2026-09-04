@@ -539,7 +539,7 @@ class StreamManager:
         progress_data["pending_message"] = ""
         if pending and not discarded:
             progress_data["complete_message"] = append_message_bubble(
-                progress_data.get("complete_message", ""), pending
+                progress_data.get("complete_message") or "", pending
             )
         await redis_cache.set(key, progress_data, ttl=STREAM_TTL)
 

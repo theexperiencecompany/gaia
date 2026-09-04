@@ -757,6 +757,47 @@ class TestUpdateProgress:
         saved = self.mock_set.call_args[0][1]
         assert saved["pending_message"] == "first"
 
+    async def test_a_record_predating_the_pending_field_starts_from_empty(self) -> None:
+        """A progress record written before ``pending_message`` existed is still
+        in Redis under its TTL, so the read has to supply the empty string
+        itself — the first chunk of the turn IS the whole unsettled message."""
+        del self.progress["pending_message"]
+        await StreamManager.update_progress("s1", message_chunk="first token")
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["pending_message"] == "first token"
+
+    async def test_settling_a_record_without_a_pending_field_keeps_the_reply(self) -> None:
+        """Same record, settled instead of appended to: there is nothing held,
+        so the already-settled reply must survive the boundary untouched."""
+        del self.progress["pending_message"]
+        self.progress["complete_message"] = "The answer."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "The answer."
+        assert saved["pending_message"] == ""
+
+    async def test_the_first_kept_bubble_is_the_whole_reply(self) -> None:
+        """Nothing settled yet, so the bubble is the reply verbatim — no
+        separator and no leading text in front of it."""
+        del self.progress["complete_message"]
+        self.progress["pending_message"] = "Here it is."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        saved = self.mock_set.call_args[0][1]
+        assert saved["complete_message"] == "Here it is."
+
+    async def test_settle_writes_this_streams_progress_key_with_the_full_ttl(self) -> None:
+        """A settled boundary must land on the turn's own progress key and
+        re-arm the full TTL: a shortened one expires the record mid-turn and a
+        reloading client is told no turn is running."""
+        self.progress["pending_message"] = "Done."
+        await StreamManager.settle_message_progress("s1", discarded=False)
+
+        assert self.mock_set.call_args[0][0] == f"{STREAM_PROGRESS_PREFIX}s1"
+        assert self.mock_set.call_args.kwargs == {"ttl": STREAM_TTL}
+
 
 # ---------------------------------------------------------------------------
 # get_progress

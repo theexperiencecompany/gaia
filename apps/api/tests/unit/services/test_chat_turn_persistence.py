@@ -67,6 +67,30 @@ async def persist(state: _StreamState) -> tuple[MessageModel, list[str]]:
     return bot, published
 
 
+async def persist_with_log(state: _StreamState) -> tuple[MessageModel, list[Any], Any]:
+    """Same path as ``persist``, keeping the stream id each publish went to and
+    the module's logger — the substitution is only countable in the log."""
+    published: list[Any] = []
+    sm = AsyncMock()
+    sm.publish_chunk = AsyncMock(side_effect=lambda sid, c: published.append((sid, c)))
+
+    with (
+        patch.object(
+            chat_stream,
+            "recover_stream_state",
+            new=AsyncMock(side_effect=lambda _sid, msg, td: (msg, td)),
+        ),
+        patch.object(chat_stream, "stream_manager", sm),
+        patch.object(chat_stream, "log") as mock_log,
+        patch("app.services.chat.persistence.update_messages", new_callable=AsyncMock) as update,
+    ):
+        await _persist_turn("s1", _body(), USER, CONV, state)
+
+    request = update.await_args.args[0]
+    bot = next(m for m in request.messages if m.type == "bot")
+    return bot, published, mock_log
+
+
 class TestFollowUpActions:
     async def test_follow_up_chips_survive_the_save(self):
         """The chips render live off a ``follow_up_actions`` frame. If the turn
@@ -281,3 +305,53 @@ class TestAnEmptyCompletionIsNeverSaved:
 
         assert bot.response == ""
         assert published == []
+
+
+class TestTheSubstitutionIsRecordedExactly:
+    """One honest line is indistinguishable from an ordinary short reply, so the
+    conversation itself can never tell you how often this fires. The log is the
+    only place it is countable — and the reason splits the two causes that need
+    different fixes: a model that spent its budget producing no visible token
+    versus one that returned nothing at all.
+    """
+
+    async def test_the_fallback_line_is_streamed_verbatim_on_this_stream(self):
+        from app.utils.agent_utils import format_sse_response
+
+        state = _StreamState()
+        state.complete_message = ""
+
+        _, published, _ = await persist_with_log(state)
+
+        assert published == [("s1", format_sse_response(EMPTY_RESPONSE_FALLBACK))]
+
+    async def test_a_model_that_spent_tokens_on_no_text_is_recorded_as_such(self):
+        from app.constants.log_tags import LogTag
+
+        state = _StreamState()
+        state.complete_message = ""
+        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 64}}
+
+        _, _, mock_log = await persist_with_log(state)
+
+        assert mock_log.error.call_args.args == (
+            f"{LogTag.CHAT} Empty completion, substituting fallback reply",
+        )
+        assert mock_log.error.call_args.kwargs == {
+            "stream_id": "s1",
+            "empty_completion_reason": "model_returned_no_text",
+            "output_tokens": 64,
+        }
+
+    async def test_a_model_that_produced_nothing_at_all_is_told_apart(self):
+        state = _StreamState()
+        state.complete_message = ""
+        state.usage_metadata = {"gemini": {"input_tokens": 120, "output_tokens": 0}}
+
+        _, _, mock_log = await persist_with_log(state)
+
+        assert mock_log.error.call_args.kwargs == {
+            "stream_id": "s1",
+            "empty_completion_reason": "model_produced_no_output",
+            "output_tokens": 0,
+        }

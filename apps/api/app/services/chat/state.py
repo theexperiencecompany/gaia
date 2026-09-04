@@ -79,7 +79,7 @@ async def recover_stream_state(
     # bubble, never concatenated: two messages run together read as one
     # sentence, which is how a planning preamble ended up glued to a reply.
     complete_message = progress.get("complete_message", "")
-    if pending := progress.get("pending_message", ""):
+    if pending := progress.get("pending_message"):
         complete_message = append_message_bubble(complete_message, pending)
     progress_tool_data = progress.get("tool_data")
     if (

@@ -20,6 +20,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.constants.cache import STREAM_PROGRESS_PREFIX
+from app.constants.general import NEW_MESSAGE_BREAKER
 from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
 from app.services.chat.state import recover_stream_state
 from app.utils.message_breaks import split_message_bubbles
@@ -126,3 +127,38 @@ class TestRecoveryStillReturnsWhatTheTurnOwed:
         )
 
         assert split_message_bubbles(message) == ["Done.", "One more thing"]
+
+
+async def _recover_from(progress: dict[str, Any]) -> str:
+    """Recover from a progress record supplied verbatim, bypassing the writer."""
+    with patch(
+        "app.services.chat.state.stream_manager.get_progress",
+        new=AsyncMock(return_value=progress),
+    ):
+        message, _ = await recover_stream_state(STREAM, "", {"tool_data": []})
+    return message
+
+
+class TestRecoveringARecordMissingTheBubbleFields:
+    """A record written before the settled/pending split is still in Redis under
+    its TTL, so recovery supplies both defaults itself. Neither may become text
+    the user never saw."""
+
+    async def test_a_record_with_neither_field_recovers_nothing(self) -> None:
+        assert await _recover_from({"tool_data": {}}) == ""
+
+    async def test_a_record_with_only_a_trailing_fragment_recovers_just_it(self) -> None:
+        assert await _recover_from({"pending_message": "Half a sentence"}) == "Half a sentence"
+
+    async def test_a_record_with_only_settled_bubbles_recovers_just_them(self) -> None:
+        assert await _recover_from({"complete_message": "Done."}) == "Done."
+
+    async def test_the_recovered_length_is_logged(self) -> None:
+        """The count is how a recovered-but-empty turn is told apart from a turn
+        that never wrote progress at all."""
+        with patch("app.services.chat.state.log") as mock_log:
+            await _recover_from({"complete_message": "Done.", "pending_message": "And one more"})
+
+        assert mock_log.debug.call_args.kwargs == {
+            "complete_message_count": len("Done.") + len(NEW_MESSAGE_BREAKER) + len("And one more")
+        }
