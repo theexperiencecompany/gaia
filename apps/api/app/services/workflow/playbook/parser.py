@@ -37,7 +37,7 @@ from app.models.playbook_models import (
     is_ask_slot,
     walk_ask_slots,
 )
-from app.models.workflow_execution_models import largest_list_len
+from app.models.workflow_execution_models import carries_no_data
 from app.services.workflow.playbook.evaluator import (
     STEP_FILE_FIELD,
     PlaceholderError,
@@ -138,6 +138,18 @@ def _dump_step(step: PlaybookStep) -> dict[str, Any]:
         node["handoff"] = step.handoff
     if step.steps:
         node["steps"] = [_dump_step(child) for child in step.steps]
+    # The loop is part of the sequence. A heal run reads this document to see
+    # what was frozen, and a for_each rendered without its for_each is a step
+    # whose $item has nothing to address — the agent would "fix" it by
+    # dropping the loop the playbook was written for.
+    if step.for_each is not None:
+        node["for_each"] = (
+            step.for_each.model_dump(by_alias=True, exclude_defaults=True)
+            if isinstance(step.for_each, AskSlot)
+            else step.for_each
+        )
+    if step.max_items is not None:
+        node["max_items"] = step.max_items
     return node
 
 
@@ -482,9 +494,10 @@ def _result_refusal(tool_name: str, call: RecordedResult) -> str | None:
             f"{tool_name} failed in this run ({_envelope_error(call.result)}); a playbook "
             "freezes calls that succeeded — fix the call and run it again, or drop the step"
         )
-    # None means the result carries no list at all (a single object, a string),
-    # which says nothing about emptiness; only a list of length zero does.
-    if largest_list_len(call.result) == 0:
+    # Not a list length: a write tool answers with the record it just made, and
+    # that record's own empty attributes are not the call returning nothing.
+    # See carries_no_data.
+    if carries_no_data(call.result):
         return (
             f"{tool_name} returned no items in this run (args: {_rendered_args(call.args)}); "
             "freeze a call that produced data — widen the args or decline the playbook"

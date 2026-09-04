@@ -31,12 +31,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from app.agents.llm.client import ainvoke_llm, background_structured_runnable, metered_config
 from app.agents.middleware.factory import (
@@ -59,7 +59,6 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import (
     FOR_EACH_ASK_PATH,
-    MAX_FOR_EACH_ITEMS,
     AskSlot,
     LocatedAsk,
     PlaybookDocument,
@@ -71,6 +70,7 @@ from app.models.playbook_models import (
 from app.models.workflow_execution_models import (
     RecordedCall,
     build_result_digest,
+    carries_no_data,
     largest_list_len,
 )
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
@@ -154,6 +154,21 @@ class PlaybookAskAnswer(BaseModel):
         default_factory=list,
         description="For a for_each slot only: the elements the step repeats over",
     )
+
+    @model_validator(mode="after")
+    def _answers_something(self) -> Self:
+        """An answer carries text or items, never neither.
+
+        ``text`` had to become optional so a for_each source could answer with
+        ``items`` instead, and that quietly opened a hole: a slot the model
+        skipped would land in the answers as an empty string, so the
+        missing-slot warning could not see it and the empty string went into a
+        real tool argument. An empty answer is a failed ask, and the run has to
+        stop rather than call a tool with a blank where the text belongs.
+        """
+        if not self.text.strip() and not self.items:
+            raise ValueError(f"{self.name}: answer with text, or with items for a for_each slot")
+        return self
 
 
 class PlaybookAskFill(BaseModel):
@@ -523,7 +538,7 @@ async def _for_each_items(
         )
     # max_items is guaranteed by the model validator; the cap is applied here so
     # a source that grew past it costs the ceiling, never the whole list.
-    return list(raw[: step.max_items or MAX_FOR_EACH_ITEMS]), None
+    return list(raw[: step.max_items]), None
 
 
 async def _call_step(
@@ -693,7 +708,7 @@ def _empty_where_previous_had_items(
     LAST match, the same way ``last_run_index`` resolves ``$last_run``: a tool
     called twice in one run is compared against the attempt that worked.
     """
-    if largest_list_len(value) != 0:
+    if not carries_no_data(value):
         return None
     earlier = next(
         (call for call in reversed(previous) if call.tool_name == tool_name and call.replayed),
@@ -861,7 +876,7 @@ async def _fill_asks(
     run.ask_fill = fill
     # Accumulated, never replaced: an earlier step's filled slots are still
     # part of the arguments its record shows, and the narration reads them all.
-    run.asks.update({answer.name: answer.text for answer in fill.asks})
+    run.asks.update({answer.name: answer.text for answer in fill.asks if answer.text.strip()})
     run.ask_items.update({answer.name: answer.items for answer in fill.asks if answer.items})
     missing = sorted({ask.key for ask in located} - set(run.asks) - set(run.ask_items))
     if missing:
@@ -886,7 +901,7 @@ async def _narrate(playbook: PlaybookDocument, run: _Run) -> PlaybookNarration:
         PLAYBOOK_NARRATION_PROMPT.format(
             description=playbook.description,
             completed="\n".join(run.completed) or "nothing",
-            asks=_render_filled_asks(run.asks),
+            asks=_render_filled_asks(run.asks, run.ask_items),
             result_brief=playbook.result_brief,
         ),
         label="playbook_narration",
@@ -935,11 +950,20 @@ def _render_asks(located: Sequence[LocatedAsk]) -> str:
     return "\n".join(lines)
 
 
-def _render_filled_asks(asks: Mapping[str, str]) -> str:
-    """The asks as the ask calls wrote them, for the end-of-run call to read."""
-    if not asks:
+def _render_filled_asks(asks: Mapping[str, str], items: Mapping[str, list[str]]) -> str:
+    """The asks as the ask calls wrote them, for the end-of-run call to read.
+
+    A for_each source's answer is the list of elements the step then ran over.
+    The narration sees each element's call in ``completed``; this is where it
+    sees that those were a selection, and what the selection was.
+    """
+    if not asks and not items:
         return "none"
-    return "\n".join(f"- {name}: {text}" for name, text in asks.items())
+    lines = [f"- {name}: {text}" for name, text in asks.items()]
+    lines.extend(
+        f"- {name}: picked {len(picked)}: {', '.join(picked)}" for name, picked in items.items()
+    )
+    return "\n".join(lines)
 
 
 def completed_block(completed: Sequence[str]) -> str:

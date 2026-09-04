@@ -60,6 +60,7 @@ from app.services.workflow.playbook.runner import (
     _fill_asks,
     _narrate,
     _render_asks,
+    _render_filled_asks,
     _Run,
     _run_handoff,
     _run_tool_step,
@@ -3181,3 +3182,68 @@ class TestForEachShape:
         assert result.ok is False
         assert result.failure is not None
         assert "only meaningful inside a for_each" in result.failure
+
+
+class TestAskAnswerShape:
+    """``text`` had to become optional so a for_each source could answer with
+    ``items``. That opened a hole: an answer with neither landed in the answers
+    table as an empty string, the missing-slot warning could not see it, and
+    the empty string went into a real tool argument. The model rejects it now,
+    so the ask call raises and the run stops instead of calling a tool blind.
+    """
+
+    def test_an_answer_with_neither_text_nor_items_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="answer with text, or with items"):
+            PlaybookAskAnswer(name="mail.subject")
+
+    def test_whitespace_is_not_an_answer(self) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookAskAnswer(name="mail.subject", text="   ")
+
+    def test_text_alone_is_an_answer(self) -> None:
+        assert PlaybookAskAnswer(name="mail.subject", text="Agenda").text == "Agenda"
+
+    def test_items_alone_is_an_answer(self) -> None:
+        assert PlaybookAskAnswer(name="mails.$for_each", items=["a", "b"]).items == ["a", "b"]
+
+    async def test_a_skipped_slot_never_reaches_the_tool_as_an_empty_string(self) -> None:
+        """The failure the validator exists to prevent, end to end: an ask call
+        that answers a DIFFERENT slot than the one asked must leave the asked
+        slot missing, so resolution fails loudly rather than sending ''."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        steps = [
+            PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            PlaybookStep(
+                id="mail",
+                tool="send_email",
+                args={"to": "$trigger.to", "body": {"$ask": "the note"}},
+            ),
+        ]
+        wrong_slot = PlaybookAskFill(asks=[PlaybookAskAnswer(name="mail.subject", text="x")])
+
+        result, _ = await _run(_playbook(steps), registry, ask_fill=wrong_slot)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert "mail.body was never written" in result.failure
+        assert not [a for name, a in recorder.calls if name == "send_email"], (
+            "the tool must not be called with a blank where the text belongs"
+        )
+
+
+class TestNarrationSeesTheSelection:
+    """The narration is shown every element's call in ``completed``. It also has
+    to be told those calls were a SELECTION, and what was picked, or it writes
+    the result as if the loop had covered everything the fetch returned."""
+
+    def test_picked_items_are_rendered_beside_the_text_answers(self) -> None:
+        rendered = _render_filled_asks(
+            {"mail.subject": "Agenda"}, {"mails.$for_each": ["a@x.com", "c@x.com"]}
+        )
+
+        assert "- mail.subject: Agenda" in rendered
+        assert "- mails.$for_each: picked 2: a@x.com, c@x.com" in rendered
+
+    def test_nothing_asked_reads_as_none(self) -> None:
+        assert _render_filled_asks({}, {}) == "none"

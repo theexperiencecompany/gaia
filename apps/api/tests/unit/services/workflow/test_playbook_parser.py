@@ -2628,3 +2628,49 @@ result_brief: Say what was sent.
             result = await validate_playbook(body, USER_ID)
 
         assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestDumpKeepsTheLoop:
+    """``read_playbook`` renders through ``dump_playbook``, and the heal brief
+    tells the agent to call ``read_playbook`` before rewriting. A loop step
+    dumped without its loop is a step whose ``$item`` addresses nothing, and the
+    agent would "fix" it by dropping the for_each the playbook was written for.
+    """
+
+    @pytest.mark.parametrize(
+        "source",
+        ["$steps.agenda.items", {"$ask": "which of the events above need a note"}],
+        ids=["placeholder", "ask"],
+    )
+    def test_a_for_each_step_survives_the_round_trip(self, source: object) -> None:
+        body = PlaybookBody.model_validate(
+            {
+                "description": "Note each event",
+                "steps": [
+                    {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
+                    {
+                        "id": "mail",
+                        "tool": "send_email",
+                        "for_each": source,
+                        "max_items": 5,
+                        "args": {"to": "$item", "subject": "Note"},
+                    },
+                ],
+                "result_brief": "Say what was sent.",
+            }
+        )
+
+        rendered = dump_playbook(body)
+        again = PlaybookBody.model_validate(yaml.safe_load(rendered))
+
+        assert again.steps[1].for_each == body.steps[1].for_each
+        assert again.steps[1].max_items == 5
+        assert "for_each" in rendered and "max_items" in rendered
+
+    def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:
+        """Unset optional keys stay out, so an ordinary playbook reads as before."""
+        rendered = dump_playbook(_body(VALID_YAML))
+
+        assert "for_each" not in rendered
+        assert "max_items" not in rendered
