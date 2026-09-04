@@ -46,6 +46,28 @@ class TestActivationContext:
         monkeypatch.setattr(f"{_MOD}.integration_skills_block", lambda _: "")
         assert await _activation_context("gmail", None) == ""
 
+    async def test_enrichment_failure_degrades_to_partial_not_raise(self, monkeypatch) -> None:
+        """A transient store failure mid-enrichment must not abort activation.
+
+        The tools are already registered and bound by the time this runs, so a
+        failed instructions/skills lookup degrades to the sections gathered so
+        far rather than propagating and failing the whole tool call.
+        """
+        from app.agents.core.subagents.integration_activation import _activation_context
+
+        monkeypatch.setattr(
+            f"{_MOD}.build_subagent_system_prompt", AsyncMock(return_value="You manage gmail.")
+        )
+        monkeypatch.setattr(f"{_MOD}.get_subagent_by_id", lambda _: _subagent())
+        monkeypatch.setattr(
+            f"{_MOD}.get_instructions", AsyncMock(side_effect=ConnectionError("mongo down"))
+        )
+        monkeypatch.setattr(f"{_MOD}.integration_skills_block", lambda _: "")
+
+        context = await _activation_context("gmail", "u1")
+        # The section gathered before the failure survives; the call does not raise.
+        assert "You manage gmail." in context
+
 
 class TestActivateTools:
     async def test_counts_tools_in_the_registered_category(self, monkeypatch) -> None:

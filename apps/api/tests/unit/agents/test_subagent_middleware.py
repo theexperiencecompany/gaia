@@ -400,6 +400,42 @@ class TestSpawnSubagentTool:
         assert ctx.initial_state["selected_tool_ids"] == []
 
 
+class TestSpawnToolInheritance:
+    """Under integration activation the executor binds an integration's tools in
+    its own turn and delegates bulky work to a spawn, so those tools have to ride
+    into the spawn — both as the child's starting bind set and, crucially, in the
+    runtime that keys the (cached) spawn graph, or a graph compiled before the
+    activation would reject them as out of scope."""
+
+    async def test_inherits_parent_tools_when_enabled(self):
+        mw = _ready_middleware(inherit_parent_tools=True, excluded_tool_names={"handoff"})
+        with _context_harness():
+            ctx = await mw._build_context(
+                "do it",
+                "",
+                _make_spawn_config(),
+                "call_abc",
+                ["gmail_send", "handoff", "spawn_subagent", "read"],
+            )
+
+        # Orchestration tools drop; the integration tools carry over.
+        assert ctx.initial_state["selected_tool_ids"] == ["gmail_send", "read"]
+        runtime = mw._spawn_graph_provider.await_args.kwargs["runtime"]
+        assert "gmail_send" in runtime.initial_tool_names
+        assert "handoff" not in runtime.initial_tool_names
+
+    async def test_no_inheritance_when_disabled(self):
+        mw = _ready_middleware(excluded_tool_names={"handoff"})
+        with _context_harness():
+            ctx = await mw._build_context(
+                "do it", "", _make_spawn_config(), "call_abc", ["gmail_send", "read"]
+            )
+
+        assert ctx.initial_state["selected_tool_ids"] == []
+        runtime = mw._spawn_graph_provider.await_args.kwargs["runtime"]
+        assert "gmail_send" not in runtime.initial_tool_names
+
+
 # ---------------------------------------------------------------------------
 # Nesting: which row a spawned subagent renders inside
 # ---------------------------------------------------------------------------

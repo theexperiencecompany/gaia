@@ -65,37 +65,51 @@ async def _activate_tools(subagent: Subagent) -> tuple[int, list[str]]:
 
 
 async def _activation_context(integration_id: str, user_id: str | None) -> str:
+    """Best-effort enrichment prose for an activated integration.
+
+    This is enrichment, not the tools. The tools are already registered and bound
+    by the time this runs, so a transient store failure here must degrade to
+    whatever sections were gathered rather than abort the activation — same
+    contract as the context fetchers in app/agents/context/fetchers.py.
+    """
     sections: list[str] = []
+    try:
+        static_prompt = await build_subagent_system_prompt(integration_id=integration_id)
+        if static_prompt:
+            sections.append(f"## {integration_id}: how it works\n{static_prompt}")
 
-    static_prompt = await build_subagent_system_prompt(integration_id=integration_id)
-    if static_prompt:
-        sections.append(f"## {integration_id}: how it works\n{static_prompt}")
+        if user_id:
+            instructions = await get_instructions(user_id, integration_id)
+            if instructions:
+                sections.append(
+                    f"## The user's standing instructions for {integration_id}\n{instructions}"
+                )
 
-    if user_id:
-        instructions = await get_instructions(user_id, integration_id)
-        if instructions:
-            sections.append(
-                f"## The user's standing instructions for {integration_id}\n{instructions}"
-            )
+            # Which account the caller is acting as. A provider subagent gets this
+            # as its own context section; without it the executor operates an
+            # integration without knowing whose inbox/repo/workspace it is in.
+            identity = await build_provider_metadata_block(integration_id, user_id)
+            if identity:
+                sections.append(identity)
 
-        # Which account the caller is acting as. A provider subagent gets this as
-        # its own context section; without it the executor operates an integration
-        # without knowing whose inbox/repo/workspace it is in.
-        identity = await build_provider_metadata_block(integration_id, user_id)
-        if identity:
-            sections.append(identity)
+            agent_name = ""
+            subagent = get_subagent_by_id(integration_id)
+            if subagent:
+                agent_name = subagent.config.agent_name
+            skills = await get_available_skills_text(user_id, agent_name)
+            if skills:
+                sections.append(f"## {integration_id} skills available to read on demand\n{skills}")
 
-        agent_name = ""
-        subagent = get_subagent_by_id(integration_id)
-        if subagent:
-            agent_name = subagent.config.agent_name
-        skills = await get_available_skills_text(user_id, agent_name)
-        if skills:
-            sections.append(f"## {integration_id} skills available to read on demand\n{skills}")
-
-    workspace_skills = integration_skills_block(integration_id)
-    if workspace_skills:
-        sections.append(workspace_skills)
+        workspace_skills = integration_skills_block(integration_id)
+        if workspace_skills:
+            sections.append(workspace_skills)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.AGENT} Activation context enrichment failed; degrading to partial",
+            integration=integration_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
     return "\n\n".join(sections)
 

@@ -131,6 +131,9 @@ async def build_executor_graph(
         chat_llm=chat_llm,
         subagent_excluded_tools=excluded_subagent_tools,
         subagent_tool_runtime_config=build_executor_child_tool_runtime_config(),
+        # Under activation the executor binds an integration's tools in its own
+        # turn, so a spawn it delegates to must inherit them to do the work.
+        subagent_inherit_parent_tools=activation_mode,
     )
 
     # Wire SubagentMiddleware with LLM and full tool registry
