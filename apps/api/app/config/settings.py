@@ -24,6 +24,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.constants.log_tags import LogTag
 from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
@@ -283,6 +284,31 @@ class CommonSettings(BaseAppSettings):
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/slack/callback"
+
+    # Code mode (sandbox scripts calling GAIA tools via /sandbox/execute).
+    # Both unset = code mode ships dark: bash injects no execute token. The callback
+    # URL must be reachable FROM the E2B sandbox (public API base in prod).
+    SANDBOX_EXECUTE_TOKEN_SECRET: str | None = None
+    SANDBOX_EXECUTE_CALLBACK_URL: str | None = None
+
+    # Rejected at startup rather than at mint time: the token's user_id is a
+    # claim nothing else binds, so a guessable secret means running any user's
+    # tools. A deploy that sets a short one must not boot.
+    @field_validator("SANDBOX_EXECUTE_TOKEN_SECRET", mode="after")
+    @classmethod
+    def _reject_weak_sandbox_execute_secret(cls, v: str | None) -> str | None:
+        # A blank value is how a templated deploy (compose, Infisical, k8s) spells
+        # "unset" — code mode then ships dark, exactly as with no key at all. Only
+        # a SHORT but present secret is the misconfiguration worth refusing to boot
+        # for; failing on "" took the whole API down on one unfilled env line.
+        if not v:
+            return None
+        if len(v) < SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS:
+            raise ValueError(
+                "SANDBOX_EXECUTE_TOKEN_SECRET must be at least "
+                f"{SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS} characters"
+            )
+        return v
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

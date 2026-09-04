@@ -59,6 +59,10 @@ SCRIPTED_CRITERIA = ["scripted directives executed"]
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
 RETRIEVE_TOOLS_TOOL = "retrieve_tools"
+# The execute proxy: integration tools are never bound (retrieve_tools returns
+# their schema docs instead), so a scripted unavailable tool routes through
+# execute where the proxy is present — binding it would loop forever.
+EXECUTE_TOOL = "execute"
 
 _DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say):")
 _CLOSE = "]]"
@@ -270,6 +274,17 @@ def resolve_response(
                 return ToolCallResponse(
                     name=CALL_EXECUTOR_TOOL,
                     args={"task": user_text, "acceptance_criteria": SCRIPTED_CRITERIA},
+                )
+            if EXECUTE_TOOL in available_tools:
+                # Integration tools never bind under the execute cutover; the
+                # proxy is how a real model runs them, so the stub does too.
+                return ToolCallResponse(
+                    name=EXECUTE_TOOL,
+                    args={
+                        "task_description": f"Run {nxt.name}",
+                        "tool_name": nxt.name,
+                        "data": nxt.args,
+                    },
                 )
             if RETRIEVE_TOOLS_TOOL in available_tools:
                 return ToolCallResponse(

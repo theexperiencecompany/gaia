@@ -18,6 +18,8 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
+from app.agents.tools.execute.resolver import resolve_tool
+from app.agents.tools.execute.unwrap import unwrap_execute_call
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
@@ -81,6 +83,54 @@ def _argument_gate_hit(tool_name: str, args: Mapping[str, Any] | None) -> bool:
     return all(args.get(key) == value for key, value in required.items())
 
 
+async def gated_tool_object(
+    request: ToolCallRequest, user_id: str, tool_name: str
+) -> BaseTool | None:
+    """The BaseTool classification should read — the REAL tool, not the proxy.
+
+    For a direct call, ``request.tool`` is the tool. For an execute-proxied call
+    the request carries the proxy's object, so the real one is resolved by the
+    unwrapped name through the SAME resolver dispatch uses — registry, then the
+    user's MCP client, then the Composio catalog.
+
+    Resolving from the registry alone was a hole the cutover opened: MCP tools
+    never enter the global registry and a catalog slug enters it only once its
+    toolkit is materialized, so every such call reached ``is_tool_destructive``
+    with no ``destructiveHint`` and an empty description. The LLM then guessed
+    "safe" from the bare name — and that guess is written back to Mongo and to
+    the registry's ``destructive`` flag, so one wrong verdict un-gates the tool
+    permanently.
+    """
+    raw_call = request.tool_call
+    raw_name = (
+        raw_call.get("name", "") if isinstance(raw_call, dict) else getattr(raw_call, "name", "")
+    )
+    if raw_name == tool_name:
+        return tool_of(request)
+    return await _real_tool(user_id, tool_name)
+
+
+async def _real_tool(user_id: str, tool_name: str) -> BaseTool | None:
+    """The live tool behind a name, or ``None`` when it cannot be resolved.
+
+    Same resilience contract as ``_stamp_registry``: a resolver failure means
+    "no tool object read", and classification still decides by name and fails
+    closed. It must never take the gate down — ``decide_tool_call`` denies the
+    call outright on any exception.
+    """
+    try:
+        resolved = await resolve_tool(user_id, tool_name)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.HIL} tool resolution failed; classifying by name alone",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    return resolved.tool if resolved else None
+
+
 async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str) -> GatingPolicy:
     """The user's mode plus the gated set, resolved into one decision.
 
@@ -94,7 +144,8 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
     prefs = await _preferences(user_id)
     if prefs.mode == "always_allow":
         return "allow"
-    if not await is_gated(prefs, tool_name, tool_of(request)):  # args resolved above
+    tool = await gated_tool_object(request, user_id, tool_name)
+    if not await is_gated(prefs, tool_name, tool):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
 
@@ -143,12 +194,14 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
       reuses it rather than repeating the work (``gate._run_once_across_replays``).
 
     A sibling pauses in one of two ways. It is **gated**, and pauses at its own gate:
-    siblings arrive as bare tool-call dicts, so each one's tool object is resolved from
-    the registry, because classifying it must use the same description and MCP
-    ``destructiveHint`` its own gate will use. Classifying without them (a bare name, an
-    empty description) both under-detects the sibling — defeating the double-run guard
-    this exists for — and poisons the registry's name-keyed ``destructive`` flag, since an
-    unclassified tool's verdict is written back there for every later gate check to read.
+    siblings arrive as bare tool-call dicts, so each one's tool object is resolved
+    through ``_real_tool`` — the same resolver the pending call's own gate uses, which
+    reaches MCP and unmaterialized catalog tools the registry alone does not — because
+    classifying it must use the same description and MCP ``destructiveHint`` its own
+    gate will use. Classifying without them (a bare name, an empty description) both
+    under-detects the sibling — defeating the double-run guard this exists for — and
+    poisons the registry's name-keyed ``destructive`` flag, since an unclassified tool's
+    verdict is written back there for every later gate check to read.
 
     Or it is **exempt but pausing** (``HIL_PAUSING_TOOLS``) — ``handoff`` bubbles up its
     subagent's gate interrupt, ``wait_for_subagents`` interrupts for the parked-approval
@@ -156,26 +209,26 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
     double-run this guard exists to prevent. Checked first, and by name alone, so the
     common case costs no preference or registry lookup.
     """
+    # Execute-proxied siblings are unwrapped to their real (name, args) here for
+    # the same reason unpack_tool_call unwraps the pending call: the guard must
+    # detect the DESTRUCTIVE sibling, not the harmless proxy wrapping it.
     siblings = [
-        call
+        unwrap_execute_call(str(call["name"]), call.get("args") or {})
         for call in current_tool_calls(request.state)
         if call.get("name") and call.get("id") != tool_call_id
     ]
     if not siblings:
         return False
-    if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
+    if any(name in HIL_PAUSING_TOOLS for name, _ in siblings):
         return True
 
     # Forced-ask siblings pause even when HIL is otherwise off — checked before
     # the always_allow fast path below, because that fast path exists to skip
     # preference-driven gating, and the stamp is not preference-driven.
     registry = await _stamp_registry()
-    for call in siblings:
-        name = str(call["name"])
+    for name, args in siblings:
         meta = registry.get_tool_meta(name) if registry else None
-        if (meta is not None and meta.always_gate) or _argument_gate_hit(
-            name, call.get("args") or None
-        ):
+        if (meta is not None and meta.always_gate) or _argument_gate_hit(name, args or None):
             return True
 
     prefs = await get_hil_preferences(user_id)
@@ -185,12 +238,10 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
         # mode (and before the per-sibling classification below because every ungated
         # call now asks this — see gate._run_once_across_replays).
         return False
-    for call in siblings:
-        name = str(call["name"])
+    for name, args in siblings:
         if name in HIL_EXEMPT_TOOLS:
             continue
-        meta = registry.get_tool_meta(name) if registry else None
-        if await is_gated(prefs, name, meta.tool if meta else None, args=call.get("args") or None):
+        if await is_gated(prefs, name, await _real_tool(user_id, name), args=args or None):
             return True
     return False
 

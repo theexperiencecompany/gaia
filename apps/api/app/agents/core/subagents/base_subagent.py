@@ -19,20 +19,20 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes.pre_model_hooks import worker_pre_model_hooks
-from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import (
-    SubagentMiddleware,
     SubagentStackOptions,
     create_subagent_middleware,
 )
-from app.agents.tools.coding import bash, grep, query_json, read
+from app.agents.tools.coding import grep, query_json, read
+from app.agents.tools.coding.bash_tool import build_bash_tool
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
-    build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_provider_parent_tool_runtime_config,
 )
+from app.agents.tools.execute.execute_tool import build_execute_tool
+from app.agents.tools.execute.schema_tool import get_tool_schema
 from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.integration_instructions_tools import update_integration_instructions
 from app.agents.tools.memory_tools import search_memory
@@ -122,7 +122,12 @@ def build_scoped_tool_dict(
         # module was removed when subagents moved to the E2B sandbox.
         scoped_tool_dict[search_memory.name] = search_memory
         scoped_tool_dict[read.name] = read
-        scoped_tool_dict[bash.name] = bash
+        # Built against THIS dict for the same reason the execute proxy below is:
+        # bash mints the code-mode token, and a sandbox script calling
+        # `from gaia import execute` must be held to the same tool space as a
+        # direct execute call — otherwise the confinement is one line to escape.
+        scoped_bash = build_bash_tool(scoped_tool_dict)
+        scoped_tool_dict[scoped_bash.name] = scoped_bash
         # Resolvable for every subagent (retrieve-on-demand); gmail additionally
         # binds these two into its initial set below, since it always offloads
         # large inboxes and must mine them sandbox-free.
@@ -135,6 +140,17 @@ def build_scoped_tool_dict(
         # own integration the moment it hears one (its instructions are already in
         # context, so it can rewrite the full block without a separate read).
         scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
+        # The execute proxy: retrieve_tools returns schema docs (not bindings)
+        # for integration tools beyond the auto-bound set, and this is what
+        # runs them. Built against THIS dict so the proxy honors the same tool
+        # space retrieve_tools binds against — otherwise a subagent could run
+        # any registered tool by name. get_tool_schema is the depth behind a
+        # doc's Returns pointer (read-only metadata).
+        scoped_execute = build_execute_tool(scoped_tool_dict)
+        scoped_tool_dict[scoped_execute.name] = scoped_execute
+        initial_tool_ids.append(scoped_execute.name)
+        scoped_tool_dict[get_tool_schema.name] = get_tool_schema
+        initial_tool_ids.append(get_tool_schema.name)
 
     if include_finish_task:
         scoped_tool_dict[FINISH_TASK_NAME] = finish_task
@@ -215,30 +231,11 @@ class SubAgentFactory:
             authoring_only=cfg.authoring_only,
         )
 
-        # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
-        # all parent tools, not just the provider's scoped tools.
-        # The provider agent itself uses scoped_tool_dict for its own tool access,
-        # but its SubagentMiddleware needs the full registry so that any child
-        # subagent it spawns can access tools like read, bash, web_search, etc.
-        full_tool_dict = tool_registry.get_tool_dict()
-
-        # An authoring-only subagent (the workflow assistant) just emits a draft;
-        # it must not spawn sub-subagents or plan/run tasks. Strip the spawn
-        # middleware and the todo (plan_tasks/update_tasks) tools + hook so it
-        # cannot drift into executing the workflow it is supposed to describe.
+        # Subagents can never spawn sub-subagents — create_subagent_middleware
+        # structurally omits the spawn middleware (only the executor spawns).
         middleware = create_subagent_middleware(
             agent_name=name,
-            subagent=SubagentStackOptions(
-                enabled=not cfg.authoring_only,
-                llm=llm,
-                registry=full_tool_dict,
-                tool_space=tool_space,
-            ),
-        )
-
-        subagent_mw = next(
-            (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
-            None,
+            subagent=SubagentStackOptions(llm=llm, tool_space=tool_space),
         )
 
         # Create todo tools and register them in the scoped tool registry
@@ -252,10 +249,6 @@ class SubAgentFactory:
         for todo_tool in todo_tools:
             scoped_tool_dict[todo_tool.name] = todo_tool
             todo_tool_names.append(todo_tool.name)
-
-        if subagent_mw is not None:
-            subagent_mw.set_store(store)
-            subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
         common_kwargs: dict[str, Any] = {
             "llm": llm,
@@ -315,25 +308,6 @@ class SubAgentFactory:
                 bindable_tool_names=set(scoped_tool_dict.keys()),
             )
         )
-
-        child_tool_runtime = build_child_tool_runtime_config(
-            parent_tool_runtime,
-            use_direct_tools=use_direct_tools,
-            disable_retrieve_tools=cfg.disable_retrieve_tools,
-            extra_initial_tool_names=extra_initial,
-        )
-        spawn_seed_tools = [
-            scoped_tool_dict[name]
-            for name in child_tool_runtime.initial_tool_names
-            if name in scoped_tool_dict
-        ]
-
-        if subagent_mw is not None:
-            subagent_mw.set_tools(
-                registry=full_tool_dict,
-                tools=spawn_seed_tools,
-                tool_runtime_config=child_tool_runtime,
-            )
 
         builder = create_agent(**common_kwargs)
 

@@ -1964,6 +1964,7 @@ dependencies = [
     { name = "filelock" },
     { name = "firecrawl-anydoc" },
     { name = "gaia-shared" },
+    { name = "genson" },
     { name = "httpx" },
     { name = "jsonref" },
     { name = "langchain-openrouter" },
@@ -2129,6 +2130,7 @@ requires-dist = [
     { name = "filelock", specifier = ">=3.20.1" },
     { name = "firecrawl-anydoc", specifier = "==0.1.2" },
     { name = "gaia-shared", editable = "libs" },
+    { name = "genson", specifier = ">=1.4.0" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "jsonref", specifier = ">=1.1.0" },
     { name = "langchain-openrouter", specifier = ">=0.2.3" },
@@ -2349,6 +2351,15 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.4.4" }]
+
+[[package]]
+name = "genson"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/53/de162dc8e03fccd9ebe59d17c7812378fe8bd2b604f6b1b94d00165140ac/genson-1.4.0.tar.gz", hash = "sha256:bc7f1c1bae87a21ca44d81149aec95a3f4468d676de9b8b08caa064f3c50b3da", size = 47908, upload-time = "2026-07-06T08:21:50.331Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/02/767f744ab6d4cb7761e5008acc3d534b7a0481af62563d52e391fbcb2140/genson-1.4.0-py3-none-any.whl", hash = "sha256:03bc71bbe52defde70660cc4dcd1ea1097997da5a1cbb90a9dbd3acc7c9e1b65", size = 24484, upload-time = "2026-07-06T08:21:49.046Z" },
+]
 
 [[package]]
 name = "google-api-core"

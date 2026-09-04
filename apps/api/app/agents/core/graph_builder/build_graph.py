@@ -101,6 +101,8 @@ async def build_executor_graph(
             retrieve_tools_coroutine=get_retrieve_tools_function(),
             initial_tool_ids=[
                 "handoff",
+                "execute",
+                "get_tool_schema",
                 "plan_tasks",
                 "update_tasks",
                 "read",

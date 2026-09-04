@@ -39,6 +39,7 @@ dependencies = [
   "firecrawl-anydoc==0.1.2",
   "pdf-inspector==0.2.6",
   "langchain-text-splitters>=1.1.2",
+  "genson>=1.4.0",
 ]
 
 [tool.taskipy.tasks]

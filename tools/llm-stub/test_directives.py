@@ -432,3 +432,29 @@ def test_stream_chunks_content_assembly():
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
     assert all("finish_reason" in c["choices"][0] for c in chunks)
+
+
+def test_unbound_tool_routes_through_execute_when_proxy_present():
+    """Execute cutover: integration tools never bind, so an unavailable scripted
+    tool routes through the execute proxy — binding it would loop forever
+    (observed live: retrieve_tools re-emitted to the recursion limit)."""
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    first = resolve_response([_user(script)], executor)
+    assert first == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run GMAIL_SEND_EMAIL",
+            "tool_name": "GMAIL_SEND_EMAIL",
+            "data": {"recipient_email": "a@b.c"},
+        },
+    )
+
+    # The emitted execute turn advances the script — the run terminates.
+    after_execute = [
+        _user(script),
+        _assistant_tool_call("execute", first.args),
+        _tool_result("execute"),
+    ]
+    assert resolve_response(after_execute, executor) == SayResponse(text="Done")
