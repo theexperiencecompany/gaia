@@ -85,7 +85,7 @@ export const questions: Question[] = [
       "Hey, I'm GAIA. Nice to meet you.",
       "Think about everything you did yesterday. Email, calendar, meetings, that's the obvious part. Then the research, the chasing, the spreadsheet, the booking, the thing you do every week and hate. All of it, done. Not by you.",
       "Most people get at least a workday back every week.",
-      "Two quick questions and I'll take it from here. So, what do you do?",
+      "What do you do?",
     ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
