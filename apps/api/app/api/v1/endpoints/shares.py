@@ -22,6 +22,10 @@ from shared.py.wide_events import log
 
 router = APIRouter()
 
+# HTTP headers are latin-1; the name resolves case-insensitively through
+# codecs.lookup, so its spelling is not observable behaviour.
+_HEADER_CHARSET = "latin-1"  # pragma: no mutate -- codec lookup is case-insensitive
+
 
 def _download_headers(filename: str) -> dict[str, str]:
     """Force download semantics: a token link must never render as a page.
@@ -31,11 +35,9 @@ def _download_headers(filename: str) -> dict[str, str]:
     the response is download-only, unsniffable, and uncacheable. The filename
     is server-side (never the URL segment) and stripped to header-safe chars.
     """
-    # Codec names resolve case-insensitively (codecs.lookup normalises them), so
-    # the spelling of "latin-1" here is not observable behaviour.
     safe = (
-        re.sub(r'["\r\n]', "", filename).encode("latin-1", "ignore").decode("latin-1")
-    )  # pragma: no mutate -- codec lookup is case-insensitive
+        re.sub(r'["\r\n]', "", filename).encode(_HEADER_CHARSET, "ignore").decode(_HEADER_CHARSET)
+    )
     # Header names are case-insensitive and Starlette lowercases them on the
     # wire, so the casing below is unobservable — the values are what the tests
     # (and browsers) act on.
