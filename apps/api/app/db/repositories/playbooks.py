@@ -51,8 +51,7 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         body = PlaybookUpdate(
             description=playbook.description,
             steps=playbook.steps,
-            ask=playbook.ask,
-            synthesize=playbook.synthesize,
+            result_brief=playbook.result_brief,
             workflow_hash=playbook.workflow_hash,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,

@@ -38,7 +38,7 @@ def _doc(**overrides: Any) -> PlaybookDocument:
         "workflow_hash": "hash-1",
         "description": "first",
         "steps": [{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
-        "synthesize": "s",
+        "result_brief": "s",
         "created_at": NOW,
         "updated_at": NOW,
     }
@@ -166,8 +166,7 @@ class TestUpsertForWorkflow:
         assert [step["tool"] for step in set_fields.pop("steps")] == ["list_events"]
         assert set_fields == {
             "description": "first",
-            "ask": {},
-            "synthesize": "s",
+            "result_brief": "s",
             "workflow_hash": "hash-1",
             "last_run_status": PlaybookRunStatus.NOT_RUN,
             "last_run_reason": None,

@@ -718,6 +718,26 @@ class GeneratedPromptResult(TypedDict):
 # Repository persistence models (Wave E migration)
 
 
+class PlaybookDiscard(BaseModel):
+    """The last playbook the worker dropped for this workflow, and why.
+
+    A discard is otherwise silent data loss: the warning line ages out of log
+    retention long before anyone asks why a workflow went back to running at
+    full agent cost, and nothing on the workflow itself says it ever had a
+    shortcut. ``wf_0d05167369cf`` lost a working playbook exactly that way.
+    """
+
+    playbook_id: str
+    revision: int
+    #: The worker's own reason string — ``stale_workflow_hash``,
+    #: ``heal_attempts_exhausted``, ``suspect_streak_exhausted``.
+    reason: str
+    at: datetime
+    #: Whatever the discarding call site named beside the reason (the heal
+    #: attempt count, the suspect streak), rendered so one shape stores them all.
+    details: dict[str, str] = Field(default_factory=dict)
+
+
 class WorkflowDocument(Workflow, MongoDocument):
     """A workflow as stored in MongoDB.
 
@@ -741,6 +761,9 @@ class WorkflowDocument(Workflow, MongoDocument):
     #: an edit to the workflow changes the hash and asks again.
     playbook_declines: int = 0
     playbook_declined_hash: str | None = None
+    #: Why the worker last dropped this workflow's playbook, so a workflow that
+    #: quietly went back to full agent cost can say what happened to it.
+    last_playbook_discard: PlaybookDiscard | None = None
 
 
 class WorkflowCreatorInfo(BaseModel):
@@ -801,3 +824,4 @@ class WorkflowUpdate(BaseModel):
     created_by: str | None = None
     playbook_declines: int | None = None
     playbook_declined_hash: str | None = None
+    last_playbook_discard: PlaybookDiscard | None = None

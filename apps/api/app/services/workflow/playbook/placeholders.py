@@ -10,6 +10,10 @@ A ``$word`` whose root is not one of the namespaces below is NOT a token: it is
 literal text on both sides — the validator does not check it and the evaluator
 leaves it untouched. A recorded ``bash`` step legitimately says ``echo $HOME``,
 and refusing every ``$identifier`` at write time would refuse that playbook.
+``$ask`` is deliberately absent: text a model writes at replay is no longer a
+reference into a table but an inline ``{"$ask": ...}`` value standing where the
+argument goes, so ``$ask.anything`` in a string is now plain text like any other
+unknown root.
 """
 
 from collections.abc import Iterator, Mapping
@@ -17,7 +21,7 @@ import re
 
 #: The placeholder namespaces a playbook may address.
 PLACEHOLDER_ROOTS: frozenset[str] = frozenset(
-    {"now", "today", "user", "trigger", "steps", "last_run", "ask"}
+    {"now", "today", "user", "trigger", "steps", "last_run"}
 )
 
 #: Longest root first so ``last_run`` is never matched as a shorter alternative.
