@@ -37,6 +37,7 @@ from app.agents.middleware.runtime_adapter import (
     create_tool_call_request,
     to_agent_state,
 )
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentMiddlewareStack
 from app.override.langgraph_bigtool.utils import State, messages_delta_reducer
@@ -398,11 +399,16 @@ class MiddlewareExecutor:
             """Innermost handler - actually calls the tool."""
             nonlocal tool_result
             tool_result = await invoke_fn(req.tool_call)
-            if tool_user_id:
+            # Proxied calls are counted by dispatch_tool under the REAL tool
+            # name — emitting here too would double-count every proxied run
+            # (root CLAUDE.md: one action, one event, one emitter).
+            if tool_user_id and tool_name != EXECUTE_TOOL_NAME:
                 capture_event(
                     tool_user_id,
                     AnalyticsEvents.TOOL_USED,
-                    {"tool_name": tool_name},
+                    # via segments the bound path from the execute path so the
+                    # migration's before/after cuts stay computable in PostHog.
+                    {"tool_name": tool_name, "via": "bound"},
                 )
             return tool_result
 

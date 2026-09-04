@@ -289,6 +289,20 @@ Everything below is reachable via relative paths once you're there.
 4. **Don't ask where files are.** Attachments are already at
    `./user-uploaded/<name>`; `ls` if unsure of the exact name.
 
+## GAIA tools from session scripts
+
+Python scripts you run here can call GAIA integration tools directly; the
+import works from any directory (PYTHONPATH is injected per bash run):
+
+    from gaia import execute, schema
+    emails = execute("GMAIL_FETCH_EMAILS", {"max_results": 50})
+
+Check a tool's return shape BEFORE consuming its fields: `schema("TOOL_NAME")`
+in the script, or read `/workspace/.gaia/tools/<TOOL_NAME>.json`. Read the
+`code-mode-scripting` skill for the full pattern (one script, batched calls,
+minimal stdout). If the import fails with "No module named 'gaia'", code mode
+is not configured on this deployment; use the `execute` tool instead.
+
 ## Subagent sessions
 
 A per-integration subagent gets its own scratch at

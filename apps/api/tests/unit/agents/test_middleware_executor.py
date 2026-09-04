@@ -745,7 +745,7 @@ class TestWrapToolInvocation:
         _no_real_analytics.assert_called_once()
         assert _no_real_analytics.call_args.args[0] == "user_123"
         assert _no_real_analytics.call_args.args[1] == AnalyticsEvents.TOOL_USED
-        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool"}
+        assert _no_real_analytics.call_args.args[2] == {"tool_name": "test_tool", "via": "bound"}
 
     async def test_tool_used_skipped_without_user_id(self, _no_real_analytics) -> None:
         tool_call = {"name": "test_tool", "args": {}, "id": "call_1"}

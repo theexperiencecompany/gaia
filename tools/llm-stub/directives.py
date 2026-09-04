@@ -59,6 +59,10 @@ SCRIPTED_CRITERIA = ["scripted directives executed"]
 # bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
 # graph binds it, then emits the tool itself on the next invocation.
 RETRIEVE_TOOLS_TOOL = "retrieve_tools"
+# The execute proxy: integration tools are never bound (retrieve_tools returns
+# their schema docs instead), so a scripted unavailable tool routes through
+# execute where the proxy is present — binding it would loop forever.
+EXECUTE_TOOL = "execute"
 
 _DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say):")
 _CLOSE = "]]"
@@ -322,11 +326,24 @@ def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset
     di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
-        if nxt.name not in available_tools and RETRIEVE_TOOLS_TOOL in available_tools:
-            return ToolCallResponse(
-                name=RETRIEVE_TOOLS_TOOL,
-                args={"query": nxt.name, "exact_tool_names": [nxt.name]},
-            )
+        if nxt.name not in available_tools:
+            if EXECUTE_TOOL in available_tools:
+                # Integration tools never bind under the execute cutover; the
+                # proxy is how a real model runs them, so the stub does too.
+                # Ahead of retrieval on purpose: binding one would loop forever.
+                return ToolCallResponse(
+                    name=EXECUTE_TOOL,
+                    args={
+                        "task_description": f"Run {nxt.name}",
+                        "tool_name": nxt.name,
+                        "data": nxt.args,
+                    },
+                )
+            if RETRIEVE_TOOLS_TOOL in available_tools:
+                return ToolCallResponse(
+                    name=RETRIEVE_TOOLS_TOOL,
+                    args={"query": nxt.name, "exact_tool_names": [nxt.name]},
+                )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
     return SayResponse(say.text if say is not None else DEFAULT_REPLY)
 
@@ -351,6 +368,8 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
+        # Only the executor tier runs a tool itself, so the execute/retrieve
+        # fallbacks live in _resolve_work. Comms forwards and is done.
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
             # acceptance_criteria became required with the structured handoff.
             return ToolCallResponse(

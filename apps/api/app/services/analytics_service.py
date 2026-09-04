@@ -143,6 +143,10 @@ class AnalyticsEvents(StrEnum):
     AGENT_RUN_COMPLETED = "agent:run_completed"
     AGENT_RUN_FAILED = "agent:run_failed"
     TOOL_USED = "tool:used"
+    # A proxied dispatch that failed BEFORE the tool ran (unknown_tool /
+    # invalid_args). Ratio against TOOL_USED{via=execute} = retries per
+    # successful proxied action — the health metric of the execute migration.
+    EXECUTE_TOOL_FAILED = "tool:execute_failed"
 
     USAGE_QUERIED = "usage:queried"
 

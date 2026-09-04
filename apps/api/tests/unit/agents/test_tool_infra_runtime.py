@@ -24,7 +24,6 @@ from app.agents.tools.core.retrieval import (
 )
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
-    build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
@@ -178,8 +177,8 @@ class _RetrieveRegistry:
 
     def get_category(self, name: str):
         if name == "delegated_cat":
-            return SimpleNamespace(is_delegated=True)
-        return SimpleNamespace(is_delegated=False)
+            return SimpleNamespace(is_delegated=True, require_integration=False)
+        return SimpleNamespace(is_delegated=False, require_integration=False)
 
     def get_tool_meta(self, tool_name: str):
         """Read by the JSON-bucketed discovery response for a tool's description.
@@ -261,12 +260,10 @@ async def _run_provider_subagent_factory(
 
 
 @pytest.mark.asyncio
-async def test_the_subagent_stack_is_wired_with_the_parents_llm_registry_and_space():
-    """SubagentMiddleware is what a spawned sub-subagent inherits from. It gets
-    the parent's llm, the FULL tool dict (not the provider's scoped one — a
-    spawned child still needs read/bash/web_search) and the parent's tool space.
-    Losing any of the three leaves a child with no model, or reachable tools it
-    cannot see."""
+async def test_the_subagent_stack_is_wired_with_the_parents_llm_and_space():
+    """The middleware options carry the parent's llm (summarization/compaction
+    ride it) and tool space — and never request spawn: subagents cannot spawn
+    sub-subagents (see test_subagent_cannot_spawn for the factory-level pin)."""
     llm = BindableToolsFakeModel(responses=[], profile={"max_input_tokens": 1_000_000})
     full_tools = {
         "normal_tool": normal_tool,
@@ -323,9 +320,9 @@ async def test_the_subagent_stack_is_wired_with_the_parents_llm_registry_and_spa
 
     options = captured["subagent"]
     assert captured["agent_name"] == "provider_agent"
-    assert options.enabled is True
+    assert options.enabled is False
     assert options.llm is llm
-    assert options.registry == full_tools
+    assert options.registry is None
     assert options.tool_space == "provider_space"
 
 
@@ -342,12 +339,6 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert "read" in parent_dynamic.initial_tool_names
     assert "auto1" in parent_dynamic.initial_tool_names
 
-    child_dynamic = build_child_tool_runtime_config(
-        parent_dynamic, use_direct_tools=False, disable_retrieve_tools=False
-    )
-    assert child_dynamic.enable_retrieve_tools is True
-    assert child_dynamic.initial_tool_names == ["read", "bash", "finish_task"]
-
     parent_direct = build_provider_parent_tool_runtime_config(
         provider_tool_names=["p1", "p2"],
         todo_tool_names=["t1"],
@@ -355,12 +346,9 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
         use_direct_tools=True,
         disable_retrieve_tools=True,
     )
-    child_direct = build_child_tool_runtime_config(
-        parent_direct, use_direct_tools=True, disable_retrieve_tools=True
-    )
-    assert child_direct.enable_retrieve_tools is False
-    assert "p1" in child_direct.initial_tool_names
-    assert "read" in child_direct.initial_tool_names
+    assert parent_direct.enable_retrieve_tools is False
+    assert "p1" in parent_direct.initial_tool_names
+    assert "read" in parent_direct.initial_tool_names
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True
@@ -865,9 +853,6 @@ async def test_base_subagent_dynamic_mode_wires_retrieve_and_auto_bind():
     assert "read" in captured_kwargs["tools_config"].initial_tool_ids
     assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
     assert "missing_tool" not in captured_kwargs["tools_config"].initial_tool_ids
-    # spawned child for dynamic mode should keep minimal initial tools
-    assert mw._tool_runtime_config.initial_tool_names == ["read", "bash", "finish_task"]
-    assert mw._tool_runtime_config.enable_retrieve_tools is True
 
 
 @pytest.mark.asyncio
@@ -881,9 +866,6 @@ async def test_base_subagent_direct_mode_propagates_child_direct_runtime():
     assert captured_kwargs["tools_config"].retrieve_tools_coroutine is None
     assert "read" in captured_kwargs["tools_config"].initial_tool_ids
     assert "normal_tool" in captured_kwargs["tools_config"].initial_tool_ids
-    assert mw._tool_runtime_config.enable_retrieve_tools is False
-    assert "normal_tool" in mw._tool_runtime_config.initial_tool_names
-    assert "read" in mw._tool_runtime_config.initial_tool_names
 
 
 # ---------------------------------------------------------------------------
@@ -969,16 +951,6 @@ async def _run_factory_recording_wiring(*, config: SubAgentToolConfig) -> dict[s
 
     captured["worker"] = worker
     return captured
-
-
-@pytest.mark.asyncio
-async def test_a_non_authoring_subagent_keeps_spawn_enabled():
-    """The middleware toggle is the NEGATION of authoring_only: an ordinary
-    provider subagent must be able to spawn sub-subagents; inverting the flag
-    silently strips that ability from every integration agent."""
-    captured = await _run_factory_recording_wiring(config=SubAgentToolConfig())
-
-    assert captured["middleware_kwargs"]["subagent"].enabled is True
 
 
 @pytest.mark.asyncio

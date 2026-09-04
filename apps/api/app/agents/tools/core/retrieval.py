@@ -32,6 +32,8 @@ from app.agents.tools.core.registry import (
     ToolRegistry,
     get_tool_registry,
 )
+from app.agents.tools.execute.resolver import ResolvedTool, resolve_tool
+from app.agents.tools.execute.schema_docs import render_tool_doc
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
@@ -50,6 +52,54 @@ from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
+
+
+def _is_execute_routed(tool_registry: ToolRegistry, name: str, mcp_tool_names: set[str]) -> bool:
+    """Whether this tool runs through the execute proxy instead of binding.
+
+    Integration tools — Composio (categories with ``require_integration``) and
+    per-user MCP tools — are proxied; internal tools still bind. This is the
+    permanent classification of the cutover, not a migration flag.
+    """
+    if name in mcp_tool_names:
+        return True
+    category = tool_registry.get_category(tool_registry.get_category_of_tool(name))
+    return category is not None and category.require_integration
+
+
+async def _resolve_for_retrieval(user_id: str | None, name: str) -> ResolvedTool | None:
+    """resolve_tool, degraded to a miss on infra failure.
+
+    Retrieval's resolution is opportunistic (rescue an unmaterialized catalog
+    slug, render a doc); an unreachable Composio/MCP must make the NAME come
+    back unknown, not crash the select_tools node — observed live, the escaped
+    exception retry-looped the graph to its recursion limit. Dispatch keeps the
+    loud path: there the failure belongs to the actual call.
+    """
+    try:
+        return await resolve_tool(user_id, name)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.TOOL} retrieve_tools: resolver unavailable; treating as unknown",
+            tool_name=name,
+            error_type=type(e).__name__,
+        )
+        return None
+
+
+async def _render_proxied_docs(user_id: str | None, names: list[str]) -> list[str]:
+    docs: list[str] = []
+    for name in names:
+        resolved = await _resolve_for_retrieval(user_id, name)
+        if resolved is None:
+            log.warning(
+                f"{LogTag.TOOL} retrieve_tools: proxied tool vanished between "
+                "validation and doc rendering",
+                tool_name=name,
+            )
+            continue
+        docs.append(render_tool_doc(resolved.tool))
+    return docs
 
 
 async def _user_mcp_tool_names(user_id: str | None) -> set[str]:
@@ -127,20 +177,29 @@ Rules:
 - Do not search repeatedly to be thorough. If the first result looks right, move to binding.
 - Comma-separated intents work: "list pull requests, get repo info"
 
-BINDING MODE (exact_tool_names)
-Loads tools by exact name so they can be called. Use this after discovery or when you already know the name.
+SCHEMA/BINDING MODE (exact_tool_names)
+Resolves exact names so they can be run. Use this after discovery or when you already know the name. Two outcomes by tool kind:
+- INTEGRATION tools (Gmail, GitHub, Notion, MCP, ... — ALLCAPS names): returns each
+  tool's args schema. They are NEVER bound and CANNOT be called by name. Run them with
+  execute(task_description="...", tool_name="TOOL_NAME", data={...}) where `data`
+  matches the schema exactly. task_description is one short user-facing line.
+  Docs show ARGS only. Before consuming a tool's output or chaining on its fields,
+  learn the return shape first: get_tool_schema("TOOL_NAME") here, or inside bash
+  scripts gaia.schema("TOOL_NAME") / the cached tool-docs file. Never guess fields.
+- INTERNAL tools (snake_case names like plan_tasks): bound as callable tools; call
+  them directly.
 
 Rules:
-- Only bind tools you are about to use in the next 1-2 steps
-- Unknown or invalid names are silently ignored
-- You CANNOT call a tool that has not been bound first
+- Only request tools you are about to use in the next 1-2 steps
+- Unknown names are reported back; do not retry them verbatim
+- If execute returns invalid_args, fix `data` per the error detail and retry once
 
-STANDARD WORKFLOW
-Step 1: retrieve_tools(query="your intent")         → discover tool names
-Step 2: retrieve_tools(exact_tool_names=["TOOL_A"]) → bind for execution
-Step 3: Call the tool directly
+STANDARD WORKFLOW (integration tools)
+Step 1: retrieve_tools(query="your intent")           → discover tool names
+Step 2: retrieve_tools(exact_tool_names=["TOOL_A"])   → get the args schema
+Step 3: execute(task_description="...", tool_name="TOOL_A", data={...})
 
-Shortcut: If you already know the exact tool name, skip Step 1 and go straight to binding.
+Shortcut: If you already know the exact tool name, skip Step 1.
 
 IF DISCOVERY RETURNS A SUBAGENT (a name starting with "subagent:"): SKIP Step 2
 entirely. Subagents are NOT bound. Go straight to handoff(subagent_id="gmail",
@@ -178,24 +237,21 @@ EXAMPLES
 
 Simple read task:
   retrieve_tools(query="list pull requests")
-  → ["GITHUB_LIST_PULL_REQUESTS", "GITHUB_LIST_PULL_REQUESTS_FOR_REPO", ...]
+  → ["GITHUB_LIST_PULL_REQUESTS", ...]
   retrieve_tools(exact_tool_names=["GITHUB_LIST_PULL_REQUESTS"])
-  → GITHUB_LIST_PULL_REQUESTS(sort="updated", direction="desc")
+  → returns the args schema
+  → execute(task_description="Listing open PRs", tool_name="GITHUB_LIST_PULL_REQUESTS",
+            data={"sort": "updated", "direction": "desc"})
   → First result is the answer. Stop.
 
 Multi-tool task:
   retrieve_tools(query="fetch emails, send reply")
   → ["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD", ...]
   retrieve_tools(exact_tool_names=["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_MESSAGES(...) → find the thread
-  → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
-
-Write task with verification:
-  retrieve_tools(query="list branches, create pull request")
-  → ["GITHUB_LIST_BRANCHES", "GITHUB_CREATE_PULL_REQUEST", ...]
-  retrieve_tools(exact_tool_names=["GITHUB_LIST_BRANCHES", "GITHUB_CREATE_PULL_REQUEST"])
-  → GITHUB_LIST_BRANCHES(...) → confirm branch name
-  → GITHUB_CREATE_PULL_REQUEST(...) → done.
+  → returns both schemas
+  → execute(task_description="Finding the thread", tool_name="GMAIL_FETCH_MESSAGES", data={...})
+  → execute(task_description="Sending the reply", tool_name="GMAIL_REPLY_TO_THREAD", data={...})
+  → Done.
 """
 
 _RETRIEVE_TOOLS_SUBAGENT_SECTION = """
@@ -837,6 +893,33 @@ def get_retrieve_tools_function(
                 else:
                     unknown_tool_names.append(tool_name)
 
+            # Catalog slugs whose toolkit was never materialized are absent from
+            # every local name set — rescue them through the resolver (which
+            # materializes on demand) instead of reporting a capability the
+            # catalog HAS as unknown.
+            still_unknown: list[str] = []
+            for name in unknown_tool_names:
+                if name.replace("_", "").isupper() and await _resolve_for_retrieval(user_id, name):
+                    validated_tool_names.append(name)
+                else:
+                    still_unknown.append(name)
+            unknown_tool_names = still_unknown
+
+            # The cutover: integration tools (Composio + MCP) are never bound —
+            # they run through the execute proxy, so binding-mode returns their
+            # schema docs instead. Internal tools still bind.
+            proxied_names: list[str] = []
+            still_bound: list[str] = []
+            for name in validated_tool_names:
+                if _is_execute_routed(tool_registry, name, mcp_tool_names_set) or (
+                    name not in bindable_set and name.replace("_", "").isupper()
+                ):
+                    proxied_names.append(name)
+                else:
+                    still_bound.append(name)
+            validated_tool_names = still_bound
+            proxied_docs = await _render_proxied_docs(user_id, proxied_names)
+
             if unknown_tool_names:
                 # Surfacing this is important: silently dropping requested tools
                 # makes registry-population bugs invisible to operators.
@@ -858,31 +941,46 @@ def get_retrieve_tools_function(
                     "mode": "binding",
                     "tools_requested": len(exact_tool_names),
                     "tools_bound": len(validated_tool_names),
-                    "tools_filtered": len(exact_tool_names) - len(validated_tool_names),
+                    "tools_proxied": len(proxied_names),
+                    "tools_filtered": len(exact_tool_names)
+                    - len(validated_tool_names)
+                    - len(proxied_names),
                 }
             )
 
             # Bind valid tools regardless; add corrective guidance for subagent /
-            # out-of-scope names so the model takes the right path.
-            response = list(validated_tool_names)
+            # out-of-scope names so the model takes the right path. Guidance is
+            # kept in its own list, not filtered back out of `response`: a
+            # name-vs-sentence filter re-emitted every proxied name as a bare
+            # line right under the block saying they are NOT callable by name.
+            guidance: list[str] = []
             if requested_subagents:
-                response.append(
+                guidance.append(
                     "Subagents are not bound with retrieve_tools. Call "
                     "handoff(subagent_id='<id>', task='...') directly, using the "
                     "part after 'subagent:'."
                 )
             if out_of_scope_tool_names:
-                response.append(
+                guidance.append(
                     "These tools are not available inside this subagent and cannot be "
                     f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
                     "main executor, not this subagent. Do not retry binding them; finish "
                     "your task here and let the executor handle them."
                 )
+            response = [*validated_tool_names, *proxied_names, *guidance]
 
             bind_lines: list[str] = []
             if validated_tool_names:
                 bind_lines.append(f"Bound {len(validated_tool_names)} tools, call them directly:")
                 bind_lines.extend(f"  - {name}" for name in validated_tool_names)
+            if proxied_docs:
+                bind_lines.append(
+                    f"{len(proxied_docs)} integration tool(s) ready to run via execute. They "
+                    "are NOT bound as callable tools — do NOT call them by name. Build "
+                    "`data` from each schema below and call "
+                    'execute(task_description="...", tool_name="<NAME>", data={...}):'
+                )
+                bind_lines.extend(proxied_docs)
             if renamed_tools:
                 bind_lines.append(
                     "Resolved to their canonical names, use these from now on: "
@@ -894,7 +992,7 @@ def get_retrieve_tools_function(
                     "Do not retry these names; run retrieve_tools(query=...) to find "
                     "what actually exists."
                 )
-            bind_lines.extend(line for line in response if line not in validated_tool_names)
+            bind_lines.extend(guidance)
 
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,

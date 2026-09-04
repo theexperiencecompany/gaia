@@ -17,19 +17,25 @@ None of the three had a test. All three are user-visible the moment they break.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 import pytest
 
+from app.agents.tools.execute.execute_tool import execute
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     format_tool_error,
     timeout_guarded_tool_call,
 )
+
+NODE = "app.override.langgraph_bigtool.dynamic_tool_node"
+DISPATCH = "app.agents.tools.execute.dispatch"
 
 
 def _request(name: str = "GMAIL_FETCH_MESSAGES", call_id: str = "c1") -> MagicMock:
@@ -105,6 +111,73 @@ class TestTimeoutGuard:
             return expected
 
         assert await timeout_guarded_tool_call(_request(exempt), slow) is expected
+
+    async def test_bash_is_allowed_to_outlive_the_generic_bound(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """bash carries its own deadline all the way down to e2b's server-side
+        command timeout, and advertises up to 300s to the model. Cutting it at the
+        generic 120 killed long commands the tool said it would run — and in code
+        mode it killed the bash call before the host could answer an in-flight
+        execute() with its own structured error."""
+        monkeypatch.setattr(
+            "app.override.langgraph_bigtool.dynamic_tool_node.TOOL_EXECUTION_TIMEOUT_SECONDS",
+            0.01,
+        )
+        expected = ToolMessage(content="exit_code: 0", tool_call_id="c1")
+
+        async def slow(_request: Any) -> ToolMessage:
+            await asyncio.sleep(0.05)
+            return expected
+
+        assert await timeout_guarded_tool_call(_request("bash"), slow) is expected
+
+    async def test_a_proxied_call_comes_back_with_dispatchs_structured_timeout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """dispatch_tool's timeout error names the REAL tool and tells the model a
+        retry can duplicate the action; this node's text is generic. Both bounds
+        were the same 120s and this one is armed first, so it always won the race:
+        the structured error — and the analytics event and metric that ride with
+        it — could not fire for any in-graph call."""
+        monkeypatch.setattr(f"{DISPATCH}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
+        monkeypatch.setattr(f"{NODE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.02)
+        monkeypatch.setattr(f"{NODE}.TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS", 0.3)
+
+        hung = MagicMock()
+        hung.name = "GMAIL_SEND_EMAIL"
+        hung.args_schema = None
+
+        async def never_returns(*_args: Any, **_kwargs: Any) -> None:
+            await asyncio.sleep(5)
+
+        hung.ainvoke = never_returns
+
+        request = _request("execute")
+        request.tool_call["args"] = {"tool_name": "GMAIL_SEND_EMAIL", "data": {}}
+
+        async def run_the_proxy(_request: Any) -> ToolMessage:
+            content = await execute.ainvoke(
+                {
+                    "task_description": "Sending the email",
+                    "tool_name": "GMAIL_SEND_EMAIL",
+                    "data": {},
+                },
+                config={"configurable": {"user_id": "u1"}},
+            )
+            return ToolMessage(content=content, tool_call_id="c1")
+
+        resolved = ResolvedTool("GMAIL_SEND_EMAIL", hung, is_integration=True, in_registry=True)
+        with (
+            patch(f"{DISPATCH}.resolve_tool", new=AsyncMock(return_value=resolved)),
+            patch(f"{DISPATCH}.capture_event"),
+        ):
+            result = await timeout_guarded_tool_call(request, run_the_proxy)
+
+        body = json.loads(result.content)
+        assert body["error"] == "timeout"
+        assert "GMAIL_SEND_EMAIL" in body["detail"]
+        assert "verify" in body["next"].lower()
 
     def test_the_configured_timeout_is_long_enough_for_a_real_call(self):
         """A guard set to a few seconds would abort legitimate provider calls;

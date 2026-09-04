@@ -543,3 +543,29 @@ def test_interrupt_note_with_quoted_directive_is_ignored():
         "content": f"<executor_interrupted>\nStopped; it was doing {ghost}\n</executor_interrupted>",
     }
     assert isinstance(resolve_response([note], WORK_TOOLS), SayResponse)
+
+
+def test_unbound_tool_routes_through_execute_when_proxy_present():
+    """Execute cutover: integration tools never bind, so an unavailable scripted
+    tool routes through the execute proxy — binding it would loop forever
+    (observed live: retrieve_tools re-emitted to the recursion limit)."""
+    script = '[[tool:GMAIL_SEND_EMAIL {"recipient_email": "a@b.c"}]] [[say:Done]]'
+    executor = frozenset({"retrieve_tools", "execute"})
+
+    first = resolve_response([_user(script)], executor)
+    assert first == ToolCallResponse(
+        name="execute",
+        args={
+            "task_description": "Run GMAIL_SEND_EMAIL",
+            "tool_name": "GMAIL_SEND_EMAIL",
+            "data": {"recipient_email": "a@b.c"},
+        },
+    )
+
+    # The emitted execute turn advances the script — the run terminates.
+    after_execute = [
+        _user(script),
+        _assistant_tool_call("execute", first.args),
+        _tool_result("execute"),
+    ]
+    assert resolve_response(after_execute, executor) == SayResponse(text="Done")

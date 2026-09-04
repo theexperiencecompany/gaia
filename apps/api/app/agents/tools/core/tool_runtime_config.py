@@ -98,34 +98,6 @@ def build_provider_parent_tool_runtime_config(
     )
 
 
-def build_child_tool_runtime_config(
-    parent_tool_runtime_config: ToolRuntimeConfig,
-    *,
-    use_direct_tools: bool,
-    disable_retrieve_tools: bool,
-    extra_initial_tool_names: list[str] | None = None,
-) -> ToolRuntimeConfig:
-    """Build spawned child tool runtime config from parent mode.
-
-    ``extra_initial_tool_names`` seeds extra tools into the child's initial bind
-    set — used to hand a spawned reader the sandbox-free file miners
-    (query_json/grep) so a chunk-read subagent mines the offloaded file directly
-    instead of falling back to read-whole-file + bash.
-    """
-    extra = extra_initial_tool_names or []
-    if use_direct_tools and disable_retrieve_tools:
-        return ToolRuntimeConfig(
-            initial_tool_names=[*parent_tool_runtime_config.initial_tool_names, *extra],
-            enable_retrieve_tools=False,
-            include_subagents_in_retrieve=False,
-        )
-    return ToolRuntimeConfig(
-        initial_tool_names=["read", "bash", FINISH_TASK_NAME, *extra],
-        enable_retrieve_tools=not disable_retrieve_tools,
-        include_subagents_in_retrieve=False,
-    )
-
-
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
