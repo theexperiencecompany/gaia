@@ -21,6 +21,12 @@ import { z } from "zod";
 import { ChevronRight, Gmail } from "@/components/shared/icons";
 import { Separator } from "@/components/ui/separator";
 import { mailApi } from "@/features/mail/api/mailApi";
+import {
+  RECIPIENT_FIELDS,
+  type RecipientField,
+  type RecipientMap,
+  useRecipientSelection,
+} from "@/features/mail/hooks/useRecipientSelection";
 import { toast } from "@/lib/toast";
 import type { EmailAttachmentMeta } from "@/types/features/mailTypes";
 
@@ -38,22 +44,6 @@ const emailComposeSchema = z.object({
     .min(1, "Email body is required")
     .max(10000, "Email body must be under 10,000 characters"),
 });
-
-const emailValidationSchema = z.email("Invalid email address");
-
-type RecipientField = "to" | "cc" | "bcc";
-
-const RECIPIENT_FIELDS: {
-  field: RecipientField;
-  label: string;
-  addLabel: string;
-}[] = [
-  { field: "to", label: "To", addLabel: "Add Recipients" },
-  { field: "cc", label: "Cc", addLabel: "Add Cc" },
-  { field: "bcc", label: "Bcc", addLabel: "Add Bcc" },
-];
-
-type RecipientMap = Record<RecipientField, string[]>;
 
 function HtmlEmailBody({ html }: { html: string }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -89,17 +79,6 @@ interface EmailData {
 interface EmailComposeCardProps {
   emailData: EmailData;
   onSent?: () => void;
-}
-
-function seedRecipients(data: EmailData): RecipientMap {
-  const to = data.to || [];
-  return {
-    // A stored draft is sent verbatim, so its recipients are already settled.
-    // A proposed compose may list several candidates for the user to pick from.
-    to: data.draft_id || to.length === 1 ? to : [],
-    cc: data.cc || [],
-    bcc: data.bcc || [],
-  };
 }
 
 /**
@@ -499,8 +478,6 @@ export default function EmailComposeCard({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   // Card starts expanded; users can collapse it to a compact header.
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeRecipientField, setActiveRecipientField] =
-    useState<RecipientField | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Bumped every time the edit modal opens so it remounts with a fresh draft.
@@ -510,35 +487,6 @@ export default function EmailComposeCard({
     subject: string;
     body: string;
   } | null>(null);
-
-  // Selected recipients per field, seeded from the agent-resolved emailData.
-  const [recipients, setRecipients] = useState<RecipientMap>(() =>
-    seedRecipients(emailData),
-  );
-
-  // Draft copy of the active field's selection, edited inside the recipient
-  // modal and committed to `recipients` only on confirm (Cancel discards it).
-  const [draftEmails, setDraftEmails] = useState<string[]>([]);
-
-  // Addresses added manually by the user, shown as suggestion chips alongside
-  // the agent-provided ones.
-  const [customSuggestions, setCustomSuggestions] = useState<RecipientMap>({
-    to: [],
-    cc: [],
-    bcc: [],
-  });
-
-  // Custom email input state
-  const [customEmailInput, setCustomEmailInput] = useState("");
-  const [customEmailError, setCustomEmailError] = useState("");
-
-  // Suggestion chips per field (agent-resolved addresses + any custom ones),
-  // derived instead of stored so they always follow emailData.
-  const recipientSuggestions: RecipientMap = {
-    to: [...(emailData.to || []), ...customSuggestions.to],
-    cc: [...(emailData.cc || []), ...customSuggestions.cc],
-    bcc: [...(emailData.bcc || []), ...customSuggestions.bcc],
-  };
 
   // Subject/body follow the agent-resolved data until the user saves an edit.
   const editData: EmailData = savedEdits
@@ -551,20 +499,13 @@ export default function EmailComposeCard({
   // the card renders read-only.
   const isLocked = !!emailData.draft_id;
 
-  const activeSuggestions = activeRecipientField
-    ? recipientSuggestions[activeRecipientField]
-    : [];
-
-  // Commit the modal's draft selection back to the active field, then close.
-  const commitRecipientDraft = () => {
-    if (activeRecipientField) {
-      setRecipients((prev) => ({
-        ...prev,
-        [activeRecipientField]: draftEmails,
-      }));
-    }
-    setActiveRecipientField(null);
-  };
+  const recipientSelection = useRecipientSelection({
+    to: emailData.to,
+    cc: emailData.cc,
+    bcc: emailData.bcc,
+    isSettled: isLocked,
+  });
+  const { recipients } = recipientSelection;
 
   const validateForm = (data: { subject: string; body: string }) => {
     try {
@@ -585,19 +526,6 @@ export default function EmailComposeCard({
           }
         });
         setErrors(newErrors);
-      }
-      return false;
-    }
-  };
-
-  const validateCustomEmail = (email: string): boolean => {
-    try {
-      emailValidationSchema.parse(email);
-      setCustomEmailError("");
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        setCustomEmailError(error.issues[0]?.message || "Invalid email");
       }
       return false;
     }
@@ -669,52 +597,6 @@ export default function EmailComposeCard({
     setIsEditModalOpen(true);
   };
 
-  const openRecipientModal = (field: RecipientField) => {
-    setCustomEmailInput("");
-    setCustomEmailError("");
-    setDraftEmails(recipients[field]);
-    setActiveRecipientField(field);
-  };
-
-  // Add a manually typed email to the active field's draft selection.
-  const handleAddCustomEmail = () => {
-    if (!activeRecipientField) return;
-
-    const trimmedEmail = customEmailInput.trim();
-
-    if (!trimmedEmail) {
-      setCustomEmailError("Please enter an email address");
-      return;
-    }
-
-    if (!validateCustomEmail(trimmedEmail)) {
-      return;
-    }
-
-    if (draftEmails.includes(trimmedEmail)) {
-      setCustomEmailError("Email already added");
-      return;
-    }
-
-    setDraftEmails((prev) => [...prev, trimmedEmail]);
-
-    if (!recipientSuggestions[activeRecipientField].includes(trimmedEmail)) {
-      const field = activeRecipientField;
-      setCustomSuggestions((prev) => ({
-        ...prev,
-        [field]: [...prev[field], trimmedEmail],
-      }));
-    }
-
-    setCustomEmailInput("");
-    setCustomEmailError("");
-    toast.success(`Added ${trimmedEmail}`);
-  };
-
-  const activeFieldConfig = RECIPIENT_FIELDS.find(
-    (f) => f.field === activeRecipientField,
-  );
-
   return (
     <>
       {/* Main Email Card */}
@@ -739,7 +621,7 @@ export default function EmailComposeCard({
             >
               <ComposeFields
                 recipients={recipients}
-                onEditField={openRecipientModal}
+                onEditField={recipientSelection.openField}
                 subject={editData.subject}
                 body={editData.body}
                 attachments={editData.attachments}
@@ -778,18 +660,22 @@ export default function EmailComposeCard({
       />
 
       <RecipientSelectionModal
-        isOpen={activeRecipientField !== null}
-        onClose={() => setActiveRecipientField(null)}
-        onConfirm={commitRecipientDraft}
-        title={activeFieldConfig ? `${activeFieldConfig.label} recipients` : ""}
-        suggestions={activeSuggestions}
-        selectedEmails={draftEmails}
-        setSelectedEmails={setDraftEmails}
-        customEmailInput={customEmailInput}
-        setCustomEmailInput={setCustomEmailInput}
-        customEmailError={customEmailError}
-        setCustomEmailError={setCustomEmailError}
-        handleAddCustomEmail={handleAddCustomEmail}
+        isOpen={recipientSelection.activeField !== null}
+        onClose={recipientSelection.closeField}
+        onConfirm={recipientSelection.commitDraft}
+        title={
+          recipientSelection.activeFieldConfig
+            ? `${recipientSelection.activeFieldConfig.label} recipients`
+            : ""
+        }
+        suggestions={recipientSelection.activeSuggestions}
+        selectedEmails={recipientSelection.draftEmails}
+        setSelectedEmails={recipientSelection.setDraftEmails}
+        customEmailInput={recipientSelection.customEmailInput}
+        setCustomEmailInput={recipientSelection.setCustomEmailInput}
+        customEmailError={recipientSelection.customEmailError}
+        setCustomEmailError={recipientSelection.setCustomEmailError}
+        handleAddCustomEmail={recipientSelection.addCustomEmail}
       />
     </>
   );
