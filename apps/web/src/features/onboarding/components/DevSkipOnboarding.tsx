@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useUserActions } from "@/features/auth/hooks/useUser";
@@ -44,10 +43,7 @@ export function DevSkipOnboarding() {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2">
-      <Chip size="sm" color="warning" variant="flat">
-        dev only
-      </Chip>
+    <div className="fixed bottom-4 left-4 z-50">
       <Button
         size="sm"
         radius="full"
@@ -56,7 +52,7 @@ export function DevSkipOnboarding() {
         isLoading={loading}
         onPress={skip}
       >
-        Skip onboarding
+        Skip onboarding (dev only)
       </Button>
     </div>
   );

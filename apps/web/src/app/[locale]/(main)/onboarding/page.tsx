@@ -29,6 +29,7 @@ import {
 } from "@/features/onboarding/components/stages";
 import { EASE_OUT_QUART } from "@/features/onboarding/constants/motion";
 import { useOnboarding } from "@/features/onboarding/hooks/useOnboarding";
+import { usePaceStore } from "@/features/onboarding/state/paceStore";
 import { useUserStore } from "@/stores/userStore";
 
 const INTRO_FADE_IN = {
@@ -89,6 +90,7 @@ export default function Onboarding() {
 
   const handleRestart = () => {
     clearIntroSeen(userId);
+    usePaceStore.getState().reset();
     setIntroDone(false);
     return restart();
   };

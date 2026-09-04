@@ -76,7 +76,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
     );
 
     const button = screen.getByRole("button", {
-      name: /Get GAIA Pro/i,
+      name: /Subscribe/i,
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
@@ -95,7 +95,7 @@ describe("PricingCard — CTA vs. plan status unknown", () => {
     );
 
     // Before the fix, isCurrentPlan/hasActiveSubscription being false in this
-    // exact window meant the button rendered as an actionable "Get GAIA Pro"
+    // exact window meant the button rendered as an actionable "Subscribe"
     // — a paying user reloading mid-fetch could click straight into a
     // duplicate subscription checkout.
     const button = screen.getByRole("button", {

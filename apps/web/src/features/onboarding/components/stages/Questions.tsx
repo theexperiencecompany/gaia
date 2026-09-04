@@ -6,10 +6,14 @@
 
 "use client";
 
+import * as m from "motion/react-m";
 import type { Dispatch } from "react";
 import { useCallback } from "react";
 import { FIELD_NAMES, questions } from "../../constants";
+import { MOTION_FADE_UP } from "../../constants/motion";
+import { usePaceDone } from "../../hooks/useTypedLines";
 import { canSubmitNeeds } from "../../state/derive";
+import { questionRevealKey } from "../../state/paceStore";
 import type { Action, OnboardingState } from "../../state/types";
 import { OnboardingInput } from "../OnboardingInput";
 
@@ -20,6 +24,8 @@ interface QuestionsProps {
 
 export function QuestionsReply({ state, dispatch }: QuestionsProps) {
   const currentQuestion = questions[state.questionIndex];
+  // The reply only shows up once GAIA has finished "typing" the question.
+  const gaiaDone = usePaceDone(questionRevealKey(currentQuestion?.id ?? ""));
 
   const handleSelectProfession = useCallback(
     (value: string) => dispatch({ type: "draftProfession", value }),
@@ -51,28 +57,32 @@ export function QuestionsReply({ state, dispatch }: QuestionsProps) {
     [dispatch],
   );
 
-  if (currentQuestion?.fieldName === FIELD_NAMES.NEEDS) {
+  if (!currentQuestion || !gaiaDone) return null;
+
+  if (currentQuestion.fieldName === FIELD_NAMES.NEEDS) {
     return (
-      <OnboardingInput
-        mode="needs"
-        selectedNeeds={state.selectedNeeds}
-        otherNeed={state.otherNeed}
-        canContinue={canSubmitNeeds(state)}
-        onToggleNeed={handleToggleNeed}
-        onOtherNeedChange={handleOtherNeedChange}
-        onContinue={handleSubmitNeeds}
-      />
+      <m.div {...MOTION_FADE_UP}>
+        <OnboardingInput
+          mode="needs"
+          selectedNeeds={state.selectedNeeds}
+          otherNeed={state.otherNeed}
+          canContinue={canSubmitNeeds(state)}
+          onToggleNeed={handleToggleNeed}
+          onOtherNeedChange={handleOtherNeedChange}
+          onContinue={handleSubmitNeeds}
+        />
+      </m.div>
     );
   }
 
-  if (!currentQuestion) return null;
-
   return (
-    <OnboardingInput
-      mode="profession"
-      draftProfession={draftProfession}
-      onSelectProfession={handleSelectProfession}
-      onContinue={handleSubmitProfession}
-    />
+    <m.div {...MOTION_FADE_UP}>
+      <OnboardingInput
+        mode="profession"
+        draftProfession={draftProfession}
+        onSelectProfession={handleSelectProfession}
+        onContinue={handleSubmitProfession}
+      />
+    </m.div>
   );
 }

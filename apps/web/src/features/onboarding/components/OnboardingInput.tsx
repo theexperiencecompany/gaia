@@ -73,7 +73,7 @@ function ProfessionInput({
   return (
     <div className={REPLY_WRAPPER_CLASS}>
       <OptionChips
-        label="What do you do?"
+        label="What do you do for work?"
         options={professionOptions}
         isSelected={(value) =>
           value === OTHER_PROFESSION ? isOther : value === draftProfession

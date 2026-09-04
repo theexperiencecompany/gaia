@@ -18,6 +18,7 @@ import { PLATFORM_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import type { PlatformPreviewPlatform } from "../../constants/platformPreviewMessages";
 import { useConnectPlatform } from "../../hooks/useConnectPlatform";
+import { usePaceDone } from "../../hooks/useTypedLines";
 import type { Action, OnboardingState } from "../../state/types";
 import { ComposerCTA } from "../ComposerCTA";
 import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
@@ -30,7 +31,10 @@ interface PlatformsProps {
   dispatch: Dispatch<Action>;
 }
 
+const PLATFORM_REVEAL_KEY = "platform";
+
 export function Platforms({ state, dispatch }: PlatformsProps) {
+  const gaiaDone = usePaceDone(PLATFORM_REVEAL_KEY);
   const [hoveredPlatform, setHoveredPlatform] =
     useState<PlatformPreviewPlatform | null>(null);
 
@@ -50,21 +54,30 @@ export function Platforms({ state, dispatch }: PlatformsProps) {
 
   return (
     <m.div className="mt-4 flex flex-col gap-3" {...MOTION_FADE_UP}>
-      {!state.connectedPlatform && (
-        <OnboardingPlatformPreview
-          profession={profession}
-          hoveredPlatform={hoveredPlatform}
-          userName={userName}
-          userAvatar={userAvatar}
-        />
+      {gaiaDone && !state.connectedPlatform && (
+        <m.div {...MOTION_FADE_UP}>
+          <OnboardingPlatformPreview
+            profession={profession}
+            hoveredPlatform={hoveredPlatform}
+            userName={userName}
+            userAvatar={userAvatar}
+          />
+        </m.div>
       )}
-      <OnboardingBotBubbles lines={PLATFORM_INTRO_LINES} />
-      <OnboardingPlatformConnect
-        onConnect={connect}
-        onSkip={skip}
-        onHoverPlatform={setHoveredPlatform}
-        hideSkip
+      <OnboardingBotBubbles
+        lines={PLATFORM_INTRO_LINES}
+        revealKey={PLATFORM_REVEAL_KEY}
       />
+      {gaiaDone && (
+        <m.div {...MOTION_FADE_UP}>
+          <OnboardingPlatformConnect
+            onConnect={connect}
+            onSkip={skip}
+            onHoverPlatform={setHoveredPlatform}
+            hideSkip
+          />
+        </m.div>
+      )}
       <PhoneLinkModal
         isOpen={phoneModalOpen}
         platformName={BOT_PLATFORM_LABELS.imessage}

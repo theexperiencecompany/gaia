@@ -21,18 +21,25 @@ import { PAYMENT_INTRO_LINES } from "../../constants/messages";
 import { MOTION_FADE_UP } from "../../constants/motion";
 import { useAwaitPaidStatus } from "../../hooks/useAwaitPaidStatus";
 import { useCheckoutReturn } from "../../hooks/useCheckoutReturn";
+import { usePaceDone } from "../../hooks/useTypedLines";
 import { OnboardingBotBubbles } from "../OnboardingBotBubbles";
+
+const PAYMENT_REVEAL_KEY = "payment";
 
 export function Payment() {
   const [isYearly, setIsYearly] = useState(false);
   const { isUnknown } = useIsPaid();
   const { returned, isLate } = useCheckoutReturn();
   useAwaitPaidStatus();
+  const gaiaDone = usePaceDone(PAYMENT_REVEAL_KEY);
 
   return (
     <m.div className="flex flex-col items-center gap-4" {...MOTION_FADE_UP}>
       <div className="w-full">
-        <OnboardingBotBubbles lines={PAYMENT_INTRO_LINES} />
+        <OnboardingBotBubbles
+          lines={PAYMENT_INTRO_LINES}
+          revealKey={PAYMENT_REVEAL_KEY}
+        />
       </div>
 
       {/* Never render the cards off an unresolved plan status: a paying user
@@ -45,10 +52,13 @@ export function Payment() {
         <div className="w-full max-w-sm">
           <CheckoutConfirming isLate={isLate} />
         </div>
-      ) : (
+      ) : gaiaDone ? (
         // Scaled so the whole card sits on a laptop screen without scrolling;
         // `zoom` shrinks the layout box too, unlike a transform.
-        <div className="flex w-full flex-col items-center gap-4 [zoom:0.85]">
+        <m.div
+          className="flex w-full flex-col items-center gap-4 [zoom:0.85]"
+          {...MOTION_FADE_UP}
+        >
           <BillingPeriodTabs isYearly={isYearly} onChange={setIsYearly} />
           <PricingCards
             durationIsMonth={!isYearly}
@@ -56,8 +66,8 @@ export function Payment() {
             checkoutSource="onboarding"
             hideHeader
           />
-        </div>
-      )}
+        </m.div>
+      ) : null}
     </m.div>
   );
 }
