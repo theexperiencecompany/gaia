@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from unittest.mock import AsyncMock, call, patch
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import Field, ValidationError, v1
+from pydantic import Field, TypeAdapter, ValidationError, v1
 import pytest
 import yaml
 
@@ -24,6 +24,7 @@ from app.models.playbook_models import (
     PlaybookHandoffStepInput,
     PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
     playbook_body_from_input,
 )
 from app.models.subagent_models import Subagent
@@ -35,6 +36,7 @@ from app.services.workflow.playbook.parser import (
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
+PlaybookStep_adapter = TypeAdapter(PlaybookStep)
 USER_ID = "user-1"
 
 
@@ -180,31 +182,25 @@ class TestPlaybookGrammar:
 
     def test_a_step_carrying_both_a_tool_and_a_handoff_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Confused",
-                    "steps": [
+            playbook_body_from_input(
+                "Confused",
+                [
+                    PlaybookStepInput.model_validate(
                         {
                             "id": "both_shapes",
                             "tool": "send_email",
                             "handoff": "mail_agent",
                             "steps": [{"id": "inner", "tool": "send_email"}],
                         }
-                    ],
-                    "result_brief": "x",
-                }
+                    )
+                ],
+                "x",
             )
         assert "both_shapes" in str(exc.value)
 
     def test_a_handoff_without_children_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Empty handoff",
-                    "steps": [{"id": "delegate", "handoff": "mail_agent"}],
-                    "result_brief": "x",
-                }
-            )
+            PlaybookStepInput.model_validate({"id": "delegate", "handoff": "mail_agent"})
         assert "mail_agent" in str(exc.value)
 
     def test_an_unknown_top_level_key_is_rejected_by_name(self) -> None:
@@ -284,11 +280,10 @@ result_brief: x
         assert problems[1].startswith("list_events takes no arg 'bogus'")
 
     async def test_a_shapeless_step_does_not_stop_its_siblings_being_checked(self) -> None:
-        """exactly_one_shape forbids a step with neither tool nor handoff; if one
-        is conjured anyway (model_construct), the walk skips it and still checks
-        the steps after it."""
-        ghost = PlaybookStep.model_construct(id="ghost", tool=None, handoff=None, steps=[], args={})
-        real = PlaybookStep(id="one", tool="send_owl", args={})
+        """The variants refuse an empty tool name; if one is conjured anyway
+        (model_construct), the walk reports it and still checks the steps after it."""
+        ghost = ToolStep.model_construct(id="ghost", tool="", args={})
+        real = ToolStep(id="one", tool="send_owl", args={})
         body = _body(VALID_YAML)
         patched = body.model_copy(update={"steps": [ghost, real]})
 
@@ -2376,6 +2371,49 @@ def _messages(exc: pytest.ExceptionInfo[ValidationError]) -> list[str]:
     return [error["msg"] for error in exc.value.errors()]
 
 
+class TestStoredShapesAreUnrepresentable:
+    """The stored step is a union of three variants discriminated by shape, so
+    a document that is two shapes, or none, or a loop with no ceiling, cannot be
+    read at all. No message is asserted: nothing the model reads is produced
+    here, the authoring inputs below own the messages."""
+
+    @pytest.mark.parametrize(
+        "document",
+        [
+            {
+                "id": "both",
+                "tool": "send_email",
+                "handoff": "mail_agent",
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+            {"id": "neither", "args": {"to": "x"}},
+            {"id": "empty_handoff", "handoff": "mail_agent"},
+            {"id": "nested_call", "tool": "send_email", "steps": [{"id": "i", "tool": "t"}]},
+            {"id": "unbounded", "tool": "send_email", "for_each": "$steps.a.items"},
+            {"id": "ceiling_only", "tool": "send_email", "max_items": 3},
+            {
+                "id": "looping_handoff",
+                "handoff": "m",
+                "for_each": "$steps.a.items",
+                "max_items": 3,
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+        ],
+        ids=[
+            "both",
+            "neither",
+            "empty_handoff",
+            "nested_call",
+            "unbounded",
+            "ceiling_only",
+            "looping_handoff",
+        ],
+    )
+    def test_it_cannot_be_read(self, document: dict[str, object]) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookStep_adapter.validate_python(document)
+
+
 class TestStepShapeMessages:
     """What a rejected step actually tells the agent that wrote it.
 
@@ -2387,50 +2425,14 @@ class TestStepShapeMessages:
     and stored through ``PlaybookStep``, and the two must refuse the same shapes.
     """
 
-    def test_a_stored_step_that_is_both_shapes_is_named(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
-                {
-                    "id": "both_shapes",
-                    "tool": "send_email",
-                    "handoff": "mail_agent",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
-
-        assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        """A step with no id has to be described somehow, and "" is not a description."""
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"id": "delegate", "handoff": "mail_agent"})
-
-        assert any(
-            "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
         """Only a handoff nests, and the message names the step, not the tool.
 
         The agent addresses the step it has to fix by id, so naming the tool
         instead points it at every step that calls that tool.
         """
         with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
+            PlaybookStepInput.model_validate(
                 {
                     "id": "notify",
                     "tool": "send_email",
@@ -2439,8 +2441,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step notify: only a handoff may carry nested steps" in m for m in _messages(exc)
         )
 
     def test_an_authored_step_that_is_both_shapes_is_named(self) -> None:
@@ -2455,17 +2456,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
+            "step both_shapes: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
     def test_an_authored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
@@ -2474,23 +2465,17 @@ class TestStepShapeMessages:
 
         assert any(
             "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
+            "subagent ran (its handoff result records them) in this step's 'steps' field" in m
+            for m in _messages(exc)
         )
 
-    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
+        """A step with no id has to be described somehow, and "" is not a description."""
         with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate(
-                {
-                    "id": "notify",
-                    "tool": "send_email",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
+            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
 
@@ -2555,9 +2540,10 @@ class TestForEachSource:
     anyone found out. The write is where that is knowable.
     """
 
-    async def test_a_for_each_woven_into_prose_is_refused(self) -> None:
-        body = _body(
-            """
+    def test_a_for_each_woven_into_prose_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="whole value"):
+            _body(
+                """
 description: Sweep the overdue todos
 steps:
   - id: agenda
@@ -2573,12 +2559,7 @@ steps:
       subject: Note
 result_brief: Say what was sent.
 """
-        )
-        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
-            result = await validate_playbook(body, USER_ID)
-
-        assert result.valid is False
-        assert any("for_each" in issue.problem for issue in result.issues), result.issues
+            )
 
     async def test_a_bare_steps_placeholder_is_accepted(self) -> None:
         body = _body(

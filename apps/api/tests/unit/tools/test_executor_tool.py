@@ -36,7 +36,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.utils import background_tasks
 
 
@@ -963,7 +963,7 @@ def _failed_playbook() -> PlaybookDocument:
         user_id="user-1",
         workflow_hash="h",
         description="d",
-        steps=[PlaybookStep(id="events", tool="list_events", args={})],
+        steps=[ToolStep(id="events", tool="list_events", args={})],
         result_brief="s",
         last_run_status=PlaybookRunStatus.FAILED,
         last_run_reason="stopped at step 2 (send_email)",

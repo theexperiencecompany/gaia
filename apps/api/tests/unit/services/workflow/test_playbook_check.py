@@ -32,11 +32,12 @@ from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
     DeclineKind,
+    HandoffStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
@@ -83,7 +84,7 @@ def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookD
         user_id=USER_ID,
         workflow_hash="h",
         description="d",
-        steps=[PlaybookStep(id="s1", tool="create_todo", args={})],
+        steps=[ToolStep(id="s1", tool="create_todo", args={})],
         result_brief="s",
         last_run_status=status,
         last_run_reason=reason,
@@ -582,12 +583,12 @@ REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
     if handoff:
         steps = [
-            PlaybookStep(
-                id="h", handoff=handoff, steps=[PlaybookStep(id=t, tool=t, args={}) for t in tools]
+            HandoffStep(
+                id="h", handoff=handoff, steps=[ToolStep(id=t, tool=t, args={}) for t in tools]
             )
         ]
     else:
-        steps = [PlaybookStep(id=t, tool=t, args={}) for t in tools]
+        steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,

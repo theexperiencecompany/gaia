@@ -17,7 +17,7 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
 )
 from app.models.message_models import SelectedWorkflowData
-from app.models.playbook_models import PlaybookDocument, PlaybookStep
+from app.models.playbook_models import HandoffStep, PlaybookDocument, PlaybookStep
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
@@ -156,11 +156,11 @@ def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
     """
     lines: list[str] = []
     for step in steps:
-        if step.handoff:
-            children = ", ".join(child.tool or "?" for child in step.steps)
+        if isinstance(step, HandoffStep):
+            children = ", ".join(child.tool for child in step.steps)
             lines.append(f"{step.handoff} subagent -> {children}")
         else:
-            lines.append(step.tool or "?")
+            lines.append(step.tool)
     return lines
 
 

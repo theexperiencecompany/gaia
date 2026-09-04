@@ -19,14 +19,18 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
+    ForEachStep,
+    HandoffStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
     PlaybookStep,
+    ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall, carries_no_data
 from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.playbook.evaluator import parse_result
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
 
@@ -82,9 +86,6 @@ async def playbook_check_brief(
     return ""
 
 
-HEAL_STATUSES = frozenset({PlaybookRunStatus.FAILED, PlaybookRunStatus.SUSPECT})
-
-
 def declined_for_good(workflow: WorkflowDocument) -> bool:
     """Declined past the limit for the workflow exactly as it stands now."""
     return (
@@ -117,20 +118,20 @@ def frozen_on_empty(playbook: PlaybookDocument, trace: Sequence[RecordedCall]) -
     the result. A write tool answers with the record it just created, and that
     record's own empty attributes are not the call returning nothing.
     """
-    for step in _walk(playbook.steps):
-        if not step.tool:
-            continue
+    for step in _calls(playbook.steps):
         call = next((c for c in reversed(trace) if c.tool_name == step.tool), None)
         if call is not None and carries_no_data(parse_result(call.result_digest)):
             return f"{step.tool} returned no items in the run that wrote this playbook"
     return None
 
 
-def _walk(steps: Sequence[PlaybookStep]) -> Iterator[PlaybookStep]:
-    """Every step in the document, handoff children included."""
+def _calls(steps: Sequence[PlaybookStep]) -> Iterator[ToolStep | ForEachStep]:
+    """Every call in the document, a handoff's children included."""
     for step in steps:
-        yield step
-        yield from _walk(step.steps)
+        if isinstance(step, HandoffStep):
+            yield from step.steps
+        else:
+            yield step
 
 
 def _wrote_a_playbook(trace: Sequence[RecordedCall]) -> bool:

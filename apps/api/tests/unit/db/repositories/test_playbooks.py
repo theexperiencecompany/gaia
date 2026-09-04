@@ -22,8 +22,14 @@ import pytest
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories import playbooks as playbooks_module
-from app.db.repositories.playbooks import PlaybooksRepository
+from app.db.repositories.playbooks import PlaybooksRepository, _outcome_update
 from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
+from app.services.workflow.playbook.lifecycle import (
+    PlaybookLifecycle,
+    Replayed,
+    streak_grows,
+    transition,
+)
 
 WORKFLOW_ID = "wf_1"
 USER_ID = "user_1"
@@ -494,10 +500,10 @@ class TestTheScopeAndShapeOfEveryRawWrite:
         seen: list[tuple[Any, Any, dict[str, Any]]] = []
 
         def _outcome_update(
-            status: PlaybookRunStatus, reason: str | None, **kwargs: Any
+            outcome: PlaybookRunOutcome, **kwargs: Any
         ) -> dict[str, dict[str, object]]:
-            seen.append((status, reason, kwargs))
-            return {"$set": {"last_run_status": status, "last_run_reason": reason}}
+            seen.append((outcome.status, outcome.reason, kwargs))
+            return {"$set": {"last_run_status": outcome.status, "last_run_reason": outcome.reason}}
 
         collection.find_one_and_update = AsyncMock(side_effect=[None, _raw()])
 
@@ -512,3 +518,51 @@ class TestTheScopeAndShapeOfEveryRawWrite:
             (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": True}),
             (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": False}),
         ]
+
+
+@pytest.mark.unit
+class TestTheWriteIsTheTransition:
+    """``_outcome_update`` splits the lifecycle transition into the part that
+    depends on the stored state and the part that does not. Applying the write
+    to a document must land exactly where ``transition`` says a replay lands,
+    for every outcome from every prior status, or the two have drifted."""
+
+    @pytest.mark.parametrize(
+        ("prior", "outcome"),
+        [
+            (prior, outcome)
+            for prior in PlaybookRunStatus
+            for outcome in (
+                PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
+                PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped"),
+                PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty"),
+                PlaybookRunOutcome(
+                    PlaybookRunStatus.SUSPECT, reason="opinion", counts_toward_streak=False
+                ),
+            )
+        ],
+    )
+    def test_applying_the_write_lands_on_the_transition(
+        self, prior: PlaybookRunStatus, outcome: PlaybookRunOutcome
+    ) -> None:
+        before = PlaybookLifecycle(
+            status=prior, reason="old", suspect_streak=1, heal_attempts=1, revision=2
+        )
+        # the caller settles growth by matching on the stored status; mirror that
+        update = _outcome_update(outcome, grow_streak=streak_grows(before, outcome))
+        doc: dict[str, object] = {
+            "last_run_status": before.status,
+            "last_run_reason": before.reason,
+            "suspect_streak": before.suspect_streak,
+        }
+        doc.update(update["$set"])
+        doc["suspect_streak"] = int(doc["suspect_streak"]) + int(
+            update.get("$inc", {}).get("suspect_streak", 0)
+        )
+
+        expected = transition(before, Replayed(outcome))
+        assert doc == {
+            "last_run_status": expected.status,
+            "last_run_reason": expected.reason,
+            "suspect_streak": expected.suspect_streak,
+        }

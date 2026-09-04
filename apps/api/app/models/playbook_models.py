@@ -30,12 +30,21 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Self, TypeGuard
+from typing import Annotated, Any, Self, TypeGuard
 import uuid
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Discriminator,
+    Field,
+    Tag,
+    field_validator,
+    model_validator,
+)
 
 from app.db.repositories.base import MongoDocument
+from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 
 #: The key that marks an argument value as a slot a model fills at replay,
 #: rather than as data. A ``$`` prefix because no tool takes an argument or a
@@ -182,126 +191,278 @@ def ask_slot_key(prefix: str, path: Sequence[str | int]) -> str:
     return ".".join([prefix, *(str(part) for part in path)])
 
 
-class PlaybookStep(BaseModel):
-    """One node: either a tool call, or a handoff carrying the steps that
-    subagent ran.
+class AskKind(str, Enum):
+    """What a slot is answered with: one value, or the elements a step repeats over."""
 
-    Both shapes share one model because the YAML reads better without a ``kind``
-    discriminator the author has to remember, and because the two are mutually
-    exclusive by construction — enforced below rather than by the type system.
+    TEXT = "text"
+    ITEMS = "items"
 
-    A handoff's children execute in that subagent's context, so the subagent's
-    existing tool space *is* the auth boundary; there is no separate binding
-    rule for playbooks.
+
+@dataclass(frozen=True, slots=True)
+class LocatedAsk:
+    """One ask slot, the key that addresses it, and the kind of answer it takes."""
+
+    key: str
+    slot: AskSlot
+    kind: AskKind
+
+
+class PlaybookAskAnswer(BaseModel):
+    """One ``$ask`` slot, written by an ask call.
+
+    A slot standing in for an argument is answered with ``text``. A slot that is
+    a step's ``for_each`` source is answered with ``items``, because what it
+    stands for is the list the step repeats over rather than one value. An
+    answer carries exactly one of the two: ``text`` is optional only so ``items``
+    can exist, and an answer with neither would land as an empty string in a
+    real tool argument where the missing-slot check could not see it.
+    """
+
+    name: str = Field(description="The slot's key, exactly as listed in <asks>")
+    text: str = Field(default="", description="What to write for that slot")
+    items: list[str] = Field(
+        default_factory=list,
+        description="For a for_each slot only: the elements the step repeats over",
+    )
+
+    @model_validator(mode="after")
+    def _exactly_one_kind(self) -> Self:
+        has_text, has_items = bool(self.text.strip()), bool(self.items)
+        if has_text == has_items:
+            raise ValueError(
+                f"{self.name}: answer with text, or with items for a for_each slot, not both "
+                "and not neither"
+            )
+        return self
+
+    @property
+    def kind(self) -> AskKind:
+        return AskKind.ITEMS if self.items else AskKind.TEXT
+
+
+class PlaybookAskFill(BaseModel):
+    """What one ask call produces: the slots its own step needs, and nothing else."""
+
+    asks: list[PlaybookAskAnswer] = Field(default_factory=list)
+
+
+def _nulls_are_unset(data: object) -> object:
+    """Documents written before the step variants existed carry every field.
+
+    The old single model defaulted ``tool``/``handoff``/``for_each``/``max_items``
+    to ``None`` and ``steps`` to ``[]``, and those defaults are on every stored
+    playbook. Under ``extra="forbid"`` they would refuse the variant they belong
+    to, so a null (or an empty child list) is read as the field being unset,
+    which is exactly what it meant when it was written.
+    """
+    if not isinstance(data, Mapping):
+        return data
+    return {
+        key: value
+        for key, value in data.items()
+        if value is not None and not (key == "steps" and value == [])
+    }
+
+
+class _CallStep(BaseModel):
+    """What a tool call step and a repeating tool call step share."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
+    tool: str = Field(min_length=1, description="Exact name of the tool this step calls")
+    args: dict[str, Any] = Field(default_factory=dict, description="Args, may hold $placeholders")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_legacy_nulls(cls, data: object) -> object:
+        return _nulls_are_unset(data)
+
+    @property
+    def label(self) -> str:
+        """How the step is named in prompts and records: its id, else its tool."""
+        return self.id or self.tool
+
+    def arg_ask_slots(self, prefix: str) -> list[LocatedAsk]:
+        """The slots inside this step's arguments, keyed under ``prefix``.
+
+        The prefix is a parameter because a repeating step fills its arguments
+        once per element, and two elements' answers must not share a key: the
+        evaluator looks each one back up by exactly this string, so a collision
+        would put the first element's text into the second element's call.
+        """
+        return [
+            LocatedAsk(
+                key=ask_slot_key(prefix, path),
+                slot=AskSlot.model_validate(value),
+                kind=AskKind.TEXT,
+            )
+            for path, value in walk_ask_slots(self.args)
+        ]
+
+    def _document_head(self) -> dict[str, Any]:
+        node: dict[str, Any] = {}
+        if self.id:
+            node["id"] = self.id
+        node["tool"] = self.tool
+        if self.args:
+            node["args"] = self.args
+        return node
+
+
+class ToolStep(_CallStep):
+    """One tool call, replayed once."""
+
+    def ask_slots(self, prefix: str) -> list[LocatedAsk]:
+        return self.arg_ask_slots(prefix)
+
+    def to_document(self) -> dict[str, Any]:
+        """The step as the YAML the agent reads and edits."""
+        return self._document_head()
+
+
+class ForEachStep(_CallStep):
+    """One tool call, replayed once per element of a list, ``$item`` addressing
+    the element.
+
+    Bounded repetition is not branching: the order of steps is still fixed and
+    known before the run, only how many times this one repeats varies. The
+    ceiling is required because a replay's cost has to be knowable before it
+    runs, and the fan-out is the one part of a playbook whose size the author
+    cannot see when they write it.
+    """
+
+    #: Either a placeholder naming a previous step's list, or an ``$ask`` slot
+    #: a model fills with the elements at replay. The whole value, nothing else.
+    for_each: str | AskSlot = Field(description="A list to repeat this step over")
+    max_items: int = Field(ge=1, le=MAX_FOR_EACH_ITEMS, description="Cap on repetitions")
+
+    @field_validator("for_each")
+    @classmethod
+    def _names_a_list(cls, value: str | AskSlot) -> str | AskSlot:
+        """A placeholder woven into prose resolves to a STRING, and a string is
+        not a list. Seen on the first real authoring run:
+        ``for_each: overdue-items-from-$steps.list``. Refused here, at the write,
+        rather than on the replay a whole agentic run later."""
+        if isinstance(value, AskSlot) or PLACEHOLDER_TOKEN.fullmatch(value):
+            return value
+        raise ValueError(
+            "for_each must be the whole value, either one placeholder naming a list "
+            f"($steps.<step_id>.<field>) or an $ask slot, but it is {value!r}; a placeholder "
+            "inside a longer string resolves to text, and text is not a list"
+        )
+
+    @property
+    def source_key(self) -> str:
+        """The key the loop source answers to when it is an ``$ask``."""
+        return ask_slot_key(self.label, (FOR_EACH_ASK_PATH,))
+
+    def ask_slots(self, prefix: str) -> list[LocatedAsk]:
+        """The source slot first, then the arguments: the arguments are written
+        once per element and cannot be addressed until the elements exist."""
+        located: list[LocatedAsk] = []
+        if isinstance(self.for_each, AskSlot):
+            located.append(LocatedAsk(key=self.source_key, slot=self.for_each, kind=AskKind.ITEMS))
+        located.extend(self.arg_ask_slots(prefix))
+        return located
+
+    def to_document(self) -> dict[str, Any]:
+        node = self._document_head()
+        node["for_each"] = (
+            self.for_each.model_dump(by_alias=True, exclude_defaults=True)
+            if isinstance(self.for_each, AskSlot)
+            else self.for_each
+        )
+        node["max_items"] = self.max_items
+        return node
+
+
+def _call_shape(value: object) -> str:
+    """Which call variant a value is: the one that carries ``for_each``."""
+    if isinstance(value, ForEachStep):
+        return "for_each"
+    if isinstance(value, ToolStep):
+        return "tool"
+    if isinstance(value, Mapping) and value.get("for_each") is not None:
+        return "for_each"
+    return "tool"
+
+
+#: A handoff's child: a call, plain or repeating, never another handoff. Depth
+#: one is a property of this type, not of a validator.
+HandoffChild = Annotated[
+    Annotated[ToolStep, Tag("tool")] | Annotated[ForEachStep, Tag("for_each")],
+    Discriminator(_call_shape),
+]
+
+
+class HandoffStep(BaseModel):
+    """A delegation to a subagent, carrying the calls that subagent ran.
+
+    The children execute in that subagent's context, so the subagent's existing
+    tool space *is* the auth boundary; there is no separate binding rule.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
-    tool: str | None = Field(default=None, description="Tool name, for a tool step")
-    args: dict[str, Any] = Field(default_factory=dict, description="Args, may hold $placeholders")
-    handoff: str | None = Field(default=None, description="Subagent id, for a handoff step")
-    steps: list["PlaybookStep"] = Field(
-        default_factory=list, description="A handoff's recorded child steps"
-    )
-    #: Run this step once per element of a list, with ``$item`` addressing the
-    #: element. Either a placeholder naming a previous step's field, or an
-    #: ``{"$ask": ...}`` slot a model fills with the elements at replay.
-    for_each: str | AskSlot | None = Field(
-        default=None, description="A list to repeat this step over, one call per element"
-    )
-    #: The ceiling on that repetition. Required with ``for_each`` and capped at
-    #: :data:`MAX_FOR_EACH_ITEMS`, because a bounded token cost is the whole
-    #: point of a playbook: without it one busy morning turns a replay into an
-    #: unbounded fan-out that costs more than the agent run it replaced.
-    max_items: int | None = Field(
-        default=None, ge=1, le=MAX_FOR_EACH_ITEMS, description="Cap on for_each repetitions"
-    )
+    handoff: str = Field(min_length=1, description="Subagent id")
+    steps: list[HandoffChild] = Field(min_length=1, description="The calls that subagent ran")
 
-    @model_validator(mode="after")
-    def exactly_one_shape(self) -> Self:
-        """A node is a tool call or a handoff, never both and never neither.
+    @model_validator(mode="before")
+    @classmethod
+    def _read_legacy_nulls(cls, data: object) -> object:
+        return _nulls_are_unset(data)
 
-        Caught here rather than at execution because a malformed node means the
-        agent mis-authored the playbook, and the write must fail loudly with the
-        offending id instead of producing a runner that silently skips a step.
-        """
-        if bool(self.tool) == bool(self.handoff):
-            raise ValueError(
-                f"step {self.id or '<unnamed>'}: set exactly one of 'tool' or 'handoff'"
-            )
-        if self.handoff and not self.steps:
-            raise ValueError(
-                f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
-                "the calls that subagent ran (its handoff result records them) in this "
-                "step's 'steps' field"
-            )
-        if self.tool and self.steps:
-            raise ValueError(f"step {self.id or self.tool}: only a handoff may carry nested steps")
-        return self
+    @property
+    def label(self) -> str:
+        return self.id or self.handoff
 
-    @model_validator(mode="after")
-    def repetition_is_bounded(self) -> Self:
-        """``for_each`` repeats one tool call, and never without a ceiling."""
-        where = self.id or self.tool or self.handoff or "<unnamed>"
-        if self.for_each is not None and self.handoff:
-            raise ValueError(
-                f"step {where}: for_each repeats a single tool call, so it cannot sit on a "
-                "handoff; put it on the call inside the handoff that repeats"
-            )
-        if self.for_each is not None and self.max_items is None:
-            raise ValueError(
-                f"step {where}: for_each needs max_items, at most {MAX_FOR_EACH_ITEMS}, so the "
-                "replay's cost is known before it runs"
-            )
-        if self.for_each is None and self.max_items is not None:
-            raise ValueError(f"step {where}: max_items only means something with for_each")
-        return self
+    def ask_slots(self, prefix: str) -> list[LocatedAsk]:
+        """The children's slots, each under its own label: a child's key names
+        the child, since that is the step the evaluator fills."""
+        del prefix  # a handoff has no slots of its own; its children key themselves
+        return [slot for child in self.steps for slot in child.ask_slots(child.label)]
+
+    def to_document(self) -> dict[str, Any]:
+        node: dict[str, Any] = {}
+        if self.id:
+            node["id"] = self.id
+        node["handoff"] = self.handoff
+        node["steps"] = [child.to_document() for child in self.steps]
+        return node
 
 
-@dataclass(frozen=True, slots=True)
-class LocatedAsk:
-    """One ask slot and the key that addresses it."""
+def _step_shape(value: object) -> str:
+    """Which variant a value is, read off its shape.
 
-    key: str
-    slot: AskSlot
-
-
-def arg_ask_slots(step: PlaybookStep, prefix: str) -> list[LocatedAsk]:
-    """One step's argument slots, keyed under ``prefix``.
-
-    The prefix is a parameter because a ``for_each`` step fills its arguments
-    once per element, and two elements' answers must not share a key: the
-    evaluator looks each one back up by exactly this string, so a collision
-    would put the first element's text into the second element's call.
+    No ``kind`` key is stored or rendered: the documents already in Mongo and
+    the YAML the agent reads carry none, and the shape says it anyway. A
+    ``handoff`` key is a handoff; a ``for_each`` key is a repeating call; the
+    rest is a plain call.
     """
-    return [
-        LocatedAsk(key=ask_slot_key(prefix, path), slot=AskSlot.model_validate(value))
-        for path, value in walk_ask_slots(step.args)
-    ]
+    if isinstance(value, HandoffStep):
+        return "handoff"
+    if isinstance(value, Mapping) and value.get("handoff") is not None:
+        return "handoff"
+    return _call_shape(value)
 
 
-def ask_slots(steps: Sequence[PlaybookStep]) -> list[LocatedAsk]:
+PlaybookStep = Annotated[
+    Annotated[ToolStep, Tag("tool")]
+    | Annotated[ForEachStep, Tag("for_each")]
+    | Annotated[HandoffStep, Tag("handoff")],
+    Discriminator(_step_shape),
+]
+
+
+def ask_slots(steps: Sequence[ToolStep | ForEachStep | HandoffStep]) -> list[LocatedAsk]:
     """Every ask slot in a playbook, in execution order, handoff children included.
 
     Keys are unique: step ids are unique (the validator refuses a repeat) and
     two slots in one step sit at two different argument paths.
     """
-    located: list[LocatedAsk] = []
-    for step in steps:
-        if step.handoff:
-            located.extend(ask_slots(step.steps))
-            continue
-        prefix = step.id or step.tool or ""
-        # The loop source is filled BEFORE the step's own arguments, because the
-        # arguments are written once per element and cannot be addressed until
-        # the elements exist.
-        if isinstance(step.for_each, AskSlot):
-            located.append(
-                LocatedAsk(key=ask_slot_key(prefix, (FOR_EACH_ASK_PATH,)), slot=step.for_each)
-            )
-        located.extend(arg_ask_slots(step, prefix))
-    return located
+    return [slot for step in steps for slot in step.ask_slots(step.label)]
 
 
 def walk_ask_slots(
@@ -364,55 +525,77 @@ def _refuse_args_near_miss(data: Mapping[str, Any]) -> None:
             raise ValueError(f"a step's arguments go under 'args', not {key!r}; rename it")
 
 
-def _loop_source(value: str | dict[str, Any] | None) -> "str | AskSlot | None":
-    """The authoring tool's loop source as the executed model holds it.
+_FOR_EACH_DESCRIPTION = (
+    "Repeat this step once per element of a list, with $item addressing the "
+    "element ($item.field for a field of it). This is the WHOLE value and "
+    "nothing else: either one placeholder naming a previous step's list, e.g. "
+    '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
+    "list a model picks at replay. A placeholder inside a longer string, like "
+    "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
+    "this when the NUMBER of calls depends on what the run found; it is not a "
+    "reason to decline."
+)
+_MAX_ITEMS_DESCRIPTION = (
+    f"Required with for_each, at most {MAX_FOR_EACH_ITEMS}: the most elements this "
+    "step may ever run for."
+)
 
-    The tool boundary takes a plain dict because a JSON Schema union of a string
-    and an aliased model is what several function-calling providers mishandle;
-    the alias is resolved here instead.
-    """
-    if isinstance(value, Mapping):
-        return AskSlot.model_validate(value)
-    return value
 
-
-class PlaybookHandoffStepInput(BaseModel):
-    """A tool call recorded inside a handoff, as the authoring tool takes it.
-
-    Flat by design: playbooks are depth-1, so a handoff's children are always
-    plain tool calls. Modelling that here instead of reusing ``PlaybookStep``
-    keeps the tool's JSON Schema free of the self-``$ref`` that several
-    function-calling providers mishandle.
+class _CallInput(BaseModel):
+    """What every authored call carries, at the tool boundary.
 
     Unknown keys are dropped rather than refused. A model that adds a ``goal``
     or a ``note`` to a step it otherwise wrote correctly has said everything the
     playbook needs; refusing the whole write over a stray key threw away 17 of
-    the 57 authoring attempts made in production.
+    the 57 authoring attempts made in production. The near-miss spellings of
+    ``args`` are the one exception, refused by name, because dropping one of
+    those would store a call with no arguments and pass it off as authored.
     """
 
-    id: str = Field(description="Referencable name for this call, e.g. $steps.<id>.field")
-    tool: str = Field(description="Exact name of the tool this step calls")
+    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
     args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
-    for_each: str | dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "Repeat this step once per element of a list, with $item addressing the "
-            "element ($item.field for a field of it). This is the WHOLE value and "
-            "nothing else: either one placeholder naming a previous step's list, e.g. "
-            '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
-            "list a model picks at replay. A placeholder inside a longer string, like "
-            "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
-            "this when the NUMBER of calls depends on what the run found; it is not a "
-            "reason to decline."
-        ),
-    )
-    max_items: int | None = Field(
-        default=None,
-        description=(
-            f"Required with for_each, at most {MAX_FOR_EACH_ITEMS}: the most elements "
-            "this step may ever run for."
-        ),
-    )
+    for_each: str | AskSlot | None = Field(default=None, description=_FOR_EACH_DESCRIPTION)
+    max_items: int | None = Field(default=None, description=_MAX_ITEMS_DESCRIPTION)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _args_spelled_right(cls, data: object) -> object:
+        if isinstance(data, Mapping):
+            _refuse_args_near_miss(data)
+        return data
+
+    @model_validator(mode="after")
+    def _ceiling_only_with_a_loop(self) -> Self:
+        # Unrepresentable on the executed model; a model can still send it here.
+        if self.for_each is None and self.max_items is not None:
+            raise ValueError(
+                f"step {self.id or '<unnamed>'}: max_items only means something with for_each"
+            )
+        return self
+
+    def _call(self, tool: str) -> ToolStep | ForEachStep:
+        if self.for_each is None:
+            return ToolStep(id=self.id, tool=tool, args=self.args)
+        if self.max_items is None:
+            raise ValueError(
+                f"step {self.id or tool}: for_each needs max_items, at most {MAX_FOR_EACH_ITEMS}, "
+                "so the replay's cost is known before it runs"
+            )
+        return ForEachStep(
+            id=self.id, tool=tool, args=self.args, for_each=self.for_each, max_items=self.max_items
+        )
+
+
+class PlaybookHandoffStepInput(_CallInput):
+    """A tool call recorded inside a handoff, as the authoring tool takes it.
+
+    Flat by design: playbooks are depth-1, so a handoff's children are always
+    calls. Modelling that here instead of reusing the step union keeps the
+    tool's JSON Schema free of the self-``$ref`` that several function-calling
+    providers mishandle.
+    """
+
+    tool: str = Field(description="Exact name of the tool this step calls")
 
     @model_validator(mode="before")
     @classmethod
@@ -430,32 +613,19 @@ class PlaybookHandoffStepInput(BaseModel):
                     "playbooks are one level deep, so list the calls that subagent made "
                     "as the handoff's own steps"
                 )
-            _refuse_args_near_miss(data)
         return data
 
-    def to_step(self) -> PlaybookStep:
-        return PlaybookStep(
-            id=self.id,
-            tool=self.tool,
-            args=self.args,
-            for_each=_loop_source(self.for_each),
-            max_items=self.max_items,
-        )
+    def to_step(self) -> ToolStep | ForEachStep:
+        return self._call(self.tool)
 
 
-class PlaybookStepInput(BaseModel):
+class PlaybookStepInput(_CallInput):
     """One top-level step as the authoring tool takes it: a tool call, or a
-    handoff carrying the plain tool calls that subagent ran.
+    handoff carrying the calls that subagent ran."""
 
-    Lenient about unknown keys for the same reason as the handoff child above;
-    the shape rule below is the only one worth failing a write over.
-    """
-
-    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
     tool: str | None = Field(
         default=None, description="Exact name of the tool this step calls, for a tool step"
     )
-    args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
     handoff: str | None = Field(
         default=None, description="Subagent id, for a handoff step. Leave 'tool' unset."
     )
@@ -463,60 +633,35 @@ class PlaybookStepInput(BaseModel):
         default_factory=list,
         description="The tool calls the handoff's subagent ran. Only a handoff carries these.",
     )
-    for_each: str | dict[str, Any] | None = Field(
-        default=None,
-        description=(
-            "Repeat this step once per element of a list, with $item addressing the "
-            "element ($item.field for a field of it). This is the WHOLE value and "
-            "nothing else: either one placeholder naming a previous step's list, e.g. "
-            '$steps.inbox.messages, or {"$ask": "which of the above to act on"} for a '
-            "list a model picks at replay. A placeholder inside a longer string, like "
-            "'overdue-from-$steps.list', resolves to text, and text is not a list. Use "
-            "this when the NUMBER of calls depends on what the run found; it is not a "
-            "reason to decline."
-        ),
-    )
-    max_items: int | None = Field(
-        default=None,
-        description=(
-            f"Required with for_each, at most {MAX_FOR_EACH_ITEMS}: the most elements "
-            "this step may ever run for."
-        ),
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _args_spelled_right(cls, data: object) -> object:
-        if isinstance(data, Mapping):
-            _refuse_args_near_miss(data)
-        return data
 
     @model_validator(mode="after")
     def exactly_one_shape(self) -> Self:
+        """A model can send any combination; the executed types cannot hold one."""
+        where = self.id or "<unnamed>"
         if bool(self.tool) == bool(self.handoff):
-            raise ValueError(
-                f"step {self.id or '<unnamed>'}: set exactly one of 'tool' or 'handoff'"
-            )
+            raise ValueError(f"step {where}: set exactly one of 'tool' or 'handoff'")
         if self.handoff and not self.steps:
             raise ValueError(
                 f"handoff {self.handoff}: carries no steps, so it would do nothing; list "
                 "the calls that subagent ran (its handoff result records them) in this "
                 "step's 'steps' field"
             )
+        if self.handoff and self.for_each is not None:
+            raise ValueError(
+                f"step {where}: for_each repeats a single tool call, so it cannot sit on a "
+                "handoff; put it on the call inside the handoff that repeats"
+            )
         if self.tool and self.steps:
-            raise ValueError(f"step {self.id or self.tool}: only a handoff may carry nested steps")
+            raise ValueError(f"step {where}: only a handoff may carry nested steps")
         return self
 
-    def to_step(self) -> PlaybookStep:
-        return PlaybookStep(
-            id=self.id,
-            tool=self.tool,
-            args=self.args,
-            handoff=self.handoff,
-            steps=[child.to_step() for child in self.steps],
-            for_each=_loop_source(self.for_each),
-            max_items=self.max_items,
-        )
+    def to_step(self) -> ToolStep | ForEachStep | HandoffStep:
+        if self.handoff is not None:
+            return HandoffStep(
+                id=self.id, handoff=self.handoff, steps=[child.to_step() for child in self.steps]
+            )
+        # exactly_one_shape guarantees a tool when there is no handoff.
+        return self._call(self.tool or "")
 
 
 def playbook_body_from_input(

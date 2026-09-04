@@ -33,8 +33,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.settings import settings
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
-    PLAYBOOK_HEAL_ATTEMPT_LIMIT,
-    PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
 )
@@ -97,8 +95,14 @@ from app.services.workflow.execution_service import (
     create_execution,
 )
 from app.services.workflow.notifications import send_workflow_completion_notification
-from app.services.workflow.playbook.check import HEAL_STATUSES, distrust_fresh_playbook
+from app.services.workflow.playbook.check import distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.lifecycle import (
+    DiscardReason,
+    PlaybookLifecycle,
+    discard_reason,
+    needs_heal,
+)
 from app.services.workflow.playbook.runner import (
     PlaybookRunResult,
     completed_block,
@@ -582,7 +586,12 @@ SHORTCUT_DISCARDED_SUMMARY = (
 
 
 async def _discard_playbook(
-    workflow_id: str, user_id: str, playbook: PlaybookDocument, *, reason: str, **details: object
+    workflow_id: str,
+    user_id: str,
+    playbook: PlaybookDocument,
+    *,
+    reason: DiscardReason,
+    **details: object,
 ) -> None:
     """Drop a playbook the worker has given up on, saying why. Never raises: the
     fire still runs on the agent, and a failed delete only costs the next check."""
@@ -601,7 +610,7 @@ async def _discard_playbook(
         f"{LogTag.WORKER} Playbook discarded",
         workflow_id=workflow_id,
         playbook_id=playbook.playbook_id,
-        reason=reason,
+        reason=reason.value,
         **details,
     )
     # The log says why to whoever is reading Loki this week; the workflow says
@@ -615,7 +624,7 @@ async def _discard_playbook(
                 last_playbook_discard=PlaybookDiscard(
                     playbook_id=playbook.playbook_id,
                     revision=playbook.revision,
-                    reason=reason,
+                    reason=reason.value,
                     at=datetime.now(UTC),
                     details={key: str(value) for key, value in details.items()},
                 )
@@ -690,12 +699,12 @@ async def _run_workflow(
         # when there is none, so a stale one left on file would never be
         # re-authored and the workflow would run at full agent cost forever.
         await _discard_playbook(
-            workflow_id, workflow.user_id, playbook, reason="stale_workflow_hash"
+            workflow_id, workflow.user_id, playbook, reason=DiscardReason.STALE_WORKFLOW_HASH
         )
         log.set_ns(
             "playbook",
             mode="agent",
-            reason="stale_workflow_hash",
+            reason=DiscardReason.STALE_WORKFLOW_HASH.value,
             playbook_id=playbook.playbook_id,
             llm_calls=0,
         )
@@ -711,19 +720,20 @@ async def _run_workflow(
     # fire that never reached the agent (a DNS outage, a crashed worker) spends
     # nothing, and a rewrite starts the new body at zero. Past the limit the
     # playbook goes.
-    if playbook.last_run_status in HEAL_STATUSES:
-        if playbook.heal_attempts >= PLAYBOOK_HEAL_ATTEMPT_LIMIT:
+    lifecycle = PlaybookLifecycle.of(playbook)
+    if needs_heal(lifecycle):
+        if discard_reason(lifecycle) is DiscardReason.HEAL_ATTEMPTS_EXHAUSTED:
             await _discard_playbook(
                 workflow_id,
                 workflow.user_id,
                 playbook,
-                reason="heal_attempts_exhausted",
+                reason=DiscardReason.HEAL_ATTEMPTS_EXHAUSTED,
                 heal_attempts=playbook.heal_attempts,
             )
             log.set_ns(
                 "playbook",
                 mode="agent",
-                reason="heal_attempts_exhausted",
+                reason=DiscardReason.HEAL_ATTEMPTS_EXHAUSTED.value,
                 playbook_id=playbook.playbook_id,
                 heal_attempts=playbook.heal_attempts,
                 llm_calls=0,
@@ -896,13 +906,15 @@ async def _finish_after_replay(
 
     disabled = False
     if status is PlaybookRunStatus.SUSPECT and updated is not None:
-        disabled = updated.suspect_streak >= PLAYBOOK_SUSPECT_STREAK_LIMIT
+        disabled = (
+            discard_reason(PlaybookLifecycle.of(updated)) is DiscardReason.SUSPECT_STREAK_EXHAUSTED
+        )
         if disabled:
             await _discard_playbook(
                 workflow_id,
                 workflow.user_id,
                 playbook,
-                reason="suspect_streak_exhausted",
+                reason=DiscardReason.SUSPECT_STREAK_EXHAUSTED,
                 suspect_streak=updated.suspect_streak,
                 suspect_reason=reason,
             )

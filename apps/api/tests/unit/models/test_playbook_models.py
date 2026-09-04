@@ -15,9 +15,10 @@ import pytest
 from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     AskSlot,
+    HandoffStep,
     PlaybookHandoffStepInput,
-    PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
     ask_slots,
 )
 
@@ -33,7 +34,7 @@ class TestAskSlotKeys:
 
     def test_a_nested_argument_path_is_spelled_out_from_the_step_id(self) -> None:
         steps = [
-            PlaybookStep(
+            ToolStep(
                 id="send",
                 tool="send_mail",
                 args={"body": [{"text": {"$ask": "the opening line"}}]},
@@ -46,9 +47,7 @@ class TestAskSlotKeys:
         assert located[0].slot.prompt == "the opening line"
 
     def test_a_step_without_an_id_is_addressed_by_its_tool_name(self) -> None:
-        steps = [
-            PlaybookStep(tool="web_search_tool", args={"query_text": {"$ask": "what to look up"}})
-        ]
+        steps = [ToolStep(tool="web_search_tool", args={"query_text": {"$ask": "what to look up"}})]
 
         assert [item.key for item in ask_slots(steps)] == ["web_search_tool.query_text"]
 
@@ -57,11 +56,11 @@ class TestAskSlotKeys:
         fills args per child step. Keying by the handoff would look the value up
         under a prefix no step ever passes."""
         steps = [
-            PlaybookStep(
+            HandoffStep(
                 id="mail",
                 handoff="gmail",
                 steps=[
-                    PlaybookStep(
+                    ToolStep(
                         id="fetch",
                         tool="GMAIL_FETCH_MESSAGES",
                         args={"query": {"$ask": "what to search the inbox for"}},
@@ -74,27 +73,15 @@ class TestAskSlotKeys:
 
         assert [item.key for item in located] == ["fetch.query"]
 
-    def test_a_step_with_neither_a_name_nor_a_tool_is_keyed_by_its_path_alone(self) -> None:
-        """``exactly_one_shape`` forbids this step, so it only exists if one is
-        conjured past validation (``model_construct``) — a stored document read
-        back, say. The prefix then falls back to nothing, and the key is the
-        argument path on its own; anything else spells a step name that no step
-        answers to, and the written text is never substituted."""
-        shapeless = PlaybookStep.model_construct(
-            id="", tool=None, handoff=None, steps=[], args={"query": {"$ask": "what to look up"}}
-        )
-
-        assert [item.key for item in ask_slots([shapeless])] == [".query"]
-
     def test_slots_come_back_in_execution_order(self) -> None:
         steps = [
-            PlaybookStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
-            PlaybookStep(
+            ToolStep(id="first", tool="a", args={"x": {"$ask": "one"}}),
+            HandoffStep(
                 id="handed",
                 handoff="gmail",
-                steps=[PlaybookStep(id="second", tool="b", args={"y": {"$ask": "two"}})],
+                steps=[ToolStep(id="second", tool="b", args={"y": {"$ask": "two"}})],
             ),
-            PlaybookStep(id="third", tool="c", args={"z": {"$ask": "three"}}),
+            ToolStep(id="third", tool="c", args={"z": {"$ask": "three"}}),
         ]
 
         assert [item.key for item in ask_slots(steps)] == ["first.x", "second.y", "third.z"]

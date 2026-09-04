@@ -33,7 +33,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStep,
+    ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -109,7 +109,7 @@ def _playbook(workflow: Workflow, *, stale: bool = False) -> PlaybookDocument:
             "a-different-workflow" if stale else workflow_hash(workflow.prompt, workflow.steps)
         ),
         description="Mail the day's agenda",
-        steps=[PlaybookStep(id="events", tool="list_events", args={})],
+        steps=[ToolStep(id="events", tool="list_events", args={})],
         result_brief="Say what happened.",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -1474,10 +1474,8 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
             # write tool's incidental empty field cannot mark a playbook suspect.
             update={
                 "steps": [
-                    PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={}),
-                    PlaybookStep(
-                        id="reply", tool="GMAIL_SEND", args={"body": "$steps.mail.messages"}
-                    ),
+                    ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={}),
+                    ToolStep(id="reply", tool="GMAIL_SEND", args={"body": "$steps.mail.messages"}),
                 ]
             }
         )
@@ -1547,7 +1545,7 @@ class TestReviewFixes:
             update={
                 "last_run_status": PlaybookRunStatus.NOT_RUN,
                 "revision": distrusted.revision + 1,
-                "steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})],
+                "steps": [ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})],
             }
         )
         harness.get_for_workflow = AsyncMock(side_effect=[distrusted, rewritten])

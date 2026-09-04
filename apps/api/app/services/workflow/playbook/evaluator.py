@@ -23,7 +23,14 @@ import json
 import re
 from typing import Any
 
-from app.models.playbook_models import ASK_KEY, ask_slot_key, is_ask_slot
+from app.models.playbook_models import (
+    ASK_KEY,
+    AskKind,
+    LocatedAsk,
+    PlaybookAskFill,
+    ask_slot_key,
+    is_ask_slot,
+)
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 from app.utils.errors import AppError
@@ -99,9 +106,9 @@ class RunContext:
     steps: Mapping[str, StepResult] = field(default_factory=dict)
     #: Previous run's results keyed by TOOL NAME (see the module docstring).
     last_run: Mapping[str, object] = field(default_factory=dict)
-    #: What the mid-run model call wrote, keyed the way ``ask_slot_key`` spells
+    #: What the mid-run model calls wrote, keyed the way ``ask_slot_key`` spells
     #: a slot's address. Read by ``fill_ask_slots``, never by ``resolve_value``.
-    asks: Mapping[str, str] = field(default_factory=dict)
+    asks: "AskAnswers" = field(default_factory=lambda: AskAnswers())
     #: The element a ``for_each`` step is currently on, or ``NO_ITEM`` outside
     #: one. A sentinel rather than ``None`` because ``None`` is a legitimate
     #: element: a list that genuinely holds a null must resolve ``$item`` to it,
@@ -122,9 +129,88 @@ def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:
     return index
 
 
-def fill_ask_slots(
-    args: Mapping[str, Any], asks: Mapping[str, str], key_prefix: str
-) -> dict[str, Any]:
+class AskAnswers:
+    """Every answer the run's ask calls have written, by the key of the slot it fills.
+
+    One table for both kinds of answer, typed at the edge: ``record`` refuses an
+    answer for a slot that was not asked and an answer of the wrong kind for the
+    slot it names, and the two readers raise when the slot was never written.
+    Nothing here is a bare dict lookup, because the last time it was, a skipped
+    slot became an empty string inside a real tool argument.
+    """
+
+    def __init__(self) -> None:
+        self._texts: dict[str, str] = {}
+        self._items: dict[str, list[str]] = {}
+
+    def record(self, fill: PlaybookAskFill, asked: Sequence[LocatedAsk]) -> None:
+        """Keep what one ask call wrote, checked against the slots it was asked for.
+
+        Accumulates, never replaces: an earlier step's answers are still part of
+        the arguments its record shows, and the narration reads them all.
+        """
+        expected = {ask.key: ask.kind for ask in asked}
+        for answer in fill.asks:
+            kind = expected.get(answer.name)
+            if kind is None:
+                raise PlaceholderError(
+                    message=f"{answer.name} is not a slot this step asked for",
+                    why="the ask call answered a slot that was not listed",
+                    fix="answer exactly the slots listed, keyed as they are listed",
+                )
+            if answer.kind is not kind:
+                raise PlaceholderError(
+                    message=f"{answer.name} was answered with {answer.kind.value}, not {kind.value}",
+                    why="a for_each source takes items and an argument slot takes text",
+                    fix=f"answer {answer.name} with {kind.value}",
+                )
+            if kind is AskKind.ITEMS:
+                self._items[answer.name] = answer.items
+            else:
+                self._texts[answer.name] = answer.text
+
+    def unwritten(self, asked: Sequence[LocatedAsk]) -> list[str]:
+        """The asked slots no answer covered, for the warning that names them."""
+        return sorted(
+            ask.key for ask in asked if ask.key not in self._texts and ask.key not in self._items
+        )
+
+    def text(self, key: str) -> str:
+        if key not in self._texts:
+            raise PlaceholderError(
+                message=f"{key} was never written",
+                why="the run's ask call produced no text for that slot",
+                fix="write one entry per slot listed, keyed exactly as the slot is listed",
+            )
+        return self._texts[key]
+
+    def items(self, key: str) -> list[str]:
+        if key not in self._items:
+            raise PlaceholderError(
+                message=f"{key} was never written",
+                why="the run's ask call produced no items for that for_each slot",
+                fix="answer the for_each slot with items, keyed exactly as the slot is listed",
+            )
+        return self._items[key]
+
+    def render(self) -> str:
+        """The answers as the end-of-run call reads them.
+
+        A for_each source's answer is the list of elements the step then ran
+        over. The narration sees each element's call in ``completed``; this is
+        where it sees that those were a selection, and what the selection was.
+        """
+        if not self._texts and not self._items:
+            return "none"
+        lines = [f"- {key}: {text}" for key, text in self._texts.items()]
+        lines.extend(
+            f"- {key}: picked {len(picked)}: {', '.join(picked)}"
+            for key, picked in self._items.items()
+        )
+        return "\n".join(lines)
+
+
+def fill_ask_slots(args: Mapping[str, Any], asks: AskAnswers, key_prefix: str) -> dict[str, Any]:
     """One step's arguments with every inline ask slot replaced by its written text.
 
     Pure, and deliberately a separate pass ahead of :func:`resolve_args`: a slot
@@ -141,17 +227,10 @@ def fill_ask_slots(
 
 
 def _fill_value(
-    value: object, asks: Mapping[str, str], prefix: str, path: tuple[str | int, ...]
+    value: object, asks: AskAnswers, prefix: str, path: tuple[str | int, ...]
 ) -> object:
     if is_ask_slot(value):
-        key = ask_slot_key(prefix, path)
-        if key not in asks:
-            raise PlaceholderError(
-                message=f"{key} was never written",
-                why="the run's ask call produced no text for that slot",
-                fix="write one entry per slot listed, keyed exactly as the slot is listed",
-            )
-        return asks[key]
+        return asks.text(ask_slot_key(prefix, path))
     if isinstance(value, Mapping):
         return {
             str(key): _fill_value(item, asks, prefix, (*path, str(key)))

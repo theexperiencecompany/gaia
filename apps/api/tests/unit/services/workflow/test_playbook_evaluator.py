@@ -12,9 +12,17 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.models.playbook_models import ask_slot_key
+from app.models.playbook_models import (
+    AskKind,
+    AskSlot,
+    LocatedAsk,
+    PlaybookAskAnswer,
+    PlaybookAskFill,
+    ask_slot_key,
+)
 from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
 from app.services.workflow.playbook.evaluator import (
+    AskAnswers,
     PlaceholderError,
     PlaybookUser,
     RunContext,
@@ -46,6 +54,22 @@ def _context(
         last_run=last_run or {},
         asks=asks or {},
     )
+
+
+def _answers(written: dict[str, str]) -> AskAnswers:
+    """The answers table as one ask call would have left it, keyed as listed."""
+    asked = [
+        LocatedAsk(key=key, slot=AskSlot.model_validate({"$ask": "x"}), kind=AskKind.TEXT)
+        for key in written
+    ]
+    answers = AskAnswers()
+    answers.record(
+        PlaybookAskFill(
+            asks=[PlaybookAskAnswer(name=key, text=text) for key, text in written.items()]
+        ),
+        asked,
+    )
+    return answers
 
 
 def _assert_actionable(error: PlaceholderError, token: str) -> None:
@@ -119,7 +143,7 @@ def test_fill_ask_slots_substitutes_the_text_the_model_wrote_by_key() -> None:
     leave the slot's dict standing where a tool argument belongs."""
     filled = fill_ask_slots(
         {"to": "a@b.com", "subject": {"$ask": "Write a subject line"}},
-        {"mail.subject": "Here is your morning digest."},
+        _answers({"mail.subject": "Here is your morning digest."}),
         key_prefix="mail",
     )
     assert filled == {"to": "a@b.com", "subject": "Here is your morning digest."}
@@ -345,7 +369,7 @@ def test_a_slot_the_ask_call_never_wrote_stops_the_run_by_its_key() -> None:
     with pytest.raises(PlaceholderError) as caught:
         fill_ask_slots(
             {"subject": {"$ask": "Write a subject line"}},
-            {"mail.body": "hi"},
+            _answers({"mail.body": "hi"}),
             key_prefix="mail",
         )
     _assert_actionable(caught.value, "mail.subject")
@@ -366,7 +390,7 @@ def test_fill_ask_slots_reaches_a_slot_nested_in_a_list_inside_a_dict() -> None:
     key = ask_slot_key("send", ("message", "blocks", 0, "text"))
     assert key == "send.message.blocks.0.text"
 
-    filled = fill_ask_slots(args, {key: "Three meetings today."}, key_prefix="send")
+    filled = fill_ask_slots(args, _answers({key: "Three meetings today."}), key_prefix="send")
 
     assert filled == {"message": {"blocks": [{"text": "Three meetings today."}]}}
 

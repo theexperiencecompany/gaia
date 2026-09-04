@@ -21,6 +21,7 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     PlaybookUpdate,
 )
+from app.services.workflow.playbook.lifecycle import grows_from_untrusted
 
 
 class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
@@ -110,28 +111,28 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         (an agentic run has nothing to record) or when the replayed body has
         since been rewritten or deleted.
         """
-        status, reason = outcome.status, outcome.reason
         key: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         if playbook_id is not None:
             key["playbook_id"] = playbook_id
         if revision is not None:
             key["revision"] = revision
-        if status is not PlaybookRunStatus.SUSPECT or not outcome.counts_toward_streak:
+        if not grows_from_untrusted(outcome):
             return await self._apply_raw_update(
-                key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
+                key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
             )
         # A plain ``$inc`` cannot be conditional on the stored status, so the
         # growing write is tried first against a not-yet-suspect document and
-        # the plain one only when that matched nothing.
+        # the plain one only when that matched nothing. Which outcomes may grow
+        # at all is the lifecycle's rule, not this method's.
         grown = await self._apply_raw_update(
             {**key, "last_run_status": {"$ne": PlaybookRunStatus.SUSPECT.value}},
-            _outcome_update(status, reason, grow_streak=True),
+            _outcome_update(outcome, grow_streak=True),
             scope=REPO_GLOBAL_SCOPE,
         )
         if grown is not None:
             return grown
         return await self._apply_raw_update(
-            key, _outcome_update(status, reason, grow_streak=False), scope=REPO_GLOBAL_SCOPE
+            key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
         )
 
     async def increment_heal_attempts(
@@ -163,15 +164,24 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
 
 
 def _outcome_update(
-    status: PlaybookRunStatus, reason: str | None, *, grow_streak: bool = False
+    outcome: PlaybookRunOutcome, *, grow_streak: bool
 ) -> dict[str, dict[str, object]]:
-    """The update a run outcome writes, shaped by what the status means for the streak."""
-    if status is PlaybookRunStatus.SUCCESS:
-        return {"$set": {"last_run_status": status, "last_run_reason": None, "suspect_streak": 0}}
-    update: dict[str, dict[str, object]] = {
-        "$set": {"last_run_status": status, "last_run_reason": reason}
+    """The update a run outcome writes.
+
+    The fields are what :func:`transition` produces for a replay, split into the
+    part that does not depend on the stored state (``$set``) and the part that
+    does (``$inc``), which the caller has already settled by matching on the
+    stored status. ``test_playbooks_repository`` proves the two agree for every
+    outcome from every prior status.
+    """
+    fields: dict[str, object] = {
+        "last_run_status": outcome.status,
+        "last_run_reason": None if outcome.status is PlaybookRunStatus.SUCCESS else outcome.reason,
     }
-    if status is PlaybookRunStatus.SUSPECT and grow_streak:
+    if outcome.status is PlaybookRunStatus.SUCCESS:
+        fields["suspect_streak"] = 0
+    update: dict[str, dict[str, object]] = {"$set": fields}
+    if grow_streak:
         update["$inc"] = {"suspect_streak": 1}
     return update
 

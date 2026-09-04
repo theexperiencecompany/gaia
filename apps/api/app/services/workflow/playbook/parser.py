@@ -32,8 +32,11 @@ from app.agents.core.subagents.call_record import ARG_TRUNCATION_MARKER, is_erro
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.models.playbook_models import (
     AskSlot,
+    ForEachStep,
+    HandoffStep,
     PlaybookBody,
     PlaybookStep,
+    ToolStep,
     is_ask_slot,
     walk_ask_slots,
 )
@@ -115,7 +118,7 @@ def dump_playbook(body: PlaybookBody) -> str:
     """
     document: dict[str, Any] = {
         "description": body.description,
-        "steps": [_dump_step(step) for step in body.steps],
+        "steps": [step.to_document() for step in body.steps],
     }
     # Args are dumped as authored, so an inline ask slot renders as a nested
     # ``$ask:`` mapping right where its value belongs — which is exactly how the
@@ -124,33 +127,6 @@ def dump_playbook(body: PlaybookBody) -> str:
     # sort_keys=False and sort_keys=None are byte-identical to PyYAML (it only
     # tests truthiness), so that mutation is provably equivalent and exempt.
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)  # pragma: no mutate
-
-
-def _dump_step(step: PlaybookStep) -> dict[str, Any]:
-    node: dict[str, Any] = {}
-    if step.id:
-        node["id"] = step.id
-    if step.tool:
-        node["tool"] = step.tool
-    if step.args:
-        node["args"] = step.args
-    if step.handoff:
-        node["handoff"] = step.handoff
-    if step.steps:
-        node["steps"] = [_dump_step(child) for child in step.steps]
-    # The loop is part of the sequence. A heal run reads this document to see
-    # what was frozen, and a for_each rendered without its for_each is a step
-    # whose $item has nothing to address — the agent would "fix" it by
-    # dropping the loop the playbook was written for.
-    if step.for_each is not None:
-        node["for_each"] = (
-            step.for_each.model_dump(by_alias=True, exclude_defaults=True)
-            if isinstance(step.for_each, AskSlot)
-            else step.for_each
-        )
-    if step.max_items is not None:
-        node["max_items"] = step.max_items
-    return node
 
 
 async def validate_playbook(
@@ -206,34 +182,6 @@ class _Walk:
     consumed: set[int] = field(default_factory=set)
 
 
-def _check_for_each_source(step: PlaybookStep, where: str, walk: _Walk) -> None:
-    """A for_each has to name a list, and only two shapes ever can.
-
-    Either the whole value is one placeholder (``$steps.<id>.<field>``), or it is
-    an ``{"$ask": ...}`` a model fills with the elements. Anything else is text:
-    a placeholder woven into prose interpolates into a STRING, which the runner
-    then refuses because a string is not a list. That refusal is correct but it
-    lands on the replay, a full agentic run after the mistake was made, so the
-    write is where it belongs. Seen on the first real authoring run:
-    ``for_each: overdue-items-from-$steps.list``.
-    """
-    source = step.for_each
-    if source is None or isinstance(source, AskSlot):
-        return
-    if PLACEHOLDER_TOKEN.fullmatch(source):
-        return
-    walk.issues.append(
-        PlaybookIssue(
-            where=f"{where}.for_each",
-            problem=(
-                f"for_each must be the whole value, either one placeholder naming a list "
-                f"($steps.<step_id>.<field>) or an $ask slot, but it is {source!r}. A "
-                "placeholder inside a longer string resolves to text, and text is not a list."
-            ),
-        )
-    )
-
-
 async def _check_steps(
     steps: Sequence[PlaybookStep],
     path: str,
@@ -251,16 +199,10 @@ async def _check_steps(
     """
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
-        _check_for_each_source(step, here, walk)
-        if step.tool:
+        if not isinstance(step, HandoffStep):
             _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
         else:
-            handoff = step.handoff
-            if handoff is None:
-                # exactly_one_shape forbids a step with neither shape; narrowed
-                # here because mypy cannot see the validator.
-                continue
-            subagent = await resolve_subagent_tools(handoff, walk.user_id, walk.registry)
+            subagent = await resolve_subagent_tools(step.handoff, walk.user_id, walk.registry)
             if subagent is None:
                 walk.issues.append(
                     PlaybookIssue(
@@ -288,12 +230,8 @@ async def _check_steps(
 
 
 def _check_tool_step(
-    step: PlaybookStep, path: str, space: ToolSpace, walk: _Walk, *, in_handoff: bool
+    step: ToolStep | ForEachStep, path: str, space: ToolSpace, walk: _Walk, *, in_handoff: bool
 ) -> None:
-    if step.tool is None:
-        # exactly_one_shape forbids a tool-less step reaching here; this guard
-        # narrows the type where mypy cannot see the validator.
-        return
     tool_name = step.tool
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
@@ -365,7 +303,9 @@ def _check_tool_step(
             _check_value_type(value, arg_schema, where, walk.issues)
 
 
-def _check_recorded_call(step: PlaybookStep, tool_name: str, path: str, walk: _Walk) -> None:
+def _check_recorded_call(
+    step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
+) -> None:
     """Check one top-level tool step against the call it froze in the run writing it.
 
     Matching the step back to a recorded call is also what makes the ``$steps``
@@ -411,7 +351,7 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     )
 
 
-def _matched_call(step: PlaybookStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
+def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, RecordedResult] | None:
     """The recorded call this step froze, with its position, or ``None`` when
     no call of that tool is left for it.
 
@@ -559,7 +499,7 @@ def _shape_hint(value: object) -> str:
 
 
 def _check_required_args(
-    step: PlaybookStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
+    step: ToolStep | ForEachStep, tool_name: str, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
     """A missing required arg is a call that fails at replay before it starts.
 
