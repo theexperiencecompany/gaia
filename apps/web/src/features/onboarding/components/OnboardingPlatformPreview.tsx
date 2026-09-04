@@ -121,7 +121,9 @@ export function OnboardingPlatformPreview({
       </div>
       <div
         ref={scrollHostRef}
-        className="relative shrink-0 overflow-hidden rounded-2xl"
+        // The demo thread hugs its edges on the landing phone; in this wider
+        // card the bubbles need air, so pad the thread here only.
+        className="relative shrink-0 overflow-hidden rounded-2xl [&_.chat-demo-thread]:px-5 [&_.chat-demo-thread]:pt-3 [&_.chat-demo-thread]:pb-4"
         style={{ height: 280, minHeight: 280, maxHeight: 280 }}
       >
         {!hasLoaded && <Skeleton className="absolute inset-0 rounded-2xl" />}
