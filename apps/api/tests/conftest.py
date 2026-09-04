@@ -575,6 +575,47 @@ def pro_user() -> dict:
 
 
 @pytest.fixture
+def pro_plan() -> Iterator[MagicMock]:
+    """Make the paid-only gate see a PRO caller for the duration of a test.
+
+    Patches the single seam every gate reads — ``get_cached_plan_type`` — so it
+    covers the ``EntitlementMiddleware``, the ``@require_subscription()``
+    decorator and the imperative ``is_subscription_active`` helper at once.
+
+    Deliberately NOT autouse. The suite's default caller is FREE (the global
+    ``get_user_subscription_status`` patch reports a free plan), and a dozen
+    existing tests assert the 402 that falls out of that default. Flipping the
+    default to PRO would turn those green-for-the-wrong-reason.
+    """
+    from app.models.payment_models import PlanType
+
+    with patch(
+        "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+        new_callable=AsyncMock,
+        return_value=PlanType.PRO,
+    ) as mocked:
+        yield mocked
+
+
+@pytest.fixture
+def free_plan() -> Iterator[MagicMock]:
+    """Pin the paid-only gate to a FREE caller — the explicit form of the default.
+
+    Use this rather than relying on the ambient default whenever a test is
+    *about* the paywall: it survives someone changing what the unpatched lookup
+    resolves to, and it never touches Redis.
+    """
+    from app.models.payment_models import PlanType
+
+    with patch(
+        "app.services.payments.payment_service.payment_service.get_cached_plan_type",
+        new_callable=AsyncMock,
+        return_value=PlanType.FREE,
+    ) as mocked:
+        yield mocked
+
+
+@pytest.fixture
 def mock_mongodb():
     return AsyncMock()
 
