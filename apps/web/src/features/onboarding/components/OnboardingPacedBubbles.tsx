@@ -38,12 +38,20 @@ export function OnboardingPacedBubbles({
         <div className="chatbubblebot_parent pl-10.75">
           <m.output
             aria-label="GAIA is typing"
-            className="imessage-bubble imessage-from-them imessage-grouped-last flex w-fit items-center py-2.5"
+            className="imessage-bubble imessage-from-them imessage-grouped-last flex w-fit items-center"
             initial={{ opacity: 0, y: 4, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2, ease: EASE_OUT_QUART }}
           >
-            <Spinner variant="dots" color="default" size="md" />
+            {/* Wrapper pinned to the text line-height so the bubble is exactly
+                as tall as a one-line reply; dots a step lighter than
+                HeroUI's default so they read on the bubble's zinc-800. */}
+            <Spinner
+              variant="dots"
+              color="default"
+              size="md"
+              classNames={{ wrapper: "h-6", dots: "bg-zinc-400" }}
+            />
           </m.output>
         </div>
       )}
