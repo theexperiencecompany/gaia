@@ -22,7 +22,7 @@ const SETTLE_MS = 260;
 const INSTANT = process.env.NODE_ENV === "test";
 
 /** Reveals are skipped outright under reduced motion and in tests. */
-export function useIsPaceInstant(): boolean {
+function useIsPaceInstant(): boolean {
   const reducedMotion = useReducedMotion();
   return INSTANT || !!reducedMotion;
 }
@@ -35,7 +35,7 @@ export function usePaceDone(revealKey: string): boolean {
   return instant || done;
 }
 
-export function typingPauseFor(line: string): number {
+function typingPauseFor(line: string): number {
   return Math.min(MAX_PAUSE_MS, BASE_PAUSE_MS + line.length * PER_CHAR_MS);
 }
 

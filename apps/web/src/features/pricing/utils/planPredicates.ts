@@ -25,7 +25,7 @@ export function isEnterprisePlan(plan: Plan): boolean {
 /** GAIA sells one plan, so the card says "GAIA" rather than the tier's
  * internal name. Display only: the backend, webhooks and entitlements keep
  * "Pro", so existing subscriptions are untouched. */
-export const PLAN_DISPLAY_NAME = "GAIA";
+const PLAN_DISPLAY_NAME = "GAIA";
 
 export function displayPlanName(plan: Plan): string {
   return isProPlan(plan) ? PLAN_DISPLAY_NAME : plan.name;

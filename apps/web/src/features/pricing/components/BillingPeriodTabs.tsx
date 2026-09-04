@@ -17,7 +17,7 @@ const MONTHS_PER_YEAR = 12;
 
 /** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
  * the percentage only when the discount is too small to be a whole month. */
-export function annualSavingsLabel(savingsPercent: number): string {
+function annualSavingsLabel(savingsPercent: number): string {
   const monthsFree = Math.round((savingsPercent / 100) * MONTHS_PER_YEAR);
   if (monthsFree < 1) return `Save ${savingsPercent}%`;
   return monthsFree === 1 ? "1 month free" : `${monthsFree} months free`;
