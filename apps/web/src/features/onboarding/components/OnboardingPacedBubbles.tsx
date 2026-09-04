@@ -12,11 +12,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 
 import { EASE_OUT_QUART } from "../constants/motion";
-import {
-  LINE_DURATION_SECONDS,
-  LINE_STAGGER_SECONDS,
-  useTypedLines,
-} from "../hooks/useTypedLines";
+import { LINE_CHOREOGRAPHY, useTypedLines } from "../hooks/useTypedLines";
 import { OnboardingBotBubble } from "./OnboardingBotBubble";
 
 interface OnboardingPacedBubblesProps {
@@ -69,12 +65,7 @@ export function OnboardingPacedBubbles({
       {showLines ? (
         <OnboardingBotBubble
           text={lines.join(NEW_MESSAGE_BREAK_TOKEN)}
-          partStaggerSeconds={
-            phase === "done" ? undefined : LINE_STAGGER_SECONDS
-          }
-          partDurationSeconds={
-            phase === "done" ? undefined : LINE_DURATION_SECONDS
-          }
+          partChoreography={phase === "done" ? undefined : LINE_CHOREOGRAPHY}
         />
       ) : (
         // Holds the lane's height while the dots are absolute, so nothing

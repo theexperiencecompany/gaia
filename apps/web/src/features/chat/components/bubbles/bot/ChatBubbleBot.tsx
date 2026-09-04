@@ -9,9 +9,10 @@ import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatB
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import {
+  DEFAULT_PART_CHOREOGRAPHY,
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
-  MESSAGE_BREAK_STAGGER_SECONDS,
+  type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -30,8 +31,7 @@ export default function ChatBubbleBot(
     isGroupedWithPrev?: boolean;
     children?: ReactNode;
     /** Per-part reveal cadence; see TextBubble. */
-    partStaggerSeconds?: number;
-    partDurationSeconds?: number;
+    partChoreography?: PartChoreography;
   },
 ) {
   const {
@@ -54,8 +54,7 @@ export default function ChatBubbleBot(
     children,
     onRetry,
     isRetrying,
-    partStaggerSeconds = MESSAGE_BREAK_STAGGER_SECONDS,
-    partDurationSeconds = MESSAGE_BREAK_DURATION_SECONDS,
+    partChoreography = DEFAULT_PART_CHOREOGRAPHY,
   } = props;
 
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -80,11 +79,7 @@ export default function ChatBubbleBot(
   const renderedComponent = image_data ? (
     <ImageBubble {...props} image_data={image_data} />
   ) : (
-    <TextBubble
-      {...props}
-      partStaggerSeconds={partStaggerSeconds}
-      partDurationSeconds={partDurationSeconds}
-    />
+    <TextBubble {...props} partChoreography={partChoreography} />
   );
 
   const itShouldShowTextBubble = shouldShowTextBubble(
@@ -98,8 +93,8 @@ export default function ChatBubbleBot(
     const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;
     if (!cleanText) return 0;
     const parts = splitMessageByBreaks(cleanText);
-    return Math.max(0, parts.length - 1) * partStaggerSeconds;
-  }, [text, itShouldShowTextBubble, partStaggerSeconds]);
+    return Math.max(0, parts.length - 1) * partChoreography.staggerSeconds;
+  }, [text, itShouldShowTextBubble, partChoreography.staggerSeconds]);
 
   // A failed turn with no response text still shows the quiet error bubble.
   const hasError = shouldShowTextBubble(

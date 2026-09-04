@@ -10,14 +10,17 @@
 import { useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 
+import type { PartChoreography } from "@/features/chat/utils/messageBreakUtils";
+
 import { selectPaceDone, usePaceStore } from "../state/paceStore";
 
 /** How long the dots show before the lines start landing. */
 const TYPING_LEAD_MS = 420;
-/** Gap between consecutive lines landing. */
-export const LINE_STAGGER_SECONDS = 0.26;
-/** How long one line takes to land. */
-export const LINE_DURATION_SECONDS = 0.34;
+/** How the lines of a turn land: the gap between them and how long each takes. */
+export const LINE_CHOREOGRAPHY: PartChoreography = {
+  staggerSeconds: 0.26,
+  durationSeconds: 0.34,
+};
 /** Breathing room after the last line before the reply appears. */
 const SETTLE_MS = 120;
 
@@ -61,7 +64,9 @@ export function useTypedLines(
     }
     if (phase === "landing") {
       const lastLineLandsMs =
-        ((lineCount - 1) * LINE_STAGGER_SECONDS + LINE_DURATION_SECONDS) * 1000;
+        ((lineCount - 1) * LINE_CHOREOGRAPHY.staggerSeconds +
+          LINE_CHOREOGRAPHY.durationSeconds) *
+        1000;
       const timer = setTimeout(() => {
         setPhase("done");
         markDone(revealKey);

@@ -12,9 +12,9 @@ import React, { useId } from "react";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
-  MESSAGE_BREAK_DURATION_SECONDS,
+  DEFAULT_PART_CHOREOGRAPHY,
   MESSAGE_BREAK_EASE_OUT_QUART,
-  MESSAGE_BREAK_STAGGER_SECONDS,
+  type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -363,13 +363,9 @@ export default function TextBubble({
   error,
   onRetry,
   isRetrying,
-  partStaggerSeconds = MESSAGE_BREAK_STAGGER_SECONDS,
-  partDurationSeconds = MESSAGE_BREAK_DURATION_SECONDS,
+  partChoreography = DEFAULT_PART_CHOREOGRAPHY,
 }: Readonly<ChatBubbleBotProps> & {
-  /** Gap between consecutive parts landing; chat's default is a quick ripple,
-   *  onboarding slows it to a typed cadence. */
-  partStaggerSeconds?: number;
-  partDurationSeconds?: number;
+  partChoreography?: PartChoreography;
 }) {
   const baseId = useId();
 
@@ -515,9 +511,9 @@ export default function TextBubble({
                 const hasOpenUI = segments.some((s) => s.type === "openui");
                 const partKey = `${baseId}-text-part-${originalIndex}`;
                 const partTransition: PartTransition = {
-                  duration: partDurationSeconds,
+                  duration: partChoreography.durationSeconds,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: visibleIndex * partStaggerSeconds,
+                  delay: visibleIndex * partChoreography.staggerSeconds,
                 };
 
                 return hasOpenUI ? (
