@@ -1,9 +1,8 @@
 /**
- * Reveals GAIA's lines one at a time with a "typing" pause before each, so a
- * turn reads like a person sending a few texts rather than a wall appearing
- * at once. The pause scales with the line so a long one feels typed and a
- * short one snaps. Instant under reduced motion, in tests, and for a turn
- * this session already revealed (see `paceStore`).
+ * One choreography per GAIA turn: the typing dots show for a beat, then every
+ * line of the turn lands in a single staggered motion, the way a burst of
+ * texts arrives. Instant under reduced motion, in tests, and for a turn this
+ * session already revealed (see `paceStore`).
  */
 
 "use client";
@@ -13,10 +12,13 @@ import { useEffect, useState } from "react";
 
 import { selectPaceDone, usePaceStore } from "../state/paceStore";
 
-const BASE_PAUSE_MS = 180;
-const PER_CHAR_MS = 3;
-const MAX_PAUSE_MS = 550;
-/** Breathing room between the last line landing and the reply appearing. */
+/** How long the dots show before the lines start landing. */
+const TYPING_LEAD_MS = 420;
+/** Gap between consecutive lines landing. */
+export const LINE_STAGGER_SECONDS = 0.26;
+/** How long one line takes to land. */
+export const LINE_DURATION_SECONDS = 0.34;
+/** Breathing room after the last line before the reply appears. */
 const SETTLE_MS = 120;
 
 const INSTANT = process.env.NODE_ENV === "test";
@@ -35,47 +37,39 @@ export function usePaceDone(revealKey: string): boolean {
   return instant || done;
 }
 
-function typingPauseFor(line: string): number {
-  return Math.min(MAX_PAUSE_MS, BASE_PAUSE_MS + line.length * PER_CHAR_MS);
-}
+type TypingPhase = "typing" | "landing" | "done";
 
-export interface TypedLines {
-  visibleLines: string[];
-  isTyping: boolean;
-  /** True once every line is on screen and the settle pause has passed. */
-  done: boolean;
-}
-
-export function useTypedLines(lines: string[], revealKey: string): TypedLines {
+export function useTypedLines(
+  lineCount: number,
+  revealKey: string,
+  /** History, not the live turn: never pace it, just record it as seen. */
+  forceInstant = false,
+): TypingPhase {
   const alreadyDone = usePaceStore(selectPaceDone(revealKey));
   const markDone = usePaceStore((s) => s.markDone);
-  const instant = useIsPaceInstant() || alreadyDone;
-  const [count, setCount] = useState(instant ? lines.length : 0);
-  // Identity of `lines` changes every render (callers build it on the fly);
-  // key the schedule on the content so a parent re-render never resets it.
-  const script = lines.join("\n");
+  const instant = useIsPaceInstant() || alreadyDone || forceInstant;
+  const [phase, setPhase] = useState<TypingPhase>(instant ? "done" : "typing");
 
   useEffect(() => {
     if (instant) {
       if (!alreadyDone) markDone(revealKey);
       return;
     }
-    const total = script.split("\n").length;
-    if (count >= total) {
-      const timer = setTimeout(() => markDone(revealKey), SETTLE_MS);
+    if (phase === "typing") {
+      const timer = setTimeout(() => setPhase("landing"), TYPING_LEAD_MS);
       return () => clearTimeout(timer);
     }
-    const timer = setTimeout(
-      () => setCount((c) => c + 1),
-      typingPauseFor(script.split("\n")[count] ?? ""),
-    );
-    return () => clearTimeout(timer);
-  }, [count, instant, alreadyDone, markDone, revealKey, script]);
+    if (phase === "landing") {
+      const lastLineLandsMs =
+        ((lineCount - 1) * LINE_STAGGER_SECONDS + LINE_DURATION_SECONDS) * 1000;
+      const timer = setTimeout(() => {
+        setPhase("done");
+        markDone(revealKey);
+      }, lastLineLandsMs + SETTLE_MS);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [phase, instant, alreadyDone, markDone, revealKey, lineCount]);
 
-  const shown = instant ? lines.length : count;
-  return {
-    visibleLines: lines.slice(0, shown),
-    isTyping: !instant && shown < lines.length,
-    done: instant || alreadyDone,
-  };
+  return instant ? "done" : phase;
 }

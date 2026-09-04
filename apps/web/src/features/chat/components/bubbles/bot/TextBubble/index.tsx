@@ -363,7 +363,14 @@ export default function TextBubble({
   error,
   onRetry,
   isRetrying,
-}: Readonly<ChatBubbleBotProps>) {
+  partStaggerSeconds = MESSAGE_BREAK_STAGGER_SECONDS,
+  partDurationSeconds = MESSAGE_BREAK_DURATION_SECONDS,
+}: Readonly<ChatBubbleBotProps> & {
+  /** Gap between consecutive parts landing; chat's default is a quick ripple,
+   *  onboarding slows it to a typed cadence. */
+  partStaggerSeconds?: number;
+  partDurationSeconds?: number;
+}) {
   const baseId = useId();
 
   // Persist a HIL approval decision into THIS message's tool_data, so the pending
@@ -508,9 +515,9 @@ export default function TextBubble({
                 const hasOpenUI = segments.some((s) => s.type === "openui");
                 const partKey = `${baseId}-text-part-${originalIndex}`;
                 const partTransition: PartTransition = {
-                  duration: MESSAGE_BREAK_DURATION_SECONDS,
+                  duration: partDurationSeconds,
                   ease: MESSAGE_BREAK_EASE_OUT_QUART,
-                  delay: visibleIndex * MESSAGE_BREAK_STAGGER_SECONDS,
+                  delay: visibleIndex * partStaggerSeconds,
                 };
 
                 return hasOpenUI ? (

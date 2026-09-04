@@ -13,11 +13,20 @@ import { OnboardingPacedBubbles } from "./OnboardingPacedBubbles";
 export function OnboardingBotBubbles({
   lines,
   revealKey,
+  instant,
 }: {
   lines: string[];
   revealKey?: string;
+  /** With a `revealKey`: this turn is history, show it at once. */
+  instant?: boolean;
 }) {
   if (revealKey)
-    return <OnboardingPacedBubbles lines={lines} revealKey={revealKey} />;
+    return (
+      <OnboardingPacedBubbles
+        lines={lines}
+        revealKey={revealKey}
+        instant={instant}
+      />
+    );
   return <OnboardingBotBubble text={lines.join(NEW_MESSAGE_BREAK_TOKEN)} />;
 }

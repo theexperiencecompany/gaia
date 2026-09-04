@@ -29,6 +29,9 @@ export default function ChatBubbleBot(
     isGroupedWithNext?: boolean;
     isGroupedWithPrev?: boolean;
     children?: ReactNode;
+    /** Per-part reveal cadence; see TextBubble. */
+    partStaggerSeconds?: number;
+    partDurationSeconds?: number;
   },
 ) {
   const {
@@ -51,6 +54,8 @@ export default function ChatBubbleBot(
     children,
     onRetry,
     isRetrying,
+    partStaggerSeconds = MESSAGE_BREAK_STAGGER_SECONDS,
+    partDurationSeconds = MESSAGE_BREAK_DURATION_SECONDS,
   } = props;
 
   const actionsRef = useRef<HTMLDivElement>(null);
@@ -75,7 +80,11 @@ export default function ChatBubbleBot(
   const renderedComponent = image_data ? (
     <ImageBubble {...props} image_data={image_data} />
   ) : (
-    <TextBubble {...props} />
+    <TextBubble
+      {...props}
+      partStaggerSeconds={partStaggerSeconds}
+      partDurationSeconds={partDurationSeconds}
+    />
   );
 
   const itShouldShowTextBubble = shouldShowTextBubble(
@@ -89,8 +98,8 @@ export default function ChatBubbleBot(
     const cleanText = parseThinkingFromText(text?.toString() || "").cleanText;
     if (!cleanText) return 0;
     const parts = splitMessageByBreaks(cleanText);
-    return Math.max(0, parts.length - 1) * MESSAGE_BREAK_STAGGER_SECONDS;
-  }, [text, itShouldShowTextBubble]);
+    return Math.max(0, parts.length - 1) * partStaggerSeconds;
+  }, [text, itShouldShowTextBubble, partStaggerSeconds]);
 
   // A failed turn with no response text still shows the quiet error bubble.
   const hasError = shouldShowTextBubble(

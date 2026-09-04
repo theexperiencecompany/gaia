@@ -11,7 +11,6 @@ import { USER_BUBBLE_DEFAULTS } from "../constants/bubbleDefaults";
 import { EASE_OUT_QUART } from "../constants/motion";
 import { questionRevealKey } from "../state/paceStore";
 import type { Message } from "../types";
-import { OnboardingBotBubble } from "./OnboardingBotBubble";
 import { OnboardingBotBubbles } from "./OnboardingBotBubbles";
 
 function OnboardingUserBubble({ text }: { text: string }) {
@@ -39,15 +38,14 @@ function OnboardingMessagesImpl({ messages }: OnboardingMessagesProps) {
         >
           {message.type === "bot" ? (
             // The question being asked right now is paced out like a person
-            // typing; answered turns are history and render at once.
-            index === messages.length - 1 ? (
-              <OnboardingBotBubbles
-                lines={message.content.split(NEW_MESSAGE_BREAK_TOKEN)}
-                revealKey={questionRevealKey(message.id)}
-              />
-            ) : (
-              <OnboardingBotBubble text={message.content} />
-            )
+            // typing; answered turns are history and render at once. Both go
+            // through the same component so answering a question never
+            // remounts (and so replays) the bubbles already on screen.
+            <OnboardingBotBubbles
+              lines={message.content.split(NEW_MESSAGE_BREAK_TOKEN)}
+              revealKey={questionRevealKey(message.id)}
+              instant={index !== messages.length - 1}
+            />
           ) : (
             <div className="flex items-end justify-end gap-0">
               <OnboardingUserBubble text={message.content} />
