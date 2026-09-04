@@ -1,156 +1,78 @@
-
 <div align="center">
 
-# GAIA — Your Personal AI Assistant
+# GAIA
 
-[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![Whatsapp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io)
+**The open-source AI assistant that doesn't wait to be asked.**
 
-<br />
+[![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Discord](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=585464664650022914&color=5c6af3&label=Discord)](https://discord.heygaia.io) [![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?logo=whatsapp&logoColor=fff&style=flat)](https://whatsapp.heygaia.io) [![Status](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![License](https://img.shields.io/badge/license-PolyForm%20NC-121212?style=flat)](LICENSE.md)
 
-https://github.com/user-attachments/assets/19928409-9f05-413f-9ada-d501bc99bc67
+<a href="https://heygaia.io"><img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" /></a>
+<a href="https://docs.heygaia.io/self-hosting/overview"><img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" /></a>
 
 </div>
 
-**[GAIA](https://heygaia.io)** is the open-source personal AI assistant that does the work you shouldn't be doing manually. It connects your tools, runs the repetitive work in the background, and reaches out to you — on WhatsApp, Telegram, Slack, or Discord — the moment something actually needs you. Proactive, multi-channel, and fully self-hostable.
+GAIA is a personal AI assistant that can automate your whole day. Connect Gmail and it triages your inbox every morning, drafts your replies and turns emails into todos. Connect your calendar and it briefs you before every meeting.
 
-<div align="center">
+You set none of that up. It's running the moment you connect.
 
-<a href="https://heygaia.io">
-<img src="apps/web/public/images/readme/cta-try-gaia-free.png" alt="Try GAIA Free" height="48" />
-</a>
+And when something needs you, it comes to you — on iMessage, WhatsApp, Telegram, Slack or Discord.
 
-<a href="https://docs.heygaia.io/self-hosting/overview">
-<img src="apps/web/public/images/readme/cta-self-host.png" alt="Self-host" height="48" />
-</a>
+## Why GAIA
 
-</div>
+Gmail, Calendar, Slack, Notion, Linear — different tools, same problem: your day fills with work that isn't your job. Triaging mail, prepping for meetings, chasing updates, copying tasks between apps. Each one costs two minutes. Together they cost your afternoon.
 
-## Why GAIA?
-
-We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp — different stacks, same problem. Our days are eaten by small repetitive actions that are not real work. Each task feels small, but together they drain focus and energy. Over time inboxes clog, todo lists rot, and important things slip through.
-
-Most automation doesn't fix this. Tools are rigid, built for power users, and ask you to explain your context every single time. A real personal assistant should already know you — how you write, who you work with, what you ignore. GAIA is that assistant. It remembers context across your tools, acts before you ask, and runs the repetitive work in the background while you do the real work.
-
----
-
-## Table of Contents
-
-- [Features](#features)
-- [What you actually ask GAIA](#what-you-actually-ask-gaia)
-- [Getting Started](#getting-started)
-  - [Cloud (zero setup)](#cloud-zero-setup)
-  - [Self-host or Develop](#self-host-or-develop)
-- [Chat with GAIA on Your Favorite Platforms](#chat-with-gaia-on-your-favorite-platforms)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Roadmap](#roadmap)
-- [Monorepo Structure](#monorepo-structure)
-- [Documentation](#documentation)
-- [FAQ](#faq)
-- [Community & Support](#community--support)
-- [Contributing](#contributing)
-- [Tools We Love](#tools-we-love)
-- [License](#license)
-- [Contact](#contact)
-- [Star History](#star-history)
-
----
+**GAIA does that layer for you.** It does the work, then tells you when it's done.
 
 ## Features
 
-An assistant, not a chatbot. The difference shows up in what each of these actually does.
+- **Proactive** — connect a tool and jobs start running on their own, no setup
+- **Workflows** — automations on a schedule or an event, written for you from plain English
+- **Memory** — learns people, projects and preferences as you talk; edit, export or delete any of it
+- **Voice** — real-time calls, plus a "Hey GAIA" wake word that runs [on your device](libs/wake-word)
+- **Multi-platform** — iMessage, WhatsApp, Telegram, Slack, Discord, web, desktop and mobile, on one account
+- **Integrations** — 32 services one click away, or anything with an MCP server
+- **Code execution** — a sandboxed workspace that hands back real PDFs, decks and spreadsheets
+- **Deep research** — multi-source web research with structured output
+- **Skills** — 37 built in, on the open [Agent Skills spec](https://agentskills.io); install more from GitHub
+- **One workspace** — inbox, calendar, todos and notifications in a single app
+- **Self-hostable** — open source, your keys, your models, no caps
 
-- **Proactive** — Acts before you ask: handles deadlines, drafts replies, flags what matters, and watches events in the background — then texts you when there's something to see
-- **Workflows** — Multi-step automations across your tools, triggered on a schedule or by an event (new email, calendar change, webhook)
-- **Smart todos** — Todos that research, draft, and execute themselves, not just reminders
-- **Cross-tool memory** — Remembers the people, projects, and preferences that come up across conversations; ask once, it sticks
-- **One view** — Tasks, email, calendar, and goals in one place, instead of five browser tabs
-- **Integration marketplace** — Connect Gmail, Calendar, Slack, Linear, Notion and more in one click — then browse a community marketplace for more, plug in any MCP server, and publish your own
-- **Runs everywhere** — Web, Desktop (macOS, Windows, Linux), Mobile
-- **Works where you already are** — Message GAIA on WhatsApp, Telegram, Slack, or Discord — and it messages you back there too, with your full context, so you never have to open another app to act
-- **Open source & self-hostable** — Full transparency, runs on your own infrastructure
+## Getting started
 
-<br />
+| If you want to… | Go here |
+| --- | --- |
+| Just use it | **[heygaia.io](https://heygaia.io)** — sign up, nothing to install |
+| Text it from your phone | [iMessage](https://docs.heygaia.io/guides/imessage-bot) · [WhatsApp](https://wa.me/12762088737) · [Telegram](https://t.me/heygaia_bot) · [Slack](https://heygaia.io/slack-bot) · [Discord](https://heygaia.io/discord-bot) |
+| Run it on your own machines | `npm i -g @heygaia/cli && gaia init` — or the [guide](https://docs.heygaia.io/self-hosting/overview) |
+| Contribute | [Development Setup](https://docs.heygaia.io/developers/development-setup) |
+| See how it's built | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 
-<div align="center">
-  <table>
-    <tr>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/dashboard.png" alt="Dashboard" />
-        <br /><sub><b>Dashboard</b></sub>
-      </td>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/todos.png" alt="Smart Todos" />
-        <br /><sub><b>Smart Todos</b></sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/calendar.png" alt="Calendar" />
-        <br /><sub><b>Calendar</b></sub>
-      </td>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/workflows.png" alt="Automated Workflows" />
-        <br /><sub><b>Automated Workflows</b></sub>
-      </td>
-    </tr>
-    <tr>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/desktop_dock.png" alt="Desktop App" />
-        <br /><sub><b>Desktop App</b></sub>
-      </td>
-      <td align="center" width="50%">
-        <img src="apps/web/public/images/screenshots/phone_dock.png" alt="Mobile App" />
-        <br /><sub><b>Mobile App</b></sub>
-      </td>
-    </tr>
-  </table>
-</div>
+### Cloud — recommended
 
-## What you actually ask GAIA
+<a href="https://heygaia.io"><img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA web app" width="500" /></a>
 
-Real things people use GAIA for — not hypothetical features. Every example below works today.
+Go to **[heygaia.io](https://heygaia.io)**. Free, nothing to install, always up to date.
 
-- **"Summarize the 47 unread emails in my inbox and draft replies for the 3 that actually need one."** GAIA ranks by importance, reads threads end-to-end, and writes drafts in your voice.
-- **"Pull my GitHub, Linear, and Slack activity from this week and post a Friday digest to #eng-updates."** Merged PRs, closed issues, channel highlights — gathered, formatted, posted.
-- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** GAIA watches calendar changes and replans the afternoon against your pending todos and goals.
-- **"Before my 1:1 with Alex tomorrow, brief me on everything we've shipped this sprint."** Pulls related PRs, Linear issues, and Slack threads into a single prep doc.
-- **"Turn this meeting transcript into action items, assign owners, and add them to Linear."** Extracts decisions, matches them to projects, creates issues with the right assignees.
-- **"Watch my email for anything from [investor] and ping me on Telegram within 60 seconds."** Persistent background monitoring, cross-channel notification.
-- **"Draft follow-ups to every email I sent more than 3 days ago that hasn't been replied to."** Inbox sweep plus a personalised follow-up draft per thread.
-- **"Research these 10 companies and extract their pricing, team size, and funding round into a table."** Web research, structured output, pasted straight into Notion or Sheets.
-- **"Every Monday at 9am, scan my calendar and prep a briefing for each meeting."** Scheduled workflow, per-meeting context assembly, waiting for you when you sit down.
+This is how most people should use GAIA — you skip standing up Postgres, Mongo, Redis, ChromaDB and RabbitMQ yourself.
 
-## Getting Started
+### Self-host — full control
 
-### Cloud (zero setup)
+<a href="https://heygaia.io/install"><img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" width="500" /></a>
 
-<a href="https://heygaia.io">
-  <img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA Web App" style="width:500px; border-radius:12px;">
-</a>
+Prefer your own machines? You get your own keys and models, no caps, your data on your disks, and a bundled Grafana dashboard to watch it all — in exchange for running real infrastructure.
 
-Visit **[heygaia.io](https://heygaia.io)** to get started instantly — no installation required.
+> [!IMPORTANT]
+> The licence is **noncommercial**. Personal and non-profit self-hosting is free; running GAIA inside a business needs an [enterprise licence](https://heygaia.io/contact).
 
-### Self-host (own your data)
-
-<a href="https://heygaia.io/install">
-  <img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" style="width:500px; border-radius:12px;">
-</a>
-
-One CLI sets up the whole stack — clone, configure, and launch every service in Docker. **Prerequisites:** [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
+Needs [Docker](https://docs.docker.com/get-docker/) (Engine 20.10+, Compose v2+) and [Node.js](https://nodejs.org) 20+.
 
 ```bash
-# 1. Install the CLI  (pnpm add -g / bun add -g also work)
 npm install -g @heygaia/cli
-
-# 2. Clone, configure, and launch — the wizard walks you through it
-gaia init        # pick "Self-Host (Docker)" when asked
-
-# 3. Open GAIA in your browser
-#    http://localhost:3000
+gaia init                     # choose "Self-Host (Docker)"
+# → http://localhost:3000
 ```
 
-`gaia init` checks your prerequisites, clones the repo, helps you fill in environment variables, then builds and starts everything in Docker. Manage it anytime:
+That checks prerequisites, clones the repo, walks you through the environment variables, then builds and starts everything. After that:
 
 ```bash
 gaia status   # health-check every service
@@ -159,170 +81,180 @@ gaia stop     # stop everything
 gaia start    # bring it back up
 ```
 
-Already cloned the repo? Run `gaia setup` inside it to configure an existing checkout.
+Already cloned the repo? Run `gaia setup` inside it. Contributing? Choose **"Developer"** for hot-reload local dev.
 
-- **Self-hosters** → [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview)
-- **Contributors** → choose **"Developer"** in `gaia init` for hot-reload local dev, then see [Developer Setup](https://docs.heygaia.io/developers/development-setup)
+Your ongoing cost is model API usage, not hosting — the [self-hosting guide](https://docs.heygaia.io/self-hosting/overview) has sizing and real numbers.
 
+## Workflows
 
-## Chat with GAIA on Your Favorite Platforms
+A few workflows switch on by themselves the moment you connect a tool:
 
-Use GAIA directly inside the tools you're already in.
+| Workflow | Turns on with | What it does |
+| --- | --- | --- |
+| **Inbox Triage** | Gmail | Every morning at 8, sorts the last day's mail, pulls out action items, creates the todos, and hands you one briefing |
+| **Auto-Draft Replies** | Gmail | Spots mail that needs an answer and writes the reply. You approve before anything sends |
+| **Meeting Briefing** | Calendar | Researches who you're meeting and what it's about, before you walk in |
+| **Meeting Reminder** | Calendar | A heads-up 10 minutes out, join link included |
 
-|&emsp;&emsp;&emsp;&emsp; | Platform | How to Use |
-|---|---|---|
-|<img src="apps/web/public/images/icons/macos/whatsapp.webp" alt="WhatsApp" width="50" height="50" />|  **WhatsApp** | [Message GAIA](https://wa.me/12762088737) and send messages or use `/gaia` commands |
-|<img src="apps/web/public/images/icons/macos/telegram.webp" alt="Telegram" width="50" height="50" />|  **Telegram** | [Message @heygaia_bot](https://t.me/heygaia_bot) and send messages or use `/gaia` commands |
-| <img src="apps/web/public/images/icons/macos/slack.webp"  alt="Slack" width="50" height="50" /> | **Slack** | [Add GAIA to your workspace](https://heygaia.io/slack-bot) and use `/gaia` and other slash commands |
-| <img src="apps/web/public/images/icons/macos/discord.webp" alt="Discord" width="50" height="50"/>| **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) — use `/gaia` or `@mention` GAIA in any channel |
-|<img src="apps/web/public/images/icons/macos/imessage.svg" alt="iMessage" width="50" height="50" />|  **iMessage** | _Coming soon_ — text GAIA right from Messages on your iPhone or Mac |
+You'll never open a settings screen for those. Build your own from the **Workflows** page:
 
-See the [Bot Integrations Guide](https://docs.heygaia.io/bots/overview) for setup and usage details.
+- **Describe it in plain English** — GAIA writes the steps for you
+- **Run it on a schedule** — "every weekday at 9am"
+- **Or on an event** — new email, calendar change, Slack message, GitHub commit, Linear issue, Notion edit, new row in a sheet
+- **Chain steps across tools** — fetch, summarise, post to Slack
 
+## Examples
 
-## Tech Stack
+Workflows run on their own. This is what you ask it directly.
 
-GAIA is a full-stack Nx monorepo spanning web, desktop, mobile, backend, voice, and infrastructure.
+- **"Summarise my 47 unread emails and draft replies for the 3 that need one."** Reads every thread end to end, ranks by what matters, drafts in your voice.
+- **"Turn this call transcript into action items, assign owners and add them to Linear."** Pulls out the decisions, matches them to projects, files the issues.
+- **"Watch my email for anything from our investor and ping me on Telegram within 60 seconds."** Persistent background monitoring, cross-channel alert.
+- **"When my 2pm gets cancelled, rewrite my todo list to use the freed time."** Watches calendar changes and replans the afternoon against your pending todos.
+- **"Draft follow-ups to every email I sent three days ago that nobody answered."** Sweeps your sent mail, writes a personalised nudge per thread.
+- **"Research these 10 companies into a table with pricing, team size and funding."** Multi-source research, structured output, ready to paste.
+- **"Clean up this CSV, chart the outliers and send me the deck."** Writes real Python, runs it in a real sandbox, hands back a real `.pptx`.
+- **"Now run that every Monday at 9am."** Any of the above becomes a standing job, running on a schedule without you.
 
-| Layer | |
-|---|---|
-| **Web Frontend** | ![Next.js](https://img.shields.io/badge/Next.js_16-000000?style=flat&logo=nextdotjs&logoColor=white) ![React](https://img.shields.io/badge/React_19-61DAFB?style=flat&logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat&logo=tailwindcss&logoColor=white) ![Zustand](https://img.shields.io/badge/Zustand-433E38?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAAAAAAAAAQCEeRdzAAAC70lEQVR4nI2Ty08TURTGZ6Yd+qAtbZAAklIstIDtSNsZ2umUTjsdpkChgArlJY+AyENFNBoiChsXJibGnX+BK12buDEkJhpXuNDErRpXrtSVicLnnSEkNLLwJif3ZObc3/3O41LUfy6aptnaupp5d5Wz59iAKpejo76uZoa49sNvDE2baPrA5wJNz7anBtGdiPwksPqywxUs6+nX5C/D3Sn4fQ3Pmxobboo89yIr8e/j0dBui9/3ckwW8HZrCSsF+TfFmIJlAIejMjdTyOD11vLe1aEccrIIAkRB7UKvkiImIZ3kMaokIHGBd3pGZQAzy0bm++S9V5sL+/O9Xch2JZDPJpHPJI19pJgnpiGT6kTzqcZPJhPjLQM4HZXD+RS/N6klkemKG7dqGRHFfAbXFiexsTiOWwujWCgVIQkd4NpbdiSuddZps/qMWnWEgrtaVoKSFpGVOhHj2qEQ0PL0OazPjeLxhIQ74xo2VmcxRpQsFLP4+GgTSjiwTQpojslizJCrEoBC5KdFHioBXJk5j7XZUVwsDWB8UENO4rE0OYy8GMFaQf5Q7bAHKWelrZQjwSopXEFJ4uHKGOYKsgG5NDGEcKuf5O1FQ30NxFgIl4mqOM/B7al6cNABu3VEB+jyS1oKT9cv7F8fVpEguU4M5TE3qOKG4MPSRBG3V2cw0qdAiIZQU+25awBMDBNOxSN/8qQG3ekEBrMi2Yki4ic7I5gaUHGvV8Da9FmU+lXEzrQbAIfdkvXYWIqyWRgqFPTt6EXU9DqQVIwWEssRkBANI07UkMECHwkhGY8g6Dv5JlxtodwWE5kBE03ZrawoREK/VDmBbh1AQDqshwzQAShhWCYlgGvz//C7rdEmF0tG/cgsuF32Enc68D0jCUYLddMVHPoSubnF3/jVZatQHGz5IB55E+Zgk7f2Cdfe/C3KtZJ829ARCiDY3PjZW1t93+u01B1/8sjSX5/NYj7hdlpjlXZrmjWbeYahXfo/lvk3/i/YWhruUi6sTwAAAABJRU5ErkJggg==&logoColor=white) |
-| **Desktop** | ![Electron](https://img.shields.io/badge/Electron-47848F?style=flat&logo=electron&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) |
-| **Mobile** | ![React Native](https://img.shields.io/badge/React_Native-61DAFB?style=flat&logo=react&logoColor=black) ![Expo](https://img.shields.io/badge/Expo-000020?style=flat&logo=expo&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white) |
-| **Backend** | ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi&logoColor=white) ![Python](https://img.shields.io/badge/Python_3.11+-3776AB?style=flat&logo=python&logoColor=white) ![Pydantic](https://img.shields.io/badge/Pydantic-E92063?style=flat&logo=pydantic&logoColor=white) |
-| **AI / Agents** | ![LangGraph](https://img.shields.io/badge/LangGraph-1C3C3C?style=flat&logo=langchain&logoColor=white) ![LiveKit](https://img.shields.io/badge/LiveKit-FF5C28?style=flat&logo=livekit&logoColor=white) ![Deepgram](https://img.shields.io/badge/Deepgram-101820?style=flat&logo=deepgram&logoColor=13EF93) ![ElevenLabs](https://img.shields.io/badge/ElevenLabs-000000?style=flat&logo=elevenlabs&logoColor=white) ![Composio](https://img.shields.io/badge/Composio-7C3AED?style=flat&logoColor=white) ![E2B](https://img.shields.io/badge/E2B-1A1A1A?style=flat&logoColor=white) ![Tavily](https://img.shields.io/badge/Tavily-0EA5E9?style=flat&logoColor=white) |
-| **Databases** | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white) ![Redis](https://img.shields.io/badge/Redis-FF4438?style=flat&logo=redis&logoColor=white) ![ChromaDB](https://img.shields.io/badge/ChromaDB-E879F9?style=flat&logoColor=white) |
-| **Queue & Tasks** | ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat&logo=rabbitmq&logoColor=white) ![ARQ](https://img.shields.io/badge/ARQ-FF4438?style=flat&logo=redis&logoColor=white) |
-| **Monitoring** | ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white) ![Sentry](https://img.shields.io/badge/Sentry-362D59?style=flat&logo=sentry&logoColor=white) ![PostHog](https://img.shields.io/badge/PostHog-F54E00?style=flat&logo=posthog&logoColor=white) |
-| **Bots** | ![Discord.js](https://img.shields.io/badge/Discord.js-5865F2?style=flat&logo=discord&logoColor=white) ![Slack Bolt](https://img.shields.io/badge/Slack_Bolt-4A154B?style=flat&logo=slack&logoColor=white) ![Grammy](https://img.shields.io/badge/Grammy-26A5E4?style=flat&logo=telegram&logoColor=white) ![Kapso](https://img.shields.io/badge/Kapso-25D366?style=flat&logo=whatsapp&logoColor=white) |
-| **Infrastructure** | ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white) ![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat&logo=vercel&logoColor=white) ![Cloudflare Workers](https://img.shields.io/badge/Cloudflare_Workers-F38020?style=flat&logo=cloudflare&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat&logo=githubactions&logoColor=white) |
-| **Tooling** | ![Nx](https://img.shields.io/badge/Nx-143055?style=flat&logo=nx&logoColor=white) ![pnpm](https://img.shields.io/badge/pnpm-F69220?style=flat&logo=pnpm&logoColor=white) ![uv](https://img.shields.io/badge/uv-DE5FE9?style=flat&logo=uv&logoColor=white) ![mise](https://img.shields.io/badge/mise-FB5E2A?style=flat&logoColor=white) ![Biome](https://img.shields.io/badge/Biome-60A5FA?style=flat&logo=biome&logoColor=white) ![Ruff](https://img.shields.io/badge/Ruff-D7FF64?style=flat&logo=ruff&logoColor=black) |
+## Pricing
 
-## Roadmap
+**$1 a day to never do busywork again.**
 
-We track upcoming features, planned improvements, and in-progress work publicly.
+| Plan | Cost | What you get |
+| --- | --- | --- |
+| **Free** | $0, forever | Every tool and integration, standard models, a daily usage allowance, 50 saved memories |
+| **Pro** | **$30/month** | Much higher limits, unlimited memories, more powerful models, long-running tasks, priority support, early access to new features |
+| **Enterprise** | [Talk to us](https://heygaia.io/contact) | SSO, SCIM and audit logs, custom integrations, self-host or private cloud, a dedicated engineer and an SLA |
 
-**[View Roadmap](https://gaia.featurebase.app/roadmap)** · **[Submit a Feature Request](https://gaia.featurebase.app)**
+- Pay yearly and two months are free
+- **Self-hosting is free** — you cover your own model API costs instead
+- Full details on the [pricing page](https://heygaia.io/pricing)
 
+## Platforms
 
-## Monorepo Structure
+| | Platform | How |
+| --- | --- | --- |
+| <img src="apps/web/public/images/icons/macos/imessage.webp" width="26" height="26" /> | **iMessage** | [Register your number](https://heygaia.io/settings/linked-accounts), text `/auth`, then just type. [Pro plan](https://heygaia.io/pricing). |
+| <img src="apps/web/public/images/icons/macos/whatsapp.webp" width="26" height="26" /> | **WhatsApp** | [Message GAIA](https://wa.me/12762088737) |
+| <img src="apps/web/public/images/icons/macos/telegram.webp" width="26" height="26" /> | **Telegram** | [@heygaia_bot](https://t.me/heygaia_bot) — DMs, or `@mention` it in groups |
+| <img src="apps/web/public/images/icons/macos/slack.webp" width="26" height="26" /> | **Slack** | [Add to your workspace](https://heygaia.io/slack-bot) |
+| <img src="apps/web/public/images/icons/macos/discord.webp" width="26" height="26" /> | **Discord** | [Add the bot](https://heygaia.io/discord-bot) or [join the server](https://discord.heygaia.io) |
 
-This repository is a full-stack monorepo managed with [Nx](https://nx.dev).
+- Also on the **web**, a **[desktop app](https://heygaia.io/download)** for macOS, Windows and Linux, and **mobile**
+- It's all one account — a chat you start on Telegram shows up in the web app
+- Same memory everywhere, no matter where you talk to it
 
-```
-gaia
-├── apps
-│   ├── web              → Next.js web app                  https://heygaia.io
-│   ├── desktop          → Electron desktop app (beta)      https://heygaia.io/download
-│   ├── mobile           → React Native mobile app (beta)   
-│   ├── api              → FastAPI + LangGraph backend
-│   ├── voice-agent      → Voice processing worker
-│   └── bots
-│       ├── discord      → Discord bot
-│       ├── slack        → Slack bot
-│       └── telegram     → Telegram bot
-├── docs                 → Documentation Website            https://docs.heygaia.io
-├── packages
-│   ├── cli              → @heygaia/cli setup tool           npm install -g @heygaia/cli
-│   └── gaia-ui          → @heygaia/ui (wrapper)             https://ui.heygaia.io
-├── libs
-│   ├── shared
-│   │   ├── py           → gaia-shared Python package (used by api, voice-agent, bots)
-│   │   └── ts           → Shared TypeScript utilities
-│   └── wake-word        → @gaia/wake-word — cross-platform on-device "Hey GAIA" detection
-│       │                  (122 KB ONNX, web + electron + react native, ~80 ms time-to-wake)
-│       ├── src/core     → platform-agnostic detector + 3-stage openWakeWord pipeline
-│       ├── src/web      → onnxruntime-web + AudioWorklet + React hook
-│       ├── src/native   → onnxruntime-react-native + audio capture + RN hook
-│       ├── models       → bundled ONNX artifacts (mel + embedding + VAD + classifier)
-│       └── training     → Python pipeline: Piper TTS synthesis + LibriSpeech negatives + MPS training
-└── infra
-    └── docker           → Docker Compose configs (dev + prod)
+## Integrations
+
+- **32 services, one click.** Gmail, Calendar, Slack, Notion, Linear, GitHub, Sheets, Todoist, Trello, HubSpot and more. Each gets its own specialist agent.
+- **Anything else, via MCP.** [Model Context Protocol](https://modelcontextprotocol.io) is the open standard for plugging tools into AI models. Point GAIA at any MCP server and its tools work immediately — no fixed catalogue, no waiting on us.
+- **A marketplace.** Browse what the community published, or publish your own.
+- **Tools on your own computer.** `gaia bridge` links your laptop over one outgoing connection — nothing to forward, no ports to open.
+
+```bash
+gaia bridge login          # approve the pairing in your browser
+gaia bridge fs ~/projects  # share a folder
+gaia bridge up             # connect
 ```
 
-For a deeper look at how the pieces connect, see the [Architecture Overview](https://docs.heygaia.io/developers/introduction) in the docs.
+## Security
 
-## Documentation
+GAIA touches your email, your calendar and your files, so we take reports seriously.
 
-Our comprehensive documentation is available at [docs.heygaia.io](https://docs.heygaia.io):
-
-- **[Quick Start](https://docs.heygaia.io/quick-start)** - Get up and running in minutes
-- **[Bot Integrations](https://docs.heygaia.io/bots/overview)** - Use GAIA on Discord, Slack, and Telegram
-- **[Self-Hosting](https://docs.heygaia.io/self-hosting/overview)** - Deploy GAIA on your infrastructure
-- **[For Developers](https://docs.heygaia.io/developers/introduction)** - Contribute and extend GAIA
+Found a vulnerability? Email **security@heygaia.io** — please don't open a public issue. Our full policy is in [SECURITY.md](.github/SECURITY.md).
 
 ## FAQ
 
 <details>
-<summary><b>Cloud vs self-hosted — what's different for me as a user?</b></summary>
+<summary><b>What does GAIA store about me, and does it read my email?</b></summary>
 
-The interface is identical on both. Cloud is zero-setup at [heygaia.io](https://heygaia.io), free to start, with plan-based usage limits and managed infrastructure. Self-hosting gives you full data control, no usage caps, and the ability to swap models freely — in exchange for running the stack on your own machines and bringing your own API keys.
+Your actual content is never copied into GAIA's database. Email bodies, calendar events and documents are fetched when a request needs them, used, and not kept. GAIA only touches threads relevant to what you asked for, within the scopes you granted on the provider's consent screen.
 
-</details>
+What *is* stored is under your control:
 
-<details>
-<summary><b>How do I connect a new integration?</b></summary>
-
-Open <code>/integrations</code>. Browse by category (Productivity, Communication, Developer, and more) or search by name. Click **Connect** — for providers like Gmail, Calendar, Slack, Linear or Notion, you'll be redirected to their consent screen to grant the scopes GAIA needs; for API-key providers, a modal pops up where you paste the token. Once connected, the sidebar shows the tools that integration unlocks, and a **Disconnect** button revokes access in one click.
-
-Need something that isn't in the catalogue? You can add your own MCP integration from the same page, connect it privately, or publish it to the community marketplace.
+- **Memory** — everything on the Memory page as a list or graph. Delete items or clear it all. Export as PNG or SVG.
+- **Chat history** — one-click clear in Preferences.
+- **Workflows, todos, reminders** — managed from their own pages.
+- **Integration tokens** — encrypted, and revoked the moment you disconnect from `/integrations`.
 
 </details>
 
 <details>
-<summary><b>Does GAIA read my email?</b></summary>
+<summary><b>Can I use my own API keys and models?</b></summary>
 
-Only the threads relevant to whatever you've asked it to do, and only with the scopes you granted on the provider's OAuth consent screen when you connected Gmail. Email content isn't mirrored into GAIA's database — it's fetched per request. You can disconnect the integration from <code>/integrations</code> at any time, which revokes access immediately.
+**Self-hosted:** yes. Providers are set via environment variables and the model catalogue is database-driven, so you can swap freely.
 
-</details>
-
-<details>
-<summary><b>What data does GAIA store about me, and can I delete it?</b></summary>
-
-Yes, all of it is under your control:
-
-- **Long-term memory** — everything GAIA has learned about you (people, projects, preferences) is visible on the **Memory** settings page as a list or interactive graph. Delete individual memories, or clear everything with one button. You can also export your memory graph as PNG or SVG.
-- **Chat history** — the **Preferences** settings page has a one-click "Clear chat history".
-- **Workflows, todos, and reminders** — all manageable from their respective pages.
-- **Integration tokens** — stored encrypted, revoked immediately when you disconnect.
-
-Integration content (email bodies, calendar events, documents) is not persisted — it's fetched on demand when a request needs it.
+**Cloud:** no — models are managed for you and usage follows your plan. You can still pick between the available models in the composer.
 
 </details>
 
 <details>
-<summary><b>How does GAIA's "proactive" behaviour actually work?</b></summary>
+<summary><b>How do I add an integration that isn't in the list?</b></summary>
 
-Head to the <b>Workflows</b> page and build one. Two kinds of triggers today:
+Add it as an MCP server from `/integrations`. Paste the server URL, connect it privately, and its tools are available right away. You can publish it to the community marketplace if you want to share it.
 
-- **Scheduled** — cron-style ("every weekday at 9am", "first Monday of the month")
-- **Event-driven** — new Gmail message, new calendar event, webhooks from Linear / Slack / GitHub / Todoist / Sheets / Docs
-
-Chain steps across your integrations ("fetch → summarise → post to Slack") and GAIA will run the whole thing in the background, no prompt required. When a run produces something you should see — a drafted email, a new todo, a reminder, a suggested calendar event — it lands in the notifications bell in the header and on the <code>/notifications</code> page, where you can approve, edit or dismiss it.
+For tools running on your own machine, use `gaia bridge` instead.
 
 </details>
 
 <details>
-<summary><b>Can I bring my own API keys?</b></summary>
+<summary><b>What does self-hosting cost?</b></summary>
 
-On **self-hosted**, yes — provider keys (model providers, integration services) are configured via environment variables. On **cloud**, no — the platform manages models on your behalf and usage is governed by your plan. You can still pick between the available models from the chat composer; which ones are unlocked depends on your plan.
+The code is free under PolyForm Noncommercial, so you pay for model API usage, any paid integrations you opt into, and hosting. See [Self-host](#self-host) above for sizing.
 
 </details>
+
+## Documentation
+
+**[docs.heygaia.io](https://docs.heygaia.io)** — [Quick Start](https://docs.heygaia.io/quick-start) · [Bots](https://docs.heygaia.io/bots/overview) · [Self-Hosting](https://docs.heygaia.io/self-hosting/overview) · [Developers](https://docs.heygaia.io/developers/introduction)
+
+## Repository
+
+Full-stack Nx monorepo.
+
+```
+apps
+├── web            Next.js web app                    heygaia.io
+├── desktop        Electron desktop app (beta)
+├── mobile         React Native mobile app (beta)
+├── api            FastAPI + LangGraph backend
+├── voice-agent    LiveKit voice worker
+├── bridge         gaia bridge — local file/tool tunnel
+└── bots           imessage · whatsapp · telegram · slack · discord
+packages
+├── cli            @heygaia/cli
+└── gaia-ui        @heygaia/ui
+libs
+├── shared/py      gaia-shared
+├── shared/ts      shared TypeScript + the unified bot framework
+└── wake-word      @gaia/wake-word — on-device "Hey GAIA"
+docs               docs.heygaia.io
+infra/docker       Docker Compose (dev + prod)
+```
 
 <details>
-<summary><b>What does self-hosting cost to run?</b></summary>
+<summary><b>How the agent system works</b></summary>
 
-The GAIA code is free under PolyForm Noncommercial (noncommercial use). Real costs are: model API usage (scales with how much you use it), any paid-tier integration services you opt into, and hosting — a single modestly-sized VM handles a small team. See the <a href="https://docs.heygaia.io/self-hosting/overview">self-hosting guide</a> for detailed numbers.
+<br />
+
+GAIA runs three tiers of agents. The one you talk to never does the work itself — it hands off, so the conversation stays responsive while long jobs run in the background.
+
+```
+  Comms agent        Talks to you and narrates progress. Deliberately
+      │              cannot do work — it can only delegate.
+      ▼  call_executor(task)   →  returns instantly, runs in background
+  Executor agent     The worker. Shell, files, research, planning, todos,
+      │              and the handoff tool.
+      ▼  handoff(subagent, task)
+  Subagents          One specialist per integration, dispatched in parallel,
+                     each scoped to only its own tools.
+```
+
+Why bother: a single agent holding 30 integrations' worth of tools picks the wrong one and gets slower with every tool you add. Scoping each integration to its own agent keeps tool choice accurate, and running them in parallel keeps it fast.
+
+Every service and file path is mapped in **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 
 </details>
-
-## Community & Support
-
-Join our growing community of users and contributors:
-
-- <img src="https://cdn.simpleicons.org/discord/5865F2" alt="Discord" width="16" /> &nbsp;**[Discord](https://discord.heygaia.io)** — Chat with the team and other users.
-- <img src="apps/web/public/images/icons/twitter.webp" alt="Twitter" width="16" /> &nbsp;**[Twitter](https://twitter.com/trygaia)** — Get the latest news and updates.
-- <img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="WhatsApp" width="16" /> &nbsp;**[WhatsApp](https://whatsapp.heygaia.io)** — Get direct support from our team.
 
 ## Contributing
 
@@ -330,39 +262,38 @@ Join our growing community of users and contributors:
   <img src="https://contrib.rocks/image?repo=theexperiencecompany/gaia" />
 </a>
 
-We welcome contributions of all kinds — bug fixes, features, docs, and tests.
+Bug fixes, features, docs, tests — all welcome.
 
-> 🤖 **AI & vibe-coded PRs are welcome!** Built it with Claude, Cursor, or any AI tool? That's great — just mention it in the PR description.
+> 🤖 **AI and vibe-coded PRs are welcome.** Built it with Claude, Cursor, or anything else? Great — just say so in the PR description.
 
-**Where to start:**
-- [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) — how we work and what we're looking for
-- [Development Setup](https://docs.heygaia.io/developers/development-setup) — get your local environment running
-- [Code Style Guide](https://docs.heygaia.io/configuration/code-style) — linting, formatting, and conventions
-- [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) — commit message format
-- [Pull Request Guide](https://docs.heygaia.io/configuration/pull-requests) — how to open a great PR
+[Contributing Guidelines](https://docs.heygaia.io/developers/contributing) · [Development Setup](https://docs.heygaia.io/developers/development-setup) · [Code Style](https://docs.heygaia.io/configuration/code-style) · [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) · [Pull Requests](https://docs.heygaia.io/configuration/pull-requests)
 
-For bugs and feature requests, [open an issue](https://github.com/theexperiencecompany/gaia/issues).
+Found a bug? [Open an issue](https://github.com/theexperiencecompany/gaia/issues).
 
-## Tools We Love
+## Community
 
-GAIA is built on the shoulders of giants — the language models, frameworks, and open-source projects that make this possible. Full credits at **[heygaia.io/thanks](https://heygaia.io/thanks)**.
+- **[Discord](https://discord.heygaia.io)** — chat with the team and other users
+- **[Twitter](https://twitter.com/trygaia)** — news and updates
+- **[WhatsApp](https://whatsapp.heygaia.io)** — direct support from our team
+
+## Roadmap
+
+We build in the open. **[View the roadmap](https://gaia.featurebase.app/roadmap)** · **[Request a feature](https://gaia.featurebase.app)**
 
 ## License
 
-This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — see [LICENSE.md](LICENSE.md).
 
 > [!WARNING]
 > This license allows noncommercial use only.
 
-See the full license terms at [LICENSE.md](LICENSE.md).
+GAIA is built on the shoulders of giants. Full credits at **[heygaia.io/thanks](https://heygaia.io/thanks)**.
 
-## Contact
+---
 
-Feel free to contact the team at contact@heygaia.io or aryan@heygaia.io for any questions
+<div align="center">
 
-## Star History
-
-If GAIA could save you even an hour a week, consider giving it a ⭐ — it helps more people find the project and keeps us building in the open.
+If GAIA saves you an hour this week, a ⭐ helps someone else find it.
 
 <a href="https://www.star-history.com/#theexperiencecompany/gaia&Date">
  <picture>
@@ -372,11 +303,10 @@ If GAIA could save you even an hour a week, consider giving it a ⭐ — it help
  </picture>
 </a>
 
----
+<br /><br />
 
-  <center>
+Made with ❤️ by [The Experience Company](https://experience.heygaia.io)
 
-Made with ❤️ by
-[![The Experience Company](https://img.shields.io/badge/The%20Experience%20Company-121212?logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4KPHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyOTE3IDI1OTYuMjIiPgogIDxkZWZzPgogICAgPHN0eWxlPgogICAgICAuY2xzLTEgewogICAgICAgIGZpbGw6ICNmZmY7CiAgICAgIH0KICAgIDwvc3R5bGU+CiAgPC9kZWZzPgogIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTE2MjIuNDQsMTE0MC44MmMtMTcxLjM2LDExNi43Ny0yMTQuNzcsMTM5Ljc0LTI1MC41MSwxOTEuMTktODguNzgsMTI3Ljc4LTk2LjE4LDI3MS45LTkyLjAxLDM1OS42NiwxLjM5LDI3OC44MS00LjY3LDU1MC4xNi0zLjI4LDgyOC45NiwzNDUuNjYtMTQ0LjQ4LDc3NS40OS0zOTcuMDgsMTExNy41LTgzOS45Myw2OC4xMS04OC4xOSw3NjQuMjktOTc0LjMyLDQzNC43Ni0xNDE0LjE0QzI2OTUuMDIsODcuODYsMjQ3Mi4xNyw5LjcxLDIyNTQuMTMsMS41NCwxMzI2Ljc5LTMzLjIsNDg3Ljc3LDUyNS40NywxNTEuOTUsMTExMi4yM2MtLjY0LDEuMTEtMS41NiwyLjczLTIuNzUsNC44Mi01Ni4zNSw5OS4zOS0yMjAuNzIsMzg5LjM2LTExMy44OSw1NDUuMjIsNTMuOTUsNzguNywxNTYuNzgsOTMuNjQsMTc2LjI5LDk2LjQ3LDExMi4zOCwxNi4zMywyMDUuNDUtMzUuNjEsMzE4LjQzLTEwMC45NywxNDguMjctODUuNzcsMjIyLjYzLTEyOC4yNSwyMjMuNjYtMTI4LjkzLDExMC44LTczLjAzLDI5Mi40NS0xMzYuMzUsNDY5LjU5LTI2OS43LjI5LS4yMi01LjQ1LDMuMjctMTYuMzMsOS43OS0xNi43NiwxMC4wNC0zMDguNjksMTE2LjYzLTM5Mi42OCwxNzUuMDYtMTM4LjQ4LDk2LjM0LTUxMC40LDE2Ny44LTU3NC44NSw0OS4zNC02OS44My0xMjguMzMsMTc5Ljg1LTQ1Ni4xOSwyNTguODQtNTYwLjgyLjgxLTEuMDcsNy42Ny0xMC4wNSwxNC40Ny0xOC44NSwzMDguMDItMzk3Ljg0LDcwNC4zNS01NTAuNjgsNzc1LjgzLTU3Ny4yLDM4NC44Mi0xNDIuNzksOTM4LjgxLTE5Ny4xMiwxMDIwLjExLTIxLjE5LDc0LjQ0LDE2MS4xLTE0Mi41OSw0MjAuNDMtMzIxLjkxLDU1OC42OCIvPgogIDxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTcyNS4yNiwxNjEyLjcyYy0xMDUuMiw1NC45NC0xOTUuMTQsODguMDYtMjQ3LjQyLDEwNS42NS0xNzYuMDYsNTkuMjUtMjMxLjc3LDMxLjk2LTIzOC4xNCwxMS4xNS04LjU1LTI3LjkxLDE4NS40MS05Ny45NiwyMDkuOTItMTA3LjUxLDc0LjMyLTI4LjkzLDk5LjQ5LTM2Ljc3LDE2My41Ny02NS4wOCw0NS4zMi0yMC4wMiwxNDIuNC02Ni4xNSwyNDMuNTItMTQ0LjA1LDEwLjk1LTguNDMsMjAuMDctMTUuMzgsMzIuMjItMjUuOTIsNDAuMTEtMzQuNzcsOTAuNzItODEuMzksMTMyLjczLTE1OC4zNCwzNy44My02OS4yOSw0OS45My0xNjUuODMsNTQuMDUtMjUyLjUyLDQuMDktLjk5LDIuNjIsNy40MiwyLjk2LDExLjQ0LDcuMjYsODcuNDksMTQuODQsMjM4LjU2LDk3LjU3LDI0NS42OCw2MS42Miw1LjMxLDExMy4xNi0yNy42OSwxNjguNTQtNTMuNzcsMi4yMS0xLjA0LDcuNi00LjU5LDcuMzIsMS40Ny03Mi4wOCw0OC4wMS0xMjAuMzcsOTQuODEtMTQ5LjQ3LDEyNi40Ni0zOS4zOCw0Mi44Mi01Ny43Myw3My4yNi02OS4wMiw5NS4xOS01Ljk5LDExLjY0LTE2LjM5LDMyLjEtMjQuODIsNjAuMzctMjUuMzIsODQuOTgtMjkuMTIsMjI4LjQyLTI5LjEsMjM0LjkxLDAsMCwwLC4xNi0uMDQuMTctMS41Ni4yOS0yMy43OS0yMjQuNi04My45NC0yNDMuNzMtMTIuMjgtMy45MS0yNy44NS0uNzItMzEuNDkuNzUtMTQuMjEsNS43MS0xMTAuODIsOTAuNzYtMjM4Ljk3LDE1Ny42OFoiLz4KPC9zdmc+)](https://experience.heygaia.io)
-  <a href="https://heygaia.io">heygaia.io</a> • <a href="https://docs.heygaia.io">Documentation</a> • <a href="https://heygaia.io/contact">Contact Us</a>
-</center>
+[heygaia.io](https://heygaia.io) • [Documentation](https://docs.heygaia.io) • [Contact](https://heygaia.io/contact) • contact@heygaia.io
+
+</div>
