@@ -23,14 +23,15 @@ from app.agents.middleware import (
     SubagentStackOptions,
     create_subagent_middleware,
 )
-from app.agents.tools.coding import bash, grep, query_json, read
+from app.agents.tools.coding import grep, query_json, read
+from app.agents.tools.coding.bash_tool import build_bash_tool
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_create_agent_tool_kwargs,
     build_provider_parent_tool_runtime_config,
 )
-from app.agents.tools.execute.execute_tool import execute
+from app.agents.tools.execute.execute_tool import build_execute_tool
 from app.agents.tools.execute.schema_tool import get_tool_schema
 from app.agents.tools.finish_task_tool import finish_task
 from app.agents.tools.integration_instructions_tools import update_integration_instructions
@@ -121,7 +122,12 @@ def build_scoped_tool_dict(
         # module was removed when subagents moved to the E2B sandbox.
         scoped_tool_dict[search_memory.name] = search_memory
         scoped_tool_dict[read.name] = read
-        scoped_tool_dict[bash.name] = bash
+        # Built against THIS dict for the same reason the execute proxy below is:
+        # bash mints the code-mode token, and a sandbox script calling
+        # `from gaia import execute` must be held to the same tool space as a
+        # direct execute call — otherwise the confinement is one line to escape.
+        scoped_bash = build_bash_tool(scoped_tool_dict)
+        scoped_tool_dict[scoped_bash.name] = scoped_bash
         # Resolvable for every subagent (retrieve-on-demand); gmail additionally
         # binds these two into its initial set below, since it always offloads
         # large inboxes and must mine them sandbox-free.
@@ -136,10 +142,13 @@ def build_scoped_tool_dict(
         scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
         # The execute proxy: retrieve_tools returns schema docs (not bindings)
         # for integration tools beyond the auto-bound set, and this is what
-        # runs them. get_tool_schema is the depth behind a doc's Returns
-        # pointer (read-only metadata).
-        scoped_tool_dict[execute.name] = execute
-        initial_tool_ids.append(execute.name)
+        # runs them. Built against THIS dict so the proxy honors the same tool
+        # space retrieve_tools binds against — otherwise a subagent could run
+        # any registered tool by name. get_tool_schema is the depth behind a
+        # doc's Returns pointer (read-only metadata).
+        scoped_execute = build_execute_tool(scoped_tool_dict)
+        scoped_tool_dict[scoped_execute.name] = scoped_execute
+        initial_tool_ids.append(scoped_execute.name)
         scoped_tool_dict[get_tool_schema.name] = get_tool_schema
         initial_tool_ids.append(get_tool_schema.name)
 

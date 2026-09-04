@@ -12,12 +12,18 @@ internal tools need graph runtime the route doesn't have, and excluding them
 also shrinks what a leaked token can reach.
 """
 
+import asyncio
 from typing import NamedTuple
 
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.execute import GLOBAL_SHAPE_SCOPE, MCP_SHAPE_SCOPE_PREFIX
+from app.constants.execute import (
+    COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS,
+    GLOBAL_SHAPE_SCOPE,
+    MCP_SHAPE_SCOPE_PREFIX,
+    UNKNOWN_CATALOG_SLUG_CACHE_MAX,
+)
 from app.constants.log_tags import LogTag
 from app.services.composio.composio_service import get_composio_service
 from app.services.mcp.mcp_client import get_mcp_client
@@ -36,12 +42,23 @@ class ResolvedTool(NamedTuple):
     # tools, so a private server's shapes are visible only to users who can
     # resolve that integration — the resolver itself is the access gate.
     shape_scope: str = GLOBAL_SHAPE_SCOPE
+    # True when the name came from the global registry, which is the only
+    # source an agent's tool space partitions: MCP tools and on-demand catalog
+    # slugs are outside every space, so no space can exclude them. Dispatch
+    # applies a caller's scope to registry tools alone, matching the boundary
+    # retrieve_tools enforces for binding.
+    in_registry: bool = False
 
 
 # Composio tools materialized on demand outside a toolkit registration; process
 # lifetime, mirroring the registry's own semantics (tools are user-agnostic —
 # the user attaches via config at invocation time).
 _materialized_composio_tools: dict[str, BaseTool] = {}
+
+# Slugs the catalog answered "no such tool" for. Same lifetime and reasoning as
+# the positive cache above — see UNKNOWN_CATALOG_SLUG_CACHE_MAX for why a miss
+# is worth remembering at all.
+_unknown_composio_slugs: set[str] = set()
 
 
 async def resolve_tool(user_id: str | None, tool_name: str) -> ResolvedTool | None:
@@ -74,7 +91,9 @@ def _from_registry(registry: ToolRegistry, tool_name: str) -> ResolvedTool | Non
         return None
     category = registry.get_category(registry.get_category_of_tool(meta.name))
     is_integration = bool(category is not None and category.require_integration)
-    return ResolvedTool(name=meta.name, tool=meta.tool, is_integration=is_integration)
+    return ResolvedTool(
+        name=meta.name, tool=meta.tool, is_integration=is_integration, in_registry=True
+    )
 
 
 async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool | None:
@@ -112,9 +131,10 @@ async def _materialize_composio_tool(tool_name: str) -> ResolvedTool | None:
         return ResolvedTool(name=tool_name, tool=cached, is_integration=True)
     # Catalog slugs are ALLCAPS_SNAKE; anything else cannot be a Composio slug,
     # and asking Composio for it costs a network round-trip per model typo.
-    if not tool_name.replace("_", "").isupper():
+    if not tool_name.replace("_", "").isupper() or tool_name in _unknown_composio_slugs:
         return None
-    tools = await get_composio_service().get_tools_by_name([tool_name])
+    async with asyncio.timeout(COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS):
+        tools = await get_composio_service().get_tools_by_name([tool_name])
     for tool in tools:
         if tool.name == tool_name:
             _materialized_composio_tools[tool_name] = tool
@@ -123,4 +143,7 @@ async def _materialize_composio_tool(tool_name: str) -> ResolvedTool | None:
                 tool_name=tool_name,
             )
             return ResolvedTool(name=tool.name, tool=tool, is_integration=True)
+    if len(_unknown_composio_slugs) >= UNKNOWN_CATALOG_SLUG_CACHE_MAX:
+        _unknown_composio_slugs.clear()
+    _unknown_composio_slugs.add(tool_name)
     return None

@@ -35,6 +35,19 @@ RESPONSE_SCHEMA_METADATA_KEYS = ("output_parameters", "response_schema", "output
 # .gaia/gaia-tasks): persistent when JuiceFS is mounted, ephemeral otherwise.
 SANDBOX_CLIENT_DIR = "/workspace/.gaia"
 SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS = 60
+# How far the in-sandbox client's HTTP timeout sits ABOVE the host's own bound
+# (TOOL_EXECUTION_TIMEOUT_SECONDS). The host must always be the one that gives
+# up: it answers a timed-out call with a structured "may or may not have
+# completed" error, whereas a client that gives up first abandons a mutation
+# the host is still applying — and the script's retry then duplicates it. This
+# is also why `bash` is in TOOL_TIMEOUT_EXEMPT_TOOLS: the enclosing bash call
+# being cut at the generic bound would kill the script mid-answer.
+SANDBOX_EXECUTE_CLIENT_TIMEOUT_BUFFER_SECONDS = 30
+# A forged token names whose tools the host runs, so the signing secret's
+# length is the whole strength of that claim. Enforced at startup by the
+# settings validator, never at mint time — a misconfigured deploy must not
+# start.
+SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS = 32
 # Server-side blast-radius bounds per token (enforced on the callback route):
 # a runaway or injected script hits a hard wall instead of unlimited calls.
 SANDBOX_EXECUTE_MAX_CALLS_PER_TOKEN = 300
@@ -42,6 +55,17 @@ SANDBOX_EXECUTE_MAX_CALLS_PER_MINUTE = 60
 # Budget counters must outlive any legal token; bash caps command timeouts well
 # under this, so a counter can never expire while its token is still valid.
 SANDBOX_EXECUTE_BUDGET_WINDOW_SECONDS = 3600
+
+# The resolver's on-demand catalog lookup is on the tool-call critical path:
+# the HIL gate resolves a name before the call is even allowed to run — twice
+# per gated call, plus once per sibling in the same AI message. So the round
+# trip is bounded (a degraded Composio fails one call instead of stalling the
+# whole turn) and a miss is remembered: a hallucinated ALLCAPS name otherwise
+# costs a fresh round trip on every gate check and every replay of the
+# approvals node. The miss cache is cleared wholesale at its cap — those names
+# are model typos, not a working set worth evicting one at a time.
+COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS = 15
+UNKNOWN_CATALOG_SLUG_CACHE_MAX = 512
 
 # Shape-store scopes: catalog tools are user-agnostic so their observed shapes
 # are shared; MCP tools are scoped by integration so a private server's shapes
@@ -52,8 +76,9 @@ MCP_SHAPE_SCOPE_PREFIX = "mcp:"
 
 # Observed-shape learning (services/tool_shape_service.py): structure inferred
 # from real dispatch outputs. Arrays are sampled, and a dict wider than the key
-# threshold is treated as a map so value-derived keys (emails, ids) never
-# become schema property names. The char cap bounds one tool's stored record.
+# threshold — or one whose keys are not identifier-shaped — is treated as a map
+# so value-derived keys (emails, labels, ids) do not become schema property
+# names. The char cap bounds one tool's stored record.
 TOOL_SHAPE_ARRAY_SAMPLE = 5
 TOOL_SHAPE_MAX_KEYS_PER_OBJECT = 25
 TOOL_SHAPE_MAX_CHARS = 20000

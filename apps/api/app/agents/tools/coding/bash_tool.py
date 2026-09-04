@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections.abc import Mapping
 import contextlib
 import posixpath
 import time
@@ -12,7 +13,7 @@ import uuid
 
 from e2b import CommandExitException, TimeoutException
 from langchain_core.runnables.config import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 from prometheus_client import Counter
 
 from app.agents.tools.coding._artifacts import publish_artifact
@@ -156,26 +157,63 @@ def _resolve_cwd(cwd: str, session_id: str | None) -> tuple[str, str | None]:
     return cwd, None
 
 
-@tool
-@with_rate_limiting("bash_execution")
-@with_doc(BASH_TOOL)
-async def bash(
-    config: RunnableConfig,
-    command: Annotated[str, "Shell command to run inside /workspace"],
-    cwd: Annotated[
-        str,
-        "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
-    ] = "",
-    # Agent-facing tool parameter: the e2b server-side command deadline (see
-    # _run_foreground). A local asyncio.timeout context manager can't replace it
-    # — it would cancel our coroutine without killing the remote command.
-    timeout: Annotated[
-        int, "Seconds before kill"
-    ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
-    background: Annotated[bool, "Run detached; returns pid + log path"] = False,
-) -> str:
-    """Run a shell command in the user's persistent coding sandbox."""
+def build_bash_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> BaseTool:
+    """The bash tool, optionally carrying one agent's tool space into code mode.
 
+    Bash is the other door to the execute proxy: every command runs with a token
+    its scripts use to call GAIA tools, so that token has to carry the same
+    confinement the agent's own ``execute`` has — otherwise a subagent refused a
+    tool by the proxy runs it from a one-line script instead. ``scoped_tools`` is
+    the subagent's live tool dict, read at call time exactly as
+    ``build_execute_tool`` reads it; the executor passes nothing, because its
+    space is the whole registry.
+    """
+
+    @tool
+    @with_rate_limiting("bash_execution")
+    @with_doc(BASH_TOOL)
+    async def bash(
+        config: RunnableConfig,
+        command: Annotated[str, "Shell command to run inside /workspace"],
+        cwd: Annotated[
+            str,
+            "Working directory; defaults to your session root (holds artifacts/, scratch/, user-uploaded/)",
+        ] = "",
+        # Agent-facing tool parameter: the e2b server-side command deadline (see
+        # _run_foreground). A local asyncio.timeout context manager can't replace it
+        # — it would cancel our coroutine without killing the remote command.
+        timeout: Annotated[
+            int, "Seconds before kill"
+        ] = BASH_DEFAULT_TIMEOUT_SECONDS,  # NOSONAR python:S7483
+        background: Annotated[bool, "Run detached; returns pid + log path"] = False,
+    ) -> str:
+        """Run a shell command in the user's persistent coding sandbox."""
+        return await _run_bash(
+            config=config,
+            command=command,
+            cwd=cwd,
+            timeout=timeout,
+            background=background,
+            scoped_tools=scoped_tools,
+        )
+
+    return bash
+
+
+# The unscoped tool the global registry publishes — the executor's space is the
+# whole registry, so it needs no confinement.
+bash = build_bash_tool()
+
+
+async def _run_bash(
+    *,
+    config: RunnableConfig,
+    command: str,
+    cwd: str,
+    timeout: int,
+    background: bool,
+    scoped_tools: Mapping[str, BaseTool] | None,
+) -> str:
     log.set(tool={"name": "bash", "action": "execute"})
 
     if not command or not command.strip():
@@ -232,6 +270,7 @@ async def bash(
                     config=config,
                     sandbox_id=getattr(sbx, "sandbox_id", None),
                     command_timeout_seconds=BASH_MAX_TIMEOUT_SECONDS if background else timeout,
+                    scoped_tool_names=None if scoped_tools is None else sorted(scoped_tools),
                 )
             if background:
                 return await _run_background(sbx, run_id, command, cwd, session_id, execute_env)

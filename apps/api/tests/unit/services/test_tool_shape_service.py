@@ -92,8 +92,16 @@ class TestRecordObservedShape:
             "4155551234567",
             "a3f1c2d4-9b8e-4f01-aaaa-bbbbccccdddd",
             "x" * 70,
+            # A user-authored label. The denylist this replaced matched only
+            # emails, digit runs, UUIDs and overlong strings, so a Notion
+            # property or a Sheets tab name became a schema property in the
+            # tool's GLOBAL record — rendered back to every other user of that
+            # tool through get_tool_schema.
+            "Sarah Chen - comp review",
+            "Q3 spend / EMEA",
+            "客戶名單",
         ],
-        ids=["email", "digits", "uuid", "overlong"],
+        ids=["email", "digits", "uuid", "overlong", "person_label", "path_label", "non_ascii"],
     )
     async def test_a_value_looking_key_collapses_its_dict_to_a_map(self, leaky_key: str) -> None:
         # The wide-dict threshold alone would miss a small dict keyed by data;
@@ -104,6 +112,21 @@ class TestRecordObservedShape:
         (_, _, schema), _ = repo.record.await_args
         assert leaky_key not in str(schema)
         assert schema["properties"]["per_user"] == {"type": "object"}
+
+    @pytest.mark.parametrize(
+        "field_name",
+        ["message_id", "threadId", "content-type", "data.items", "$ref", "_internal"],
+    )
+    async def test_a_real_provider_field_name_still_becomes_a_property(
+        self, field_name: str
+    ) -> None:
+        """The allowlist must not collapse the shapes the feature exists to learn:
+        provider field names are identifier-shaped in every casing convention."""
+        repo = _repo()
+        with patch(REPO, repo):
+            await record_observed_shape("T", {"record": {field_name: "v"}}, scope=SCOPE)
+        (_, _, schema), _ = repo.record.await_args
+        assert field_name in schema["properties"]["record"]["properties"]
 
     async def test_an_oversized_schema_keeps_the_stored_one(self) -> None:
         repo = _repo()

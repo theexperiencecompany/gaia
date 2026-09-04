@@ -124,6 +124,12 @@ async def sandbox_execute(
         # Internal tools need graph runtime this route doesn't have, and
         # excluding them narrows what a leaked token can reach.
         integration_only=True,
+        # The minting agent's tool space (None for the executor). Without it a
+        # subagent whose `execute` refuses another integration's tool could run
+        # it from a sandbox script instead — same door, no confinement.
+        scoped_tool_names=(
+            None if claims.scoped_tool_names is None else set(claims.scoped_tool_names)
+        ),
     )
     _audit(claims, result.resolved_name, result.ok)
     log.set_ns("sandbox_execute", resolved_name=result.resolved_name, ok=result.ok)

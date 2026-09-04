@@ -949,21 +949,25 @@ def get_retrieve_tools_function(
             )
 
             # Bind valid tools regardless; add corrective guidance for subagent /
-            # out-of-scope names so the model takes the right path.
-            response = list(validated_tool_names) + list(proxied_names)
+            # out-of-scope names so the model takes the right path. Guidance is
+            # kept in its own list, not filtered back out of `response`: a
+            # name-vs-sentence filter re-emitted every proxied name as a bare
+            # line right under the block saying they are NOT callable by name.
+            guidance: list[str] = []
             if requested_subagents:
-                response.append(
+                guidance.append(
                     "Subagents are not bound with retrieve_tools. Call "
                     "handoff(subagent_id='<id>', task='...') directly, using the "
                     "part after 'subagent:'."
                 )
             if out_of_scope_tool_names:
-                response.append(
+                guidance.append(
                     "These tools are not available inside this subagent and cannot be "
                     f"bound here: {', '.join(out_of_scope_tool_names)}. They belong to the "
                     "main executor, not this subagent. Do not retry binding them; finish "
                     "your task here and let the executor handle them."
                 )
+            response = [*validated_tool_names, *proxied_names, *guidance]
 
             bind_lines: list[str] = []
             if validated_tool_names:
@@ -988,7 +992,7 @@ def get_retrieve_tools_function(
                     "Do not retry these names; run retrieve_tools(query=...) to find "
                     "what actually exists."
                 )
-            bind_lines.extend(line for line in response if line not in validated_tool_names)
+            bind_lines.extend(guidance)
 
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,

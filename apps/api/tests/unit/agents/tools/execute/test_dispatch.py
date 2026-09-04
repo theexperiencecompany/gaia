@@ -1,6 +1,7 @@
 """dispatch_tool — validation stands in for constrained decoding; analytics
 attribute the REAL tool. These are the proxy's two load-bearing behaviors."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from pydantic import BaseModel, Field
@@ -217,5 +218,198 @@ class TestIntegrationOnlySurface:
                 tool_name="create_todo",
                 data={"recipient": "x", "subject": "y"},
                 config=CONFIG,
+            )
+        assert result.ok is True
+
+
+@pytest.mark.unit
+class TestSubagentToolSpace:
+    """A subagent's tool space must bound the proxy, not just its bindings.
+
+    `execute` is in every subagent's tool set, and dispatch resolves names
+    globally — so without a scope the proxy ran any registered tool by name,
+    and the in-band refusal retrieve_tools returns ("They belong to the main
+    executor, not this subagent") was advice the model could simply route
+    around.
+    """
+
+    async def test_a_registered_tool_outside_the_space_is_refused(self) -> None:
+        tool = _tool(name="SLACK_SEND_MESSAGE")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(
+                    return_value=ResolvedTool(
+                        tool.name, tool, is_integration=True, in_registry=True
+                    )
+                ),
+            ),
+            patch(f"{MODULE}.capture_event") as capture,
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="SLACK_SEND_MESSAGE",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                scoped_tool_names={"GMAIL_SEND_EMAIL", "read"},
+            )
+        assert result.ok is False
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.OUT_OF_SCOPE
+        tool.ainvoke.assert_not_awaited()
+        capture.assert_called_once_with(
+            "u1",
+            AnalyticsEvents.EXECUTE_TOOL_FAILED,
+            {"tool_name": "SLACK_SEND_MESSAGE", "reason": "out_of_scope"},
+        )
+
+    async def test_a_tool_inside_the_space_still_runs(self) -> None:
+        tool = _tool()
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(
+                    return_value=ResolvedTool(
+                        tool.name, tool, is_integration=True, in_registry=True
+                    )
+                ),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.spawn_logged_task"),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+            )
+        assert result.ok is True
+
+    async def test_a_tool_outside_the_registry_is_not_scope_checked(self) -> None:
+        """MCP tools and unmaterialized catalog slugs belong to no tool space —
+        no space can list them, so scoping them out would refuse every one.
+        This is exactly what retrieve_tools already allows through."""
+        tool = _tool(name="notion_mcp_search")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.spawn_logged_task"),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="notion_mcp_search",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+                scoped_tool_names={"GMAIL_SEND_EMAIL"},
+            )
+        assert result.ok is True
+
+    async def test_the_executor_is_unscoped(self) -> None:
+        tool = _tool(name="SLACK_SEND_MESSAGE")
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(
+                    return_value=ResolvedTool(
+                        tool.name, tool, is_integration=True, in_registry=True
+                    )
+                ),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.spawn_logged_task"),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="SLACK_SEND_MESSAGE",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+            )
+        assert result.ok is True
+
+
+@pytest.mark.unit
+class TestDispatchOutcomeReporting:
+    async def test_an_infrastructure_failure_is_never_stamped_ok(self) -> None:
+        """`execute.outcome` is the migration's health metric. Stamping it
+        before the invoke reported every failed dispatch as a success."""
+        tool = _tool()
+        tool.ainvoke = AsyncMock(side_effect=ConnectionError("provider down"))
+        stamped: dict[str, object] = {}
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.log") as log,
+        ):
+            log.set_ns.side_effect = lambda _ns, **kw: stamped.update(kw)
+            with pytest.raises(ConnectionError):
+                await dispatch_tool(
+                    user_id="u1",
+                    tool_name="GMAIL_SEND_EMAIL",
+                    data={"recipient": "a@b.c", "subject": "hi"},
+                    config=CONFIG,
+                )
+        # The tool is named (an infra failure must say which one), the outcome is not.
+        assert stamped == {"tool": "GMAIL_SEND_EMAIL"}
+
+    async def test_a_hung_tool_is_bounded_and_reported_as_unknown_effect(self) -> None:
+        """The sandbox route had no bound of its own, so its client gave up
+        first and the script's retry re-applied a mutation still in flight."""
+        tool = _tool()
+
+        async def _never_returns(*_args: object, **_kwargs: object) -> None:
+            # Long enough that only the bound can end it, short enough that
+            # losing the bound fails this test in seconds rather than hanging
+            # until the suite-wide timeout.
+            await asyncio.sleep(5)
+
+        tool.ainvoke = AsyncMock(side_effect=_never_returns)
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=True)),
+            ),
+            patch(f"{MODULE}.capture_event") as capture,
+            patch(f"{MODULE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.01),
+        ):
+            result = await dispatch_tool(
+                user_id="u1",
+                tool_name="GMAIL_SEND_EMAIL",
+                data={"recipient": "a@b.c", "subject": "hi"},
+                config=CONFIG,
+            )
+        assert result.ok is False
+        assert result.error is not None
+        assert result.error.kind is DispatchErrorKind.TIMEOUT
+        # The model must not read this as "it did not happen".
+        assert "may or may not have completed" in result.error.hint
+        capture.assert_called_once_with(
+            "u1",
+            AnalyticsEvents.EXECUTE_TOOL_FAILED,
+            {"tool_name": "GMAIL_SEND_EMAIL", "reason": "timeout"},
+        )
+
+    async def test_an_exempt_tool_is_not_bounded(self) -> None:
+        """Long-running orchestration tools manage their own lifecycles — the
+        in-graph node exempts them, and a proxied call must not be tighter."""
+        tool = _tool(name="deep_research", schema=None)
+        with (
+            patch(
+                f"{MODULE}.resolve_tool",
+                new=AsyncMock(
+                    return_value=ResolvedTool("deep_research", tool, is_integration=False)
+                ),
+            ),
+            patch(f"{MODULE}.capture_event"),
+            patch(f"{MODULE}.TOOL_EXECUTION_TIMEOUT_SECONDS", 0.01),
+        ):
+            result = await dispatch_tool(
+                user_id="u1", tool_name="deep_research", data={}, config=CONFIG
             )
         assert result.ok is True

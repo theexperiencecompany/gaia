@@ -1,6 +1,7 @@
 """execute_client — the bash-driven code-mode env: seeded client, scoped token."""
 
 import json
+import re
 import types
 from unittest.mock import AsyncMock, patch
 
@@ -8,10 +9,13 @@ import pytest
 
 from app.constants.execute import (
     SANDBOX_CLIENT_DIR,
+    SANDBOX_EXECUTE_CLIENT_TIMEOUT_BUFFER_SECONDS,
     SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS,
 )
+from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS
 from app.services.sandbox import execute_client, execute_token
 from app.services.sandbox.execute_client import (
+    GAIA_SANDBOX_CLIENT_SOURCE,
     mint_execute_env,
     sandbox_execute_enabled,
     seed_execute_client,
@@ -59,6 +63,7 @@ class TestExecuteClient:
             config=CONFIG,
             sandbox_id="sbx-9",
             command_timeout_seconds=120,
+            scoped_tool_names=["GMAIL_SEND_EMAIL"],
         )
         assert env["GAIA_EXECUTE_URL"] == URL
         assert env["GAIA_SCHEMA_URL"] == "https://api.test/api/v1/sandbox/tool-schema"
@@ -68,6 +73,9 @@ class TestExecuteClient:
         assert claims.run_id == "run-abc"
         assert claims.stream_id == "s1"
         assert claims.sandbox_id == "sbx-9"
+        # The caller's tool space travels in the token — the route has no other
+        # way to confine a sandbox call the way the in-graph proxy confines one.
+        assert claims.scoped_tool_names == ["GMAIL_SEND_EMAIL"]
 
     def test_token_ttl_is_bounded_to_the_command_timeout(self) -> None:
         import time
@@ -78,6 +86,7 @@ class TestExecuteClient:
             config=CONFIG,
             sandbox_id=None,
             command_timeout_seconds=30,
+            scoped_tool_names=None,
         )
         claims = verify_execute_token(env["GAIA_EXECUTE_TOKEN"])
         remaining = claims.exp - int(time.time())
@@ -86,9 +95,11 @@ class TestExecuteClient:
 
 
 def _load_client(tmp_path, ttl: int = 900):
-    """The real client template, executed with an isolated tool-docs dir."""
-    source = execute_client._CLIENT_TEMPLATE.replace("__TOOL_DOCS_DIR__", str(tmp_path)).replace(
-        "__SCHEMA_CACHE_TTL_SECONDS__", str(ttl)
+    """The real client, rendered by production's own substitution, with an
+    isolated tool-docs dir. Rendering it here instead would silently stop
+    testing the shipped client the next time a placeholder is added."""
+    source = execute_client.render_sandbox_client_source(
+        tool_docs_dir=str(tmp_path), schema_cache_ttl_seconds=ttl
     )
     module = types.ModuleType("gaia_under_test")
     exec(source, module.__dict__)  # noqa: S102 -- executing our own template is the test subject
@@ -125,3 +136,24 @@ class TestSandboxSchemaLookup:
         gaia.schema("T")
         gaia.schema("T")
         assert len(calls) == 2
+
+
+@pytest.mark.unit
+class TestClientTimeoutOutlivesTheHost:
+    def test_the_client_waits_longer_than_the_host_bound(self, tmp_path) -> None:
+        """The host must always be the one that gives up.
+
+        The client used to wait 60s against a 120s host bound, so a slow
+        GMAIL_SEND_EMAIL raised socket.timeout inside the script AFTER the host
+        had already sent it — and the docs tell the model to fix `data` and
+        rerun, so the send happened twice. There is no idempotency key here.
+        """
+        gaia = _load_client(tmp_path)
+        assert gaia._REQUEST_TIMEOUT_SECONDS > TOOL_EXECUTION_TIMEOUT_SECONDS
+
+    def test_the_shipped_client_carries_the_same_bound(self) -> None:
+        """The seeded source is what actually runs in the sandbox — an
+        unsubstituted placeholder there is a NameError on the first tool call."""
+        expected = TOOL_EXECUTION_TIMEOUT_SECONDS + SANDBOX_EXECUTE_CLIENT_TIMEOUT_BUFFER_SECONDS
+        assert f"_REQUEST_TIMEOUT_SECONDS = {expected}" in GAIA_SANDBOX_CLIENT_SOURCE
+        assert re.search(r"__[A-Z_]+__", GAIA_SANDBOX_CLIENT_SOURCE) is None

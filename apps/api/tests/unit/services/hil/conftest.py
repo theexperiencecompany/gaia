@@ -8,12 +8,14 @@ any of those shapes breaks these tests instead of silently passing against a stu
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
+from app.agents.tools.execute.resolver import ResolvedTool
 from app.models.hil_models import HILApprovalRecord
 from app.services.hil.gate import decide_tool_call
 
@@ -30,6 +32,24 @@ def make_tool(
     return StructuredTool.from_function(
         func=lambda: None, name=name, description=description, metadata=metadata
     )
+
+
+def resolver_returning(*tools: BaseTool) -> AsyncMock:
+    """The resolver ``policy._real_tool`` reads a call's real tool through.
+
+    Stands in for ``execute.resolver.resolve_tool``, which reaches the registry,
+    the user's MCP client AND the Composio catalog. Tests must stub THIS, not
+    just the registry: an MCP tool is never in the registry, and resolving it
+    from there alone is what dropped its ``destructiveHint`` at the gate.
+    """
+
+    async def _resolve(_user_id: str, name: str) -> ResolvedTool | None:
+        for tool in tools:
+            if tool.name == name:
+                return ResolvedTool(name=name, tool=tool, is_integration=True)
+        return None
+
+    return AsyncMock(side_effect=_resolve)
 
 
 def make_request(

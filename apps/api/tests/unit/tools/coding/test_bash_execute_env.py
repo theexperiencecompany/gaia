@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.tools.coding.bash_tool import bash
+from app.agents.tools.coding.bash_tool import bash, build_bash_tool
 
 MODULE = "app.agents.tools.coding.bash_tool"
 CONFIG = {"configurable": {"user_id": "u1", "stream_id": "s1"}}
@@ -59,6 +59,34 @@ class TestBashExecuteEnv:
         assert mint_kwargs["sandbox_id"] == "sbx-9"
         # TTL rides the command's own timeout, not a fixed long window.
         assert mint_kwargs["command_timeout_seconds"] == 45
+
+    async def test_a_subagents_bash_carries_its_tool_space_into_the_token(self) -> None:
+        """Code mode is the proxy's other door. Without the space in the token the
+        route dispatched every call unconfined, so a subagent refused a tool by
+        `execute` reached it with one line of python instead."""
+        sbx = _sbx()
+        scoped = build_bash_tool({"GMAIL_SEND_EMAIL": MagicMock(), "bash": MagicMock()})
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}.sandbox_execute_enabled", return_value=True),
+            patch(f"{MODULE}.seed_execute_client", new=AsyncMock()),
+            patch(f"{MODULE}.mint_execute_env", return_value=EXECUTE_ENV) as mint,
+        ):
+            await scoped.ainvoke({"command": "python3 mine.py"}, config=CONFIG)
+        assert mint.call_args.kwargs["scoped_tool_names"] == ["GMAIL_SEND_EMAIL", "bash"]
+
+    async def test_the_executors_bash_is_unscoped(self) -> None:
+        """The executor's space IS the registry — confining it would refuse tools
+        it is entitled to run."""
+        sbx = _sbx()
+        with (
+            patch(f"{MODULE}.acquire_sandbox", new=_acquire(sbx)),
+            patch(f"{MODULE}.sandbox_execute_enabled", return_value=True),
+            patch(f"{MODULE}.seed_execute_client", new=AsyncMock()),
+            patch(f"{MODULE}.mint_execute_env", return_value=EXECUTE_ENV) as mint,
+        ):
+            await bash.ainvoke({"command": "echo hi"}, config=CONFIG)
+        assert mint.call_args.kwargs["scoped_tool_names"] is None
 
     async def test_unconfigured_run_injects_nothing(self) -> None:
         sbx = _sbx()

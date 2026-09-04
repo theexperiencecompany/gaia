@@ -24,7 +24,6 @@ from app.agents.tools.core.retrieval import (
 )
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
-    build_child_tool_runtime_config,
     build_create_agent_tool_kwargs,
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
@@ -340,12 +339,6 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert "read" in parent_dynamic.initial_tool_names
     assert "auto1" in parent_dynamic.initial_tool_names
 
-    child_dynamic = build_child_tool_runtime_config(
-        parent_dynamic, use_direct_tools=False, disable_retrieve_tools=False
-    )
-    assert child_dynamic.enable_retrieve_tools is True
-    assert child_dynamic.initial_tool_names == ["read", "bash", "finish_task"]
-
     parent_direct = build_provider_parent_tool_runtime_config(
         provider_tool_names=["p1", "p2"],
         todo_tool_names=["t1"],
@@ -353,12 +346,9 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
         use_direct_tools=True,
         disable_retrieve_tools=True,
     )
-    child_direct = build_child_tool_runtime_config(
-        parent_direct, use_direct_tools=True, disable_retrieve_tools=True
-    )
-    assert child_direct.enable_retrieve_tools is False
-    assert "p1" in child_direct.initial_tool_names
-    assert "read" in child_direct.initial_tool_names
+    assert parent_direct.enable_retrieve_tools is False
+    assert "p1" in parent_direct.initial_tool_names
+    assert "read" in parent_direct.initial_tool_names
 
     executor_child = build_executor_child_tool_runtime_config()
     assert executor_child.enable_retrieve_tools is True

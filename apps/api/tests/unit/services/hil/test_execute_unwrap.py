@@ -18,8 +18,15 @@ from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.models.hil_models import HILPreferences
 from app.services.hil.policy import has_pausing_sibling, resolve_policy
 from app.services.hil.utils import unpack_tool_call
+from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
-from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
+from .conftest import (
+    USER_ID,
+    ai_message_with_calls,
+    make_request,
+    make_tool,
+    resolver_returning,
+)
 
 MODULE = "app.services.hil.policy"
 
@@ -103,9 +110,11 @@ class TestPolicyUnwrapsExecute:
 
     async def test_destructive_tool_through_execute_classifies_the_real_tool(self) -> None:
         request = execute_request("GMAIL_DELETE_EMAIL", {"message_id": "m1"})
+        real = make_tool(name="GMAIL_DELETE_EMAIL", description="Deletes an email permanently.")
         registry = _registry_with_tool("GMAIL_DELETE_EMAIL", "Deletes an email permanently.")
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
             patch(
                 f"{MODULE}.get_hil_preferences",
                 new=AsyncMock(return_value=HILPreferences(mode="always_ask")),
@@ -120,11 +129,44 @@ class TestPolicyUnwrapsExecute:
         assert name_arg == "GMAIL_DELETE_EMAIL"
         assert description_arg == "Deletes an email permanently."
 
+    async def test_mcp_destructive_hint_survives_the_proxy(self) -> None:
+        """An MCP tool run through execute keeps the hint its own gate would use.
+
+        MCP tools never enter the global registry, so resolving the unwrapped
+        name from the registry alone returned nothing: the gate classified from
+        a bare name with an empty description, and the LLM's guess is persisted
+        AND written to the registry's destructive flag — one wrong "safe" verdict
+        un-gates the tool for good.
+        """
+        request = execute_request("mcp_delete_workspace", {"id": "w1"})
+        mcp_tool = make_tool(
+            name="mcp_delete_workspace",
+            description="Delete a workspace.",
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+        )
+        with (
+            patch(
+                f"{MODULE}.get_tool_registry",
+                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda _name: None)),
+            ),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(mcp_tool)),
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=HILPreferences(mode="always_ask")),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)) as classify,
+        ):
+            assert await resolve_policy(request, USER_ID, "mcp_delete_workspace") == "ask"
+        assert classify.await_args.args[1] == "Delete a workspace."
+        assert classify.await_args.kwargs["destructive_hint"] is True
+
     async def test_readonly_tool_through_execute_is_allowed(self) -> None:
         request = execute_request("GMAIL_FETCH_EMAILS", {"max_results": 5})
+        real = make_tool(name="GMAIL_FETCH_EMAILS", description="Fetch emails.")
         registry = _registry_with_tool("GMAIL_FETCH_EMAILS", "Fetch emails.")
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(real)),
             patch(
                 f"{MODULE}.get_hil_preferences",
                 new=AsyncMock(return_value=HILPreferences(mode="always_ask")),

@@ -5,12 +5,15 @@ The LLM-facing ``execute`` tool and the sandbox code-mode route both call
 validated and run, so classification, analytics and error shapes cannot drift
 between the two surfaces.
 
-Predictable failures (unknown tool, args that fail the schema) return a
-structured error the model can act on. Infrastructure failures propagate to the
-caller's error handling (the ToolNode's error formatting, the route's 500) —
-they are not the model's mistake to correct.
+Predictable failures (unknown tool, out-of-scope tool, args that fail the
+schema, a tool that outruns the execution bound) return a structured error the
+model can act on. Other infrastructure failures propagate to the caller's error
+handling (the ToolNode's error formatting, the route's 500) — they are not the
+model's mistake to correct.
 """
 
+import asyncio
+from collections.abc import Container
 from enum import StrEnum
 import json
 from typing import Any
@@ -21,6 +24,7 @@ from prometheus_client import Counter
 from pydantic import BaseModel, ValidationError
 
 from app.agents.tools.execute.resolver import resolve_tool
+from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.storage.metrics import _register_once
@@ -48,6 +52,12 @@ class DispatchErrorKind(StrEnum):
     # An internal tool reached a surface (the sandbox route) that only runs
     # integration tools — internal tools need graph runtime and stay in-graph.
     INTERNAL_TOOL = "internal_tool"
+    # A registered tool outside the calling agent's tool space (a subagent
+    # reaching for another integration's tools).
+    OUT_OF_SCOPE = "out_of_scope"
+    # The tool did not return within the host's bound. Its own outcome is
+    # unknown, so this is the one failure a retry can duplicate.
+    TIMEOUT = "timeout"
 
 
 class DispatchError(BaseModel):
@@ -74,10 +84,25 @@ async def dispatch_tool(
     data: dict[str, Any],
     config: RunnableConfig,
     integration_only: bool = False,
+    scoped_tool_names: Container[str] | None = None,
 ) -> ToolExecutionResult:
-    """Run one proxied tool. ``integration_only`` is the sandbox route's scope:
-    internal tools need graph runtime the route doesn't have, and excluding
-    them narrows what a leaked token can reach."""
+    """Run one proxied tool.
+
+    ``integration_only`` is the sandbox route's scope: internal tools need graph
+    runtime the route doesn't have, and excluding them narrows what a leaked
+    token can reach.
+
+    ``scoped_tool_names`` is a subagent's own tool set. Without it the caller's
+    space is the whole registry (the executor). With it, a REGISTERED tool
+    outside the set is refused — exactly the boundary ``retrieve_tools`` applies
+    to binding, and both of the proxy's surfaces enforce it (the sandbox route
+    reads the space from the run's token).
+
+    Registered is the whole claim: MCP tools and unmaterialized catalog slugs
+    belong to no space (``ResolvedTool.in_registry``), so no space excludes them
+    — the same hole ``retrieve_tools`` has, and closing it means defining a
+    subagent's space by toolkit rather than by name.
+    """
     resolved = await resolve_tool(user_id, tool_name)
     if resolved is None:
         log.warning(f"{LogTag.TOOL} execute: unknown tool", tool_name=tool_name)
@@ -113,6 +138,28 @@ async def dispatch_tool(
             ),
         )
 
+    if (
+        scoped_tool_names is not None
+        and resolved.in_registry
+        and resolved_name not in scoped_tool_names
+    ):
+        log.warning(
+            f"{LogTag.TOOL} execute: tool refused outside the calling agent's tool space",
+            tool_name=resolved_name,
+        )
+        return _failure(
+            user_id,
+            resolved_name,
+            DispatchError(
+                kind=DispatchErrorKind.OUT_OF_SCOPE,
+                detail=f"'{resolved_name}' is not available inside this subagent.",
+                hint=(
+                    "It belongs to the main executor, not this subagent. Do not retry it; "
+                    "finish your task here and let the executor handle it."
+                ),
+            ),
+        )
+
     validated = _validate_args(tool, data)
     if isinstance(validated, DispatchError):
         log.warning(
@@ -121,8 +168,42 @@ async def dispatch_tool(
         )
         return _failure(user_id, resolved_name, validated)
 
-    log.set_ns("execute", tool=resolved_name, outcome="ok")
-    output = await tool.ainvoke(validated, config=config)
+    # Named before the run so an infrastructure failure — which propagates from
+    # here — still says WHICH tool it was. The outcome is stamped only once the
+    # invoke has actually returned: stamping "ok" up front made this field, the
+    # health metric of the migration, report success for every dispatch that
+    # raised.
+    log.set_ns("execute", tool=resolved_name)
+    # Long-running orchestration tools manage their own lifecycles — the same
+    # exemption the in-graph node applies, read from the same constant so a
+    # proxied call is never bounded more tightly than a direct one.
+    bound = None if resolved_name in TOOL_TIMEOUT_EXEMPT_TOOLS else TOOL_EXECUTION_TIMEOUT_SECONDS
+    try:
+        async with asyncio.timeout(bound):
+            output = await tool.ainvoke(validated, config=config)
+    except TimeoutError:
+        # The only failure whose effect is unknown: the provider may have
+        # applied it after we stopped waiting. Bounded HERE so both surfaces
+        # inherit it and the model gets THIS structured error: the in-graph
+        # node's own bound is a backstop set strictly above this one (see
+        # TOOL_TIMEOUT_BACKSTOP_BUFFER_SECONDS), and the sandbox route has none
+        # of its own — its client would otherwise give up first and retry a
+        # mutation that was still in flight.
+        return _failure(
+            user_id,
+            resolved_name,
+            DispatchError(
+                kind=DispatchErrorKind.TIMEOUT,
+                detail=(
+                    f"'{resolved_name}' did not return within {TOOL_EXECUTION_TIMEOUT_SECONDS}s."
+                ),
+                hint=(
+                    "The operation may or may not have completed on the provider side. "
+                    "Verify its effect before retrying — an identical retry can duplicate it."
+                ),
+            ),
+        )
+    log.set_ns("execute", outcome="ok")
 
     if resolved.is_integration:
         # Observed-shape learning rides every real response; fire-and-forget so

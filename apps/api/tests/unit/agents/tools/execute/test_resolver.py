@@ -1,5 +1,6 @@
 """resolve_tool — the three-source resolution order and its miss behavior."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,8 +36,10 @@ def _registry_with(
 @pytest.fixture(autouse=True)
 def _fresh_cache():
     resolver._materialized_composio_tools.clear()
+    resolver._unknown_composio_slugs.clear()
     yield
     resolver._materialized_composio_tools.clear()
+    resolver._unknown_composio_slugs.clear()
 
 
 @pytest.mark.unit
@@ -52,7 +55,9 @@ class TestResolveTool:
             patch(f"{MODULE}.get_composio_service") as composio,
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL_SEND_EMAIL")
-        assert resolved == ResolvedTool("GMAIL_SEND_EMAIL", tool, is_integration=True)
+        assert resolved == ResolvedTool(
+            "GMAIL_SEND_EMAIL", tool, is_integration=True, in_registry=True
+        )
         mcp.assert_not_awaited()
         composio.assert_not_called()
 
@@ -63,7 +68,9 @@ class TestResolveTool:
             new=AsyncMock(return_value=_registry_with({"GMAIL_SEND_EMAIL": tool})),
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL-SEND-EMAIL")
-        assert resolved == ResolvedTool("GMAIL_SEND_EMAIL", tool, is_integration=True)
+        assert resolved == ResolvedTool(
+            "GMAIL_SEND_EMAIL", tool, is_integration=True, in_registry=True
+        )
 
     async def test_mcp_fallback_when_registry_misses(self) -> None:
         mcp_tool = MagicMock()
@@ -101,6 +108,47 @@ class TestResolveTool:
         assert first == ResolvedTool("ASANA_CREATE_TASK", catalog_tool, is_integration=True)
         assert second == ResolvedTool("ASANA_CREATE_TASK", catalog_tool, is_integration=True)
         service.get_tools_by_name.assert_awaited_once()
+
+    async def test_a_catalog_miss_is_remembered_instead_of_re_asked(self) -> None:
+        """Resolution sits on the tool-call critical path — the HIL gate resolves a
+        name twice before the call may run, plus once per sibling, and the
+        approvals node replays. A hallucinated ALLCAPS name was a fresh Composio
+        round trip every one of those times."""
+        client = MagicMock()
+        client.find_integration.return_value = None
+        service = MagicMock()
+        service.get_tools_by_name = AsyncMock(return_value=[])
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
+            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch(f"{MODULE}.get_composio_service", return_value=service),
+        ):
+            first = await resolver.resolve_tool("u1", "GMIAL_SNED_EMAIL")
+            second = await resolver.resolve_tool("u1", "GMIAL_SNED_EMAIL")
+        assert first is None
+        assert second is None
+        service.get_tools_by_name.assert_awaited_once()
+
+    async def test_a_hung_catalog_lookup_gives_up_instead_of_stalling_the_turn(self) -> None:
+        """A degraded Composio must fail this one resolution, not hold the gate —
+        and therefore the whole turn — open for as long as it takes to answer."""
+        client = MagicMock()
+        client.find_integration.return_value = None
+        service = MagicMock()
+
+        async def never_returns(_names: list[str]) -> list[MagicMock]:
+            await asyncio.sleep(5)
+            raise AssertionError("the lookup was left unbounded")
+
+        service.get_tools_by_name = never_returns
+        with (
+            patch(f"{MODULE}.COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS", 0.01),
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
+            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch(f"{MODULE}.get_composio_service", return_value=service),
+            pytest.raises(TimeoutError),
+        ):
+            await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")
 
     async def test_non_catalog_shaped_unknown_never_hits_composio(self) -> None:
         client = MagicMock()

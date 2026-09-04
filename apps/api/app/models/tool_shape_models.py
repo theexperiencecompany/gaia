@@ -1,8 +1,10 @@
 """Observed tool output shapes — structure learned from real dispatches.
 
-Global (tools are user-agnostic); one document per tool name. ``output_schema``
-is a genson-inferred JSON schema of keys and types only — values are never
-stored, so nothing here can carry PII.
+Scoped per ``ResolvedTool.shape_scope``; one document per (scope, tool_name).
+``output_schema`` is a genson-inferred JSON schema of keys and types only — no
+value is ever stored. Keys are filtered to identifier-shaped names so a dict
+keyed by data contributes no property names (``tool_shape_service._sample``),
+but that filter is a heuristic: a global-scope record is not a privacy boundary.
 """
 
 from datetime import datetime

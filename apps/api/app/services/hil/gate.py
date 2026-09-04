@@ -340,7 +340,9 @@ async def _judge(
             tool_name=call.name,
             # The REAL tool's description — for an execute-proxied call the
             # request carries the proxy's object, which would mislead the judge.
-            description=tool_description(await gated_tool_object(request, call.name)),
+            description=tool_description(
+                await gated_tool_object(request, context.user_id, call.name)
+            ),
             args=call.args,
             summary=summary,
         ),

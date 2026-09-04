@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from pydantic import ValidationError
 import pytest
 
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+
 
 @pytest.fixture(autouse=True)
 def _reset_settings_cache():
@@ -193,6 +195,35 @@ def test_development_allows_http_dodo_base_url(monkeypatch):
     settings_obj = get_settings()
 
     assert settings_obj.DODO_PAYMENTS_BASE_URL == "http://localhost:8899"
+
+
+def test_short_sandbox_execute_secret_refuses_to_boot():
+    """A sandbox execute token names whose tools the host runs, and nothing else
+    binds that claim — a guessable signing secret means running any user's tools.
+    The 32-char minimum was documented in three places and enforced in none, so a
+    deployment could set a short one and start clean."""
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET="dev")
+
+
+def test_a_long_enough_sandbox_execute_secret_is_accepted():
+    secret = "x" * SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
+    assert (
+        secret == _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET=secret).SANDBOX_EXECUTE_TOKEN_SECRET
+    )
+
+
+def test_unset_sandbox_execute_secret_stays_valid():
+    """Both code-mode vars unset means code mode ships dark — not a misconfig."""
+    assert _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET=None).SANDBOX_EXECUTE_TOKEN_SECRET is None
+
+
+def test_a_blank_sandbox_execute_secret_reads_as_unset():
+    """`KEY=` with nothing after it is how a templated compose/Infisical/k8s env
+    renders an unfilled optional secret — the same shape .env.example uses for
+    every other one. Rejecting it took the whole API down at import time over one
+    blank line, instead of leaving code mode off."""
+    assert _prod_settings(SANDBOX_EXECUTE_TOKEN_SECRET="").SANDBOX_EXECUTE_TOKEN_SECRET is None
 
 
 def test_init_openrouter_llm_pins_context_window_profile(monkeypatch):

@@ -19,7 +19,13 @@ from app.models.hil_models import HILPreferences
 from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
-from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
+from .conftest import (
+    USER_ID,
+    ai_message_with_calls,
+    make_request,
+    make_tool,
+    resolver_returning,
+)
 
 MODULE = "app.services.hil.policy"
 
@@ -275,6 +281,44 @@ class TestHasPausingSibling:
         with (
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
+
+    async def test_an_mcp_sibling_absent_from_the_registry_still_carries_its_hint(self) -> None:
+        # The registry-only resolution this replaced could not see an MCP tool at
+        # all (they never enter the global registry), so the sibling classified
+        # from a bare name with an empty description — the exact double-run the
+        # test above guards against, reached by a path it could not cover.
+        sibling = make_tool(
+            name="notion_mcp_delete_page",
+            description="Remove a page.",
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+        )
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "notion_mcp_delete_page", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda _name: None,
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(f"{MODULE}.resolve_tool", new=resolver_returning(sibling)),
             patch(
                 "app.services.hil.classification.get_tool_registry",
                 new=AsyncMock(return_value=registry),

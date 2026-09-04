@@ -24,10 +24,12 @@ from langchain_core.runnables import RunnableConfig
 from app.config.settings import settings
 from app.constants.execute import (
     SANDBOX_CLIENT_DIR,
+    SANDBOX_EXECUTE_CLIENT_TIMEOUT_BUFFER_SECONDS,
     SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS,
     SANDBOX_SCHEMA_CACHE_TTL_SECONDS,
     SANDBOX_TOOL_DOCS_DIR,
 )
+from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS
 from app.models.agent_models import agent_configurable
 from app.services.sandbox.execute_token import mint_execute_token
 
@@ -43,6 +45,10 @@ import urllib.request
 
 _TOOL_DOCS_DIR = "__TOOL_DOCS_DIR__"
 _SCHEMA_CACHE_TTL_SECONDS = __SCHEMA_CACHE_TTL_SECONDS__
+# Above the host's own bound, so the host is always the one that gives up and
+# says whether the call landed. Giving up first would abandon a mutation still
+# in flight, and the retry the docs prescribe would then duplicate it.
+_REQUEST_TIMEOUT_SECONDS = __REQUEST_TIMEOUT_SECONDS__
 
 
 class GaiaToolError(RuntimeError):
@@ -58,7 +64,7 @@ def _post(url_env: str, payload: dict) -> dict:
             "Authorization": "Bearer " + os.environ["GAIA_EXECUTE_TOKEN"],
         },
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=_REQUEST_TIMEOUT_SECONDS) as response:
         return json.loads(response.read().decode())
 
 
@@ -90,9 +96,29 @@ def schema(tool_name: str) -> dict:
     return body
 '''
 
-GAIA_SANDBOX_CLIENT_SOURCE = _CLIENT_TEMPLATE.replace(
-    "__TOOL_DOCS_DIR__", SANDBOX_TOOL_DOCS_DIR
-).replace("__SCHEMA_CACHE_TTL_SECONDS__", str(SANDBOX_SCHEMA_CACHE_TTL_SECONDS))
+
+def render_sandbox_client_source(*, tool_docs_dir: str, schema_cache_ttl_seconds: int) -> str:
+    """The client source with its host-side constants substituted in.
+
+    The ONE place the placeholders are filled. A second copy of this list (the
+    test's, which built its own source to point the cache at a tmp dir) went
+    stale the moment a placeholder was added, and the client it exercised was
+    no longer the one shipped.
+    """
+    return (
+        _CLIENT_TEMPLATE.replace("__TOOL_DOCS_DIR__", tool_docs_dir)
+        .replace("__SCHEMA_CACHE_TTL_SECONDS__", str(schema_cache_ttl_seconds))
+        .replace(
+            "__REQUEST_TIMEOUT_SECONDS__",
+            str(TOOL_EXECUTION_TIMEOUT_SECONDS + SANDBOX_EXECUTE_CLIENT_TIMEOUT_BUFFER_SECONDS),
+        )
+    )
+
+
+GAIA_SANDBOX_CLIENT_SOURCE = render_sandbox_client_source(
+    tool_docs_dir=SANDBOX_TOOL_DOCS_DIR,
+    schema_cache_ttl_seconds=SANDBOX_SCHEMA_CACHE_TTL_SECONDS,
+)
 
 
 def sandbox_execute_enabled() -> bool:
@@ -111,17 +137,24 @@ def mint_execute_env(
     config: RunnableConfig,
     sandbox_id: str | None,
     command_timeout_seconds: int,
+    scoped_tool_names: list[str] | None,
 ) -> dict[str, str]:
     """The env one bash command runs with so its scripts can call GAIA tools.
 
     ``run_id`` is the bash run's own id — the route's budget and audit trail
     correlate to the exact command that made the calls.
+
+    ``scoped_tool_names`` is the calling agent's tool space (``None`` for the
+    executor, whose space is the registry). It rides in the token because the
+    route is the only other place a proxied tool runs, and a subagent's
+    confinement has to hold there too.
     """
     token = mint_execute_token(
         user_id,
         run_id,
         stream_id=agent_configurable(config).get("stream_id"),
         sandbox_id=sandbox_id,
+        scoped_tool_names=scoped_tool_names,
         ttl_seconds=command_timeout_seconds + SANDBOX_EXECUTE_TOKEN_TTL_BUFFER_SECONDS,
     )
     execute_url = str(settings.SANDBOX_EXECUTE_CALLBACK_URL)

@@ -15,6 +15,7 @@ import hmac
 from pydantic import BaseModel, ValidationError
 
 from app.config.settings import settings
+from app.constants.execute import SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS
 from app.utils.errors import AppError
 
 
@@ -25,6 +26,11 @@ class SandboxExecuteClaims(BaseModel):
     # Which sandbox instance the token was minted for — audit correlation; the
     # route cannot verify network origin, so this is a record, not a check.
     sandbox_id: str | None = None
+    # The minting agent's tool space, so the route confines a call from sandbox
+    # code exactly as the in-graph proxy confines a direct one — otherwise a
+    # subagent refused a tool by ``execute`` could reach it in one line of code
+    # mode. ``None`` is the executor's space: the whole registry.
+    scoped_tool_names: list[str] | None = None
     exp: int
 
 
@@ -34,7 +40,10 @@ def _secret() -> bytes:
         raise AppError(
             message="Sandbox execute tokens are not configured",
             why="SANDBOX_EXECUTE_TOKEN_SECRET is unset",
-            fix="Set SANDBOX_EXECUTE_TOKEN_SECRET (min 32 chars) to enable code mode",
+            fix=(
+                "Set SANDBOX_EXECUTE_TOKEN_SECRET (min "
+                f"{SANDBOX_EXECUTE_TOKEN_SECRET_MIN_CHARS} chars) to enable code mode"
+            ),
             status_code=503,
         )
     return secret.encode()
@@ -50,6 +59,7 @@ def mint_execute_token(
     *,
     stream_id: str | None = None,
     sandbox_id: str | None = None,
+    scoped_tool_names: list[str] | None,
     ttl_seconds: int,
 ) -> str:
     claims = SandboxExecuteClaims(
@@ -57,6 +67,7 @@ def mint_execute_token(
         run_id=run_id,
         stream_id=stream_id,
         sandbox_id=sandbox_id,
+        scoped_tool_names=scoped_tool_names,
         exp=int(datetime.now(UTC).timestamp()) + ttl_seconds,
     )
     payload = base64.urlsafe_b64encode(claims.model_dump_json().encode()).decode()

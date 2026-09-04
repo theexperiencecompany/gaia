@@ -75,6 +75,26 @@ class TestSchemaModeCutover:
         assert "recipient_email" in text
         assert "execute(" in text
         assert "NOT bound" in text
+        # The proxied name must not ALSO come back as a bare line. It used to:
+        # bind_lines echoed every `response` entry that was not a bound tool,
+        # so the block ending in "do NOT call them by name" was followed by a
+        # second, unlabelled list that reads exactly like a bound-tool list.
+        assert "\nGMAIL_SEND_EMAIL" not in text
+        assert text.rstrip().splitlines()[-1] != "GMAIL_SEND_EMAIL"
+
+    async def test_out_of_scope_guidance_still_reaches_the_model(self) -> None:
+        """The filter the line above removed was also what carried the subagent
+        and out-of-scope sentences into the rendered text."""
+        fn = get_retrieve_tools_function(bindable_tool_names={"read"})
+        with (
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry())),
+            patch(f"{MODULE}._user_mcp_tool_names", new=AsyncMock(return_value=set())),
+            patch(f"{MODULE}.resolve_tool", new=AsyncMock(return_value=None)),
+        ):
+            result = await fn(
+                store=MagicMock(), config=CONFIG, exact_tool_names=["GMAIL_SEND_EMAIL"]
+            )
+        assert "belong to the main executor" in result["response_text"]
 
     async def test_internal_tool_still_binds(self) -> None:
         result = await _call(["read"], None)
