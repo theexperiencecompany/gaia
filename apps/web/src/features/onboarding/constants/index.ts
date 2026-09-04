@@ -82,9 +82,10 @@ export const questions: Question[] = [
   {
     id: "1",
     lines: () => [
-      "Hi, GAIA here.",
-      "Anything you'd hand to a great assistant: email, meetings, todos, research, the same chores every day. I do it in the background and text you when something actually needs you.",
-      "So, what's the job?",
+      "Hey, I'm GAIA. Nice to meet you.",
+      "Think about everything you did yesterday. Email, calendar, meetings, that's the obvious part. Then the research, the chasing, the spreadsheet, the booking, the thing you do every week and hate. All of it, done. Not by you.",
+      "Most people get at least a workday back every week.",
+      "Two quick questions and I'll take it from here. So, what do you do?",
     ],
     fieldName: FIELD_NAMES.PROFESSION,
   },
