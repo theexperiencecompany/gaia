@@ -344,6 +344,7 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"apps/api/app/agents/tools/todo_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity (same as tracked_todo_tools.py below)
 "apps/api/app/agents/tools/tracked_todo_tools.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity; PLR0911/0912 stay enforced (update_tracked_todo was refactored to satisfy them)
 "apps/api/app/db/repositories/todos.py" = ["PLR0912"]  # _list_filter predates this change; the triggers feature only adds subscription finders to this file
 "apps/api/app/services/outbound_delivery.py" = ["PLR0913"]  # publish_outbound_file predates this change; the reminder/proactive-delivery feature only adds channel-targeted delivery to publish_outbound_message here
@@ -703,6 +704,11 @@ ignore-nested-functions = true
 ignore-nested-classes = true
 fail-under = 80
 exclude = [
+  # Tool docstrings are applied at import time by @with_doc from
+  # app/templates/docstrings/, so the source has none for interrogate to see.
+  # Basename form on purpose: scripts/ci/changes.sh only honours segment or
+  # basename patterns when it scopes a PR scan.
+  "**/todo_tool.py",
   "**/tests",
   "**/tests/**",
   "**/conftest.py",

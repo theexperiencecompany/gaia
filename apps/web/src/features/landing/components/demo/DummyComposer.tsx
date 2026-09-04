@@ -9,9 +9,9 @@ import {
   PlusSignIcon,
   ToolsIcon,
 } from "@icons";
+import { twMerge } from "cn";
 import type React from "react";
 import { useRef, useState } from "react";
-import { twMerge } from "tailwind-merge";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,

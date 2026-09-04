@@ -4,6 +4,9 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ValidationError
+import pytest
+
 from app.models.todo_models import Priority, TodoLabelCount, TodoStats
 
 # ---------------------------------------------------------------------------
@@ -1371,3 +1374,40 @@ class TestGetTodosSummary:
 
         assert "Error getting todos summary" in result["error"]
         assert result["summary"] is None
+
+
+# ---------------------------------------------------------------------------
+# The priority argument is a closed set; the tool schema must say so.
+# ---------------------------------------------------------------------------
+# Prod, Sep 3 2026: `[TOOL] Error creating todo: 'normal' is not a valid
+# Priority`. The parameter was typed `str`, so the model only ever saw the
+# allowed values as prose in a description and guessed a synonym. With the
+# enum in the schema the API refuses the call before the tool body runs.
+
+PRIORITY_TOOL_NAMES = ["create_todo", "list_todos", "update_todo", "semantic_search_todos"]
+
+
+class TestPriorityIsAnEnumInTheToolSchema:
+    @pytest.mark.regression
+    @pytest.mark.parametrize("tool_name", PRIORITY_TOOL_NAMES)
+    def test_schema_enumerates_the_allowed_values(self, tool_name):
+        from app.agents.tools import todo_tool
+
+        schema = getattr(todo_tool, tool_name).tool_call_schema.model_json_schema()
+        enum = schema.get("$defs", {}).get("Priority", {}).get("enum")
+        assert enum == [p.value for p in Priority], schema["properties"]["priority"]
+
+    @pytest.mark.regression
+    async def test_unknown_priority_never_reaches_the_service(self):
+        from app.agents.tools.todo_tool import create_todo
+
+        with (
+            patch(f"{MODULE}.get_stream_writer"),
+            patch(f"{MODULE}.create_todo_service", new=AsyncMock()) as svc,
+            patch(f"{MODULE}.get_user_id_from_config", return_value="u1"),
+        ):
+            with pytest.raises(ValidationError):
+                await create_todo.ainvoke(
+                    {"title": "x", "priority": "normal"}, config=_make_config()
+                )
+        svc.assert_not_awaited()
