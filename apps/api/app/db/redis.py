@@ -169,6 +169,10 @@ class AsyncRedisCommands(Protocol):
         """EXISTS — count of the named keys present."""
         ...
 
+    async def rename(self, src: str, dst: str) -> bool:
+        """RENAME — atomically move a key; raises ResponseError if src is absent."""
+        ...
+
     async def expire(self, name: str, time: int) -> bool:
         """Set a TTL in seconds on an existing key."""
         ...

@@ -21,7 +21,8 @@ from langchain_core.messages import HumanMessage
 import pytest
 
 from app.agents.core.background import executor_channel as channel
-from app.agents.core.background.executor_channel import INBOX_ENTRY_ID, ExecutorInbox
+from app.agents.core.background.executor_channel import ExecutorInbox
+from app.constants.executor import INBOX_ENTRY_ID
 from app.constants.general import EXECUTOR_THREAD_PREFIX
 from tests.e2e._harness.graph_run import AGENT_NODE, call, executor_graph, scripted_model_of
 

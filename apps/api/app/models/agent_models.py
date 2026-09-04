@@ -8,6 +8,8 @@ from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 
+from app.constants.agents import AgentTag
+
 #: One entry of an agent's middleware stack.
 #:
 #: ``AgentMiddleware``'s ``StateT`` is erased here because a stack is genuinely
@@ -271,3 +273,27 @@ class SilentRunResult:
 
     message: str
     tool_data: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class InboxEntry:
+    """One thing the executor has not been told yet.
+
+    ``tag`` decides how it reads to the model: ordinary work is the user
+    speaking, an interruption is the system reporting that a task was stopped.
+    """
+
+    id: str
+    text: str
+    tag: AgentTag = AgentTag.USER_INTERJECTION
+
+
+@dataclass(frozen=True, slots=True)
+class InboxDrain:
+    """What a single drain pass decided to do."""
+
+    inject: list[InboxEntry]
+    retire: list[InboxEntry]
+
+    def __bool__(self) -> bool:
+        return bool(self.inject or self.retire)

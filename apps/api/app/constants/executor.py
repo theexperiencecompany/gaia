@@ -65,3 +65,17 @@ CONFIGURABLE_OWNED_KEYS: frozenset[str] = frozenset(AgentConfigurable.__annotati
 # to the next: hil_resume_replay means "this exact call is a replay", so carrying
 # it would make a fresh run probe its subagent threads for interrupts it cannot have.
 CONFIGURABLE_RUN_SCOPED_KEYS: frozenset[str] = frozenset({HIL_RESUME_CONFIG_KEY})
+
+# Stamped onto an injected inbox message so a later drain pass recognises it as
+# already committed to the thread. This is the whole basis of the drain's
+# idempotency: the thread itself is the record of what has been delivered, so no
+# cursor has to be kept in sync with it.
+INBOX_ENTRY_ID = "inbox_entry_id"
+
+# What a stopped run tells the run that follows it. Carries no instruction of its
+# own, which is why it never counts as work (see ``ExecutorInbox.announce_interruption``).
+INTERRUPTION_NOTICE = (
+    "The task you were working on was INTERRUPTED by the user. Do not "
+    "resume it, retry it, or finish what it left half-done unless the "
+    "user asks for it again."
+)

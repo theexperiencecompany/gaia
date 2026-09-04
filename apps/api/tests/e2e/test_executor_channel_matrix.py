@@ -31,15 +31,14 @@ import pytest
 
 from app.agents.core.background import executor_channel as channel
 from app.agents.core.background.executor_channel import (
-    INBOX_ENTRY_ID,
     ExecutorInbox,
-    InboxDrain,
-    InboxEntry,
     as_interjection,
     decide_drain,
 )
 from app.constants.agents import AgentTag
+from app.constants.executor import INBOX_ENTRY_ID
 from app.constants.general import EXECUTOR_THREAD_PREFIX
+from app.models.agent_models import InboxDrain, InboxEntry
 from tests.e2e._harness.graph_run import AGENT_NODE, call, executor_graph, scripted_model_of
 
 pytestmark = pytest.mark.e2e

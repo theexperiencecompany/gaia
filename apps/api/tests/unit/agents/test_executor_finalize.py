@@ -29,7 +29,6 @@ from app.agents.core.background.executor_capture import (
     drain_executor_tool_data,
     teardown_executor_capture,
 )
-from app.agents.core.background.executor_channel import InboxEntry
 from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
@@ -48,6 +47,7 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.executor import EXECUTOR_PAUSED
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
+from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
 from shared.py.wide_events import log, log_context
 

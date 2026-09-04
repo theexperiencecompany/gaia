@@ -24,7 +24,6 @@ the model input and is never checkpointed, so the hook stages and the node
 commits.
 """
 
-from dataclasses import dataclass
 import json
 from typing import cast
 from uuid import uuid4
@@ -32,53 +31,17 @@ from uuid import uuid4
 from langchain_core.messages import AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
+from redis.exceptions import ResponseError
 
 from app.agents.core.background.executor_queue import decode_raw_item
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import EXECUTOR_INBOX_PREFIX, EXECUTOR_INBOX_TTL
+from app.constants.executor import INBOX_ENTRY_ID, INTERRUPTION_NOTICE
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_models import agent_configurable
+from app.models.agent_models import InboxDrain, InboxEntry, agent_configurable
 from app.override.langgraph_bigtool.utils import INJECTED_MESSAGES_KEY, State
 from shared.py.wide_events import log
-
-#: Stamped onto an injected message so a later pass recognises it as already
-#: committed to the thread. This is the whole basis of the drain's idempotency:
-#: the thread itself is the record of what has been delivered, so no cursor has
-#: to be kept in sync with it.
-INBOX_ENTRY_ID = "inbox_entry_id"
-
-#: What a stopped run tells the run that follows it. Carries no instruction of
-#: its own, which is why it never counts as work (see ``announce_interruption``).
-INTERRUPTION_NOTICE = (
-    "The task you were working on was INTERRUPTED by the user. Do not "
-    "resume it, retry it, or finish what it left half-done unless the "
-    "user asks for it again."
-)
-
-
-@dataclass(frozen=True, slots=True)
-class InboxEntry:
-    """One thing the executor has not been told yet.
-
-    ``tag`` decides how it reads to the model: ordinary work is the user
-    speaking, an interruption is the system reporting that a task was stopped.
-    """
-
-    id: str
-    text: str
-    tag: AgentTag = AgentTag.USER_INTERJECTION
-
-
-@dataclass(frozen=True, slots=True)
-class InboxDrain:
-    """What a single drain pass decided to do."""
-
-    inject: list[InboxEntry]
-    retire: list[InboxEntry]
-
-    def __bool__(self) -> bool:
-        return bool(self.inject or self.retire)
 
 
 def decide_drain(entries: list[InboxEntry], messages: list[AnyMessage]) -> InboxDrain:
@@ -161,11 +124,28 @@ class ExecutorInbox:
         return await redis_cache.client.llen(self._key) if redis_cache.client else 0
 
     async def clear(self) -> int:
-        """Drop everything pending. Returns how many entries went."""
-        pending = await self.count()
-        if redis_cache.client:
-            await redis_cache.client.delete(self._key)
-        return pending
+        """Drop everything pending. Returns how many entries went.
+
+        Atomically DETACHES the current list before measuring and deleting it,
+        so a steering ``append`` that lands mid-cancel is not swept away with the
+        batch being cleared. ``RENAME`` moves the whole list in one atomic step;
+        any append after it starts a fresh list under the live key and survives,
+        while the count reflects exactly the detached batch. A count-then-delete
+        would leave a window where such an append is deleted, losing the work.
+        """
+        client = redis_cache.client
+        if not client:
+            return 0
+        detached = f"{self._key}:clearing:{uuid4().hex}"
+        try:
+            await client.rename(self._key, detached)
+        except ResponseError:
+            return 0  # RENAME raises "no such key" only when the inbox is empty
+        async with client.pipeline(transaction=True) as pipe:
+            pipe.llen(detached)
+            pipe.delete(detached)
+            pending, _ = await pipe.execute()
+        return cast(int, pending)
 
     async def announce_interruption(self, message: str | None = None) -> list[InboxEntry]:
         """Tell the next run that the one before it was force-stopped.

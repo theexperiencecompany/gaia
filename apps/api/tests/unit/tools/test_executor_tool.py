@@ -18,7 +18,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
-from app.agents.core.background.executor_channel import ExecutorInbox, InboxEntry
+from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.session import teardown_session, was_executor_spawned
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
@@ -34,6 +34,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
+from app.models.agent_models import InboxEntry
 from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
 from app.utils import background_tasks
 

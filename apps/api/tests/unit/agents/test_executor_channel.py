@@ -10,6 +10,7 @@ built on the append alone would show the user's message to the executor exactly
 once and then lose it — silently, and only in production.
 """
 
+import asyncio
 from unittest.mock import patch
 
 import fakeredis.aioredis
@@ -18,14 +19,14 @@ import pytest
 
 from app.agents.core.background import executor_channel as channel
 from app.agents.core.background.executor_channel import (
-    INBOX_ENTRY_ID,
     ExecutorInbox,
-    InboxEntry,
     as_interjection,
     decide_drain,
     drain_inbox_hook,
 )
 from app.constants.agents import AgentTag
+from app.constants.executor import INBOX_ENTRY_ID
+from app.models.agent_models import InboxEntry
 from app.override.langgraph_bigtool.utils import (
     INJECTED_MESSAGES_KEY,
     pop_injected_messages,
@@ -96,6 +97,41 @@ class TestInbox:
 
         assert removed == ["t2"]
         assert [entry.id for entry in await inbox.read()] == ["t1"]
+
+    async def test_clear_does_not_drop_a_concurrent_append(
+        self, inbox: ExecutorInbox, redis
+    ) -> None:
+        """BUG: cancelling a run counted then deleted the inbox in two steps, so a
+        steering append that landed in between was counted and swept away. clear()
+        now detaches the batch atomically, so an append arriving after the detach
+        lands on a fresh list and survives, and the count is only the batch."""
+        await inbox.append("pending", "the task being cancelled")
+
+        entered = asyncio.Event()
+        proceed = asyncio.Event()
+        real_pipeline = redis.pipeline
+
+        def gated_pipeline(*args, **kwargs):
+            pipe = real_pipeline(*args, **kwargs)
+            real_execute = pipe.execute
+
+            async def execute(*a, **k):
+                entered.set()  # clear() has detached and is about to delete
+                await proceed.wait()
+                return await real_execute(*a, **k)
+
+            pipe.execute = execute
+            return pipe
+
+        with patch.object(redis, "pipeline", gated_pipeline):
+            clearing = asyncio.create_task(inbox.clear())
+            await entered.wait()
+            await inbox.append("steer", "work on billing instead")
+            proceed.set()
+            removed = await clearing
+
+        assert removed == 1
+        assert [entry.id for entry in await inbox.read()] == ["steer"]
 
     async def test_an_unreadable_entry_does_not_wedge_the_channel(
         self, inbox: ExecutorInbox, redis
