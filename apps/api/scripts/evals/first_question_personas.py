@@ -115,10 +115,13 @@ PERSONAS: list[tuple[str, OnboardingPreferences, str | None]] = [
 ]
 
 
+_ORIGINAL_VALIDATE = first_question_module.validate_draft
+
+
 def _reporting_validate(question: str, chips: list[str], preferences: OnboardingPreferences):
     """The validator, plus a line on stdout when it rejects: the wide event carries
     the reason as a field the console format does not print."""
-    rejection = first_question_module.validate_draft(question, chips, preferences)
+    rejection = _ORIGINAL_VALIDATE(question, chips, preferences)
     if rejection is not None:
         print(f"  rejected ({rejection.reason}): {question!r} {chips}")
     return rejection
