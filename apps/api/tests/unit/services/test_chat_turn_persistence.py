@@ -25,13 +25,44 @@ from app.constants import chat as chat_constants
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
-from app.services.chat.chunks import ChunkAccumulators, process_data_chunk
+from app.services.chat.chunks import process_data_chunk
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
 
 # Read lazily so this module still collects on a base revision that predates the
 # fix (regression-proof runs it there and expects a failing assertion, not an error).
 EMPTY_RESPONSE_FALLBACK = getattr(chat_constants, "EMPTY_RESPONSE_FALLBACK", None)
+
+
+async def _dispatch(stream_id: str, chunk: str, state: _StreamState) -> tuple[list[str], bool]:
+    """Feed one chunk through the real dispatcher.
+
+    The accumulator bundle only exists on this branch; on the base revision the
+    dispatcher still takes the four accumulators positionally. Both shapes are
+    supported so regression-proof can run this module against master.
+    """
+    try:
+        from app.services.chat.chunks import ChunkAccumulators
+    except ImportError:
+        return await process_data_chunk(
+            stream_id,
+            chunk,
+            state.tool_data,  # type: ignore[arg-type]  # base-revision signature
+            state.tool_outputs,  # type: ignore[arg-type]  # base-revision signature
+            state.todo_progress_accumulated,  # type: ignore[arg-type]  # base-revision signature
+            state.follow_up_actions,  # type: ignore[arg-type]  # base-revision signature
+        )
+    return await process_data_chunk(
+        stream_id,
+        chunk,
+        ChunkAccumulators(
+            state.tool_data,
+            state.tool_outputs,
+            state.todo_progress_accumulated,
+            state.follow_up_actions,
+        ),
+    )
+
 
 USER = {"user_id": "u1", "email": "u1@test.local"}
 CONV = "conv-1"
@@ -140,15 +171,8 @@ class TestPersistedTurnMatchesTheLiveStream:
             patch("app.utils.stream_publishers.stream_manager", sm),
         ):
             for chunk in chunks:
-                state.follow_up_actions, _ = await process_data_chunk(
-                    "s1",
-                    f"data: {json.dumps(chunk)}\n\n",
-                    ChunkAccumulators(
-                        state.tool_data,
-                        state.tool_outputs,
-                        state.todo_progress_accumulated,
-                        state.follow_up_actions,
-                    ),
+                state.follow_up_actions, _ = await _dispatch(
+                    "s1", f"data: {json.dumps(chunk)}\n\n", state
                 )
         return published, state
 
