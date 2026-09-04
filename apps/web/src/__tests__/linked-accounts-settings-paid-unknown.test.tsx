@@ -14,6 +14,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 let isPaid = false;
 let isUnknown = false;
 
+// HeroUI buttons animate a ripple through framer-motion on press; the
+// completion callback fires after this file's last test has torn jsdom down
+// and sets state against a missing `window` ("ReferenceError: window is not
+// defined", 7 unhandled errors on the CI box). The ripple is chrome, not
+// behaviour, so it is stubbed here.
+vi.mock("@heroui/ripple", () => ({
+  Ripple: () => null,
+  useRipple: () => ({ ripples: [], onPress: vi.fn(), onClear: vi.fn() }),
+}));
+
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown }),
 }));

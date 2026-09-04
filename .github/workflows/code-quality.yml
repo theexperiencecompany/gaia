@@ -109,7 +109,7 @@ jobs:
     name: Detect changed languages
     needs: [select-runner]
     runs-on: ${{ fromJSON(needs.select-runner.outputs.runner) }}
-    timeout-minutes: 5
+    timeout-minutes: 8
     permissions:
       contents: read
       pull-requests: read
