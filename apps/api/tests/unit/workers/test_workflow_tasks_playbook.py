@@ -1469,7 +1469,17 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
         workflow = _workflow()
         harness = _Harness(workflow)
         written = _playbook(workflow).model_copy(
-            update={"steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})]}
+            # The reader is what makes the emptiness matter: frozen_on_empty
+            # only inspects a step whose result something later addresses, so a
+            # write tool's incidental empty field cannot mark a playbook suspect.
+            update={
+                "steps": [
+                    PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={}),
+                    PlaybookStep(
+                        id="reply", tool="GMAIL_SEND", args={"body": "$steps.mail.messages"}
+                    ),
+                ]
+            }
         )
         harness.chat = AsyncMock(
             return_value=(

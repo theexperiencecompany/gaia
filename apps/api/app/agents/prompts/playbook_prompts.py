@@ -39,6 +39,18 @@ steps:
       query_text: {"$ask": "one web search that would give background on the most important mail listed above"}
 result_brief: Lead with what the unread mail is about, then what the search added. Two short paragraphs.
 
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). The list is either a previous step's, or one a model picks at replay:
+
+  - id: replies
+    tool: GMAIL_CREATE_EMAIL_DRAFT
+    for_each: {"$ask": "the ids above from a real person expecting a reply, skipping newsletters and receipts"}
+    max_items: 10
+    args:
+      thread_id: $item
+      body: {"$ask": "a reply to this one email"}
+
+Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step.
+
 If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, and the kind has to match what actually happened:
 - blocked_missing_integration, with the integration ids: the work could not run because the user has not connected something. The workflow is paused until they do, and this does not count against it.
 - blocked_auth_expired, with the integration ids: connected, but its authorisation is dead.
@@ -92,6 +104,15 @@ _PLAYBOOK_VOICE = """Write like a person. Open on the actual point, vary your se
 #: step, so the slots are written from everything that has actually run. It runs
 #: before the later steps, so it must not write the user's result or judge the
 #: run: neither can be done before the run's outcome is known.
+#: Wraps the element a for_each step is on, so a slot written per element is
+#: written about that element and not about the list.
+PLAYBOOK_ASK_ELEMENT = """
+<this_element>
+The next step repeats over a list, and right now it is on this element. Write about THIS one only:
+{element}
+</this_element>
+"""
+
 PLAYBOOK_ASK_PROMPT = (
     """You are writing the slots the next step of a workflow run needs before it can continue. The run follows a written playbook, so its steps are replayed rather than reasoned out. The steps listed as ran already happened exactly as listed. The steps still to run happen after you answer, and the first of them uses what you write.
 
@@ -110,6 +131,7 @@ PLAYBOOK_ASK_PROMPT = (
 <asks>
 {asks}
 </asks>
+{element}
 
 Write one entry per slot above, keyed by the slot's key exactly as listed. Follow each slot's instruction and respect its length budget. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
 

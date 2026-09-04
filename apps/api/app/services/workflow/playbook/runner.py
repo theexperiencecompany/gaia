@@ -46,6 +46,7 @@ from app.agents.middleware.factory import (
     create_middleware_stack,
 )
 from app.agents.prompts.playbook_prompts import (
+    PLAYBOOK_ASK_ELEMENT,
     PLAYBOOK_ASK_PROMPT,
     PLAYBOOK_NARRATION_FALLBACK_TEMPLATE,
     PLAYBOOK_NARRATION_PROMPT,
@@ -57,10 +58,14 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import (
+    FOR_EACH_ASK_PATH,
+    MAX_FOR_EACH_ITEMS,
+    AskSlot,
     LocatedAsk,
     PlaybookDocument,
     PlaybookStep,
-    ask_slots,
+    arg_ask_slots,
+    ask_slot_key,
     has_ask_slots,
 )
 from app.models.workflow_execution_models import (
@@ -72,6 +77,7 @@ from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetriev
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.utils import State
 from app.services.workflow.playbook.evaluator import (
+    NO_ITEM,
     PlaceholderError,
     PlaybookUser,
     RunContext,
@@ -80,6 +86,7 @@ from app.services.workflow.playbook.evaluator import (
     last_run_index,
     parse_result,
     resolve_args,
+    resolve_value,
 )
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_space import (
@@ -134,10 +141,19 @@ FALLBACK_LINE_MAX_CHARS = 1_500
 
 
 class PlaybookAskAnswer(BaseModel):
-    """One ``$ask`` slot, written by an ask call."""
+    """One ``$ask`` slot, written by an ask call.
+
+    A slot standing in for an argument is answered with ``text``. A slot that is
+    a step's ``for_each`` source is answered with ``items``, because what it
+    stands for is the list the step repeats over rather than one value.
+    """
 
     name: str = Field(description="The slot's key, exactly as listed in <asks>")
-    text: str = Field(description="What to write for that slot")
+    text: str = Field(default="", description="What to write for that slot")
+    items: list[str] = Field(
+        default_factory=list,
+        description="For a for_each slot only: the elements the step repeats over",
+    )
 
 
 class PlaybookAskFill(BaseModel):
@@ -221,6 +237,9 @@ class _Run:
     steps: dict[str, StepResult] = field(default_factory=dict)
     completed: list[str] = field(default_factory=list)
     asks: dict[str, str] = field(default_factory=dict)
+    #: List answers, kept apart from ``asks`` because a for_each source is not a
+    #: value substituted into arguments — it is the list the step repeats over.
+    ask_items: dict[str, list[str]] = field(default_factory=dict)
     #: The most recent ask call's answers, as the model returned them. ``asks``
     #: is the accumulation across every such call and is what steps read.
     ask_fill: PlaybookAskFill | None = None
@@ -368,26 +387,45 @@ class _StepCall:
 async def _run_tool_step(
     playbook: PlaybookDocument, step: PlaybookStep, run: _Run, space: ToolSpace
 ) -> _StepFailure | None:
-    """Resolve one recorded call and replay it through a graph, then record it."""
+    """Replay one recorded call, or one per element when the step repeats."""
     tool_name = step.tool or ""
     position = run.position
-
-    if has_ask_slots(step.args):
-        failure = await _fill_asks_or_fail(
-            playbook, step, run, pending=_labels(playbook.steps)[position - 1 :]
-        )
-        if failure is not None:
-            return failure
+    pending = _labels(playbook.steps)[position - 1 :]
+    prefix = step.id or tool_name
 
     denial = tool_space_denial(tool_name, space)
     if denial is not None:
         return _StepFailure(position, tool_name, denial)
 
+    if step.for_each is None:
+        if has_ask_slots(step.args):
+            failure = await _fill_asks_or_fail(
+                playbook, run, arg_ask_slots(step, prefix), pending=pending
+            )
+            if failure is not None:
+                return failure
+        return await _replay_one(playbook, step, run, space, prefix=prefix, item=NO_ITEM)
+
+    return await _run_for_each(playbook, step, run, space, prefix=prefix, pending=pending)
+
+
+async def _replay_one(
+    playbook: PlaybookDocument,
+    step: PlaybookStep,
+    run: _Run,
+    space: ToolSpace,
+    *,
+    prefix: str,
+    item: object,
+) -> _StepFailure | None:
+    """Fill, resolve and replay one call. ``prefix`` addresses its ask slots."""
+    tool_name = step.tool or ""
+    position = run.position
     try:
         # Slots first, then placeholders: filling turns a slot into an ordinary
         # string, which resolution then scans like any other authored value.
-        filled = fill_ask_slots(step.args, run.asks, key_prefix=step.id or tool_name)
-        args = resolve_args(filled, _context(run))
+        filled = fill_ask_slots(step.args, run.asks, key_prefix=prefix)
+        args = resolve_args(filled, _context(run, item=item))
     except PlaceholderError as exc:
         return _StepFailure(position, tool_name, exc.message)
 
@@ -396,6 +434,96 @@ async def _run_tool_step(
     if isinstance(answered, _StepFailure):
         return answered
     return _record_step(playbook, run, space, call, answered)
+
+
+async def _run_for_each(
+    playbook: PlaybookDocument,
+    step: PlaybookStep,
+    run: _Run,
+    space: ToolSpace,
+    *,
+    prefix: str,
+    pending: Sequence[str],
+) -> _StepFailure | None:
+    """Replay one call per element of the step's list.
+
+    Zero elements is a completed step, not a failure and not a suspect: an inbox
+    with nothing that wants a reply is a quiet Tuesday, and a playbook that went
+    suspect on those would be re-authored away from the shape that was right.
+
+    Each element's call is recorded on its own, so the trace and the narration
+    see what actually ran rather than one entry standing for many. The step's own
+    result is the list of what its elements returned, which is what a later
+    ``$steps.<id>`` has to mean when the step ran more than once.
+    """
+    items, failure = await _for_each_items(playbook, step, run, prefix=prefix, pending=pending)
+    if failure is not None:
+        return failure
+
+    results: list[object] = []
+    for index, item in enumerate(items):
+        item_prefix = f"{prefix}[{index}]"
+        if has_ask_slots(step.args):
+            ask_failure = await _fill_asks_or_fail(
+                playbook, run, arg_ask_slots(step, item_prefix), pending=pending, item=item
+            )
+            if ask_failure is not None:
+                return ask_failure
+        step_failure = await _replay_one(playbook, step, run, space, prefix=item_prefix, item=item)
+        if step_failure is not None:
+            return step_failure
+        if step.id and step.id in run.steps:
+            results.append(run.steps[step.id].value)
+        if run.suspect is not None:
+            break
+
+    if step.id:
+        # Overwrites the last element's own entry, which _record_step wrote per
+        # call: after the loop the step is the whole list, never just its tail.
+        run.steps[step.id] = StepResult(value=results)
+    log.set_ns("playbook", for_each={"step": prefix, "items": len(items), "ran": len(results)})
+    return None
+
+
+async def _for_each_items(
+    playbook: PlaybookDocument,
+    step: PlaybookStep,
+    run: _Run,
+    *,
+    prefix: str,
+    pending: Sequence[str],
+) -> tuple[list[object], _StepFailure | None]:
+    """The elements this step repeats over, capped at its ``max_items``."""
+    source = step.for_each
+    tool_name = step.tool or ""
+    if isinstance(source, AskSlot):
+        failure = await _fill_asks_or_fail(
+            playbook,
+            run,
+            [LocatedAsk(key=ask_slot_key(prefix, (FOR_EACH_ASK_PATH,)), slot=source)],
+            pending=pending,
+        )
+        if failure is not None:
+            return [], failure
+        raw: object = run.ask_items.get(ask_slot_key(prefix, (FOR_EACH_ASK_PATH,)), [])
+    else:
+        try:
+            raw = resolve_value(source, _context(run))
+        except PlaceholderError as exc:
+            return [], _StepFailure(run.position, tool_name, exc.message)
+
+    if raw is None:
+        return [], None
+    if not isinstance(raw, list):
+        return [], _StepFailure(
+            run.position,
+            tool_name,
+            f"for_each needs a list to repeat over, but {source!r} resolved to "
+            f"{type(raw).__name__}",
+        )
+    # max_items is guaranteed by the model validator; the cap is applied here so
+    # a source that grew past it costs the ceiling, never the whole list.
+    return list(raw[: step.max_items or MAX_FOR_EACH_ITEMS]), None
 
 
 async def _call_step(
@@ -631,8 +759,12 @@ def _configurable_for(run: _Run, space: ToolSpace) -> dict[str, Any]:
     return configurable
 
 
-def _context(run: _Run) -> RunContext:
-    """The run's fixed context plus everything it has produced so far."""
+def _context(run: _Run, *, item: object = NO_ITEM) -> RunContext:
+    """The run's fixed context plus everything it has produced so far.
+
+    ``item`` is the element a for_each step is on; outside one it stays the
+    sentinel, and ``$item`` raises rather than resolving to a stray value.
+    """
     base = run.base
     return RunContext(
         user=base.user,
@@ -641,11 +773,17 @@ def _context(run: _Run) -> RunContext:
         steps=run.steps,
         last_run=base.last_run,
         asks=run.asks,
+        item=item,
     )
 
 
 async def _fill_asks_or_fail(
-    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, *, pending: Sequence[str]
+    playbook: PlaybookDocument,
+    run: _Run,
+    located: Sequence[LocatedAsk],
+    *,
+    pending: Sequence[str],
+    item: object = NO_ITEM,
 ) -> _StepFailure | None:
     """Run the ask fill; a raise becomes the failure that stops the run.
 
@@ -653,7 +791,7 @@ async def _fill_asks_or_fail(
     never ran and what had completed by the time the model call died.
     """
     try:
-        await _fill_asks(playbook, step, run, pending=pending)
+        await _fill_asks(playbook, run, located, pending=pending, item=item)
     except Exception as exc:
         return _model_call_failure(playbook, run, _ASK_FILL_LABEL, exc)
     return None
@@ -687,7 +825,12 @@ def _model_call_failure(
 
 
 async def _fill_asks(
-    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, *, pending: Sequence[str]
+    playbook: PlaybookDocument,
+    run: _Run,
+    located: Sequence[LocatedAsk],
+    *,
+    pending: Sequence[str],
+    item: object = NO_ITEM,
 ) -> PlaybookAskFill:
     """The model call for one step's ask slots, made just before that step runs.
 
@@ -701,7 +844,6 @@ async def _fill_asks(
     result and the verdict are deliberately not written here: they would
     describe a run whose outcome is not known yet.
     """
-    located = ask_slots([step])
     config = metered_config(playbook.user_id)
     fill: PlaybookAskFill = await ainvoke_llm(
         background_structured_runnable(PlaybookAskFill, config=config),
@@ -710,6 +852,7 @@ async def _fill_asks(
             completed="\n".join(run.completed) or "nothing yet",
             remaining="\n".join(pending),
             asks=_render_asks(located),
+            element=_render_element(item),
         ),
         label="playbook_ask_fill",
         config=config,
@@ -719,7 +862,8 @@ async def _fill_asks(
     # Accumulated, never replaced: an earlier step's filled slots are still
     # part of the arguments its record shows, and the narration reads them all.
     run.asks.update({answer.name: answer.text for answer in fill.asks})
-    missing = sorted({ask.key for ask in located} - set(run.asks))
+    run.ask_items.update({answer.name: answer.items for answer in fill.asks if answer.items})
+    missing = sorted({ask.key for ask in located} - set(run.asks) - set(run.ask_items))
     if missing:
         log.warning(
             f"{LogTag.WORKFLOW} Playbook ask fill wrote nothing for some slots",
@@ -763,6 +907,14 @@ def _labels(steps: Sequence[PlaybookStep]) -> list[str]:
         else:
             labels.append(f"{step.id or step.tool} ({step.tool})")
     return labels
+
+
+def _render_element(item: object) -> str:
+    """The current for_each element for the ask prompt, or nothing outside one."""
+    if item is NO_ITEM:
+        return ""
+    rendered = item if isinstance(item, str) else json.dumps(item, default=str)
+    return PLAYBOOK_ASK_ELEMENT.format(element=_bounded_line(str(rendered)))
 
 
 def _render_asks(located: Sequence[LocatedAsk]) -> str:

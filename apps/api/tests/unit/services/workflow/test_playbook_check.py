@@ -579,7 +579,13 @@ WRITTEN = '{"success": true, "data": {"playbook_id": "pb_1", "steps": 1}}'
 REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 
 
-def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
+def _frozen(*tools: str, handoff: str | None = None, read: bool = True) -> PlaybookDocument:
+    """A playbook freezing ``tools``, with a step that READS each of them.
+
+    The reader is what makes an empty result matter: a frozen call nothing
+    addresses cannot hand the next step a gap, so ``frozen_on_empty`` skips it.
+    Pass ``read=False`` for the case where nothing looks at the result.
+    """
     if handoff:
         steps = [
             PlaybookStep(
@@ -588,6 +594,14 @@ def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
         ]
     else:
         steps = [PlaybookStep(id=t, tool=t, args={}) for t in tools]
+    if read:
+        steps.append(
+            PlaybookStep(
+                id="reader",
+                tool="send_email",
+                args={"body": " ".join(f"$steps.{t}.items" for t in tools)},
+            )
+        )
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
@@ -843,3 +857,26 @@ def test_the_check_brief_names_every_decline_kind_the_tool_accepts():
         assert kind.value in PLAYBOOK_CHECK_BRIEF, f"{kind.value} is unreachable from the brief"
     assert "branch_on naming the ONE call" in PLAYBOOK_CHECK_BRIEF
     assert 'no kind for "the arguments were different"' in PLAYBOOK_CHECK_BRIEF
+
+
+def test_a_frozen_call_nothing_reads_is_not_suspect() -> None:
+    """The prod bug this closes: ``create_todo`` answers with the todo it just
+    made, whose ``labels`` is ``[]`` when the caller passed none, and
+    ``largest_list_len`` looks past the top level and calls that empty. Four of
+    the eight suspect playbooks in production were exactly that, and each one
+    cost a full agentic heal run to answer a question about a list nobody reads.
+    """
+    playbook = _frozen("create_todo", read=False)
+
+    assert frozen_on_empty(playbook, [_call("create_todo", '{"todo": {"labels": []}}')]) is None
+
+
+def test_a_frozen_call_a_later_step_reads_is_still_suspect_when_empty() -> None:
+    """The check still has to fire where it matters: a fetch the next step reads,
+    that came back with nothing, would replay that gap every run."""
+    playbook = _frozen("GMAIL_FETCH_MESSAGES")
+
+    reason = frozen_on_empty(playbook, [_call("GMAIL_FETCH_MESSAGES", EMPTY)])
+
+    assert reason is not None
+    assert "GMAIL_FETCH_MESSAGES" in reason

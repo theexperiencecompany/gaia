@@ -80,6 +80,11 @@ class StepResult:
     file: str | None = None
 
 
+#: Marks "this step is not inside a for_each". Distinct from None, which is a
+#: value an element can legitimately have.
+NO_ITEM = object()
+
+
 @dataclass(frozen=True, slots=True)
 class RunContext:
     """Everything a placeholder may be resolved against."""
@@ -97,6 +102,11 @@ class RunContext:
     #: What the mid-run model call wrote, keyed the way ``ask_slot_key`` spells
     #: a slot's address. Read by ``fill_ask_slots``, never by ``resolve_value``.
     asks: Mapping[str, str] = field(default_factory=dict)
+    #: The element a ``for_each`` step is currently on, or ``NO_ITEM`` outside
+    #: one. A sentinel rather than ``None`` because ``None`` is a legitimate
+    #: element: a list that genuinely holds a null must resolve ``$item`` to it,
+    #: not report that the step is not a loop.
+    item: object = field(default=NO_ITEM)
 
 
 def last_run_index(trace: Sequence[RecordedCall]) -> dict[str, object]:
@@ -251,6 +261,8 @@ def _resolve_token(match: re.Match[str], context: RunContext) -> object:
         return _resolve_required(token, context.trigger, path, "the trigger payload")
     if root == "steps":
         return resolve_step(token, path, context.steps)
+    if root == "item":
+        return _resolve_item(token, path, context.item)
     return _resolve_last_run(token, path, context.last_run)
 
 
@@ -306,6 +318,19 @@ def resolve_step(token: str, path: str, steps: Mapping[str, StepResult]) -> obje
     if rest == STEP_FILE_FIELD and result.file is not None:
         return result.file
     return _resolve_required(token, result.value, rest, f"step {step_id!r}'s result")
+
+
+def _resolve_item(token: str, path: str, item: object) -> object:
+    """The element a for_each step is on, or the field of it the token names."""
+    if item is NO_ITEM:
+        raise PlaceholderError(
+            message=f"{token} is only meaningful inside a for_each step",
+            why="this step does not repeat, so there is no element for $item to address",
+            fix="give the step a for_each, or address the value through $steps.<id>.<field>",
+        )
+    if not path:
+        return item
+    return _resolve_required(token, item, path, "the current for_each element")
 
 
 def _resolve_last_run(token: str, path: str, last_run: Mapping[str, object]) -> object:

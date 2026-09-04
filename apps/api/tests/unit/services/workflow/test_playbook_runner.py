@@ -41,6 +41,7 @@ from app.models.playbook_models import (
     DEFAULT_ASK_MAX_TOKENS,
     PlaybookDocument,
     PlaybookStep,
+    arg_ask_slots,
 )
 from app.models.workflow_execution_models import (
     RECORD_CUT_MARKER,
@@ -2926,7 +2927,7 @@ async def test_the_ask_fill_adds_to_the_runs_llm_count_rather_than_resetting_it(
         patch(f"{MODULE}.background_structured_runnable", MagicMock()),
         patch(f"{MODULE}.ainvoke_llm", AsyncMock(return_value=fill)),
     ):
-        await _fill_asks(playbook, playbook.steps[0], run, pending=[])
+        await _fill_asks(playbook, run, arg_ask_slots(playbook.steps[0], "mail"), pending=[])
 
     assert run.llm_calls == 6
     assert run.ask_fill is fill
@@ -3009,3 +3010,174 @@ class TestGuardsOnStatesTheModelsRuleOut:
             await _narrate(_playbook(AGENDA_STEPS), run)
 
         assert _prompt_block(str(llm.await_args.args[1]), "ran") == "nothing"
+
+
+# --- for_each: bounded repetition -------------------------------------------
+
+
+def _fan_out(source: object = "$steps.events.ids", max_items: int = 25) -> list[PlaybookStep]:
+    """Fetch a list, then act once per element of it."""
+    return [
+        PlaybookStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+        PlaybookStep(
+            id="mails",
+            tool="send_email",
+            args={"to": "$item"},
+            for_each=source,
+            max_items=max_items,
+        ),
+    ]
+
+
+class TestForEach:
+    """The commonest workflow shape GAIA has: fetch, then act on what came back.
+
+    Before this the number of calls varied with the data, so the sequence could
+    not be frozen and the agent declined with "the call order depends on what
+    the fetch finds" — when the order never changed, only the repetition count.
+    """
+
+    async def test_it_runs_one_call_per_element(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a@x.com", "b@x.com"]}'))
+
+        result, _ = await _run(_playbook(_fan_out()), registry)
+
+        assert result.ok is True, result.failure
+        sent = [args["to"] for name, args in recorder.calls if name == "send_email"]
+        assert sent == ["a@x.com", "b@x.com"], "$item must address the element, per call"
+
+    async def test_max_items_caps_the_fan_out(self) -> None:
+        """The ceiling is the whole reason repetition is allowed at all: a busy
+        morning must not turn one replay into an unbounded fan-out."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"ids": ["a", "b", "c", "d", "e"]}')
+        )
+
+        result, _ = await _run(_playbook(_fan_out(max_items=2)), registry)
+
+        assert result.ok is True, result.failure
+        assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a", "b"]
+
+    async def test_no_elements_is_a_completed_run_not_a_failure(self) -> None:
+        """An inbox with nothing that wants a reply is a quiet Tuesday. Treating
+        it as a failure would re-author the playbook away from the right shape."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": []}'))
+
+        result, _ = await _run(_playbook(_fan_out()), registry)
+
+        assert result.ok is True, result.failure
+        assert not [name for name, _ in recorder.calls if name == "send_email"]
+
+    async def test_the_step_result_is_the_whole_list_not_its_tail(self) -> None:
+        """A later $steps.<id> on a repeated step has to mean everything it did."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            *_fan_out(),
+            PlaybookStep(id="filed", tool="file_notes", args={"items": "$steps.mails"}),
+        ]
+
+        result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is True, result.failure
+        filed = next(args for name, args in recorder.calls if name == "file_notes")
+        assert filed["items"] == ["sent", "sent"], "every element's result, in order"
+
+    async def test_a_source_that_is_not_a_list_fails_with_what_it_was(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": "a@x.com"}'))
+
+        result, _ = await _run(_playbook(_fan_out()), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert "for_each needs a list" in result.failure
+        assert "str" in result.failure
+
+    async def test_one_element_failing_stops_the_run(self) -> None:
+        """The steps after a fan-out read its results; running them on a partial
+        list would hand the user a gap dressed as a complete answer."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, failing="send_email", events_result='{"ids": ["a", "b"]}')
+        )
+
+        result, _ = await _run(_playbook(_fan_out()), registry)
+
+        assert result.ok is False
+        assert len([name for name, _ in recorder.calls if name == "send_email"]) == 1
+
+
+class TestForEachShape:
+    """The model rejects a loop whose cost cannot be known before it runs."""
+
+    def test_for_each_without_a_ceiling_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="needs max_items"):
+            PlaybookStep(id="s", tool="send_email", args={}, for_each="$steps.x.ids")
+
+    def test_a_ceiling_without_a_loop_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="only means something with for_each"):
+            PlaybookStep(id="s", tool="send_email", args={}, max_items=5)
+
+    def test_the_ceiling_is_capped(self) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookStep(
+                id="s", tool="send_email", args={}, for_each="$steps.x.ids", max_items=1000
+            )
+
+    def test_a_handoff_cannot_repeat(self) -> None:
+        """for_each repeats one call; a handoff is a subagent's whole recorded
+        sequence, and repeating that is a different feature."""
+        with pytest.raises(ValidationError, match="cannot sit on a handoff"):
+            PlaybookStep(
+                id="h",
+                handoff="calendar_agent",
+                steps=[PlaybookStep(id="c", tool="list_events", args={})],
+                for_each="$steps.x.ids",
+                max_items=2,
+            )
+
+    async def test_a_model_written_list_drives_the_fan_out(self) -> None:
+        """The email-triage shape: which of the fetched items deserve a call is
+        a judgement, so the list itself is an $ask. One cheap call picks the
+        elements, then one focused call writes each element's argument."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b", "c"]}'))
+        steps = _fan_out(source={"$ask": "which of the ids above want a reply"})
+        steps[1] = steps[1].model_copy(
+            update={"args": {"to": "$item", "body": {"$ask": "a reply"}}}
+        )
+
+        picked = PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails.$for_each", items=["a", "c"])])
+        llm = AsyncMock(
+            side_effect=[
+                picked,
+                PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails[0].body", text="hi a")]),
+                PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails[1].body", text="hi c")]),
+                _narration(),
+            ]
+        )
+
+        result, _ = await _run(_playbook(steps), registry, seams=_Seams(llm=llm))
+
+        assert result.ok is True, result.failure
+        sent = [(a["to"], a["body"]) for name, a in recorder.calls if name == "send_email"]
+        assert sent == [("a", "hi a"), ("c", "hi c")], (
+            "each element gets its own focused ask, keyed so two elements cannot collide"
+        )
+
+    async def test_item_outside_a_loop_is_refused(self) -> None:
+        """$item only means something inside a for_each; anywhere else it would
+        resolve to whatever was left over from some other step."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder))
+        steps = [PlaybookStep(id="mail", tool="send_email", args={"to": "$item"})]
+
+        result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert "only meaningful inside a for_each" in result.failure

@@ -14,6 +14,12 @@ and refusing every ``$identifier`` at write time would refuse that playbook.
 reference into a table but an inline ``{"$ask": ...}`` value standing where the
 argument goes, so ``$ask.anything`` in a string is now plain text like any other
 unknown root.
+
+``$item`` is the one root that only means something somewhere: it addresses the
+element a ``for_each`` step is currently on, so it resolves inside such a step
+and is an error anywhere else. It is a root rather than a per-step convention
+because the validator and the evaluator have to agree on it like any other
+token, and a second grammar for one field is how the two drift apart.
 """
 
 from collections.abc import Iterator, Mapping
@@ -21,7 +27,7 @@ import re
 
 #: The placeholder namespaces a playbook may address.
 PLACEHOLDER_ROOTS: frozenset[str] = frozenset(
-    {"now", "today", "user", "trigger", "steps", "last_run"}
+    {"now", "today", "user", "trigger", "steps", "last_run", "item"}
 )
 
 #: Longest root first so ``last_run`` is never matched as a shorter alternative.
