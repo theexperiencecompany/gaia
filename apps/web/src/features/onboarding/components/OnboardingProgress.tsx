@@ -100,12 +100,11 @@ function OnboardingProgressImpl({
         <ModalContent>
           {(onClose) => (
             <>
-              <ModalHeader>Start over?</ModalHeader>
+              <ModalHeader>Start from scratch?</ModalHeader>
               <ModalBody>
                 <p className="text-sm text-zinc-400">
-                  This clears your answers, the platforms you linked, any
-                  connected integrations and everything GAIA has learned so far.
-                  You go back to the first question.
+                  This wipes your answers, linked apps and what I've learned
+                  about you. Nothing about your subscription changes.
                 </p>
               </ModalBody>
               <ModalFooter>

@@ -21,7 +21,7 @@ import type { OnboardingState, Stage } from "../state/types";
  * Idempotency needs both the in-flight ref AND the persisted `completed`
  * flag — a remount creates a fresh ref.
  *
- * A failure is said out loud: the stage shows "Getting your chat ready…"
+ * A failure is said out loud: the stage shows "Starting your first conversation…"
  * with nothing else on screen, so a swallowed error is a wizard that hangs.
  */
 export function useOnboardingSubmission(

@@ -126,7 +126,7 @@ function NeedsInput({
   return (
     <div className={REPLY_WRAPPER_CLASS}>
       <OptionChips
-        label="What does a normal week look like?"
+        label="Where does your week disappear?"
         options={[...needOptions, OTHER_NEED_OPTION]}
         isSelected={(value) =>
           value === OTHER_NEED ? otherOpen : selected.has(value)
@@ -136,7 +136,7 @@ function NeedsInput({
       {otherOpen && (
         <OwnWordsInput
           label="Something else, in your words"
-          placeholder="Say it in a few words"
+          placeholder="What else eats your week?"
           maxLength={OTHER_NEED_MAX_LENGTH}
           value={otherNeed}
           onValueChange={onOtherNeedChange}

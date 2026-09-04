@@ -93,7 +93,7 @@ export const questions: Question[] = [
     id: "2",
     lines: (responses) => [
       professionAck(responses),
-      "What does a normal week look like? Tap everything that's true.",
+      "Where does your week disappear? Tap everything that's true.",
     ],
     fieldName: FIELD_NAMES.NEEDS,
   },

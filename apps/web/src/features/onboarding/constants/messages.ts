@@ -1,15 +1,15 @@
 // ── Stage copy ────────────────────────────────────────────────────────────────
 
 export const PAYMENT_INTRO_LINES = [
-  "It's one plan, everything included.",
-  "Cancel whenever. Monthly or yearly?",
+  "$30 a month, a dollar a day, for everything you just read. The inbox, the calendar, the chasing, the chores, the rest of it.",
+  "A person doing this costs a salary. Cancel whenever. Monthly or yearly?",
 ];
 
-export const FINISHING_MESSAGE = "Getting your chat ready…";
+export const FINISHING_MESSAGE = "Starting your first conversation…";
 
 /** The first words after the receipt. Static: no LLM call anywhere in onboarding. */
 export const PLATFORM_INTRO_LINES = [
-  "Last thing: where do you want me to text you?",
-  "You'll get a brief every morning, a heads-up when an email actually needs you, and a nudge before meetings.",
+  "Last thing: which app do you live in?",
+  "That's where I'll be. Hand me anything from anywhere, one text, and it's handled. And when something needs your attention, I'll text you first.",
   "Pick one.",
 ];
