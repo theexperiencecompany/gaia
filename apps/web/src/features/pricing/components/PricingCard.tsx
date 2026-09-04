@@ -63,8 +63,11 @@ export function PricingCard({
       plan_id: planId,
       price,
       is_monthly: durationIsMonth,
+      // Same cards render on the pricing page and inside the onboarding
+      // payment stage; without this the two funnels are one number.
+      source: checkoutSource,
     });
-  }, [title, planId, price, durationIsMonth]);
+  }, [title, planId, price, durationIsMonth, checkoutSource]);
 
   return (
     <div

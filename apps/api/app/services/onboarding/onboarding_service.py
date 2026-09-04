@@ -18,7 +18,7 @@ from app.models.user_models import (
     OnboardingStatusResponse,
     UserDocument,
 )
-from app.services.analytics_service import AnalyticsEvents, capture_event
+from app.services.analytics_service import AnalyticsEvents, capture_event, identify_user
 from app.services.integrations.integration_connection_service import (
     disconnect_integration,
 )
@@ -86,11 +86,21 @@ async def complete_onboarding(
             return _serialize_user(existing)
 
         # `dedupe_key` guards against a retried POST re-counting the milestone.
+        # The typed need is free text, so only its presence travels; the
+        # profession is a picked value (or a short typed job) and goes onto the
+        # person profile so cohorts can cut by it.
         capture_event(
             user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
-            {"needs": sorted(need.value for need in onboarding_data.needs)},
+            {
+                "needs": sorted(need.value for need in onboarding_data.needs),
+                "has_other_need": bool(onboarding_data.other_need),
+            },
             dedupe_key=user_id,
+        )
+        identify_user(
+            user_id,
+            {"profession": onboarding_data.profession, "onboarding_completed": True},
         )
 
         log.info(f"{LogTag.ONBOARDING} Onboarding completed successfully for user", user_id=user_id)

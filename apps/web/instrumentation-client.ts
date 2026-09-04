@@ -116,6 +116,13 @@ if (typeof window !== "undefined") {
         // Sentry filters above so both sinks stay in agreement.
         before_send: filterExceptionBeforeSend,
       });
+
+      // Anything captured while this init was still queued at idle was
+      // buffered rather than dropped — replay it now, in order. Imported
+      // dynamically so the analytics module (and posthog-js with it) stays
+      // off the critical rendering path.
+      const { flushPendingAnalytics } = await import("@/lib/analytics");
+      flushPendingAnalytics();
     } catch {
       // Analytics should never break the app.
     }

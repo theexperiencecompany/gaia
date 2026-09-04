@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { CHECKOUT_RETURNED_PARAM } from "../constants";
 
@@ -104,7 +105,25 @@ export function useCheckoutReturn(): CheckoutReturn {
     };
   }, [waiting]);
 
+  // A checkout that never became a subscription is invisible to the server:
+  // a declined charge produces no webhook, and a webhook that never lands
+  // produces nothing at all. Only the browser sees either outcome.
+  const outcomeTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!returned || outcomeTrackedRef.current) return;
+    if (!failed && !timedOut) return;
+    outcomeTrackedRef.current = true;
+    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_FAILED, {
+      source: "onboarding",
+      reason: failed ? "declined" : "confirmation_timeout",
+    });
+  }, [returned, failed, timedOut]);
+
   const retry = () => {
+    trackEvent(ANALYTICS_EVENTS.ONBOARDING_CHECKOUT_RETRIED, {
+      reason: failed ? "declined" : "confirmation_timeout",
+    });
+    outcomeTrackedRef.current = false;
     setIsLate(false);
     setTimedOut(false);
     verifiedRef.current = false;

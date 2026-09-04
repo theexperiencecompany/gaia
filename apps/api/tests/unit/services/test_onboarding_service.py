@@ -216,15 +216,45 @@ class TestCompleteOnboarding:
         mock_repo.complete_onboarding.return_value = sample_user
         request = OnboardingRequest(profession="Engineer", needs=["todos", "inbox"])
 
-        with patch(f"{SERVICE}.capture_event") as capture:
+        with (
+            patch(f"{SERVICE}.capture_event") as capture,
+            patch(f"{SERVICE}.identify_user") as identify,
+        ):
             await complete_onboarding(sample_user_id, request)
 
         capture.assert_called_once_with(
             sample_user_id,
             AnalyticsEvents.ONBOARDING_COMPLETED,
-            {"needs": ["inbox", "todos"]},
+            {"needs": ["inbox", "todos"], "has_other_need": False},
             dedupe_key=sample_user_id,
         )
+        # The profession lands on the person, not the event, so cohorts can
+        # cut by it; the free-text need only travels as a flag.
+        identify.assert_called_once_with(
+            sample_user_id,
+            {"profession": "Engineer", "onboarding_completed": True},
+        )
+
+    async def test_a_typed_need_travels_only_as_a_flag(
+        self,
+        mock_repo: MagicMock,
+        sample_user_id: str,
+        sample_user: UserDocument,
+    ) -> None:
+        mock_repo.complete_onboarding.return_value = sample_user
+        request = OnboardingRequest(
+            profession="Engineer", needs=["todos"], other_need="chase invoices"
+        )
+
+        with (
+            patch(f"{SERVICE}.capture_event") as capture,
+            patch(f"{SERVICE}.identify_user"),
+        ):
+            await complete_onboarding(sample_user_id, request)
+
+        props = capture.call_args.args[2]
+        assert props["has_other_need"] is True
+        assert "chase invoices" not in str(props)
 
     async def test_a_replay_captures_nothing(
         self,

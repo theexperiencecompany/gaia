@@ -12,8 +12,13 @@ import { questions } from "../constants";
 import type { OnboardingState, Stage } from "../state/types";
 
 // Step numbers continue past the two questions so the funnel reads in order.
-const PAYMENT_STAGE_STEP = questions.length + 1;
-const PLATFORM_STAGE_STEP = questions.length + 2;
+// Each is fired on *entering* the stage after it, which is the only moment the
+// previous stage is provably cleared.
+const STAGE_STEPS: Partial<Record<Stage, { step: number; name: string }>> = {
+  paidReveal: { step: questions.length + 1, name: "payment" },
+  platformPick: { step: questions.length + 2, name: "paid_reveal" },
+  chat: { step: questions.length + 3, name: "platform_pick" },
+};
 
 /**
  * Onboarding funnel events. Never sends answer values — professions and
@@ -26,19 +31,22 @@ const PLATFORM_STAGE_STEP = questions.length + 2;
 export function useOnboardingAnalytics(
   state: OnboardingState,
   stage: Stage,
+  hydrated: boolean,
 ): void {
   const startedRef = useRef(false);
   const prevQuestionIndexRef = useRef<number | null>(null);
   const trackedStagesRef = useRef(new Set<Stage>());
 
   useEffect(() => {
-    if (startedRef.current) return;
+    // Waits for the persisted state to be restored: fired any earlier, every
+    // resumed session reports `has_saved_state: false`, because the hydrate
+    // dispatch has not been rendered yet.
+    if (!hydrated || startedRef.current) return;
     startedRef.current = true;
     trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, {
       has_saved_state: state.questionIndex > 0,
     });
-    // Fires once per mount; the resumed-state property is a snapshot of that moment.
-  }, [state.questionIndex]);
+  }, [hydrated, state.questionIndex]);
 
   useEffect(() => {
     const prev = prevQuestionIndexRef.current;
@@ -54,16 +62,32 @@ export function useOnboardingAnalytics(
     trackOnboardingStep(answeredIndex + 1, q.fieldName, { question_id: q.id });
   }, [state.questionIndex]);
 
+  const { connectedPlatform } = state;
   useEffect(() => {
-    if (stage !== "platformPick" && stage !== "chat") return;
-    // Reaching `platformPick` means the receipt stage was cleared; reaching
-    // `chat` means the platform pick was.
-    const step =
-      stage === "platformPick" ? PAYMENT_STAGE_STEP : PLATFORM_STAGE_STEP;
-    const name =
-      stage === "platformPick" ? "payment_stage_completed" : "platform_pick";
-    if (trackedStagesRef.current.has(stage)) return;
+    const entry = STAGE_STEPS[stage];
+    if (!entry || trackedStagesRef.current.has(stage)) return;
     trackedStagesRef.current.add(stage);
-    trackOnboardingStep(step, name);
-  }, [stage]);
+    trackOnboardingStep(
+      entry.step,
+      entry.name,
+      // Which way the platform pick was cleared is the whole question that
+      // step answers, so it rides along rather than needing a second event.
+      stage === "chat"
+        ? {
+            connected: connectedPlatform !== null,
+            platform: connectedPlatform,
+          }
+        : undefined,
+    );
+  }, [stage, connectedPlatform]);
+
+  // A restart replays the whole funnel, so the once-per-stage guards have to
+  // reopen with it — otherwise the second run reports no steps at all.
+  const { isRestarting } = state;
+  useEffect(() => {
+    if (!isRestarting) return;
+    // Only the stage guards: the question cursor is reset to 0 by the same
+    // action, and the effect above already tracks that move without firing.
+    trackedStagesRef.current.clear();
+  }, [isRestarting]);
 }

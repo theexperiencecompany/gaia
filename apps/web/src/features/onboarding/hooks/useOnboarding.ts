@@ -16,6 +16,7 @@ import type { UserInfo } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
 import { userInfoToStoreUser } from "@/features/auth/utils/userInfoToStoreUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
 
@@ -44,7 +45,7 @@ export function useOnboarding(): UseOnboardingReturn {
   const { isPaid } = useIsPaid();
   const stage = getStage(state, isPaid);
 
-  useOnboardingPersistence(userId, state, dispatch);
+  const hydrated = useOnboardingPersistence(userId, state, dispatch);
   useOnboardingPreferences(state, dispatch);
 
   const handleSubmissionSuccess = useCallback(
@@ -55,11 +56,13 @@ export function useOnboarding(): UseOnboardingReturn {
   );
   useOnboardingSubmission(state, stage, handleSubmissionSuccess);
 
-  useOnboardingAnalytics(state, stage);
+  useOnboardingAnalytics(state, stage, hydrated);
 
   const restart = useCallback(async () => {
     if (state.isRestarting) return;
 
+    // Captured before the reset, so the event says where the user gave up.
+    trackEvent(ANALYTICS_EVENTS.ONBOARDING_RESTARTED, { from_stage: stage });
     clearPersisted(userId);
     dispatch({ type: "restartStart" });
     updateUser({ onboarding: undefined });
@@ -74,7 +77,7 @@ export function useOnboarding(): UseOnboardingReturn {
     } finally {
       dispatch({ type: "restartDone" });
     }
-  }, [state.isRestarting, userId, updateUser]);
+  }, [state.isRestarting, stage, userId, updateUser]);
 
   return { state, stage, dispatch, restart };
 }

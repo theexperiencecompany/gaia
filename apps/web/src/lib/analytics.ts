@@ -22,6 +22,13 @@ export const ANALYTICS_EVENTS = {
   ONBOARDING_STEP_COMPLETED: "onboarding:step_completed",
   ONBOARDING_COMPLETED: "onboarding:completed",
   ONBOARDING_SKIPPED: "onboarding:skipped",
+  // Wiping the wizard and starting over. Client-only: the server sees the
+  // reset request, but only the browser knows it came from the restart modal
+  // rather than from a support action.
+  ONBOARDING_RESTARTED: "onboarding:restarted",
+  // The user came back from a failed/stalled Dodo checkout and asked for the
+  // plans again. No request leaves the browser, so nothing else can see it.
+  ONBOARDING_CHECKOUT_RETRIED: "onboarding:checkout_retried",
 
   // Subscription events
   SUBSCRIPTION_PAGE_VIEWED: "subscription:page_viewed",
@@ -192,6 +199,65 @@ interface EventProperties {
 }
 
 /**
+ * `posthog.init` is deferred to browser idle time (see
+ * `instrumentation-client.ts`), so the first seconds of a page load happen
+ * with an uninitialised client — and `posthog.capture` before `init` is
+ * *dropped*, with only a console error. Onboarding is the flow that pays for
+ * this: `onboarding:started` fires on mount, and a quick user answers Q1
+ * before idle callbacks run, so the head of the funnel silently went missing.
+ *
+ * Calls made before init are therefore buffered here and replayed in order by
+ * `flushPendingAnalytics`, which init calls once it is ready. The buffer is
+ * capped: with no project token configured (local dev) nothing ever flushes,
+ * and an unbounded queue would grow for the life of the tab.
+ */
+type PendingCall =
+  | { kind: "identify"; userId: string; properties: Record<string, unknown> }
+  | { kind: "capture"; event: string; properties: Record<string, unknown> }
+  | { kind: "person"; properties: UserProperties };
+
+const MAX_PENDING_CALLS = 50;
+const pendingCalls: PendingCall[] = [];
+
+function isPostHogReady(): boolean {
+  return posthog.__loaded;
+}
+
+function enqueue(call: PendingCall): void {
+  if (pendingCalls.length >= MAX_PENDING_CALLS) return;
+  pendingCalls.push(call);
+}
+
+function send(call: PendingCall): void {
+  switch (call.kind) {
+    case "identify":
+      posthog.identify(call.userId, call.properties);
+      break;
+    case "capture":
+      posthog.capture(call.event, call.properties);
+      break;
+    case "person":
+      posthog.setPersonProperties(call.properties);
+      break;
+  }
+}
+
+function dispatch(call: PendingCall): void {
+  if (!isPostHogReady()) {
+    enqueue(call);
+    return;
+  }
+  send(call);
+}
+
+/** Replays everything captured before `posthog.init` finished, in order. */
+export function flushPendingAnalytics(): void {
+  if (!isPostHogReady()) return;
+  const queued = pendingCalls.splice(0, pendingCalls.length);
+  for (const call of queued) send(call);
+}
+
+/**
  * Identify a user in PostHog.
  * Call this when a user logs in or signs up.
  */
@@ -201,10 +267,14 @@ export function identifyUser(
 ): void {
   if (!userId) return;
 
-  posthog.identify(userId, {
-    ...properties,
-    $set_once: {
-      first_seen: new Date().toISOString(),
+  dispatch({
+    kind: "identify",
+    userId,
+    properties: {
+      ...properties,
+      $set_once: {
+        first_seen: new Date().toISOString(),
+      },
     },
   });
 }
@@ -223,9 +293,12 @@ export function trackEvent(
   event: AnalyticsEvent | string,
   properties?: EventProperties,
 ): void {
-  posthog.capture(event, {
-    ...properties,
-    timestamp: new Date().toISOString(),
+  dispatch({
+    kind: "capture",
+    event,
+    // Stamped at call time, not at flush time: a buffered event must keep the
+    // moment it actually happened.
+    properties: { ...properties, timestamp: new Date().toISOString() },
   });
 }
 
@@ -233,7 +306,7 @@ export function trackEvent(
  * Set user properties without tracking an event.
  */
 export function setUserProperties(properties: UserProperties): void {
-  posthog.setPersonProperties(properties);
+  dispatch({ kind: "person", properties });
 }
 
 /**

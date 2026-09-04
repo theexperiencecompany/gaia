@@ -1,6 +1,6 @@
 "use client";
 
-import { type Dispatch, useEffect, useRef } from "react";
+import { type Dispatch, useEffect, useRef, useState } from "react";
 
 import { initialState } from "../state/initial";
 import { loadPersisted, savePersisted } from "../state/persist";
@@ -11,13 +11,18 @@ import type { Action, OnboardingState } from "../state/types";
  * rehydrates from localStorage before the session is confirmed, so the id can
  * change after first paint: each new id starts from its own cache (or from
  * scratch), and nothing is written under an id the state was not loaded for.
+ *
+ * Returns whether the current user's cache has been applied. Anything that
+ * reads the restored state (the funnel's `onboarding:started`) has to wait for
+ * this, because the hydrate dispatch lands a render later than the mount.
  */
 export function useOnboardingPersistence(
   userId: string,
   state: OnboardingState,
   dispatch: Dispatch<Action>,
-): void {
+): boolean {
   const hydratedForRef = useRef<string | null>(null);
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null);
   // Set when a reset/hydrate has been dispatched but not yet rendered: the
   // save effect below still sees the previous user's state in that render.
   const awaitingHydratedStateRef = useRef(false);
@@ -34,6 +39,7 @@ export function useOnboardingPersistence(
       awaitingHydratedStateRef.current = true;
     }
     hydratedForRef.current = userId;
+    setHydratedFor(userId);
   }, [userId, dispatch]);
 
   useEffect(() => {
@@ -45,4 +51,6 @@ export function useOnboardingPersistence(
     if (state === initialState) return;
     savePersisted(userId, state);
   }, [userId, state]);
+
+  return hydratedFor === userId && userId !== "";
 }
