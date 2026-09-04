@@ -29,6 +29,7 @@ from app.agents.tools.playbook_tools import (
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
+    DeclineKind,
     PlaybookBody,
     PlaybookDocument,
     PlaybookRunStatus,
@@ -427,7 +428,11 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"reason": "the call order depends on the inbox"},
+                {
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "the call order depends on the inbox",
+                },
                 config=_config(),
             )
 
@@ -441,7 +446,12 @@ class TestDeclinePlaybook:
             tool={"name": "decline_playbook", "action": "decline"}, workflow_id=WORKFLOW_ID
         )
         assert log.set_ns.call_args_list == [
-            call("playbook", declined=True, decline_reason="the call order depends on the inbox"),
+            call(
+                "playbook",
+                declined=True,
+                decline_kind="order_branches",
+                decline_reason="the call order depends on the inbox",
+            ),
             call("playbook", declines=1),
         ]
 
@@ -460,7 +470,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": False,
@@ -479,8 +492,14 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert workflows.workflow.playbook_declines == 2
         assert workflows.workflow.playbook_declined_hash == workflow_hash(
@@ -501,7 +520,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert workflows.workflow.playbook_declines == 1
 
@@ -519,7 +541,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": True,
@@ -538,7 +563,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": True,
@@ -599,7 +627,8 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
             result = await decline_playbook.ainvoke(
-                {"reason": "order varies"}, config=_config_for(OTHER_USER)
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config_for(OTHER_USER),
             )
 
         assert result == {
@@ -681,7 +710,7 @@ class TestWorkflowIdFromConfig:
         [
             (write_playbook, NEW_ARGS),
             (read_playbook, {}),
-            (decline_playbook, {"reason": "r"}),
+            (decline_playbook, {"kind": "unstable_discovery", "reason": "r"}),
             (disable_playbook, {"reason": "r"}),
         ],
         ids=["write", "read", "decline", "disable"],
@@ -808,7 +837,10 @@ class TestPlaybookToolContract:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {"success": False, "error": "decline_failed", "message": "mongo down"}
         log.error.assert_called_once_with(
@@ -1525,3 +1557,162 @@ class TestTheRunTheWriteIsCheckedAgainst:
             )
 
         assert log.set_ns.call_args_list[0] == call("playbook", checked_against_calls=2)
+
+
+PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"
+
+
+@pytest.mark.unit
+class TestBlockedDeclines:
+    """A run that never reached the work did not judge the sequence.
+
+    Prod ran ~907 declines in 48h and ~80% of them said the same thing: the
+    integration was never connected. Counting those burned all three chances in
+    under two days and locked the workflow out of ever earning a playbook — the
+    one thing that would have made it cheap once the user did connect.
+    """
+
+    async def test_a_blocked_run_pauses_the_workflow_and_costs_no_strike(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["github"])) as pause,
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github"],
+                    "reason": "GitHub is not connected, so no PRs were fetched",
+                },
+                config=_config(),
+            )
+
+        pause.assert_awaited_once_with(WORKFLOW_ID, USER_ID, ["github"])
+        assert result["success"] is True
+        assert result["data"]["paused"] is True
+        assert result["data"]["counted"] is False
+        assert workflows.workflow.playbook_declines == 0, (
+            "a run that never reached the work must not spend one of the workflow's chances"
+        )
+
+    async def test_a_claim_that_does_not_check_out_pauses_nothing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The claim comes from a model. An integration it names may be
+        connected and have failed for some unrelated reason, and pausing a
+        working workflow is worse than the run it would have saved."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock(return_value=[])),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github"],
+                    "reason": "GitHub looked disconnected",
+                },
+                config=_config(),
+            )
+
+        assert result["data"]["paused"] is False
+        assert result["data"]["counted"] is False
+        assert workflows.workflow.playbook_declines == 0
+
+    async def test_a_blocked_run_mid_heal_keeps_the_stored_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """An ordinary decline during a heal deletes the playbook, because the
+        agent is saying the sequence cannot hold. A blocked run says nothing of
+        the kind — it never ran the sequence — so deleting a working shortcut
+        over a disconnected account is pure loss."""
+        existing = _existing(store)
+        existing.last_run_status = PlaybookRunStatus.SUSPECT
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["gmail"])),
+        ):
+            await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["gmail"],
+                    "reason": "Gmail is not connected",
+                },
+                config=_config(),
+            )
+
+        assert store.documents, "a blocked run must not delete the workflow's playbook"
+
+    async def test_no_budget_costs_no_strike_and_pauses_nothing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock()) as pause,
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "blocked_no_budget", "reason": "daily allowance was spent"},
+                config=_config(),
+            )
+
+        pause.assert_not_awaited()
+        assert result["data"]["counted"] is False
+        assert workflows.workflow.playbook_declines == 0
+
+
+@pytest.mark.unit
+class TestDeclineKindArguments:
+    """The schema is the guard: the answers that were wrong in prod are the ones
+    the tool refuses to accept, so the agent re-decides inside the same graph
+    loop rather than costing another model call."""
+
+    async def test_a_blocked_integration_decline_must_name_the_integrations(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "blocked_missing_integration", "reason": "nothing was connected"},
+                config=_config(),
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "integrations_required"
+
+    async def test_order_branches_must_name_the_branching_call(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The false decline this closes, verbatim from prod: "the googlecalendar
+        call targets a run-dependent event and its attendees". Those are
+        arguments, and placeholders already carry them — so there is no call to
+        name, and the tool says so instead of spending a strike."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "reason": "the attendees differ every run"},
+                config=_config(),
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "branch_on_required"
+        assert "for_each" in result["message"], "the redirect has to name the alternative"
+        assert workflows.workflow.playbook_declines == 0, "a refused decline is not a decline"
+
+    async def test_there_is_no_kind_for_arguments_varying(self) -> None:
+        """``args_vary`` is unspellable by construction — the enum has no member
+        for it, so the model cannot offer the reason that was wrong ~15 times in
+        two days, concentrated in the most expensive workflows."""
+        assert "args_vary" not in {k.value for k in DeclineKind}
+        assert "fan_out_varies" not in {k.value for k in DeclineKind}

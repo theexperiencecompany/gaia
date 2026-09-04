@@ -22,6 +22,9 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.playbook_models import (
+    BLOCKED_DECLINE_KINDS,
+    INTEGRATION_DECLINE_KINDS,
+    DeclineKind,
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
@@ -275,31 +278,114 @@ async def read_playbook(
         return error_response("read_failed", str(e))
 
 
+async def _record_blocked_run(
+    workflow_id: str,
+    user_id: str,
+    kind: DeclineKind,
+    integrations: list[str],
+) -> dict[str, Any]:
+    """Settle a run that never reached the work.
+
+    Nothing is counted against the workflow — see :data:`BLOCKED_DECLINE_KINDS`
+    for why a strike here is the bug rather than the record. The stored playbook
+    is deliberately left alone even mid-heal: a heal run that could not run at
+    all has learned nothing about whether the frozen sequence still holds, and
+    deleting it would throw away a working shortcut over a disconnected account.
+    """
+    # Deferred: integration_pause reaches WorkflowService, which pulls the
+    # generation service and the whole LLM client stack behind it. A tools module
+    # imported by the registry must not carry that at import time.
+    from app.services.workflow.integration_pause import (  # noqa: PLC0415 -- deferred
+        pause_workflow_for_missing_integrations,
+    )
+
+    log.set_ns("playbook", blocked=True, blocked_integrations=integrations)
+    if kind not in INTEGRATION_DECLINE_KINDS:
+        return success_response(
+            {"declined": True, "blocked": True, "counted": False},
+            "Noted — this run never reached the work, so it does not count against the "
+            "workflow. It will be asked again on a run that gets further.",
+        )
+
+    paused = await pause_workflow_for_missing_integrations(workflow_id, user_id, integrations)
+    if not paused:
+        # The claim did not check out. Say so rather than pausing on it, and
+        # still do not count a strike: a run that believed it was blocked did
+        # not judge the sequence either.
+        return success_response(
+            {"declined": True, "blocked": True, "counted": False, "paused": False},
+            "Noted, but those integrations look connected from here, so the workflow is "
+            "still active.",
+        )
+    return success_response(
+        {
+            "declined": True,
+            "blocked": True,
+            "counted": False,
+            "paused": True,
+            "integrations": paused,
+        },
+        f"Noted. This workflow is paused until {', '.join(paused)} "
+        f"{'is' if len(paused) == 1 else 'are'} connected, and resumes by itself then.",
+    )
+
+
 @tool
 async def decline_playbook(
     config: RunnableConfig,
-    reason: Annotated[
-        str,
-        "Why this run's SEQUENCE OF CALLS would not hold tomorrow. Content that "
-        "changes per run is not a reason; only a changing call order is.",
+    kind: Annotated[
+        DeclineKind,
+        "Which of the five cases this is. There is no member for 'the arguments "
+        "differed', because placeholders already carry those, and none for 'the "
+        "number of calls differed', which is what a for_each step is for.",
     ],
+    reason: Annotated[str, "The specifics, in your own words."],
+    integrations: Annotated[
+        list[str] | None,
+        "Required for blocked_missing_integration and blocked_auth_expired: the "
+        "integration ids the run found unusable, e.g. ['github', 'slack'].",
+    ] = None,
+    branch_on: Annotated[
+        str | None,
+        "Required for order_branches: the ONE call that runs on some days and "
+        "not others. If you cannot name such a call, the order does not branch.",
+    ] = None,
 ) -> dict[str, Any]:
     """
     Record that this run's sequence is not worth freezing as a playbook.
 
     Calling this is how you say no: a run asked to decide must end by calling
     exactly one of write_playbook or decline_playbook, so a missing decision is
-    visible instead of looking identical to a considered no. The decline is
-    kept on the workflow: after a few on the same unchanged workflow the
-    question stops being asked until the workflow is edited. Declining while a
-    stored playbook is being healed removes that playbook.
+    visible instead of looking identical to a considered no.
+
+    A ``blocked_*`` kind is not really a no. It says the run never reached the
+    work, so there was no sequence to judge: nothing is counted against the
+    workflow, and if it names integrations that are genuinely not connected the
+    workflow is paused until the user connects them.
     """
     try:
         workflow_id = get_workflow_id(config)
     except WorkflowConfigError as e:
         return error_response("not_in_workflow_run", str(e))
     log.set(tool={"name": "decline_playbook", "action": "decline"}, workflow_id=workflow_id)
-    log.set_ns("playbook", declined=True, decline_reason=reason)
+    log.set_ns("playbook", declined=True, decline_kind=kind.value, decline_reason=reason)
+
+    if kind in INTEGRATION_DECLINE_KINDS and not integrations:
+        return error_response(
+            "integrations_required",
+            f"{kind.value} has to name the integrations the run could not use. "
+            "Call decline_playbook again with integrations=[...].",
+        )
+    if kind is DeclineKind.ORDER_BRANCHES and not (branch_on or "").strip():
+        return error_response(
+            "branch_on_required",
+            "order_branches has to name the one call that runs on some days and not others, "
+            "as branch_on. If every call you made happens every run and only their arguments "
+            "differ, the order does not branch — use placeholders and call write_playbook. If "
+            "only the NUMBER of times a call repeats differs, that is a for_each step, not a "
+            "decline.",
+        )
+
     try:
         user_id = get_user_id(config)
         workflow = await workflow_repository.get_for_user(workflow_id, user_id)
@@ -313,6 +399,10 @@ async def decline_playbook(
                 "not_asked",
                 "This workflow is no longer asked about a playbook; nothing to decline.",
             )
+
+        if kind in BLOCKED_DECLINE_KINDS:
+            return await _record_blocked_run(workflow_id, user_id, kind, integrations or [])
+
         current_hash = workflow_hash(workflow.prompt, workflow.steps)
         declines = (
             workflow.playbook_declines + 1 if workflow.playbook_declined_hash == current_hash else 1

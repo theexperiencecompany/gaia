@@ -41,6 +41,60 @@ ASK_KEY = "$ask"
 DEFAULT_ASK_MAX_TOKENS = 1024
 
 
+class DeclineKind(str, Enum):
+    """Why a run refused to freeze its sequence, as a value rather than prose.
+
+    The set is deliberately narrow. A free-text reason let a run decline because
+    the *arguments* differed between runs — the attendees of today's meeting, the
+    subject of today's mail — which the placeholder vocabulary already handles
+    and which the check brief already says is not a reason. Prose could spell
+    that; an enum cannot, because no member means it. The same goes for a run
+    whose only variation was how MANY times one call repeated: that is what a
+    ``for_each`` step is for, so it has no member either and the tool redirects.
+
+    The ``BLOCKED_*`` members are not really declines at all. They say the run
+    never got to do the work, so there was no sequence to judge — see
+    :data:`BLOCKED_DECLINE_KINDS`.
+    """
+
+    #: The workflow needs an integration the user has never connected. The run
+    #: could only check integration status and report the gap.
+    BLOCKED_MISSING_INTEGRATION = "blocked_missing_integration"
+    #: The integration is connected but its authorisation is dead (expired
+    #: token, revoked grant, persistent 403).
+    BLOCKED_AUTH_EXPIRED = "blocked_auth_expired"
+    #: The user's daily allowance was already spent, so no call ran.
+    BLOCKED_NO_BUDGET = "blocked_no_budget"
+    #: The genuine article: some call happens on one run and not on another, so
+    #: the ORDER itself differs. Requires naming that call.
+    ORDER_BRANCHES = "order_branches"
+    #: The run had to discover something mid-flight that a later run would have
+    #: to discover differently — an inferred set, a schema probe, a recovery.
+    UNSTABLE_DISCOVERY = "unstable_discovery"
+
+
+#: Kinds that describe a run which never reached the work. They must not count
+#: toward ``PLAYBOOK_DECLINE_LIMIT``: a workflow blocked on a disconnected
+#: integration fires twice a day and would exhaust its three chances in under
+#: two days, then be locked out of ever earning a playbook — including after the
+#: user connects the integration, because only a workflow edit resets the tally.
+BLOCKED_DECLINE_KINDS = frozenset(
+    {
+        DeclineKind.BLOCKED_MISSING_INTEGRATION,
+        DeclineKind.BLOCKED_AUTH_EXPIRED,
+        DeclineKind.BLOCKED_NO_BUDGET,
+    }
+)
+
+#: Blocked kinds that name integrations and can therefore pause the workflow.
+INTEGRATION_DECLINE_KINDS = frozenset(
+    {
+        DeclineKind.BLOCKED_MISSING_INTEGRATION,
+        DeclineKind.BLOCKED_AUTH_EXPIRED,
+    }
+)
+
+
 class PlaybookRunStatus(str, Enum):
     """How the workflow's most recent run went for this playbook.
 
