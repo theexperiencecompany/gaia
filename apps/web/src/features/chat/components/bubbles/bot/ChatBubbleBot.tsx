@@ -9,10 +9,10 @@ import ChatBubble_Actions from "@/features/chat/components/bubbles/actions/ChatB
 import ChatBubble_Actions_Image from "@/features/chat/components/bubbles/actions/ChatBubble_Actions_Image";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import {
-  DEFAULT_PART_CHOREOGRAPHY,
   MESSAGE_BREAK_DURATION_SECONDS,
   MESSAGE_BREAK_EASE_OUT_QUART,
   type PartChoreography,
+  resolvePartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
@@ -54,8 +54,8 @@ export default function ChatBubbleBot(
     children,
     onRetry,
     isRetrying,
-    partChoreography = DEFAULT_PART_CHOREOGRAPHY,
   } = props;
+  const partChoreography = resolvePartChoreography(props.partChoreography);
 
   const actionsRef = useRef<HTMLDivElement>(null);
 
