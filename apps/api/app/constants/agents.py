@@ -84,6 +84,18 @@ PLAYBOOK_DECLINE_LIMIT = 3
 # the worker deletes the playbook rather than briefing every later fire to heal it.
 PLAYBOOK_HEAL_ATTEMPT_LIMIT = 2
 
+#: What separates a tool's result from a note a middleware appends to it in
+#: band for the model (the loop guard's repeat warning). The record reads the
+#: result as the JSON document before this separator; the note is not data.
+TOOL_RESULT_NOTE_SEPARATOR = "\n\n"
+
+#: How many recent executions a replay searches for the last replay of a tool
+#: that returned data, when judging an empty result. One fire back is not
+#: enough: every suspect replay is followed by up to the heal limit's worth of
+#: agent runs, which replay nothing, before the body is replayed again. The
+#: window reaches past all of them for every suspect the streak allows.
+PLAYBOOK_SUSPECT_BASELINE_WINDOW = PLAYBOOK_SUSPECT_STREAK_LIMIT * (1 + PLAYBOOK_HEAL_ATTEMPT_LIMIT)
+
 #: The tag both playbook briefs open with. The executor's graph loop reads it
 #: off the task turn to know the run owes a decision, so the briefs and the
 #: gate cannot drift apart on a string.

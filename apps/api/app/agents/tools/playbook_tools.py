@@ -31,10 +31,9 @@ from app.models.playbook_models import (
     PlaybookStepInput,
     playbook_body_from_input,
 )
-from app.models.workflow_execution_models import RecordedCall
+from app.models.workflow_execution_models import RecordedCall, parse_result
 from app.models.workflow_models import WorkflowUpdate
 from app.services.workflow.playbook.check import declined_for_good
-from app.services.workflow.playbook.evaluator import parse_result
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.parser import (
     RecordedResult,

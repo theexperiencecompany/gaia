@@ -35,6 +35,7 @@ from app.agents.middleware.factory import (
     create_middleware_stack as real_create_middleware_stack,
 )
 from app.agents.workspace.offload import mark_offload
+from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
@@ -301,8 +302,8 @@ async def _run(
     with (
         patch(f"{MODULE}.get_tool_registry", AsyncMock(return_value=registry)),
         patch(
-            f"{MODULE}.workflow_executions_repository.find_latest_with_trace",
-            find_previous or AsyncMock(return_value=None),
+            f"{MODULE}.workflow_executions_repository.find_recent_with_trace",
+            find_previous or AsyncMock(return_value=[]),
         ),
         # Keyed on the id, so a lookup that drops the handoff target resolves to
         # nothing instead of quietly answering with the only subagent around.
@@ -1116,8 +1117,8 @@ class TestRunContext:
         previous = MagicMock()
         previous.trace = [RecordedCall(tool_name="list_events", result_digest='{"count": 7}')]
 
-        async def find_latest(workflow_id: str, user_id: str) -> MagicMock | None:
-            return previous if (workflow_id, user_id) == ("wf_1", "u_1") else None
+        async def find_recent(workflow_id: str, user_id: str, *, limit: int) -> list[MagicMock]:
+            return [previous] if (workflow_id, user_id) == ("wf_1", "u_1") else []
 
         playbook = _playbook(
             [
@@ -1130,7 +1131,7 @@ class TestRunContext:
         )
 
         result, _ = await _run(
-            playbook, registry, seams=_Seams(find_previous=AsyncMock(side_effect=find_latest))
+            playbook, registry, seams=_Seams(find_previous=AsyncMock(side_effect=find_recent))
         )
 
         assert result.ok is True, result.failure
@@ -1979,10 +1980,10 @@ def test_a_scripted_turn_is_a_bare_tool_call_and_nothing_else() -> None:
 
 
 def _previous_run(*calls: RecordedCall) -> AsyncMock:
-    """The previous execution's trace, as ``find_latest_with_trace`` hands it back."""
+    """One previous execution's trace, as ``find_recent_with_trace`` hands it back."""
     previous = MagicMock()
     previous.trace = list(calls)
-    return AsyncMock(return_value=previous)
+    return AsyncMock(return_value=[previous])
 
 
 class TestErrorEnvelope:
@@ -2098,7 +2099,10 @@ class TestSuspectVerdict:
         )
 
         assert result.ok is True, result.failure
-        assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert (
+            result.suspect
+            == "list_events returned no items where the last replay with results returned 3"
+        )
         assert result.suspect_source == "record"
         assert [name for name, _ in recorder.calls] == ["list_events"]
         assert result.text == ""
@@ -2191,7 +2195,10 @@ class TestSuspectVerdict:
         )
 
         assert result.ok is True, result.failure
-        assert result.suspect == "list_events returned no items where the previous run returned 2"
+        assert (
+            result.suspect
+            == "list_events returned no items where the last replay with results returned 2"
+        )
 
     async def test_empty_with_no_previous_run_is_not_suspect(self) -> None:
         recorder = _Recorder()
@@ -2227,7 +2234,10 @@ class TestSuspectVerdict:
             _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
         )
 
-        assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert (
+            result.suspect
+            == "list_events returned no items where the last replay with results returned 3"
+        )
 
     async def test_the_previous_runs_last_call_of_the_tool_is_the_one_compared(self) -> None:
         """``$last_run`` resolves a tool called twice to its LAST result (the
@@ -2244,7 +2254,10 @@ class TestSuspectVerdict:
             _playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=previous)
         )
 
-        assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert (
+            result.suspect
+            == "list_events returned no items where the last replay with results returned 3"
+        )
 
     async def test_the_narrations_verdict_becomes_the_reason(self) -> None:
         recorder = _Recorder()
@@ -2286,7 +2299,10 @@ class TestSuspectVerdict:
             seams=_Seams(find_previous=_previous_run(self.PREVIOUS_HAD_THREE)),
         )
 
-        assert result.suspect == "list_events returned no items where the previous run returned 3"
+        assert (
+            result.suspect
+            == "list_events returned no items where the last replay with results returned 3"
+        )
 
     async def test_a_record_verdict_names_the_record_as_its_source(self) -> None:
         """The worker treats a deterministic verdict and the model's own opinion
@@ -2435,25 +2451,6 @@ class TestANarrationMustSaySomething:
 
     def test_a_short_real_answer_is_fine(self) -> None:
         assert PlaybookNarration(result="No new todos.", outcome="ok").result == "No new todos."
-
-
-async def test_a_replay_that_finished_without_a_narration_refuses_to_report_a_result() -> None:
-    """``ok=True`` with no narration would be a run delivering an empty result.
-
-    Every path to here has written one, so reaching it means the narration was
-    lost between the call and the result; the run says so instead of handing the
-    user a blank success.
-    """
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder))
-
-    with (
-        patch(f"{MODULE}._narrate", AsyncMock(return_value=None)),
-        pytest.raises(RuntimeError) as raised,
-    ):
-        await _run(_playbook(AGENDA_STEPS), registry)
-
-    assert str(raised.value) == "playbook replay finished every step without a narration"
 
 
 #: Two slotted steps around a fetch: the mail's body is written from the events,
@@ -2991,7 +2988,7 @@ class TestGuardsOnStatesTheModelsRuleOut:
 
     def test_a_record_verdict_is_reported_as_the_records(self) -> None:
         run = _bare_run()
-        run.suspect = "list_events returned no items where the previous run returned 3"
+        run.suspect = "list_events returned no items where the last replay with results returned 3"
 
         assert _suspect_verdict(run, _narration()) == (run.suspect, "record")
 
@@ -3056,6 +3053,24 @@ class TestForEach:
 
         assert result.ok is True, result.failure
         assert [args["to"] for name, args in recorder.calls if name == "send_email"] == ["a", "b"]
+
+    async def test_the_run_reports_how_many_elements_the_source_held_not_how_many_ran(self) -> None:
+        """Seen live: a source of six under a cap of one logged ``items: 1``, so
+        the cap was invisible and a for_each looked like a one-item day."""
+        recorder = _Recorder()
+        registry = _FakeRegistry(
+            _tools(recorder, events_result='{"ids": ["a", "b", "c", "d", "e"]}')
+        )
+
+        with patch(f"{MODULE}.log") as log:
+            await _run(_playbook(_fan_out(max_items=2)), registry)
+
+        reported = [
+            call.kwargs["for_each"]
+            for call in log.set_ns.call_args_list
+            if "for_each" in call.kwargs
+        ]
+        assert reported == [{"step": "mails", "items": 5, "ran": 2}]
 
     async def test_no_elements_is_a_completed_run_not_a_failure(self) -> None:
         """An inbox with nothing that wants a reply is a quiet Tuesday. Treating
@@ -3238,3 +3253,94 @@ class TestNarrationSeesTheSelection:
 
     def test_nothing_asked_reads_as_none(self) -> None:
         assert AskAnswers().render() == "none"
+
+
+# --- a structured model call that answers in prose instead of the schema -----
+
+
+async def test_a_narration_that_answers_without_the_schema_falls_back_to_the_record() -> None:
+    """The structured runnable hands back ``None`` when the model writes prose
+    instead of the schema. That used to surface as a RuntimeError out of
+    ``run_playbook`` after every step had run, failing the fire and sending the
+    next one to a heal run against a sequence that had just done its job."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+
+    result, _ = await _run(
+        _playbook(AGENDA_STEPS), registry, seams=_Seams(llm=AsyncMock(return_value=None))
+    )
+
+    assert result.ok is True
+    assert [call.tool_name for call in result.trace] == ["list_events", "send_email"]
+    assert result.suspect is None
+    assert result.text is not None
+    assert "ModelWroteNothing" in result.text
+    assert "playbook_narration" in result.text
+
+
+async def test_an_ask_fill_that_answers_without_the_schema_stops_at_that_step() -> None:
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    playbook = _playbook(
+        [ToolStep(id="mail", tool="send_email", args={"to": {"$ask": "who should get this"}})]
+    )
+
+    result, _ = await _run(playbook, registry, seams=_Seams(llm=AsyncMock(return_value=None)))
+
+    assert result.ok is False
+    assert result.trace == []
+    assert result.failure is not None
+    assert "ModelWroteNothing" in result.failure
+    assert "playbook_ask_fill" in result.failure
+
+
+# --- the baseline for an empty result reaches past heal runs ------------------
+
+
+async def test_an_empty_replay_is_measured_against_the_last_replay_with_results_not_the_last_fire() -> (
+    None
+):
+    """After a suspect replay the next fires are heal runs: agent runs that
+    replay nothing. The body replayed again after them used to be compared with
+    the fire right before it, find no replayed call there, and pass an empty
+    result as clean — so the streak limit could never be reached through the
+    record. The baseline is the newest replay of the tool that carried data,
+    however many agent runs sit between."""
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder, events_result='{"items": []}'))
+    heal_run = MagicMock()
+    heal_run.trace = [RecordedCall(tool_name="list_events", result_digest='{"items": [{"id": 9}]}')]
+    suspect_replay = MagicMock()
+    suspect_replay.trace = [
+        RecordedCall(replayed=True, tool_name="list_events", result_digest='{"items": []}')
+    ]
+    full_replay = MagicMock()
+    full_replay.trace = [
+        RecordedCall(
+            replayed=True,
+            tool_name="list_events",
+            result_digest='{"items": [{"id": 1}, {"id": 2}, {"id": 3}]}',
+        )
+    ]
+
+    result, _ = await _run(
+        _playbook(AGENDA_STEPS),
+        registry,
+        seams=_Seams(find_previous=AsyncMock(return_value=[heal_run, suspect_replay, full_replay])),
+    )
+
+    assert (
+        result.suspect
+        == "list_events returned no items where the last replay with results returned 3"
+    )
+    assert result.suspect_source == "record"
+
+
+async def test_the_baseline_lookup_asks_for_the_whole_window() -> None:
+    recorder = _Recorder()
+    registry = _FakeRegistry(_tools(recorder))
+    find_previous = AsyncMock(return_value=[])
+
+    await _run(_playbook(AGENDA_STEPS), registry, seams=_Seams(find_previous=find_previous))
+
+    find_previous.assert_awaited_once_with("wf_1", "u_1", limit=PLAYBOOK_SUSPECT_BASELINE_WINDOW)

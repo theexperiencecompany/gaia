@@ -36,17 +36,17 @@ def _previous_run() -> WorkflowExecutionDocument:
 @pytest.mark.unit
 class TestLastRunBriefFailsOpen:
     async def test_a_first_run_has_no_brief(self) -> None:
-        lookup = AsyncMock(return_value=None)
-        with patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup):
+        lookup = AsyncMock(return_value=[])
+        with patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup):
             assert await get_last_run_brief("wf_1", "u_1") == ""
-        lookup.assert_awaited_once_with("wf_1", "u_1")
+        lookup.assert_awaited_once_with("wf_1", "u_1", limit=1)
 
     async def test_a_failed_lookup_yields_no_brief_and_a_warning(self) -> None:
         """The brief is read before the executor is dispatched. A store hiccup
         here must cost the run its history, not the run itself."""
         lookup = AsyncMock(side_effect=RuntimeError("mongo unavailable"))
         with (
-            patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup),
+            patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup),
             patch(f"{MODULE}.log") as log,
         ):
             assert await get_last_run_brief("wf_1", "u_1") == ""
@@ -61,7 +61,7 @@ class TestLastRunBriefFailsOpen:
         else in the system records it."""
         lookup = AsyncMock(side_effect=RuntimeError("mongo unavailable"))
         with (
-            patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup),
+            patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup),
             patch(f"{MODULE}.log") as log,
         ):
             await get_last_run_brief("wf_1", "u_1")
@@ -79,8 +79,8 @@ class TestLastRunBriefFailsOpen:
         """The brief IS that execution rendered — the found document is what gets
         rendered, not some other value that happens to render to a string."""
         previous = _previous_run()
-        lookup = AsyncMock(return_value=previous)
-        with patch(f"{MODULE}.workflow_executions_repository.find_latest_with_trace", lookup):
+        lookup = AsyncMock(return_value=[previous])
+        with patch(f"{MODULE}.workflow_executions_repository.find_recent_with_trace", lookup):
             brief = await get_last_run_brief("wf_1", "u_1")
 
         assert brief == render_last_run(previous)

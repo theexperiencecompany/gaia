@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.db.repositories.base import MongoDocument
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run
@@ -160,6 +161,28 @@ def _largest_sequence(
 
             best_rebuild = rebuild
     return best, best_rebuild
+
+
+_RESULT_DECODER = json.JSONDecoder()
+
+
+def parse_result(text: str) -> object:
+    """A tool result as JSON when it is a JSON document, and as its own text otherwise.
+
+    The document may be followed by a note a middleware appended for the model
+    after ``TOOL_RESULT_NOTE_SEPARATOR``; the note is not part of the result.
+    Anything else after a document means the text was never a document ("3
+    items found" starts with a number and is prose).
+    """
+    body = text.lstrip()
+    try:
+        value, end = _RESULT_DECODER.raw_decode(body)
+    except ValueError:
+        return text
+    rest = body[end:]
+    if rest.strip() and not rest.startswith(TOOL_RESULT_NOTE_SEPARATOR):
+        return text
+    return value
 
 
 def carries_no_data(value: object) -> bool:

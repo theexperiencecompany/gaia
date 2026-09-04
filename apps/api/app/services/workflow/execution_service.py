@@ -221,7 +221,9 @@ async def get_last_run_brief(workflow_id: str, user_id: str) -> str:
     and a store hiccup here costs the run its history, not the run itself.
     """
     try:
-        previous = await workflow_executions_repository.find_latest_with_trace(workflow_id, user_id)
+        recent = await workflow_executions_repository.find_recent_with_trace(
+            workflow_id, user_id, limit=1
+        )
     except Exception as e:
         log.warning(
             f"{LogTag.WORKFLOW} get_last_run_brief: lookup failed; the run proceeds without it",
@@ -230,7 +232,7 @@ async def get_last_run_brief(workflow_id: str, user_id: str) -> str:
             error_type=type(e).__name__,
         )
         return ""
-    return "" if previous is None else render_last_run(previous)
+    return render_last_run(recent[0]) if recent else ""
 
 
 async def get_workflow_executions(

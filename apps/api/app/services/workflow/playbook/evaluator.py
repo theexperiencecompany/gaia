@@ -31,7 +31,7 @@ from app.models.playbook_models import (
     ask_slot_key,
     is_ask_slot,
 )
-from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
+from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.placeholders import PLACEHOLDER_TOKEN
 from app.utils.errors import AppError
 
@@ -466,14 +466,6 @@ def _walk(root: object, path: str) -> tuple[object, bool]:
         else:
             return None, False
     return current, True
-
-
-def parse_result(digest: str) -> object:
-    """A recorded result as JSON when it is JSON, and as its own text otherwise."""
-    try:
-        return json.loads(digest)
-    except (ValueError, TypeError):
-        return digest
 
 
 def _render(value: object) -> str:

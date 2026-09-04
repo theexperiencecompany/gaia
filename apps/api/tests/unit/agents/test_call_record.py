@@ -16,6 +16,7 @@ from app.agents.core.subagents.call_record import (
     append_call_record,
     successful_call_lines,
 )
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.constants.general import FINISH_TASK_NAME
 
 
@@ -307,3 +308,23 @@ class TestTheRecordBlockIsExact:
             + 'GMAIL_SEND_EMAIL({"to":"a@b.c"})'
             + "\n</subagent_call_record>\n"
         )
+
+
+@pytest.mark.unit
+async def test_an_empty_result_is_still_marked_empty_when_a_middleware_appended_a_note() -> None:
+    """The loop guard appends its repeat warning to the tool message in band.
+    Read as a whole the content is no longer JSON, the recorder could not say
+    whether the call returned anything, and an empty fetch was frozen into a
+    playbook. The result is the JSON document the content starts with."""
+    messages = [
+        AIMessage(content="", tool_calls=[{"name": "list_todos", "args": {}, "id": "c1"}]),
+        ToolMessage(
+            content='{"todos": [], "count": 0}'
+            + TOOL_RESULT_NOTE_SEPARATOR
+            + "[Loop guard: `list_todos` has now been called 2 times in a row.]",
+            tool_call_id="c1",
+            name="list_todos",
+        ),
+    ]
+
+    assert successful_call_lines(messages) == ["list_todos({})" + EMPTY_RESULT_SUFFIX]

@@ -14,7 +14,7 @@ from langchain_core.messages import AnyMessage, ToolMessage
 
 from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import FINISH_TASK_NAME
-from app.models.workflow_execution_models import carries_no_data
+from app.models.workflow_execution_models import carries_no_data, parse_result
 
 #: Longest serialized form a single recorded arg value may take; anything past
 #: it is cut with the marker so the record's token cost stays bounded.
@@ -46,15 +46,9 @@ def _truncated_arg(value: object) -> object:
 
 
 def parsed_result(message: ToolMessage) -> object | None:
-    """The tool result as JSON when its content is a JSON document, else ``None``."""
+    """The tool result parsed as the record parses it; ``None`` for block content."""
     content = message.content
-    if not isinstance(content, str):
-        return None
-    try:
-        parsed: object = json.loads(content)
-    except ValueError:
-        return None
-    return parsed
+    return parse_result(content) if isinstance(content, str) else None
 
 
 def is_error_envelope(result: object) -> bool:

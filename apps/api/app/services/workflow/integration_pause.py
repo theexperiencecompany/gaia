@@ -164,14 +164,6 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                 continue
             try:
                 await WorkflowService.activate_workflow(workflow.id, user_id)
-                # The block is over, so the record of it must not outlive it:
-                # a stale list would resume this workflow on a later, unrelated
-                # reconnect of the same integration.
-                if workflow.blocked_on_integrations:
-                    await workflow_repository.update_for_user(
-                        workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
-                    )
-                resumed += 1
             except Exception as e:
                 log.info(
                     f"{LogTag.WORKFLOW} Workflow left paused — still missing an integration",
@@ -182,6 +174,15 @@ async def resume_workflows_for_reconnected_integration(user_id: str, integration
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                continue
+            # The block is over, so the record of it must not outlive it: a
+            # stale list would resume this workflow on a later, unrelated
+            # reconnect of the same integration.
+            if workflow.blocked_on_integrations:
+                await workflow_repository.update_for_user(
+                    workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
+                )
+            resumed += 1
 
     # Mirror of the pause side: the reconnect gives the subscriptions a fresh
     # connected account, so they re-register and drop the blocking label.

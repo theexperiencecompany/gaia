@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.models.playbook_models import (
     AskKind,
     AskSlot,
@@ -20,7 +21,7 @@ from app.models.playbook_models import (
     PlaybookAskFill,
     ask_slot_key,
 )
-from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall
+from app.models.workflow_execution_models import RECORD_CUT_MARKER, RecordedCall, parse_result
 from app.services.workflow.playbook.evaluator import (
     AskAnswers,
     PlaceholderError,
@@ -538,3 +539,18 @@ class TestACutRecordedValueIsNotReplayed:
         assert caught.value.message == (
             "url: the recorded value was cut when it was stored and cannot be replayed"
         )
+
+
+@pytest.mark.unit
+class TestParseResultWithAnAppendedNote:
+    def test_the_leading_document_is_the_result(self) -> None:
+        text = (
+            '{"todos": []}' + TOOL_RESULT_NOTE_SEPARATOR + "[Loop guard: reuse the earlier result.]"
+        )
+        assert parse_result(text) == {"todos": []}
+
+    def test_prose_that_happens_to_start_with_a_number_stays_prose(self) -> None:
+        assert parse_result("3 items found") == "3 items found"
+
+    def test_a_document_followed_by_anything_but_a_note_stays_text(self) -> None:
+        assert parse_result('{"a": 1} trailing') == '{"a": 1} trailing'

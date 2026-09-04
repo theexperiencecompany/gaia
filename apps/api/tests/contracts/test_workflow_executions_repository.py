@@ -85,7 +85,7 @@ class TestWorkflowExecutionsRepository:
         assert reread.trace[0].args == {"query": "is:unread"}
         assert reread.trace[0].subagent_id == "sa_gmail"
 
-    async def test_find_latest_with_trace_returns_the_newest_run_that_recorded_one(self, repo):
+    async def test_find_recent_with_trace_returns_the_newest_runs_that_recorded_one(self, repo):
         wf = _uid("wf")
         owner = _uid("owner")
 
@@ -107,16 +107,19 @@ class TestWorkflowExecutionsRepository:
         )
         await repo.complete(stranger.execution_id, status="success", trace=call)
 
-        found = await repo.find_latest_with_trace(wf, owner)
-        assert found is not None and found.execution_id == older
+        found = await repo.find_recent_with_trace(wf, owner, limit=1)
+        assert [execution.execution_id for execution in found] == [older]
 
         newest = await _completed(now, call)
-        found = await repo.find_latest_with_trace(wf, owner)
-        assert found is not None and found.execution_id == newest
+        found = await repo.find_recent_with_trace(wf, owner, limit=1)
+        assert [execution.execution_id for execution in found] == [newest]
+        # The window, newest first, still without the empty run or the stranger's.
+        found = await repo.find_recent_with_trace(wf, owner, limit=5)
+        assert [execution.execution_id for execution in found] == [newest, older]
 
-        assert await repo.find_latest_with_trace(_uid("missing"), owner) is None
+        assert await repo.find_recent_with_trace(_uid("missing"), owner, limit=1) == []
 
-    async def test_find_latest_with_trace_returns_a_failed_run_that_ran_steps(self, repo):
+    async def test_find_recent_with_trace_returns_a_failed_run_that_ran_steps(self, repo):
         """A fire that ran steps (with side effects) and then failed carries its
         trace on a FAILED record. Hiding it showed the next run the fire before,
         and the agent repeated the side effect. A run still in flight is not
@@ -137,7 +140,7 @@ class TestWorkflowExecutionsRepository:
             _execution(workflow_id=wf, user_id=owner, started_at=now, status="running", trace=call)
         )
 
-        found = await repo.find_latest_with_trace(wf, owner)
+        (found,) = await repo.find_recent_with_trace(wf, owner, limit=1)
 
         assert found is not None
         assert found.execution_id == failed.execution_id

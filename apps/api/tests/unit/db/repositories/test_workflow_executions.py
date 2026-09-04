@@ -41,14 +41,14 @@ def collection() -> Iterator[MagicMock]:
 
 
 @pytest.mark.unit
-class TestFindLatestWithTrace:
+class TestFindRecentWithTrace:
     async def test_it_reads_finished_runs_success_or_failed_that_recorded_a_trace(
         self, collection: MagicMock
     ) -> None:
         """A failed fire that ran steps carries its trace; filtering it out showed
         the next run the fire before and the agent repeated the side effect. A
         running one is not history yet."""
-        await WorkflowExecutionsRepository().find_latest_with_trace("wf_1", "u_1")
+        await WorkflowExecutionsRepository().find_recent_with_trace("wf_1", "u_1", limit=1)
 
         (filter_,) = collection.find.call_args.args
         assert filter_["workflow_id"] == "wf_1"
@@ -56,21 +56,24 @@ class TestFindLatestWithTrace:
         assert filter_["trace.0"] == {"$exists": True}
         assert set(filter_["status"]["$in"]) == {"success", "failed"}
 
-    async def test_it_asks_the_driver_for_the_newest_run_and_only_one(
+    async def test_it_asks_the_driver_for_the_newest_runs_and_only_as_many_as_asked(
         self, collection: MagicMock
     ) -> None:
-        """Latest is entirely the sort direction plus the cap: an ascending sort
-        hands the next run the FIRST fire it ever recorded, and an unbounded read
-        drags the whole history back to throw all but one away."""
-        await WorkflowExecutionsRepository().find_latest_with_trace("wf_1", "u_1")
+        """Recent is entirely the sort direction plus the cap: an ascending sort
+        hands the next run the FIRST fires it ever recorded, and an unbounded read
+        drags the whole history back to throw most of it away."""
+        await WorkflowExecutionsRepository().find_recent_with_trace("wf_1", "u_1", limit=6)
 
         cursor = collection.find.return_value
         cursor.sort.assert_called_once_with([("started_at", -1)])
-        cursor.limit.assert_called_once_with(1)
+        cursor.limit.assert_called_once_with(6)
 
-    async def test_it_returns_the_first_row_the_driver_yielded(self, collection: MagicMock) -> None:
-        """The sort already put the newest first, so the finder must hand back
-        that row — reading any other position silently returns an older run."""
+    async def test_it_returns_the_rows_in_the_order_the_driver_yielded(
+        self, collection: MagicMock
+    ) -> None:
+        """The sort already put the newest first, so the finder must hand the
+        rows back as they came — reordering them would make a caller reading
+        the first one silently read an older run."""
         collection.find.return_value.to_list = AsyncMock(
             return_value=[
                 _raw("ex_newest", "2026-01-02T09:00:00+00:00"),
@@ -78,10 +81,12 @@ class TestFindLatestWithTrace:
             ]
         )
 
-        found = await WorkflowExecutionsRepository().find_latest_with_trace("wf_1", "u_1")
+        found = await WorkflowExecutionsRepository().find_recent_with_trace("wf_1", "u_1", limit=2)
 
-        assert found is not None
-        assert found.execution_id == "ex_newest"
+        assert [execution.execution_id for execution in found] == ["ex_newest", "ex_older"]
 
-    async def test_no_recorded_run_reads_as_none(self, collection: MagicMock) -> None:
-        assert await WorkflowExecutionsRepository().find_latest_with_trace("wf_1", "u_1") is None
+    async def test_no_recorded_run_reads_as_an_empty_list(self, collection: MagicMock) -> None:
+        assert (
+            await WorkflowExecutionsRepository().find_recent_with_trace("wf_1", "u_1", limit=1)
+            == []
+        )

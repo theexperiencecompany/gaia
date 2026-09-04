@@ -42,6 +42,7 @@ from app.models.integration_models import (
 )
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
+from app.models.workflow_models import DeactivationReason
 from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
@@ -901,8 +902,8 @@ class TestWorkflowResumeOnReconnect:
         per-workflow requirement check is the only thing keeping a Notion workflow
         from being re-armed against a still-dead integration.
         """
-        notion_workflow = MagicMock(id="wf-notion")
-        gmail_workflow = MagicMock(id="wf-gmail")
+        notion_workflow = MagicMock(id="wf-notion", blocked_on_integrations=[])
+        gmail_workflow = MagicMock(id="wf-gmail", blocked_on_integrations=[])
 
         with (
             patch("app.services.workflow.integration_pause.workflow_repository") as repo,
@@ -919,7 +920,13 @@ class TestWorkflowResumeOnReconnect:
         ):
             # Notion first: a resume that stopped at the first non-match would
             # never reach the Gmail workflow behind it.
-            repo.find_paused_for_reason = AsyncMock(return_value=[notion_workflow, gmail_workflow])
+            # The scan asks per pause reason; only the expired batch holds these two.
+            repo.find_paused_for_reason = AsyncMock(
+                side_effect=lambda user_id, reason: [notion_workflow, gmail_workflow]
+                if reason is DeactivationReason.INTEGRATION_EXPIRED
+                else []
+            )
+            repo.update_for_user = AsyncMock()
             required.side_effect = lambda steps, trigger: (
                 {"gmail"} if steps is gmail_workflow.steps else {"notion"}
             )

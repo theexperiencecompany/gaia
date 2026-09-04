@@ -27,9 +27,8 @@ from app.models.playbook_models import (
     PlaybookStep,
     ToolStep,
 )
-from app.models.workflow_execution_models import RecordedCall, carries_no_data
+from app.models.workflow_execution_models import RecordedCall, carries_no_data, parse_result
 from app.models.workflow_models import WorkflowDocument
-from app.services.workflow.playbook.evaluator import parse_result
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from shared.py.wide_events import log
