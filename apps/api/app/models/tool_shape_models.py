@@ -2,9 +2,9 @@
 
 Scoped per ``ResolvedTool.shape_scope``; one document per (scope, tool_name).
 ``output_schema`` is a genson-inferred JSON schema of keys and types only — no
-value is ever stored. Keys are filtered to identifier-shaped names so a dict
-keyed by data contributes no property names (``tool_shape_service._sample``),
-but that filter is a heuristic: a global-scope record is not a privacy boundary.
+value is ever stored. Dicts classified as data-keyed maps contribute their
+value shape as ``additionalProperties``, never their keys (see the record-vs-map
+classification in ``tool_shape_service``).
 """
 
 from datetime import datetime

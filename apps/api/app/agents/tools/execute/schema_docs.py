@@ -76,14 +76,19 @@ def _compact_type(node: object) -> str:
         return "|".join(sorted({_compact_type({**node, "type": t}) for t in type_}))
     if type_ == "object" or (type_ is None and "properties" in node):
         properties = node.get("properties")
-        if not isinstance(properties, dict) or not properties:
-            return "obj"
         required = set(node.get("required") or [])
-        fields = ", ".join(
+        fields = [
             f"{name}{'' if name in required else '?'}:{_compact_type(sub)}"
-            for name, sub in properties.items()
-        )
-        return "{" + fields + "}"
+            for name, sub in (properties.items() if isinstance(properties, dict) else ())
+        ]
+        # A data-keyed map (observed shapes store these as additionalProperties):
+        # rendered as an index signature, since the keys are data, not fields.
+        additional = node.get("additionalProperties")
+        if isinstance(additional, dict):
+            fields.append(f"[key]:{_compact_type(additional)}")
+        if not fields:
+            return "obj"
+        return "{" + ", ".join(fields) + "}"
     if type_ == "array":
         item = _compact_type(node.get("items", {}))
         # Union item types need grouping so {a}|{b}[] cannot misread.
@@ -163,7 +168,7 @@ def _prune_to_levels(node: object, levels: int) -> object:
                 if levels > 0
                 else _SCHEMA_TRUNCATED_MARKER
             )
-        elif key == "items" and isinstance(value, dict | list):
+        elif key in {"items", "additionalProperties"} and isinstance(value, dict | list):
             pruned[key] = (
                 _prune_to_levels(value, levels - 1) if levels > 0 else _SCHEMA_TRUNCATED_MARKER
             )
