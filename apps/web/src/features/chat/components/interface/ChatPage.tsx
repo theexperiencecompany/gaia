@@ -6,6 +6,7 @@ import {
   useMessageScroller,
 } from "@/components/ui/message-scroller";
 import Composer from "@/features/chat/components/composer/Composer";
+import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
 import { FounderLetter } from "@/features/chat/components/interface/founder-letter/FounderLetter";
@@ -120,7 +121,12 @@ const MainChat = React.memo(function MainChat() {
         <ChatWithMessages
           chatRef={chatRef}
           dragHandlers={dragHandlers}
-          bottomBar={<Composer {...composerProps} />}
+          bottomBar={
+            <>
+              <PaywallNotice />
+              <Composer {...composerProps} />
+            </>
+          }
         />
       ) : (
         <NewChatLayout

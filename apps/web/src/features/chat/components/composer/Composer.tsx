@@ -30,7 +30,6 @@ import type { SearchMode } from "@/types/shared/searchTypes";
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
-import { PaywallNotice } from "./PaywallNotice";
 import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
 import SelectedReplyIndicator from "./SelectedReplyIndicator";
 import SelectedToolIndicator from "./SelectedToolIndicator";
@@ -161,7 +160,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <PaywallNotice />
       <div className="searchbar relative transition-[height] z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
         <IntegrationsBanner
           integrations={integrations}

@@ -1,6 +1,7 @@
 import type React from "react";
 
 import Composer from "@/features/chat/components/composer/Composer";
+import { PaywallNotice } from "@/features/chat/components/composer/PaywallNotice";
 import StarterText from "@/features/chat/components/interface/StarterText";
 
 import { ChatSuggestions } from "./ChatSuggestions";
@@ -29,6 +30,7 @@ export const NewChatSection: React.FC<NewChatSectionProps> = ({
           <StarterText />
         </div>
         <div className="mt-12 w-full max-w-7xl">
+          <PaywallNotice />
           <Composer {...composerProps} />
         </div>
 
