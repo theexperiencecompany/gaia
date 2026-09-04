@@ -92,15 +92,24 @@ def resolve_attachments_sync(
     Raises ``AppError`` if any reference cannot be resolved (all-or-nothing).
     """
     resolved: list[ComposioAttachment] = []
-    for ref in references:
+    for index, ref in enumerate(references):
         try:
             uploaded = upload_file_reference(ref, user_id=user_id, tool=tool, toolkit=toolkit)
         except Exception as exc:
-            source = ref.workspace_path or ref.url
+            # The label never falls back to ``url``: a Drive download link is
+            # presigned, and this message becomes the tool error the model reads
+            # and the conversation stores. The raw URL belongs on the wide event,
+            # which is not user-visible. ``exc`` is safe to quote — both the SSRF
+            # guard and Composio's fetcher sanitize the URL out of their own
+            # messages, and the reason is what makes the failure actionable.
+            label = ref.name or ref.workspace_path or f"file {index + 1}"
             log.error(
-                EMAIL_ATTACHMENT_FAIL_LOG, error=str(exc), user_id=user_id
+                EMAIL_ATTACHMENT_FAIL_LOG,
+                error=str(exc),
+                user_id=user_id,
+                source=ref.workspace_path or ref.url,
             )  # pragma: no mutate
-            message = f"Could not attach '{ref.name or source}': {exc}"  # pragma: no mutate
+            message = f"Could not attach '{label}': {exc}"  # pragma: no mutate
             raise AppError(
                 message=message,
                 why=EMAIL_ATTACHMENT_FAIL_WHY,

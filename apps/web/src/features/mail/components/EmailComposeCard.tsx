@@ -94,7 +94,9 @@ interface EmailComposeCardProps {
 function seedRecipients(data: EmailData): RecipientMap {
   const to = data.to || [];
   return {
-    to: to.length === 1 ? [to[0]] : [],
+    // A stored draft is sent verbatim, so its recipients are already settled.
+    // A proposed compose may list several candidates for the user to pick from.
+    to: data.draft_id || to.length === 1 ? to : [],
     cc: data.cc || [],
     bcc: data.bcc || [],
   };
@@ -146,18 +148,22 @@ function ComposeHeader({
 
 function EmailBodyPreview({
   html,
+  isLocked,
   onEdit,
 }: {
   html: string;
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
     <ScrollShadow className="relative z-1 max-h-46 overflow-y-auto pb-5 text-sm leading-relaxed text-zinc-200">
-      <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
-        <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
-          <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-        </Button>
-      </div>
+      {!isLocked && (
+        <div className="absolute top-0 right-0 z-2 flex w-full justify-end">
+          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+            <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+          </Button>
+        </div>
+      )}
       <HtmlEmailBody html={html} />
     </ScrollShadow>
   );
@@ -199,6 +205,7 @@ function ComposeFields({
   subject,
   body,
   attachments,
+  isLocked,
   onEdit,
 }: {
   recipients: RecipientMap;
@@ -206,6 +213,7 @@ function ComposeFields({
   subject: string;
   body: string;
   attachments?: EmailAttachmentMeta[];
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
@@ -216,6 +224,7 @@ function ComposeFields({
             label={label}
             addLabel={addLabel}
             emails={recipients[field]}
+            isLocked={isLocked}
             onEdit={() => onEditField(field)}
           />
           <Separator className="my-1.5 bg-zinc-700" />
@@ -227,13 +236,15 @@ function ComposeFields({
           <span className="font-medium text-gray-200">{subject}</span>
         </div>
 
-        <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
-          <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-        </Button>
+        {!isLocked && (
+          <Button variant="light" size="sm" isIconOnly onPress={onEdit}>
+            <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+          </Button>
+        )}
       </div>
       <Separator className="my-1.5 bg-zinc-700" />
 
-      <EmailBodyPreview html={body} onEdit={onEdit} />
+      <EmailBodyPreview html={body} isLocked={isLocked} onEdit={onEdit} />
 
       {attachments && attachments.length > 0 && (
         <AttachmentsRow attachments={attachments} />
@@ -246,11 +257,13 @@ function RecipientRow({
   label,
   addLabel,
   emails,
+  isLocked,
   onEdit,
 }: {
   label: string;
   addLabel: string;
   emails: string[];
+  isLocked: boolean;
   onEdit: () => void;
 }) {
   return (
@@ -258,21 +271,23 @@ function RecipientRow({
       <span>{label}:</span>
       <span className="flex w-full items-center justify-between font-medium text-zinc-200">
         {emails.join(", ") || ""}
-        <Button
-          size="sm"
-          onPress={onEdit}
-          variant={emails.length === 0 ? "flat" : "light"}
-          isIconOnly={emails.length !== 0}
-          endContent={
-            emails.length === 0 ? (
-              ""
-            ) : (
-              <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
-            )
-          }
-        >
-          {emails.length === 0 ? addLabel : ``}
-        </Button>
+        {!isLocked && (
+          <Button
+            size="sm"
+            onPress={onEdit}
+            variant={emails.length === 0 ? "flat" : "light"}
+            isIconOnly={emails.length !== 0}
+            endContent={
+              emails.length === 0 ? (
+                ""
+              ) : (
+                <PencilEdit01Icon className="h-5 w-5 text-zinc-500" />
+              )
+            }
+          >
+            {emails.length === 0 ? addLabel : ``}
+          </Button>
+        )}
       </span>
     </div>
   );
@@ -530,6 +545,12 @@ export default function EmailComposeCard({
     ? { ...emailData, ...savedEdits }
     : emailData;
 
+  // A card carrying a draft id is sent as that stored draft, verbatim — the only
+  // path that keeps its attachments, since an edited copy would have to be
+  // recomposed without them. Offering edits it cannot apply would be a lie, so
+  // the card renders read-only.
+  const isLocked = !!emailData.draft_id;
+
   const activeSuggestions = activeRecipientField
     ? recipientSuggestions[activeRecipientField]
     : [];
@@ -699,7 +720,7 @@ export default function EmailComposeCard({
       {/* Main Email Card */}
       <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-zinc-800">
         <ComposeHeader
-          isDraft={!!emailData.draft_id}
+          isDraft={isLocked}
           hasThread={!!emailData.thread_id}
           isCollapsed={isCollapsed}
           onToggle={() => setIsCollapsed((prev) => !prev)}
@@ -722,6 +743,7 @@ export default function EmailComposeCard({
                 subject={editData.subject}
                 body={editData.body}
                 attachments={editData.attachments}
+                isLocked={isLocked}
                 onEdit={handleEditClick}
               />
               <div className="flex justify-end px-6 pb-5">

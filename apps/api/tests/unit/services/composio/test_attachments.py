@@ -111,12 +111,42 @@ class TestResolveAttachmentsSync:
             with pytest.raises(AppError) as exc:
                 resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
         assert exc.value.status_code == 400
-        # The error names the failing source and surfaces the underlying cause,
-        # and carries actionable why/fix guidance.
-        assert "https://drive/broken" in exc.value.message
+        # The reason survives, with actionable why/fix guidance...
         assert "404 not found" in exc.value.message
         assert exc.value.why
         assert exc.value.fix
+        # ...but never the reference URL: this message becomes the tool error the
+        # model reads and the conversation stores, and a Drive link is presigned.
+        assert "https://drive/broken" not in exc.value.message
+
+    def test_unnamed_reference_is_labelled_by_position_not_url(self):
+        refs = [
+            AttachmentReference(url="https://ok"),
+            AttachmentReference(url="https://drive/file?token=SECRET"),
+        ]
+        with (
+            patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.assert_public_http_url_sync"),
+            patch(f"{MODULE}.FileUploadable") as fu_cls,
+        ):
+            fu_cls.from_url.side_effect = [
+                _fake_uploadable("ok", "text/plain", "k/ok"),
+                RuntimeError("boom"),
+            ]
+            with pytest.raises(AppError) as exc:
+                resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
+        assert "SECRET" not in exc.value.message
+        assert "file 2" in exc.value.message
+
+    def test_workspace_reference_is_labelled_by_path(self):
+        refs = [AttachmentReference(workspace_path="sessions/c/deck.pdf")]
+        with (
+            patch(f"{SERVICE}.get_composio_service", return_value=MagicMock()),
+            patch(f"{MODULE}.resolve_user_file_sync", side_effect=FileNotFoundError("gone")),
+        ):
+            with pytest.raises(AppError) as exc:
+                resolve_attachments_sync("u1", refs, tool="GMAIL_SEND_EMAIL", toolkit="gmail")
+        assert "sessions/c/deck.pdf" in exc.value.message
 
     def test_all_or_nothing_second_failure_aborts(self):
         refs = [

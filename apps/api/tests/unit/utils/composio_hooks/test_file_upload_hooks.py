@@ -24,6 +24,7 @@ from app.utils.composio_hooks.file_upload_hooks import (
     file_upload_schema_modifier,
     find_native_upload_param,
     resolve_tool_attachments,
+    swapped_upload_param,
 )
 from app.utils.composio_hooks.registry import HookAbortError
 from app.utils.errors import AppError
@@ -118,6 +119,40 @@ class TestFindNativeUploadParam:
     def test_scalar_attachment_id_does_not_match(self):
         assert find_native_upload_param(_schema({"attachment": {"type": "string"}})) is None
 
+    def test_marked_items_of_a_list_param_match(self):
+        # A param that takes several files is still that param.
+        assert (
+            find_native_upload_param(
+                _schema({"files": {"type": "array", "items": _native_attachment_schema()}})
+            )
+            == "files"
+        )
+
+    def test_composite_param_merely_containing_a_file_does_not_match(self):
+        # Claiming `message` would delete the param the tool needs and write a
+        # bare {name, mimetype, s3key} back under it — the tool becomes uncallable.
+        composite = {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "file": _native_attachment_schema(),
+            },
+        }
+        assert find_native_upload_param(_schema({"message": composite})) is None
+
+    def test_a_composite_param_does_not_shadow_the_real_upload_param(self):
+        composite = {
+            "type": "object",
+            "properties": {"file": _native_attachment_schema()},
+        }
+        # Dict order puts the composite first; the real param must still win.
+        assert (
+            find_native_upload_param(
+                _schema({"message": composite, "attachment": _native_attachment_schema()})
+            )
+            == "attachment"
+        )
+
     def test_slack_style_blocks_do_not_match(self):
         assert find_native_upload_param(_schema({"attachments": {"type": "array"}})) is None
 
@@ -181,6 +216,17 @@ class TestFileUploadSchemaModifier:
         once = file_upload_schema_modifier("T", "tk", schema)
         twice = file_upload_schema_modifier("T", "tk", once)
         assert set(twice.input_parameters["properties"]) == {"attachments"}
+
+    def test_composite_param_survives_the_modifier(self):
+        composite = {
+            "type": "object",
+            "properties": {"text": {"type": "string"}, "file": _native_attachment_schema()},
+        }
+        schema = _schema({"message": composite}, required=["message"])
+        before = deepcopy(schema.input_parameters["properties"])
+        out = file_upload_schema_modifier("SOME_COMPOSITE_TOOL", "tk", schema)
+        assert out.input_parameters["properties"] == before
+        assert file_upload_hooks._swapped_upload_params == {}
 
     def test_legacy_unmarked_bare_object_passes_through(self):
         schema = _schema({"attachment": {"type": "object"}})
@@ -357,6 +403,17 @@ class TestResolveToolAttachments:
         with patch(f"{HOOKS}.resolve_attachments_sync", return_value=resolved) as res:
             resolve_tool_attachments("GMAIL_SEND_EMAIL", "gmail", params, native_param="attachment")
         assert res.call_args.args[1][0].url == "https://x/y.pdf"
+
+
+class TestSwappedUploadParamAccessor:
+    def test_reports_the_recorded_name(self):
+        file_upload_schema_modifier(
+            "SLACK_UPLOAD_FILE", "slack", _schema({"file": _native_attachment_schema()})
+        )
+        assert swapped_upload_param("SLACK_UPLOAD_FILE") == "file"
+
+    def test_reports_nothing_for_a_tool_we_never_swapped(self):
+        assert swapped_upload_param("SLACK_SEND_MESSAGE") is None
 
 
 class TestGenericBeforeHook:

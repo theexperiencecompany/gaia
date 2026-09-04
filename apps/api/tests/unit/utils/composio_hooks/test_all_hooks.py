@@ -18,7 +18,6 @@ _HOOK_MODULES = (
     "reddit_hooks",
     "slack_hooks",
     "twitter_hooks",
-    "user_id_hooks",
 )
 
 

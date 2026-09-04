@@ -58,12 +58,19 @@ class AttachmentDisplay(TypedDict):
     mimetype: str
 
 
-def _subtree_has_file_marker(node: object) -> bool:
-    """Recursive ``file_uploadable: True`` scan (anyOf/oneOf/allOf/properties/items).
+def _is_file_upload_node(node: object) -> bool:
+    """``file_uploadable: True`` on this node itself, its variants, or its items.
 
-    Mirrors Composio's own ``FileHelper._has_file_property``: ``FileUploadable``
-    emits the marker into the schema, so this is the authoritative signal — it
-    survives renames and reshapes that a param-name heuristic cannot.
+    ``FileUploadable`` emits the marker onto the field's own schema node, so the
+    marker is read there — through ``anyOf``/``oneOf``/``allOf`` (an optional
+    param) and ``items`` (a list of files), which are still the same param.
+
+    Deliberately does NOT descend into ``properties``: a composite param that
+    merely *contains* a file field is not one we can swap. The modifier deletes
+    the whole property it claims and the before-hook writes a bare
+    ``{name, mimetype, s3key}`` back under it, so claiming e.g. a
+    ``message: {text, file}`` param would delete the param the tool needs and
+    hand it a shape it cannot accept.
     """
     if not isinstance(node, dict):
         return False
@@ -71,17 +78,12 @@ def _subtree_has_file_marker(node: object) -> bool:
         return True
     for key in ("anyOf", "oneOf", "allOf"):
         variants = node.get(key)
-        if isinstance(variants, list) and any(_subtree_has_file_marker(v) for v in variants):
+        if isinstance(variants, list) and any(_is_file_upload_node(v) for v in variants):
             return True
-    properties = node.get("properties")
-    if isinstance(properties, dict) and any(
-        _subtree_has_file_marker(v) for v in properties.values()
-    ):
-        return True
     items = node.get("items")
-    if isinstance(items, dict) and _subtree_has_file_marker(items):
+    if isinstance(items, dict) and _is_file_upload_node(items):
         return True
-    return isinstance(items, list) and any(_subtree_has_file_marker(i) for i in items)
+    return isinstance(items, list) and any(_is_file_upload_node(i) for i in items)
 
 
 def _looks_like_legacy_upload_param(native: dict[str, Any]) -> bool:
@@ -112,7 +114,7 @@ def find_native_upload_param(schema: Tool) -> str | None:
     if FRIENDLY_UPLOAD_PARAM in props:
         return None
     for name, prop in props.items():
-        if _subtree_has_file_marker(prop):
+        if _is_file_upload_node(prop):
             return str(name)
     # Legacy fallback: marker presence in live schemas is unverifiable offline,
     # so an s3key-fingerprinted object still swaps (logged) instead of silently
@@ -224,6 +226,16 @@ def resolve_tool_attachments(
     return [{"name": a["name"], "mimetype": a["mimetype"]} for a in resolved]
 
 
+def swapped_upload_param(tool: str) -> str | None:
+    """The native upload param this module swapped out of ``tool``'s schema, if any.
+
+    The single source of truth for that name: Composio names the param per tool,
+    so any caller that hardcodes one is guessing. ``None`` means we never swapped
+    this tool, and an ``attachments`` argument on it is the tool's own.
+    """
+    return _swapped_upload_params.get(tool)
+
+
 @register_before_hook()
 def file_upload_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
@@ -235,7 +247,7 @@ def file_upload_before_hook(
     call. For the tools we did swap, a reference that fails to resolve aborts
     via ``HookAbortError`` (re-raised by the registry, never swallowed).
     """
-    native_param = _swapped_upload_params.get(tool)
+    native_param = swapped_upload_param(tool)
     if native_param is None:
         return params
     display = resolve_tool_attachments(tool, toolkit, params, native_param=native_param)

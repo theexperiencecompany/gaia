@@ -38,9 +38,9 @@ from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
 from .file_upload_hooks import (
-    NATIVE_UPLOAD_PARAM,
     AttachmentDisplay,
     resolve_tool_attachments,
+    swapped_upload_param,
 )
 from .registry import (
     HookAbortError,
@@ -332,9 +332,15 @@ def gmail_compose_before_hook(
         arguments = params.get("arguments", {})  # pragma: no mutate -- defensive default
         # Shared file-upload resolution (strict: any garbage in ``attachments``
         # aborts). Raises HookAbortError (propagated below) if a file can't be
-        # attached, so we never send mail missing a requested attachment.
-        attachment_display = resolve_tool_attachments(
-            tool, toolkit, params, native_param=NATIVE_UPLOAD_PARAM
+        # attached, so we never send mail missing a requested attachment. The
+        # native param name comes from the swap record rather than a constant of
+        # our own: Composio names it per tool, and a tool we never swapped has no
+        # ``attachments`` of ours to resolve.
+        native_param = swapped_upload_param(tool)
+        attachment_display = (
+            resolve_tool_attachments(tool, toolkit, params, native_param=native_param)
+            if native_param
+            else []
         )
         if attachment_display:
             log.set(gmail_attachment_count=len(attachment_display))  # pragma: no mutate
@@ -368,11 +374,14 @@ def gmail_compose_before_hook(
 def gmail_create_draft_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
 ) -> ToolExecutionResponse:
-    """Stream the held compose card, now carrying the id of the draft just created.
+    """Stream the held compose card, now that the draft it describes exists.
 
-    The id is what makes the card's Send button send *this draft* rather than
-    recompose it from the card's visible fields — the only path that keeps its
-    attachments. The response itself is passed through untouched.
+    A card with attachments gets the draft's id, which makes its Send button send
+    *this draft* rather than recompose it from the card's visible fields — the
+    only path that keeps the files. Without an id there is no such path, so the
+    card is dropped rather than shown with attachments it cannot deliver. A card
+    with no attachments stays editable and is sent as a fresh compose. The
+    response itself is passed through untouched.
     """
     card = _pending_draft_card.get()
     _pending_draft_card.set(None)
@@ -380,10 +389,17 @@ def gmail_create_draft_after_hook(
         return response
     data: object = response["data"]
     draft_id = data.get("id") if isinstance(data, dict) else None
-    if draft_id:
+    if card["attachments"]:
+        if not draft_id:
+            # Every send path open to this card recomposes the mail from its
+            # visible fields, so it would go out without the files the card is
+            # showing. No card at all beats a card that silently drops them.
+            log.warning(GMAIL_DRAFT_ID_MISSING_LOG, tool=tool)  # pragma: no mutate
+            return response
+        # Only a card that MUST be sent as the stored draft carries the id: it is
+        # what makes Send send this draft, and it is why the card renders
+        # read-only (the draft's files cannot be re-attached to an edited copy).
         card["draft_id"] = draft_id
-    elif card["attachments"]:
-        log.warning(GMAIL_DRAFT_ID_MISSING_LOG, tool=tool)  # pragma: no mutate
     writer = get_stream_writer()
     if writer is not None:
         writer({"email_compose_data": [card]})

@@ -60,7 +60,7 @@ EMAIL_ATTACHMENT_FAIL_FIX = (
 # rule as above. Import LogTag so the f-string prefix stays identical.
 GMAIL_TO_MAPPED_LOG = f"{LogTag.COMPOSIO} Mapped 'to' to 'recipient_email' for"  # pragma: no mutate
 GMAIL_SKIP_STREAM_LOG = f"{LogTag.COMPOSIO} Skipping streaming: missing fields"  # pragma: no mutate
-GMAIL_DRAFT_ID_MISSING_LOG = f"{LogTag.COMPOSIO} Draft response carried no id; compose card cannot send its attachments"  # pragma: no mutate
+GMAIL_DRAFT_ID_MISSING_LOG = f"{LogTag.COMPOSIO} Draft response carried no id; compose card with attachments suppressed"  # pragma: no mutate
 ATTACHMENTS_NOT_LIST_ERROR = "`attachments` must be a list of file references."  # pragma: no mutate
 ATTACHMENTS_NO_USER_ERROR = (
     "Cannot resolve file attachments without a user context."  # pragma: no mutate

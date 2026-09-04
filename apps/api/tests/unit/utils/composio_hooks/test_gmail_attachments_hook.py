@@ -17,8 +17,10 @@ from unittest.mock import patch
 from pydantic import BaseModel
 import pytest
 
+from app.utils.composio_hooks import file_upload_hooks
 from app.utils.composio_hooks.file_upload_hooks import (
     NATIVE_UPLOAD_PARAM,
+    file_upload_schema_modifier,
     resolve_tool_attachments,
 )
 from app.utils.composio_hooks.gmail_hooks import (
@@ -47,6 +49,35 @@ def _no_held_card():
 
 def _schema(props: dict, required: list[str] | None = None) -> SimpleNamespace:
     return SimpleNamespace(input_parameters={"properties": props, "required": required or []})
+
+
+def _native_attachment_schema() -> dict:
+    return {
+        "type": "object",
+        "file_uploadable": True,
+        "properties": {
+            "name": {"type": "string"},
+            "mimetype": {"type": "string"},
+            "s3key": {"type": "string"},
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def _gmail_upload_param_swapped():
+    """Bind the Gmail compose tools the way the real fetch does.
+
+    ``gmail_compose_before_hook`` reads the native param name off the swap the
+    schema modifier records at bind time, so a hook test that skips the bind is
+    testing a tool the model could never have passed ``attachments`` to.
+    """
+    file_upload_hooks._swapped_upload_params.clear()
+    for tool in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"):
+        file_upload_schema_modifier(
+            tool, "gmail", _schema({"attachment": _native_attachment_schema()})
+        )
+    yield
+    file_upload_hooks._swapped_upload_params.clear()
 
 
 class TestStrictGmailResolution:
@@ -357,13 +388,36 @@ class TestCreateDraftAfterHook:
             )
         assert len(sent) == 1
 
-    def test_response_without_an_id_still_streams_the_card(self):
-        # No id means no draft-send path, but dropping the card entirely would
-        # lose the user's compose UI as well as its Send button.
+    def test_response_without_an_id_still_streams_an_attachment_free_card(self):
+        # No id means no draft-send path, but with nothing to lose the card still
+        # composes fine from its own fields — dropping it would cost the user
+        # their compose UI for no gain.
         sent, writer = self._capture()
         with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
             _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
             gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
+        assert "draft_id" not in sent[0]["email_compose_data"][0]
+
+    def test_card_with_attachments_and_no_draft_id_is_not_streamed(self):
+        # Every send path open to such a card recomposes the mail from its
+        # visible fields, so it would go out without the files it is showing.
+        sent, writer = self._capture()
+        display = [{"name": "f.pdf", "mimetype": "application/pdf"}]
+        with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, display)
+            gmail_create_draft_after_hook("GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {}})
+        assert sent == []
+
+    def test_card_without_attachments_never_carries_a_draft_id(self):
+        # A draft id makes the card read-only in the UI (Send sends the stored
+        # draft, ignoring edits). Only a card that must be sent as the draft to
+        # keep its files pays that price.
+        sent, writer = self._capture()
+        with patch(f"{HOOKS}.get_stream_writer", return_value=writer):
+            _stream_compose_preview("GMAIL_CREATE_EMAIL_DRAFT", DRAFT_ARGS, [])
+            gmail_create_draft_after_hook(
+                "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
+            )
         assert "draft_id" not in sent[0]["email_compose_data"][0]
 
     def test_non_dict_data_is_survived(self):
@@ -379,6 +433,53 @@ class TestCreateDraftAfterHook:
             gmail_create_draft_after_hook(
                 "GMAIL_CREATE_EMAIL_DRAFT", "gmail", {"data": {"id": "d-1"}}
             )
+
+
+class TestBeforeHookUsesTheRecordedParamName:
+    """Composio names the upload param per tool; the hook must not assume one."""
+
+    def test_resolution_writes_back_under_the_swapped_name(self):
+        file_upload_hooks._swapped_upload_params["GMAIL_SEND_EMAIL"] = "file"
+        params = {
+            "arguments": {
+                "recipient_email": "r@x.com",
+                "subject": "s",
+                "attachments": [{"url": "https://x/y.pdf"}],
+            },
+            "user_id": "u1",
+        }
+        resolved = [{"name": "y.pdf", "mimetype": "application/pdf", "s3key": "k/1"}]
+        sent: list[dict] = []
+        with (
+            patch(f"{SHARED}.resolve_attachments_sync", return_value=resolved),
+            patch(f"{HOOKS}.get_stream_writer", return_value=sent.append),
+        ):
+            out = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        assert out["arguments"]["file"] == resolved[0]
+        assert "attachment" not in out["arguments"]
+        assert sent[0]["email_sent_data"][0]["attachments"] == [
+            {"name": "y.pdf", "mimetype": "application/pdf"}
+        ]
+
+    def test_unswapped_tool_keeps_its_own_attachments_argument(self):
+        # Nothing was swapped, so `attachments` is not ours to rewrite — moving
+        # it under a guessed native name would hand Gmail an argument it never
+        # declared, and the file would vanish either way.
+        file_upload_hooks._swapped_upload_params.clear()
+        own = [{"title": "legacy block"}]
+        params = {
+            "arguments": {"recipient_email": "r@x.com", "subject": "s", "attachments": own},
+            "user_id": "u1",
+        }
+        sent: list[dict] = []
+        with (
+            patch(f"{SHARED}.resolve_attachments_sync") as res,
+            patch(f"{HOOKS}.get_stream_writer", return_value=sent.append),
+        ):
+            out = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "gmail", params)
+        assert res.called is False
+        assert out["arguments"]["attachments"] is own
+        assert sent[0]["email_sent_data"][0]["attachments"] == []
 
 
 class TestBeforeHookHappyPath:
