@@ -19,6 +19,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1.middleware.entitlement import EntitlementMiddleware
 from app.api.v1.middleware.entitlement_allowlist import FREE_PATH_PREFIXES, is_free_path
+from app.decorators.entitlements import SubscriptionRequiredException
 from app.models.payment_models import PlanType
 from tests.conftest import FAKE_USER, _create_test_app
 
@@ -320,6 +321,72 @@ async def test_plan_lookup_failure_fails_closed() -> None:
     assert response.status_code == 402
     assert response.json()["detail"]["code"] == "subscription_required"
     assert response.json()["detail"]["checkout_url"] is None
+
+
+async def test_the_gate_asks_about_this_caller_and_names_the_path_it_blocked() -> None:
+    """Both arguments are load-bearing and neither shows up in the response.
+
+    A gate that asked about the wrong user id would 402 (or free) everyone
+    alike, and ``feature`` is what makes a PAYWALL_BLOCKED event attributable
+    to a surface instead of anonymous — so the call is asserted exactly.
+    """
+    gate = AsyncMock(side_effect=SubscriptionRequiredException(checkout_url=None))
+    with patch("app.api.v1.middleware.entitlement.require_active_subscription", gate):
+        response = await _get(_minimal_app(FAKE_USER), "/api/v1/paid")
+
+    assert response.status_code == 402
+    gate.assert_awaited_once_with(FAKE_USER["user_id"], feature="/api/v1/paid")
+
+
+async def test_a_gate_error_is_logged_with_the_caller_the_surface_and_the_cause() -> None:
+    """Fail-closed is silent by design — every Pro user 402s and nobody reports it.
+
+    The wide event is the only signal that a 402 came from an outage rather
+    than a lapsed subscription, and ``log.error`` stores message AND kwargs in
+    the event's ``errors[]`` (libs/shared/py/wide_events.py), so all four
+    fields are a queried surface. Asserted exactly: a missing ``error_type``
+    or a mislabelled operation makes the alert unwritable.
+    """
+    with (
+        patch(
+            "app.api.v1.middleware.entitlement.require_active_subscription",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("redis down"),
+        ),
+        patch("app.api.v1.middleware.entitlement.log") as mock_log,
+    ):
+        response = await _get(_minimal_app(FAKE_USER), "/api/v1/paid")
+
+    assert response.status_code == 402
+    mock_log.error.assert_called_once_with(
+        "Entitlement check failed — denying request (fail-closed)",
+        user={"id": FAKE_USER["user_id"]},
+        payment={"operation": "paywall_gate_error", "feature": "/api/v1/paid"},
+        error_type="ConnectionError",
+        error="redis down",
+    )
+
+
+async def test_a_request_no_auth_middleware_touched_passes_through() -> None:
+    """``request.state.user`` is not merely None here — it was never set.
+
+    Routers excluded from ``WorkOSAuthMiddleware`` (``/api/v1/bot``) reach the
+    gate with an untouched state, so the user lookup must have a default. Without
+    one this raises ``AttributeError`` and the excluded router 500s instead of
+    serving.
+    """
+    app = FastAPI()
+
+    @app.get("/api/v1/paid")
+    async def paid() -> dict[str, str]:
+        return {"ok": "yes"}
+
+    app.add_middleware(EntitlementMiddleware)
+
+    response = await _get(app, "/api/v1/paid")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": "yes"}
 
 
 def test_allowlist_entries_are_absolute_paths() -> None:

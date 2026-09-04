@@ -56,9 +56,12 @@ import httpx
 from hypothesis import given, settings, strategies as st
 from pymongo import MongoClient
 import pytest
+from redis import Redis
 
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
 from app.db.repositories.plans import PlansRepository
+from app.db.repositories.subscriptions import SubscriptionsRepository
 from tests.helpers import pick_free_port
 
 pytestmark = [
@@ -186,8 +189,49 @@ def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
         client.close()
 
 
+def _make_fuzz_user_pro(
+    mongodb_url: str, redis_url: str, user_id: str
+) -> tuple[MongoClient, object]:
+    """Give the fuzz user a real active subscription, and return it for cleanup.
+
+    Every gated route now 402s a non-PRO caller (``EntitlementMiddleware``), so a
+    free fuzz user turns the whole contract gate into a sweep of 402s that proves
+    nothing about the operations it claims to cover. 402 is deliberately NOT
+    accepted as a documented status instead: the point of the gate is to fuzz the
+    handlers, and a paywall response never reaches one.
+
+    Seeded rather than bypassed. The plan is resolved from the ``subscriptions``
+    collection (``subscription_repository.get_active_for_user`` — any active row
+    means PRO), so this is the same data a real subscriber has, and it exercises
+    the gate for real instead of switching it off. A test-only env override would
+    be a paywall bypass shipped in production code for the sake of a test.
+    """
+    client: MongoClient = MongoClient(mongodb_url)
+    now = datetime.now(UTC)
+    inserted = client[MONGO_DATABASE_NAME][SubscriptionsRepository.collection_name].insert_one(
+        {
+            "dodo_subscription_id": f"sub_schemathesis_{user_id}",
+            "user_id": user_id,
+            "status": "active",
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+    # The plan is Redis-cached for five minutes, so a FREE entry left by an
+    # earlier run against the same Redis would outlive this row and re-402 the
+    # whole fuzz. Dropped here, and again on teardown.
+    redis_client = Redis.from_url(redis_url)
+    try:
+        redis_client.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}")
+    finally:
+        redis_client.close()
+    return client, inserted.inserted_id
+
+
 @pytest.fixture(scope="session")
-def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
+def live_api_url(
+    _seeded_startup_requirements: None, mongodb_url: str, redis_url: str
+) -> Iterator[str]:
     """Boot the real API in a subprocess and wait until it serves /openapi.json.
 
     The server's output goes to a file rather than ``subprocess.PIPE``: nothing
@@ -269,7 +313,22 @@ def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
                 raise RuntimeError(
                     f"could not mint dev user after 3 attempts: {mint_error}\n{_tail(log_path)}"
                 )
-            yield url
+            fuzz_user_id = mint.json()["id"]
+            subscription_client, subscription_id = _make_fuzz_user_pro(
+                mongodb_url, redis_url, fuzz_user_id
+            )
+            try:
+                yield url
+            finally:
+                subscription_client[MONGO_DATABASE_NAME][
+                    SubscriptionsRepository.collection_name
+                ].delete_one({"_id": subscription_id})
+                subscription_client.close()
+                redis_client = Redis.from_url(redis_url)
+                try:
+                    redis_client.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{fuzz_user_id}")
+                finally:
+                    redis_client.close()
         finally:
             proc.send_signal(signal.SIGTERM)
             try:

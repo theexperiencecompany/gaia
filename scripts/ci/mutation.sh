@@ -1011,6 +1011,9 @@ sys.exit(proc.returncode)
     echo "      and a case-ONLY rewrite of a header name in an x.headers.get()" >&2
     echo "      lookup, which every .headers mapping resolves case-insensitively" >&2
     echo "      (RFC 9110 5.1); asking for a DIFFERENT header still fails." >&2
+    echo "      Also the argument of a Starlette call_next(): BaseHTTPMiddleware" >&2
+    echo "      closes over the request's own scope/receive/send and never reads" >&2
+    echo "      that parameter, so call_next(None) is the same program." >&2
     echo "$EQUIVALENT" >&2
   fi
   if [ -n "$LOGGING" ]; then

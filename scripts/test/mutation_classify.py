@@ -141,10 +141,60 @@ def _normalized(lines: list[str]) -> list[str]:
     return "".join(out).split("\n")
 
 
+def _blank_call_next_arg(lines: list[str]) -> list[str]:
+    """Blank the sole argument of every ``call_next(...)``.
+
+    Starlette's ``BaseHTTPMiddleware`` builds ``call_next`` as a closure over the
+    request's own ``scope``/``receive``/``send`` and calls
+    ``self.app(scope, receive_or_disconnect, send_no_error)`` — it never reads
+    its ``request`` parameter (starlette/middleware/base.py, ``async def
+    call_next(request: Request)``). So ``call_next(request)`` and
+    ``call_next(None)`` are the same program, and mutmut's argument-to-None
+    mutation of that one call is unkillable by any test rather than a gap in
+    one. Same class of provable no-op as the ``cast()`` type argument above.
+
+    Narrow on purpose: only a call spelled ``call_next``, and only its first
+    argument. Every ``call_next`` in this codebase is that closure — a helper
+    of that name which DID read its argument would be mis-blanked here.
+
+    Line COUNT is preserved so the caller's index arithmetic still maps a
+    differing line back to the real file.
+    """
+    joined = "\n".join(lines)
+    out: list[str] = []
+    pos = 0
+    needle = "call_next("
+    while (start := joined.find(needle, pos)) != -1:
+        i = start + len(needle)
+        depth = 0
+        quote: str | None = None
+        while i < len(joined):
+            ch = joined[i]
+            if quote:
+                if ch == quote and joined[i - 1] != "\\":
+                    quote = None
+            elif ch in "\"'":
+                quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif ch == "," and depth == 0:
+                break
+            i += 1
+        arg = joined[start + len(needle) : i]
+        out.append(joined[pos:start] + needle + "\n" * arg.count("\n") + "_")
+        pos = i
+    out.append(joined[pos:])
+    return "".join(out).split("\n")
+
+
 orig_raw = _body(orig_name)
 mut_raw = _body(mutant_name)
-orig_lines = _normalized(orig_raw)
-mut_lines = _normalized(mut_raw)
+orig_lines = _blank_call_next_arg(_normalized(orig_raw))
+mut_lines = _blank_call_next_arg(_normalized(mut_raw))
 if orig_lines == mut_lines:
     print("EQUIV")
     sys.exit(0)

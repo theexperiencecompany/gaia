@@ -63,6 +63,29 @@ async def test_free_user_reminder_is_paused_not_cancelled() -> None:
     set_status.assert_awaited_once_with("rem-1", ReminderStatus.PAUSED)
 
 
+@pytest.mark.usefixtures("lapsed_user")
+async def test_the_pause_is_recorded_on_the_wide_event_with_both_ids() -> None:
+    """A paused reminder is a silent stop: the wide event is the only trace.
+
+    ``log.warning`` writes message AND kwargs into the event's ``warnings[]``
+    (see libs/shared/py/wide_events.py), so both ids are a queried surface —
+    without them "why did my reminder stop?" is unanswerable from Loki.
+    """
+    with (
+        patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
+        patch(f"{MODULE}._deliver_reminder_to_platforms", new_callable=AsyncMock),
+        patch(f"{MODULE}.reminder_repository.set_status", new_callable=AsyncMock),
+        patch(f"{MODULE}.log") as mock_log,
+    ):
+        await execute_reminder_by_agent(_reminder())
+
+    mock_log.warning.assert_called_once_with(
+        "Reminder skipped — subscription required, pausing",
+        reminder_id="rem-1",
+        user_id="user-1",
+    )
+
+
 async def test_the_gate_asks_about_the_reminders_own_owner() -> None:
     """A gate that checked the wrong user id would pass for everyone."""
     is_active = AsyncMock(return_value=True)

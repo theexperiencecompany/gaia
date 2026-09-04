@@ -53,6 +53,22 @@ async def test_gate_runs_before_the_socket_is_accepted() -> None:
     mark_online.assert_not_awaited()
 
 
+async def test_the_close_is_attributed_to_the_paywall_in_the_wide_event() -> None:
+    """The reason string is the only way a support ticket ("my daemon keeps
+    dropping") is told apart from a revoke or a bad token in Loki, so it is a
+    queried value, not narration — asserted exactly."""
+    websocket = _socket()
+    with (
+        patch(f"{MODULE}.verify_device_token", return_value=TOKEN_INFO),
+        patch(f"{MODULE}.get_active_device", new_callable=AsyncMock, return_value={"id": "dev-1"}),
+        patch(f"{MODULE}.is_subscription_active", new_callable=AsyncMock, return_value=False),
+        patch(f"{MODULE}.log") as mock_log,
+    ):
+        await device_ws(websocket)
+
+    mock_log.set.assert_any_call(disconnect_reason="subscription_required")
+
+
 async def test_gate_asks_about_the_tokens_own_user() -> None:
     websocket = _socket()
     is_active = AsyncMock(return_value=False)
