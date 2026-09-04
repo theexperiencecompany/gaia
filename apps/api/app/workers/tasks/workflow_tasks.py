@@ -44,6 +44,7 @@ from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.playbooks import playbook_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.decorators import enforce_daily_cost_budget
 from app.decorators.rate_limiting import enforce_tiered_limit
 from app.models.chat_models import MessageModel, ToolDataEntry
@@ -66,9 +67,11 @@ from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    PlaybookDiscard,
     TriggerConfig,
     TriggerType,
     Workflow,
+    WorkflowUpdate,
 )
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.limit_upsell import LimitHitOrigin, mark_run_origin
@@ -96,7 +99,11 @@ from app.services.workflow.execution_service import (
 from app.services.workflow.notifications import send_workflow_completion_notification
 from app.services.workflow.playbook.check import HEAL_STATUSES, distrust_fresh_playbook
 from app.services.workflow.playbook.evaluator import PlaybookUser
-from app.services.workflow.playbook.runner import PlaybookRunResult, run_playbook
+from app.services.workflow.playbook.runner import (
+    PlaybookRunResult,
+    completed_block,
+    run_playbook,
+)
 from app.services.workflow.playbook.workflow_hash import workflow_hash
 from app.services.workflow.run_trace import build_trace
 from app.services.workflow.scheduler import WorkflowScheduler, workflow_scheduler
@@ -533,20 +540,10 @@ def _origin_for(trigger_type: str) -> LimitHitOrigin:
     )
 
 
-#: A completed line as the fallback agent reads it. The narration reads the
-#: full result (its own bound); the agent needs to know what ran and roughly
-#: what came back, not the whole payload again in its brief.
-FALLBACK_LINE_MAX_CHARS = 1_500
-
-
-def _bounded_line(line: str) -> str:
-    return line if len(line) <= FALLBACK_LINE_MAX_CHARS else line[:FALLBACK_LINE_MAX_CHARS] + "..."
-
-
 def _fallback_note(result: PlaybookRunResult) -> str:
     """The replay that did not hold, stopped or untrusted, addressed to the agent
     that has to finish the run."""
-    completed = "\n".join(f"- {_bounded_line(line)}" for line in result.completed) or "- nothing"
+    completed = completed_block(result.completed)
     if result.ok:
         body = PLAYBOOK_SUSPECT_FALLBACK_TEMPLATE.format(
             reason=result.suspect or "no reason was recorded", completed=completed
@@ -565,6 +562,9 @@ def _fallback_note(result: PlaybookRunResult) -> str:
 AGENT_RUN_SUMMARY = "Ran the full workflow"
 HEAL_RUN_SUMMARY = "Ran the full workflow and repaired its saved shortcut"
 REPLAY_SUMMARY = "Ran from the saved shortcut"
+#: Same run, minus the sentence describing it: the steps all ran, so the record
+#: must not read like a failure, and it must not read like a normal replay either.
+REPLAY_NARRATION_FAILED_SUMMARY = "Ran from the saved shortcut; the summary could not be written"
 REPLAY_STOPPED_SUMMARY = "The saved shortcut stopped partway, so GAIA ran the rest itself"
 REPLAY_FLAGGED_SUMMARY = (
     "The saved shortcut's result looked wrong ({reason}), so GAIA ran the workflow itself"
@@ -604,6 +604,31 @@ async def _discard_playbook(
         reason=reason,
         **details,
     )
+    # The log says why to whoever is reading Loki this week; the workflow says
+    # why to whoever asks in six months why their shortcut is gone. Failing to
+    # write it costs that answer and nothing else, so it never fails the fire.
+    try:
+        await workflow_repository.update_for_user(
+            workflow_id,
+            user_id,
+            WorkflowUpdate(
+                last_playbook_discard=PlaybookDiscard(
+                    playbook_id=playbook.playbook_id,
+                    revision=playbook.revision,
+                    reason=reason,
+                    at=datetime.now(UTC),
+                    details={key: str(value) for key, value in details.items()},
+                )
+            ),
+        )
+    except Exception as e:
+        log.warning(
+            f"{LogTag.WORKER} Playbook discard not recorded on the workflow",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            reason=reason,
+            error_type=type(e).__name__,
+        )
 
 
 @dataclass(frozen=True)
@@ -776,6 +801,45 @@ async def _notify_replay_finished(
         )
 
 
+async def _deliver_replay(
+    fire: _Fire,
+    playbook: PlaybookDocument,
+    conversation_id: str,
+    result: PlaybookRunResult,
+) -> tuple[str, list[RecordedCall], str]:
+    """Write a trusted replay's turn and tell the user; the other outcomes leave
+    the conversation to the agent run that takes over, so one fire shows one
+    result instead of a half-run followed by a real one."""
+    workflow, workflow_id, user = fire.workflow, fire.workflow_id, fire.user
+    log.set_ns(
+        "playbook",
+        mode="replay",
+        reason="workflow_hash_match",
+        playbook_id=playbook.playbook_id,
+        llm_calls=result.llm_calls,
+        outcome=PlaybookRunStatus.SUCCESS.value,
+    )
+    if result.narration_failed is not None:
+        log.warning(
+            f"{LogTag.WORKER} Playbook replayed but the narration failed; "
+            "delivered the steps' record instead",
+            workflow_id=workflow_id,
+            playbook_id=playbook.playbook_id,
+            reason=result.narration_failed,
+        )
+    await add_playbook_run_messages(
+        conversation_id=conversation_id,
+        user_id=workflow.user_id,
+        workflow=workflow,
+        response=result.text,
+        trace=result.trace,
+        playbook=playbook,
+    )
+    await _notify_replay_finished(workflow, user, conversation_id, result.text)
+    summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
+    return conversation_id, result.trace, summary
+
+
 async def _finish_after_replay(
     fire: _Fire,
     playbook: PlaybookDocument,
@@ -828,39 +892,19 @@ async def _finish_after_replay(
         )
 
     if status is PlaybookRunStatus.SUCCESS:
-        log.set_ns(
-            "playbook",
-            mode="replay",
-            reason="workflow_hash_match",
-            playbook_id=playbook.playbook_id,
-            llm_calls=result.llm_calls,
-            outcome=status.value,
-        )
-        # Only a trusted replay writes the turn. The others leave the
-        # conversation to the agent run that takes over, so the user sees one
-        # result for one fire instead of a half-run followed by a real one.
-        await add_playbook_run_messages(
-            conversation_id=conversation_id,
-            user_id=workflow.user_id,
-            workflow=workflow,
-            response=result.text,
-            trace=result.trace,
-            playbook=playbook,
-        )
-        await _notify_replay_finished(workflow, user, conversation_id, result.text)
-        return conversation_id, result.trace, REPLAY_SUMMARY
+        return await _deliver_replay(fire, playbook, conversation_id, result)
 
     disabled = False
     if status is PlaybookRunStatus.SUSPECT and updated is not None:
         disabled = updated.suspect_streak >= PLAYBOOK_SUSPECT_STREAK_LIMIT
         if disabled:
-            await playbook_repository.delete_for_workflow(workflow_id, workflow.user_id)
-            log.warning(
-                f"{LogTag.WORKER} Playbook disabled after repeated suspect replays",
-                workflow_id=workflow_id,
-                playbook_id=playbook.playbook_id,
-                reason=reason,
+            await _discard_playbook(
+                workflow_id,
+                workflow.user_id,
+                playbook,
+                reason="suspect_streak_exhausted",
                 suspect_streak=updated.suspect_streak,
+                suspect_reason=reason,
             )
     if status is PlaybookRunStatus.FAILED:
         log.set_ns(

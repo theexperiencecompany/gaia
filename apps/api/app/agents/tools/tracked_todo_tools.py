@@ -242,14 +242,12 @@ def _build_clearable_datetime_update(
     return None
 
 
-def _build_priority_update(priority: str | None, update_fields: dict[str, object]) -> str | None:
-    """Validate + apply a priority update."""
-    if priority is None:
-        return None
-    try:
-        update_fields["priority"] = Priority(priority).value
-    except ValueError:
-        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
+def _build_priority_update(
+    priority: Priority | None, update_fields: dict[str, object]
+) -> str | None:
+    """Apply a priority update."""
+    if priority is not None:
+        update_fields["priority"] = priority.value
     return None
 
 
@@ -346,7 +344,7 @@ class _UpdateFieldInputs:
 
     labels: list[str] | None
     due_date: str | None
-    priority: str | None
+    priority: Priority | None
     scheduled_at: str | None
     recurrence: str | None
     expires_at: str | None
@@ -538,10 +536,7 @@ async def create_tracked_todo(
         list[str] | None,
         "Optional labels for categorization (gaia-tracked is added automatically)",
     ] = None,
-    priority: Annotated[
-        str,
-        "Priority: 'high', 'medium', 'low', or 'none'",
-    ] = "none",
+    priority: Annotated[Priority, "Priority"] = Priority.NONE,
     scheduled_at: Annotated[
         str | None,
         "ISO datetime for a ONE-TIME future execution. "
@@ -628,18 +623,13 @@ async def create_tracked_todo(
     if error:
         return error
 
-    try:
-        parsed_priority = Priority(priority)
-    except ValueError:
-        return f"Error: invalid priority '{priority}'. Use one of: high, medium, low, none"
-
     result = await tracked_todo_service.create_tracked_todo(
         user_id=user_id,
         title=title,
         description=description,
         initial_canvas=initial_canvas,
         labels=labels,
-        priority=parsed_priority,
+        priority=priority,
         source_conversation_id=source_conversation_id,
     )
 
@@ -809,10 +799,7 @@ async def update_tracked_todo(
         str | None,
         "ISO datetime string for the deadline. Set to empty string '' to clear.",
     ] = None,
-    priority: Annotated[
-        str | None,
-        "Priority: 'high', 'medium', 'low', or 'none'.",
-    ] = None,
+    priority: Annotated[Priority | None, "Priority"] = None,
     scheduled_at: Annotated[
         str | None,
         "ISO datetime for one-shot scheduled execution, or first-fire anchor for "

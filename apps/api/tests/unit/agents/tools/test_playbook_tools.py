@@ -7,9 +7,11 @@ production would reject it.
 """
 
 from datetime import UTC, datetime
+import json
 from typing import Annotated, Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from pydantic import ValidationError
@@ -17,6 +19,8 @@ import pytest
 import yaml
 
 from app.agents.tools.playbook_tools import (
+    _explain_validation_error,
+    _run_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
@@ -25,7 +29,6 @@ from app.agents.tools.playbook_tools import (
 from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
-    PlaybookAsk,
     PlaybookBody,
     PlaybookDocument,
     PlaybookRunStatus,
@@ -33,6 +36,7 @@ from app.models.playbook_models import (
     playbook_body_from_input,
 )
 from app.models.workflow_models import (
+    PlaybookDiscard,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
@@ -40,6 +44,7 @@ from app.models.workflow_models import (
 )
 from app.services.workflow.playbook.parser import (
     PlaybookValidation,
+    RunResults,
     dump_playbook,
     validate_playbook,
 )
@@ -149,7 +154,7 @@ def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
         workflow_hash="stale",
         description="Old",
         steps=[{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
-        synthesize="Old synthesis.",
+        result_brief="Old synthesis.",
         last_run_status=PlaybookRunStatus.SUCCESS,
         created_at=now,
         updated_at=now,
@@ -165,7 +170,7 @@ NEW_STEPS: list[dict[str, Any]] = [
 NEW_ARGS: dict[str, Any] = {
     "description": "Read the day's events",
     "steps": NEW_STEPS,
-    "synthesize": "Say what is on today.",
+    "result_brief": "Say what is on today.",
 }
 
 #: Exactly what read_playbook renders for the playbook ``_existing`` stores.
@@ -178,7 +183,7 @@ OLD_YAML = (
     "  tool: list_events\n"
     "  args:\n"
     "    calendar_id: primary\n"
-    "synthesize: Old synthesis.\n"
+    "result_brief: Old synthesis.\n"
 )
 
 
@@ -207,31 +212,56 @@ def workflows() -> MagicMock:
 
 @pytest.mark.unit
 class TestWritePlaybook:
-    async def test_a_step_the_schema_does_not_know_never_reaches_the_tool(
+    async def test_a_step_carrying_keys_the_schema_never_asked_for_is_still_written(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
-        # Regression: the playbook used to arrive as one YAML string, so an
-        # invented key like `goal` got all the way to the parser. The bound
-        # schema now refuses it before the tool body runs.
-        before = _existing(store)
+        """A stray ``goal``/``task``/``note`` beside a correct call is dropped,
+        not refused.
+
+        Measured in production: 17 of 57 authoring attempts were thrown away
+        whole because the model annotated a step it had otherwise written
+        correctly. If this fails, the step input has gone back to forbidding
+        extras and the same writes start being rejected again.
+        """
+        _existing(store)
+        annotated = [
+            {
+                "id": "agenda",
+                "tool": "list_events",
+                "args": {"calendar_id": "primary"},
+                "goal": "read the events",
+                "task": "agenda",
+                "note": "runs every morning",
+            }
+        ]
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            pytest.raises(ValidationError, match="goal"),
         ):
-            await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": [{"id": "agenda", "goal": "read the events"}]},
-                config=_config(),
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": annotated}, config=_config()
             )
 
-        assert store.documents[(WORKFLOW_ID, USER_ID)] == before
+        assert result["success"] is True
+        stored = store.documents[(WORKFLOW_ID, USER_ID)]
+        assert stored.steps[0].model_dump(exclude_defaults=True) == {
+            "id": "agenda",
+            "tool": "list_events",
+            "args": {"calendar_id": "primary"},
+        }
 
-    async def test_a_tool_step_nested_under_a_handoff_child_is_refused(
+    async def test_a_tool_step_nested_under_a_handoff_child_is_refused_not_dropped(
         self, store: _FakePlaybookStore, workflows: MagicMock
     ) -> None:
-        # Playbooks are depth-1: a handoff's children are plain tool calls, and
-        # the flat input model is what makes deeper nesting unrepresentable.
+        """Playbooks are depth-1: a handoff's children are plain tool calls.
+
+        The child model drops unknown keys, so without its own rule a third
+        level would vanish silently and the stored playbook would run a fraction
+        of what the author wrote. If this fails, either a grandchild is being
+        stored (a level the runner cannot execute) or it is being discarded
+        without a word to the author.
+        """
         deeper = [
             {
                 "handoff": "gmail",
@@ -249,10 +279,23 @@ class TestWritePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
-            pytest.raises(ValidationError),
+            patch(
+                f"{PARSER_MODULE}.resolve_subagent_tools",
+                AsyncMock(
+                    return_value=SubagentTools(
+                        tools=_FakeRegistry().get_tool_dict(), initial_tool_ids=[]
+                    )
+                ),
+            ),
         ):
-            await write_playbook.ainvoke({**NEW_ARGS, "steps": deeper}, config=_config())
+            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": deeper}, config=_config())
 
+        assert isinstance(result, str), "refused at the boundary, through handle_validation_error"
+        parsed = json.loads(result)
+        assert parsed["success"] is False
+        assert parsed["error"] == "invalid_playbook"
+        assert "steps[0].steps[0]: " in parsed["message"]
+        assert "one level deep" in parsed["message"]
         assert store.documents == {}
 
     async def test_playbook_failing_validation_writes_nothing(
@@ -301,8 +344,12 @@ class TestWritePlaybook:
                 "handoff": "gmail",
                 "steps": [{"id": "mail", "tool": "list_events", "args": {"calendar_id": "$now"}}],
             },
+            {
+                "id": "written",
+                "tool": "list_events",
+                "args": {"calendar_id": {"$ask": "which calendar the agenda came from"}},
+            },
         ]
-        ask = {"subject": {"prompt": "one subject line", "uses": ["agenda", "mail"]}}
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
@@ -319,17 +366,14 @@ class TestWritePlaybook:
                 ),
             ),
         ):
-            result = await write_playbook.ainvoke(
-                {**NEW_ARGS, "steps": steps, "ask": ask}, config=_config()
-            )
+            result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
 
         assert result["success"] is True
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
         expected = playbook_body_from_input(
             description="Read the day's events",
             steps=[PlaybookStepInput.model_validate(step) for step in steps],
-            synthesize="Say what is on today.",
-            ask={"subject": PlaybookAsk.model_validate(ask["subject"])},
+            result_brief="Say what is on today.",
         )
         assert PlaybookBody.model_validate(yaml.safe_load(dump_playbook(stored))) == expected
 
@@ -518,6 +562,34 @@ class TestDeclinePlaybook:
         assert result["success"] is True
         assert workflows.workflow.playbook_declines == 0
         assert workflows.workflow.playbook_declined_hash is None
+
+    async def test_a_write_clears_the_discard_the_worker_recorded(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The discard says why this workflow's LAST playbook was thrown away.
+        Left behind after a successful write it describes a document that no
+        longer exists, and the workflow reads as having lost a shortcut it now
+        has."""
+        workflows = _FakeWorkflowStore()
+        workflows.workflow = workflows.workflow.model_copy(
+            update={
+                "last_playbook_discard": PlaybookDiscard(
+                    playbook_id="pb_old",
+                    revision=1,
+                    reason="stale_workflow_hash",
+                    at=datetime.now(UTC),
+                )
+            }
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+
+        assert result["success"] is True
+        assert workflows.workflow.last_playbook_discard is None
 
     async def test_declining_an_unknown_workflow_is_refused(
         self, store: _FakePlaybookStore
@@ -868,9 +940,11 @@ class TestPlaybookStorageDetails:
         """
         seen: list[tuple[PlaybookBody, str]] = []
 
-        async def spying_validate(body: PlaybookBody, user_id: str) -> PlaybookValidation:
+        async def spying_validate(
+            body: PlaybookBody, user_id: str, results: RunResults | None = None
+        ) -> PlaybookValidation:
             seen.append((body, user_id))
-            return await validate_playbook(body, user_id)
+            return await validate_playbook(body, user_id, results)
 
         with (
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
@@ -886,8 +960,7 @@ class TestPlaybookStorageDetails:
                 playbook_body_from_input(
                     description="Read the day's events",
                     steps=[PlaybookStepInput.model_validate(step) for step in NEW_STEPS],
-                    synthesize="Say what is on today.",
-                    ask=None,
+                    result_brief="Say what is on today.",
                 ),
                 USER_ID,
             )
@@ -999,7 +1072,12 @@ class TestPlaybookWideEvents:
             tool={"name": "write_playbook", "action": "write"}, workflow_id=WORKFLOW_ID
         )
         stored = store.documents[(WORKFLOW_ID, USER_ID)]
-        log.set_ns.assert_called_once_with("playbook", id=stored.playbook_id, steps=1)
+        # No graph state reaches a direct ainvoke, so the run check records
+        # None — the field that tells prod whether InjectedState was filled.
+        assert log.set_ns.call_args_list == [
+            call("playbook", checked_against_calls=None),
+            call("playbook", id=stored.playbook_id, steps=1),
+        ]
 
     async def test_a_rejected_write_is_recorded_with_how_many_problems(
         self, store: _FakePlaybookStore, workflows: MagicMock
@@ -1016,7 +1094,9 @@ class TestPlaybookWideEvents:
             )
 
         assert log.warning.call_args.kwargs["issues"] == 1
-        log.set_ns.assert_not_called()
+        # The run check is stamped before the verdict, so a refusal still says
+        # what it was checked against; nothing about a stored playbook follows.
+        assert log.set_ns.call_args_list == [call("playbook", checked_against_calls=None)]
 
     async def test_a_read_records_the_tool_and_the_workflow(
         self, store: _FakePlaybookStore
@@ -1062,3 +1142,386 @@ class TestPlaybookWideEvents:
             await disable_playbook.ainvoke({"reason": "nothing to disable"}, config=_config())
 
         log.set_ns.assert_not_called()
+
+
+@pytest.mark.unit
+class TestWritePlaybookBoundary:
+    """The tool's own schema and what a call that misses it gets back.
+
+    The schema is the only place the model learns the shape, and the boundary
+    error is the only thing it has to work from when the shape is wrong. In
+    production 36 of 57 authoring attempts were rejected, and a framework-level
+    error the model could not read is why it retried the same shape.
+    """
+
+    def test_the_schema_asks_for_three_things_and_no_ask_section(self) -> None:
+        """``ask`` was a separate table the model had to reason about, and five
+        of the eight asks ever written were referenced by no step. The slot now
+        lives inside the argument, so there is nothing at the top level to get
+        wrong; a reappearing ``ask`` property is that mistake coming back.
+        """
+        schema = write_playbook.tool_call_schema.model_json_schema()
+
+        assert schema["required"] == ["description", "steps", "result_brief"]
+        assert "ask" not in schema["properties"]
+        # The workflow is resolved from the run's config server-side.
+        assert "workflow_id" not in schema["properties"]
+
+    def test_the_step_schema_does_not_forbid_extra_keys(self) -> None:
+        """``additionalProperties: false`` is what a provider renders as "no
+        other keys allowed", and it is what turned a step annotated with a
+        ``goal`` into a refused write. Its absence is the leniency, expressed
+        where the model actually reads it."""
+        schema = write_playbook.tool_call_schema.model_json_schema()
+
+        step = schema["$defs"][PlaybookStepInput.__name__]
+        assert step.get("additionalProperties") is not False
+        child_name = step["properties"]["steps"]["items"]["$ref"].rsplit("/", 1)[-1]
+        assert schema["$defs"][child_name].get("additionalProperties") is not False
+
+    @pytest.mark.parametrize(
+        ("arguments", "expected_problems"),
+        [
+            (
+                {"steps": NEW_STEPS, "result_brief": "Say what is on today."},
+                "description: Field required",
+            ),
+            (
+                {
+                    **NEW_ARGS,
+                    "steps": [
+                        {"id": "agenda", "tool": "list_events", "handoff": "gmail", "args": {}}
+                    ],
+                },
+                "steps[0]: Value error, step agenda: set exactly one of 'tool' or 'handoff'",
+            ),
+            (
+                {"steps": NEW_STEPS},
+                "description: Field required; result_brief: Field required",
+            ),
+        ],
+        ids=["missing-description", "both-tool-and-handoff", "two-problems"],
+    )
+    async def test_arguments_that_miss_the_schema_come_back_as_a_readable_refusal(
+        self,
+        store: _FakePlaybookStore,
+        workflows: MagicMock,
+        arguments: dict[str, Any],
+        expected_problems: str,
+    ) -> None:
+        """langchain raises before the coroutine runs, so without the tool's
+        ``handle_validation_error`` hook the model gets a framework traceback
+        rather than the tool's own envelope. If this fails, a shape mistake stops
+        being recoverable: the model cannot tell what to fix, and nothing says
+        the playbook was not written.
+        """
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            result = await write_playbook.ainvoke(arguments, config=_config())
+
+        assert isinstance(result, str), "the hook hands the model a string, not a raised error"
+        parsed = json.loads(result)
+        assert parsed["success"] is False
+        assert parsed["error"] == "invalid_playbook"
+        assert parsed["message"] == (
+            "The playbook was not written. Fix these and call write_playbook again: "
+            + expected_problems
+        )
+        assert store.documents == {}
+
+    def test_a_refusal_with_no_field_to_point_at_names_the_arguments_as_a_whole(self) -> None:
+        """A pydantic error on the call as a whole carries no location. Rendered
+        as the empty string the model reads ": Input should be..." and has
+        nothing to act on; the arguments themselves are what is wrong."""
+        with pytest.raises(ValidationError) as raised:
+            write_playbook.tool_call_schema.model_validate("not a mapping")
+
+        assert json.loads(_explain_validation_error(raised.value))["message"] == (
+            "The playbook was not written. Fix these and call write_playbook again: "
+            "arguments: Input should be a valid dictionary or instance of write_playbook"
+        )
+
+
+@pytest.mark.unit
+class TestReadPlaybookYaml:
+    async def test_the_yaml_carries_the_result_brief_and_no_ask_section(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The YAML is the document the agent reads before revising, so it has to
+        be the shape write_playbook takes. A stray top-level ``ask:`` would teach
+        the agent to write back a section the tool no longer has."""
+        now = datetime.now(UTC)
+        store.documents[(WORKFLOW_ID, USER_ID)] = PlaybookDocument(
+            playbook_id="pb_slots",
+            workflow_id=WORKFLOW_ID,
+            user_id=USER_ID,
+            workflow_hash="h",
+            description="Read the day's events",
+            steps=[
+                {
+                    "id": "agenda",
+                    "tool": "list_events",
+                    "args": {"calendar_id": {"$ask": "which calendar to read"}},
+                }
+            ],
+            result_brief="Say what is on today.",
+            created_at=now,
+            updated_at=now,
+        )
+        with patch(f"{TOOLS_MODULE}.playbook_repository", store):
+            result = await read_playbook.ainvoke({}, config=_config())
+
+        document = yaml.safe_load(result["data"]["yaml"])
+        assert document["result_brief"] == "Say what is on today."
+        assert "ask" not in document
+        assert document["steps"][0]["args"]["calendar_id"] == {"$ask": "which calendar to read"}
+
+
+@tool("GMAIL_FETCH_MESSAGES")
+async def gmail_fetch_messages(query: Annotated[str, "Search query"]) -> dict[str, Any]:
+    """Fetch messages. Named as the real Composio tool is, because the playbook
+    this class is about froze $steps.<id>.threadId on it."""
+    return {}
+
+
+@tool("GMAIL_REPLY")
+async def gmail_reply(
+    thread_id: Annotated[str, "Thread to reply on"], body: Annotated[str, "Reply body"]
+) -> dict[str, Any]:
+    """Reply on a thread."""
+    return {}
+
+
+class _GmailRegistry:
+    """The two tools the authoring-run fixtures below call."""
+
+    def get_tool_dict(self) -> dict[str, BaseTool]:
+        return {"GMAIL_FETCH_MESSAGES": gmail_fetch_messages, "GMAIL_REPLY": gmail_reply}
+
+
+def _run_state(*calls: tuple[str, dict[str, Any], object]) -> dict[str, Any]:
+    """Graph state whose messages are the run's calls and the answers to them.
+
+    Built as real messages rather than as a results list, because reading the
+    run out of ``state["messages"]`` — pairing each AIMessage tool call with the
+    ToolMessage that answers its id — is half of what is under test.
+    """
+    messages: list[Any] = []
+    for index, (name, args, result) in enumerate(calls):
+        call_id = f"call_{index}"
+        messages.append(
+            AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])
+        )
+        messages.append(ToolMessage(content=json.dumps(result), tool_call_id=call_id, name=name))
+    return {"messages": messages}
+
+
+FETCH_STEP: dict[str, Any] = {
+    "id": "fetch",
+    "tool": "GMAIL_FETCH_MESSAGES",
+    "args": {"query": "is:unread"},
+}
+
+
+@pytest.mark.unit
+class TestWritePlaybookAgainstTheAuthoringRun:
+    """The run's own results, injected as state, decide the write.
+
+    ``pb_c7d357db77dd`` froze ``$steps.fetch_msgs.threadId`` on a tool that does
+    not return one and broke on its first replay; two more were frozen from
+    calls that came back empty. In every case the result was in this same
+    conversation when write_playbook was called.
+    """
+
+    async def test_a_step_freezing_a_field_the_run_never_returned_is_refused_with_the_keys(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The exact production failure. The refusal has to list what the result
+        DOES carry, or the author is told to fix something without being told
+        what it could have written instead."""
+        state = _run_state(
+            ("GMAIL_FETCH_MESSAGES", {"query": "is:unread"}, {"messages": [{"id": "m1"}]}),
+            ("GMAIL_REPLY", {"thread_id": "t1", "body": "hi"}, {"sent": [{"id": "1"}]}),
+        )
+        steps = [
+            FETCH_STEP,
+            {
+                "id": "reply",
+                "tool": "GMAIL_REPLY",
+                "args": {"thread_id": "$steps.fetch.threadId", "body": "hi"},
+            },
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": steps, "state": state}, config=_config()
+            )
+
+        assert result["success"] is False
+        assert (
+            "steps[1].args.thread_id: $steps.fetch.threadId is not in step 'fetch''s result"
+            in (result["message"])
+        )
+        assert "its result has keys: messages" in result["message"]
+        assert store.documents == {}
+
+    async def test_a_step_freezing_a_call_that_returned_nothing_is_refused(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """A frozen call that found no items replays into a workflow that
+        delivers nothing and is marked SUSPECT one fire later."""
+        state = _run_state(("GMAIL_FETCH_MESSAGES", {"query": "is:unread"}, {"messages": []}))
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
+            )
+
+        assert result["success"] is False
+        assert "GMAIL_FETCH_MESSAGES returned no items in this run" in result["message"]
+        assert store.documents == {}
+
+    async def test_a_playbook_that_matches_what_the_run_returned_is_written(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """The checks must accept the shape the run actually produced. A refusal
+        here would refuse every playbook, which is worse than the bug."""
+        state = _run_state(
+            (
+                "GMAIL_FETCH_MESSAGES",
+                {"query": "is:unread"},
+                {"messages": [{"id": "m1", "threadId": "t1"}]},
+            ),
+            ("GMAIL_REPLY", {"thread_id": "t1", "body": "hi"}, {"sent": [{"id": "1"}]}),
+        )
+        steps = [
+            FETCH_STEP,
+            {
+                "id": "reply",
+                "tool": "GMAIL_REPLY",
+                "args": {"thread_id": "$steps.fetch.messages.0.threadId", "body": "hi"},
+            },
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": steps, "state": state}, config=_config()
+            )
+
+        assert result["success"] is True
+        assert len(store.documents[(WORKFLOW_ID, USER_ID)].steps) == 2
+
+    def test_the_run_state_is_injected_and_never_shown_to_the_model(self) -> None:
+        """``state`` is filled by the graph. If it appeared in the schema the
+        model would be asked to write its own transcript back as an argument,
+        and the checks would read whatever it invented."""
+        schema = write_playbook.tool_call_schema.model_json_schema()
+
+        assert "state" not in schema["properties"]
+        assert schema["required"] == ["description", "steps", "result_brief"]
+
+
+@pytest.mark.unit
+class TestTheRunTheWriteIsCheckedAgainst:
+    """Reading the run out of the graph state: each recorded call paired with
+    the message that answered it. What this drops never reaches the validator,
+    and what it invents is checked against a call that never happened."""
+
+    def test_a_call_is_recorded_with_its_arguments_and_what_came_back(self) -> None:
+        """A tool answering in content blocks rather than a string is the normal
+        shape for several providers. Dropped or blanked, the step it belongs to
+        is refused as "did not run in this run"."""
+        state = {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "GMAIL_FETCH_MESSAGES", "args": {"query": "is:unread"}, "id": "c1"}
+                    ],
+                ),
+                ToolMessage(
+                    content=[
+                        {"type": "text", "text": "one", "at": datetime(2026, 9, 1, tzinfo=UTC)}
+                    ],
+                    tool_call_id="c1",
+                ),
+            ]
+        }
+
+        results = _run_results(state)
+
+        assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
+        assert results[0].args == {"query": "is:unread"}
+        assert results[0].result == [
+            {"type": "text", "text": "one", "at": "2026-09-01 00:00:00+00:00"}
+        ]
+
+    def test_a_call_with_no_tool_name_is_not_a_call_a_step_could_have_frozen(self) -> None:
+        """A nameless call matches no step's tool. Kept, it becomes a recorded
+        result under a name no playbook can ever address."""
+        state = {
+            "messages": [
+                AIMessage(content="", tool_calls=[{"name": "", "args": {}, "id": "c1"}]),
+                ToolMessage(content=json.dumps({"ok": True}), tool_call_id="c1"),
+            ]
+        }
+
+        assert _run_results(state) == []
+
+    def test_a_call_still_in_flight_is_skipped_and_the_ones_beside_it_are_kept(self) -> None:
+        """``write_playbook`` itself is unanswered in every real run. Stopping at
+        it throws away the calls the playbook is being written from."""
+        state = {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {"name": "write_playbook", "args": {}, "id": "c0"},
+                        {
+                            "name": "GMAIL_FETCH_MESSAGES",
+                            "args": {"query": "is:unread"},
+                            "id": "c1",
+                        },
+                    ],
+                ),
+                ToolMessage(content=json.dumps({"messages": [{"id": "m1"}]}), tool_call_id="c1"),
+            ]
+        }
+
+        results = _run_results(state)
+
+        assert [recorded.tool_name for recorded in results] == ["GMAIL_FETCH_MESSAGES"]
+
+    async def test_a_write_records_how_many_of_the_runs_calls_it_was_checked_against(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """``None`` and ``0`` are different answers — no graph state reached the
+        tool at all, versus a run that genuinely made no calls — and this count
+        is the only field that tells them apart in production."""
+        state = _run_state(
+            ("GMAIL_FETCH_MESSAGES", {"query": "is:unread"}, {"messages": [{"id": "m1"}]}),
+            ("GMAIL_REPLY", {"thread_id": "t1", "body": "hi"}, {"sent": [{"id": "1"}]}),
+        )
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_GmailRegistry()),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
+            )
+
+        assert log.set_ns.call_args_list[0] == call("playbook", checked_against_calls=2)

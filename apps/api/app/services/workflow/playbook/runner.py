@@ -5,15 +5,17 @@ Each step runs inside a real agent graph (``create_agent``) driven by
 makes a replay use the same machinery an agentic run uses — the pregel runtime,
 the stream writer, the metadata copy, the middleware stack and the HIL gate —
 rather than a hand-supplied imitation of it. What a replay does NOT do is think.
-It makes at most two model calls: one mid-run that fills the ``$ask`` fields
-(only when a step needs one), and one at the end that writes the user-facing
-result and judges the run. They are separate because the result and the verdict
-can only be written once every step has run; a verdict written mid-run judges
-steps that have not happened yet.
+Its model calls are one ask call per step that carries a ``$ask`` slot, plus the
+narration at the end that writes the user-facing result and judges the run. Each
+ask call fires immediately before its own step, so a slot whose instruction
+depends on an earlier step's result is written from that result rather than from
+a run that has not reached it yet. The narration is separate from all of them
+because the result and the verdict can only be written once every step has run;
+a verdict written mid-run judges steps that have not happened yet.
 
 A step is its own graph invocation because a playbook step addresses the results
-of the steps before it (``$steps.x.y``, ``$ask.z``), so the call to emit is not
-known until its predecessor has answered.
+of the steps before it (``$steps.x.y``), so the call to emit is not known until
+its predecessor has answered.
 
 Two properties are load-bearing:
 
@@ -43,14 +45,24 @@ from app.agents.middleware.factory import (
     SubagentStackOptions,
     create_middleware_stack,
 )
-from app.agents.prompts.playbook_prompts import PLAYBOOK_ASK_PROMPT, PLAYBOOK_NARRATION_PROMPT
+from app.agents.prompts.playbook_prompts import (
+    PLAYBOOK_ASK_PROMPT,
+    PLAYBOOK_NARRATION_FALLBACK_TEMPLATE,
+    PLAYBOOK_NARRATION_PROMPT,
+)
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.workspace.offload import read_offload
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
-from app.models.playbook_models import PlaybookAsk, PlaybookDocument, PlaybookStep
+from app.models.playbook_models import (
+    LocatedAsk,
+    PlaybookDocument,
+    PlaybookStep,
+    ask_slots,
+    has_ask_slots,
+)
 from app.models.workflow_execution_models import (
     RecordedCall,
     build_result_digest,
@@ -64,6 +76,7 @@ from app.services.workflow.playbook.evaluator import (
     PlaybookUser,
     RunContext,
     StepResult,
+    fill_ask_slots,
     last_run_index,
     parse_result,
     resolve_args,
@@ -114,16 +127,21 @@ _NARRATION_LABEL = "narration"
 #: exists only so a tool whose result loops the graph cannot run away.
 _REPLAY_RECURSION_LIMIT = 8
 
+#: A completed line as a BRIEF quotes it back — the agent's fallback note and the
+#: narration fallback the user reads. Both say what ran and roughly what came
+#: back; neither needs the whole payload the narration itself was shown.
+FALLBACK_LINE_MAX_CHARS = 1_500
+
 
 class PlaybookAskAnswer(BaseModel):
-    """One ``$ask`` field, written by the mid-run ask call."""
+    """One ``$ask`` slot, written by an ask call."""
 
-    name: str = Field(description="The ask's name, exactly as the playbook declares it")
-    text: str = Field(description="What to write for that field")
+    name: str = Field(description="The slot's key, exactly as listed in <asks>")
+    text: str = Field(description="What to write for that slot")
 
 
 class PlaybookAskFill(BaseModel):
-    """What the mid-run call produces: every ask, and nothing else."""
+    """What one ask call produces: the slots its own step needs, and nothing else."""
 
     asks: list[PlaybookAskAnswer] = Field(default_factory=list)
 
@@ -163,8 +181,9 @@ class PlaybookRunResult(BaseModel):
     #: One line per step that actually ran, so a fallback run can be told what it
     #: must not do again.
     completed: list[str] = Field(default_factory=list)
-    #: How many real model calls the replay made: the ask fill (only when a step
-    #: needed one) and the end-of-run narration. A call that raised is not counted.
+    #: How many real model calls the replay made: one ask fill per step that
+    #: carried a slot, plus the end-of-run narration. A call that raised is not
+    #: counted.
     llm_calls: int = 0
     #: Why a run that completed (``ok=True``) is not trusted: a step came back
     #: empty where the previous run had items, or the narration judged the
@@ -174,6 +193,11 @@ class PlaybookRunResult(BaseModel):
     #: the narration's own verdict. The worker weighs them differently, so it
     #: needs to know which one spoke. ``None`` exactly when ``suspect`` is.
     suspect_source: Literal["record", "narration"] | None = None
+    #: Why the end-of-run call did not write the result, on a run where every
+    #: step ran anyway (``ok=True``, ``text`` the fallback record of what ran).
+    #: The steps are the workflow; only the sentence about them is missing, so
+    #: this is a delivered run, not a playbook to heal.
+    narration_failed: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +221,8 @@ class _Run:
     steps: dict[str, StepResult] = field(default_factory=dict)
     completed: list[str] = field(default_factory=list)
     asks: dict[str, str] = field(default_factory=dict)
+    #: The most recent ask call's answers, as the model returned them. ``asks``
+    #: is the accumulation across every such call and is what steps read.
     ask_fill: PlaybookAskFill | None = None
     narration: PlaybookNarration | None = None
     #: Real model calls that returned; the replay's cost line.
@@ -242,7 +268,15 @@ async def run_playbook(
     space = ToolSpace(tools=registry.get_tool_dict(), runtime=None, subagent_id=None)
 
     failure = await _run_steps(playbook, playbook.steps, run, space)
-    if failure is None and run.suspect is not None:
+    if failure is not None:
+        return PlaybookRunResult(
+            ok=False,
+            trace=run.trace,
+            completed=run.completed,
+            failure=_failure_text(failure, run.completed),
+            llm_calls=run.llm_calls,
+        )
+    if run.suspect is not None:
         # Stopped on the record's word: no narration, nothing to deliver. The
         # agent finishes this fire from the list of what ran.
         return PlaybookRunResult(
@@ -253,16 +287,10 @@ async def run_playbook(
             suspect=run.suspect,
             suspect_source="record",
         )
-    if failure is None:
-        failure = await _narrate_or_fail(playbook, run)
-    if failure is not None:
-        return PlaybookRunResult(
-            ok=False,
-            trace=run.trace,
-            completed=run.completed,
-            failure=_failure_text(failure, run.completed),
-            llm_calls=run.llm_calls,
-        )
+
+    narration_failure = await _narrate_or_fail(playbook, run)
+    if narration_failure is not None:
+        return _narration_fallback(run, narration_failure)
 
     narration = run.narration
     if narration is None:
@@ -344,9 +372,9 @@ async def _run_tool_step(
     tool_name = step.tool or ""
     position = run.position
 
-    if run.ask_fill is None and playbook.ask and _addresses_ask(step):
+    if has_ask_slots(step.args):
         failure = await _fill_asks_or_fail(
-            playbook, run, pending=_labels(playbook.steps)[position - 1 :]
+            playbook, step, run, pending=_labels(playbook.steps)[position - 1 :]
         )
         if failure is not None:
             return failure
@@ -356,7 +384,10 @@ async def _run_tool_step(
         return _StepFailure(position, tool_name, denial)
 
     try:
-        args = resolve_args(step.args, _context(run))
+        # Slots first, then placeholders: filling turns a slot into an ordinary
+        # string, which resolution then scans like any other authored value.
+        filled = fill_ask_slots(step.args, run.asks, key_prefix=step.id or tool_name)
+        args = resolve_args(filled, _context(run))
     except PlaceholderError as exc:
         return _StepFailure(position, tool_name, exc.message)
 
@@ -613,23 +644,8 @@ def _context(run: _Run) -> RunContext:
     )
 
 
-def _addresses_ask(step: PlaybookStep) -> bool:
-    """Whether this step's arguments address a ``$ask`` field."""
-    return any("$ask." in text for text in _strings(step.args))
-
-
-def _strings(value: object) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, Mapping):
-        return [text for item in value.values() for text in _strings(item)]
-    if isinstance(value, list):
-        return [text for item in value for text in _strings(item)]
-    return []
-
-
 async def _fill_asks_or_fail(
-    playbook: PlaybookDocument, run: _Run, *, pending: Sequence[str]
+    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, *, pending: Sequence[str]
 ) -> _StepFailure | None:
     """Run the ask fill; a raise becomes the failure that stops the run.
 
@@ -637,17 +653,18 @@ async def _fill_asks_or_fail(
     never ran and what had completed by the time the model call died.
     """
     try:
-        await _fill_asks(playbook, run, pending=pending)
+        await _fill_asks(playbook, step, run, pending=pending)
     except Exception as exc:
         return _model_call_failure(playbook, run, _ASK_FILL_LABEL, exc)
     return None
 
 
 async def _narrate_or_fail(playbook: PlaybookDocument, run: _Run) -> _StepFailure | None:
-    """Run the narration; a raise becomes the failure that stops the run.
+    """Run the narration; a raise comes back as the reason it wrote nothing.
 
-    Positioned at the last step, so the report still says every step had
-    completed by the time the model call died.
+    Positioned at the last step, so the reason still says every step had
+    completed by the time the model call died. The caller turns it into a
+    completed run, not a stopped one — see ``_narration_fallback``.
     """
     try:
         await _narrate(playbook, run)
@@ -670,16 +687,21 @@ def _model_call_failure(
 
 
 async def _fill_asks(
-    playbook: PlaybookDocument, run: _Run, *, pending: Sequence[str]
+    playbook: PlaybookDocument, step: PlaybookStep, run: _Run, *, pending: Sequence[str]
 ) -> PlaybookAskFill:
-    """The mid-run model call: every ask, and only the asks.
+    """The model call for one step's ask slots, made just before that step runs.
 
-    It fires the first time a step addresses a ``$ask``, which can be before the
-    last step. ``pending`` names the steps that have not run yet, so the model
-    knows what its fields are about to be used for. The result and the verdict
-    are deliberately not written here: they would describe a run whose outcome
-    is not known yet.
+    Scoped to ``step`` rather than the whole playbook because a slot's
+    instruction may only be answerable from what ran before it ("summarise the
+    events fetched above"): filling every slot at the first one would write a
+    later step's argument from a run that had not reached it. ``ask_slots`` is
+    called with the single step so the keys are spelled by the one rule the
+    evaluator looks them back up by. ``pending`` names the steps that have not
+    run yet, so the model knows what its answers are about to be used for. The
+    result and the verdict are deliberately not written here: they would
+    describe a run whose outcome is not known yet.
     """
+    located = ask_slots([step])
     config = metered_config(playbook.user_id)
     fill: PlaybookAskFill = await ainvoke_llm(
         background_structured_runnable(PlaybookAskFill, config=config),
@@ -687,18 +709,20 @@ async def _fill_asks(
             description=playbook.description,
             completed="\n".join(run.completed) or "nothing yet",
             remaining="\n".join(pending),
-            asks=_render_asks(playbook.ask, run.completed),
+            asks=_render_asks(located),
         ),
         label="playbook_ask_fill",
         config=config,
     )
     run.llm_calls += 1
     run.ask_fill = fill
-    run.asks = {answer.name: answer.text for answer in fill.asks}
-    missing = sorted(set(playbook.ask) - set(run.asks))
+    # Accumulated, never replaced: an earlier step's filled slots are still
+    # part of the arguments its record shows, and the narration reads them all.
+    run.asks.update({answer.name: answer.text for answer in fill.asks})
+    missing = sorted({ask.key for ask in located} - set(run.asks))
     if missing:
         log.warning(
-            f"{LogTag.WORKFLOW} Playbook ask fill wrote nothing for declared asks",
+            f"{LogTag.WORKFLOW} Playbook ask fill wrote nothing for some slots",
             playbook_id=playbook.playbook_id,
             workflow_id=playbook.workflow_id,
             missing_asks=missing,
@@ -719,7 +743,7 @@ async def _narrate(playbook: PlaybookDocument, run: _Run) -> PlaybookNarration:
             description=playbook.description,
             completed="\n".join(run.completed) or "nothing",
             asks=_render_filled_asks(run.asks),
-            synthesize=playbook.synthesize,
+            result_brief=playbook.result_brief,
         ),
         label="playbook_narration",
         config=config,
@@ -741,26 +765,62 @@ def _labels(steps: Sequence[PlaybookStep]) -> list[str]:
     return labels
 
 
-def _render_asks(asks: Mapping[str, PlaybookAsk], completed: Sequence[str]) -> str:
-    if not asks:
+def _render_asks(located: Sequence[LocatedAsk]) -> str:
+    """The slots to write, as one ask call is shown them.
+
+    One line per slot, keyed exactly as the runner will look the answer back up.
+    There is no "works from" line: a slot is filled from everything listed as
+    already run, because it has no way to name a subset of it.
+    """
+    if not located:
         return "none"
     lines: list[str] = []
-    for name, ask in asks.items():
-        lines.append(f"- {name}: {ask.prompt}")
-        # A per-field cap cannot be enforced through the API when one call writes
-        # every field, so it is stated to the model as the budget it is.
-        lines.append(f"  budget: about {ask.max_tokens} tokens")
-        seen = [line for line in completed if any(line.startswith(f"{u} (") for u in ask.uses)]
-        if seen:
-            lines.append(f"  works from: {'; '.join(seen)}")
+    for ask in located:
+        lines.append(f"- {ask.key}: {ask.slot.prompt}")
+        # A per-slot cap cannot be enforced through the API when one call writes
+        # several slots, so it is stated to the model as the budget it is.
+        lines.append(f"  budget: about {ask.slot.max_tokens} tokens")
     return "\n".join(lines)
 
 
 def _render_filled_asks(asks: Mapping[str, str]) -> str:
-    """The asks as the mid-run call wrote them, for the end-of-run call to read."""
+    """The asks as the ask calls wrote them, for the end-of-run call to read."""
     if not asks:
         return "none"
     return "\n".join(f"- {name}: {text}" for name, text in asks.items())
+
+
+def completed_block(completed: Sequence[str]) -> str:
+    """What ran, one bounded line each, as a brief quotes it back to a reader."""
+    return "\n".join(f"- {_bounded_line(line)}" for line in completed) or "- nothing"
+
+
+def _bounded_line(line: str) -> str:
+    return line if len(line) <= FALLBACK_LINE_MAX_CHARS else line[:FALLBACK_LINE_MAX_CHARS] + "..."
+
+
+def _narration_fallback(run: _Run, failure: _StepFailure) -> PlaybookRunResult:
+    """Every step ran and only the sentence about them could not be written.
+
+    Prod: 13 of 15 failed replays were exactly this — every tool step complete,
+    the narration call alone raising. Reporting that as a stopped run gave the
+    user nothing and sent the next fire to a ~20-call heal run against a frozen
+    sequence that had just done its job. The steps' own record is a worse result
+    than the narration's sentence and a far better one than silence.
+
+    ``suspect`` stays unset: the narration is what produces a verdict, and it
+    never spoke. An unwritten verdict is not a clean one.
+    """
+    return PlaybookRunResult(
+        ok=True,
+        text=PLAYBOOK_NARRATION_FALLBACK_TEMPLATE.format(
+            reason=failure.reason, completed=completed_block(run.completed)
+        ),
+        trace=run.trace,
+        completed=run.completed,
+        llm_calls=run.llm_calls,
+        narration_failed=failure.reason,
+    )
 
 
 def _failure_text(failure: _StepFailure, completed: Sequence[str]) -> str:

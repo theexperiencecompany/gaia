@@ -38,7 +38,7 @@ def make_doc(**overrides) -> PlaybookDocument:
         "workflow_hash": "hash-1",
         "description": "first",
         "steps": [{"id": "one", "tool": "list_events", "args": {"calendar_id": "primary"}}],
-        "synthesize": "s",
+        "result_brief": "s",
         "created_at": now,
         "updated_at": now,
     }
