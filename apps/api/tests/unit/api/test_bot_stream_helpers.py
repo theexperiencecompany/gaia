@@ -325,7 +325,7 @@ class TestPaywallNotice:
         with patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", None):
             notice = _paywall_notice("https://pay.example/checkout")
         assert (
-            notice == "GAIA is a paid product. Subscribe to Pro to keep chatting: "
+            notice == "GAIA is paid only. Subscribe to GAIA Pro to keep chatting: "
             "https://pay.example/checkout"
         )
 
@@ -333,7 +333,7 @@ class TestPaywallNotice:
         with patch("app.api.v1.endpoints.bot.settings.PAYWALL_DISCOUNT_CODE", "SAVE10"):
             notice = _paywall_notice("https://pay.example/checkout")
         assert notice == (
-            "GAIA is a paid product. Subscribe to Pro to keep chatting: "
+            "GAIA is paid only. Subscribe to GAIA Pro to keep chatting: "
             "https://pay.example/checkout Use code SAVE10 for a discount."
         )
 
@@ -402,7 +402,7 @@ class TestBotStreamEntitlementGate:
         chunks = [chunk async for chunk in result.body_iterator]
         notice_payload = json.loads(chunks[0][len("data: ") : -2])
         assert notice_payload["notice"]["text"] == (
-            "GAIA is a paid product. Subscribe to Pro to keep chatting: "
+            "GAIA is paid only. Subscribe to GAIA Pro to keep chatting: "
             "https://pay.example/checkout"
         )
         mock_sub_active.assert_awaited_once_with("user-1")

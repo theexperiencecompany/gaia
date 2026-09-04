@@ -81,7 +81,7 @@ BOT_STREAM_ERROR_PLAN_REQUIRED = "plan_required"
 # this stays generic — the /auth flow that follows resolves their identity
 # first, and the linked-but-free notice below picks up from there next turn.
 _UNLINKED_PAYWALL_NOTICE = (
-    "GAIA is a paid product. Link your account with /auth, then subscribe to Pro to chat."
+    "GAIA is paid only. Link your account with /auth, then subscribe to GAIA Pro to chat."
 )
 
 
@@ -134,7 +134,7 @@ def _paywall_notice_stream(notice_text: str) -> StreamingResponse:
 
 
 def _paywall_notice(checkout_url: str) -> str:
-    notice = f"GAIA is a paid product. Subscribe to Pro to keep chatting: {checkout_url}"
+    notice = f"GAIA is paid only. Subscribe to GAIA Pro to keep chatting: {checkout_url}"
     if settings.PAYWALL_DISCOUNT_CODE:
         notice += f" Use code {settings.PAYWALL_DISCOUNT_CODE} for a discount."
     return notice

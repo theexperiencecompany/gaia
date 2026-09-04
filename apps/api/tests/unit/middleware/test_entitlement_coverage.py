@@ -202,6 +202,8 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/support/requests/with-attachments",
         "/api/v1/user/logout",
         "/api/v1/user/me",
+        "/api/v1/user/name",
+        "/api/v1/user/timezone",
         "/api/v1/webhook/composio",
         "/health",
         "/ping",

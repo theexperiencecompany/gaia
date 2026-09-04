@@ -1071,8 +1071,8 @@ class TestBotChatStream:
         # a `notice` frame ahead of the untouched not_authenticated error frame
         # (the /auth-link flow it triggers is unchanged).
         assert response.text == (
-            'data: {"notice": {"text": "GAIA is a paid product. Link your account '
-            'with /auth, then subscribe to Pro to chat."}}\n\n'
+            'data: {"notice": {"text": "GAIA is paid only. Link your account '
+            'with /auth, then subscribe to GAIA Pro to chat."}}\n\n'
             'data: {"error": "not_authenticated"}\n\n'
         )
 
@@ -2087,7 +2087,7 @@ class TestBotChatStreamSubscriptionGate:
 
         assert response.status_code == 200
         assert response.text == (
-            'data: {"notice": {"text": "GAIA is a paid product. Subscribe to Pro '
+            'data: {"notice": {"text": "GAIA is paid only. Subscribe to GAIA Pro '
             'to keep chatting: https://checkout.dodopayments.com/s/cs_1"}}\n\n'
             'data: {"done": true, "conversation_id": ""}\n\n'
         )

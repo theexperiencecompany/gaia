@@ -456,7 +456,7 @@ class TestChatStreamPaywall:
         assert response.status_code == 402
         assert response.json()["detail"] == {
             "code": "subscription_required",
-            "message": "GAIA is a paid product. Subscribe to Pro to keep chatting.",
+            "message": "GAIA is paid only. Subscribe to GAIA Pro to keep chatting.",
             "checkout_url": "https://checkout.dodo.test/xyz",
             "discount_code": None,
         }

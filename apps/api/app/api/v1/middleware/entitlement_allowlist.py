@@ -29,6 +29,8 @@ FREE_PATH_PREFIXES: tuple[str, ...] = (
     # layout, so it needs the session user before it can show the wall. A 402
     # here would loop: paywall opens -> layout refetches -> 402 -> paywall.
     "/api/v1/user/me",  # GET (session bootstrap) + PATCH (profile)
+    "/api/v1/user/name",  # profile chores: no spend, and the wall shows the name
+    "/api/v1/user/timezone",  # the wall and receipts render in the user's zone
     "/api/v1/user/logout",  # a lapsed user must be able to leave
     "/api/v1/oauth",  # login redirects + provider callbacks (no session yet)
     "/api/v1/dev/",  # dev-only identity router; mounted only in development

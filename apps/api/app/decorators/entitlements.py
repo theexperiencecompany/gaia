@@ -22,7 +22,7 @@ from shared.py.wide_events import log
 P = ParamSpec("P")
 R = TypeVar("R")
 
-PAYWALL_MESSAGE = "GAIA is a paid product. Subscribe to Pro to keep chatting."
+PAYWALL_MESSAGE = "GAIA is paid only. Subscribe to GAIA Pro to keep chatting."
 
 
 class SubscriptionRequiredDetail(TypedDict):
