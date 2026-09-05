@@ -68,6 +68,10 @@ MAX_FOR_EACH_ITEMS = 25
 FOR_EACH_ASK_PATH = "$for_each"
 
 
+#: The one description every step id carries, wherever a step is spelled out.
+_STEP_ID_DESCRIPTION = "Referencable name, e.g. $steps.<id>.field"
+
+
 class DeclineKind(str, Enum):
     """Why a run refused to freeze its sequence, as a value rather than prose.
 
@@ -372,7 +376,7 @@ class _CallStep(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
+    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
     tool: str = Field(min_length=1, description="Exact name of the tool this step calls")
     args: dict[str, Any] = Field(default_factory=dict, description="Args, may hold $placeholders")
 
@@ -508,7 +512,7 @@ class HandoffStep(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
+    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
     handoff: str = Field(min_length=1, description="Subagent id")
     steps: list[HandoffChild] = Field(min_length=1, description="The calls that subagent ran")
 
@@ -660,7 +664,7 @@ class _CallInput(BaseModel):
     those would store a call with no arguments and pass it off as authored.
     """
 
-    id: str = Field(default="", description="Referencable name, e.g. $steps.<id>.field")
+    id: str = Field(default="", description=_STEP_ID_DESCRIPTION)
     args: dict[str, Any] = Field(default_factory=dict, description=_ARGS_DESCRIPTION)
     for_each: str | AskSlot | None = Field(default=None, description=_FOR_EACH_DESCRIPTION)
     max_items: int | None = Field(default=None, description=_MAX_ITEMS_DESCRIPTION)

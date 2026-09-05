@@ -97,6 +97,15 @@ def _add_step(title: str, step_id: str = "add") -> dict[str, Any]:
     return {"id": step_id, "tool": "create_todo", "args": {"title": title}}
 
 
+#: Expectation wording and step fragments that recur across scenarios.
+ITEM_ID = "$item.id"
+WHY_NO_PLAYBOOK = "no playbook"
+WHY_REPLAY_SUCCESS = "replay success"
+WHY_DECLINES_0 = "declines 0"
+WHY_DECLINES_1 = "declines 1"
+BRANCH_ON_INBOX = "whether inbox has mail"
+
+
 # --- setup steps ---------------------------------------------------------------
 
 
@@ -331,18 +340,18 @@ SCENARIOS: list[Scenario] = [
                 ]
             ),
         ),
-        fires=[Fire("refused at the write", refused("addresses the handoff"), "no playbook")],
+        fires=[Fire("refused at the write", refused("addresses the handoff"), WHY_NO_PLAYBOOK)],
     ),
     Scenario(
         key="SD",
         title="one strike per run",
         script=script(
-            decline("order_branches", branch_on="whether inbox has mail"),
-            decline("order_branches", branch_on="whether inbox has mail"),
-            decline("order_branches", branch_on="whether inbox has mail"),
+            decline("order_branches", branch_on=BRANCH_ON_INBOX),
+            decline("order_branches", branch_on=BRANCH_ON_INBOX),
+            decline("order_branches", branch_on=BRANCH_ON_INBOX),
         ),
         fires=[
-            Fire("three declines in one run count once", declines(1), "declines 1"),
+            Fire("three declines in one run count once", declines(1), WHY_DECLINES_1),
             Fire("a second run counts a second strike", declines(2), "declines 2"),
         ],
     ),
@@ -369,7 +378,7 @@ SCENARIOS: list[Scenario] = [
                         "tool": "update_todo",
                         "for_each": "$steps.ls.todos",
                         "max_items": 1,
-                        "args": {"todo_id": "$item.id", "completed": False},
+                        "args": {"todo_id": ITEM_ID, "completed": False},
                     },
                 ]
             ),
@@ -403,7 +412,7 @@ SCENARIOS: list[Scenario] = [
         script=script(LIST_PENDING, write([LS_STEP])),
         fires=[
             Fire("authored with items", authored, "stored"),
-            Fire("replays full", replayed_ok, "replay success"),
+            Fire("replays full", replayed_ok, WHY_REPLAY_SUCCESS),
             Fire(
                 "empty replay is suspect; the finishing agent is attempt 1, its empty rewrite refused",
                 both(
@@ -438,7 +447,7 @@ SCENARIOS: list[Scenario] = [
             Fire(
                 "nothing stored",
                 lambda observation, _ctx: observation.playbook is None,
-                "no playbook",
+                WHY_NO_PLAYBOOK,
             )
         ],
     ),
@@ -468,13 +477,13 @@ SCENARIOS: list[Scenario] = [
         key="X9",
         title="order_branches without branch_on is not a decision",
         script=script(decline("order_branches")),
-        fires=[Fire("not counted", declines(0), "declines 0")],
+        fires=[Fire("not counted", declines(0), WHY_DECLINES_0)],
     ),
     Scenario(
         key="X10",
         title="blocked without integrations is not a decision",
         script=script(decline("blocked_missing_integration")),
-        fires=[Fire("not counted", declines(0), "declines 0")],
+        fires=[Fire("not counted", declines(0), WHY_DECLINES_0)],
     ),
     Scenario(
         key="X11",
@@ -486,21 +495,21 @@ SCENARIOS: list[Scenario] = [
         key="X13",
         title="blocked_no_budget is free",
         script=script(decline("blocked_no_budget")),
-        fires=[Fire("not counted, still active", declines(0), "declines 0")],
+        fires=[Fire("not counted, still active", declines(0), WHY_DECLINES_0)],
     ),
     Scenario(
         key="X14",
         title="the decline lockout, and an edit resets it",
         script=script(decline("unstable_discovery")),
         fires=[
-            Fire("strike 1", declines(1), "declines 1"),
+            Fire("strike 1", declines(1), WHY_DECLINES_1),
             Fire("strike 2", declines(2), "declines 2"),
             Fire("strike 3", declines(3), "declines 3"),
             Fire("past the limit a decline is not asked", declines(3), "declines stay 3"),
             Fire(
                 "an edited workflow starts a fresh tally",
                 declines(1),
-                "declines 1",
+                WHY_DECLINES_1,
                 before=edit_prompt,
             ),
         ],
@@ -582,7 +591,7 @@ SCENARIOS: list[Scenario] = [
                 and observation.playbook.has_handoff,
                 "handoff playbook",
             ),
-            Fire("replays inside the subagent", replayed_ok, "replay success"),
+            Fire("replays inside the subagent", replayed_ok, WHY_REPLAY_SUCCESS),
         ],
     ),
     Scenario(
@@ -592,12 +601,12 @@ SCENARIOS: list[Scenario] = [
         script=script(LIST_PENDING, write([LS_STEP]), decline("unstable_discovery")),
         fires=[
             Fire("authored (the decline after the write leaves it)", authored, "stored"),
-            Fire("replays full", replayed_ok, "replay success"),
+            Fire("replays full", replayed_ok, WHY_REPLAY_SUCCESS),
             Fire(
                 "suspect replay; the finishing agent's decline deletes the playbook",
                 lambda observation, _ctx: observation.playbook is None
                 and "replay_suspect" in observation.reasons,
-                "no playbook",
+                WHY_NO_PLAYBOOK,
                 before=complete_all,
             ),
         ],

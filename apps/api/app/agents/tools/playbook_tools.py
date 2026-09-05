@@ -102,13 +102,7 @@ def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str
     messages = state.get("messages")
     if not isinstance(messages, list):
         return []
-    answers: dict[str, object] = {}
-    for message in messages:
-        if isinstance(message, ToolMessage) and message.tool_call_id:
-            content = message.content
-            answers[message.tool_call_id] = parse_result(
-                content if isinstance(content, str) else json.dumps(content, default=str)
-            )
+    answers = _answers_by_call_id(messages)
     calls: list[tuple[str, dict[str, Any], object]] = []
     for message in messages:
         for call in getattr(message, "tool_calls", None) or []:
@@ -117,6 +111,18 @@ def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str
             if name and call_id in answers:
                 calls.append((name, dict(call.get("args") or {}), answers[call_id]))
     return calls
+
+
+def _answers_by_call_id(messages: list[object]) -> dict[str, object]:
+    """Each tool message's parsed answer, keyed by the call it answers."""
+    answers: dict[str, object] = {}
+    for message in messages:
+        if isinstance(message, ToolMessage) and message.tool_call_id:
+            content = message.content
+            answers[message.tool_call_id] = parse_result(
+                content if isinstance(content, str) else json.dumps(content, default=str)
+            )
+    return answers
 
 
 def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:

@@ -3,6 +3,8 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.utils.stream_utils import (
     extract_tool_entries_from_update,
     reconstruct_subagent_groups,
@@ -365,3 +367,20 @@ class TestReconstructSubagentGroups:
 
         assert self._group(td, "done")["completed_at"] is not None
         assert self._group(td, "cut")["completed_at"] is not None
+
+
+@pytest.mark.unit
+def test_a_groups_stable_subagent_id_comes_from_its_start_event() -> None:
+    """The row id is per dispatch; ``subagent`` is what a playbook names."""
+    accumulated: dict[str, Any] = {
+        "tool_data": [],
+        "subagent_starts": {
+            "row-1": {"subagent_id": "row-1", "subagent_name": "Todos", "subagent": "todos"},
+            "row-2": {"subagent_id": "row-2", "subagent_name": "Spawned"},
+        },
+        "subagent_ends": {},
+    }
+    reconstruct_subagent_groups(accumulated)
+    groups = {entry["data"]["subagent_id"]: entry["data"] for entry in accumulated["tool_data"]}
+    assert groups["row-1"]["subagent"] == "todos"
+    assert groups["row-2"]["subagent"] is None

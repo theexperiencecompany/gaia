@@ -14,9 +14,11 @@ from datetime import datetime
 #: Layouts recognised in a recorded argument, most specific first. A value is
 #: matched against these with ``strptime``; the first that parses is its layout.
 KNOWN_TIME_LAYOUTS: tuple[str, ...] = (
+    # The literal-Z form first: ``%z`` also accepts "Z", but renders "+0000",
+    # and a tool that was sent "Z" is rendered "Z" again.
+    "%Y-%m-%dT%H:%M:%SZ",
     "%Y-%m-%dT%H:%M:%S%z",
     "%Y-%m-%dT%H:%M:%S.%f%z",
-    "%Y-%m-%dT%H:%M:%SZ",
     "%Y-%m-%dT%H:%M:%S",
     "%Y-%m-%d %H:%M:%S%z",
     "%Y-%m-%d %H:%M:%S",

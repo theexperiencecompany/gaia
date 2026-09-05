@@ -41,9 +41,8 @@ class TestResetPlaybookDeclines:
     ) -> None:
         collection = _workflows(affected=4, at_limit=1)
         with patch(f"{MODULE}.MongoDB", _database(collection)):
-            code = await script._run(_args())
+            await script._run(_args())
 
-        assert code == 0
         collection.update_many.assert_not_awaited()
         assert collection.count_documents.await_args_list[0].args[0] == {
             "playbook_declines": {"$gte": 1}
@@ -58,9 +57,8 @@ class TestResetPlaybookDeclines:
         as a continuation of a tally that no longer exists."""
         collection = _workflows(affected=4, at_limit=1)
         with patch(f"{MODULE}.MongoDB", _database(collection)):
-            code = await script._run(_args(apply=True))
+            await script._run(_args(apply=True))
 
-        assert code == 0
         collection.update_many.assert_awaited_once_with(
             {"playbook_declines": {"$gte": 1}},
             {"$set": {"playbook_declines": 0, "playbook_declined_hash": None}},

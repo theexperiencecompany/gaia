@@ -34,6 +34,7 @@ from app.agents.middleware.factory import (
     SubagentStackOptions,
     create_middleware_stack as real_create_middleware_stack,
 )
+from app.agents.prompts.playbook_prompts import PLAYBOOK_ASK_ELEMENT
 from app.agents.workspace.offload import mark_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
@@ -62,16 +63,20 @@ from app.models.workflow_execution_models import (
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
 from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
 from app.services.workflow.playbook.evaluator import (
+    NO_ITEM,
     AskAnswers,
     PlaybookUser,
     RunContext,
+    StepResult,
 )
 from app.services.workflow.playbook.runner import (
     PlaybookNarration,
     PlaybookRunResult,
     _fill_asks,
+    _items_not_in_results,
     _narrate,
     _render_asks,
+    _render_element,
     _Run,
     _run_handoff,
     _run_tool_step,
@@ -3453,3 +3458,182 @@ class TestAnEmptySelectionIsAnAnswer:
             if "for_each" in call.kwargs
         ]
         assert reported == [{"step": "mails", "items": 0, "ran": 0}]
+
+
+# --- the exact record a for_each leaves, element by element --------------------
+
+
+class TestForEachRecord:
+    """Every element's call is recorded on its own, labelled by its position,
+    the step's own result is the list of what its elements returned, and the
+    telemetry counts what the source held against what ran. Each is asserted
+    exactly, because the drive reads them as data."""
+
+    async def test_each_element_is_labelled_by_its_position_and_the_step_holds_the_list(
+        self,
+    ) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b", "c"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each="$steps.events.ids",
+                max_items=25,
+            ),
+            ToolStep(id="again", tool="list_events", args={"calendar_id": "$steps.mails"}),
+        ]
+
+        with patch(f"{MODULE}.log") as log:
+            result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is True, result.failure
+        assert result.completed[1:4] == [
+            'mails (send_email {"to":"a"}) -> sent',
+            'mails (send_email {"to":"b"}) -> sent',
+            'mails (send_email {"to":"c"}) -> sent',
+        ]
+        later = [args["calendar_id"] for name, args in recorder.calls if name == "list_events"][1]
+        assert later.startswith("after ") and later.count("sent") == 3
+        assert [
+            c.kwargs["for_each"] for c in log.set_ns.call_args_list if "for_each" in c.kwargs
+        ] == [{"step": "mails", "items": 3, "ran": 3}]
+
+    async def test_a_suspect_element_stops_the_loop_after_that_element(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each="$steps.events.ids",
+                max_items=25,
+            ),
+        ]
+        first = MagicMock()
+        first.trace = [
+            RecordedCall(replayed=True, tool_name="send_email", result_digest='{"items": [1]}')
+        ]
+
+        with (
+            patch(f"{MODULE}._empty_where_previous_had_items", side_effect=[None, "stale", None]),
+            patch(f"{MODULE}.log") as log,
+        ):
+            result, _ = await _run(
+                _playbook(steps),
+                registry,
+                seams=_Seams(find_previous=AsyncMock(return_value=[first])),
+            )
+
+        assert result.suspect == "stale"
+        assert [name for name, _ in recorder.calls if name == "send_email"] == ["send_email"]
+        assert [
+            c.kwargs["for_each"] for c in log.set_ns.call_args_list if "for_each" in c.kwargs
+        ] == [{"step": "mails", "items": 2, "ran": 1}]
+
+    async def test_a_source_that_is_null_runs_zero_times_and_says_so(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": null}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each="$steps.events.ids",
+                max_items=25,
+            ),
+        ]
+
+        with patch(f"{MODULE}.log") as log:
+            result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is True, result.failure
+        assert [
+            c.kwargs["for_each"] for c in log.set_ns.call_args_list if "for_each" in c.kwargs
+        ] == [{"step": "mails", "items": 0, "ran": 0}]
+
+    async def test_a_source_that_is_not_a_list_stops_naming_what_it_was(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": {"a": 1}}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item"},
+                for_each="$steps.events.ids",
+                max_items=25,
+            ),
+        ]
+
+        result, _ = await _run(_playbook(steps), registry)
+
+        assert result.ok is False
+        assert result.failure is not None
+        assert (
+            "for_each needs a list to repeat over, but '$steps.events.ids' resolved to dict"
+            in result.failure
+        )
+
+    async def test_each_element_gets_its_own_ask_call_and_the_element_in_it(self) -> None:
+        recorder = _Recorder()
+        registry = _FakeRegistry(_tools(recorder, events_result='{"ids": ["a", "b"]}'))
+        steps = [
+            ToolStep(id="events", tool="list_events", args={"calendar_id": "primary"}),
+            ForEachStep(
+                id="mails",
+                tool="send_email",
+                args={"to": "$item", "body": _slot("a note for this one")},
+                for_each="$steps.events.ids",
+                max_items=25,
+            ),
+        ]
+        fills = [
+            PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails[0].body", text="for a")]),
+            PlaybookAskFill(asks=[PlaybookAskAnswer(name="mails[1].body", text="for b")]),
+            _narration(),
+        ]
+
+        result, llm = await _run(
+            _playbook(steps), registry, seams=_Seams(llm=AsyncMock(side_effect=fills))
+        )
+
+        assert result.ok is True, result.failure
+        assert [args for name, args in recorder.calls if name == "send_email"] == [
+            {"to": "a", "body": "for a"},
+            {"to": "b", "body": "for b"},
+        ]
+        prompts = [call.args[1] for call in llm.await_args_list[:2]]
+        assert PLAYBOOK_ASK_ELEMENT.format(element="a") in prompts[0]
+        assert PLAYBOOK_ASK_ELEMENT.format(element="b") in prompts[1]
+
+
+class TestRenderElement:
+    def test_no_element_renders_to_nothing(self) -> None:
+        assert _render_element(NO_ITEM) == ""
+
+    def test_a_string_element_is_shown_as_itself_and_a_structure_as_json(self) -> None:
+        assert _render_element("a@b.com") == PLAYBOOK_ASK_ELEMENT.format(element="a@b.com")
+        assert _render_element({"id": 1}) == PLAYBOOK_ASK_ELEMENT.format(element='{"id": 1}')
+
+    def test_a_long_element_is_cut_to_one_line(self) -> None:
+        rendered = _render_element("x" * 5000)
+        assert len(rendered) < 5000
+        assert rendered.startswith(PLAYBOOK_ASK_ELEMENT.format(element="")[:10])
+
+
+class TestItemsNotInResults:
+    def test_only_items_absent_from_every_result_are_reported_in_order(self) -> None:
+        run = _bare_run()
+        run.steps["events"] = StepResult(value={"ids": ["a1", {"deep": "b2"}]})
+
+        assert _items_not_in_results(["a1", "zz", "b2", "yy"], run) == ["zz", "yy"]
+        assert _items_not_in_results([], run) == []
+
+    def test_with_no_results_every_item_is_absent(self) -> None:
+        assert _items_not_in_results(["a1"], _bare_run()) == ["a1"]

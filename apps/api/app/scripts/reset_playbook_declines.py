@@ -33,7 +33,7 @@ from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 
 
-async def _run(args: argparse.Namespace) -> int:
+async def _run(args: argparse.Namespace) -> None:
     database = MongoDB(settings.MONGO_DB, MONGO_DATABASE_NAME).database
     workflows = database["workflows"]
 
@@ -49,7 +49,7 @@ async def _run(args: argparse.Namespace) -> int:
 
     if not args.apply:
         print("\ndry run: nothing written. Re-run with --apply to clear them.")
-        return 0
+        return
 
     # playbook_declined_hash goes with the count: it is the hash those declines
     # were about, and leaving it behind would make the next decline look like a
@@ -58,7 +58,6 @@ async def _run(args: argparse.Namespace) -> int:
         query, {"$set": {"playbook_declines": 0, "playbook_declined_hash": None}}
     )
     print(f"\ncleared the tally on {result.modified_count} workflow(s)")
-    return 0
 
 
 def main() -> int:
@@ -69,7 +68,8 @@ def main() -> int:
         action="store_true",
         help=f"only workflows already locked out at {PLAYBOOK_DECLINE_LIMIT} declines",
     )
-    return asyncio.run(_run(parser.parse_args()))
+    asyncio.run(_run(parser.parse_args()))
+    return 0
 
 
 if __name__ == "__main__":

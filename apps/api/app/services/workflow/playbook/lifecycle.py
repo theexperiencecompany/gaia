@@ -32,7 +32,7 @@ The rules, stated once:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from typing import assert_never
 
@@ -93,11 +93,31 @@ class Rewritten:
 PlaybookEvent = Replayed | HealCompleted | Rewritten
 
 
+def _advance(
+    state: PlaybookLifecycle,
+    *,
+    status: PlaybookRunStatus | None = None,
+    reason: str | None = None,
+    suspect_streak: int | None = None,
+    heal_attempts: int | None = None,
+    revision: int | None = None,
+) -> PlaybookLifecycle:
+    """The state with the given fields changed; ``dataclasses.replace`` with the
+    state's own type kept rather than the generic one."""
+    return PlaybookLifecycle(
+        status=state.status if status is None else status,
+        reason=reason,
+        suspect_streak=state.suspect_streak if suspect_streak is None else suspect_streak,
+        heal_attempts=state.heal_attempts if heal_attempts is None else heal_attempts,
+        revision=state.revision if revision is None else revision,
+    )
+
+
 def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecycle:
     """The lifecycle after ``event``. Total over every (status, event) pair."""
     match event:
         case Rewritten():
-            return replace(
+            return _advance(
                 state,
                 status=PlaybookRunStatus.NOT_RUN,
                 reason=None,
@@ -105,7 +125,7 @@ def transition(state: PlaybookLifecycle, event: PlaybookEvent) -> PlaybookLifecy
                 revision=state.revision + 1,
             )
         case HealCompleted():
-            return replace(state, heal_attempts=state.heal_attempts + 1)
+            return _advance(state, reason=state.reason, heal_attempts=state.heal_attempts + 1)
         case Replayed(outcome=outcome):
             return _after_replay(state, outcome)
         case _:
@@ -127,12 +147,12 @@ def _attempts_after_rewrite(state: PlaybookLifecycle) -> int:
 def _after_replay(state: PlaybookLifecycle, outcome: PlaybookRunOutcome) -> PlaybookLifecycle:
     match outcome.status:
         case PlaybookRunStatus.SUCCESS:
-            return replace(state, status=outcome.status, reason=None, suspect_streak=0)
+            return _advance(state, status=outcome.status, reason=None, suspect_streak=0)
         case PlaybookRunStatus.FAILED:
-            return replace(state, status=outcome.status, reason=outcome.reason)
+            return _advance(state, status=outcome.status, reason=outcome.reason)
         case PlaybookRunStatus.SUSPECT:
             grows = outcome.counts_toward_streak and state.status is not PlaybookRunStatus.SUSPECT
-            return replace(
+            return _advance(
                 state,
                 status=outcome.status,
                 reason=outcome.reason,

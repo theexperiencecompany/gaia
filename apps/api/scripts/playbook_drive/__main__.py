@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import sys
+import tempfile
 import time
 
 from .client import DEFAULT_API, DEFAULT_USER, GaiaClient
@@ -81,6 +82,19 @@ def run_scenario(
     return verdicts
 
 
+def _results_path(requested: Path) -> Path:
+    """The results file, kept inside the working directory or the system temp dir.
+
+    A dev tool takes its output path from the command line; keeping it under
+    one of two known roots means a stray argument cannot write anywhere else.
+    """
+    resolved = requested.resolve()
+    roots = (Path.cwd().resolve(), Path(tempfile.gettempdir()).resolve())
+    if not any(resolved.is_relative_to(root) for root in roots):
+        raise SystemExit(f"--out must be under {roots[0]} or {roots[1]}, not {resolved}")
+    return resolved
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default=DEFAULT_API)
@@ -89,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", nargs="*", default=[], metavar="KEY")
     parser.add_argument("--out", type=Path, default=Path("playbook_drive.results.json"))
     args = parser.parse_args(argv)
+    out = _results_path(args.out)
 
     client = GaiaClient(args.api, args.user)
     user = client.mint_user()
@@ -103,8 +118,8 @@ def main(argv: list[str] | None = None) -> int:
         verdicts.extend(run_scenario(scenario, client, store, log, user.id))
 
     failed = [v for v in verdicts if not v.ok]
-    args.out.write_text(json.dumps([v.__dict__ for v in verdicts], indent=1))
-    print(f"\n{len(verdicts) - len(failed)}/{len(verdicts)} fires passed; results in {args.out}")
+    out.write_text(json.dumps([v.__dict__ for v in verdicts], indent=1))
+    print(f"\n{len(verdicts) - len(failed)}/{len(verdicts)} fires passed; results in {out}")
     for verdict in failed:
         print(f"  FAIL {verdict.scenario}: {verdict.fire} ({verdict.why})")
     return len(failed)
