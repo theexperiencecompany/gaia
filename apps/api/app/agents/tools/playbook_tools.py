@@ -29,6 +29,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
+    is_work_call,
     playbook_body_from_input,
 )
 from app.models.workflow_execution_models import RecordedCall, parse_result
@@ -389,6 +390,7 @@ async def decline_playbook(
         "Required for order_branches: the ONE call that runs on some days and "
         "not others. If you cannot name such a call, the order does not branch.",
     ] = None,
+    state: Annotated[dict[str, Any] | None, InjectedState] = None,
 ) -> dict[str, Any]:
     """
     Record that this run's sequence is not worth freezing as a playbook.
@@ -441,6 +443,16 @@ async def decline_playbook(
         if kind in BLOCKED_DECLINE_KINDS:
             return await _record_blocked_run(workflow_id, user_id, kind, integrations or [])
         if kind is DeclineKind.NO_WORK_TODAY:
+            # The claim is checked against the run's own record, not taken on
+            # trust: a run that made a doing-call had work to freeze.
+            worked = [name for name, _args, _answer in _answered_calls(state) if is_work_call(name)]
+            if worked:
+                return error_response(
+                    "work_happened",
+                    f"This run called {', '.join(sorted(set(worked)))}, so the work happened "
+                    "today. Freeze it with write_playbook, or decline with the kind that "
+                    "says why the sequence cannot hold.",
+                )
             # Not a verdict on the sequence: the work never happened, so there
             # was nothing to freeze. Asked again on a day it does.
             log.set_ns("playbook", quiet_day=True)

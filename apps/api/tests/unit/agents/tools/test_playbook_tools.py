@@ -1821,6 +1821,37 @@ class TestOneDecisionPerRun:
         assert result["data"]["counted"] is True
         assert workflows.workflow.playbook_declines == 2
 
+    async def test_a_quiet_day_claim_is_refused_when_the_run_did_the_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The claim is checked against the run's own record: a run that made a
+        doing-call (create, send, update) had work, whatever it says."""
+        workflows = _FakeWorkflowStore()
+        did_work = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "c1", "name": "create_todo", "args": {"title": "x"}, "type": "tool_call"}
+            ],
+        )
+        answered = ToolMessage(content=json.dumps({"success": True}), tool_call_id="c1")
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "nothing to do",
+                    "state": {"messages": [did_work, answered]},
+                },
+                config=_config(),
+            )
+
+        assert result["success"] is False
+        assert result["error"] == "work_happened"
+        assert "create_todo" in result["message"]
+        assert workflows.workflow.playbook_declines == 0
+
     async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
         """Nothing to act on means the calls that do the work never happened;
         counting that would spend a seasonal workflow's chances on empty days."""

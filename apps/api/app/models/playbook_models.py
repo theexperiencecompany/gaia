@@ -117,6 +117,42 @@ BLOCKED_DECLINE_KINDS = frozenset(
     }
 )
 
+#: A call that changes something, by its name: every tool in this codebase and
+#: every Composio action spells its verb first (``create_todo``,
+#: ``GMAIL_SEND_EMAIL``). A run that made one of these did the work, whatever it
+#: says about the day. A heuristic by name, not a catalogue: a doing-tool with
+#: a novel verb slips through, which is today's behaviour, and no listing tool
+#: (``list_``, ``get_``, ``fetch_``, ``search_``) can be mistaken for one.
+WORK_CALL_VERBS = frozenset(
+    {
+        "create",
+        "add",
+        "send",
+        "update",
+        "delete",
+        "remove",
+        "complete",
+        "mark",
+        "schedule",
+        "reply",
+        "post",
+        "move",
+        "archive",
+        "set",
+        "write",
+        "upload",
+        "insert",
+        "cancel",
+    }
+)
+
+
+def is_work_call(tool_name: str) -> bool:
+    """Whether a tool call, by its name, changed something."""
+    parts = tool_name.lower().replace("-", "_").split("_")
+    return any(part in WORK_CALL_VERBS for part in parts)
+
+
 #: Kinds that do not count toward the limit: the blocked ones, and a quiet day.
 #: A fan-out over an empty list makes no calls, and a playbook freezes calls
 #: that ran, so a workflow whose work is seasonal would spend its chances on
