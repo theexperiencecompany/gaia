@@ -65,6 +65,51 @@ class TestToolShapesUniqueIndexSurface:
         # Mirrors app/db/mongodb/indexes.py::create_tool_output_shapes_indexes.
         await raw_collection.create_index([("scope", 1), ("tool_name", 1)], unique=True)
 
+    async def test_pre_existing_duplicates_are_collapsed_before_the_index(
+        self, repo, raw_collection
+    ):
+        """A DB that raced under the pre-index code already holds duplicates; the
+        unique index must still build. De-dup keeps the most-observed record."""
+        from app.db.mongodb.indexes import _dedupe_tool_output_shapes
+
+        tool = _tool()
+        now = datetime.now(UTC)
+        await raw_collection.insert_many(
+            [
+                {
+                    "scope": "global",
+                    "tool_name": tool,
+                    "output_schema": SCHEMA_V1,
+                    "call_count": 3,
+                    "last_seen": now,
+                },
+                {
+                    "scope": "global",
+                    "tool_name": tool,
+                    "output_schema": SCHEMA_V2,
+                    "call_count": 7,
+                    "last_seen": now,
+                },
+                {
+                    "scope": "global",
+                    "tool_name": tool,
+                    "output_schema": SCHEMA_V1,
+                    "call_count": 1,
+                    "last_seen": now,
+                },
+            ]
+        )
+
+        await _dedupe_tool_output_shapes(raw_collection)
+        # The index build is what would fail on leftover duplicates.
+        await raw_collection.create_index([("scope", 1), ("tool_name", 1)], unique=True)
+
+        docs = await raw_collection.find({"scope": "global", "tool_name": tool}).to_list(
+            length=None
+        )
+        assert len(docs) == 1
+        assert docs[0]["call_count"] == 7  # the most-observed record survives
+
     async def test_record_is_idempotent_under_the_unique_index(self, repo, raw_collection):
         await self._create_index(raw_collection)
         tool = _tool()

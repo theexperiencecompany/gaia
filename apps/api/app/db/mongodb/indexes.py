@@ -706,6 +706,35 @@ async def create_playbook_indexes() -> None:
         raise
 
 
+async def _dedupe_tool_output_shapes(
+    collection: AsyncIOMotorCollection[dict[str, Any]],
+) -> None:
+    """Collapse pre-existing (scope, tool_name) duplicates before the unique
+    index build.
+
+    A database that raced under the pre-index code can already hold duplicate
+    records; MongoDB would then reject the unique index, ``create_all_indexes``
+    would swallow the error, and ``record()``'s retry would run without the
+    guarantee it depends on. Observed shapes are regenerable, so keeping the
+    most-observed record per key and dropping the rest loses nothing real calls
+    will not re-learn. ``$push`` preserves the preceding ``$sort``, so the first
+    id in each group is the highest ``call_count``.
+    """
+    pipeline: list[dict[str, Any]] = [
+        {"$sort": {"call_count": -1}},
+        {
+            "$group": {
+                "_id": {"scope": "$scope", "tool_name": "$tool_name"},
+                "ids": {"$push": "$_id"},
+            }
+        },
+        {"$match": {"ids.1": {"$exists": True}}},
+    ]
+    async for group in collection.aggregate(pipeline):
+        losers = group["ids"][1:]
+        await collection.delete_many({"_id": {"$in": losers}})
+
+
 async def create_tool_output_shapes_indexes() -> None:
     """Create indexes for the tool_output_shapes collection.
 
@@ -713,10 +742,12 @@ async def create_tool_output_shapes_indexes() -> None:
     pair, so the unique index is what makes "one record per scoped tool" a
     property of the data rather than of two first observations' timing — it
     rejects the loser of a concurrent insert with DuplicateKeyError, which the
-    repository retries into the winner's document.
+    repository retries into the winner's document. Pre-existing duplicates are
+    collapsed first, so an upgraded DB that already raced can still build it.
     """
     tool_output_shapes_collection = get_async_collection("tool_output_shapes")
     try:
+        await _dedupe_tool_output_shapes(tool_output_shapes_collection)
         await tool_output_shapes_collection.create_index(
             [("scope", 1), ("tool_name", 1)], unique=True
         )

@@ -119,35 +119,37 @@ class TestRecordObservedShape:
         assert "properties" not in per_user
         assert per_user["additionalProperties"]["properties"]["n"] == {"type": "integer"}
 
-    async def test_identifier_shaped_data_keys_over_one_repeated_structure_are_a_map(self) -> None:
-        """The spelling guard cannot catch {"Engineering": {...}, "Marketing": {...}}
-        — single-token labels are identifier-shaped. What gives the map away is
-        every value sharing one structured shape; a record's fields differ."""
-        repo = _repo()
-        by_department = {
-            "Engineering": {"headcount": 12, "open_roles": 3},
-            "Marketing": {"headcount": 5, "open_roles": 1},
-        }
-        with patch(REPO, repo):
-            await record_observed_shape("T", {"by_department": by_department}, scope=SCOPE)
-        (_, _, schema), _ = repo.record.await_args
-        assert "Engineering" not in str(schema)
-        value_shape = schema["properties"]["by_department"]["additionalProperties"]
-        assert set(value_shape["properties"]) == {"headcount", "open_roles"}
-
-    async def test_a_record_of_differing_field_shapes_keeps_its_fields(self) -> None:
-        """The homogeneity signal must not collapse real records: any variation
-        between value shapes — or any scalar field — is record evidence."""
+    async def test_a_record_whose_fields_share_a_shape_keeps_its_field_names(self) -> None:
+        """Value homogeneity is NOT a map signal: {sender, recipient} and
+        {billing_address, shipping_address} are records whose fields share a
+        shape, and collapsing them would discard real field names permanently.
+        A small dict of identifier-shaped keys is read as a record."""
         repo = _repo()
         response = {
-            "user": {"id": "u1", "name": "x"},
-            "team": {"id": "t1"},
-            "ok": True,
+            "sender": {"name": "a", "email": "a@x.com"},
+            "recipient": {"name": "b", "email": "b@x.com"},
         }
         with patch(REPO, repo):
             await record_observed_shape("T", response, scope=SCOPE)
         (_, _, schema), _ = repo.record.await_args
-        assert set(schema["properties"]) == {"user", "team", "ok"}
+        assert set(schema["properties"]) == {"sender", "recipient"}
+        assert "additionalProperties" not in schema
+
+    async def test_map_values_across_entries_union_optional_fields(self) -> None:
+        """A map's value shape is sampled across entries, not read off the first:
+        an optional field or a differing type in a later entry must survive."""
+        repo = _repo()
+        per_user = {
+            "alice@example.com": {"name": "A"},
+            "bob@example.com": {"name": "B", "email": "b@example.com"},
+        }
+        with patch(REPO, repo):
+            await record_observed_shape("T", {"per_user": per_user}, scope=SCOPE)
+        (_, _, schema), _ = repo.record.await_args
+        value_shape = schema["properties"]["per_user"]["additionalProperties"]
+        assert set(value_shape["properties"]) == {"name", "email"}
+        # name is in both entries (required); email only in one (optional).
+        assert value_shape.get("required", []) == ["name"]
 
     async def test_a_stored_map_shape_round_trips_through_the_next_merge(self) -> None:
         """additionalProperties must survive re-merging: the stored form re-enters

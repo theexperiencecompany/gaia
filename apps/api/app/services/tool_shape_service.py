@@ -8,13 +8,17 @@ keys, types, array-ness. Values never leave this module; arrays are sampled.
 The one classification that matters is record vs map. A record's keys ARE its
 schema; a map's keys are data, and modeling them as properties is a wrong
 schema — worse at the shared scopes, where one user's data keys would merge
-into the record every other user reads. A dict is a map when it is wide, when
-a key is not identifier-shaped, or when every value shares one non-empty
-structured shape (a record's fields differ; a map's entries repeat). Maps keep
-their value shape as ``additionalProperties`` — the keys themselves are never
-stored. The irreducible case is a small dict of scalar values under
-identifier-shaped keys ({"Salary": "high"}): structurally identical to a
-record, so it is read as one.
+into the record every other user reads. A dict is read as a map when it is wide
+(more keys than a record plausibly has) or when a key is not identifier-shaped
+(spaces, punctuation, non-ASCII, an id/UUID). Map values are sampled and stored
+as ``additionalProperties`` — the keys themselves are never stored.
+
+What is NOT a map signal is value homogeneity: ``{sender, recipient}`` and
+``{billing_address, shipping_address}`` are records whose fields share a shape,
+and collapsing them would discard real field names permanently. So a small dict
+of identifier-shaped keys is read as a record even when its values repeat —
+the irreducible ambiguity resolved toward the reading that never destroys a
+genuine record.
 
 Records are scoped (``ResolvedTool.shape_scope``): "global" for catalog tools,
 per-integration for MCP, so a private server's shapes stay with its users.
@@ -46,10 +50,11 @@ _FIELD_NAME_KEY = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$.\-]{0,63}$")
 # Identifier-shaped but still data: message/phone ids, hex UUIDs.
 _ID_LIKE_KEY = re.compile(r"\d{6,}|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}|^[0-9a-fA-F]{32}$")
 
-# How a map rides through genson, which only speaks ``properties``: its value
-# shape is sampled under this one key, and the stored/rendered form rewrites it
-# to ``additionalProperties``. Collision-free by construction — ``*`` fails the
-# field-name allowlist, so no observed key can ever become this property.
+# How a map rides through genson, which only speaks ``properties``: its sampled
+# values become an array under this one key so genson unions their shapes
+# (optional fields and mixed types included), and the stored/rendered form
+# rewrites that to ``additionalProperties``. Collision-free by construction —
+# ``*`` fails the field-name allowlist, so no observed key can become it.
 _MAP_KEY_SENTINEL = "*"
 
 
@@ -94,40 +99,21 @@ def _sample(node: object) -> object:
 def _sample_dict(node: dict[object, object]) -> dict[str, object]:
     keys = [str(key) for key in node]
     if len(keys) > TOOL_SHAPE_MAX_KEYS_PER_OBJECT or not all(_is_field_name(key) for key in keys):
-        # A map keyed by data — both triggers imply at least one entry. One
-        # value stands in for all of them: map values are homogeneous, and
-        # later observations merge in any variation.
-        return {_MAP_KEY_SENTINEL: _sample(next(iter(node.values())))}
-    sampled = {str(key): _sample(value) for key, value in node.items()}
-    if _values_are_one_repeated_structure(sampled):
-        return {_MAP_KEY_SENTINEL: next(iter(sampled.values()))}
-    return sampled
-
-
-def _values_are_one_repeated_structure(sampled: dict[str, object]) -> bool:
-    """True when every value is the same non-empty structured shape — the map
-    signal that survives identifier-shaped data keys ({"Engineering": {...}})."""
-    if len(sampled) < 2:
-        return False
-    if not all(isinstance(value, dict | list) and value for value in sampled.values()):
-        return False
-    return len({_shape_signature(value) for value in sampled.values()}) == 1
-
-
-def _shape_signature(node: object) -> object:
-    """A hashable structural fingerprint of a sampled value: keys and types, no data."""
-    if isinstance(node, dict):
-        return frozenset((key, _shape_signature(value)) for key, value in node.items())
-    if isinstance(node, list):
-        return ("array", frozenset(_shape_signature(item) for item in node))
-    return type(node).__name__
+        # A map keyed by data. Its values ride as a sampled list so genson
+        # unions their shapes — an optional field or a differing type in a
+        # later entry survives, not just whatever the first entry carried.
+        values = list(node.values())[:TOOL_SHAPE_ARRAY_SAMPLE]
+        return {_MAP_KEY_SENTINEL: [_sample(value) for value in values]}
+    return {str(key): _sample(value) for key, value in node.items()}
 
 
 def _sentinel_to_additional(node: object) -> object:
     """The stored/rendered form: the sentinel property becomes ``additionalProperties``.
 
-    Named properties learned from other observations of the same node survive
-    beside it — valid JSON Schema, and the honest reading of mixed evidence.
+    The sentinel is encoded as an array of sampled values (see ``_sample_dict``),
+    so its ``items`` schema is the map's value shape. Named properties learned
+    from other observations of the same node survive beside it — valid JSON
+    Schema, and the honest reading of mixed evidence.
     """
     if isinstance(node, list):
         return [_sentinel_to_additional(item) for item in node]
@@ -136,7 +122,10 @@ def _sentinel_to_additional(node: object) -> object:
     out = {key: _sentinel_to_additional(value) for key, value in node.items()}
     properties = out.get("properties")
     if isinstance(properties, dict) and _MAP_KEY_SENTINEL in properties:
-        out["additionalProperties"] = properties.pop(_MAP_KEY_SENTINEL)
+        sentinel = properties.pop(_MAP_KEY_SENTINEL)
+        out["additionalProperties"] = (
+            sentinel.get("items", {}) if isinstance(sentinel, dict) else {}
+        )
         if not properties:
             del out["properties"]
         required = out.get("required")
@@ -148,7 +137,8 @@ def _sentinel_to_additional(node: object) -> object:
 
 
 def _additional_to_sentinel(node: object) -> object:
-    """The inverse rewrite, so a stored schema re-enters genson's dialect."""
+    """The inverse rewrite, so a stored schema re-enters genson's dialect as the
+    array-of-values the sentinel encodes."""
     if isinstance(node, list):
         return [_additional_to_sentinel(item) for item in node]
     if not isinstance(node, dict):
@@ -159,5 +149,5 @@ def _additional_to_sentinel(node: object) -> object:
         del out["additionalProperties"]
         properties = out.setdefault("properties", {})
         if isinstance(properties, dict):
-            properties[_MAP_KEY_SENTINEL] = additional
+            properties[_MAP_KEY_SENTINEL] = {"type": "array", "items": additional}
     return out
