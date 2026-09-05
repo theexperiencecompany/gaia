@@ -1,5 +1,6 @@
 """The recorded result digest: bounded without lying about what came back."""
 
+from datetime import UTC, datetime
 import json
 
 import pytest
@@ -11,7 +12,9 @@ from app.models.workflow_execution_models import (
     _largest_sequence,
     _trim_strings,
     build_result_digest,
+    carries_no_data,
     largest_list_len,
+    parse_result,
 )
 
 pytestmark = pytest.mark.unit
@@ -97,3 +100,59 @@ class TestTheSheddableListIsChosenOnce:
 
         assert items == [1, 2]
         assert rebuild([9]) == {"a": [9], "b": [3, 4]}
+
+
+@pytest.mark.unit
+class TestCarriesNoData:
+    """What "this call returned nothing" means, against every result shape seen
+    in production and in live driving. ``largest_list_len`` answers a different
+    question and must not be used for this: it finds the largest list anywhere,
+    so a record's own empty attribute reads as an empty result.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "empty", "why"),
+        [
+            ('{"data": {"messages": []}}', True, "a fetch that found nothing"),
+            (
+                '{"data": {"fetched_count": 0, "messages": []}, "successful": true}',
+                True,
+                "the same, with the tool's own zero tally beside it",
+            ),
+            (
+                '{"successful": true, "error": null, "data": {"messages": []}}',
+                True,
+                "envelope only",
+            ),
+            ('{"todos": []}', True, "an empty list at the top level"),
+            ("{}", True, "nothing at all"),
+            (
+                '{"todo": {"labels": [], "title": "Buy milk", "id": "x"}}',
+                False,
+                "create_todo answering with the record it made: labels is empty, the todo is not",
+            ),
+            (
+                '{"successful": true, "data": {"todo": {"labels": [], "title": "x"}}}',
+                False,
+                "the same, enveloped",
+            ),
+            ('{"data": {"fetched_count": 2, "messages": [{"id": "a"}]}}', False, "a real fetch"),
+            ('"sent"', False, "a bare confirmation string"),
+        ],
+    )
+    def test_it_reads_every_real_result_shape(self, raw: str, empty: bool, why: str) -> None:
+        assert carries_no_data(json.loads(raw)) is empty, why
+
+
+class TestParseResult:
+    def test_a_document_with_leading_whitespace_is_still_a_document(self) -> None:
+        assert parse_result('  \n {"count": 2}') == {"count": 2}
+
+    def test_prose_stays_text(self) -> None:
+        assert parse_result("3 items found") == "3 items found"
+
+
+class TestCarriesNoDataOnOtherObjects:
+    def test_anything_that_is_not_a_json_shape_is_data(self) -> None:
+        assert carries_no_data(object()) is False
+        assert carries_no_data(datetime(2026, 9, 5, tzinfo=UTC)) is False

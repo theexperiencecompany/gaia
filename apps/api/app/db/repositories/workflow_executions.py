@@ -59,10 +59,10 @@ class WorkflowExecutionsRepository(
 
         return await self.update(execution_id, WorkflowExecutionUpdate.model_validate(fields))
 
-    async def find_latest_with_trace(
-        self, workflow_id: str, user_id: str
-    ) -> WorkflowExecutionDocument | None:
-        """The workflow's most recent finished run that recorded a trace.
+    async def find_recent_with_trace(
+        self, workflow_id: str, user_id: str, *, limit: int
+    ) -> list[WorkflowExecutionDocument]:
+        """The workflow's most recent finished runs that recorded a trace, newest first.
 
         What the next run reads to learn what the previous one did, now that its
         checkpoint threads are reset before every fire. Runs that recorded
@@ -80,9 +80,9 @@ class WorkflowExecutionsRepository(
                 "trace.0": {"$exists": True},
             },
             sort=[("started_at", -1)],
-            limit=1,
+            limit=limit,
         )
-        return rows[0] if rows else None
+        return rows
 
     async def list_for_workflow(
         self, workflow_id: str, user_id: str, *, limit: int, offset: int

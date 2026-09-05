@@ -174,6 +174,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: verbatim (``call_executor`` folds it into the heal brief) because comms
     #: cannot be trusted to transcribe "do not repeat these" into its task.
     playbook_fallback: str | None
+    #: The calls a stopped replay made this fire, as ``RecordedCall`` dumps, so a
+    #: rewrite may freeze them. See ``PLAYBOOK_REPLAYED_CALLS_KEY``.
+    playbook_replayed_calls: list[dict[str, Any]] | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit
@@ -274,3 +277,8 @@ class SilentRunResult:
     message: str
     tool_data: dict[str, Any]
     queued_task_id: str | None = None
+    #: The executor this turn delegated to ended in an error. ``message`` is
+    #: then comms' account of that error, not a result; ``executor_failure``
+    #: is the error itself, or why the wait for it gave up.
+    executor_failed: bool = False
+    executor_failure: str | None = None

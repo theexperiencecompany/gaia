@@ -21,6 +21,7 @@ from app.models.playbook_models import (
     PlaybookRunStatus,
     PlaybookUpdate,
 )
+from app.services.workflow.playbook.lifecycle import HEAL_STATUSES, grows_from_untrusted
 
 
 class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
@@ -53,16 +54,38 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
             steps=playbook.steps,
             result_brief=playbook.result_brief,
             workflow_hash=playbook.workflow_hash,
+            authored_run=playbook.authored_run,
             last_run_status=PlaybookRunStatus.NOT_RUN,
             last_run_reason=None,
-            heal_attempts=0,
         ).model_dump(exclude_unset=True)
+        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
+        # A rewrite out of a heal run spends one attempt and carries the count
+        # (``lifecycle.Rewritten``): matched on the stored status, the same way
+        # ``record_run_outcome`` grows the streak, so two writers cannot both
+        # read a count and both write it back. A body that is not in a heal
+        # status matches nothing here and takes the reset below.
+        healed = await self._apply_raw_update(
+            {**key, "last_run_status": {"$in": sorted(status.value for status in HEAL_STATUSES)}},
+            {"$set": body, "$inc": {"revision": 1, "heal_attempts": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if healed is not None:
+            return healed
+        # A body never replayed (a second write in the same run) carries the
+        # count unchanged: the body it replaces spent nothing, and the count is
+        # the heal run's, not the body's. Seen live: the second write reset it.
+        unreplayed = await self._apply_raw_update(
+            {**key, "last_run_status": PlaybookRunStatus.NOT_RUN.value},
+            {"$set": body, "$inc": {"revision": 1}},
+            scope=REPO_GLOBAL_SCOPE,
+        )
+        if unreplayed is not None:
+            return unreplayed
         # The streak survives a rewrite on purpose: a rewrite is how a heal run
         # answers a suspect replay, and a playbook that keeps coming back suspect
-        # must still reach the limit. Only a trusted replay clears it. The heal
-        # attempts do NOT survive: they count runs spent on the body just replaced.
+        # must still reach the limit. Only a trusted replay clears it.
         update = {
-            "$set": body,
+            "$set": {**body, "heal_attempts": 0},
             "$inc": {"revision": 1},
             "$setOnInsert": {
                 "playbook_id": playbook.playbook_id,
@@ -70,7 +93,6 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
                 "suspect_streak": 0,
             },
         }
-        key = {"workflow_id": playbook.workflow_id, "user_id": playbook.user_id}
         try:
             stored = await self._apply_raw_update(key, update, scope=REPO_GLOBAL_SCOPE, upsert=True)
         except DuplicateKeyError:
@@ -110,28 +132,28 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
         (an agentic run has nothing to record) or when the replayed body has
         since been rewritten or deleted.
         """
-        status, reason = outcome.status, outcome.reason
         key: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
         if playbook_id is not None:
             key["playbook_id"] = playbook_id
         if revision is not None:
             key["revision"] = revision
-        if status is not PlaybookRunStatus.SUSPECT or not outcome.counts_toward_streak:
+        if not grows_from_untrusted(outcome):
             return await self._apply_raw_update(
-                key, _outcome_update(status, reason), scope=REPO_GLOBAL_SCOPE
+                key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
             )
         # A plain ``$inc`` cannot be conditional on the stored status, so the
         # growing write is tried first against a not-yet-suspect document and
-        # the plain one only when that matched nothing.
+        # the plain one only when that matched nothing. Which outcomes may grow
+        # at all is the lifecycle's rule, not this method's.
         grown = await self._apply_raw_update(
             {**key, "last_run_status": {"$ne": PlaybookRunStatus.SUSPECT.value}},
-            _outcome_update(status, reason, grow_streak=True),
+            _outcome_update(outcome, grow_streak=True),
             scope=REPO_GLOBAL_SCOPE,
         )
         if grown is not None:
             return grown
         return await self._apply_raw_update(
-            key, _outcome_update(status, reason, grow_streak=False), scope=REPO_GLOBAL_SCOPE
+            key, _outcome_update(outcome, grow_streak=False), scope=REPO_GLOBAL_SCOPE
         )
 
     async def increment_heal_attempts(
@@ -163,15 +185,24 @@ class PlaybooksRepository(MongoRepository[PlaybookDocument, PlaybookUpdate]):
 
 
 def _outcome_update(
-    status: PlaybookRunStatus, reason: str | None, *, grow_streak: bool = False
+    outcome: PlaybookRunOutcome, *, grow_streak: bool
 ) -> dict[str, dict[str, object]]:
-    """The update a run outcome writes, shaped by what the status means for the streak."""
-    if status is PlaybookRunStatus.SUCCESS:
-        return {"$set": {"last_run_status": status, "last_run_reason": None, "suspect_streak": 0}}
-    update: dict[str, dict[str, object]] = {
-        "$set": {"last_run_status": status, "last_run_reason": reason}
+    """The update a run outcome writes.
+
+    The fields are what :func:`transition` produces for a replay, split into the
+    part that does not depend on the stored state (``$set``) and the part that
+    does (``$inc``), which the caller has already settled by matching on the
+    stored status. ``test_playbooks_repository`` proves the two agree for every
+    outcome from every prior status.
+    """
+    fields: dict[str, object] = {
+        "last_run_status": outcome.status,
+        "last_run_reason": None if outcome.status is PlaybookRunStatus.SUCCESS else outcome.reason,
     }
-    if status is PlaybookRunStatus.SUSPECT and grow_streak:
+    if outcome.status is PlaybookRunStatus.SUCCESS:
+        fields["suspect_streak"] = 0
+    update: dict[str, dict[str, object]] = {"$set": fields}
+    if grow_streak:
         update["$inc"] = {"suspect_streak": 1}
     return update
 

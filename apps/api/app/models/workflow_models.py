@@ -53,6 +53,14 @@ class DeactivationReason(str, Enum):
 
     USER_DORMANT = "user_dormant"
     INTEGRATION_EXPIRED = "integration_expired"
+    #: A run reached the work and found an integration the user has never
+    #: connected. Distinct from ``INTEGRATION_EXPIRED``, which a Composio webhook
+    #: raises when a live connection dies: this one is only ever set by a run
+    #: that tried, and only after the claim was checked against the user's
+    #: connection status. Nothing predicts it from the workflow's declared steps
+    #: — those are the model's guess at authoring time, and pausing a workflow
+    #: that would have worked is worse than the run it would have saved.
+    INTEGRATION_NEVER_CONNECTED = "integration_never_connected"
 
 
 class IntegrationRef(BaseModel):
@@ -761,6 +769,16 @@ class WorkflowDocument(Workflow, MongoDocument):
     #: an edit to the workflow changes the hash and asks again.
     playbook_declines: int = 0
     playbook_declined_hash: str | None = None
+    #: The run (its stream id) that last counted a decline. A run is one
+    #: decision however many times it is voiced, and a model voices it several
+    #: times in one turn: the tally grows once per run, matched on this.
+    playbook_declined_run: str | None = None
+    #: The integrations a blocked run named when it paused this workflow. The
+    #: resume side needs them because it cannot re-derive them: a workflow is
+    #: paused on what a run actually found missing, which is not always what
+    #: ``compute_required_integrations`` reads off the declared steps. Empty on
+    #: every workflow that was not paused this way.
+    blocked_on_integrations: list[str] = Field(default_factory=list)
     #: Why the worker last dropped this workflow's playbook, so a workflow that
     #: quietly went back to full agent cost can say what happened to it.
     last_playbook_discard: PlaybookDiscard | None = None
@@ -824,4 +842,6 @@ class WorkflowUpdate(BaseModel):
     created_by: str | None = None
     playbook_declines: int | None = None
     playbook_declined_hash: str | None = None
+    playbook_declined_run: str | None = None
+    blocked_on_integrations: list[str] | None = None
     last_playbook_discard: PlaybookDiscard | None = None

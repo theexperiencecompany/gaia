@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from unittest.mock import AsyncMock, call, patch
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import Field, ValidationError, v1
+from pydantic import Field, TypeAdapter, ValidationError, v1
 import pytest
 import yaml
 
@@ -24,10 +24,12 @@ from app.models.playbook_models import (
     PlaybookHandoffStepInput,
     PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
     playbook_body_from_input,
 )
 from app.models.subagent_models import Subagent
 from app.services.workflow.playbook.parser import (
+    PlaybookValidation,
     RecordedResult,
     dump_playbook,
     validate_playbook,
@@ -35,6 +37,7 @@ from app.services.workflow.playbook.parser import (
 from app.services.workflow.playbook.tool_space import SubagentTools
 
 MODULE = "app.services.workflow.playbook.parser"
+PlaybookStep_adapter = TypeAdapter(PlaybookStep)
 USER_ID = "user-1"
 
 
@@ -180,31 +183,25 @@ class TestPlaybookGrammar:
 
     def test_a_step_carrying_both_a_tool_and_a_handoff_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Confused",
-                    "steps": [
+            playbook_body_from_input(
+                "Confused",
+                [
+                    PlaybookStepInput.model_validate(
                         {
                             "id": "both_shapes",
                             "tool": "send_email",
                             "handoff": "mail_agent",
                             "steps": [{"id": "inner", "tool": "send_email"}],
                         }
-                    ],
-                    "result_brief": "x",
-                }
+                    )
+                ],
+                "x",
             )
         assert "both_shapes" in str(exc.value)
 
     def test_a_handoff_without_children_is_rejected_by_name(self) -> None:
         with pytest.raises(ValidationError) as exc:
-            PlaybookBody.model_validate(
-                {
-                    "description": "Empty handoff",
-                    "steps": [{"id": "delegate", "handoff": "mail_agent"}],
-                    "result_brief": "x",
-                }
-            )
+            PlaybookStepInput.model_validate({"id": "delegate", "handoff": "mail_agent"})
         assert "mail_agent" in str(exc.value)
 
     def test_an_unknown_top_level_key_is_rejected_by_name(self) -> None:
@@ -284,11 +281,10 @@ result_brief: x
         assert problems[1].startswith("list_events takes no arg 'bogus'")
 
     async def test_a_shapeless_step_does_not_stop_its_siblings_being_checked(self) -> None:
-        """exactly_one_shape forbids a step with neither tool nor handoff; if one
-        is conjured anyway (model_construct), the walk skips it and still checks
-        the steps after it."""
-        ghost = PlaybookStep.model_construct(id="ghost", tool=None, handoff=None, steps=[], args={})
-        real = PlaybookStep(id="one", tool="send_owl", args={})
+        """The variants refuse an empty tool name; if one is conjured anyway
+        (model_construct), the walk reports it and still checks the steps after it."""
+        ghost = ToolStep.model_construct(id="ghost", tool="", args={})
+        real = ToolStep(id="one", tool="send_owl", args={})
         body = _body(VALID_YAML)
         patched = body.model_copy(update={"steps": [ghost, real]})
 
@@ -1430,9 +1426,11 @@ result_brief: x
         assert result.issues == []
 
 
-def _call(tool_name: str, args: dict[str, Any], result: object) -> RecordedResult:
+def _call(
+    tool_name: str, args: dict[str, Any], result: object, subagent: str | None = None
+) -> RecordedResult:
     """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result)
+    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent=subagent)
 
 
 @pytest.mark.unit
@@ -2103,15 +2101,55 @@ result_brief: x
             )
         ]
 
-    async def test_a_handoff_child_never_takes_a_top_level_call_of_the_same_tool(self) -> None:
-        """The run's results hold nothing for a subagent's calls (the handoff
-        record carries their args, not their outputs), so a child is not matched
-        at all. Matching it anyway let a child consume the one recorded top-level
-        call of the same tool, and the real top-level step behind it was refused
-        as a call the run never made."""
+    async def test_a_handoff_child_is_matched_in_its_subagents_scope_not_the_executors(
+        self,
+    ) -> None:
+        """Children used to go unchecked (their results were never handed to the
+        validator), and matching them against the executor's calls let a child
+        consume the one top-level call of the same tool. Now each is matched in
+        its own scope: the child against the subagent's call, the top-level step
+        against the executor's, and a later step can read the child's result."""
         body = _body(
             """
 description: The subagent listed events, then the executor did too
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: theirs
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mine
+    tool: list_events
+    args:
+      calendar_id: $steps.theirs.events
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "list"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1"}]},
+                subagent="calendar_agent",
+            ),
+            _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_handoff_child_the_subagent_never_called_is_refused(self) -> None:
+        """With only the executor's call on record, the child has nothing in its
+        scope: refused as a call that did not run, and the top-level call is
+        left for the step that made it."""
+        body = _body(
+            """
+description: x
 steps:
   - id: delegated
     handoff: calendar_agent
@@ -2132,7 +2170,60 @@ result_brief: x
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
             result = await validate_playbook(body, USER_ID, results)
 
-        assert result.issues == []
+        assert [issue.where for issue in result.issues] == ["steps[0].steps[0]"]
+        assert "did not run" in result.issues[0].problem
+
+    async def test_an_item_field_inside_a_handoff_is_checked_against_the_subagents_result(
+        self,
+    ) -> None:
+        """The D2 shape as it happened: a for_each inside a handoff over
+        elements carrying ``id``, written with a field they do not have."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: events
+        tool: list_events
+        args:
+          calendar_id: primary
+      - id: mail
+        tool: send_email
+        for_each: $steps.events.events
+        max_items: 5
+        args:
+          to: $item.email
+          subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "mail"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1", "title": "standup"}]},
+                subagent="calendar_agent",
+            ),
+            _call(
+                "send_email",
+                {"to": "a@b.com", "subject": "hi"},
+                "sent",
+                subagent="calendar_agent",
+            ),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
 
     async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
         """The refusal above is about cardinality, not repetition: a run that
@@ -2376,6 +2467,49 @@ def _messages(exc: pytest.ExceptionInfo[ValidationError]) -> list[str]:
     return [error["msg"] for error in exc.value.errors()]
 
 
+class TestStoredShapesAreUnrepresentable:
+    """The stored step is a union of three variants discriminated by shape, so
+    a document that is two shapes, or none, or a loop with no ceiling, cannot be
+    read at all. No message is asserted: nothing the model reads is produced
+    here, the authoring inputs below own the messages."""
+
+    @pytest.mark.parametrize(
+        "document",
+        [
+            {
+                "id": "both",
+                "tool": "send_email",
+                "handoff": "mail_agent",
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+            {"id": "neither", "args": {"to": "x"}},
+            {"id": "empty_handoff", "handoff": "mail_agent"},
+            {"id": "nested_call", "tool": "send_email", "steps": [{"id": "i", "tool": "t"}]},
+            {"id": "unbounded", "tool": "send_email", "for_each": "$steps.a.items"},
+            {"id": "ceiling_only", "tool": "send_email", "max_items": 3},
+            {
+                "id": "looping_handoff",
+                "handoff": "m",
+                "for_each": "$steps.a.items",
+                "max_items": 3,
+                "steps": [{"id": "i", "tool": "t"}],
+            },
+        ],
+        ids=[
+            "both",
+            "neither",
+            "empty_handoff",
+            "nested_call",
+            "unbounded",
+            "ceiling_only",
+            "looping_handoff",
+        ],
+    )
+    def test_it_cannot_be_read(self, document: dict[str, object]) -> None:
+        with pytest.raises(ValidationError):
+            PlaybookStep_adapter.validate_python(document)
+
+
 class TestStepShapeMessages:
     """What a rejected step actually tells the agent that wrote it.
 
@@ -2387,50 +2521,14 @@ class TestStepShapeMessages:
     and stored through ``PlaybookStep``, and the two must refuse the same shapes.
     """
 
-    def test_a_stored_step_that_is_both_shapes_is_named(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
-                {
-                    "id": "both_shapes",
-                    "tool": "send_email",
-                    "handoff": "mail_agent",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
-
-        assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        """A step with no id has to be described somehow, and "" is not a description."""
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate({"id": "delegate", "handoff": "mail_agent"})
-
-        assert any(
-            "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
-        )
-
-    def test_a_stored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
         """Only a handoff nests, and the message names the step, not the tool.
 
         The agent addresses the step it has to fix by id, so naming the tool
         instead points it at every step that calls that tool.
         """
         with pytest.raises(ValidationError) as exc:
-            PlaybookStep.model_validate(
+            PlaybookStepInput.model_validate(
                 {
                     "id": "notify",
                     "tool": "send_email",
@@ -2439,8 +2537,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step notify: only a handoff may carry nested steps" in m for m in _messages(exc)
         )
 
     def test_an_authored_step_that_is_both_shapes_is_named(self) -> None:
@@ -2455,17 +2552,7 @@ class TestStepShapeMessages:
             )
 
         assert any(
-            "step both_shapes: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
-        )
-
-    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
-        with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
-
-        assert any(
-            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in message
-            for message in _messages(exc)
+            "step both_shapes: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
     def test_an_authored_handoff_with_no_children_says_it_would_do_nothing(self) -> None:
@@ -2474,23 +2561,17 @@ class TestStepShapeMessages:
 
         assert any(
             "handoff mail_agent: carries no steps, so it would do nothing; list the calls that "
-            "subagent ran (its handoff result records them) in this step's 'steps' field" in message
-            for message in _messages(exc)
+            "subagent ran (its handoff result records them) in this step's 'steps' field" in m
+            for m in _messages(exc)
         )
 
-    def test_an_authored_tool_step_carrying_children_is_named_by_its_id(self) -> None:
+    def test_an_authored_step_that_is_neither_shape_is_called_unnamed(self) -> None:
+        """A step with no id has to be described somehow, and "" is not a description."""
         with pytest.raises(ValidationError) as exc:
-            PlaybookStepInput.model_validate(
-                {
-                    "id": "notify",
-                    "tool": "send_email",
-                    "steps": [{"id": "inner", "tool": "send_email"}],
-                }
-            )
+            PlaybookStepInput.model_validate({"args": {"to": "x@example.com"}})
 
         assert any(
-            "step notify: only a handoff may carry nested steps" in message
-            for message in _messages(exc)
+            "step <unnamed>: set exactly one of 'tool' or 'handoff'" in m for m in _messages(exc)
         )
 
 
@@ -2544,3 +2625,825 @@ class TestAuthoredPlaybookBecomesTheStoredOne:
         )
 
         assert child.to_step().args == {"subject": {"$ask": "Write the digest."}}
+
+
+@pytest.mark.unit
+class TestForEachSource:
+    """A for_each has to name a list. Seen live on the first real authoring run:
+    a model wrote ``for_each: "overdue-items-from-$steps.list"`` — prose with a
+    placeholder inside it, which resolves to a STRING. The runner refused it
+    correctly, but only on the replay, so a whole agentic run was spent before
+    anyone found out. The write is where that is knowable.
+    """
+
+    def test_a_for_each_woven_into_prose_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="whole value"):
+            _body(
+                """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: overdue-items-from-$steps.agenda
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+            )
+
+    async def test_a_bare_steps_placeholder_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.agenda.items
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+    async def test_an_ask_slot_source_is_accepted(self) -> None:
+        body = _body(
+            """
+description: Sweep the overdue todos
+steps:
+  - id: agenda
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: which of the events above need a note
+    max_items: 5
+    args:
+      to: $item
+      subject: Note
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestDumpKeepsTheLoop:
+    """``read_playbook`` renders through ``dump_playbook``, and the heal brief
+    tells the agent to call ``read_playbook`` before rewriting. A loop step
+    dumped without its loop is a step whose ``$item`` addresses nothing, and the
+    agent would "fix" it by dropping the for_each the playbook was written for.
+    """
+
+    @pytest.mark.parametrize(
+        "source",
+        ["$steps.agenda.items", {"$ask": "which of the events above need a note"}],
+        ids=["placeholder", "ask"],
+    )
+    def test_a_for_each_step_survives_the_round_trip(self, source: object) -> None:
+        body = PlaybookBody.model_validate(
+            {
+                "description": "Note each event",
+                "steps": [
+                    {"id": "agenda", "tool": "list_events", "args": {"calendar_id": "primary"}},
+                    {
+                        "id": "mail",
+                        "tool": "send_email",
+                        "for_each": source,
+                        "max_items": 5,
+                        "args": {"to": "$item", "subject": "Note"},
+                    },
+                ],
+                "result_brief": "Say what was sent.",
+            }
+        )
+
+        rendered = dump_playbook(body)
+        again = PlaybookBody.model_validate(yaml.safe_load(rendered))
+
+        assert again.steps[1].for_each == body.steps[1].for_each
+        assert again.steps[1].max_items == 5
+        assert "for_each" in rendered and "max_items" in rendered
+
+    def test_a_plain_step_still_dumps_without_loop_keys(self) -> None:
+        """Unset optional keys stay out, so an ordinary playbook reads as before."""
+        rendered = dump_playbook(_body(VALID_YAML))
+
+        assert "for_each" not in rendered
+        assert "max_items" not in rendered
+
+
+@pytest.mark.unit
+class TestAHandoffIsNotAnAddress:
+    """Seen live: a model wrote ``$steps.sweep.list.todos`` for the ``list`` child
+    of the ``sweep`` handoff. The write was accepted, since ``sweep`` is a
+    declared id, and the replay stopped on it: a handoff records no result, so
+    the runner keys a child's result on the child's own id. The write is where
+    that is knowable, and the message has to say what to write instead."""
+
+    async def test_a_reference_through_the_handoff_is_refused_naming_the_child(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.sweep.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.subject",
+                "$steps.sweep.agenda.count addresses the handoff 'sweep', which records no "
+                "result of its own; address the call inside it by its own id, $steps.agenda...",
+            )
+        ]
+
+    async def test_a_reference_to_the_handoff_itself_is_refused_with_a_child_to_name(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.sweep
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.subject",
+                "$steps.sweep addresses the handoff 'sweep', which records no result of its "
+                "own; address the call inside it by its own id, $steps.<child>...",
+            )
+        ]
+
+    async def test_a_step_after_the_handoff_is_matched_at_the_executors_scope(self) -> None:
+        """The scope a handoff opens has to close, or the step after it is
+        matched against the subagent's calls and refused as one the run never
+        made."""
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: hi
+result_brief: Say what was sent.
+"""
+        )
+        results = [
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1"}]},
+                "calendar_agent",
+            ),
+            _call("send_email", {"to": "a@b.com", "subject": "hi"}, "sent"),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    async def test_the_child_addressed_by_its_own_id_is_fine(self) -> None:
+        body = _body(
+            """
+description: Sweep
+steps:
+  - id: sweep
+    handoff: calendar_agent
+    steps:
+      - id: agenda
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mail
+    tool: send_email
+    args:
+      to: $user.email
+      subject: $steps.agenda.count
+result_brief: Say what was sent.
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is True, result.issues
+
+
+@pytest.mark.unit
+class TestForEachSourcesAndItem:
+    """Seen live under the scripted model: ``$item`` in a plain step was
+    accepted and resolved to nothing at replay; a ``for_each`` naming a field
+    that is not a list was refused only by the replay, a whole run later."""
+
+    async def test_item_outside_a_for_each_is_refused(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.to",
+                "$item.email addresses the element of a for_each, and this step is not one",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_that_is_not_a_list_is_refused_at_the_write(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.count
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"count": 2, "items": [{"id": 1}, {"id": 2}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.count resolved to int, and for_each needs a list to repeat over"
+                "; its result has keys: count, items",
+            )
+        ]
+
+    async def test_an_item_field_the_elements_do_not_have_is_refused_at_the_write(self) -> None:
+        """Seen on the real model: ``$item.todo_id`` over a list whose elements
+        carry ``id``. The replay stopped on the first element and a heal was
+        spent, when the authoring run's own result already showed the keys."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.email
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "standup"}, {"id": 2, "title": "1:1"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
+
+    async def test_an_item_field_the_elements_do_have_is_accepted(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item.title
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "standup"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "standup", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    async def test_a_for_each_source_is_checked_as_a_reference_without_a_run_to_read(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.items
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+  - id: more
+    tool: send_email
+    for_each: $steps.missing.items
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[2].for_each",
+                "$steps.missing.items points at a step that no earlier node declares",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_the_run_did_not_return_is_refused_at_the_write(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.stats.count
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"stats": {"count": 2}, "items": []},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.stats.count resolved to int, and for_each needs a list to "
+                "repeat over; its result has keys: items, stats",
+            )
+        ]
+
+    async def test_a_for_each_over_a_field_the_step_did_not_return_names_the_source(
+        self,
+    ) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each: $steps.events.nothing
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[1].for_each",
+                "$steps.events.nothing is not in step 'events''s result; its result has "
+                "keys: items",
+            )
+        ]
+
+    async def test_a_for_each_over_the_trigger_is_not_read_as_a_step(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $trigger.recipients
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="send_email", args={"to": "a@b.com", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert result.issues == []
+
+    @pytest.mark.parametrize(
+        ("to", "refused"), [("$item.title", True), ("$item", False)], ids=["field", "whole"]
+    )
+    async def test_an_ask_pick_is_one_text_value_with_no_field_under_it(
+        self, to: str, refused: bool
+    ) -> None:
+        """Seen on the real model (D3): ``$item.title`` over an $ask pick. The
+        write accepted it and the replay stopped on the first element."""
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: the events above that mention money
+    max_items: 5
+    args:
+      to: {to}
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "rent"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "rent", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        expected = [
+            (
+                "steps[1].args.to",
+                "$item.title reads a field of an $ask pick, but each pick is one text value; "
+                "write $item on its own, or make for_each a $steps list and read the field "
+                "off its elements",
+            )
+        ]
+        assert [(issue.where, issue.problem) for issue in result.issues] == (
+            expected if refused else []
+        )
+
+    async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    for_each: $item.ids
+    max_items: 5
+    args:
+      to: $item
+      subject: hi
+result_brief: x
+"""
+        )
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID)
+
+        assert result.valid is False
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].for_each",
+                "$item.ids addresses the element of a for_each, and the list itself "
+                "cannot be one of its own elements",
+            )
+        ]
+
+
+@pytest.mark.unit
+class TestTimeArgumentsRenderByExample:
+    """Seen live (D6): the run sent the reminder tool ``2026-09-06 09:00:00``;
+    the model froze it as ``"$today + 1d at 09:00"``, which renders to a
+    sentence, and a bare ``$today + 1d`` would render to ISO 8601, which is not
+    this tool's layout either. The recorded argument is the example."""
+
+    def _body(self, scheduled_at: str) -> PlaybookBody:
+        return _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {scheduled_at}
+result_brief: x
+"""
+        )
+
+    async def _validate(self, body: PlaybookBody, recorded_subject: str) -> PlaybookValidation:
+        results = [
+            _call("send_email", {"to": "a@b.com", "subject": recorded_subject}, "sent"),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            return await validate_playbook(body, USER_ID, results)
+
+    async def test_prose_around_a_time_placeholder_is_refused_with_the_slot_to_write(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d at 09:00"'), "2026-09-06 09:00:00")
+
+        assert [issue.where for issue in result.issues] == ["steps[0].args.subject"]
+        problem = result.issues[0].problem
+        assert "'2026-09-06 09:00:00'" in problem
+        assert '{"$time": "$today + 1d", "format": "%Y-%m-%d %H:%M:%S"}' in problem
+
+    async def test_a_bare_placeholder_whose_iso_rendering_is_not_the_tools_layout_is_refused(
+        self,
+    ) -> None:
+        result = await self._validate(self._body('"$today + 1d 09:00"'), "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert (
+            '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}'
+            in result.issues[0].problem
+        )
+
+    async def test_a_bare_placeholder_matching_the_tools_layout_is_accepted(self) -> None:
+        dated = await self._validate(self._body('"$today + 1d"'), "2026-09-06")
+        timed = await self._validate(self._body('"$now + 1h"'), "2026-09-06T10:00:00+00:00")
+
+        assert dated.issues == []
+        assert timed.issues == []
+
+    async def test_a_time_slot_in_the_tools_layout_is_accepted_and_a_wrong_one_refused(
+        self,
+    ) -> None:
+        good = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}
+result_brief: x
+"""
+        )
+        bad = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today + 1d 09:00", "format": "%d/%m/%Y"}
+result_brief: x
+"""
+        )
+        accepted = await self._validate(good, "2026-09-06 09:00:00")
+        refused = await self._validate(bad, "2026-09-06 09:00:00")
+
+        assert accepted.issues == []
+        assert [(issue.where, issue.problem) for issue in refused.issues] == [
+            (
+                "steps[0].args.subject",
+                "'subject' was '2026-09-06 09:00:00' in this run, whose layout is "
+                "'%Y-%m-%d %H:%M:%S', not '%d/%m/%Y'; write "
+                '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}',
+            )
+        ]
+
+    async def test_words_around_the_recorded_date_are_kept_in_the_slot_to_write(self) -> None:
+        """Seen live (D4): the run titled the todo "Plan for September 5, 2026".
+        The hint carries the words, so the slot the model writes does too."""
+        refused = await self._validate(
+            self._body('"Plan for $today"'), "Plan for September 5, 2026"
+        )
+        assert [(issue.where, issue.problem) for issue in refused.issues] == [
+            (
+                "steps[0].args.subject",
+                "'subject' was 'Plan for September 5, 2026' in this run; 'Plan for $today' "
+                "renders its placeholder as ISO 8601 inside that text, which is not this "
+                'layout. Write the whole value as {"$time": "$today", "format": "Plan for '
+                '%B %d, %Y"}, with the clock inside the placeholder',
+            )
+        ]
+        accepted = await self._validate(
+            _body(
+                """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today", "format": "Plan for %B %d, %Y"}
+result_brief: x
+"""
+            ),
+            "Plan for September 5, 2026",
+        )
+        assert accepted.issues == []
+
+    async def test_a_malformed_time_slot_is_refused_by_its_own_rule(self) -> None:
+        body = _body(
+            """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$steps.x.when", "format": "%Y"}
+result_brief: x
+"""
+        )
+        result = await self._validate(body, "2026-09-06 09:00:00")
+
+        assert len(result.issues) == 1
+        assert result.issues[0].problem.startswith("$time takes one time placeholder")
+
+    async def test_every_argument_is_checked_even_after_one_is_refused(self) -> None:
+        """One refusal per argument, in argument order: a write with several
+        wrong arguments is told all of them, not one per round trip."""
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: "abc{ARG_TRUNCATION_MARKER}"
+      cc: nobody
+      subject: {{"$time": "$today", "format": "%Y-%m-%d"}}
+      retries: $item
+result_brief: x
+"""
+        )
+        results = [
+            _call(
+                "send_email",
+                {
+                    "to": f"abc{ARG_TRUNCATION_MARKER}",
+                    "cc": "nobody",
+                    "subject": "2026-09-06",
+                    "retries": 0,
+                },
+                "sent",
+            )
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].args.to",
+                "'to' was cut short in the call record; pass the full value you actually "
+                "sent, not the recorded stub",
+            ),
+            ("steps[0].args.cc", "send_email takes no arg 'cc'; it takes: retries, subject, to"),
+            (
+                "steps[0].args.retries",
+                "$item addresses the element of a for_each, and this step is not one",
+            ),
+        ]

@@ -111,6 +111,38 @@ def boundaries():
         yield _Boundaries(stack)
 
 
+class TestTheDoneSignalCarriesTheOutcome:
+    """The silent workflow path reads the executor's outcome off the session,
+    not off comms' prose: an error result marks the executor failed with its
+    text as the reason, and anything else marks it finished cleanly."""
+
+    async def test_an_error_result_marks_the_executor_failed_with_its_text(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = False
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "the model call failed", "error")
+
+        session = get_session("s1")
+        assert session is not None
+        assert session.done_event.is_set()
+        assert session.executor_failed is True
+        assert session.executor_failure == "the model call failed"
+
+    async def test_a_final_result_marks_the_executor_finished(self, boundaries) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = False
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), TASK, "all done", "final")
+
+        session = get_session("s1")
+        assert session is not None
+        assert session.done_event.is_set()
+        assert session.executor_failed is False
+        assert session.executor_failure is None
+
+
 class TestCancelledRouting:
     async def test_cancelled_queued_run_persists_cards_and_skips_delivery(self, boundaries) -> None:
         boundaries.stream_manager.is_cancelled.return_value = True

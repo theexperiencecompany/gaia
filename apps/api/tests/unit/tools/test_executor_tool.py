@@ -19,9 +19,9 @@ from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.agents.core.background.session import (
+    get_session,
     queued_without_run,
     teardown_session,
-    was_executor_spawned,
 )
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
@@ -36,8 +36,13 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, PlaybookStep
+from app.models.playbook_models import PlaybookDocument, PlaybookRunStatus, ToolStep
 from app.utils import background_tasks
+
+
+def _spawned(stream_id: str) -> bool:
+    session = get_session(stream_id)
+    return session is not None and session.executor_spawned
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -214,7 +219,7 @@ class TestCallExecutorDispatch:
         assert run.user_message_id == "umsg-1"
         assert run.user["user_id"] == "user-1"
         assert run.kind.value == "live"
-        assert was_executor_spawned("stream-1") is True
+        assert _spawned("stream-1") is True
 
     async def test_a_dispatch_with_no_stream_carries_an_empty_stream_id(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
@@ -365,7 +370,7 @@ class TestCallExecutorLockContention:
 
         assert queued_without_run("stream-2") == task_id_from(response)
         # The stream that actually ran deferred nothing, and says so.
-        assert was_executor_spawned("stream-1") is True
+        assert _spawned("stream-1") is True
         assert queued_without_run("stream-1") is None
 
     async def test_holder_without_a_stream_id_is_never_waited_on(
@@ -963,7 +968,7 @@ def _failed_playbook() -> PlaybookDocument:
         user_id="user-1",
         workflow_hash="h",
         description="d",
-        steps=[PlaybookStep(id="events", tool="list_events", args={})],
+        steps=[ToolStep(id="events", tool="list_events", args={})],
         result_brief="s",
         last_run_status=PlaybookRunStatus.FAILED,
         last_run_reason="stopped at step 2 (send_email)",

@@ -23,6 +23,7 @@ from app.agents.prompts.playbook_prompts import (
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
     PLAYBOOK_HEAL_ATTEMPT_LIMIT,
+    PLAYBOOK_REPLAYED_CALLS_KEY,
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
@@ -33,7 +34,7 @@ from app.models.playbook_models import (
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStep,
+    ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
@@ -109,7 +110,7 @@ def _playbook(workflow: Workflow, *, stale: bool = False) -> PlaybookDocument:
             "a-different-workflow" if stale else workflow_hash(workflow.prompt, workflow.steps)
         ),
         description="Mail the day's agenda",
-        steps=[PlaybookStep(id="events", tool="list_events", args={})],
+        steps=[ToolStep(id="events", tool="list_events", args={})],
         result_brief="Say what happened.",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -611,6 +612,40 @@ class TestSuspectReplay:
         assert kwargs["workflow_id"] == workflow.id
         assert kwargs["playbook_id"] == playbook.playbook_id
         assert kwargs["suspect_reason"] == self.REASON
+
+    async def test_a_failed_replay_that_spends_the_last_heal_attempt_deletes_the_playbook(
+        self,
+    ) -> None:
+        """Seen live: a body whose $ask no model could fill was rewritten by the
+        agent finishing each failed fire, so at the next fire it was NOT_RUN and
+        the pre-heal check never saw its attempts; it reached three with no end.
+        The outcome just recorded is where the count is judged."""
+        workflow = _workflow()
+        harness = _Harness(workflow)
+        playbook = _playbook(workflow)
+        harness.get_for_workflow = AsyncMock(return_value=playbook)
+        harness.playbook_run = AsyncMock(return_value=_stopped_replay())
+        harness.record_run_outcome = AsyncMock(
+            return_value=playbook.model_copy(
+                update={
+                    "last_run_status": PlaybookRunStatus.FAILED,
+                    "heal_attempts": PLAYBOOK_HEAL_ATTEMPT_LIMIT,
+                }
+            )
+        )
+
+        await _fire(harness)
+
+        harness.delete_for_workflow.assert_awaited_once_with(workflow.id, workflow.user_id)
+        harness.chat.assert_awaited_once()
+        harness.log.warning.assert_any_call(
+            f"{LogTag.WORKER} Playbook discarded",
+            workflow_id=workflow.id,
+            playbook_id=playbook.playbook_id,
+            reason="heal_attempts_exhausted",
+            heal_attempts=PLAYBOOK_HEAL_ATTEMPT_LIMIT,
+            failure="Playbook stopped at step 2 (send_email): boom.",
+        )
 
     async def test_a_streak_below_the_limit_keeps_the_playbook(self) -> None:
         workflow = _workflow()
@@ -1469,7 +1504,15 @@ class TestAFreshPlaybookIsAuditedAgainstItsOwnRun:
         workflow = _workflow()
         harness = _Harness(workflow)
         written = _playbook(workflow).model_copy(
-            update={"steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})]}
+            # The reader is what makes the emptiness matter: frozen_on_empty
+            # only inspects a step whose result something later addresses, so a
+            # write tool's incidental empty field cannot mark a playbook suspect.
+            update={
+                "steps": [
+                    ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={}),
+                    ToolStep(id="reply", tool="GMAIL_SEND", args={"body": "$steps.mail.messages"}),
+                ]
+            }
         )
         harness.chat = AsyncMock(
             return_value=(
@@ -1537,7 +1580,7 @@ class TestReviewFixes:
             update={
                 "last_run_status": PlaybookRunStatus.NOT_RUN,
                 "revision": distrusted.revision + 1,
-                "steps": [PlaybookStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})],
+                "steps": [ToolStep(id="mail", tool="GMAIL_FETCH_MESSAGES", args={})],
             }
         )
         harness.get_for_workflow = AsyncMock(side_effect=[distrusted, rewritten])
@@ -1777,6 +1820,7 @@ class TestEveryFireIsChargedAndLookedUpForItsOwnOwner:
             f"{LogTag.WORKFLOW} playbook lookup failed; running the workflow agentically",
             workflow_id="wf_1",
             error_type="ConnectionError",
+            error="mongo away",
         )
         assert harness.chat.await_args_list == [call(workflow, AGENT_USER, {})]
         assert harness.summary() == AGENT_RUN_SUMMARY
@@ -2064,15 +2108,27 @@ class TestAnUntrustedReplayHandsOverWithItsRecord:
         harness = _Harness(workflow)
         harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
         _, result = _stopped_replay()
+        # A datetime in the args: the note is prompt material, so the calls
+        # travel as JSON values, not as Python objects that render as repr.
+        result.trace[0].args = {"since": datetime(2026, 9, 5, tzinfo=UTC)}
         harness.playbook_run = AsyncMock(return_value=("conv_1", result))
 
         await _fire(harness)
 
+        context = harness.chat.await_args.args[2]
+        assert context[PLAYBOOK_REPLAYED_CALLS_KEY][0]["args"] == {"since": "2026-09-05T00:00:00Z"}
         assert harness.chat.await_args_list == [
             call(
                 workflow,
                 AGENT_USER,
-                {PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result)},
+                {
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: _fallback_note(result),
+                    # The replay's calls travel with the note, structurally, so a
+                    # rewrite may freeze what the replay already ran.
+                    PLAYBOOK_REPLAYED_CALLS_KEY: [
+                        call.model_dump(mode="json") for call in result.trace
+                    ],
+                },
             )
         ]
 

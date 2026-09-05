@@ -57,6 +57,12 @@ class StreamSession:
     #: work was deferred" without reading the tool's prose.
     executor_queued_task_id: str | None = None
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
+    #: Set with ``done_event`` when the executor's run ended in an error rather
+    #: than a result. The silent path reads it so a fire whose executor died is
+    #: recorded as failed instead of as the apology comms wrote about it.
+    executor_failed: bool = False
+    #: Why, when it failed: the executor's own error text, or the wait's.
+    executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
     # Integrations with a background handoff in flight this run. Guards against a
@@ -269,12 +275,6 @@ def mark_executor_spawned(stream_id: str) -> None:
     get_or_create_session(stream_id).executor_spawned = True
 
 
-def was_executor_spawned(stream_id: str) -> bool:
-    """Return True if call_executor successfully spawned for this stream."""
-    session = _sessions.get(stream_id)
-    return bool(session and session.executor_spawned)
-
-
 def mark_executor_queued(stream_id: str, task_id: str) -> None:
     """Record that call_executor queued this task instead of running it."""
     get_or_create_session(stream_id).executor_queued_task_id = task_id
@@ -295,11 +295,35 @@ def queued_without_run(stream_id: str) -> str | None:
     return session.executor_queued_task_id
 
 
-def signal_executor_done(stream_id: str) -> None:
+def signal_executor_done(
+    stream_id: str, *, failed: bool = False, reason: str | None = None
+) -> None:
     """Wake any waiter blocked on the executor finishing for this stream."""
     session = _sessions.get(stream_id)
     if session is not None:
+        session.executor_failed = failed
+        session.executor_failure = reason if failed else None
         session.done_event.set()
+
+
+def mark_executor_failed(stream_id: str, reason: str) -> None:
+    """Record that the executor failed without finishing (the waiter gave up)."""
+    session = _sessions.get(stream_id)
+    if session is not None:
+        session.executor_failed = True
+        session.executor_failure = reason
+
+
+def executor_failed(stream_id: str) -> bool:
+    """Whether the executor this stream spawned ended in an error."""
+    session = _sessions.get(stream_id)
+    return bool(session and session.executor_failed)
+
+
+def executor_failure(stream_id: str) -> str | None:
+    """Why the executor failed, when it did."""
+    session = _sessions.get(stream_id)
+    return session.executor_failure if session is not None else None
 
 
 # ── Background subagent coordination ─────────────────────────────────

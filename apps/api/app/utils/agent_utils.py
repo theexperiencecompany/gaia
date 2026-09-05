@@ -114,10 +114,12 @@ def format_subagent_start_event(
     agent_type: str,
     subagent_id: str,
     details: SubagentStartDetails | None = None,
+    subagent: str | None = None,
 ) -> dict[str, Any]:
     """Format a subagent_start SSE payload."""
     details = details or SubagentStartDetails()
     return SubagentStartPayload(
+        subagent=subagent,
         subagent_id=subagent_id,
         subagent_name=subagent_name,
         agent_type=agent_type,

@@ -85,6 +85,7 @@ class TestBuildTrace:
             "tool_name": "subagent_group",
             "data": {
                 "subagent_id": "sa_gmail",
+                "subagent": "gmail",
                 "subagent_name": "gmail",
                 "tool_calls": [
                     {"tool_name": "GMAIL_LIST", "inputs": {"page": 1}, "output": "3 threads"},
@@ -92,6 +93,7 @@ class TestBuildTrace:
                 "nested_subagents": [
                     {
                         "subagent_id": "sa_notion",
+                        "subagent": "notion",
                         "tool_calls": [{"tool_name": "NOTION_APPEND", "inputs": {"block": "b1"}}],
                         "nested_subagents": [],
                     }
@@ -101,10 +103,12 @@ class TestBuildTrace:
 
         trace = build_trace([_call_entry("HANDOFF", {"to": "gmail"}), group])
 
-        assert [(c.tool_name, c.subagent_id) for c in trace] == [
-            ("HANDOFF", None),
-            ("GMAIL_LIST", "sa_gmail"),
-            ("NOTION_APPEND", "sa_notion"),
+        # The row id is the dispatch; the stable id is what a playbook step
+        # inside ``handoff: gmail`` is matched against.
+        assert [(c.tool_name, c.subagent_id, c.subagent) for c in trace] == [
+            ("HANDOFF", None, None),
+            ("GMAIL_LIST", "sa_gmail", "gmail"),
+            ("NOTION_APPEND", "sa_notion", "notion"),
         ]
 
     def test_it_tags_a_flat_entry_with_its_own_subagent_id(self) -> None:

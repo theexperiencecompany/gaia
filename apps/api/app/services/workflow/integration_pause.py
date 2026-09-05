@@ -11,15 +11,20 @@ on resume — a trigger left enabled on a dead account is upstream state GAIA no
 longer tracks.
 """
 
+from collections.abc import Sequence
+
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
-from app.models.workflow_models import DeactivationReason
+from app.models.workflow_models import DeactivationReason, WorkflowDocument, WorkflowUpdate
 from app.services.triggers.subscription_service import (
     pause_subscriptions_for_trigger_names,
     resync_subscriptions_for_trigger_names,
 )
-from app.services.workflow.integration_requirements import compute_required_integrations
+from app.services.workflow.integration_requirements import (
+    compute_required_integrations,
+    confirm_disconnected,
+)
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -69,6 +74,63 @@ async def pause_workflows_for_expired_integration(user_id: str, integration_id: 
     return paused
 
 
+async def pause_workflow_for_missing_integrations(
+    workflow_id: str, user_id: str, integration_ids: Sequence[str]
+) -> list[str]:
+    """Pause one workflow whose run found integrations it needs unconnected.
+
+    Returns the integrations that were confirmed missing — empty when the claim
+    did not check out, in which case nothing is paused and the caller treats the
+    run as an ordinary decline. The confirmed list is stored on the workflow
+    because the resume side cannot re-derive it; see
+    ``WorkflowDocument.blocked_on_integrations``.
+    """
+    confirmed = await confirm_disconnected(user_id, integration_ids)
+    if not confirmed:
+        log.info(
+            f"{LogTag.WORKFLOW} Blocked-run claim did not check out — not pausing",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            claimed=list(integration_ids),
+        )
+        return []
+
+    await WorkflowService.deactivate_workflow(
+        workflow_id, user_id, reason=DeactivationReason.INTEGRATION_NEVER_CONNECTED
+    )
+    # After the deactivation, which owns `activated`/`deactivated_reason`.
+    await workflow_repository.update_for_user(
+        workflow_id, user_id, WorkflowUpdate(blocked_on_integrations=confirmed)
+    )
+    log.info(
+        f"{LogTag.WORKFLOW} Paused workflow — a run found integrations never connected",
+        workflow_id=workflow_id,
+        user_id=user_id,
+        integrations=confirmed,
+    )
+    return confirmed
+
+
+def _wants_integration(
+    workflow: WorkflowDocument, integration_id: str, reason: DeactivationReason
+) -> bool:
+    """Whether reconnecting ``integration_id`` should un-pause this workflow.
+
+    For an expiry the declared steps are the only record of what it needs. For a
+    blocked run the workflow carries what the run actually found, which is the
+    better answer — but the declared steps are still consulted, because resuming
+    a workflow that is still blocked costs one run that pauses it again, while
+    failing to resume one leaves it dead until the user edits it.
+    """
+    required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+    if integration_id in required:
+        return True
+    return (
+        reason is DeactivationReason.INTEGRATION_NEVER_CONNECTED
+        and integration_id in workflow.blocked_on_integrations
+    )
+
+
 def _trigger_names_for_integration(integration_id: str) -> set[str]:
     """The GAIA-facing trigger names an integration publishes."""
     integration = get_integration_by_id(integration_id)
@@ -84,31 +146,43 @@ def _trigger_names_for_integration(integration_id: str) -> set[str]:
 async def resume_workflows_for_reconnected_integration(user_id: str, integration_id: str) -> int:
     """Re-activate the workflows paused for ``integration_id``, now that it is back.
 
-    Only touches workflows carrying ``DeactivationReason.INTEGRATION_EXPIRED``, so
-    a workflow the user switched off themselves is never silently re-enabled. One
-    still missing another integration cannot be re-activated —
-    ``activate_workflow`` raises and it is left paused for a later reconnect.
+    Only touches workflows the system paused — ``INTEGRATION_EXPIRED`` (a live
+    connection died) and ``INTEGRATION_NEVER_CONNECTED`` (a run found one that
+    was never connected) — so a workflow the user switched off themselves is
+    never silently re-enabled. One still missing another integration cannot be
+    re-activated — ``activate_workflow`` raises and it is left paused for a
+    later reconnect.
     """
     resumed = 0
 
-    for workflow in await workflow_repository.find_paused_for_reason(
-        user_id, DeactivationReason.INTEGRATION_EXPIRED
+    for reason in (
+        DeactivationReason.INTEGRATION_EXPIRED,
+        DeactivationReason.INTEGRATION_NEVER_CONNECTED,
     ):
-        required = compute_required_integrations(workflow.steps, workflow.trigger_config)
-        if integration_id not in required:
-            continue
-        try:
-            await WorkflowService.activate_workflow(workflow.id, user_id)
+        for workflow in await workflow_repository.find_paused_for_reason(user_id, reason):
+            if not _wants_integration(workflow, integration_id, reason):
+                continue
+            try:
+                await WorkflowService.activate_workflow(workflow.id, user_id)
+            except Exception as e:
+                log.info(
+                    f"{LogTag.WORKFLOW} Workflow left paused — still missing an integration",
+                    workflow_id=workflow.id,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                    reason=reason.value,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                continue
+            # The block is over, so the record of it must not outlive it: a
+            # stale list would resume this workflow on a later, unrelated
+            # reconnect of the same integration.
+            if workflow.blocked_on_integrations:
+                await workflow_repository.update_for_user(
+                    workflow.id, user_id, WorkflowUpdate(blocked_on_integrations=[])
+                )
             resumed += 1
-        except Exception as e:
-            log.info(
-                f"{LogTag.WORKFLOW} Workflow left paused — still missing an integration",
-                workflow_id=workflow.id,
-                user_id=user_id,
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
 
     # Mirror of the pause side: the reconnect gives the subscriptions a fresh
     # connected account, so they re-register and drop the blocking label.

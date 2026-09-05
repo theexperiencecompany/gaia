@@ -432,3 +432,21 @@ def test_stream_chunks_content_assembly():
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
     # Every non-final choice carries an explicit null finish_reason.
     assert all("finish_reason" in c["choices"][0] for c in chunks)
+
+
+def test_a_quoted_copy_of_a_directive_in_the_same_message_is_plain_text():
+    """The previous run's recorded calls are rendered into the next run's task,
+    script included, with the quotes escaped. That copy must neither run nor
+    fail the message that also carries the real script."""
+    quoted = 'Last run: call_executor({"task": "[[tool:create_todo {\\"title\\": \\"sim\\"}]]"})'
+    script = '[[tool:create_todo {"title": "sim"}]] [[say:done]]'
+    directives = parse_directives(f"{quoted}\n\n{script}")
+    assert directives == [
+        ToolDirective(name="create_todo", args={"title": "sim"}),
+        SayDirective(text="done"),
+    ]
+
+
+def test_a_malformed_directive_still_fails_loud():
+    with pytest.raises(DirectiveError):
+        parse_directives("[[tool:create_todo {bad}]]")

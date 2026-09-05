@@ -18,7 +18,8 @@ from app.agents.core.agent import (
 from app.agents.llm import lane as lane_module
 from app.agents.llm.lane import AgentRole
 from app.config.settings import settings
-from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, PLAYBOOK_REPLAYED_CALLS_KEY
+from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -702,6 +703,9 @@ class TestCallAgentSilent:
                 new_callable=AsyncMock,
                 return_value=("Hello!", {"tool": "data"}),
             ),
+            patch("app.agents.core.agent.await_executor_done", new_callable=AsyncMock) as waited,
+            patch("app.agents.core.agent.executor_failed", return_value=False) as failed,
+            patch("app.agents.core.agent.executor_failure", return_value=None) as failure,
         ):
             result = await call_agent_silent(
                 request=_make_request(),
@@ -712,6 +716,13 @@ class TestCallAgentSilent:
         assert result == SilentRunResult(
             message="Hello!", tool_data={"tool": "data"}, queued_task_id=None
         )
+        # The executor's outcome is read off THIS run's stream, after a wait
+        # bounded to end before the worker job that awaits it would.
+        stream_id = waited.await_args.args[0]
+        assert stream_id
+        waited.assert_awaited_once_with(stream_id, timeout=BACKGROUND_EXECUTOR_WAIT_TIMEOUT)
+        failed.assert_called_once_with(stream_id)
+        failure.assert_called_once_with(stream_id)
 
     @pytest.mark.asyncio
     async def test_a_graph_failure_propagates_instead_of_becoming_a_result_string(self):
@@ -1271,6 +1282,40 @@ class TestTheWorkflowKeysTheRunStashes:
     """
 
     @pytest.mark.asyncio
+    async def test_a_fallback_run_stashes_the_replays_calls_beside_the_note(self):
+        """The note tells the agent what the replay ran; the calls themselves
+        travel structurally, so the write validator counts them as this run's."""
+        config = _fresh_config()
+        replayed = [{"tool_name": "list_todos", "args": {"limit": 100}, "result_digest": "{}"}]
+        trigger = {
+            "workflow_id": "wf-1",
+            "workflow_title": "Daily digest",
+            "workflow_notify_on_completion": False,
+            PLAYBOOK_FALLBACK_CONTEXT_KEY: "note",
+            PLAYBOOK_REPLAYED_CALLS_KEY: replayed,
+        }
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context=trigger),
+            )
+
+        assert config["configurable"]["playbook_replayed_calls"] == replayed
+
+    @pytest.mark.asyncio
     async def test_a_briefed_run_stashes_its_playbook_fallback_under_that_exact_key(self):
         config = _fresh_config()
         trigger = {
@@ -1310,6 +1355,10 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "Daily digest",
             "workflow_notify_on_completion": False,
             "playbook_fallback": {"reason": "hash_drift", "step": 3},
+            # Read by name in write_playbook (_replayed_results): the calls a
+            # stopped replay made, so a rewrite may freeze them. None here
+            # because this trigger carries no replay.
+            "playbook_replayed_calls": None,
         }
 
     @pytest.mark.asyncio
@@ -1348,6 +1397,7 @@ class TestTheWorkflowKeysTheRunStashes:
             "workflow_title": "",
             "workflow_notify_on_completion": True,
             "playbook_fallback": None,
+            "playbook_replayed_calls": None,
         }
 
 

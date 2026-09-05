@@ -616,6 +616,7 @@ async def _run_blocking_handoff(
                 subagent_name=display,
                 agent_type="handoff",
                 subagent_id=sa_id,
+                subagent=integration_id,
                 details=SubagentStartDetails(icon_url=icon_url, tool_category=tool_category),
             )
         }

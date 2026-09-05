@@ -19,9 +19,9 @@ This workflow has no working playbook. When you have finished the work above (an
 
 Work through these five for yourself, against the calls you actually made. This is your own reasoning, not part of the run's result:
 1. Which of your calls were discovery or dead ends (finding an id, a channel, a folder, a file, recovering from an error, or an attempt that came back empty, wrong or refused that you then did differently) rather than the work itself? Those must not go in a playbook. A playbook records what WORKED: freeze the call that actually produced the result, with the arguments that made it produce one, not the first thing you tried.
-2. Which args are fixed on every run, and what does each of the others become? The placeholder vocabulary is: $now, $today, $now + 1d; $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. If a value genuinely cannot be frozen or built from those, write {"$ask": "what to write"} as that value and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step.
+2. WRITE THE SEQUENCE OUT, before you judge anything. List the calls that did the work, in order, and replace every value that was specific to today with a placeholder. The vocabulary is: $now, $today, $now + 1d, $today + 1d 09:00 (a clock time); $user.email, $user.name, $user.timezone; $trigger.<path>; $steps.<step_id>.<path> and $steps.<step_id>.file; $last_run.<TOOL_NAME>.<path>. If a value genuinely cannot be frozen or built from those, write {"$ask": "what to write"} as that value and a model writes it at replay, right before that step runs. This is rare: a search query usually freezes fine, and anything about the RESULT belongs in result_brief, not in a step. Do this even if you expect to decline; question 4 is about the list you write here, not about your memory of the run.
 3. What has to carry over to the next run (a cursor, a last seen id, a timestamp) so it does not redo work or repeat something someone would notice?
-4. Would this exact ORDER OF CALLS work tomorrow, unchanged? Judge the sequence, not the content: results and the words you write from them are SUPPOSED to differ every run, and that is what result_brief and $ask exist for, so changing data is never by itself a reason to answer no. Answer no only if the sequence itself would differ: the order depended on what you found, you reacted to a result by choosing different calls mid-run, or a step only made sense given today's data.
+4. Now look at the list from question 2. Changing data is NEVER a reason to answer no: results, and the words you write from them, are supposed to differ every run, and result_brief and $ask are where that lives. The attendees of today's meeting, the subject of today's mail, the id you just looked up: you have already handled every one of those by writing a placeholder for it, so none of them can be your reason. The only question left is whether the list of CALLS changes: is there a call in it that would not happen tomorrow, or a call missing from it that would? If you cannot point to one such call by name, the answer is yes and you write the playbook.
 5. Did every call you are freezing return the data the workflow needs, as it stands? If a step came back empty, with an error, or partial, and you compensated by reasoning around it, that call is not the work. A playbook replays the call, not your reasoning, so the next run would hand the user the gap you papered over. Fix its args before freezing, or decline.
 
 If 4 and 5 are both yes, call write_playbook. Its arguments carry the shape: a description, the steps in the order you ran them, and a result_brief saying how to write the user's result from the steps' results (this is where classification, judgement and summarising go). A step is EITHER a tool call OR a handoff carrying the steps that subagent ran. Each handoff's result includes a record of the calls that subagent actually ran: the handoff step's nested steps are the calls in that record that did the work, with those exact names and args, minus the subagent's own discovery. Use the real tool names and argument names you actually called, since they are checked against the live tools and a playbook naming a tool that does not exist is refused. The shape, end to end:
@@ -39,7 +39,28 @@ steps:
       query_text: {"$ask": "one web search that would give background on the most important mail listed above"}
 result_brief: Lead with what the unread mail is about, then what the search added. Two short paragraphs.
 
-If either 4 or 5 is no, call decline_playbook with the reason. You MUST end this run by calling exactly one of write_playbook or decline_playbook: staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
+If the NUMBER of calls depended on what you found, that is a for_each step, not a reason to decline. Give the step a for_each naming the list to repeat over, a max_items ceiling, and write its arguments with $item for the current element ($item.field for a field of it). for_each is the WHOLE value: one placeholder, or one $ask. Never a placeholder inside a sentence, because that resolves to text and text is not a list. The list is either a previous step's, or one a model picks at replay. Which one is not a style choice: a $steps list acts on EVERY item the step returned, so if only some of them should be acted on (the overdue ones, the ones from a real person, the ones without a follow-up) the source must be an $ask that picks them, and the picking is the judgement you would otherwise have re-done every run:
+
+  - id: replies
+    tool: GMAIL_CREATE_EMAIL_DRAFT
+    for_each: {"$ask": "the ids above from a real person expecting a reply, skipping newsletters and receipts"}
+    max_items: 10
+    args:
+      thread_id: $item
+      body: {"$ask": "a reply to this one email"}
+
+Zero elements is a normal run, not a failure: a day with nothing to act on simply makes no calls for that step. max_items is a cost ceiling, not today's count: set it to the most this workflow should ever act on in one run (up to 25), because a list longer than it is cut, and the user hears nothing about what was cut.
+
+If either 4 or 5 is no, call decline_playbook. It takes a kind, not just prose, and the kind has to match what actually happened:
+- blocked_missing_integration, with the integration ids: the work could not run because the user has not connected something. The workflow is paused until they do, and this does not count against it.
+- blocked_auth_expired, with the integration ids: connected, but its authorisation is dead.
+- blocked_no_budget: the allowance was spent before any call ran.
+- order_branches, with branch_on naming the ONE call that runs on some days and not others. Before you pick this, check it is not a fan-out: a call that runs once per thing you found, including zero times on a day when you found nothing, is a for_each step and NOT a branch. "It made three create calls today and none yesterday" is a for_each over an empty list, not a changing order. Pick order_branches only when a DIFFERENT call, not just a different count of the same call, happens on another day. If you cannot name that call, the order does not branch and you should be writing a playbook instead.
+- unstable_discovery: you had to work something out mid-run that a later run would have to work out differently.
+- no_work_today: the run found nothing to act on (no overdue items, no mail that needs a reply), so the calls that do the work never happened and there is nothing to freeze yet. A playbook freezes calls that ran, so a for_each whose element step made zero calls today cannot be written today. This does not count against the workflow; you are asked again on a day the work happens.
+There is no kind for "the arguments were different", because question 2 already handled that.
+
+You MUST end this run by calling exactly one of write_playbook or decline_playbook: staying silent is not a decision, and a run that was asked and called neither is a lapse, not a no.
 
 Either way, keep all of this out of what you return. The result you hand back is the workflow's own output, the thing the user asked for, and nothing else. Do not narrate the check, do not list your answers, do not mention playbooks or freezing or this decision at all. Whether you called the tool is the entire record of it.
 </playbook_check>"""
@@ -84,6 +105,15 @@ _PLAYBOOK_VOICE = """Write like a person. Open on the actual point, vary your se
 #: step, so the slots are written from everything that has actually run. It runs
 #: before the later steps, so it must not write the user's result or judge the
 #: run: neither can be done before the run's outcome is known.
+#: Wraps the element a for_each step is on, so a slot written per element is
+#: written about that element and not about the list.
+PLAYBOOK_ASK_ELEMENT = """
+<this_element>
+The next step repeats over a list, and right now it is on this element. Write about THIS one only:
+{element}
+</this_element>
+"""
+
 PLAYBOOK_ASK_PROMPT = (
     """You are writing the slots the next step of a workflow run needs before it can continue. The run follows a written playbook, so its steps are replayed rather than reasoned out. The steps listed as ran already happened exactly as listed. The steps still to run happen after you answer, and the first of them uses what you write.
 
@@ -102,8 +132,9 @@ PLAYBOOK_ASK_PROMPT = (
 <asks>
 {asks}
 </asks>
+{element}
 
-Write one entry per slot above, keyed by the slot's key exactly as listed. Follow each slot's instruction and respect its length budget. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
+Write one entry per slot above, keyed by the slot's key exactly as listed. Follow each slot's instruction and respect its length budget. A slot that is a step's for_each source is answered with items, the elements that step repeats over, one per element; copied exactly as they appear in the results above (an id or a title is never retyped from memory, and one never comes from anywhere but those results); on a day nothing qualifies, answer it with an empty list. That is a complete answer, not a missing one, and the step then runs zero times. Write nothing else: no result for the user and no judgement of the run. Both are written after the remaining steps have run, by a separate call that sees their results.
 
 Ground every word in what is listed above. Never invent a number, a name, a link, or an outcome that is not there.
 

@@ -22,8 +22,20 @@ import pytest
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories import playbooks as playbooks_module
-from app.db.repositories.playbooks import PlaybooksRepository
-from app.models.playbook_models import PlaybookDocument, PlaybookRunOutcome, PlaybookRunStatus
+from app.db.repositories.playbooks import PlaybooksRepository, _outcome_update
+from app.models.playbook_models import (
+    AskSlot,
+    ForEachStep,
+    PlaybookDocument,
+    PlaybookRunOutcome,
+    PlaybookRunStatus,
+)
+from app.services.workflow.playbook.lifecycle import (
+    PlaybookLifecycle,
+    Replayed,
+    streak_grows,
+    transition,
+)
 
 WORKFLOW_ID = "wf_1"
 USER_ID = "user_1"
@@ -56,7 +68,17 @@ def _raw(**overrides: Any) -> dict[str, Any]:
 def collection() -> Iterator[MagicMock]:
     mock = MagicMock()
     mock.find_one = AsyncMock(return_value=None)
-    mock.find_one_and_update = AsyncMock(return_value=_raw())
+    # The write asks first whether the body is in a heal status (no upsert),
+    # then upserts the reset; the default collection holds no such body.
+    # The write tries the status-guarded phases first (a heal-born rewrite, then
+    # a never-replayed body) and upserts the reset only when neither matched;
+    # the default collection holds no such body. Outcome writes are also
+    # status-guarded but never bump the revision, and are left alone.
+    mock.find_one_and_update = AsyncMock(
+        side_effect=lambda filter_, update, **_kwargs: None
+        if "last_run_status" in filter_ and "revision" in update.get("$inc", {})
+        else _raw()
+    )
     with patch("app.db.repositories.base.get_async_collection", return_value=mock):
         yield mock
 
@@ -111,7 +133,8 @@ class TestUpsertForWorkflow:
 
         collection.find_one.assert_not_awaited()
         collection.insert_one.assert_not_called()
-        collection.find_one_and_update.assert_awaited_once()
+        # Two status-matched attempts to carry heal attempts, one upsert: no read.
+        assert collection.find_one_and_update.await_count == 3
         filter_, update = collection.find_one_and_update.await_args.args
         assert filter_ == {"workflow_id": WORKFLOW_ID, "user_id": USER_ID}
         assert collection.find_one_and_update.await_args.kwargs["upsert"] is True
@@ -142,7 +165,8 @@ class TestUpsertForWorkflow:
         assert set_fields["steps"][0]["tool"] == "list_events"
         # The identity is never part of the rewrite: a replay in flight keeps its id.
         assert "playbook_id" not in set_fields
-        # The heal attempts counted runs spent on the body just replaced.
+        # Not a heal-born rewrite (the status-matched write found nothing), so
+        # the attempts counted runs spent on a trusted body and go back to zero.
         assert set_fields["heal_attempts"] == 0
         # The id survives, so the revision is what tells a replay in flight
         # that the body it ran is no longer the body stored.
@@ -168,6 +192,7 @@ class TestUpsertForWorkflow:
             "description": "first",
             "result_brief": "s",
             "workflow_hash": "hash-1",
+            "authored_run": None,
             "last_run_status": PlaybookRunStatus.NOT_RUN,
             "last_run_reason": None,
             "heal_attempts": 0,
@@ -177,31 +202,66 @@ class TestUpsertForWorkflow:
         self, repo: PlaybooksRepository, collection: MagicMock
     ) -> None:
         collection.find_one_and_update = AsyncMock(
-            side_effect=[DuplicateKeyError("E11000 duplicate key"), _raw(description="second")]
+            side_effect=[
+                None,
+                None,
+                DuplicateKeyError("E11000 duplicate key"),
+                _raw(description="second"),
+            ]
         )
 
         stored = await repo.upsert_for_workflow(_doc(description="second"))
 
-        assert collection.find_one_and_update.await_count == 2
+        assert collection.find_one_and_update.await_count == 4
         assert stored.description == "second"
         # The retry is the SAME write, not a plain update: the loser of the race
         # must still insert when the winner has since been deleted.
         assert [
             call.kwargs["upsert"] for call in collection.find_one_and_update.await_args_list
-        ] == [True, True]
+        ] == [False, False, True, True]
 
     async def test_both_attempts_are_written_in_the_global_scope(
         self, repo: PlaybooksRepository
     ) -> None:
         """``playbooks`` is a global collection, so both the first attempt and the
         duplicate-key retry name the global cache scope."""
-        spy, calls = _raw_update_spy(DuplicateKeyError("E11000 duplicate key"), _doc())
+        spy, calls = _raw_update_spy(None, None, DuplicateKeyError("E11000 duplicate key"), _doc())
 
         with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
             await repo.upsert_for_workflow(_doc())
 
-        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE, REPO_GLOBAL_SCOPE]
-        assert [call["upsert"] for call in calls] == [True, True]
+        assert [call["scope"] for call in calls] == [REPO_GLOBAL_SCOPE] * 4
+        assert [call["upsert"] for call in calls] == [False, False, True, True]
+
+    async def test_a_rewrite_of_a_body_never_replayed_leaves_the_attempts_alone(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        spy, calls = _raw_update_spy(None, _doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.upsert_for_workflow(_doc(description="second"))
+
+        assert calls[1]["filter"]["last_run_status"] == "not_run"
+        assert calls[1]["update"]["$inc"] == {"revision": 1}
+        assert "heal_attempts" not in calls[1]["update"]["$set"]
+        assert calls[1]["upsert"] is False
+
+    async def test_a_rewrite_out_of_a_heal_carries_the_attempts_it_spent(
+        self, repo: PlaybooksRepository
+    ) -> None:
+        """Matched on the stored status, never read-then-written: a body in a
+        heal status takes one status-guarded write that grows the count."""
+        spy, calls = _raw_update_spy(_doc())
+
+        with patch.object(PlaybooksRepository, "_apply_raw_update", spy):
+            await repo.upsert_for_workflow(_doc(description="second"))
+
+        (call,) = calls
+        assert call["filter"]["last_run_status"] == {"$in": ["failed", "suspect"]}
+        assert call["update"]["$inc"] == {"revision": 1, "heal_attempts": 1}
+        assert "heal_attempts" not in call["update"]["$set"]
+        assert "$setOnInsert" not in call["update"]
+        assert call["upsert"] is False
 
     async def test_a_playbook_that_vanished_mid_upsert_names_its_workflow(
         self, repo: PlaybooksRepository
@@ -209,7 +269,7 @@ class TestUpsertForWorkflow:
         """An upsert that matches nothing and inserts nothing cannot be reported as
         a generic failure: the message is the only pointer to which workflow lost
         its write."""
-        spy, _calls = _raw_update_spy(None)
+        spy, _calls = _raw_update_spy(None, None, None)
 
         with (
             patch.object(PlaybooksRepository, "_apply_raw_update", spy),
@@ -494,10 +554,10 @@ class TestTheScopeAndShapeOfEveryRawWrite:
         seen: list[tuple[Any, Any, dict[str, Any]]] = []
 
         def _outcome_update(
-            status: PlaybookRunStatus, reason: str | None, **kwargs: Any
+            outcome: PlaybookRunOutcome, **kwargs: Any
         ) -> dict[str, dict[str, object]]:
-            seen.append((status, reason, kwargs))
-            return {"$set": {"last_run_status": status, "last_run_reason": reason}}
+            seen.append((outcome.status, outcome.reason, kwargs))
+            return {"$set": {"last_run_status": outcome.status, "last_run_reason": outcome.reason}}
 
         collection.find_one_and_update = AsyncMock(side_effect=[None, _raw()])
 
@@ -512,3 +572,96 @@ class TestTheScopeAndShapeOfEveryRawWrite:
             (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": True}),
             (PlaybookRunStatus.SUSPECT, "empty again", {"grow_streak": False}),
         ]
+
+    async def test_an_outcome_that_cannot_grow_the_streak_is_one_plain_write(
+        self, repo: PlaybooksRepository, collection: MagicMock
+    ) -> None:
+        seen: list[tuple[PlaybookRunStatus, str | None, dict[str, Any]]] = []
+
+        def _outcome_update(
+            outcome: PlaybookRunOutcome, **kwargs: Any
+        ) -> dict[str, dict[str, object]]:
+            seen.append((outcome.status, outcome.reason, kwargs))
+            return {"$set": {"last_run_status": outcome.status, "last_run_reason": outcome.reason}}
+
+        collection.find_one_and_update = AsyncMock(return_value=_raw())
+
+        with patch.object(playbooks_module, "_outcome_update", _outcome_update):
+            await repo.record_run_outcome(
+                WORKFLOW_ID, USER_ID, PlaybookRunOutcome(PlaybookRunStatus.SUCCESS)
+            )
+
+        assert seen == [(PlaybookRunStatus.SUCCESS, None, {"grow_streak": False})]
+        collection.find_one_and_update.assert_awaited_once()
+
+
+@pytest.mark.unit
+class TestTheWriteIsTheTransition:
+    """``_outcome_update`` splits the lifecycle transition into the part that
+    depends on the stored state and the part that does not. Applying the write
+    to a document must land exactly where ``transition`` says a replay lands,
+    for every outcome from every prior status, or the two have drifted."""
+
+    @pytest.mark.parametrize(
+        ("prior", "outcome"),
+        [
+            (prior, outcome)
+            for prior in PlaybookRunStatus
+            for outcome in (
+                PlaybookRunOutcome(PlaybookRunStatus.SUCCESS),
+                PlaybookRunOutcome(PlaybookRunStatus.FAILED, reason="stopped"),
+                PlaybookRunOutcome(PlaybookRunStatus.SUSPECT, reason="empty"),
+                PlaybookRunOutcome(
+                    PlaybookRunStatus.SUSPECT, reason="opinion", counts_toward_streak=False
+                ),
+            )
+        ],
+    )
+    def test_applying_the_write_lands_on_the_transition(
+        self, prior: PlaybookRunStatus, outcome: PlaybookRunOutcome
+    ) -> None:
+        before = PlaybookLifecycle(
+            status=prior, reason="old", suspect_streak=1, heal_attempts=1, revision=2
+        )
+        # the caller settles growth by matching on the stored status; mirror that
+        update = _outcome_update(outcome, grow_streak=streak_grows(before, outcome))
+        doc: dict[str, object] = {
+            "last_run_status": before.status,
+            "last_run_reason": before.reason,
+            "suspect_streak": before.suspect_streak,
+        }
+        doc.update(update["$set"])
+        doc["suspect_streak"] = int(doc["suspect_streak"]) + int(
+            update.get("$inc", {}).get("suspect_streak", 0)
+        )
+
+        expected = transition(before, Replayed(outcome))
+        assert doc == {
+            "last_run_status": expected.status,
+            "last_run_reason": expected.reason,
+            "suspect_streak": expected.suspect_streak,
+        }
+
+
+@pytest.mark.unit
+async def test_an_ask_slot_source_is_written_by_its_alias(
+    repo: PlaybooksRepository, collection: MagicMock
+) -> None:
+    """The document model reads ``$ask``; a write that spells the field name
+    stores a body the read refuses. The stored form is the read form."""
+    await repo.upsert_for_workflow(
+        _doc(
+            steps=[
+                ForEachStep(
+                    id="mark",
+                    tool="update_todo",
+                    args={"todo_id": "$item.id"},
+                    for_each=AskSlot.model_validate({"$ask": "the overdue ones"}),
+                    max_items=5,
+                )
+            ]
+        )
+    )
+
+    _filter, update = collection.find_one_and_update.await_args.args
+    assert update["$set"]["steps"][0]["for_each"] == {"$ask": "the overdue ones"}

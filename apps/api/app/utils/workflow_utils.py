@@ -167,6 +167,16 @@ def get_workflow_id(config: RunnableConfig) -> str:
     return workflow_id
 
 
+def get_stream_id(config: RunnableConfig) -> str:
+    """The run this tool call belongs to. Raises when the config carries none."""
+    stream_id: str | None = agent_configurable(config).get("stream_id")
+    if not stream_id:
+        raise WorkflowConfigError(
+            "No stream id in this run's config: cannot tell which run this is."
+        )
+    return stream_id
+
+
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
     thread_id: str | None = agent_configurable(config).get("thread_id")

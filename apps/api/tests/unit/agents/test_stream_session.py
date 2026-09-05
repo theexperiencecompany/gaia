@@ -6,6 +6,8 @@ subagent counter/result contract. These are the rules every terminal handler
 relies on — if any of them drifts, cards get duplicated or lost.
 """
 
+from uuid import uuid4
+
 import pytest
 
 from app.agents.core.background import session as sess
@@ -17,6 +19,8 @@ from app.agents.core.background.session import (
     claim_tool_output,
     create_session,
     decrement_pending_subagents,
+    executor_failed,
+    executor_failure,
     get_or_create_session,
     get_pending_subagents,
     get_session,
@@ -29,8 +33,12 @@ from app.agents.core.background.session import (
     release_bg_integration,
     signal_executor_done,
     teardown_session,
-    was_executor_spawned,
 )
+
+
+def _spawned(stream_id: str) -> bool:
+    session = get_session(stream_id)
+    return session is not None and session.executor_spawned
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +74,7 @@ class TestSessionRegistry:
         teardown_session("s1")
 
         assert get_session("s1") is None
-        assert was_executor_spawned("s1") is False
+        assert _spawned("s1") is False
         assert get_pending_subagents("s1") == 0
         assert has_bg_integration("s1", "gmail") is False
 
@@ -87,9 +95,9 @@ class TestSessionRegistry:
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
         create_session("s1", RunKind.LIVE)
-        assert was_executor_spawned("s1") is False
+        assert _spawned("s1") is False
         mark_executor_spawned("s1")
-        assert was_executor_spawned("s1") is True
+        assert _spawned("s1") is True
 
     def test_signal_executor_done_sets_event(self) -> None:
         session = create_session("s1", RunKind.LIVE)
@@ -322,3 +330,34 @@ class TestExecutorRunCarriesWorkflowExecution:
         )
 
         assert run.workflow_execution_id is None
+
+
+@pytest.mark.unit
+def test_the_done_signal_carries_whether_the_executor_failed() -> None:
+    stream_id = f"s_{uuid4().hex}"
+    session = get_or_create_session(stream_id)
+    session.executor_spawned = True
+
+    signal_executor_done(stream_id, failed=True, reason="the model call failed")
+
+    assert session.done_event.is_set()
+    assert executor_failed(stream_id) is True
+    assert executor_failure(stream_id) == "the model call failed"
+
+
+@pytest.mark.unit
+def test_a_plain_done_signal_is_not_a_failure() -> None:
+    stream_id = f"s_{uuid4().hex}"
+    session = get_or_create_session(stream_id)
+    session.executor_spawned = True
+
+    signal_executor_done(stream_id)
+
+    assert executor_failed(stream_id) is False
+    assert executor_failure(stream_id) is None
+
+
+@pytest.mark.unit
+def test_a_stream_with_no_session_has_no_executor_failure() -> None:
+    assert executor_failed("never-registered") is False
+    assert executor_failure("never-registered") is None

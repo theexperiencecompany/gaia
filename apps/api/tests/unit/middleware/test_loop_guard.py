@@ -20,6 +20,7 @@ from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
 from app.agents.middleware.loop_guard import _UNKNOWN_RUN, LoopGuardMiddleware, _RunCounters
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.constants.llm import (
     LOOP_GUARD_STOP_IDENTICAL,
     LOOP_GUARD_STOP_REPEAT,
@@ -517,6 +518,9 @@ async def test_identical_successful_calls_are_warned_at_the_repeat_threshold() -
 
     assert "[Loop guard:" not in results[0].content
     assert f"called {LOOP_GUARD_WARN_REPEAT} times in a row" in results[-1].content
+    # The note rides after the separator the record reads through, so the
+    # result stays a JSON document to everything that parses it.
+    assert results[-1].content.startswith("ok" + TOOL_RESULT_NOTE_SEPARATOR)
     assert results[-1].additional_kwargs["loop_guard_warned"] is True
 
 

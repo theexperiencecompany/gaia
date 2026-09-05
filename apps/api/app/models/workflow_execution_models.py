@@ -4,13 +4,14 @@ Workflow Execution Models.
 Models for tracking workflow execution history.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.db.repositories.base import MongoDocument
 
 #: How much of a tool's result is kept on the record. Enough to tell the next run
@@ -162,6 +163,60 @@ def _largest_sequence(
     return best, best_rebuild
 
 
+_RESULT_DECODER = json.JSONDecoder()
+
+
+def parse_result(text: str) -> object:
+    """A tool result as JSON when it is a JSON document, and as its own text otherwise.
+
+    The document may be followed by a note a middleware appended for the model
+    after ``TOOL_RESULT_NOTE_SEPARATOR``; the note is not part of the result.
+    Anything else after a document means the text was never a document ("3
+    items found" starts with a number and is prose).
+    """
+    body = text.lstrip()
+    try:
+        value, end = _RESULT_DECODER.raw_decode(body)
+    except ValueError:
+        return text
+    rest = body[end:]
+    if rest.strip() and not rest.startswith(TOOL_RESULT_NOTE_SEPARATOR):
+        return text
+    return value
+
+
+def carries_no_data(value: object) -> bool:
+    """Whether a tool's result came back with nothing in it.
+
+    ``largest_list_len`` answers a different question: it finds the largest list
+    ANYWHERE in the result, so an empty attribute of a record the call did
+    return reads as "no items". ``create_todo`` answers with the todo it just
+    made, whose ``labels`` is ``[]`` when the caller passed none, and four of
+    the eight suspect playbooks in production were exactly that.
+
+    So the question here is whether the result carries any DATA. Empty lists,
+    empty dicts, empty strings and nulls are not data. Booleans are not data
+    either: ``successful: true`` is the provider envelope's bookkeeping, present
+    on every result whether or not it found anything. Anything left over, a
+    string, a number, or a list with something in it, means the call answered
+    with something and the run has no gap to paper over.
+    """
+    if isinstance(value, bool) or value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (int, float)):
+        # A zero count is the tool saying it found nothing, not a finding.
+        # Results carry their own tally next to the list ("fetched_count": 0,
+        # "messages": []), and reading that as data would defeat the check.
+        return value == 0
+    if isinstance(value, Mapping):
+        return all(carries_no_data(item) for item in value.values())
+    if isinstance(value, list):
+        return all(carries_no_data(item) for item in value)
+    return False
+
+
 def largest_list_len(value: object) -> int | None:
     """Length of the largest list anywhere inside ``value``; ``None`` when it has none.
 
@@ -212,6 +267,10 @@ class RecordedCall(BaseModel):
     #: Which subagent ran it, so a recorded handoff keeps its children — a trace
     #: flattened to the executor level is just one ``handoff`` call and useless.
     subagent_id: str | None = None
+    #: The stable id of the subagent that made the call (``todos``), or
+    #: ``None`` for the executor's own. What a playbook step inside
+    #: ``handoff: todos`` is matched against; ``subagent_id`` is the dispatch.
+    subagent: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
     result_digest: str = Field(
         default="", max_length=RESULT_DIGEST_MAX_CHARS, description="Bounded result summary"

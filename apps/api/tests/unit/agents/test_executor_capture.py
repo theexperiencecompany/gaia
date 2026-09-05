@@ -7,12 +7,17 @@ Pins the contracts terminal handlers depend on:
 - the redis stream writer appends every event to the session collector.
 """
 
+import asyncio
+from collections.abc import Coroutine, Generator
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.agents.core.background import redis_writer as rw, session as sess
 from app.agents.core.background.executor_capture import (
+    _STACK_FRAMES,
+    _running_task_stacks,
     await_executor_done,
     build_returned_to_frontend_note,
     drain_executor_tool_data,
@@ -27,6 +32,7 @@ from app.agents.core.background.session import (
     signal_executor_done,
 )
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.log_tags import LogTag
 
 
 @pytest.fixture(autouse=True)
@@ -57,13 +63,16 @@ class TestRegisterAndDone:
     async def test_await_returns_immediately_when_no_executor_spawned(self) -> None:
         register_executor_capture("s1")
         # No mark_executor_spawned — must not block on the done event.
-        await await_executor_done("s1")
+        assert await await_executor_done("s1") is True
+
+    async def test_await_without_a_session_is_finished(self) -> None:
+        assert await await_executor_done("never-registered") is True
 
     async def test_await_unblocks_when_executor_signals_done(self) -> None:
         session = create_session("s1", RunKind.LIVE)
         session.executor_spawned = True
         signal_executor_done("s1")
-        await await_executor_done("s1")  # returns because the event is set
+        assert await await_executor_done("s1") is True  # the event is set
 
 
 class TestDrain:
@@ -338,3 +347,111 @@ class TestRedisStreamWriter:
             writer = make_redis_stream_writer("unregistered")
             writer({"tool_data": {"x": 1}})  # publish still happens, no collector
         assert get_session("unregistered") is None
+
+
+@pytest.mark.unit
+class TestAnExecutorThatNeverFinishes:
+    """Seen live: an executor stopped mid-run and never signalled done. The
+    silent path waited the whole EXECUTOR_WAIT_TIMEOUT, which equals the
+    worker's job timeout, so the job was cut first, the fire was never closed
+    out, and the record stayed 'running'. The wait now ends before the job
+    does, counts as the executor failing, and says what was still running."""
+
+    async def test_a_timed_out_wait_marks_the_executor_failed_with_a_reason(self) -> None:
+        register_executor_capture("s1")
+        sess.mark_executor_spawned("s1")
+
+        finished = await await_executor_done("s1", timeout=0.01)
+
+        assert finished is False
+        assert sess.executor_failed("s1") is True
+        assert "did not finish within" in (sess.executor_failure("s1") or "")
+
+    async def test_a_timed_out_wait_names_the_tasks_still_running(self) -> None:
+        register_executor_capture("s1")
+        sess.mark_executor_spawned("s1")
+
+        async def run_executor_background() -> None:
+            await asyncio.sleep(10)
+
+        stuck = asyncio.create_task(run_executor_background())
+        try:
+            with patch("app.agents.core.background.executor_capture.log") as log:
+                await await_executor_done("s1", timeout=0.01)
+        finally:
+            stuck.cancel()
+
+        assert log.error.call_args.args == (
+            f"{LogTag.AGENT} Timed out waiting for executor; draining what it produced",
+        )
+        kwargs = log.error.call_args.kwargs
+        assert kwargs["stream_id"] == "s1"
+        assert kwargs["timeout_seconds"] == 0
+        assert any("run_executor_background" in line for line in kwargs["stuck_tasks"])
+
+    async def test_the_stuck_tasks_are_the_agent_runs_with_their_innermost_frames(
+        self,
+    ) -> None:
+        """Only the executor's and subagents' runs are named, each with the
+        innermost frames joined newest first, so the line says where it sits."""
+
+        async def deeper(levels: int) -> None:
+            if levels:
+                await deeper(levels - 1)
+            else:
+                await asyncio.sleep(10)
+
+        async def run_executor_background() -> None:
+            await deeper(10)
+
+        async def idle_plumbing() -> None:
+            await asyncio.sleep(10)
+
+        class run_subagent_probe(Coroutine[object, object, object]):  # noqa: N801 -- named like the coroutine it stands for
+            """A coroutine object with no ``__qualname__``: named by its type."""
+
+            def __init__(self) -> None:
+                self._inner = asyncio.sleep(10)
+
+            def send(self, value: object) -> object:
+                return self._inner.send(value)
+
+            def throw(self, *args: object) -> object:
+                return self._inner.throw(*args)  # type: ignore[arg-type] -- delegating verbatim
+
+            def close(self) -> None:
+                self._inner.close()
+
+            def __await__(self) -> Generator[object, object, object]:
+                return self._inner.__await__()
+
+        tasks = [
+            asyncio.create_task(run_executor_background()),
+            asyncio.create_task(idle_plumbing()),
+            asyncio.create_task(run_subagent_probe()),
+        ]
+        await asyncio.sleep(0)
+        try:
+            lines = sorted(_running_task_stacks())
+        finally:
+            for task in tasks:
+                task.cancel()
+
+        assert sorted(line.split(":")[0] for line in lines) == sorted(
+            [
+                "run_subagent_probe",
+                "TestAnExecutorThatNeverFinishes.test_the_stuck_tasks_are_the_agent_runs_with_"
+                "their_innermost_frames.<locals>.run_executor_background",
+            ]
+        )
+        executor_line = next(line for line in lines if "run_executor_background" in line)
+        frames = executor_line.split(": ", 1)[1].split(" <- ")
+        assert len(frames) == _STACK_FRAMES
+        assert frames[0].startswith("sleep("), frames
+        assert all(re.fullmatch(r"\w+\([\w.]+\.py:\d+\)", f) for f in frames), frames
+
+    def test_the_background_wait_ends_before_the_job_that_awaits_it(self) -> None:
+        from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+        from app.workers.config.worker_settings import WORKER_JOB_TIMEOUT_SECONDS
+
+        assert BACKGROUND_EXECUTOR_WAIT_TIMEOUT < WORKER_JOB_TIMEOUT_SECONDS

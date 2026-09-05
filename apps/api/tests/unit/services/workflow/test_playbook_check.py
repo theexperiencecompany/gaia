@@ -31,11 +31,13 @@ from app.agents.tools.playbook_tools import write_playbook
 from app.constants.agents import PLAYBOOK_CHECK_TAG, PLAYBOOK_DECLINE_LIMIT
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
+    DeclineKind,
+    HandoffStep,
     PlaybookDocument,
     PlaybookRunOutcome,
     PlaybookRunStatus,
-    PlaybookStep,
     PlaybookStepInput,
+    ToolStep,
 )
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowDocument
@@ -82,7 +84,7 @@ def _playbook(status: PlaybookRunStatus, reason: str | None = None) -> PlaybookD
         user_id=USER_ID,
         workflow_hash="h",
         description="d",
-        steps=[PlaybookStep(id="s1", tool="create_todo", args={})],
+        steps=[ToolStep(id="s1", tool="create_todo", args={})],
         result_brief="s",
         last_run_status=status,
         last_run_reason=reason,
@@ -581,12 +583,12 @@ REFUSED = "Error: ValidationError: 1 validation error for write_playbook"
 def _frozen(*tools: str, handoff: str | None = None) -> PlaybookDocument:
     if handoff:
         steps = [
-            PlaybookStep(
-                id="h", handoff=handoff, steps=[PlaybookStep(id=t, tool=t, args={}) for t in tools]
+            HandoffStep(
+                id="h", handoff=handoff, steps=[ToolStep(id=t, tool=t, args={}) for t in tools]
             )
         ]
     else:
-        steps = [PlaybookStep(id=t, tool=t, args={}) for t in tools]
+        steps = [ToolStep(id=t, tool=t, args={}) for t in tools]
     return PlaybookDocument(
         playbook_id="pb_1",
         workflow_id=WORKFLOW_ID,
@@ -817,3 +819,55 @@ class TestDistrustFreshPlaybook:
         assert reason is None
         get.assert_not_awaited()
         record.assert_not_awaited()
+
+
+def test_the_check_brief_makes_the_agent_write_the_sequence_before_judging():
+    """The false declines this closes all had the same shape: the agent judged
+    from memory of the run, saw that the arguments had differed, and called that
+    a changing sequence. Writing the placeholder list first means the variation
+    is already handled by the time question 4 is asked.
+    """
+    write_step = PLAYBOOK_CHECK_BRIEF.index("WRITE THE SEQUENCE OUT")
+    judge_step = PLAYBOOK_CHECK_BRIEF.index("Now look at the list from question 2")
+    assert write_step < judge_step, "the list has to be written before it is judged"
+    assert "even if you expect to decline" in PLAYBOOK_CHECK_BRIEF, (
+        "an agent that skips the list when it has already decided keeps judging from memory"
+    )
+    assert "Changing data is NEVER a reason" in PLAYBOOK_CHECK_BRIEF
+    assert "If you cannot point to one such call by name" in PLAYBOOK_CHECK_BRIEF
+
+
+def test_the_check_brief_names_every_decline_kind_the_tool_accepts():
+    """A kind the brief does not mention is one the agent will not reach for, and
+    the blocked_* kinds are the ones that stop a workflow burning a run a day."""
+    for kind in DeclineKind:
+        assert kind.value in PLAYBOOK_CHECK_BRIEF, f"{kind.value} is unreachable from the brief"
+    assert "branch_on naming the ONE call" in PLAYBOOK_CHECK_BRIEF
+    assert 'no kind for "the arguments were different"' in PLAYBOOK_CHECK_BRIEF
+
+
+def test_a_write_tools_own_record_is_not_an_empty_result() -> None:
+    """The prod bug: create_todo answers with the todo it just made, whose
+    ``labels`` is [] when the caller passed none. largest_list_len looks past
+    the top level, so that read as "returned no items" and marked the playbook
+    suspect. Four of the eight suspects in production were this, and each cost a
+    full agentic heal run.
+    """
+    playbook = _frozen("create_todo")
+    record = '{"successful": true, "data": {"todo": {"labels": [], "title": "Buy milk"}}}'
+
+    assert frozen_on_empty(playbook, [_call("create_todo", record)]) is None
+
+
+def test_a_fetch_that_found_nothing_is_still_suspect() -> None:
+    """The check must keep firing where it matters, including the commonest
+    shape of all: a fetch whose result only the narration reads. An earlier fix
+    scoped this to steps another step referenced, which let exactly that shape
+    through."""
+    playbook = _frozen("GMAIL_FETCH_MESSAGES")
+    nothing = '{"successful": true, "data": {"messages": []}}'
+
+    reason = frozen_on_empty(playbook, [_call("GMAIL_FETCH_MESSAGES", nothing)])
+
+    assert reason is not None
+    assert "GMAIL_FETCH_MESSAGES" in reason

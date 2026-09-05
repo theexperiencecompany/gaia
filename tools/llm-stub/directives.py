@@ -107,14 +107,15 @@ def parse_directives(text: str) -> list[Directive]:
     of those args and never starts a directive of its own.
     """
     directives: list[Directive] = []
-    directive: Directive
+    directive: Directive | None
     pos = 0
     while (opener := _DIRECTIVE_OPEN_RE.search(text, pos)) is not None:
         if opener.group(1) == "say":
             directive, pos = _scan_say(text, opener.end())
         else:
             directive, pos = _scan_tool(text, opener.end())
-        directives.append(directive)
+        if directive is not None:
+            directives.append(directive)
     return directives
 
 
@@ -132,8 +133,19 @@ def _scan_say(text: str, start: int) -> tuple[SayDirective, int]:
     return SayDirective(text=text[start:end].strip()), end + len(_CLOSE)
 
 
-def _scan_tool(text: str, start: int) -> tuple[ToolDirective, int]:
-    """Tool args end where their JSON value ends, not at the first ``]]``."""
+#: How a directive looks once it has been embedded in a JSON string: its quotes
+#: escaped. GAIA renders the previous run's recorded tool calls, the scripted
+#: task text included, into the next run's context, so a run after the first
+#: sees its own script quoted back this way. Nobody authors args as ``{\"``.
+_QUOTED_ARGS_OPEN = '{\\"'
+
+
+def _scan_tool(text: str, start: int) -> tuple[ToolDirective | None, int]:
+    """Tool args end where their JSON value ends, not at the first ``]]``.
+
+    ``None`` when the opener is a quoted copy of a directive rather than one:
+    the scan resumes after the opener, and the copy stays plain text.
+    """
     cursor = start
     while cursor < len(text) and not text[cursor].isspace() and not text.startswith(_CLOSE, cursor):
         cursor += 1
@@ -144,6 +156,8 @@ def _scan_tool(text: str, start: int) -> tuple[ToolDirective, int]:
     cursor = _skip_space(text, cursor)
     if text.startswith(_CLOSE, cursor):
         return ToolDirective(name=name, args={}), cursor + len(_CLOSE)
+    if text.startswith(_QUOTED_ARGS_OPEN, cursor):
+        return None, cursor
 
     try:
         args, cursor = _JSON_DECODER.raw_decode(text, cursor)

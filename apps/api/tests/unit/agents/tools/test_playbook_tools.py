@@ -8,7 +8,7 @@ production would reject it.
 
 from datetime import UTC, datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -20,21 +20,25 @@ import yaml
 
 from app.agents.tools.playbook_tools import (
     _explain_validation_error,
+    _replayed_results,
     _run_results,
+    _subagent_results,
     decline_playbook,
     disable_playbook,
     read_playbook,
     write_playbook,
 )
-from app.constants.agents import PLAYBOOK_DECLINE_LIMIT
+from app.constants.agents import PLAYBOOK_DECLINE_LIMIT, PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.models.playbook_models import (
+    DeclineKind,
     PlaybookBody,
     PlaybookDocument,
     PlaybookRunStatus,
     PlaybookStepInput,
     playbook_body_from_input,
 )
+from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import (
     PlaybookDiscard,
     TriggerConfig,
@@ -93,9 +97,19 @@ class _FakePlaybookStore:
         return self.documents.pop((workflow_id, user_id), None) is not None
 
 
+RUN_ID = "stream_run_1"
+
+
 def _config() -> RunnableConfig:
     return {
-        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID},
+        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID, "stream_id": RUN_ID},
+        "metadata": {"user_id": USER_ID},
+    }
+
+
+def _config_for_run(run_id: str) -> RunnableConfig:
+    return {
+        "configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID, "stream_id": run_id},
         "metadata": {"user_id": USER_ID},
     }
 
@@ -143,6 +157,28 @@ class _FakeWorkflowStore:
             return None
         self.workflow = self.workflow.model_copy(update=update.model_dump(exclude_unset=True))
         return self.workflow
+
+    async def count_playbook_decline(
+        self, workflow_id: str, user_id: str, *, run_id: str, workflow_hash: str
+    ) -> int | None:
+        """The repository's rule, in memory: once per run, a fresh tally per hash."""
+        if (workflow_id, user_id) != (WORKFLOW_ID, USER_ID):
+            return None
+        current = self.workflow
+        if current.playbook_declined_hash == workflow_hash:
+            if current.playbook_declined_run == run_id:
+                return None
+            declines = current.playbook_declines + 1
+        else:
+            declines = 1
+        self.workflow = current.model_copy(
+            update={
+                "playbook_declines": declines,
+                "playbook_declined_hash": workflow_hash,
+                "playbook_declined_run": run_id,
+            }
+        )
+        return declines
 
 
 def _existing(store: _FakePlaybookStore) -> PlaybookDocument:
@@ -207,6 +243,7 @@ def workflows() -> MagicMock:
     repo = MagicMock()
     repo.get_for_user = AsyncMock(return_value=_workflow())
     repo.update_for_user = AsyncMock(return_value=_workflow())
+    repo.count_playbook_decline = AsyncMock(return_value=1)
     return repo
 
 
@@ -427,13 +464,17 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
             result = await decline_playbook.ainvoke(
-                {"reason": "the call order depends on the inbox"},
+                {
+                    "kind": "order_branches",
+                    "branch_on": "create_todo",
+                    "reason": "the call order depends on the inbox",
+                },
                 config=_config(),
             )
 
         assert result == {
             "success": True,
-            "data": {"declined": True},
+            "data": {"declined": True, "counted": True, "declines": 1},
             "message": "Noted. This workflow keeps reasoning out every run for now.",
         }
         assert store.documents == {}, "a decline must never write a playbook"
@@ -441,7 +482,12 @@ class TestDeclinePlaybook:
             tool={"name": "decline_playbook", "action": "decline"}, workflow_id=WORKFLOW_ID
         )
         assert log.set_ns.call_args_list == [
-            call("playbook", declined=True, decline_reason="the call order depends on the inbox"),
+            call(
+                "playbook",
+                declined=True,
+                decline_kind="order_branches",
+                decline_reason="the call order depends on the inbox",
+            ),
             call("playbook", declines=1),
         ]
 
@@ -460,7 +506,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": False,
@@ -479,8 +528,14 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config_for_run("a later fire"),
+            )
 
         assert workflows.workflow.playbook_declines == 2
         assert workflows.workflow.playbook_declined_hash == workflow_hash(
@@ -501,7 +556,10 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
         ):
-            await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert workflows.workflow.playbook_declines == 1
 
@@ -519,11 +577,14 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": True,
-            "data": {"declined": True, "disabled": True},
+            "data": {"declined": True, "counted": True, "declines": 1, "disabled": True},
             "message": "Noted. The stored playbook was removed; this workflow reasons out every "
             "run again.",
         }
@@ -538,11 +599,14 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.playbook_repository", store),
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {
             "success": True,
-            "data": {"declined": True},
+            "data": {"declined": True, "counted": True, "declines": 1},
             "message": "Noted. This workflow keeps reasoning out every run for now.",
         }
         assert store.documents[(WORKFLOW_ID, USER_ID)] == before
@@ -599,7 +663,8 @@ class TestDeclinePlaybook:
             patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
         ):
             result = await decline_playbook.ainvoke(
-                {"reason": "order varies"}, config=_config_for(OTHER_USER)
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config_for(OTHER_USER),
             )
 
         assert result == {
@@ -681,7 +746,7 @@ class TestWorkflowIdFromConfig:
         [
             (write_playbook, NEW_ARGS),
             (read_playbook, {}),
-            (decline_playbook, {"reason": "r"}),
+            (decline_playbook, {"kind": "unstable_discovery", "reason": "r"}),
             (disable_playbook, {"reason": "r"}),
         ],
         ids=["write", "read", "decline", "disable"],
@@ -808,7 +873,10 @@ class TestPlaybookToolContract:
             patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
             patch(f"{TOOLS_MODULE}.log") as log,
         ):
-            result = await decline_playbook.ainvoke({"reason": "order varies"}, config=_config())
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "create_todo", "reason": "order varies"},
+                config=_config(),
+            )
 
         assert result == {"success": False, "error": "decline_failed", "message": "mongo down"}
         log.error.assert_called_once_with(
@@ -1524,4 +1592,554 @@ class TestTheRunTheWriteIsCheckedAgainst:
                 {**NEW_ARGS, "steps": [FETCH_STEP], "state": state}, config=_config()
             )
 
-        assert log.set_ns.call_args_list[0] == call("playbook", checked_against_calls=2)
+        # The capture telemetry (what the write could see in each scope) comes
+        # first; the count the validator was handed is its own line.
+        assert call("playbook", checked_against_calls=2) in log.set_ns.call_args_list
+        captured = next(c.kwargs for c in log.set_ns.call_args_list if "subagent_calls" in c.kwargs)
+        assert captured["subagent_calls"] == 0
+
+
+PAUSE_TARGET = "app.services.workflow.integration_pause.pause_workflow_for_missing_integrations"
+
+
+@pytest.mark.unit
+class TestBlockedDeclines:
+    """A run that never reached the work did not judge the sequence.
+
+    Prod ran ~907 declines in 48h and ~80% of them said the same thing: the
+    integration was never connected. Counting those burned all three chances in
+    under two days and locked the workflow out of ever earning a playbook — the
+    one thing that would have made it cheap once the user did connect.
+    """
+
+    async def test_a_blocked_run_pauses_the_workflow_and_costs_no_strike(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["github"])) as pause,
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github"],
+                    "reason": "GitHub is not connected, so no PRs were fetched",
+                },
+                config=_config(),
+            )
+
+        pause.assert_awaited_once_with(WORKFLOW_ID, USER_ID, ["github"])
+        assert result == {
+            "success": True,
+            "data": {
+                "declined": True,
+                "blocked": True,
+                "counted": False,
+                "paused": True,
+                "integrations": ["github"],
+            },
+            "message": "Noted. This workflow is paused until github is connected, and resumes "
+            "by itself then.",
+        }
+        assert workflows.workflow.playbook_declines == 0, (
+            "a run that never reached the work must not spend one of the workflow's chances"
+        )
+
+    async def test_a_pause_on_several_integrations_names_them_all(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["github", "gmail"])),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github", "gmail"],
+                    "reason": "neither is connected",
+                },
+                config=_config(),
+            )
+        assert result["message"] == (
+            "Noted. This workflow is paused until github, gmail are connected, and resumes "
+            "by itself then."
+        )
+
+    async def test_a_claim_that_does_not_check_out_pauses_nothing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The claim comes from a model. An integration it names may be
+        connected and have failed for some unrelated reason, and pausing a
+        working workflow is worse than the run it would have saved."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock(return_value=[])),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["github"],
+                    "reason": "GitHub looked disconnected",
+                },
+                config=_config(),
+            )
+
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "blocked": True, "counted": False, "paused": False},
+            "message": "Noted, but those integrations look connected from here, so the "
+            "workflow is still active.",
+        }
+        assert workflows.workflow.playbook_declines == 0
+
+    async def test_a_blocked_run_mid_heal_keeps_the_stored_playbook(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """An ordinary decline during a heal deletes the playbook, because the
+        agent is saying the sequence cannot hold. A blocked run says nothing of
+        the kind — it never ran the sequence — so deleting a working shortcut
+        over a disconnected account is pure loss."""
+        existing = _existing(store)
+        existing.last_run_status = PlaybookRunStatus.SUSPECT
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+            patch(PAUSE_TARGET, AsyncMock(return_value=["gmail"])),
+        ):
+            await decline_playbook.ainvoke(
+                {
+                    "kind": "blocked_missing_integration",
+                    "integrations": ["gmail"],
+                    "reason": "Gmail is not connected",
+                },
+                config=_config(),
+            )
+
+        assert store.documents, "a blocked run must not delete the workflow's playbook"
+
+    async def test_no_budget_costs_no_strike_and_pauses_nothing(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(PAUSE_TARGET, AsyncMock()) as pause,
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "blocked_no_budget", "reason": "daily allowance was spent"},
+                config=_config(),
+            )
+
+        pause.assert_not_awaited()
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "blocked": True, "counted": False},
+            "message": "Noted — this run never reached the work, so it does not count against "
+            "the workflow. It will be asked again on a run that gets further.",
+        }
+        assert call("playbook", blocked=True, blocked_integrations=[]) in log.set_ns.call_args_list
+        assert workflows.workflow.playbook_declines == 0
+
+
+@pytest.mark.unit
+class TestDeclineKindArguments:
+    """The schema is the guard: the answers that were wrong in prod are the ones
+    the tool refuses to accept, so the agent re-decides inside the same graph
+    loop rather than costing another model call."""
+
+    async def test_a_blocked_integration_decline_must_name_the_integrations(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", _FakeWorkflowStore()),
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "blocked_missing_integration", "reason": "nothing was connected"},
+                config=_config(),
+            )
+
+        assert result == {
+            "success": False,
+            "error": "integrations_required",
+            "message": "blocked_missing_integration has to name the integrations the run "
+            "could not use. Call decline_playbook again with integrations=[...].",
+        }
+
+    async def test_order_branches_must_name_the_branching_call(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The false decline this closes, verbatim from prod: "the googlecalendar
+        call targets a run-dependent event and its attendees". Those are
+        arguments, and placeholders already carry them — so there is no call to
+        name, and the tool says so instead of spending a strike."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "reason": "the attendees differ every run"},
+                config=_config(),
+            )
+
+        assert result == {
+            "success": False,
+            "error": "branch_on_required",
+            "message": "order_branches has to name the one call that runs on some days and not "
+            "others, as branch_on. If every call you made happens every run and only their "
+            "arguments differ, the order does not branch — use placeholders and call "
+            "write_playbook. If only the NUMBER of times a call repeats differs, that is a "
+            "for_each step, not a decline.",
+        }
+        assert workflows.workflow.playbook_declines == 0, "a refused decline is not a decline"
+
+    async def test_there_is_no_kind_for_arguments_varying(self) -> None:
+        """``args_vary`` is unspellable by construction — the enum has no member
+        for it, so the model cannot offer the reason that was wrong ~15 times in
+        two days, concentrated in the most expensive workflows."""
+        assert "args_vary" not in {k.value for k in DeclineKind}
+        assert "fan_out_varies" not in {k.value for k in DeclineKind}
+
+
+@pytest.mark.unit
+class TestOneDecisionPerRun:
+    """Seen live: one run called decline_playbook three times and burned all
+    three of the workflow's chances in a single fire. A run is one decision,
+    however many times the model voices it."""
+
+    async def test_a_second_decline_in_the_same_run_is_not_counted(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """Seen live again on the real model: it voiced the decision five times in
+        ONE turn. Those calls run in parallel on one state, so none can see
+        another's answer; the tally is scoped to the run in the repository."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            first = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "once"}, config=_config()
+            )
+            second = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "again"}, config=_config()
+            )
+
+        assert first["data"]["counted"] is True
+        assert second == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "Already noted for this run. A run is one decision; nothing more to record.",
+        }
+        assert workflows.workflow.playbook_declines == 1, "the second voice of one decision is free"
+        assert workflows.workflow.playbook_declined_run == RUN_ID
+
+    async def test_a_decline_after_a_write_in_the_same_run_is_not_a_second_decision(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        """Seen on the real model: a valid write_playbook, then decline_playbook
+        in the same turn. The write is the decision; the decline must neither
+        count nor remove what the run just wrote."""
+        tally = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", tally),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        ):
+            written = await write_playbook.ainvoke(NEW_ARGS, config=_config())
+            declined = await decline_playbook.ainvoke(
+                {"kind": "order_branches", "branch_on": "list_events", "reason": "r"},
+                config=_config(),
+            )
+
+        assert written["success"] is True
+        assert declined == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "This run already wrote a playbook, and that is its decision; nothing "
+            "to record.",
+        }
+        assert store.documents[(WORKFLOW_ID, USER_ID)].authored_run == RUN_ID
+        assert tally.workflow.playbook_declines == 0
+
+    async def test_the_next_run_counts_again(self, store: _FakePlaybookStore) -> None:
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "r"}, config=_config()
+            )
+            result = await decline_playbook.ainvoke(
+                {"kind": "unstable_discovery", "reason": "r"}, config=_config_for_run("run_2")
+            )
+
+        assert result["data"]["counted"] is True
+        assert workflows.workflow.playbook_declines == 2
+
+    async def test_a_quiet_day_claim_is_refused_when_the_run_did_the_work(
+        self, store: _FakePlaybookStore
+    ) -> None:
+        """The claim is checked against the run's own record: a run that made a
+        doing-call (create, send, update) had work, whatever it says."""
+        workflows = _FakeWorkflowStore()
+        did_work = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "c1", "name": "create_todo", "args": {"title": "x"}, "type": "tool_call"},
+                {"id": "c2", "name": "send_email", "args": {"to": "a@b.com"}, "type": "tool_call"},
+            ],
+        )
+        answered = [
+            ToolMessage(content=json.dumps({"success": True}), tool_call_id="c1"),
+            ToolMessage(content="sent", tool_call_id="c2"),
+        ]
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        ):
+            result = await decline_playbook.ainvoke(
+                {
+                    "kind": "no_work_today",
+                    "reason": "nothing to do",
+                    "state": {"messages": [did_work, *answered]},
+                },
+                config=_config(),
+            )
+
+        assert result["success"] is False
+        assert result == {
+            "success": False,
+            "error": "work_happened",
+            "message": "This run called create_todo, send_email, so the work happened today. "
+            "Freeze it with write_playbook, or decline with the kind that says why the "
+            "sequence cannot hold.",
+        }
+        assert workflows.workflow.playbook_declines == 0
+
+    async def test_a_quiet_day_is_not_a_verdict(self, store: _FakePlaybookStore) -> None:
+        """Nothing to act on means the calls that do the work never happened;
+        counting that would spend a seasonal workflow's chances on empty days."""
+        workflows = _FakeWorkflowStore()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            result = await decline_playbook.ainvoke(
+                {"kind": "no_work_today", "reason": "no overdue todos"}, config=_config()
+            )
+
+        assert result == {
+            "success": True,
+            "data": {"declined": True, "counted": False},
+            "message": "Noted: nothing to freeze on a day the work did not happen. This does "
+            "not count against the workflow.",
+        }
+        assert call("playbook", quiet_day=True) in log.set_ns.call_args_list
+        assert workflows.workflow.playbook_declines == 0
+        assert workflows.workflow.activated is True
+
+
+@pytest.mark.unit
+class TestAStoppedReplaysCallsCountAsThisRuns:
+    """Seen live: a replay ran list_todos, stopped, and the agent finishing the
+    fire, told not to repeat it, rewrote the playbook keeping that step. The
+    write was refused: "list_todos did not run in this run". It did. The
+    replay's calls reach the write now, structurally, and come first."""
+
+    def test_replayed_calls_are_prepended_to_the_runs_results(self) -> None:
+        replayed = RecordedCall(
+            tool_name="list_todos",
+            args={"limit": 100},
+            result_digest='{"todos": [{"id": "a"}]}',
+            subagent="todos",
+        )
+        config = {
+            "configurable": {
+                **_config()["configurable"],
+                PLAYBOOK_REPLAYED_CALLS_KEY: [replayed.model_dump(mode="json")],
+            }
+        }
+
+        results = _replayed_results(config)
+
+        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
+            ("list_todos", {"limit": 100}, {"todos": [{"id": "a"}]}, "todos")
+        ]
+
+
+@pytest.mark.unit
+class TestSubagentResults:
+    """What the write reads for a handoff's children: the stream's captured
+    calls, scoped to the subagent, with the capture counts on the wide event."""
+
+    def test_a_run_without_a_stream_has_no_subagent_calls(self) -> None:
+        config: RunnableConfig = {"configurable": {"user_id": USER_ID, "workflow_id": WORKFLOW_ID}}
+        with (
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data") as drain,
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            assert _subagent_results(config) == []
+        drain.assert_not_called()
+        assert log.set_ns.call_args_list == [call("playbook", subagent_calls=None)]
+
+    def test_the_streams_children_come_back_in_their_scope_and_are_counted(self) -> None:
+        child = RecordedCall(
+            tool_name="list_events",
+            args={"calendar_id": "primary"},
+            result_digest='{"events": [{"id": 0}]}',
+            subagent="gmail",
+        )
+        own = RecordedCall(tool_name="handoff", args={"subagent_id": "gmail"})
+        entries = [{"tool_name": "tool_calls_data"}, {"tool_name": "tool_calls_data"}]
+        with (
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=entries) as drain,
+            patch(f"{TOOLS_MODULE}.build_trace", return_value=[own, child]) as trace,
+            patch(f"{TOOLS_MODULE}.log") as log,
+        ):
+            results = _subagent_results(_config())
+
+        drain.assert_called_once_with(RUN_ID)
+        trace.assert_called_once_with(entries)
+        assert [(r.tool_name, r.args, r.result, r.subagent) for r in results] == [
+            ("list_events", {"calendar_id": "primary"}, {"events": [{"id": 0}]}, "gmail")
+        ]
+        assert log.set_ns.call_args_list == [
+            call(
+                "playbook",
+                capture_stream=RUN_ID,
+                captured_entries=2,
+                traced_calls=2,
+                subagent_calls=1,
+            )
+        ]
+
+    def test_no_replay_means_no_extra_results(self) -> None:
+        assert _replayed_results(_config()) == []
+
+
+@pytest.mark.unit
+async def test_a_shape_the_body_cannot_take_is_a_refusal_not_an_exception(
+    store: _FakePlaybookStore, workflows: MagicMock
+) -> None:
+    """``for_each`` without ``max_items`` is an authoring error like any other.
+    It used to escape ``playbook_body_from_input`` as a ValueError, land in the
+    catch-all, and be logged as a tool exception with a traceback."""
+    steps = [
+        {"id": "ls", "tool": "list_events", "args": {}},
+        {
+            "id": "m",
+            "tool": "send_email",
+            "for_each": "$steps.ls.items",
+            "args": {"to": "$item.email", "subject": "hi"},
+        },
+    ]
+    with (
+        patch(f"{TOOLS_MODULE}.playbook_repository", store),
+        patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+        patch(f"{PARSER_MODULE}.get_tool_registry", return_value=_FakeRegistry()),
+        patch(f"{TOOLS_MODULE}.log") as log,
+    ):
+        result = await write_playbook.ainvoke({**NEW_ARGS, "steps": steps}, config=_config())
+
+    assert isinstance(result, dict), "refused inside the tool, not at the boundary"
+    assert result["success"] is False
+    assert result["error"] == "invalid_playbook"
+    assert "max_items" in result["message"]
+    assert store.documents == {}
+    log.error.assert_not_called()
+
+
+@pytest.mark.unit
+class TestASubagentsCallsReachTheValidator:
+    """A handoff's children are not in the executor's state; the subagent's
+    calls are captured for the trace as they happen, and the write reads them
+    from there, so a child is checked against what the subagent really did."""
+
+    STEPS: ClassVar[list[dict[str, Any]]] = [
+        {
+            "id": "h",
+            "handoff": "gmail",
+            "steps": [
+                {"id": "events", "tool": "list_events", "args": {"calendar_id": "primary"}},
+                {
+                    "id": "again",
+                    "tool": "list_events",
+                    "args": {"calendar_id": "$steps.events.owner"},
+                },
+            ],
+        }
+    ]
+
+    def _state(self) -> dict[str, Any]:
+        call = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "h1", "name": "handoff", "args": {"subagent_id": "gmail", "task": "go"}}
+            ],
+        )
+        return {"messages": [call, ToolMessage(content="done", tool_call_id="h1")]}
+
+    async def _write(
+        self, store: _FakePlaybookStore, workflows: MagicMock, trace: list[RecordedCall]
+    ) -> dict[str, Any]:
+        registry = _FakeRegistry()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=[]),
+            patch(f"{TOOLS_MODULE}.build_trace", return_value=trace),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=registry),
+            patch(
+                f"{PARSER_MODULE}.resolve_subagent_tools",
+                AsyncMock(
+                    return_value=SubagentTools(tools=registry.get_tool_dict(), initial_tool_ids=[])
+                ),
+            ),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": self.STEPS, "state": self._state()}, config=_config()
+            )
+        return result if isinstance(result, dict) else json.loads(result)
+
+    async def test_the_subagents_calls_reach_the_validator_and_a_childs_result_is_readable(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        trace = [
+            RecordedCall(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result_digest='{"owner": "a@b.com", "events": [{"id": 0}]}',
+                subagent="gmail",
+            ),
+            RecordedCall(
+                tool_name="list_events",
+                args={"calendar_id": "a@b.com"},
+                result_digest='{"owner": "a@b.com", "events": [{"id": 1}]}',
+                subagent="gmail",
+            ),
+        ]
+
+        result = await self._write(store, workflows, trace)
+
+        assert result["success"] is True, result
+        assert (WORKFLOW_ID, USER_ID) in store.documents
+
+    async def test_without_the_subagents_calls_the_children_are_refused(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        result = await self._write(store, workflows, [])
+
+        assert result["success"] is False
+        assert result["error"] == "invalid_playbook"
+        assert "list_events did not run" in result["message"]

@@ -38,6 +38,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
+from app.constants.agents import TOOL_RESULT_NOTE_SEPARATOR
 from app.constants.llm import (
     LOOP_GUARD_MAX_TRACKED_RUNS,
     LOOP_GUARD_STOP_IDENTICAL,
@@ -179,7 +180,8 @@ class LoopGuardMiddleware(AgentMiddleware):
                 )
                 self._append_note(
                     result,
-                    f"\n\n[Loop guard: `{tool_name}` has now been called {repeat} times in a row "
+                    f"{TOOL_RESULT_NOTE_SEPARATOR}[Loop guard: `{tool_name}` has now been called "
+                    f"{repeat} times in a row "
                     "with identical arguments. The result won't change — reuse the earlier result "
                     "and move on instead of repeating this call.]",
                 )
