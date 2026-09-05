@@ -29,6 +29,10 @@ export interface IntegrationDeepLinkHandlers {
    * the integration may not be in the cached list yet.
    */
   onOpen: (integrationId: string, opts: { refresh: boolean }) => void;
+  /** `?connect=<id>`: start that integration's connect flow on arrival. Used by
+   *  the links GAIA puts in chat, so "Connect Gmail" is one tap, not a page
+   *  and a search. */
+  onConnectRequested: (integrationId: string) => void;
 }
 
 /**
@@ -55,6 +59,7 @@ export function useIntegrationDeepLink(
     const error = searchParams.get("error");
     const oauthSuccess = searchParams.get("oauth_success");
     const refresh = searchParams.get("refresh") === "true";
+    const connect = searchParams.get("connect");
     const h = handlersRef.current;
 
     const clearMcpParams = () => {
@@ -96,6 +101,16 @@ export function useIntegrationDeepLink(
     if (id) {
       h.onOpen(id, { refresh });
       clearMcpParams();
+      return;
+    }
+
+    // A connect request from a chat link. Consumed once: the param is stripped
+    // before the OAuth redirect so coming back never re-triggers it.
+    if (connect) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("connect");
+      router.replace(url.pathname + url.search, { scroll: false });
+      h.onConnectRequested(connect);
     }
   }, [searchParams, router]);
 }

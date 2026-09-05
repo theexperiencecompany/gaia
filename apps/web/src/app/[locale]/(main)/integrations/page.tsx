@@ -210,6 +210,9 @@ export default function IntegrationsPage() {
         handleIntegrationClick(integrationId);
       }
     },
+    onConnectRequested: (integrationId) => {
+      void connectIntegration(integrationId);
+    },
   });
 
   // Handler for pressing Enter in search input

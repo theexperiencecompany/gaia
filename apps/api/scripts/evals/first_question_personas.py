@@ -58,6 +58,7 @@ from app.agents.llm.client import (
 )
 from app.agents.prompts.new_user_prompts import TARGET_REPLY_EXAMPLE
 from app.models.user_models import OnboardingNeed, OnboardingPreferences
+from app.services.onboarding.first_conversation import HANDOVER_LINE
 from app.services.onboarding.first_question import (
     QUESTION_TIMEOUT_SECONDS,
     compose_first_question,
@@ -161,7 +162,7 @@ def print_personas(rows: list[tuple[str, object]]) -> None:
             print("  outcome: fallback (static line kept)")
             continue
         print("  outcome: llm")
-        print(f"  question: {result.question}")
+        print(f"  chips: {result.chips}")
         print(f"  chips:    {result.chips}")
     print(f"\nfallbacks: {fallbacks}/{len(rows)}")
 
@@ -442,12 +443,12 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
     for index, (label, result) in enumerate(rows[:FOLLOW_PERSONA_COUNT]):
         print(f"\n\n######## follow: {label}")
         if result is None:
-            print("  skipped (no question was composed)")
+            print("  skipped (no chips were composed)")
             continue
         email = FOLLOW_USER_TEMPLATE.format(slug=f"{index}-{_slug(label)}")
         await _provision(api_url, email, PERSONAS[index][1])
         print(f"  user: {email}")
-        print(f"  question: {result.question}")
+        print(f"  chips: {result.chips}")
         async with httpx.AsyncClient(
             headers={"X-Dev-User": email}, cookies={"dev_bypass_user": email}
         ) as client:
@@ -474,7 +475,7 @@ async def run_follow(rows: list[tuple[str, object]], api_url: str, turns: int) -
                             persona=label,
                             chip=chip,
                             turn_number=turn_number,
-                            question=result.question,
+                            question=HANDOVER_LINE,
                             turn=turn,
                         )
                     )
