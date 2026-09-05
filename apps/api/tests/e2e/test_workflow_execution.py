@@ -36,7 +36,11 @@ from langgraph.store.memory import InMemoryStore
 import pytest
 
 from app.agents.core import agent as agent_module
-from app.agents.core.graph_builder.build_graph import build_comms_graph, build_executor_graph
+from app.agents.core.graph_builder.build_graph import (
+    EXECUTOR_INITIAL_TOOL_IDS,
+    build_comms_graph,
+    build_executor_graph,
+)
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.api.v1.middleware import tiered_rate_limiter
@@ -402,9 +406,6 @@ class TestWorkflowExecution:
         to ``reject_unbound_tools``. Asserting the call is NOT rejected proves the
         real middleware stack is present and its tool is reachable.
         """
-        import ast
-        import inspect
-
         fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
@@ -429,18 +430,14 @@ class TestWorkflowExecution:
             _stub.__doc__ = f"Stub for {name}."
             return lc_tool(_stub)
 
-        # Dynamically read initial_tool_ids from the real source so the mock
-        # registry always provides stubs for every tool the graph expects.
-        src = inspect.getsource(build_executor_graph)
+        # Stub every tool the graph binds up front, so the mock registry always
+        # satisfies what build_executor_graph expects.
         injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
-        idx = src.find("initial_tool_ids=")
-        if idx != -1:
-            bracket_start = src.index("[", idx)
-            bracket_end = src.index("]", bracket_start) + 1
-            raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
-        else:
-            raw_ids = []
-        tool_dict = {tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph}
+        tool_dict = {
+            tid: _make_stub(tid)
+            for tid in EXECUTOR_INITIAL_TOOL_IDS
+            if tid not in injected_by_graph
+        }
 
         mock_registry = MagicMock()
         mock_registry.get_tool_dict.return_value = tool_dict

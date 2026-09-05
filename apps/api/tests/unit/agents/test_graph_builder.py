@@ -420,6 +420,86 @@ class TestBuildExecutorGraph:
         assert kwargs["hooks_config"].require_finish_to_end is True
         assert "save_learned_skill" in kwargs["tools_config"].initial_tool_ids
 
+    async def test_handoff_is_the_delegation_tool_by_default(self):
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert "handoff" in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" in registry
+        assert "activate_integration" not in kwargs["tools_config"].initial_tool_ids
+
+    async def test_activation_flag_adds_activate_integration_and_keeps_handoff(self, monkeypatch):
+        """Activation leads with activate_integration but keeps handoff bound: it
+        is the only path for per-user MCP integrations, which cannot be activated
+        in-context, so both live in the bound set and the registry.
+        """
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert "activate_integration" in kwargs["tools_config"].initial_tool_ids
+        assert "activate_integration" in registry
+        assert "handoff" in kwargs["tools_config"].initial_tool_ids
+        assert "handoff" in registry
+
+    async def test_activation_flag_keeps_the_rest_of_the_initial_tool_set(self, monkeypatch):
+        """activate_integration leads; the full initial set (handoff included) follows."""
+        from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
+
+        expected = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+        assert kwargs["tools_config"].initial_tool_ids == expected
+
+    async def test_activation_flag_keeps_wait_for_subagents(self, monkeypatch):
+        """wait_for_subagents is handoff's pair, and handoff stays bound under
+        activation for per-user MCP, so its collector stays too.
+        """
+        from app.config.settings import settings
+        from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
+
+        monkeypatch.setattr(settings, "ENABLE_INTEGRATION_ACTIVATION", True)
+
+        with ExitStack() as stack:
+            deps = _apply_patches(stack)
+            from app.agents.core.graph_builder.build_graph import build_executor_graph
+
+            async with build_executor_graph(chat_llm=deps["llm"], in_memory_checkpointer=True):
+                pass
+
+            call = deps["mocks"][f"{_MOD}.create_agent"].call_args
+            kwargs, registry = call.kwargs, call.args[1]
+
+        assert WAIT_FOR_SUBAGENTS_NAME in kwargs["tools_config"].initial_tool_ids
+        assert WAIT_FOR_SUBAGENTS_NAME in registry
+
     async def test_yields_compiled_graph_postgres(self):
         fake_cp = MagicMock(name="postgres_checkpointer")
         fake_manager = MagicMock()

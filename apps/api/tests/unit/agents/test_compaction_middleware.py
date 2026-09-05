@@ -1799,3 +1799,73 @@ class TestWritePathAndIdentityKwargs:
             await mw.awrap_tool_call(request, handler)
 
         assert calls["existing_additional_kwargs"] == {"pre": True}
+
+
+class TestCommandReturningToolsAreCompacted:
+    """`spawn_subagent` and `activate_integration` return a Command so they can bind
+    tools or drive the graph — their ToolMessage rides inside it. Before this was
+    unwrapped, `awrap_tool_call` returned early on anything that was not a bare
+    ToolMessage, so those outputs were never compacted at any size."""
+
+    @staticmethod
+    async def _run(mw, payload: str, update_extra: dict | None = None):
+        inner = _tool_msg(payload)
+        update = {"messages": [inner], **(update_extra or {})}
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return Command(update=update)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            return_value=WROTE,
+        ):
+            return await mw.awrap_tool_call(_request(), handler)
+
+    async def test_a_command_wrapped_output_is_compacted(self) -> None:
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        big = json.dumps([{"i": i} for i in range(500)])
+
+        result = await self._run(mw, big)
+
+        assert isinstance(result, Command)
+        message = result.update["messages"][0]
+        assert message.additional_kwargs["compacted"] is True
+        assert len(message.content) < len(big)
+
+    async def test_the_tool_s_own_bindings_survive_compaction(self) -> None:
+        """The Command exists to bind tools. Compaction must not drop them, and the
+        offload miners must be added alongside rather than replace them."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        big = json.dumps([{"i": i} for i in range(500)])
+
+        result = await self._run(mw, big, {"selected_tool_ids": ["GMAIL_FETCH_MESSAGES"]})
+
+        bound = result.update["selected_tool_ids"]
+        assert bound[0] == "GMAIL_FETCH_MESSAGES"
+        assert "query_json" in bound and "grep" in bound
+
+    async def test_a_small_command_output_is_left_alone(self) -> None:
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+
+        result = await self._run(mw, "tiny", {"selected_tool_ids": ["read"]})
+
+        assert result.update["messages"][0].content == "tiny"
+        assert result.update["selected_tool_ids"] == ["read"]
+
+    async def test_a_multi_message_command_passes_through(self) -> None:
+        """Only a single-ToolMessage Command is a tool output; anything else is
+        graph control flow and must not be rewritten."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
+        big = json.dumps([{"i": i} for i in range(500)])
+        update = {"messages": [_tool_msg(big), _tool_msg(big)]}
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return Command(update=update)
+
+        result = await mw.awrap_tool_call(_request(), handler)
+        assert result.update["messages"][0].content == big

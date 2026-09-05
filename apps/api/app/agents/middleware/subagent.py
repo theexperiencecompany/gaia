@@ -8,7 +8,7 @@ bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 from typing import Annotated, Any, Protocol
 
@@ -100,6 +100,10 @@ class SubagentMiddlewareConfig:
     store: BaseStore | None = None
     tool_runtime_config: ToolRuntimeConfig | None = None
     spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None
+    #: Carry the parent's bound tools into each spawn. On under integration
+    #: activation, where the parent binds an integration in its own turn and
+    #: delegates the work here; off otherwise, keeping the lean spawn start.
+    inherit_parent_tools: bool = False
 
 
 class SubagentState(AgentState[Any]):
@@ -128,6 +132,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._system_prompt = settings.system_prompt
         self._excluded_tools = settings.excluded_tool_names or set()
         self._excluded_tools.add("spawn_subagent")
+        self._inherit_parent_tools = settings.inherit_parent_tools
         self._tool_space = settings.tool_space
         self._store: BaseStore | None = settings.store
         self._tool_runtime_config = settings.tool_runtime_config or ToolRuntimeConfig(
@@ -305,6 +310,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tool_call_id: str,
         inherited_tool_names: list[str] | None,
     ) -> SubagentExecutionContext:
+        inherited = (
+            [name for name in (inherited_tool_names or []) if name not in self._excluded_tools]
+            if self._inherit_parent_tools
+            else []
+        )
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
         if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
@@ -316,12 +326,27 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         middleware_factory = self._spawn_middleware_factory
         tool_space = self._tool_space
+        # Carry the parent's activated tools into the spawn via initial_tool_names,
+        # not just the state channel: the spawn graph is cached and its bindable
+        # set is frozen at compile time, so a graph built before an integration was
+        # activated would reject those tools. Threading them here changes the cache
+        # key (see spawn_agent._cache_key), forcing a fresh graph whose registry
+        # snapshot already holds them.
+        runtime = self._tool_runtime_config
+        if inherited:
+            runtime = replace(
+                runtime,
+                initial_tool_names=[
+                    *runtime.initial_tool_names,
+                    *(n for n in inherited if n not in runtime.initial_tool_names),
+                ],
+            )
         graph = await self._spawn_graph_provider(
             llm=self._llm,
             registry=self._tool_registry or {t.name: t for t in self._available_tools},
             excluded_tool_names=self._excluded_tools,
             tool_space=tool_space,
-            runtime=self._tool_runtime_config,
+            runtime=runtime,
             middleware_factory=lambda: middleware_factory(tool_space),
         )
 
@@ -374,14 +399,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             initial_state={
                 "messages": messages,
                 "todos": [],
-                # Inherit whatever the parent has bound this turn. acall_model
-                # unions initial_tool_ids with state["selected_tool_ids"], so
-                # seeding the channel here is what carries the inheritance over.
-                "selected_tool_ids": [
-                    name
-                    for name in (inherited_tool_names or [])
-                    if name not in self._excluded_tools
-                ],
+                # Empty unless inheriting: the spawn binds its own minimal set
+                # (read/bash/finish_task) and retrieves the rest on demand, so it
+                # keeps full powers without carrying the parent's bound schemas.
+                # Under activation the parent's activated tools are seeded so the
+                # child can act on the integration it was handed (they are also in
+                # initial_tool_names above, which is what makes them bindable).
+                "selected_tool_ids": inherited,
             },
             user_id=user_id,
             stream_id=configurable.get("stream_id"),

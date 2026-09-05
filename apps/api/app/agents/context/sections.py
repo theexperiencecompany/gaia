@@ -28,6 +28,7 @@ from app.agents.context.fetchers import (
     build_core_memory_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
+    build_provider_metadata_block,
     build_tracked_todos_block,
     build_workspace_session_banner,
 )
@@ -35,6 +36,7 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.text import (
     CONNECTED_INTEGRATIONS_HEADER,
+    EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER,
     EXECUTOR_CONNECTED_INTEGRATIONS_HEADER,
 )
 from app.agents.context.tiers import ALL_TIERS, WORKER_TIERS, AgentTier
@@ -42,10 +44,10 @@ from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
 from app.agents.workspace.system_docs import integration_skills_block
 from app.config.oauth_config import get_integration_by_id
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.services.integration_instructions_service import get_instructions
-from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.user_preferences_utils import format_user_preferences_for_agent
 from shared.py.wide_events import log
 
@@ -95,36 +97,17 @@ async def _user_prefs(ctx: SectionContext) -> str:
 async def _integrations_manifest(ctx: SectionContext) -> str:
     if not ctx.user_id:
         return ""
-    header = (
-        EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
-        if ctx.tier is AgentTier.EXECUTOR
-        else CONNECTED_INTEGRATIONS_HEADER
-    )
+    if ctx.tier is not AgentTier.EXECUTOR:
+        header = CONNECTED_INTEGRATIONS_HEADER
+    elif settings.ENABLE_INTEGRATION_ACTIVATION:
+        header = EXECUTOR_ACTIVATION_CONNECTED_INTEGRATIONS_HEADER
+    else:
+        header = EXECUTOR_CONNECTED_INTEGRATIONS_HEADER
     return await build_connected_integrations_manifest(ctx.user_id, header=header)
 
 
 async def _provider_metadata(ctx: SectionContext) -> str:
-    """Who the user is on this provider — GitHub login, Gmail address, etc."""
-    if not (ctx.integration_id and ctx.user_id):
-        return ""
-    integration = get_integration_by_id(ctx.integration_id)
-    if not integration or not integration.provider:
-        return ""
-    try:
-        metadata = await get_provider_metadata(ctx.user_id, integration.provider)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Failed to fetch provider metadata",
-            provider=integration.provider,
-            user_id=ctx.user_id,
-            error_type=type(e).__name__,
-            error=str(e),
-        )
-        return ""
-    if not metadata:
-        return ""
-    lines = "\n".join(f"- {key}: {value}" for key, value in metadata.items())
-    return f"USER CONTEXT FOR {integration.name.upper()}:\n{lines}"
+    return await build_provider_metadata_block(ctx.integration_id, ctx.user_id)
 
 
 async def _custom_instructions(ctx: SectionContext) -> str:

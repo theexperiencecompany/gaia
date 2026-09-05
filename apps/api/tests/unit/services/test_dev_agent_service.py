@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
-from app.agents.llm.lane import AgentRole
+from app.agents.llm.lane import AgentRole, dev_option_for
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn
 from app.services.dev_agent_service import _dev_base_configurable, _reject_pause
 from app.utils.errors import AppError
@@ -72,7 +72,13 @@ class TestTheParentConfigurableADirectRunBuilds:
                 user={"user_id": "u1", "email": "dev@gaia.local", "name": "Dev"},
                 agent_name="executor_agent",
             ),
-            "lane": AgentLane(role=AgentRole.EXECUTOR),
+            # No model key passed, so the lane resolves the env DEV_DEFAULT_MODEL
+            # pin — the same one real chat runs — rather than leaving it None and
+            # silently falling to the plan-resolved lane.
+            "lane": AgentLane(
+                role=AgentRole.EXECUTOR,
+                dev_option=dev_option_for(None, use_defaults=True),
+            ),
             "turn": AgentTurn(user_preferences=None, writing_style=None),
         }
 

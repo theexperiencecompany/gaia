@@ -48,38 +48,22 @@ def _make_mock_tool_registry():
     """Return a minimal ToolRegistry-like mock with the attributes accessed by
     build_executor_graph / SubAgentFactory.
 
-    Dynamically creates stub tools for every non-handoff, non-todo tool that
-    appears in build_executor_graph's initial_tool_ids.  This keeps the test
-    resilient to changes in the initial tool set (e.g. vfs_cmd being added or
-    removed) without hard-coding specific tool names.
+    Stubs every non-handoff, non-todo tool in EXECUTOR_INITIAL_TOOL_IDS, so the
+    test stays resilient to changes in the initial tool set (e.g. vfs_cmd being
+    added or removed) without hard-coding specific tool names.
     """
+    from app.agents.core.graph_builder.build_graph import EXECUTOR_INITIAL_TOOL_IDS
     from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
     # Tools that build_executor_graph injects separately (handoff + todo tools)
     # and therefore do NOT need to come from the ToolRegistry mock.
     injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
 
-    # Read the actual initial_tool_ids from build_graph source so the mock
-    # provides stubs for every tool the graph expects at runtime.
-    import inspect
-
-    from app.agents.core.graph_builder import build_graph as _bg_mod
-
-    src = inspect.getsource(_bg_mod.build_executor_graph)
-    # Extract the list literal assigned to initial_tool_ids
-    import ast
-
-    # Find the initial_tool_ids=[...] in the source
-    idx = src.find("initial_tool_ids=")
-    if idx != -1:
-        bracket_start = src.index("[", idx)
-        bracket_end = src.index("]", bracket_start) + 1
-        raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
-    else:
-        raw_ids = []
-
-    # Build stubs only for tools NOT injected by build_executor_graph itself
-    tool_dict = {tid: _make_stub_tool(tid) for tid in raw_ids if tid not in injected_by_graph}
+    tool_dict = {
+        tid: _make_stub_tool(tid)
+        for tid in EXECUTOR_INITIAL_TOOL_IDS
+        if tid not in injected_by_graph
+    }
 
     registry = MagicMock()
     registry.get_tool_dict.return_value = tool_dict

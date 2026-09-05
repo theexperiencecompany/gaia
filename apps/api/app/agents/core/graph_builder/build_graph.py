@@ -18,6 +18,7 @@ from app.agents.core.nodes.pre_model_hooks import (
     worker_pre_model_hooks,
 )
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
+from app.agents.core.subagents.integration_activation import activate_integration
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
@@ -33,6 +34,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.config.settings import settings
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
@@ -43,6 +45,42 @@ from app.override.langgraph_bigtool.agent_config import (
 )
 from app.override.langgraph_bigtool.create_agent import create_agent
 from shared.py.wide_events import log
+
+#: Tools the executor binds before its first turn, ahead of any retrieve_tools call.
+#: Under ENABLE_INTEGRATION_ACTIVATION "activate_integration" leads the set;
+#: `handoff` stays for per-user MCP integrations that cannot be activated
+#: in-context — see build_executor_graph.
+EXECUTOR_INITIAL_TOOL_IDS = [
+    "handoff",
+    "execute",
+    "get_tool_schema",
+    "plan_tasks",
+    "update_tasks",
+    "read",
+    "bash",
+    "deep_research",
+    "wait_for_subagents",
+    "read_manual",
+    "create_tracked_todo",
+    "update_tracked_todo",
+    "update_tracked_todo_canvas",
+    "complete_tracked_todo",
+    "search_todo_context",
+    "list_tracked_todos",
+    "list_trigger_fields",
+    "subscribe_todo_to_trigger",
+    "unsubscribe_todo_from_trigger",
+    "save_learned_skill",
+    # Bound statically, not left to retrieve_tools: the <playbook_check>
+    # and heal briefs name these directly, so a run whose semantic
+    # retrieval happens to miss them would read the instruction, be
+    # unable to act on it, and silently never decide. A tool a prompt
+    # names by hand has to be reachable by hand.
+    "write_playbook",
+    "decline_playbook",
+    "read_playbook",
+    "disable_playbook",
+]
 
 
 @asynccontextmanager
@@ -62,19 +100,33 @@ async def build_executor_graph(
     todo_tools = create_todo_tools(source="executor")
 
     tool_dict = tool_registry.get_tool_dict()
-    tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
+
+    # handoff stays bound in both modes. Under activation it loads most
+    # integrations in-context via activate_integration, but per-user MCP
+    # integrations (auth-required or custom) issue their tools per user, so they
+    # never enter the global registry and can only run through their own per-user
+    # graph — which is exactly what handoff builds. activate_integration routes
+    # those to handoff rather than dead-ending them.
+    activation_mode = settings.ENABLE_INTEGRATION_ACTIVATION
+    tool_dict.update({"handoff": handoff_tool, WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
+    if activation_mode:
+        tool_dict.update({"activate_integration": activate_integration})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools.
     excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
+    if activation_mode:
+        excluded_subagent_tools.add("activate_integration")
 
     middleware = create_executor_middleware(
         chat_llm=chat_llm,
         subagent_excluded_tools=excluded_subagent_tools,
         subagent_tool_runtime_config=build_executor_child_tool_runtime_config(),
+        # Under activation the executor binds an integration's tools in its own
+        # turn, so a spawn it delegates to must inherit them to do the work.
+        subagent_inherit_parent_tools=activation_mode,
     )
 
     # Wire SubagentMiddleware with LLM and full tool registry
@@ -94,42 +146,19 @@ async def build_executor_graph(
 
     pre_model_hooks = worker_pre_model_hooks(todo_hook, drains_inbox=True)
 
+    if activation_mode:
+        # activate_integration leads; handoff and its pair stay for the per-user
+        # MCP integrations activation cannot bind in-context (routed there).
+        initial_tools = ["activate_integration", *EXECUTOR_INITIAL_TOOL_IDS]
+    else:
+        initial_tools = list(EXECUTOR_INITIAL_TOOL_IDS)
+
     builder = create_agent(
         chat_llm,
         tool_dict,
         tools_config=ToolRetrievalConfig(
             retrieve_tools_coroutine=get_retrieve_tools_function(),
-            initial_tool_ids=[
-                "handoff",
-                "execute",
-                "get_tool_schema",
-                "plan_tasks",
-                "update_tasks",
-                "read",
-                "bash",
-                "deep_research",
-                "wait_for_subagents",
-                "read_manual",
-                "create_tracked_todo",
-                "update_tracked_todo",
-                "update_tracked_todo_canvas",
-                "complete_tracked_todo",
-                "search_todo_context",
-                "list_tracked_todos",
-                "list_trigger_fields",
-                "subscribe_todo_to_trigger",
-                "unsubscribe_todo_from_trigger",
-                "save_learned_skill",
-                # Bound statically, not left to retrieve_tools: the <playbook_check>
-                # and heal briefs name these directly, so a run whose semantic
-                # retrieval happens to miss them would read the instruction, be
-                # unable to act on it, and silently never decide. A tool a prompt
-                # names by hand has to be reachable by hand.
-                "write_playbook",
-                "decline_playbook",
-                "read_playbook",
-                "disable_playbook",
-            ],
+            initial_tool_ids=initial_tools,
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,

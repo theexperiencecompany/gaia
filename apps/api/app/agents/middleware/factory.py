@@ -88,6 +88,8 @@ class SubagentStackOptions:
     tool_space: str = "general"
     tool_runtime_config: ToolRuntimeConfig | None = None
     join: bool = False
+    #: Carry the parent's bound tools into each spawn (integration activation).
+    inherit_parent_tools: bool = False
 
 
 @dataclass(frozen=True)
@@ -194,6 +196,7 @@ def create_middleware_stack(
                 excluded_tool_names=subagent.excluded_tools,
                 tool_space=subagent.tool_space,
                 tool_runtime_config=subagent.tool_runtime_config,
+                inherit_parent_tools=subagent.inherit_parent_tools,
                 spawn_middleware_factory=lambda space: create_subagent_middleware(
                     # No enabled=True here: a spawned child must not spawn again,
                     # and SubagentStackOptions defaults to enabled=False.
@@ -280,6 +283,7 @@ def create_executor_middleware(
     subagent_registry: Mapping[str, BaseTool] | None = None,
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
+    subagent_inherit_parent_tools: bool = False,
 ) -> AgentMiddlewareStack:
     """
     Create middleware stack for the executor agent.
@@ -313,6 +317,7 @@ def create_executor_middleware(
             registry=subagent_registry,
             excluded_tools=subagent_excluded_tools,
             tool_runtime_config=subagent_tool_runtime_config,
+            inherit_parent_tools=subagent_inherit_parent_tools,
             join=True,
         ),
         context=ContextOptions(

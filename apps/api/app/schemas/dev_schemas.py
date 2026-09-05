@@ -66,6 +66,11 @@ class RunDevAgentRequest(BaseModel):
         max_length=100,
         description="Pass the same id across calls to keep the agent's thread state",
     )
+    model: str | None = Field(
+        default=None,
+        max_length=100,
+        description="DEV_MODEL_OPTIONS key (e.g. custom, minimax-m3). Unset = DEV_DEFAULT_MODEL.",
+    )
 
 
 class DevAgentRunResponse(BaseModel):

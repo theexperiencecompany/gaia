@@ -47,8 +47,9 @@ class SubagentUnavailableError(Exception):
         self.reason = reason
 
 
-async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> None:
-    """Put a Composio subagent's toolkit in the registry, once per process.
+async def register_composio_subagent_tools(subagent: Subagent, tool_registry: ToolRegistry) -> str:
+    """Put a Composio subagent's toolkit in the registry, once per process; return
+    the toolkit name.
 
     Both the live handoff and a playbook's validator and replay resolve the
     subagent's tool space from the registry, and the toolkit is only there once
@@ -70,50 +71,38 @@ async def register_composio_subagent_tools(subagent: Subagent, tool_registry: To
             f"must correspond to an OAUTH_INTEGRATIONS entry."
         )
     config = subagent.config
+    toolkit_name = integration.composio_config.toolkit
     await tool_registry.register_provider_tools(
-        toolkit_name=integration.composio_config.toolkit,
+        toolkit_name=toolkit_name,
         space_name=config.tool_space,
         specific_tools=config.specific_tools,
         exclude_tools=config.exclude_tools,
     )
+    return toolkit_name
 
 
-async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
-    """
-    Create a provider subagent graph on-demand.
-    Registers provider tools to registry if not already present.
+async def register_integration_tools(subagent: Subagent) -> str | None:
+    """Load an integration's tools into the global registry, and name their category.
 
-    Note: For auth-required MCP integrations, use create_subagent_for_user instead.
+    The single place an integration's tools become bindable. ``create_subagent``
+    calls it to stock a provider graph; ``activate_integration`` calls it to make
+    the same tools retrievable by whoever is already running. Returns the registry
+    category holding them, or None for integrations with no category of their own
+    (internal ones ride on core tools registered at startup).
 
-    Args:
-        subagent: The Subagent to materialize a graph for
-
-    Returns:
-        Compiled subagent graph
+    Auth-required MCP integrations are not registrable: their tools are per-user
+    and live only inside MCPClient, so they raise here — build a per-user graph
+    with ``create_subagent_for_user`` instead.
     """
     config = subagent.config
     tool_registry = await get_tool_registry()
 
-    # Handle internal integrations (like todos) - tools are already registered
-    if subagent.managed_by == "internal":
-        # Internal integrations use core tools that are registered at startup
-        # No additional setup needed - tools are already in the registry
-        log.info(
-            f"{LogTag.AGENT} Internal integration using pre-registered tools",
-            integration_id=subagent.id,
-        )
-
-    # Handle MCP-managed integrations (like DeepWiki)
-    elif subagent.managed_by == "mcp" and subagent.mcp_config:
-        mcp_config = subagent.mcp_config
-        category_name = subagent.id
-
-        # Skip auth-required MCPs here - they need user-specific tokens
-        # loaded via create_subagent_for_user() with actual user_id
-        if mcp_config.requires_auth:
+    if subagent.managed_by == "mcp" and subagent.mcp_config:
+        if subagent.mcp_config.requires_auth:
             raise ValueError(
                 f"{subagent.id} requires authentication - use create_subagent_for_user"
             )
+        category_name = subagent.id
         if category_name not in tool_registry._categories:
             mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(subagent.id)
@@ -133,9 +122,29 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
                     tool_count=len(tools),
                     integration_id=subagent.id,
                 )
+        return category_name
 
-    elif subagent.managed_by == "composio":
-        await register_composio_subagent_tools(subagent, tool_registry)
+    if subagent.managed_by == "composio":
+        return await register_composio_subagent_tools(subagent, tool_registry)
+
+    return None
+
+
+async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
+    """
+    Create a provider subagent graph on-demand.
+    Registers provider tools to registry if not already present.
+
+    Note: For auth-required MCP integrations, use create_subagent_for_user instead.
+
+    Args:
+        subagent: The Subagent to materialize a graph for
+
+    Returns:
+        Compiled subagent graph
+    """
+    config = subagent.config
+    await register_integration_tools(subagent)
 
     llm = init_llm()
 

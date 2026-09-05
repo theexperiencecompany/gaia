@@ -20,7 +20,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
     prepare_executor_execution,
 )
-from app.agents.llm.lane import AgentRole
+from app.agents.llm.lane import AgentRole, dev_option_for
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentTurn, build_agent_config
 from app.models.agent_models import AgentConfigurable, AgentUserContext
@@ -45,13 +45,16 @@ def list_dev_subagents() -> list[DevSubagentInfo]:
 
 
 async def _dev_base_configurable(
-    email: str, conversation_id: str | None, agent_name: str
+    email: str, conversation_id: str | None, agent_name: str, model: str | None = None
 ) -> tuple[AgentConfigurable, str, str]:
     """Resolve the dev user and build the parent configurable a direct run needs.
 
     Returns (configurable, user_id, conversation_id). The conversation_id is
     minted when absent; passing the same one across calls reuses the derived
-    agent thread, so multi-turn behavior is testable.
+    agent thread, so multi-turn behavior is testable. ``model`` is a
+    DEV_MODEL_OPTIONS key; unset means DEV_DEFAULT_MODEL, so a direct run
+    honors the same env pin real chat uses instead of silently running the
+    plan-resolved lane.
     """
     user_doc = await require_dev_user(email)
     user_id = user_doc.id
@@ -71,7 +74,10 @@ async def _dev_base_configurable(
         # A direct dev run is top-level, so it resolves its own lane. Before
         # this it resolved none at all, which is why the dev harness quietly
         # ran a different model than real chat.
-        lane=AgentLane(role=AgentRole.EXECUTOR),
+        lane=AgentLane(
+            role=AgentRole.EXECUTOR,
+            dev_option=dev_option_for(model, use_defaults=True),
+        ),
         turn=AgentTurn(
             user_preferences=user_preferences,
             writing_style=writing_style,
@@ -97,11 +103,11 @@ def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:
 
 
 async def run_executor_direct(
-    email: str, task: str, conversation_id: str | None = None
+    email: str, task: str, conversation_id: str | None = None, model: str | None = None
 ) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, returning its final message."""
     configurable, user_id, cid = await _dev_base_configurable(
-        email, conversation_id, "executor_agent"
+        email, conversation_id, "executor_agent", model
     )
     ctx, error = await prepare_executor_execution(task=task, configurable=configurable)
     if ctx is None:
@@ -129,10 +135,16 @@ async def run_executor_direct(
 
 
 async def run_subagent_direct(
-    email: str, subagent_id: str, task: str, conversation_id: str | None = None
+    email: str,
+    subagent_id: str,
+    task: str,
+    conversation_id: str | None = None,
+    model: str | None = None,
 ) -> DevAgentRunResponse:
     """Run one subagent directly with a task, returning its final message."""
-    configurable, user_id, cid = await _dev_base_configurable(email, conversation_id, "dev_direct")
+    configurable, user_id, cid = await _dev_base_configurable(
+        email, conversation_id, "dev_direct", model
+    )
     ctx, integration_metadata, error = await prepare_subagent_execution(
         subagent_id=subagent_id,
         task=task,

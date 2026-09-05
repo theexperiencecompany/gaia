@@ -154,8 +154,10 @@ LLM_RETRY_MAX_ATTEMPTS = 3
 
 # Sticky routing (the ``session_id`` hint that pins a chain to one upstream) is
 # OpenRouter-wire behaviour. Gemini has no sticky routing, so the key is an
-# unsupported argument there and must never be sent.
-STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER, LLMProviderName.CUSTOM})
+# unsupported argument there and must never be sent. CUSTOM is excluded too: the
+# custom lane runs ChatOpenAI (the OpenRouter SDK rejects Zen's envelope), where
+# session_id as a top-level kwarg is unsupported on AsyncCompletions.create.
+STICKY_ROUTING_PROVIDERS = frozenset({LLMProviderName.OPENROUTER})
 # Auxiliary one-shots route on their own sticky session: sharing the
 # conversation's key re-pinned its provider from a background call (measured).
 AUX_SESSION_SUFFIX = "-aux"

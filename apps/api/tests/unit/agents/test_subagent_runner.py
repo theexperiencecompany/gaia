@@ -1356,7 +1356,7 @@ class TestBuildSubagentSystemPrompt:
                 return_value=integration,
             ),
             patch(
-                "app.agents.context.sections.get_provider_metadata",
+                "app.agents.context.fetchers.get_provider_metadata",
                 new_callable=AsyncMock,
                 return_value={"Username": "testuser"},
             ) as mock_meta,

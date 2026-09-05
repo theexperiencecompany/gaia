@@ -24,7 +24,9 @@ from app.agents.context.text import (
     MEMORY_RECALL_HEADER,
 )
 from app.agents.workspace.paths import session_dir
+from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import TRACKED_TODOS_SUMMARY_CACHE_KEY, TRACKED_TODOS_SUMMARY_CACHE_TTL
+from app.constants.log_tags import LogTag
 from app.db.repositories.todos import todo_repository
 from app.decorators.caching import Cacheable
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
@@ -33,6 +35,7 @@ from app.memory.mappers import entry_to_note
 from app.models.todo_models import TodoDocument
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.provider_metadata_service import get_provider_metadata
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
 from shared.py.wide_events import log
@@ -314,3 +317,32 @@ async def build_connected_integrations_manifest(user_id: str, header: str) -> st
         iid, name = item["id"], item["name"]
         lines.append(f"- {name} ({iid})" if name and name != iid else f"- {iid}")
     return "\n".join(lines)
+
+
+async def build_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
+    """Who the user is on this provider — GitHub login, Gmail address, etc.
+
+    Shared by the provider-subagent context section and ``activate_integration``:
+    an executor acting on an integration directly needs the same identity a
+    subagent got, or it does not know which account it is operating.
+    """
+    if not (integration_id and user_id):
+        return ""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        return ""
+    try:
+        metadata = await get_provider_metadata(user_id, integration.provider)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.AGENT} Failed to fetch provider metadata",
+            provider=integration.provider,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return ""
+    if not metadata:
+        return ""
+    lines = "\n".join(f"- {key}: {value}" for key, value in metadata.items())
+    return f"USER CONTEXT FOR {integration.name.upper()}:\n{lines}"
