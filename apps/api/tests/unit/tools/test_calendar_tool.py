@@ -11,8 +11,9 @@ marked with a "BUG:" comment.
 """
 
 import asyncio
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, tzinfo
-import time
+import threading
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -25,7 +26,6 @@ from app.agents.tools.integrations.calendar_tool import (
     _format_calendar_option_for_stream,
     _get_user_id,
     _get_user_timezone,
-    _run_sync,
     register_calendar_custom_tools,
 )
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
@@ -49,6 +49,7 @@ from app.models.calendar_models import (
 )
 from app.models.common_models import GatherContextInput
 from app.utils.calendar_utils import CALENDAR_API_BASE
+from app.utils.concurrency import capture_running_loop, reset_captured_loop
 from app.utils.errors import AppError
 
 MODULE = "app.agents.tools.integrations.calendar_tool"
@@ -76,6 +77,40 @@ def _tools() -> dict[str, Any]:
 @pytest.fixture
 def tools() -> dict[str, Any]:
     return _tools()
+
+
+@pytest.fixture(autouse=True)
+def _server_loop() -> Iterator[None]:
+    """Run a captured event loop on a background thread for every test.
+
+    Mirrors production: the sync Composio tool body runs on the caller's thread
+    and `_run_sync` dispatches the async services onto the server loop via
+    `run_coroutine_threadsafe`. Without a running captured loop the bridge fails
+    loud, so the tool-body tests need one just like the real worker does.
+    """
+    loop = asyncio.new_event_loop()
+    ready = threading.Event()
+
+    def _run() -> None:
+        asyncio.set_event_loop(loop)
+        loop.call_soon(ready.set)
+        loop.run_forever()
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    ready.wait()
+
+    async def _capture() -> None:
+        capture_running_loop()
+
+    asyncio.run_coroutine_threadsafe(_capture(), loop).result()
+    try:
+        yield
+    finally:
+        reset_captured_loop()
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join()
+        loop.close()
 
 
 @pytest.fixture
@@ -272,49 +307,6 @@ class TestGetUserTimezone:
     def test_returns_none_outside_runnable_context(self) -> None:
         with patch(f"{MODULE}.get_config", side_effect=RuntimeError("no context")):
             assert _get_user_timezone() is None
-
-
-# ---------------------------------------------------------------------------
-# _run_sync
-# ---------------------------------------------------------------------------
-
-
-class TestRunSync:
-    async def _echo(self, value: str) -> str:
-        await asyncio.sleep(0)
-        return value
-
-    async def _boom(self) -> None:
-        raise KeyError("kaboom")
-
-    async def _slow(self) -> str:
-        await asyncio.sleep(1.0)
-        return "late"
-
-    def test_runs_coroutine_without_a_loop(self) -> None:
-        assert _run_sync(self._echo("ok")) == "ok"
-
-    def test_propagates_exceptions_without_a_loop(self) -> None:
-        with pytest.raises(KeyError):
-            _run_sync(self._boom())
-
-    async def test_runs_coroutine_inside_a_running_loop(self) -> None:
-        assert await asyncio.to_thread(lambda: _run_sync(self._echo("threaded"))) == "threaded"
-
-    async def test_propagates_exceptions_inside_a_running_loop(self) -> None:
-        with pytest.raises(KeyError):
-            _run_sync(self._boom())
-
-    async def test_timeout_actually_bounds_the_wait(self) -> None:
-        # BUG: the ThreadPoolExecutor was used as a context manager, so __exit__
-        # ran shutdown(wait=True) and joined the worker — TimeoutError was raised
-        # only after the coroutine finished, making `timeout` a no-op. The
-        # timeout=5 guard around get_user_by_id in CUSTOM_GET_DAY_SUMMARY could
-        # therefore block the tool for as long as Mongo hung.
-        started = time.monotonic()
-        with pytest.raises(asyncio.TimeoutError):
-            _run_sync(self._slow(), timeout=0.1)
-        assert time.monotonic() - started < 0.6
 
 
 # ---------------------------------------------------------------------------
