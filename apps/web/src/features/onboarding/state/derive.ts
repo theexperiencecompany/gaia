@@ -148,18 +148,18 @@ export function getCurrentProgress(s: OnboardingState): string | null {
 
 const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
-  focus: 3,
-  clarify: 4,
-  integrationSelect: 5,
-  processing: 5,
-  revealWriting: 6,
-  revealTodos: 7,
-  workflows: 8,
-  platforms: 9,
-  chat: 10,
+  focus: 4,
+  clarify: 5,
+  integrationSelect: 6,
+  processing: 7,
+  revealWriting: 8,
+  revealTodos: 9,
+  workflows: 10,
+  platforms: 11,
+  chat: 12,
 };
 
-export const PROGRESS_TOTAL_STEPS = 10;
+export const PROGRESS_TOTAL_STEPS = 12;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;

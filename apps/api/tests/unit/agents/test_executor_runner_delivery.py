@@ -29,6 +29,7 @@ from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
 from app.services.analytics_service import AnalyticsEvents
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
 
 
 @pytest.fixture(autouse=True)
@@ -1991,6 +1992,129 @@ class TestDeliveryContextIsThreadedWhole:
             )
 
         assert narrate.await_args.kwargs["returned_note"] == "handed back by the subagent"
+
+
+class TestTheCompletionNudge:
+    """The retention loop's next-step nudge, appended to a tracked todo's finish
+    message. Three gates decide whether the user ever sees it, and each one is a
+    different wrong outcome when it slips: a nudge on a run with no todo asks
+    about work that does not exist, a nudge on a workflow run talks over the
+    completion notification, and a nudge on a night-shift run breaks the promise
+    that overnight work never pings — all while the send still reports success.
+    """
+
+    @staticmethod
+    def _todo_run(**overrides) -> ExecutorRun:
+        """A live, non-workflow run bound to a released tracked todo."""
+        return replace(
+            _run(),
+            active_todo_id="todo-9",
+            user={"user_id": "user-1", "timezone": "Asia/Kolkata"},
+            **overrides,
+        )
+
+    @staticmethod
+    async def _deliver(
+        run: ExecutorRun,
+        *,
+        nudge: str | None = "Want the follow-up drafted?",
+        nudge_fails: Exception | None = None,
+    ):
+        """Deliver ``run`` with the nudge builder spied. Returns (text, ws, spy)."""
+        with (
+            patch.object(
+                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
+            ),
+            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
+            patch.object(rd, "update_messages", new_callable=AsyncMock),
+            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
+            patch.object(rd, "deliver_result_to_platforms", new_callable=AsyncMock),
+            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+            patch.object(rd, "_spawn_deferred_follow_ups"),
+            patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
+            patch.object(
+                rd,
+                "maybe_build_completion_nudge",
+                new_callable=AsyncMock,
+                return_value=nudge,
+                side_effect=nudge_fails,
+            ) as build_nudge,
+        ):
+            text, _message_id = await rd.deliver_result(
+                run, result_text="raw", result_type="final", tool_data=None
+            )
+        return text, ws, build_nudge
+
+    async def test_a_released_todos_finish_message_carries_the_next_step(self) -> None:
+        """The nudge is asked for under this run's own todo, owner and zone —
+        the zone is what makes "tomorrow morning" mean the user's morning — and
+        it lands after the voiced result, separated by a blank line."""
+        text, ws, build_nudge = await self._deliver(self._todo_run())
+
+        build_nudge.assert_awaited_once_with(
+            user_id="user-1",
+            completed_todo_id="todo-9",
+            user_timezone="Asia/Kolkata",
+        )
+        assert text == "voiced\n\nWant the follow-up drafted?"
+        assert (
+            ws.await_args.args[1]["message"]["response"] == "voiced\n\nWant the follow-up drafted?"
+        )
+
+    async def test_nothing_to_suggest_leaves_the_result_exactly_as_voiced(self) -> None:
+        """No next step is the common case. It must not leave trailing blank
+        lines on an otherwise finished message."""
+        text, ws, build_nudge = await self._deliver(self._todo_run(), nudge=None)
+
+        build_nudge.assert_awaited_once()
+        assert text == "voiced"
+        assert ws.await_args.args[1]["message"]["response"] == "voiced"
+
+    async def test_a_run_with_no_tracked_todo_never_asks_for_one(self) -> None:
+        """An ordinary chat-delegated run has no todo to nudge about; asking
+        would look up a completion that does not exist."""
+        text, _ws, build_nudge = await self._deliver(_run())
+
+        build_nudge.assert_not_awaited()
+        assert text == "voiced"
+
+    async def test_a_workflow_run_leaves_the_nudge_to_its_own_notification(self) -> None:
+        """A workflow run carries an ``active_todo_id`` too, so the gate is the
+        workflow id, not the todo: its result goes out as the completion
+        notification, which is a different voice with its own call to action."""
+        text, _ws, build_nudge = await self._deliver(_run(workflow=True))
+
+        build_nudge.assert_not_awaited()
+        assert text == "voiced"
+
+    async def test_a_night_shift_run_is_silent_down_to_the_nudge(self) -> None:
+        """Prep work done overnight is reported by the morning briefing. A nudge
+        composed here would be stored on a message the user reads hours later,
+        asking about a next step the briefing has already moved past."""
+        text, _ws, build_nudge = await self._deliver(
+            self._todo_run(suppress_platform_delivery=True)
+        )
+
+        build_nudge.assert_not_awaited()
+        assert text == "voiced"
+
+    async def test_a_failing_nudge_never_costs_the_user_the_result(self) -> None:
+        """Best-effort: the completion message is already composed by the time
+        the nudge is built, so a nudge lookup that raises must still deliver."""
+        async with captured_wide_event() as event:
+            text, ws, _build = await self._deliver(
+                self._todo_run(), nudge_fails=RuntimeError("todo store down")
+            )
+
+        assert text == "voiced"
+        assert ws.await_args.args[1]["message"]["response"] == "voiced"
+        # Swallowing is only defensible while the failure stays visible: the
+        # cause has to reach the run's wide event, named, or a nudge that never
+        # renders again looks exactly like a nudge nobody had to show.
+        (failure,) = event["errors"]
+        assert "completion nudge failed" in failure["msg"]
+        assert failure["error"] == "todo store down"
 
 
 class TestWorkflowNotificationRef:

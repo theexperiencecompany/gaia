@@ -5,7 +5,12 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 from app.constants.log_tags import LogTag
-from app.constants.notifications import ALL_AUTO_INJECTED_CHANNELS, CHANNEL_TYPE_INAPP
+from app.constants.notifications import (
+    ALL_AUTO_INJECTED_CHANNELS,
+    CHANNEL_TYPE_INAPP,
+    NOTIFICATION_KIND_URGENT_SIGNAL,
+)
+from app.db.repositories.users import user_repository
 from app.decorators import with_doc, with_rate_limiting
 from app.models.notification.notification_models import (
     BulkActions,
@@ -17,6 +22,8 @@ from app.models.notification.notification_models import (
     NotificationType,
     NotificationView,
 )
+from app.models.notification.request_models import NotificationQuery
+from app.services.briefing.delivery_channels import resolve_briefing_channels
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
     GET_NOTIFICATION_COUNT,
@@ -26,6 +33,7 @@ from app.templates.docstrings.notification_tool_docs import (
     SEARCH_NOTIFICATIONS,
     SEND_NOTIFICATION,
 )
+from app.utils.analytics import track
 from app.utils.chat_utils import get_user_id_from_config
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
@@ -119,12 +127,14 @@ async def get_notifications(
 
         # Get notifications with all filters
         notifications = await notification_service.get_user_notifications(
-            user_id=user_id,
-            status=status,
-            notification_type=notification_type,
-            source=source,
-            limit=limit,
-            offset=offset,
+            user_id,
+            NotificationQuery(
+                status=status,
+                notification_type=notification_type,
+                source=source,
+                limit=limit,
+                offset=offset,
+            ),
         )
 
         # The stream/tool payload must stay JSON-shaped (see ToolData.data), so the
@@ -161,12 +171,10 @@ async def search_notifications(
         if not query.strip():
             return {"error": "Search query cannot be empty", "notifications": []}
 
-        # Get notifications for searching
+        # Newest 100, narrowed in process below. The paging window starts at the
+        # model's default offset.
         notifications = await notification_service.get_user_notifications(
-            user_id=user_id,
-            status=status,
-            limit=100,
-            offset=0,
+            user_id, NotificationQuery(status=status, limit=100)
         )
 
         # Simple text search
@@ -401,6 +409,80 @@ async def get_notification_preferences(
         return {"error": str(e), "preferences": {}}
 
 
+@tool
+@with_rate_limiting("notification_operations")
+async def send_urgent_alert(
+    config: RunnableConfig,
+    title: Annotated[
+        str, "What is time-critical, in a few words (e.g. '2pm meeting moved to 11am')"
+    ],
+    message: Annotated[
+        str,
+        "One or two sentences: the signal and what the user should do about it. No filler.",
+    ],
+    signal_kind: Annotated[
+        str,
+        "Short slug categorizing the signal (e.g. 'meeting_moved', 'payment_failing', "
+        "'deadline_at_risk'), used so repeatedly-ignored kinds stop alerting.",
+    ],
+) -> SentNotificationResult | SendNotificationFailure:
+    """Interrupt the user for a GENUINELY time-critical signal, and nothing else.
+
+    The bar (strict): waiting for the next morning's brief would cause a missed
+    meeting, blown deadline, or lost opportunity. Merely interesting or
+    could-be-useful information NEVER qualifies; it belongs in the brief.
+    There is no count cap; the urgency bar is the gate. Delivers to the user's
+    priority chat channel + in-app, same routing as the morning brief.
+    """
+    try:
+        log.set(tool={"name": "send_urgent_alert", "signal_kind": signal_kind})
+        user_id = get_user_id_from_config(config)
+        if not user_id:
+            return {"error": "User authentication required", "success": False}
+        if not title.strip() or not message.strip():
+            return {"error": "Urgent alerts need a title and a message", "success": False}
+
+        user = await user_repository.get(user_id)
+        channels = await resolve_briefing_channels(
+            user_id, user.model_dump(mode="json") if user else {}
+        )
+        result = await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.AI_AGENT,
+                type=NotificationType.WARNING,
+                channels=[ChannelConfig(channel_type=ch) for ch in channels],
+                content=NotificationContent(title=title.strip(), body=message.strip()),
+                metadata={
+                    "kind": NOTIFICATION_KIND_URGENT_SIGNAL,
+                    "signal_kind": signal_kind,
+                },
+            )
+        )
+        track(
+            user_id,
+            "urgent_alert_sent",
+            {"signal_kind": signal_kind, "channels": channels},
+        )
+        log.set(notification={"id": result.id, "channels": channels})
+        return SentNotificationResult(
+            success=True,
+            notification_id=str(result.id),
+            title=title.strip(),
+            message=message.strip(),
+            notification_type=NotificationType.WARNING.value,
+            status="sent",
+            delivered_channels=channels,
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.TOOL} Error sending urgent alert",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return {"error": str(e), "success": False}
+
+
 # Export tools for registration
 tools = [
     get_notifications,
@@ -408,5 +490,6 @@ tools = [
     get_notification_count,
     mark_notifications_read,
     send_notification,
+    send_urgent_alert,
     get_notification_preferences,
 ]

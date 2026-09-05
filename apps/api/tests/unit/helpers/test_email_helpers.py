@@ -453,7 +453,7 @@ class TestStoreEmailsToMemory:
         ]
         await store_emails_to_memory("user_1", processed)
         call_kwargs = mock_memory_engine.retain.call_args.kwargs
-        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
+        assert call_kwargs["source"].type is MemorySourceType.EMAIL
 
     async def test_messages_built_correctly(self, mock_memory_engine: AsyncMock) -> None:
         processed = [
@@ -621,8 +621,8 @@ class TestStoreSingleProfile:
             "repos: 50",
         )
         call_kwargs = mock_memory_engine.retain.call_args.kwargs
-        assert call_kwargs["source_id"] == "https://github.com/alice"
-        assert call_kwargs["source_type"] is MemorySourceType.EMAIL
+        assert call_kwargs["source"].id == "https://github.com/alice"
+        assert call_kwargs["source"].type is MemorySourceType.EMAIL
 
     async def test_user_name_passed_through(self, mock_memory_engine: AsyncMock) -> None:
         await store_single_profile(
@@ -677,4 +677,4 @@ class TestStoreSingleProfile:
         await store_single_profile("user_1", platform, url, "some content")
         hints = mock_memory_engine.retain.call_args.kwargs["extraction_hints"]
         assert platform in hints
-        assert mock_memory_engine.retain.call_args.kwargs["source_id"] == url
+        assert mock_memory_engine.retain.call_args.kwargs["source"].id == url

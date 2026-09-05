@@ -221,6 +221,19 @@ def test_a_line_clause_is_exactly_one_line() -> None:
     assert "never before the user has used one first" in text
 
 
+def test_an_end_of_prompt_clause_spans_its_whole_section() -> None:
+    """A clause that is the prompt's last section quotes all of it, not one line.
+
+    ``memory_extraction.extraction_rules`` has no section after it to anchor on,
+    so a single-line extent would hand the judge rule 1 and drop rules 2 to 6.
+    """
+    text = resolve("memory_extraction.extraction_rules")
+
+    assert text.startswith("## EXTRACTION RULES:")
+    assert "1. BE SPECIFIC:" in text
+    assert "6. NO SECRETS:" in text
+
+
 def test_clause_helper_matches_resolve() -> None:
     assert clause("comms", "tone_mirroring") == resolve(TONE_REF)
 

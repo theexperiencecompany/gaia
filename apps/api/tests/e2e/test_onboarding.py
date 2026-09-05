@@ -44,6 +44,7 @@ from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial
 import time
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -63,6 +64,7 @@ from app.constants.onboarding import (
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriageOutput,
+    OnboardingCompletion,
     SocialProfile,
     WritingStyleExampleBlocks,
     WritingStyleOutput,
@@ -155,25 +157,28 @@ class _UserStore:
         )
 
     # -- onboarding lifecycle ---------------------------------------------
-    async def complete_onboarding(self, user_id: str, **fields: Any) -> UserDocument | None:
+    async def complete_onboarding(
+        self, user_id: str, completion: OnboardingCompletion
+    ) -> UserDocument | None:
         doc = self.docs.get(user_id)
         if doc is None or "onboarding" in doc:
             return None
-        if fields.get("name") is not None:
-            doc["name"] = fields["name"]
-        if fields.get("timezone") is not None:
-            doc["timezone"] = fields["timezone"]
+        if completion.name is not None:
+            doc["name"] = completion.name
+        if completion.timezone is not None:
+            doc["timezone"] = completion.timezone
         sub: dict[str, Any] = {
             "completed": True,
             "completed_at": datetime.now(UTC),
-            "phase": fields["phase"],
-            "bio_status": fields["bio_status"],
-            "pipeline_mode": fields["pipeline_mode"],
-            "preferences": fields["preferences"].model_dump(),
+            "phase": completion.phase,
+            "bio_status": completion.bio_status,
+            "pipeline_mode": completion.pipeline_mode,
+            "preferences": completion.preferences.model_dump(),
         }
         for key in ("focus", "clarify_answers", "selected_integrations"):
-            if fields.get(key) is not None:
-                sub[key] = fields[key]
+            value = getattr(completion, key)
+            if value is not None:
+                sub[key] = value
         doc["onboarding"] = sub
         return await self.get(user_id)
 
@@ -485,121 +490,128 @@ def stages(users: _UserStore) -> _StageSink:
     return _StageSink(users)
 
 
-@pytest.fixture(autouse=True)
-def world(
-    users: _UserStore,
-    stages: _StageSink,
-    externals: _Externals,
-    arq_pool: ArqRedis,
-) -> Iterator[None]:
-    """Wire the store, the socket and every external service into the real flow."""
-    svc = "app.services.onboarding"
+async def _check_connection(
+    externals: _Externals, slugs: list[str], _user_id: str
+) -> dict[str, bool]:
+    if externals.composio_gate is not None:
+        await externals.composio_gate.wait()
+    return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
 
-    async def _check_connection(slugs: list[str], _user_id: str) -> dict[str, bool]:
-        if externals.composio_gate is not None:
-            await externals.composio_gate.wait()
-        return {slug: (slug == "gmail" and externals.has_gmail) for slug in slugs}
 
-    composio = AsyncMock()
-    composio.check_connection_status.side_effect = _check_connection
+async def _fetch_emails(externals: _Externals, _user_id: str, **kw: Any) -> list[dict[str, Any]]:
+    """Fake of ``fetch_emails_for_onboarding``: only ``into`` and ``on_batch``
+    matter to the flow; the rest of the real signature is accepted and ignored."""
+    batch = list(externals.inbox)
+    into: list[dict[str, Any]] | None = kw.get("into")
+    if into is not None:
+        into.extend(batch)
+    on_batch: Callable[[int, str | None], Awaitable[None]] | None = kw.get("on_batch")
+    if on_batch is not None:
+        await on_batch(len(batch), batch[0]["sender"] if batch else None)
+    return batch
 
-    async def _fetch_emails(
-        user_id: str,
-        months: int = 1,
-        batch_size: int = 100,
-        max_total: int = 100,
-        on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
-        fmt: str = "metadata",
-        into: list[dict[str, Any]] | None = None,
-        include_sent: bool = False,
-    ) -> list[dict[str, Any]]:
-        batch = list(externals.inbox)
-        if into is not None:
-            into.extend(batch)
-        if on_batch is not None:
-            await on_batch(len(batch), batch[0]["sender"] if batch else None)
-        return batch
 
-    async def _structured(schema: type, prompt: Any, *, label: str, **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(prompt)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return _structured_result(schema, externals)
+async def _structured(
+    externals: _Externals, schema: type, prompt: Any, *, label: str, **_: Any
+) -> Any:
+    externals.llm_labels.append(label)
+    externals.llm_prompts[label] = str(prompt)
+    if label in externals.llm_failures:
+        raise RuntimeError(f"model refused: {label}")
+    return _structured_result(schema, externals)
 
-    async def _invoke_llm(_runnable: Any, messages: Any, *, label: str = "model", **_: Any) -> Any:
-        externals.llm_labels.append(label)
-        externals.llm_prompts[label] = str(messages)
-        if label in externals.llm_failures:
-            raise RuntimeError(f"model refused: {label}")
-        return AIMessage(content="Hey, you're all set.")
 
-    async def _search_messages(**_: Any) -> Any:
-        result = AsyncMock()
-        result.messages = externals.sent_emails
-        return result
+async def _invoke_llm(
+    externals: _Externals, _runnable: Any, messages: Any, *, label: str = "model", **_: Any
+) -> Any:
+    externals.llm_labels.append(label)
+    externals.llm_prompts[label] = str(messages)
+    if label in externals.llm_failures:
+        raise RuntimeError(f"model refused: {label}")
+    return AIMessage(content="Hey, you're all set.")
 
-    async def _create_workflow(
-        request: Any, _user_id: str, user_timezone: str = "UTC", **_: Any
-    ) -> _FakeWorkflow:
-        externals.workflows_created.append(request.title)
-        externals.workflow_timezones.append(user_timezone)
-        return _FakeWorkflow(f"wf-{len(externals.workflows_created)}")
 
-    async def _delete_workflow(workflow_id: str, _user_id: str) -> bool:
-        if externals.workflow_delete_error == workflow_id:
-            raise RuntimeError("composio trigger teardown failed")
-        externals.workflows_deleted.append(workflow_id)
-        return True
+async def _search_messages(externals: _Externals, **_: Any) -> Any:
+    result = AsyncMock()
+    result.messages = externals.sent_emails
+    return result
 
-    async def _generate_prompt(**_: Any) -> dict[str, Any]:
-        return {
-            "prompt": "Do the thing.",
-            "suggested_trigger": SuggestedTrigger(type="schedule", cron_expression="0 8 * * *"),
-        }
 
-    async def _create_todo(todo: Any, _user_id: str) -> _FakeTodo:
-        externals.todos_created.append(todo.title)
-        return _FakeTodo(f"todo-{len(externals.todos_created)}")
+async def _create_workflow(
+    externals: _Externals, request: Any, _user_id: str, user_timezone: str = "UTC", **_: Any
+) -> _FakeWorkflow:
+    externals.workflows_created.append(request.title)
+    externals.workflow_timezones.append(user_timezone)
+    return _FakeWorkflow(f"wf-{len(externals.workflows_created)}")
 
-    async def _list_onboarding_todos(_user_id: str, limit: int = 3) -> list[Any]:
-        todos = []
-        for idx, title in enumerate(externals.todos_created[:limit], start=1):
-            todo = AsyncMock()
-            todo.id = f"todo-{idx}"
-            todo.title = title
-            todo.description = None
-            todo.source_email = None
-            todos.append(todo)
-        return todos
 
-    async def _seed_conversation(**_: Any) -> str | None:
-        return externals.seeded_conversation_id
+async def _delete_workflow(externals: _Externals, workflow_id: str, _user_id: str) -> bool:
+    if externals.workflow_delete_error == workflow_id:
+        raise RuntimeError("composio trigger teardown failed")
+    externals.workflows_deleted.append(workflow_id)
+    return True
 
-    async def _seed_user_data(user_id: str) -> None:
-        externals.seeded_users.append(user_id)
 
-    async def _purge_workflows(workflow_ids: list[str], _user_id: str) -> int:
-        externals.purged_workflow_ids.append(list(workflow_ids))
-        return len(workflow_ids)
+async def _generate_prompt(**_: Any) -> dict[str, Any]:
+    return {
+        "prompt": "Do the thing.",
+        "suggested_trigger": SuggestedTrigger(type="schedule", cron_expression="0 8 * * *"),
+    }
 
-    async def _provision(user_id: str, slug: str, *_args: Any, **_kw: Any) -> None:
-        externals.provisioned.append(slug)
 
-    async def _list_user_integrations(_user_id: str) -> list[Any]:
-        out = []
-        for slug in externals.integrations_connected:
-            entry = AsyncMock()
-            entry.integration_id = slug
-            out.append(entry)
-        return out
+async def _create_todo(externals: _Externals, todo: Any, _user_id: str) -> _FakeTodo:
+    externals.todos_created.append(todo.title)
+    return _FakeTodo(f"todo-{len(externals.todos_created)}")
 
-    async def _disconnect(_user_id: str, integration_id: str) -> None:
-        externals.disconnected.append(integration_id)
 
+async def _list_onboarding_todos(externals: _Externals, _user_id: str, limit: int = 3) -> list[Any]:
+    todos = []
+    for idx, title in enumerate(externals.todos_created[:limit], start=1):
+        todo = AsyncMock()
+        todo.id = f"todo-{idx}"
+        todo.title = title
+        todo.description = None
+        todo.source_email = None
+        todos.append(todo)
+    return todos
+
+
+async def _seed_conversation(externals: _Externals, **_: Any) -> str | None:
+    return externals.seeded_conversation_id
+
+
+async def _seed_user_data(externals: _Externals, user_id: str) -> None:
+    externals.seeded_users.append(user_id)
+
+
+async def _purge_workflows(externals: _Externals, workflow_ids: list[str], _user_id: str) -> int:
+    externals.purged_workflow_ids.append(list(workflow_ids))
+    return len(workflow_ids)
+
+
+async def _provision(
+    externals: _Externals, user_id: str, slug: str, *_args: Any, **_kw: Any
+) -> None:
+    externals.provisioned.append(slug)
+
+
+async def _list_user_integrations(externals: _Externals, _user_id: str) -> list[Any]:
+    out = []
+    for slug in externals.integrations_connected:
+        entry = AsyncMock()
+        entry.integration_id = slug
+        out.append(entry)
+    return out
+
+
+async def _disconnect(externals: _Externals, _user_id: str, integration_id: str) -> None:
+    externals.disconnected.append(integration_id)
+
+
+def _fake_repositories(externals: _Externals) -> tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock]:
     todo_repo = AsyncMock()
     todo_repo.delete_onboarding_todos.side_effect = lambda _uid: externals.todos_purged
-    todo_repo.list_onboarding_todos.side_effect = _list_onboarding_todos
+    todo_repo.list_onboarding_todos.side_effect = partial(_list_onboarding_todos, externals)
 
     conversation_repo = AsyncMock()
     conversation_repo.delete.side_effect = lambda _cid, user_id: externals.conversation_deleted
@@ -608,12 +620,19 @@ def world(
     )
 
     integrations_repo = AsyncMock()
-    integrations_repo.list_for_user.side_effect = _list_user_integrations
+    integrations_repo.list_for_user.side_effect = partial(_list_user_integrations, externals)
 
     memory = AsyncMock()
     memory.delete_all.side_effect = lambda _uid: externals.memories_cleared
+    return todo_repo, conversation_repo, integrations_repo, memory
 
-    patches = [
+
+def _world_patches(users: _UserStore, stages: _StageSink, externals: _Externals) -> list[Any]:
+    svc = "app.services.onboarding"
+    composio = AsyncMock()
+    composio.check_connection_status.side_effect = partial(_check_connection, externals)
+    todo_repo, conversation_repo, integrations_repo, memory = _fake_repositories(externals)
+    return [
         # --- persistence -------------------------------------------------
         patch(f"{svc}.onboarding_service.user_repository", users),
         patch(f"{svc}.intelligence_job.user_repository", users),
@@ -627,20 +646,24 @@ def world(
         patch("app.api.v1.endpoints.onboarding.todo_repository", todo_repo),
         patch("app.api.v1.endpoints.onboarding.workflow_repository", AsyncMock()),
         patch(
-            f"{svc}.intelligence_service.workflow_repository.delete_many_for_user", _purge_workflows
+            f"{svc}.intelligence_service.workflow_repository.delete_many_for_user",
+            partial(_purge_workflows, externals),
         ),
         patch(f"{svc}.onboarding_service.conversation_repository", conversation_repo),
         patch(f"{svc}.onboarding_service.user_integration_repository", integrations_repo),
         patch(f"{svc}.onboarding_service.memory_engine", memory),
-        patch(f"{svc}.onboarding_service.disconnect_integration", _disconnect),
+        patch(f"{svc}.onboarding_service.disconnect_integration", partial(_disconnect, externals)),
         # --- transport ---------------------------------------------------
         patch(f"{svc}.intelligence_service.websocket_manager", stages),
         # --- composio ----------------------------------------------------
         patch(f"{svc}.intelligence_service.get_composio_service", lambda: composio),
         patch("app.api.v1.endpoints.onboarding.get_composio_service", lambda: composio),
         # --- gmail -------------------------------------------------------
-        patch(f"{svc}.intelligence_service.fetch_emails_for_onboarding", _fetch_emails),
-        patch(f"{svc}.writing_style_service.search_messages", _search_messages),
+        patch(
+            f"{svc}.intelligence_service.fetch_emails_for_onboarding",
+            partial(_fetch_emails, externals),
+        ),
+        patch(f"{svc}.writing_style_service.search_messages", partial(_search_messages, externals)),
         patch(f"{svc}.intelligence_service.inbox_scan_cache.get", AsyncMock(return_value=None)),
         patch(f"{svc}.intelligence_service.inbox_scan_cache.put", AsyncMock()),
         patch(
@@ -648,14 +671,20 @@ def world(
             AsyncMock(return_value=[SocialProfile(platform="linkedin", url="https://li/x")]),
         ),
         # --- llm ---------------------------------------------------------
-        patch(f"{svc}.intelligence_service.ainvoke_structured", _structured),
-        patch(f"{svc}.writing_style_service.ainvoke_structured", _structured),
-        patch(f"{svc}.inbox_triage_service.ainvoke_structured", _structured),
-        patch(f"{svc}.first_message_service.ainvoke_llm", _invoke_llm),
+        patch(f"{svc}.intelligence_service.ainvoke_structured", partial(_structured, externals)),
+        patch(f"{svc}.writing_style_service.ainvoke_structured", partial(_structured, externals)),
+        patch(f"{svc}.inbox_triage_service.ainvoke_structured", partial(_structured, externals)),
+        patch(f"{svc}.first_message_service.ainvoke_llm", partial(_invoke_llm, externals)),
         patch(f"{svc}.first_message_service.get_helper_llm", lambda **_: AsyncMock()),
         # --- downstream services ----------------------------------------
-        patch(f"{svc}.intelligence_service.WorkflowService.create_workflow", _create_workflow),
-        patch(f"{svc}.onboarding_service.WorkflowService.delete_workflow", _delete_workflow),
+        patch(
+            f"{svc}.intelligence_service.WorkflowService.create_workflow",
+            partial(_create_workflow, externals),
+        ),
+        patch(
+            f"{svc}.onboarding_service.WorkflowService.delete_workflow",
+            partial(_delete_workflow, externals),
+        ),
         patch(
             f"{svc}.intelligence_service.WorkflowGenerationService.generate_workflow_prompt",
             _generate_prompt,
@@ -663,17 +692,46 @@ def world(
         patch(
             f"{svc}.intelligence_service.compute_missing_integrations", AsyncMock(return_value=[])
         ),
-        patch(f"{svc}.intelligence_service.TodoService.create_todo", _create_todo),
-        patch(f"{svc}.intelligence_service.seed_onboarding_conversation", _seed_conversation),
-        patch(f"{svc}.intelligence_service.provision_system_workflows", _provision),
-        patch(f"{svc}.post_onboarding_service.seed_onboarding_todo", _seed_user_data),
+        patch(
+            f"{svc}.intelligence_service.TodoService.create_todo", partial(_create_todo, externals)
+        ),
+        patch(
+            f"{svc}.intelligence_service.seed_onboarding_conversation",
+            partial(_seed_conversation, externals),
+        ),
+        patch(
+            f"{svc}.intelligence_service.provision_system_workflows",
+            partial(_provision, externals),
+        ),
+        # Both entry points, or the test is a race: connecting Gmail provisions
+        # the same system workflows through oauth_service, and whichever path
+        # runs first would otherwise create them via the recorded WorkflowService
+        # and inflate workflows_created.
+        patch(
+            "app.services.oauth.oauth_service.provision_system_workflows",
+            partial(_provision, externals),
+        ),
+        patch(
+            f"{svc}.post_onboarding_service.seed_onboarding_todo",
+            partial(_seed_user_data, externals),
+        ),
         patch(
             f"{svc}.intelligence_service.generate_holo_card_content",
             AsyncMock(return_value=("Curious Adventurer", "A bio.", "completed")),
         ),
     ]
+
+
+@pytest.fixture(autouse=True)
+def world(
+    users: _UserStore,
+    stages: _StageSink,
+    externals: _Externals,
+    arq_pool: ArqRedis,
+) -> Iterator[None]:
+    """Wire the store, the socket and every external service into the real flow."""
     with ExitStack() as stack:
-        for patcher in patches:
+        for patcher in _world_patches(users, stages, externals):
             stack.enter_context(patcher)
         yield
 

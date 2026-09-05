@@ -22,6 +22,7 @@ from app.constants.memory import (
 )
 from app.memory import consolidation, pg_store
 from app.memory.engine import memory_engine
+from app.memory.ingestion import MemorySource
 from app.memory.schemas import (
     ConsolidatedDocument,
     ExtractedMemoryBatch,
@@ -170,7 +171,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "first"}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
     waiter = consolidation._waiters.get(memory_user)
     assert waiter is not None, "first retain must start a debounce waiter"
@@ -182,7 +183,7 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "second"}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
     assert consolidation._waiters.get(memory_user) is waiter, (
         "second retain inside the window must reuse the live waiter"
@@ -230,7 +231,7 @@ async def test_core_context_cache_serves_stale_until_retain_invalidates(
     await memory_engine.retain(
         memory_user,
         [{"role": "user", "content": "transcript"}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
 
     fresh = await memory_engine.get_core_context(memory_user)

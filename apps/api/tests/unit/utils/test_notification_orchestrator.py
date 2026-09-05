@@ -22,6 +22,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.notification.request_models import NotificationQuery
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -822,20 +823,18 @@ class TestGetNotifications:
         storage.get_user_notifications.return_value = records
         orch = NotificationOrchestrator(storage=storage)
 
-        results = await orch.get_user_notifications("user-1")
+        results = await orch.get_user_notifications("user-1", NotificationQuery())
 
         assert len(results) == 2
         assert results[0].id == "n-1"
         assert results[1].id == "n-2"
 
     async def test_get_user_notifications_passes_filters(self) -> None:
-        """All filter parameters are forwarded to storage."""
+        """The whole query is forwarded to storage."""
         storage = AsyncMock()
         storage.get_user_notifications.return_value = []
         orch = NotificationOrchestrator(storage=storage)
-
-        await orch.get_user_notifications(
-            "user-1",
+        query = NotificationQuery(
             status=NotificationStatus.DELIVERED,
             limit=10,
             offset=5,
@@ -844,15 +843,9 @@ class TestGetNotifications:
             source=NotificationSourceEnum.AI_REMINDER,
         )
 
-        storage.get_user_notifications.assert_awaited_once_with(
-            "user-1",
-            NotificationStatus.DELIVERED,
-            10,
-            5,
-            "inapp",
-            NotificationType.WARNING,
-            NotificationSourceEnum.AI_REMINDER,
-        )
+        await orch.get_user_notifications("user-1", query)
+
+        storage.get_user_notifications.assert_awaited_once_with("user-1", query)
 
     async def test_get_notification_returns_serialized(self) -> None:
         """get_notification returns a NotificationView for a found record."""

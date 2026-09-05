@@ -12,6 +12,20 @@ export interface SubTask {
   created_at: string;
 }
 
+/** Who owns getting a todo done. */
+export type TodoAssignee = "user" | "gaia";
+
+/** Lifecycle state of a GAIA-assigned todo's execution. */
+export type ExecutionStatus =
+  | "proposed"
+  | "queued"
+  | "running"
+  | "needs_you"
+  | "done"
+  | "failed"
+  | "expired"
+  | "dismissed";
+
 export enum ConditionOperator {
   EQUALS = "equals",
   NOT_EQUALS = "not_equals",
@@ -92,6 +106,26 @@ export interface Todo {
   starred?: boolean;
   created_at: string;
   updated_at: string;
+  /** Who this todo is assigned to — a plain user todo or one GAIA proposed/is executing. */
+  assignee?: TodoAssignee;
+  /** Execution lifecycle state, only meaningful when `assignee === "gaia"`. */
+  execution_status?: ExecutionStatus | null;
+  /** Human-readable reason GAIA proposed/is executing this todo. */
+  serves?: string | null;
+  /** Populated when `execution_status === "failed"` — surfaced loudly in the UI. */
+  error_message?: string | null;
+  /** The decision a `needs_you` run is blocked on; answering re-queues it. */
+  blocker_question?: string | null;
+  /** Conversation of the most recent execution run — click-through into the chat. */
+  last_run_conversation_id?: string | null;
+  /** Present on some user-owned todos GAIA is offering to take over. */
+  gaia_offer?: string | null;
+  /** Set once the user dismisses GAIA's takeover offer — suppresses the affordance. */
+  gaia_offer_dismissed?: boolean;
+  /** "task" (default) or "goal" — a long-lived lane whose canvas is its strategy. */
+  kind?: "task" | "goal";
+  /** For a task, the goal-todo it advances. */
+  goal_id?: string | null;
 }
 
 export interface TodoUpdate {

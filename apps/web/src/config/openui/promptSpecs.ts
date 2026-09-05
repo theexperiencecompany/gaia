@@ -186,6 +186,40 @@ export const timelineSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Briefing
+// ---------------------------------------------------------------------------
+
+export const briefingSchema = z.object({
+  kicker: z.string(),
+  date: z.string(),
+  headline: z.string(),
+  lede: z.string(),
+  stats: z.array(
+    z.object({
+      value: z.string(),
+      label: z.string(),
+      delta: z.string().optional(),
+    }),
+  ),
+  sections: z.array(
+    z.object({
+      numeral: z.string(),
+      title: z.string(),
+      items: z.array(
+        z.object({
+          text: z.string(),
+          todo_id: z.string().optional(),
+          kind: z.string(),
+        }),
+      ),
+    }),
+  ),
+  mood: z.string(),
+  caption: z.string(),
+  hue: z.number().min(0).max(360),
+});
+
+// ---------------------------------------------------------------------------
 // Documents
 // ---------------------------------------------------------------------------
 
@@ -277,5 +311,14 @@ export const GAIA_COMPONENT_SPECS = [
     description:
       "Editable rich text document card with optional metadata fields. Use for email drafts, document brainstorming, reports, and letters — never when sending a final email directly.",
     props: textDocumentSchema,
+  },
+  {
+    name: "Briefing",
+    description:
+      "Editorial daily/weekly briefing artifact: masthead (kicker + date), hue-rotated hero band, serif " +
+      "display headline, lede, a stat row, Roman-numeraled sections of items (optionally linking to a " +
+      "todo), and a caption footer. Use only for GAIA's own daily/weekly briefing payloads — never " +
+      "hand-assemble one from other components.",
+    props: briefingSchema,
   },
 ] as const;

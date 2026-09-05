@@ -20,7 +20,7 @@ clock bumps ``updatedAt`` explicitly.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 
@@ -34,6 +34,7 @@ from app.models.chat_models import (
     ToolDataEntry,
 )
 from app.models.conversation_models import (
+    BotReplyRow,
     ConversationDocument,
     ConversationMessageHit,
     ConversationSearchResults,
@@ -427,6 +428,39 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _SourceRow,
         )
         return None if row is None else ConversationSource.coerce(row.source)
+
+    async def has_user_message_since(self, user_id: str, since: datetime) -> bool:
+        """Whether the user sent any message in any conversation at/after
+        ``since`` — the dormancy/winback reactivation signal for bot chats,
+        which don't pass the web auth middleware that bumps ``last_active_at``.
+        Message dates are stored as UTC ISO strings, so ``$gte`` is a string
+        comparison."""
+        since_iso = since.astimezone(UTC).isoformat()
+        document = await self._find_one(
+            {
+                "user_id": user_id,
+                "messages": {"$elemMatch": {"type": "user", "date": {"$gte": since_iso}}},
+            }
+        )
+        return document is not None
+
+    async def list_bot_replies_since(
+        self, user_id: str, since: datetime, *, limit: int
+    ) -> list[BotReplyRow]:
+        """The user's bot-platform messages sent after ``since``, newest first,
+        bounded — the briefing engine's reply-sync read."""
+        since_iso = since.astimezone(UTC).isoformat()
+        return await self._aggregate(
+            [
+                {"$match": {"user_id": user_id, "source": {"$in": _BOT_SOURCE_VALUES}}},
+                {"$unwind": "$messages"},
+                {"$match": {"messages.type": "user", "messages.date": {"$gt": since_iso}}},
+                {"$sort": {"messages.date": -1}},
+                {"$limit": limit},
+                {"$project": {"_id": 0, "source": 1, "text": "$messages.response"}},
+            ],
+            BotReplyRow,
+        )
 
     async def get_recent_follow_up_actions(
         self, user_id: str, conversation_id: str, *, window: int

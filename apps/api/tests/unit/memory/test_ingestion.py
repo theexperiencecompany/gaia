@@ -26,6 +26,7 @@ from app.constants.memory import (
     EPISODE_ENTRY_DEDUPE_RATIO,
     FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
     FREE_MEMORY_FACT_LIMIT,
+    RECENT_FACTS_LIMIT,
     RECONCILE_SIMILARITY_THRESHOLD,
     STATE_FACT_TTL_DAYS,
     TRANSCRIPT_CHUNK_MAX_CHARS,
@@ -40,7 +41,13 @@ from app.constants.memory import (
     ReconcileOutcome,
 )
 from app.memory import ingestion, user_time
-from app.memory.ingestion import RetainResult, retain, retain_single, summarize_episode
+from app.memory.ingestion import (
+    MemorySource,
+    RetainResult,
+    retain,
+    retain_single,
+    summarize_episode,
+)
 from app.memory.reconciliation import ReconciledFact
 from app.memory.schemas import (
     AgendaUpdate,
@@ -58,29 +65,19 @@ USER = "user-1"
 NOW = datetime(2026, 8, 24, tzinfo=UTC)
 
 
-def make_fact(
-    content: str = "sam likes green tea",
-    *,
-    kind: MemoryKind = MemoryKind.FACT,
-    shelf_life: MemoryShelfLife = MemoryShelfLife.DURABLE,
-    category_path: str = "preferences",
-    importance: float = 0.5,
-    entities: list[ExtractedEntity] | None = None,
-    edges: list[ExtractedEdge] | None = None,
-    occurred_start: datetime | None = None,
-    occurred_end: datetime | None = None,
-) -> ExtractedFact:
-    return ExtractedFact(
-        content=content,
-        kind=kind,
-        shelf_life=shelf_life,
-        category_path=category_path,
-        importance=importance,
-        entities=entities or [],
-        edges=edges or [],
-        occurred_start=occurred_start,
-        occurred_end=occurred_end,
-    )
+def make_fact(content: str = "sam likes green tea", **overrides: Any) -> ExtractedFact:
+    fields: dict[str, Any] = {
+        "kind": MemoryKind.FACT,
+        "shelf_life": MemoryShelfLife.DURABLE,
+        "category_path": "preferences",
+        "importance": 0.5,
+        "occurred_start": None,
+        "occurred_end": None,
+    }
+    fields.update(overrides)
+    fields["entities"] = fields.get("entities") or []
+    fields["edges"] = fields.get("edges") or []
+    return ExtractedFact(content=content, **fields)
 
 
 def make_reconciled(
@@ -1241,7 +1238,9 @@ class TestRetain:
     ) -> None:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch()
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         assert result == RetainResult(facts_extracted=0)
         boundaries.embed_batch.assert_not_awaited()
@@ -1260,7 +1259,9 @@ class TestRetain:
             make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
         ]
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         assert [record.content for record in boundaries.inserted_records] == [
             "GAIA owes the user the Q3 draft"
@@ -1275,7 +1276,7 @@ class TestRetain:
         result = await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 3, 5, 9, 30, tzinfo=UTC),
         )
         assert result.episode_entries == 1
@@ -1299,11 +1300,94 @@ class TestRetain:
         result = await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         assert result.facts_extracted == 2
         assert result.new == 1
         assert result.updated == 1
+
+    async def test_prior_context_is_read_for_the_ingesting_user(
+        self, boundaries: Boundaries
+    ) -> None:
+        """Every stored-state read is scoped to the user being ingested for.
+
+        A read that loses the user id (or its limit) does not fail -- it just
+        feeds another user's folders and facts, or an unbounded slice of them,
+        into the extraction prompt.
+        """
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
+            now=datetime(2026, 3, 5, 9, 30, tzinfo=UTC),
+        )
+        boundaries.get_folder_tree.assert_awaited_once_with(USER)
+        assert boundaries.get_recent_facts.await_args.args == (USER,)
+        assert boundaries.get_recent_facts.await_args.kwargs == {"limit": RECENT_FACTS_LIMIT}
+        boundaries.get_episode.assert_awaited_once_with(USER, date_type(2026, 3, 5))
+
+    async def test_journal_entry_without_text_reads_as_an_empty_line(
+        self, boundaries: Boundaries
+    ) -> None:
+        # A stored entry missing its text key must degrade to "" -- a None in
+        # journaled_today reaches the extraction prompt rendered as "None".
+        boundaries.get_episode.return_value = make_episode(entries=[{"time": "09:00"}])
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch()
+        await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
+        )
+        assert boundaries.extract_memories.await_args.kwargs["stored"].journaled_today == [""]
+
+    async def test_every_apply_count_is_reported_on_the_result(
+        self, boundaries: Boundaries
+    ) -> None:
+        """retain() reports what apply actually did, count for count.
+
+        A count dropped between apply and the result is silent: the caller and
+        the wide event both read an ingestion that did less than it did.
+        """
+        sam, berlin = uuid.uuid4(), uuid.uuid4()
+        boundaries.upsert_entities.return_value = {"sam carter": sam, "berlin": berlin}
+        boundaries.insert_edges.side_effect = lambda _user, edges, _record_id: len(edges)
+        boundaries.supersede_memory.return_value = make_row()
+        linked = make_fact(
+            "sam lives in berlin",
+            entities=[
+                ExtractedEntity(name="Sam Carter", entity_type="person"),
+                ExtractedEntity(name="Berlin", entity_type="place"),
+            ],
+            edges=[ExtractedEdge(source="Sam Carter", relationship="lives_in", target="Berlin")],
+        )
+        revised, dup_a, dup_b = make_fact("b"), make_fact("c"), make_fact("d")
+        boundaries.extract_memories.return_value = ExtractedMemoryBatch(
+            facts=[linked, revised, dup_a, dup_b]
+        )
+        boundaries.reconcile.return_value = [
+            make_reconciled(linked, embedding=[1.0]),
+            make_reconciled(
+                revised, ReconcileOutcome.EXTENDS, embedding=[2.0], target_memory_id="old"
+            ),
+            make_reconciled(dup_a, ReconcileOutcome.DUPLICATE, embedding=[3.0]),
+            make_reconciled(dup_b, ReconcileOutcome.DUPLICATE, embedding=[4.0]),
+        ]
+        result = await retain(
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
+        )
+        assert result == RetainResult(
+            facts_extracted=4,
+            new=1,
+            updated=0,
+            extended=1,
+            duplicates=2,
+            entities_linked=2,
+            edges_added=1,
+            episode_entries=0,
+        )
 
     async def test_extraction_receives_the_prior_context(self, boundaries: Boundaries) -> None:
         boundaries.get_folder_tree.return_value = [("work", 4)]
@@ -1315,15 +1399,15 @@ class TestRetain:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             extraction_hints="focus on preferences",
             user_name="Sam",
         )
         kwargs = boundaries.extract_memories.await_args.kwargs
         assert kwargs["user_name"] == "Sam"
-        assert kwargs["folder_tree"] == "- work (4)"
-        assert kwargs["recent_facts"] == ["sam likes tea"]
-        assert kwargs["journaled_today"] == ["already journaled"]
+        assert kwargs["stored"].folder_tree == "- work (4)"
+        assert kwargs["stored"].recent_facts == ["sam likes tea"]
+        assert kwargs["stored"].journaled_today == ["already journaled"]
         assert kwargs["extraction_hints"] == "focus on preferences"
 
     async def test_anonymous_caller_gets_the_default_user_name(
@@ -1331,7 +1415,9 @@ class TestRetain:
     ) -> None:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch()
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         assert boundaries.extract_memories.await_args.kwargs["user_name"] == "the user"
 
@@ -1341,9 +1427,11 @@ class TestRetain:
         boundaries.get_episode.return_value = None
         boundaries.extract_memories.return_value = ExtractedMemoryBatch()
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
-        assert boundaries.extract_memories.await_args.kwargs["journaled_today"] == []
+        assert boundaries.extract_memories.await_args.kwargs["stored"].journaled_today == []
 
     async def test_explicit_now_drives_every_timestamp(self, boundaries: Boundaries) -> None:
         replay = datetime(2019, 7, 4, 8, 15, tzinfo=UTC)
@@ -1355,8 +1443,7 @@ class TestRetain:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.MIGRATION,
-            source_id="sess-1",
+            source=MemorySource(MemorySourceType.MIGRATION, "sess-1"),
             now=replay,
         )
         assert boundaries.extract_memories.await_args.kwargs["current_date"] == replay
@@ -1380,7 +1467,7 @@ class TestRetain:
         )
         boundaries.reconcile.return_value = [make_reconciled(fact, embedding=[1.0])]
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
+            USER, [{"role": "user", "content": "hi"}], source=MemorySource(MemorySourceType.EMAIL)
         )
         assert result.episode_entries == 0
         boundaries.append_episode_entries.assert_not_awaited()
@@ -1395,7 +1482,7 @@ class TestRetain:
             agenda_updates=[AgendaUpdate(item="resolve ticket Y", resolved=False)],
         )
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.EMAIL
+            USER, [{"role": "user", "content": "hi"}], source=MemorySource(MemorySourceType.EMAIL)
         )
         assert result == RetainResult(facts_extracted=0)
         boundaries.append_episode_entries.assert_not_awaited()
@@ -1416,7 +1503,7 @@ class TestRetain:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 3, 5, tzinfo=UTC),
         )
         boundaries.get_unsummarized_episode_dates.assert_awaited_once_with(
@@ -1429,8 +1516,7 @@ class TestRetain:
         await retain(
             USER,
             [{"role": "user", "content": "the transcript body"}],
-            source_type=MemorySourceType.CONVERSATION,
-            source_id="conv-42",
+            source=MemorySource(MemorySourceType.CONVERSATION, "conv-42"),
         )
         chunk = boundaries.upsert_conversation_chunks.await_args.args[0][0]
         assert chunk["id"].startswith(f"{USER}:conv-42:")
@@ -1441,7 +1527,9 @@ class TestRetain:
         boundaries.extract_memories.return_value = ExtractedMemoryBatch(facts=[fact])
         boundaries.reconcile.return_value = [make_reconciled(fact, embedding=[1.0])]
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         boundaries.invalidate_caches.assert_awaited_once_with(USER)
 
@@ -1459,7 +1547,7 @@ class TestRetain:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
         assert [fact.content for fact in infer.call_args.args[0]] == ["kept"]
 
@@ -1471,7 +1559,9 @@ class TestRetain:
             make_reconciled(facts[1], embedding=[2.0]),
         ]
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
         assert boundaries.embed_batch.await_args_list[0].args[0] == ["first", "second"]
         user_id, reconcile_facts, embeddings = boundaries.reconcile.await_args.args
@@ -1501,7 +1591,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
         )
         _, day, entries = boundaries.append_episode_entries.await_args.args
@@ -1516,7 +1606,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
         )
         assert boundaries.get_episode.await_args_list[0].args[1] == date_type(2026, 8, 27)
@@ -1533,7 +1623,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=now,
         )
         current_date = boundaries.extract_memories.await_args.kwargs["current_date"]
@@ -1548,7 +1638,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 27, 3, 0, tzinfo=UTC),
         )
         _, day, entries = boundaries.append_episode_entries.await_args.args
@@ -1560,7 +1650,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
         )
         _, day, entries = boundaries.append_episode_entries.await_args.args
@@ -1578,7 +1668,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
         )
         boundaries.get_user.assert_awaited_once_with(USER)
@@ -1593,7 +1683,7 @@ class TestJournalDaysFollowTheUsersTimezone:
         result = await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
+            source=MemorySource(MemorySourceType.CONVERSATION),
             now=datetime(2026, 8, 26, 21, 30, tzinfo=UTC),
         )
         assert result.episode_entries == 1
@@ -1621,7 +1711,9 @@ class TestShelfLifeRouting:
         ]
 
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         assert [record.content for record in boundaries.inserted_records] == [
@@ -1646,7 +1738,9 @@ class TestShelfLifeRouting:
         ]
 
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         assert len(boundaries.inserted_records) == 1
@@ -1668,8 +1762,7 @@ class TestShelfLifeRouting:
         await retain(
             USER,
             [{"role": "user", "content": "hi"}],
-            source_type=MemorySourceType.CONVERSATION,
-            source_id="conv-7",
+            source=MemorySource(MemorySourceType.CONVERSATION, "conv-7"),
         )
 
         assert [record.content for record in boundaries.inserted_records] == [
@@ -1700,7 +1793,7 @@ class TestShelfLifeRouting:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
 
         assert forget.await_args.args[:2] == (USER, str(open_row.id))
@@ -1976,7 +2069,9 @@ class TestRetainAgendaSideEffects:
         boundaries.get_memories_by_ids.return_value = [open_row]
 
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         assert boundaries.render_agenda_document.await_args.args == (USER,)
@@ -1992,7 +2087,9 @@ class TestRetainAgendaSideEffects:
         ]
 
         await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         boundaries.render_agenda_document.assert_not_awaited()
@@ -2011,7 +2108,7 @@ class TestRetainAgendaSideEffects:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
 
         assert "agenda_ms" in event["memory"]["timings"]
@@ -2055,6 +2152,27 @@ class TestRetainFreePlanCap:
             make_reconciled(fact, embedding=embedding) for fact, embedding in zip(facts, embeddings)
         ]
 
+    async def test_the_cap_is_evaluated_for_the_ingesting_user(
+        self, boundaries: Boundaries
+    ) -> None:
+        # Every lookup the cap makes has to name the user it is capping: a cap
+        # resolved for nobody reads as an uncapped (or wrongly capped) plan.
+        self._two_new_facts(boundaries)
+        cached_live = FREE_MEMORY_FACT_LIMIT - (1 + FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN)
+        counted, cached, seed, adjust, count = self._free_plan(
+            cached_live=cached_live, counted_live=FREE_MEMORY_FACT_LIMIT - 1
+        )
+        with counted as plan_mock, cached as cached_mock, seed, adjust, count as count_mock:
+            await retain(
+                USER,
+                [{"role": "user", "content": "hi"}],
+                source=MemorySource(MemorySourceType.CONVERSATION),
+            )
+
+        plan_mock.assert_awaited_once_with(USER)
+        cached_mock.assert_awaited_once_with(USER)
+        count_mock.assert_awaited_once_with(USER)
+
     async def test_a_batch_that_clears_the_safety_margin_skips_the_count(
         self, boundaries: Boundaries
     ) -> None:
@@ -2069,7 +2187,7 @@ class TestRetainFreePlanCap:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
 
         assert [record.content for record in boundaries.inserted_records] == ["fact a", "fact b"]
@@ -2089,7 +2207,7 @@ class TestRetainFreePlanCap:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
 
         count_mock.assert_awaited_once()
@@ -2106,7 +2224,7 @@ class TestRetainFreePlanCap:
             await retain(
                 USER,
                 [{"role": "user", "content": "hi"}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
 
         # Facts keep reconciliation order, so the earlier one wins the last slot.
@@ -2218,7 +2336,9 @@ class TestJournalNearDuplicateGate:
         boundaries.extract_memories.return_value = self._batch([self._REWORDED, self._NOVEL])
 
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         appended = boundaries.append_episode_entries.await_args.args[2]
@@ -2233,7 +2353,9 @@ class TestJournalNearDuplicateGate:
         )
 
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         appended = boundaries.append_episode_entries.await_args.args[2]
@@ -2249,7 +2371,9 @@ class TestJournalNearDuplicateGate:
         boundaries.extract_memories.return_value = self._batch(entries)
 
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         appended = boundaries.append_episode_entries.await_args.args[2]
@@ -2281,7 +2405,9 @@ class TestJournalNearDuplicateGate:
         boundaries.extract_memories.return_value = self._batch(["None", "xxxx"])
 
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         appended = boundaries.append_episode_entries.await_args.args[2]
@@ -2295,7 +2421,9 @@ class TestJournalNearDuplicateGate:
         boundaries.extract_memories.return_value = self._batch([self._REWORDED])
 
         result = await retain(
-            USER, [{"role": "user", "content": "hi"}], source_type=MemorySourceType.CONVERSATION
+            USER,
+            [{"role": "user", "content": "hi"}],
+            source=MemorySource(MemorySourceType.CONVERSATION),
         )
 
         boundaries.append_episode_entries.assert_not_awaited()

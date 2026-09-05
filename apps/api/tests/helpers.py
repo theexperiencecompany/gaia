@@ -25,14 +25,18 @@ def effective_limit(config: RateLimitConfig, period: str) -> float:
     """Comparable allowance for a period under RateLimitConfig's 0-semantics.
 
     ``0`` is overloaded: a tier with BOTH periods 0 has no access at all
-    (returns ``0.0``); otherwise a period of 0 means that period is uncapped
-    (returns ``math.inf``). Lets free and pro allowances be ordered directly
-    despite 0 meaning either "no access" or "unlimited" by context.
+    (returns ``0.0``); otherwise a period of 0 means that period carries no cap
+    of its own. A day without its own cap is still bounded by the monthly one —
+    a tier metered monthly-only (``day=0, month=5``) can never spend more than
+    5 in a day — so the daily allowance is the smaller of the two caps. Lets
+    free and pro allowances be ordered directly despite 0 meaning either "no
+    access" or "unlimited" by context.
     """
     if config.day <= 0 and config.month <= 0:
         return 0.0
-    value = getattr(config, period)
-    return math.inf if value <= 0 else float(value)
+    day = math.inf if config.day <= 0 else float(config.day)
+    month = math.inf if config.month <= 0 else float(config.month)
+    return {"day": min(day, month), "month": month}[period]
 
 
 def pick_free_port() -> int:

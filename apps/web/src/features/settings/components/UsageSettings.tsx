@@ -28,7 +28,7 @@ export default function UsageSettings() {
       summary={summary}
       history={history ?? []}
       activity={activity}
-      onUpgrade={openPricingModal}
+      onUpgrade={() => openPricingModal()}
     />
   );
 }

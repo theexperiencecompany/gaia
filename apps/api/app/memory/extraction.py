@@ -6,6 +6,7 @@ flow that spawned them, so total failure returns an empty batch / all-NEW
 decisions instead of raising.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypeVar
 
@@ -152,14 +153,27 @@ async def _invoke_structured(
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class StoredMemoryState:
+    """What the user's memory already holds when an extraction starts.
+
+    The extractor needs all three to avoid re-extracting what is already
+    stored and to file new facts into folders that exist. They travel
+    together because the caller reads them together, in one pass over the
+    stores, for one extraction.
+    """
+
+    folder_tree: str
+    recent_facts: list[str] = field(default_factory=list)
+    journaled_today: list[str] = field(default_factory=list)
+
+
 async def extract_memories(
     messages: list[dict[str, str]],
     *,
     user_id: str,
     user_name: str,
-    folder_tree: str,
-    recent_facts: list[str],
-    journaled_today: list[str] | None = None,
+    stored: StoredMemoryState,
     extraction_hints: str | None = None,
     current_date: datetime,
 ) -> ExtractedMemoryBatch:
@@ -171,12 +185,27 @@ async def extract_memories(
     if not transcript:
         return ExtractedMemoryBatch()
 
-    hints_section = f"\n{extraction_hints}\n" if extraction_hints else ""
+    hints_section = (
+        (
+            "\n## Integration-specific extraction focus\n\n"
+            "The notes below say WHAT to prioritize for this integration. They "
+            "supplement the rules above and never override them: output format, "
+            "fact rules, folders, importance, temporal fields, and the "
+            "stranger/noise gate always follow this prompt.\n"
+            f"{extraction_hints}\n"
+        )
+        if extraction_hints
+        else ""
+    )
     recent_facts_section = (
-        "\n".join(f"- {fact}" for fact in recent_facts) if recent_facts else "(none yet)"
+        "\n".join(f"- {fact}" for fact in stored.recent_facts)
+        if stored.recent_facts
+        else "(none yet)"
     )
     journal_section = (
-        "\n".join(f"- {line}" for line in journaled_today) if journaled_today else "(empty)"
+        "\n".join(f"- {line}" for line in stored.journaled_today)
+        if stored.journaled_today
+        else "(empty)"
     )
     # The system prompt is deliberately user-agnostic: the user's name used to
     # be formatted into it, so every user needed their own warm copy of the
@@ -205,7 +234,7 @@ async def extract_memories(
         f"Today is {current_date:%A, %d %B %Y}.\n"
         "## Today's journal so far (do NOT repeat these events, even reworded)\n"
         f"{journal_section}\n"
-        + EXTRACTION_FOLDER_TREE_BLOCK.format(folder_tree=folder_tree or "(no folders yet)")
+        + EXTRACTION_FOLDER_TREE_BLOCK.format(folder_tree=stored.folder_tree or "(no folders yet)")
         + f"\n## Recently stored facts (do NOT re-extract these)\n{recent_facts_section}"
         + hints_section
     )

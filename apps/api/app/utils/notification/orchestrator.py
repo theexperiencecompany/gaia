@@ -20,11 +20,10 @@ from app.models.notification.notification_models import (
     NotificationContentView,
     NotificationRecord,
     NotificationRequest,
-    NotificationSourceEnum,
     NotificationStatus,
-    NotificationType,
     NotificationView,
 )
+from app.models.notification.request_models import NotificationQuery
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -35,6 +34,7 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
+    EmailChannelAdapter,
     ImessageChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
@@ -72,6 +72,7 @@ class NotificationOrchestrator:
         self.register_channel_adapter(DiscordChannelAdapter())
         self.register_channel_adapter(WhatsAppChannelAdapter())
         self.register_channel_adapter(SlackChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter())
         self.register_channel_adapter(ImessageChannelAdapter())
 
         # Action handlers
@@ -401,19 +402,10 @@ class NotificationOrchestrator:
 
     # NOTIFICATION RETRIEVAL & QUERIES
     async def get_user_notifications(
-        self,
-        user_id: str,
-        status: NotificationStatus | None = None,
-        limit: int = 50,
-        offset: int = 0,
-        channel_type: str | None = None,
-        notification_type: NotificationType | None = None,
-        source: NotificationSourceEnum | None = None,
+        self, user_id: str, query: NotificationQuery
     ) -> list[NotificationView]:
         """Get a user's notifications with optional filtering and pagination."""
-        notifications = await self.storage.get_user_notifications(
-            user_id, status, limit, offset, channel_type, notification_type, source
-        )
+        notifications = await self.storage.get_user_notifications(user_id, query)
         return [self._serialize_notification(n) for n in notifications]
 
     async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:

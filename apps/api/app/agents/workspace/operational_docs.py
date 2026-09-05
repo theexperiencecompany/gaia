@@ -225,8 +225,8 @@ The user's own action items (the ones they see in their UI) project to:
         <slug>-<shortid>/meta.json    title, due, priority, labels, project,
                                       subtasks, completion
 
-`ls todos/` shows the user's plate at a glance. "Active" = NOT a
-`gaia-tracked` doc AND open or completed within the last 7 days.
+`ls todos/` shows the user's plate at a glance. "Active" = a todo NOT
+assigned to GAIA AND open or completed within the last 7 days.
 
 - `ls todos/`: what's on the user's plate now.
 - `cat todos/index.md`: one-line summary per todo.

@@ -4,8 +4,9 @@ import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ChevronUp } from "@/components/shared/icons";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks/useExploreWorkflows";
@@ -299,7 +300,46 @@ export default function UseCaseSection({
     return null;
   }, [dummySectionRef, scroller]);
 
-  const filteredUseCases = filterUseCases(exploreWorkflows, selectedCategory);
+  // Surface workflows the user can run right now: rank by the fraction of a
+  // workflow's required integrations (step categories are integration ids)
+  // the user has connected. Nothing is hidden — unconnected ones just sort
+  // after, still acting as a discover-and-connect funnel. Ids that aren't
+  // integrations (e.g. "gaia" internal steps) are neutral, so signed-out
+  // visitors and integration-free workflows keep their original order.
+  const { integrations } = useIntegrations();
+  const { connectedIds, knownIds } = useMemo(
+    () => ({
+      connectedIds: integrations.reduce((ids, i) => {
+        if (i.status === "connected") ids.add(i.id.toLowerCase());
+        return ids;
+      }, new Set<string>()),
+      knownIds: new Set(integrations.map((i) => i.id.toLowerCase())),
+    }),
+    [integrations],
+  );
+
+  const connectionScore = useCallback(
+    (useCase: UseCase): number => {
+      const required = (useCase.integrations || []).reduce<string[]>(
+        (ids, id) => {
+          const lower = id.toLowerCase();
+          if (knownIds.has(lower)) ids.push(lower);
+          return ids;
+        },
+        [],
+      );
+      if (required.length === 0) return 1;
+      return (
+        required.filter((id) => connectedIds.has(id)).length / required.length
+      );
+    },
+    [connectedIds, knownIds],
+  );
+
+  const filteredUseCases = filterUseCases(
+    exploreWorkflows,
+    selectedCategory,
+  ).toSorted((a, b) => connectionScore(b) - connectionScore(a));
 
   const handleCategoryClick = (category: string) => {
     const wasSelected = selectedCategory === category;

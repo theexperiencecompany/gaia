@@ -14,6 +14,7 @@ part worth testing.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,7 +29,7 @@ from app.services.storage._vfs_common import (
     SLUG_MAX_LEN,
     catalog_signature,
     folder_name,
-    hash_body_with_meta,
+    hash_bodies_with_meta,
     hash_meta_only,
     matches_text,
     meta_body,
@@ -169,35 +170,49 @@ def test_a_datetime_in_meta_is_hashed_by_value_rather_than_raising() -> None:
     assert early != later
 
 
-# ── hash_body_with_meta ──────────────────────────────────────────────
+# ── hash_bodies_with_meta ────────────────────────────────────────────
 
 
-def test_moving_text_from_the_canvas_into_the_log_changes_the_body_hash() -> None:
-    # Concatenation without a separator makes ("ab", "") and ("a", "b")
-    # identical: the agent moves a line from canvas.md to log.md, the hash does
+def test_moving_text_between_bodies_changes_the_body_hash() -> None:
+    # Concatenation without a separator makes ["ab", ""] and ["a", "b"]
+    # identical: the agent moves a line between facet bodies, the hash does
     # not move, and neither file is ever rewritten.
     meta: dict[str, Any] = {"title": "t"}
-    assert hash_body_with_meta("ab", "", meta) != hash_body_with_meta("a", "b", meta)
+    assert hash_bodies_with_meta(["ab", ""], meta) != hash_bodies_with_meta(["a", "b"], meta)
 
 
-def test_the_same_body_and_meta_hash_identically() -> None:
+def test_the_same_bodies_and_meta_hash_identically() -> None:
     meta: dict[str, Any] = {"title": "t"}
-    first = hash_body_with_meta("c", "l", meta)
-    second = hash_body_with_meta("c", "l", meta)
+    first = hash_bodies_with_meta(["c", "l"], meta)
+    second = hash_bodies_with_meta(["c", "l"], meta)
     assert first == second
 
 
+def test_the_body_hash_is_the_sha256_of_nul_framed_bodies_and_canonical_meta() -> None:
+    # The digest is not internal state — it is written into a marker file that
+    # outlives the release, and the framing byte is what keeps ["ab", ""] and
+    # ["a", "b"] apart. NUL is the one byte a facet body can never carry, so any
+    # other framing is forgeable by the agent's own text; changing it at all
+    # invalidates every marker on disk and rewrites every user's tree.
+    meta: dict[str, Any] = {"title": "t"}
+    expected = hashlib.sha256(
+        b"c\x00l\x00" + json.dumps(meta, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    assert hash_bodies_with_meta(["c", "l"], meta) == expected
+
+
 def test_a_metadata_only_edit_still_changes_the_body_hash() -> None:
-    # Renaming a task touches neither canvas nor log; if meta is left out of the
+    # Renaming a task touches neither facet body; if meta is left out of the
     # digest the folder keeps the old title in meta.json indefinitely.
-    assert hash_body_with_meta("c", "l", {"title": "old"}) != hash_body_with_meta(
-        "c", "l", {"title": "new"}
+    assert hash_bodies_with_meta(["c", "l"], {"title": "old"}) != hash_bodies_with_meta(
+        ["c", "l"], {"title": "new"}
     )
 
 
 def test_the_body_hash_of_an_empty_task_is_still_stable() -> None:
-    first = hash_body_with_meta("", "", {})
-    second = hash_body_with_meta("", "", {})
+    first = hash_bodies_with_meta([], {})
+    second = hash_bodies_with_meta([], {})
     assert first == second
 
 

@@ -20,6 +20,7 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.files_models import FileDocument
+from app.models.onboarding_models import OnboardingCompletion
 from app.models.todo_models import TodoModel
 from app.models.user_models import (
     BioStatus,
@@ -145,13 +146,15 @@ async def seed_dev_data(
     # seeding must not depend on Redis workers. Never clobbers real onboarding.
     await user_repository.complete_onboarding(
         user_id,
-        phase=OnboardingPhase.COMPLETED,
-        bio_status=BioStatus.NO_GMAIL,
-        pipeline_mode="full",
-        preferences=OnboardingPreferences(
-            profession="Developer",
-            response_style="casual",
-            custom_instructions=None,
+        OnboardingCompletion(
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.NO_GMAIL,
+            pipeline_mode="full",
+            preferences=OnboardingPreferences(
+                profession="Developer",
+                response_style="casual",
+                custom_instructions=None,
+            ),
         ),
     )
 

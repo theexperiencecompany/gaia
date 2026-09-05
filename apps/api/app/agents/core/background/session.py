@@ -127,6 +127,13 @@ class ExecutorRun:
     workflow_execution_id: str | None = None
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
+    # Night-shift prep runs suppress the per-todo platform message (the morning
+    # briefing reports them instead).
+    suppress_platform_delivery: bool = False
+    # The tracked todo this run is bound to (set by call_executor's optional
+    # active_todo_id, inherited from trigger_context for scheduled runs). Used
+    # by result_delivery to attach a completion nudge to a released todo's
+    # finish message — see app.services.todos.completion_nudge.
     active_todo_id: str | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
@@ -168,6 +175,7 @@ class ExecutorRun:
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
+            suppress_platform_delivery=bool(configurable.get("suppress_platform_delivery", False)),
             active_todo_id=configurable.get("active_todo_id"),
             source_category=SourceCategory(
                 configurable.get("source_category") or SourceCategory.BG.value

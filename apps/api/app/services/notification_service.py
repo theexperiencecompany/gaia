@@ -5,11 +5,10 @@ from app.models.notification.notification_models import (
     BulkActions,
     NotificationRecord,
     NotificationRequest,
-    NotificationSourceEnum,
     NotificationStatus,
-    NotificationType,
     NotificationView,
 )
+from app.models.notification.request_models import NotificationQuery
 from app.utils.notification.actions import (
     ActionHandler,
 )
@@ -43,25 +42,10 @@ class NotificationService:
         return await self.orchestrator.mark_as_read(notification_id, user_id)
 
     async def get_user_notifications(
-        self,
-        user_id: str,
-        status: NotificationStatus | None = None,
-        limit: int = 50,
-        offset: int = 0,
-        channel_type: str | None = None,
-        notification_type: NotificationType | None = None,
-        source: NotificationSourceEnum | None = None,
+        self, user_id: str, query: NotificationQuery
     ) -> list[NotificationView]:
         """A user's notifications, flattened for API/tool consumers."""
-        return await self.orchestrator.get_user_notifications(
-            user_id,
-            status,
-            limit,
-            offset,
-            channel_type,
-            notification_type,
-            source,
-        )
+        return await self.orchestrator.get_user_notifications(user_id, query)
 
     async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:
         """Get a specific notification by ID for a user"""

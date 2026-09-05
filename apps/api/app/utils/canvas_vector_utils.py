@@ -28,12 +28,12 @@ class CanvasSearchMatch(TypedDict):
 
 async def store_canvas_embedding(
     todo_id: str,
-    canvas_content: str,
+    content: str,
     user_id: str,
     title: str = "",
     labels: list[str] | None = None,
 ) -> bool:
-    """Index canvas content in ChromaDB for semantic search."""
+    """Index a tracked todo's searchable content (notes + deliverable) in ChromaDB."""
     try:
         chroma_collection = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME, create_if_not_exists=True
@@ -50,7 +50,7 @@ async def store_canvas_embedding(
             metadata["labels"] = ", ".join(labels)
 
         await chroma_collection.aadd_texts(
-            texts=[canvas_content],
+            texts=[content],
             metadatas=[metadata],
             ids=[f"canvas_{todo_id}"],
         )
@@ -68,12 +68,12 @@ async def store_canvas_embedding(
 
 async def update_canvas_embedding(
     todo_id: str,
-    canvas_content: str,
+    content: str,
     user_id: str,
     title: str = "",
     labels: list[str] | None = None,
 ) -> bool:
-    """Re-index canvas content after update, preserving completed status."""
+    """Re-index a todo's searchable content after update, preserving completed status."""
     # Preserve completed metadata before deleting the old embedding
     was_completed = False
     try:
@@ -87,7 +87,7 @@ async def update_canvas_embedding(
         log.debug("canvas.preserve_completed_metadata_failed", todo_id=todo_id, error=str(e))
 
     await delete_canvas_embedding(todo_id)
-    result = await store_canvas_embedding(todo_id, canvas_content, user_id, title, labels)
+    result = await store_canvas_embedding(todo_id, content, user_id, title, labels)
 
     # Restore completed status if the todo was previously completed
     if result and was_completed:

@@ -33,6 +33,24 @@ from dataclasses import dataclass, field
 from functools import cache
 import importlib
 import textwrap
+from typing import Final
+
+
+class _EndOfPrompt:
+    """Extent marker: the clause runs to the end of its prompt constant."""
+
+    def __repr__(self) -> str:
+        return "END_OF_PROMPT"
+
+
+#: ``ends_before`` value for a clause that is the prompt's last section.
+#:
+#: Distinct from ``None`` (which means "this clause is its own single line") so
+#: the extent stays explicit at every declaration site. Use it only when the
+#: clause genuinely IS the prompt's last section: unlike an anchored end, this
+#: extent absorbs whatever a later edit appends, so a new section added after it
+#: joins the quoted rubric rather than breaking the contract.
+END_OF_PROMPT: Final = _EndOfPrompt()
 
 #: Prompt constants a clause may be anchored in, as ``(module, attribute)``.
 #:
@@ -68,7 +86,8 @@ class Clause:
     ``starts_at`` and ``ends_before`` are verbatim substrings of the shipped
     prompt. The span runs from the start of ``starts_at``'s line to the start of
     ``ends_before``'s line; with no ``ends_before`` the clause is ``starts_at``'s
-    own line, which is the right extent for a single-line absolute.
+    own line, which is the right extent for a single-line absolute, and with
+    :data:`END_OF_PROMPT` it runs to the end of the prompt constant.
 
     Requiring an explicit end anchor (rather than inferring one from a header
     regex) is deliberate. Header shapes differ per prompt file — ``—SECTION—``,
@@ -81,7 +100,7 @@ class Clause:
     name: str
     source: str
     starts_at: str
-    ends_before: str | None = None
+    ends_before: str | _EndOfPrompt | None = None
     #: What behaviour this clause governs, in one line — the reason a reader
     #: should care that it broke.
     governs: str = ""
@@ -422,7 +441,7 @@ CLAUSES: tuple[Clause, ...] = (
         name="extraction_rules",
         source="memory_extraction",
         starts_at="## EXTRACTION RULES:",
-        ends_before="## MEMORY FORMAT:",
+        ends_before=END_OF_PROMPT,
         governs="the full rule set every extracted memory must satisfy",
         depends_on=("suites/memory.py",),
     ),
@@ -507,6 +526,8 @@ def resolve(ref: str) -> str:
     if clause_obj.ends_before is None:
         end = text.find("\n", start)
         span = text[start:] if end == -1 else text[start:end]
+    elif isinstance(clause_obj.ends_before, _EndOfPrompt):
+        span = text[start:]
     else:
         stop = _locate(clause_obj, text, clause_obj.ends_before, "end")
         if stop <= start:

@@ -120,9 +120,10 @@ class ExtractedFact(BaseModel):
         ge=0.0,
         le=1.0,
         description=(
-            "How much this fact matters long-term: 0.9-1.0 life-defining "
-            "(partner, job, home city, health), 0.6-0.8 stable preferences and "
-            "recurring context, 0.3-0.5 incidental but worth keeping."
+            "How much this fact matters long-term: 0.9-1.0 life-defining facts "
+            "(partner, job, home city, health) AND active goals, aspirations, "
+            "hard deadlines, and commitments made or owed; 0.6-0.8 stable "
+            "preferences and recurring context; 0.3-0.5 incidental but worth keeping."
         ),
     )
 
@@ -190,7 +191,7 @@ class FactCategorization(BaseModel):
     importance: float = Field(
         ge=0.0,
         le=1.0,
-        description="Long-term importance: 0.9+ life-defining, 0.6-0.8 stable, 0.3-0.5 incidental.",
+        description="Long-term importance: 0.9-1.0 life-defining facts AND active goals, aspirations, hard deadlines, and commitments made or owed; 0.6-0.8 stable preferences and recurring context; 0.3-0.5 incidental.",
     )
     entities: list[ExtractedEntity] = Field(
         default_factory=list,

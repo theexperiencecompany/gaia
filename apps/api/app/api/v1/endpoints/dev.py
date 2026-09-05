@@ -6,9 +6,11 @@ is mounted by ``create_app`` only when ``ENV == development`` and
 ``DEV_AUTH_BYPASS_EMAIL`` is set, so every route here 404s in production.
 """
 
-from fastapi import APIRouter, File, Form, Header, UploadFile, status
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from langgraph.errors import GraphRecursionError
 
+from app.db.repositories.users import user_repository
 from app.models.files_models import FileDocument
 from app.models.user_models import UserDocument
 from app.schemas.dev_schemas import (
@@ -20,6 +22,7 @@ from app.schemas.dev_schemas import (
     SeedDevDataRequest,
     SeedDevDataResponse,
 )
+from app.services.briefing.service import run_daily_briefing, run_weekly_digest
 from app.services.dev_agent_service import (
     list_dev_subagents,
     run_executor_direct,
@@ -35,6 +38,8 @@ from app.services.storage import SAFE_PATH_ID_PATTERN
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/dev", tags=["Dev"])
+
+_BRIEFING_RUNS = {"daily": run_daily_briefing, "weekly": run_weekly_digest}
 
 
 @router.post("/users")
@@ -134,3 +139,25 @@ async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> DevAgen
     )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result
+
+
+@router.post("/briefing/{kind}/{email}")
+async def run_briefing_now(kind: str, email: str) -> JSONResponse:
+    """Run the full daily/weekly briefing pipeline for a dev user, synchronously.
+
+    The founder-day harness's trigger: same code path as the cron (curation →
+    context → silent agent run → persist → deliver), without waiting for 8am.
+    """
+    log.set(dev={"operation": "run_briefing", "kind": kind, "email": email})
+    run = _BRIEFING_RUNS.get(kind)
+    if run is None:
+        raise HTTPException(status_code=400, detail="kind must be 'daily' or 'weekly'")
+    user = await user_repository.get_by_email(email)
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No GAIA user exists for '{email}' — mint it via POST /api/v1/dev/users",
+        )
+    await run(user.id)
+    log.set(dev={"user_id": user.id})
+    return JSONResponse(content={"user_id": user.id, "kind": kind, "status": "completed"})

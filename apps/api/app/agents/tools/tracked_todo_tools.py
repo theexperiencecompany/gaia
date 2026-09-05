@@ -7,16 +7,22 @@ and search across canvas context via ChromaDB.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import ASSIGNEE_GAIA, FACET_FIELDS, FACET_NOTES
 from app.db.repositories.todos import todo_repository
 from app.models.agent_models import agent_configurable
-from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
+from app.models.todo_models import (
+    Priority,
+    TodoDocument,
+    TodoResponse,
+    TodoUpdate,
+    TrackedTodoDraft,
+)
 from app.models.trigger_subscription_models import (
     OPERATORS_BY_FIELD_TYPE,
     ConditionMatch,
@@ -25,7 +31,13 @@ from app.models.trigger_subscription_models import (
     SubscriptionCondition,
     SubscriptionStatus,
 )
-from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
+from app.services.payments.payment_service import payment_service
+from app.services.todo_canvas_storage import append_facet, read_facet, write_facet
+from app.services.todos import gaia_todo_lifecycle as lifecycle
+from app.services.todos.gaia_todo_lifecycle import (
+    BudgetExceededError,
+    TraceabilityError,
+)
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.triggers.matchable_fields import MATCHABLE_TRIGGERS, get_matchable_trigger
 from app.services.triggers.subscription_service import (
@@ -41,7 +53,6 @@ from app.utils.timezone import Timezone, is_valid_timezone
 from shared.py.wide_events import log, spawn_logged_task
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
-_UTC_OFFSET = "+00:00"
 _ERR_NO_USER_ID = "Error: user_id not found in config"
 
 
@@ -81,7 +92,7 @@ def _is_cron_expression(recurrence: str) -> bool:
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:
-        parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
+        parsed = datetime.fromisoformat(iso_str)
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
     if parsed.tzinfo is None:
@@ -159,17 +170,17 @@ async def _persist_scheduling_fields(
     """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
     if not (parsed_scheduled_at or recurrence or expires_at):
         return None
-    fields: dict[str, object] = {}
+    update_kwargs: dict[str, Any] = {}
     if parsed_scheduled_at:
-        fields["scheduled_at"] = parsed_scheduled_at
+        update_kwargs["scheduled_at"] = parsed_scheduled_at
     if recurrence:
-        fields["recurrence"] = recurrence
+        update_kwargs["recurrence"] = recurrence
     if expires_at:
         try:
-            fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", _UTC_OFFSET))
+            update_kwargs["expires_at"] = datetime.fromisoformat(expires_at)
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
-    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate.model_validate(fields))
+    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate(**update_kwargs))
     return None
 
 
@@ -216,18 +227,16 @@ def _format_first_fire_note(parsed_scheduled_at: datetime, user_tz_name: str | N
     )
 
 
-def _build_labels_update(labels: list[str] | None, update_fields: dict[str, object]) -> str | None:
-    """Apply a labels update, ensuring GAIA_TRACKED_LABEL is present."""
+def _build_labels_update(labels: list[str] | None, update_fields: dict[str, Any]) -> str | None:
+    """Apply a labels update, setting the labels exactly as passed."""
     if labels is None:
         return None
-    if GAIA_TRACKED_LABEL not in labels:
-        labels = [*labels, GAIA_TRACKED_LABEL]
     update_fields["labels"] = labels
     return None
 
 
 def _build_clearable_datetime_update(
-    value: str | None, field_name: str, update_fields: dict[str, object]
+    value: str | None, field_name: str, update_fields: dict[str, Any]
 ) -> str | None:
     """Set, clear (""), or skip (None) a datetime field; returns user-facing error on bad format."""
     if value is None:
@@ -236,15 +245,13 @@ def _build_clearable_datetime_update(
         update_fields[field_name] = None
         return None
     try:
-        update_fields[field_name] = datetime.fromisoformat(value.replace("Z", _UTC_OFFSET))
+        update_fields[field_name] = datetime.fromisoformat(value)
     except ValueError:
         return f"Error: invalid {field_name} format '{value}'."
     return None
 
 
-def _build_priority_update(
-    priority: Priority | None, update_fields: dict[str, object]
-) -> str | None:
+def _build_priority_update(priority: Priority | None, update_fields: dict[str, Any]) -> str | None:
     """Apply a priority update."""
     if priority is not None:
         update_fields["priority"] = priority.value
@@ -252,7 +259,7 @@ def _build_priority_update(
 
 
 def _build_scheduled_at_update(
-    scheduled_at: str | None, update_fields: dict[str, object]
+    scheduled_at: str | None, update_fields: dict[str, Any]
 ) -> str | None:
     """Apply a scheduled_at update (must be in the future) or clear it."""
     if scheduled_at is None:
@@ -261,7 +268,7 @@ def _build_scheduled_at_update(
         update_fields["scheduled_at"] = None
         return None
     try:
-        parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
+        parsed_at = datetime.fromisoformat(scheduled_at)
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
     if parsed_at.tzinfo is None:
@@ -297,7 +304,7 @@ async def _apply_cron_first_fire(
     recurrence: str,
     scheduled_at: str | None,
     user_id: str,
-    update_fields: dict[str, object],
+    update_fields: dict[str, Any],
     notes: list[str],
 ) -> str | None:
     """For a cron recurrence, derive first fire in the user's tz and override scheduled_at."""
@@ -318,7 +325,7 @@ async def _build_recurrence_update(
     recurrence: str | None,
     scheduled_at: str | None,
     user_id: str,
-    update_fields: dict[str, object],
+    update_fields: dict[str, Any],
     notes: list[str],
 ) -> str | None:
     """Validate + apply a recurrence update; for cron, also recompute first-fire."""
@@ -337,10 +344,8 @@ async def _build_recurrence_update(
 
 
 @dataclass(frozen=True)
-class _UpdateFieldInputs:
-    """The raw agent-supplied field values for update_tracked_todo, bundled so the
-    validator chain that consumes them is one small helper instead of six inline
-    guards on the tool body."""
+class _TrackedTodoEdits:
+    """The raw, agent-supplied property edits one update_tracked_todo call carries."""
 
     labels: list[str] | None
     due_date: str | None
@@ -350,49 +355,49 @@ class _UpdateFieldInputs:
     expires_at: str | None
 
 
-async def _apply_field_updates(
-    inputs: _UpdateFieldInputs,
+async def _collect_update_fields(
+    edits: _TrackedTodoEdits,
     user_id: str,
-    update_fields: dict[str, object],
+    update_fields: dict[str, Any],
     notes: list[str],
 ) -> str | None:
-    """Run each field validator in order, short-circuiting on the first error so the
-    async _get_user_tz Mongo lookup in the recurrence validator never runs after an
-    earlier field already failed. Populates update_fields/notes in place.
+    """Validate every supplied edit into ``update_fields``; returns the first error.
 
-    _build_labels_update can never actually return an error today (there is no label
-    validation yet); the check is kept for the same shape as the others so adding one
-    later needs no restructuring.
+    Validation short-circuits so no later work runs (in particular the async
+    ``_get_user_tz`` Mongo lookup inside the recurrence validator) once a field
+    has already failed.
     """
-    if error := _build_labels_update(inputs.labels, update_fields):  # pragma: no cover
+    # _build_labels_update can never actually return an error today (there is
+    # no label validation yet) — the check-and-return is kept for the same
+    # shape as every other field below, so adding label validation later
+    # doesn't require restoring this line.
+    if error := _build_labels_update(edits.labels, update_fields):  # pragma: no cover
         return error
-    if error := _build_clearable_datetime_update(inputs.due_date, "due_date", update_fields):
+    if error := _build_clearable_datetime_update(edits.due_date, "due_date", update_fields):
         return error
-    if error := _build_priority_update(inputs.priority, update_fields):
+    if error := _build_priority_update(edits.priority, update_fields):
         return error
-    if error := _build_scheduled_at_update(inputs.scheduled_at, update_fields):
+    if error := _build_scheduled_at_update(edits.scheduled_at, update_fields):
         return error
     if error := await _build_recurrence_update(
-        inputs.recurrence, inputs.scheduled_at, user_id, update_fields, notes
+        edits.recurrence, edits.scheduled_at, user_id, update_fields, notes
     ):
         return error
-    if error := _build_clearable_datetime_update(inputs.expires_at, "expires_at", update_fields):
-        return error
-    return None
+    return _build_clearable_datetime_update(edits.expires_at, "expires_at", update_fields)
 
 
 def _build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
     """Build the pipe-separated detail fragments shown on the second line of each todo."""
     parts: list[str] = []
-    if doc.due_date:
-        days_until = (doc.due_date - now).days
+    if due_date := doc.due_date:
+        days_until = (due_date - now).days
         parts.append(f"Due: OVERDUE {-days_until}d" if days_until < 0 else f"Due: {days_until}d")
-    if doc.scheduled_at:
-        parts.append(f"Scheduled: {doc.scheduled_at.isoformat()}")
-    if doc.recurrence:
-        parts.append(f"Recurrence: {doc.recurrence}")
-    if doc.expires_at:
-        expires_days = (doc.expires_at - now).days
+    if scheduled := doc.scheduled_at:
+        parts.append(f"Scheduled: {scheduled.isoformat()}")
+    if recurrence := doc.recurrence:
+        parts.append(f"Recurrence: {recurrence}")
+    if expires := doc.expires_at:
+        expires_days = (expires - now).days
         parts.append(
             f"Expires: EXPIRED {-expires_days}d ago"
             if expires_days < 0
@@ -405,20 +410,36 @@ def _build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
 
 def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
-    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
-    labels_str = f" [{', '.join(labels)}]" if labels else ""
+    todo_id = doc.id
+    title = doc.title or "Untitled"
+    labels_str = f" [{', '.join(doc.labels)}]" if doc.labels else ""
+    priority = doc.priority.value
     age_days = (now - (doc.created_at or now)).days
     last_update = (now - (doc.updated_at or now)).days
 
     parts = [
-        f'- "{doc.title}"{labels_str} (ID: {doc.id})',
-        f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
+        f'- "{title}"{labels_str} (ID: {todo_id})',
+        f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago",
     ]
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
         parts.append(f"  {' | '.join(detail_parts)}")
     parts.extend(f"  {line}" for line in _format_subscription_lines(doc))
     return "\n".join(parts)
+
+
+def _strip_redundant_heading(content: str, section: str) -> str:
+    """Drop a leading `## {section}` line the caller repeated inside the body.
+
+    The patch re-emits the heading itself, so a copy at the top of `content`
+    would double it (`## Key Details` / `## Key Details`) — the exact structural
+    bug seen in the wild when the model includes the heading in its section body.
+    """
+    body = content.lstrip("\n")
+    first_line, _, rest = body.partition("\n")
+    if first_line.strip().lower() == f"## {section}".strip().lower():
+        return rest.lstrip("\n")
+    return content
 
 
 def _format_subscription_lines(doc: TodoDocument) -> list[str]:
@@ -470,9 +491,13 @@ def _render_catalog(trigger_name: str) -> str:
 
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
     """Replace (or append) a `## {section}` block within a canvas markdown string."""
+    content = _strip_redundant_heading(content, section)
     heading = f"## {section}"
     head_end: int | None = None
-    search_start = 0
+    # `str.find(sub, None)` behaves exactly like `str.find(sub, 0)`, and every
+    # later pass reassigns this to an int, so swapping the initial 0 for None is
+    # a provably-equivalent mutation with no test that could tell the two apart.
+    search_start = 0  # pragma: no mutate
     while True:
         pos = current.find(heading, search_start)
         if pos == -1:
@@ -510,8 +535,9 @@ def _format_create_output(
     out = (
         f"Tracked todo created: {result.id}\n"
         f"Title: {result.title}\n"
-        "Canvas + activity log are stored on this todo. Edit them ONLY via "
-        f"update_tracked_todo_canvas(todo_id='{result.id}', ...), never with filesystem tools."
+        "Its facets (deliverable / notes / log) are stored on this todo. Edit them "
+        f"ONLY via update_tracked_todo_canvas(todo_id='{result.id}', facet=..., ...), "
+        "never with filesystem tools."
     )
     if parsed_scheduled_at:
         out += _format_first_fire_note(parsed_scheduled_at, user_tz_name)
@@ -524,17 +550,66 @@ def _format_create_output(
 async def create_tracked_todo(
     config: RunnableConfig,
     title: Annotated[str, "Short title for the tracked todo"],
+    serves: Annotated[
+        str,
+        "REQUIRED traceability: the goal, memory item, or explicit user request "
+        "this todo advances (e.g. 'raising a pre-seed round'). Shown to the user "
+        "as 'because: ...'. Creation is rejected when empty.",
+    ],
+    *,
+    requires_approval: Annotated[
+        bool,
+        "Approval rule (outward-visibility): True when executing this todo takes "
+        "an action the outside world can see - sending email/DMs, posting, "
+        "inviting others to events, spending money. The todo then enters "
+        "'proposed' and waits for the user's Approve tap. False when the work is "
+        "visible only to the user and GAIA - research, drafts, triage, prep - "
+        "which enters 'queued' and executes without permission. "
+        "EXPLICIT-INSTRUCTION EXCEPTION: when the user's own words directly "
+        "instructed this exact outward action with its target ('send Bob the "
+        "invoice reminder tomorrow at 9'), their instruction IS the approval - "
+        "use False so it executes on schedule instead of re-asking. This only "
+        "applies when the user named the action AND the recipient/target "
+        "themselves; a goal ('help me collect invoices') or a vague ask does NOT "
+        "qualify - propose those. The send-time approval gate independently "
+        "verifies the user's words authorized the action, so an over-eager False "
+        "still cannot send anything the user never asked for. "
+        "STAGING INVARIANT: a proposal (True) is rejected unless `initial_deliverable` "
+        "carries the exact content approving will release. Do the prep first "
+        "(internal todo), then create the proposal with the finished content.",
+    ],
+    kind: Annotated[
+        str,
+        "'task' (default) or 'goal'. A goal is a long-lived lane (raising a "
+        "round, growing users): its canvas is the living strategy the nightly "
+        "pass advances. Create a goal ONLY after the user has confirmed it in "
+        "conversation, never silently. Goals skip the in-flight budget but are "
+        "capped at 3 active.",
+    ] = "task",
+    goal_id: Annotated[
+        str | None,
+        "ID of the goal-todo this task advances. Set it on every task that "
+        "belongs to a goal lane so traceability is a real link.",
+    ] = None,
     description: Annotated[
         str | None,
         "Optional description of what this todo is tracking",
     ] = None,
-    initial_canvas: Annotated[
+    initial_deliverable: Annotated[
         str | None,
-        "Optional initial canvas content (markdown). If omitted, a template is used.",
+        "The deliverable facet: the polished, send-ready output (markdown). For a "
+        "proposal (requires_approval=True) this is REQUIRED and is the exact "
+        "content Approve releases. For internal work it is optional (a light "
+        "template is used if omitted).",
+    ] = None,
+    initial_notes: Annotated[
+        str | None,
+        "Optional initial notes facet content (GAIA's private working memory: "
+        "plan, key details, current state). If omitted, a template is used.",
     ] = None,
     labels: Annotated[
         list[str] | None,
-        "Optional labels for categorization (gaia-tracked is added automatically)",
+        "Optional labels for categorization",
     ] = None,
     priority: Annotated[Priority, "Priority"] = Priority.NONE,
     scheduled_at: Annotated[
@@ -589,9 +664,9 @@ async def create_tracked_todo(
     tracked todo. Search existing tracked todos first (search_todo_context) and
     update a match instead of creating a duplicate.
 
-    IMPORTANT: Before creating a tracked todo with scheduling (scheduled_at, recurrence),
-    read the "tracked-todo-working-memory" skill first for scheduling best practices,
-    canvas template guidelines, and lifecycle rules.
+    IMPORTANT: Read the "tracked-todo-working-memory" skill for the search-first workflow,
+    canvas structure, and goal lanes before creating. Scheduling specifics live in the
+    scheduled_at / recurrence / expires_at args below.
 
     scheduled_at: ISO datetime with the user's timezone offset (e.g., "2026-03-20T09:00:00+05:30").
                   For a one-time run, or as the first-fire anchor for a delta recurrence
@@ -623,15 +698,29 @@ async def create_tracked_todo(
     if error:
         return error
 
-    result = await tracked_todo_service.create_tracked_todo(
-        user_id=user_id,
-        title=title,
-        description=description,
-        initial_canvas=initial_canvas,
-        labels=labels,
-        priority=priority,
-        source_conversation_id=source_conversation_id,
-    )
+    try:
+        result = await tracked_todo_service.create_tracked_todo(
+            user_id,
+            TrackedTodoDraft(
+                title=title,
+                serves=serves,
+                requires_approval=requires_approval,
+                kind=kind,
+                goal_id=goal_id,
+                description=description,
+                initial_deliverable=initial_deliverable,
+                initial_notes=initial_notes,
+                labels=labels,
+                priority=priority,
+                source_conversation_id=source_conversation_id,
+                # A todo with its own schedule/recurrence fires at that time, not
+                # now (the scheduling below arms it); everything else starts
+                # immediately.
+                auto_execute=not (parsed_scheduled_at or recurrence),
+            ),
+        )
+    except (TraceabilityError, BudgetExceededError) as e:
+        return f"Error: {e}"
 
     persist_error = await _persist_scheduling_fields(
         result.id, user_id, parsed_scheduled_at, recurrence, expires_at
@@ -711,18 +800,23 @@ async def update_tracked_todo_canvas(
         "Exact heading text without ## (e.g. 'Current State', 'Key Details', 'Learnings'). "
         "If the section does not exist, it is appended as a new section.",
     ] = None,
+    facet: Annotated[
+        str,
+        "Which facet to write: "
+        "'notes' (default): GAIA's private working memory (plan, key details, current state). "
+        "'deliverable': the polished, send-ready output the user sees (what Approve releases). "
+        "'log': the activity/timeline audit trail. "
+        "Write drafts, decisions, and scratch to 'notes'; write only finished, "
+        "user-facing output to 'deliverable'.",
+    ] = FACET_NOTES,
 ) -> str:
-    """Update GAIA's working notes on an EXISTING tracked todo's canvas.
+    """Update a facet (notes / deliverable / log) of an EXISTING tracked todo.
 
-    PRECONDITION: only call this when you already have a tracked todo for THIS initiative:
-    one you created this turn (you hold its todo_id) or the run's "🎯 ACTIVE TODO". If no
-    tracked todo exists for the task (a one-off fetch / deploy / build / lookup / edit), do
-    NOT call this. The canvas lives on the todo, not the filesystem, never use read/write/edit.
-
-    Modes (once you have a todo_id):
-    append  → activity log entries, timeline events, new context. No read needed.
-    section → update a single named section (e.g. Current State). No read needed.
-    replace → full rewrite. Only when restructuring the entire canvas.
+    PRECONDITION: call this only when you already hold a tracked todo for THIS initiative,
+    one you created this turn or the run's "🎯 ACTIVE TODO". For a one-off fetch, deploy,
+    build, lookup, or edit with no tracked todo, do not call it. Facets live on the todo,
+    not the filesystem, so never reach for read/write/edit. See the `facet` and `mode` args
+    for which facet holds what and how each write mode behaves.
     """
     user_id = config.get("metadata", {}).get("user_id")
     if not user_id:
@@ -730,6 +824,9 @@ async def update_tracked_todo_canvas(
 
     if mode not in ("replace", "append", "section"):
         return f"Error: invalid mode '{mode}'. Use 'replace', 'append', or 'section'."
+
+    if facet not in FACET_FIELDS:
+        return f"Error: invalid facet '{facet}'. Use one of: {', '.join(sorted(FACET_FIELDS))}."
 
     if mode == "section" and not section:
         return "Error: 'section' mode requires a section name."
@@ -739,13 +836,18 @@ async def update_tracked_todo_canvas(
         return f"Error: tracked todo {todo_id} not found"
 
     if mode == "replace":
-        await write_canvas(todo_id, user_id, content)
+        await write_facet(todo_id, user_id, facet, content)
     elif mode == "append":
-        await append_canvas(todo_id, user_id, content)
+        await append_facet(todo_id, user_id, facet, content)
     else:  # section
-        current = await read_canvas(todo_id, user_id) or ""
-        new_canvas = _patch_canvas_section(current, section or "", content)
-        await write_canvas(todo_id, user_id, new_canvas)
+        current = await read_facet(todo_id, user_id, facet) or ""
+        # Reaching here means mode == "section", and the guard above already
+        # returned for a section mode with no name — so `section` is a non-empty
+        # str and the fallback is unreachable. It exists only to narrow
+        # `str | None`, which makes mutating it provably equivalent.
+        section_name = section or ""  # pragma: no mutate
+        patched = _patch_canvas_section(current, section_name, content)
+        await write_facet(todo_id, user_id, facet, patched)
 
     spawn_logged_task(
         "canvas_reindex",
@@ -758,9 +860,9 @@ async def update_tracked_todo_canvas(
         todo_id=todo_id,
         user_id=user_id,
         event_type="CANVAS_UPDATED",
-        details=f"Agent updated canvas (mode={mode}{section_suffix})",
+        details=f"Agent updated {facet} (mode={mode}{section_suffix})",
     )
-    return f"Canvas updated (mode={mode}{section_suffix})."
+    return f"Updated {facet} (mode={mode}{section_suffix})."
 
 
 @tool
@@ -769,7 +871,8 @@ async def complete_tracked_todo(
     todo_id: Annotated[str, "ID of the tracked todo to complete"],
     summary: Annotated[str, "One or two sentences describing what was achieved"],
 ) -> str:
-    """Complete a tracked todo: archive VFS canvas, remove from search index, mark done.
+    """Complete a tracked todo: mark it done and archive its canvas. The canvas
+    stays in the search index (flagged completed) so past work remains findable.
 
     Call when the todo's goal is fully achieved. Use the regular todo update for
     partial completion or status changes only.
@@ -782,7 +885,7 @@ async def complete_tracked_todo(
         todo_id=todo_id, user_id=user_id, summary=summary
     )
     if not success:
-        return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
+        return f"Error: could not complete tracked todo {todo_id}: not found"
     return f"Tracked todo {todo_id} completed and archived."
 
 
@@ -790,10 +893,10 @@ async def complete_tracked_todo(
 async def update_tracked_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo to update"],
+    *,
     labels: Annotated[
         list[str] | None,
-        "New labels to SET on the todo (replaces all existing labels). "
-        "Always include 'gaia-tracked' in the list.",
+        "New labels to SET on the todo (replaces all existing labels).",
     ] = None,
     due_date: Annotated[
         str | None,
@@ -833,7 +936,7 @@ async def update_tracked_todo(
 
     Args:
         todo_id: The tracked todo ID (from ACTIVE TRACKED TODOS context block).
-        labels: Replace labels. Always include 'gaia-tracked'.
+        labels: Replace labels.
         due_date: Set or clear due date.
         priority: Change priority.
         scheduled_at: Schedule or reschedule execution. Must be in the future.
@@ -845,9 +948,9 @@ async def update_tracked_todo(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    update_fields: dict[str, object] = {}
+    update_fields: dict[str, Any] = {}
     notes: list[str] = []
-    inputs = _UpdateFieldInputs(
+    edits = _TrackedTodoEdits(
         labels=labels,
         due_date=due_date,
         priority=priority,
@@ -855,16 +958,16 @@ async def update_tracked_todo(
         recurrence=recurrence,
         expires_at=expires_at,
     )
-    if error := await _apply_field_updates(inputs, user_id, update_fields, notes):
+    if error := await _collect_update_fields(edits, user_id, update_fields, notes):
         return error
 
-    if not update_fields:
+    if not update_fields and references is None:
         return "No fields to update. Provide at least one field to change."
 
     # Validate the resulting state against the existing doc — the in-call guards
     # alone can't catch corruption when the DB already has scheduling fields set.
     existing = await todo_repository.get(todo_id, user_id=user_id)
-    if not existing:
+    if not existing or existing.assignee != ASSIGNEE_GAIA:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
     effective_scheduled_at = update_fields.get("scheduled_at", existing.scheduled_at)
@@ -875,19 +978,20 @@ async def update_tracked_todo(
             "Either clear recurrence or provide a scheduled_at value."
         )
 
-    updated = await todo_repository.update(
-        todo_id, user_id=user_id, update=TodoUpdate.model_validate(update_fields)
-    )
-    if updated is None:
-        return f"Error: tracked todo {todo_id} not found or not a tracked todo."
+    if update_fields:
+        updated = await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(**update_fields)
+        )
+        if updated is None:
+            return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    # If scheduled_at landed in update_fields with a real datetime (agent-passed or
-    # cron-derived), reschedule the ARQ job.
-    new_scheduled_at = update_fields.get("scheduled_at")
-    if isinstance(new_scheduled_at, datetime):
-        await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
+        # If scheduled_at landed in update_fields with a real datetime (agent-passed
+        # or cron-derived), reschedule the ARQ job.
+        new_scheduled_at = update_fields.get("scheduled_at")
+        if isinstance(new_scheduled_at, datetime):
+            await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
 
-    updated_keys = list(update_fields)
+    updated_keys = list(update_fields.keys())
     if references is not None:
         await todo_repository.add_references(todo_id, user_id=user_id, references=references)
         updated_keys.append("references")
@@ -920,6 +1024,116 @@ async def list_tracked_todos(
     now = datetime.now(UTC)
     lines = [_format_tracked_todo_full(doc, now) for doc in docs]
     return f"Active tracked todos ({len(docs)}):\n\n" + "\n\n".join(lines)
+
+
+@tool
+async def approve_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the proposed todo the user is approving"],
+    instruction: Annotated[
+        str | None,
+        "The user's VERBATIM qualifying words about how to execute, whenever "
+        "their approval narrowed or adjusted the staged work (e.g. 'only send "
+        "the Sequoia one', 'drop the deck link'). Pass their exact words, never "
+        "a paraphrase; omit only when they approved without qualification.",
+    ] = None,
+) -> str:
+    """Approve a proposed GAIA todo on the user's explicit say-so, releasing its
+    staged work for execution.
+
+    Use ONLY when the user has clearly told you to go ahead in this conversation
+    ("send them", "approve it", "yes, post it"). Their words are the approval;
+    this tool records it and queues the execution. If their go-ahead came with a
+    qualification ("send only...", "but change..."), pass it as ``instruction``
+    so the run obeys it. Never call it on your own initiative: proposals exist
+    precisely because this decision belongs to the user. To adjust the staged
+    content first, edit the canvas, then approve.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    plan = await payment_service.get_cached_plan_type(user_id)
+    try:
+        await lifecycle.approve(todo_id, user_id, plan, channel="chat", instruction=instruction)
+    except lifecycle.ExecutionQuotaError as e:
+        return (
+            f"Blocked by the free plan's execution quota. Tell the user: {e.pitch} "
+            f"(resets {e.reset_time or 'next month'}; upgrading to {e.plan_required} lifts it)."
+        )
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Approved: todo {todo_id} is queued and its staged work is executing."
+
+
+@tool
+async def dismiss_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the proposed todo the user is declining"],
+    reason: Annotated[
+        str | None,
+        "The user's reason in their own words, when they gave one. It teaches "
+        "what not to propose again.",
+    ] = None,
+) -> str:
+    """Dismiss a proposed GAIA todo on the user's explicit say-so.
+
+    Use ONLY when the user has clearly declined the proposal in this
+    conversation ("don't send those", "skip it", "not this"). The rejection is
+    recorded as a memory signal so this kind of proposal stops recurring.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.dismiss(todo_id, user_id, reason=reason, channel="chat")
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Dismissed: todo {todo_id} will not run, and the rejection was recorded."
+
+
+@tool
+async def block_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the todo whose run is blocked"],
+    question: Annotated[str, "The decision you need from the user, phrased as one clear question"],
+) -> str:
+    """Pause a todo you are executing on a decision only the user can make.
+
+    Use mid-run when continuing would mean guessing (which recipient, which
+    figure, spend or not) or when an approved plan grows a NEW outward action.
+    The question is shown on the dashboard and asked in chat; the run resumes
+    automatically once the user answers. Never guess instead of blocking.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.block(todo_id, user_id, question)
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Blocked: todo {todo_id} is waiting on the user's answer to: {question}"
+
+
+@tool
+async def answer_todo(
+    config: RunnableConfig,
+    todo_id: Annotated[str, "ID of the needs_you todo the user is answering"],
+    answer: Annotated[str, "The user's answer, in their own words"],
+) -> str:
+    """Resume a blocked (needs_you) todo with the user's answer.
+
+    Use ONLY when the user has answered the blocking question in this
+    conversation. Records the answer in the todo's notes and re-queues the
+    run; the next execution reads it and continues where it stopped.
+    """
+    user_id = config.get("metadata", {}).get("user_id")
+    if not user_id:
+        return _ERR_NO_USER_ID
+    try:
+        await lifecycle.answer(todo_id, user_id, answer, channel="chat")
+    except lifecycle.InvalidTransitionError as e:
+        return f"Error: {e}"
+    return f"Answered: todo {todo_id} is queued again and will continue with the user's answer."
 
 
 @tool
@@ -1109,6 +1323,10 @@ tools = [
     complete_tracked_todo,
     update_tracked_todo,
     list_tracked_todos,
+    approve_todo,
+    dismiss_todo,
+    block_todo,
+    answer_todo,
     list_trigger_fields,
     subscribe_todo_to_trigger,
     unsubscribe_todo_from_trigger,

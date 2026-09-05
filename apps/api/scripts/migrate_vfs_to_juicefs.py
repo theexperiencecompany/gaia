@@ -32,11 +32,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import sys
 
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.users import user_repository
 from app.services.storage import (
     JuiceFSUnavailable,
     ensure_user_workspace,
@@ -44,7 +44,6 @@ from app.services.storage import (
 from shared.py.wide_events import log
 
 e2b_sandboxes_collection = get_async_collection("e2b_sandboxes")
-users_collection = get_async_collection("users")
 vfs_nodes_collection = get_async_collection("vfs_nodes")
 
 
@@ -109,18 +108,11 @@ async def migrate_one(user_id: str, *, dry_run: bool = False) -> dict:
     return {"user_id": user_id, "files": written, "status": "ok"}
 
 
-async def _all_user_ids() -> AsyncGenerator[str, None]:
-    async for doc in users_collection.find({}, projection={"_id": 1}):
-        yield str(doc["_id"])
-
-
 async def main_async(args: argparse.Namespace) -> int:
     if args.user:
         targets = [args.user]
     else:
-        targets = []
-        async for user_id in _all_user_ids():
-            targets.append(user_id)
+        targets = await user_repository.list_all_ids()
 
     summary: list[dict] = []
     for user_id in targets:

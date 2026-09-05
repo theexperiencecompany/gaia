@@ -77,6 +77,7 @@ export type {
 } from "./skills";
 export type {
   BulkMoveRequest,
+  ExecutionStatus,
   PaginationMeta,
   Project,
   ProjectCreate,
@@ -84,6 +85,7 @@ export type {
   SubscriptionCondition,
   SubTask,
   Todo,
+  TodoAssignee,
   TodoCounts,
   TodoCreate,
   TodoFilters,

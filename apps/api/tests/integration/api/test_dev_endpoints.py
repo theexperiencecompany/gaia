@@ -391,7 +391,7 @@ class TestDevServiceLogic:
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
-        assert mock_complete.await_args.kwargs["phase"] == dev_service.OnboardingPhase.COMPLETED
+        assert mock_complete.await_args.args[1].phase == dev_service.OnboardingPhase.COMPLETED
 
     async def test_seed_rejects_unknown_platform_before_writing(self):
         """An invalid platform aborts with 400 and writes nothing."""

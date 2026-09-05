@@ -14,7 +14,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import ClassVar, Protocol
 from unittest.mock import patch
 
 import pytest
@@ -25,6 +25,10 @@ from app.config.rate_limits import (
     RateLimitConfig,
     RateLimitPeriod,
     TieredRateLimits,
+    _multiplier_bullets,
+    _pro_only_bullet,
+    _uncapped_pro_day_bullet,
+    derive_pro_benefits,
     get_feature_info,
     get_feature_limits,
     get_limits_for_plan,
@@ -183,6 +187,7 @@ class TestFeatureLimits:
         "notification_operations",
         "integration_publish",
         "integration_clone",
+        "gaia_todo_executions",
         "imessage_registration",
         "account_platform_connect",
     ]
@@ -234,6 +239,8 @@ class TestFeatureLimits:
 
     # Features intentionally restricted to paid-only (free limits are 0).
     PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode", "imessage_registration"}
+    # Features metered monthly-only on free (no daily allowance; each use is felt).
+    MONTHLY_ONLY_FREE_FEATURES: ClassVar[set[str]] = {"gaia_todo_executions"}
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count
@@ -247,6 +254,10 @@ class TestFeatureLimits:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            elif key in self.MONTHLY_ONLY_FREE_FEATURES:
+                # Metered monthly-only: no daily allowance, but a real monthly one
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (monthly-only)"
+                assert limits.free.month > 0, f"{key}: expected free month > 0 (monthly-only)"
             elif key in self.COST_WALLED_FEATURES:
                 # Daily count wall removed — the cost budget gates daily use.
                 # Month stays as an abuse backstop, so free.month must be set.
@@ -273,6 +284,15 @@ class TestFeatureLimits:
         assert img.free.month == 2
         assert img.pro.day == 45
         assert img.pro.month == 1350
+
+    def test_specific_gaia_todo_execution_limits(self) -> None:
+        """Free is metered monthly-only so every approve is felt; Pro gets a daily budget."""
+        executions = FEATURE_LIMITS["gaia_todo_executions"]
+        assert executions.free.day == 0
+        assert executions.free.month == 5
+        assert executions.pro.day == 100
+        assert executions.pro.month == 1500
+        assert executions.info.title == "GAIA Todo Executions"
 
     def test_specific_deep_research_limits(self) -> None:
         dr = FEATURE_LIMITS["deep_research"]
@@ -573,3 +593,289 @@ class TestActivityPolicy:
         own automation keep them "active" forever (masking the dormancy sweep)
         and inflated the activity heatmap with runs nobody performed."""
         assert FEATURE_LIMITS["trigger_workflow_executions"].counts_as_activity is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: the upgrade pitch (derive_pro_benefits and its bullet passes)
+#
+# This is user-facing marketing copy generated from FEATURE_LIMITS, so the
+# exact strings, the exact numbers and the exact ordering are the contract.
+# ---------------------------------------------------------------------------
+
+# Features free has no access to at all — pass 1 of derive_pro_benefits, in
+# FEATURE_LIMITS declaration order.
+PRO_ONLY_BULLETS: list[dict[str, str]] = [
+    {"title": "Voice Mode", "detail": "included with Pro"},
+    {"title": "iMessage Registration", "detail": "included with Pro"},
+]
+# Pass 2: daily use not count-capped on Pro. Chat is the only one — it is
+# cost-walled (day 0 on both tiers), so the pitch stays count-free.
+UNCAPPED_PRO_DAY_BULLETS: list[dict[str, str]] = [
+    {"title": "Chat Messages", "detail": "unlimited daily messages"},
+]
+# Pass 3: the three largest free->pro daily multipliers. All three are 300x
+# (1,500 / 5), so the sort's key tiebreak orders them descending by key.
+TOP_MULTIPLIER_BULLETS: list[dict[str, str]] = [
+    {"title": "Trigger Workflow Executions", "detail": "1,500 per day instead of 5"},
+    {"title": "Trigger Todo Executions", "detail": "1,500 per day instead of 5"},
+    {"title": "Calendar Management", "detail": "1,500 per day instead of 5"},
+]
+
+
+class RegisterFeature(Protocol):
+    def __call__(
+        self, key: str, *, title: str, free: tuple[int, int], pro: tuple[int, int]
+    ) -> None: ...
+
+
+@pytest.fixture
+def register_feature(monkeypatch: pytest.MonkeyPatch) -> RegisterFeature:
+    """Add a synthetic feature to FEATURE_LIMITS for the duration of one test.
+
+    The bullet helpers read the global table, so a plan shape the real config
+    does not happen to contain (a pro tier capped at 1/day, a feature nobody
+    can use on either tier) is only reachable by putting one there.
+    """
+
+    def _register(
+        key: str,
+        *,
+        title: str,
+        free: tuple[int, int],
+        pro: tuple[int, int],
+    ) -> None:
+        monkeypatch.setitem(
+            FEATURE_LIMITS,
+            key,
+            TieredRateLimits(
+                free=RateLimitConfig(day=free[0], month=free[1]),
+                pro=RateLimitConfig(day=pro[0], month=pro[1]),
+                info=FeatureInfo(title=title, description=f"{title} description"),
+            ),
+        )
+
+    return _register
+
+
+@pytest.mark.unit
+class TestProOnlyBullet:
+    """_pro_only_bullet — free has no access at all, Pro does."""
+
+    @pytest.mark.parametrize(
+        ("free", "pro", "expected"),
+        [
+            pytest.param(
+                (0, 0),
+                (10, 100),
+                {"title": "Probe", "detail": "included with Pro"},
+                id="no-free-access-pro-has-both-periods",
+            ),
+            pytest.param(
+                (0, 0),
+                (0, 100),
+                {"title": "Probe", "detail": "included with Pro"},
+                id="pro-access-via-month-alone",
+            ),
+            pytest.param(
+                (0, 0),
+                (1, 0),
+                {"title": "Probe", "detail": "included with Pro"},
+                id="pro-access-via-a-single-day",
+            ),
+            pytest.param(
+                (0, 0),
+                (0, 1),
+                {"title": "Probe", "detail": "included with Pro"},
+                id="pro-access-via-a-single-month",
+            ),
+            pytest.param((0, 0), (0, 0), None, id="nobody-has-access-is-not-a-pitch"),
+            pytest.param((1, 0), (10, 100), None, id="one-free-day-is-still-free-access"),
+            pytest.param((0, 1), (10, 100), None, id="one-free-month-is-still-free-access"),
+            pytest.param((0, 5), (0, 500), None, id="cost-walled-chat-shape-is-not-pro-only"),
+            pytest.param((5, 50), (10, 100), None, id="free-has-a-real-allowance"),
+        ],
+    )
+    def test_bullet_for_plan_shape(
+        self,
+        register_feature: RegisterFeature,
+        free: tuple[int, int],
+        pro: tuple[int, int],
+        expected: dict[str, str] | None,
+    ) -> None:
+        register_feature("probe_feature", title="Probe", free=free, pro=pro)
+        assert _pro_only_bullet("probe_feature") == expected
+
+    def test_real_config_pro_only_features(self) -> None:
+        """Exactly two shipped features are Pro-only, and both say so."""
+        bullets = {
+            key: _pro_only_bullet(key)
+            for key in FEATURE_LIMITS
+            if _pro_only_bullet(key) is not None
+        }
+        assert bullets == {
+            "voice_mode": {"title": "Voice Mode", "detail": "included with Pro"},
+            "imessage_registration": {
+                "title": "iMessage Registration",
+                "detail": "included with Pro",
+            },
+        }
+
+
+@pytest.mark.unit
+class TestUncappedProDayBullet:
+    """_uncapped_pro_day_bullet — Pro puts no daily count on the feature."""
+
+    @pytest.mark.parametrize(
+        ("free", "pro", "expected"),
+        [
+            pytest.param(
+                (0, 5),
+                (0, 500),
+                {"title": "Probe", "detail": "unlimited daily messages"},
+                id="cost-walled-day-zero-on-both-tiers",
+            ),
+            pytest.param(
+                (5, 50),
+                (0, 500),
+                {"title": "Probe", "detail": "unlimited daily use"},
+                id="free-capped-daily-pro-uncapped",
+            ),
+            pytest.param((0, 0), (0, 0), None, id="nobody-has-access"),
+            pytest.param((0, 0), (0, 500), None, id="pro-only-features-are-pass-ones-job"),
+            pytest.param((5, 50), (1, 100), None, id="a-single-pro-day-is-still-a-cap"),
+            pytest.param((5, 50), (10, 100), None, id="pro-has-a-real-daily-cap"),
+        ],
+    )
+    def test_bullet_for_plan_shape(
+        self,
+        register_feature: RegisterFeature,
+        free: tuple[int, int],
+        pro: tuple[int, int],
+        expected: dict[str, str] | None,
+    ) -> None:
+        register_feature("probe_feature", title="Probe", free=free, pro=pro)
+        assert _uncapped_pro_day_bullet("probe_feature") == expected
+
+    def test_real_config_uncapped_features(self) -> None:
+        """Chat is the only shipped feature Pro leaves uncapped daily."""
+        bullets = {
+            key: _uncapped_pro_day_bullet(key)
+            for key in FEATURE_LIMITS
+            if _uncapped_pro_day_bullet(key) is not None
+        }
+        assert bullets == {
+            "chat_messages": {"title": "Chat Messages", "detail": "unlimited daily messages"}
+        }
+
+
+@pytest.mark.unit
+class TestMultiplierBullets:
+    """_multiplier_bullets — the largest free->pro daily multipliers, biggest first."""
+
+    def test_ranking_is_by_descending_daily_multiplier(self) -> None:
+        assert _multiplier_bullets(set(), 6) == [
+            *TOP_MULTIPLIER_BULLETS,
+            {"title": "Web Search", "detail": "5,000 per day instead of 20"},
+            {"title": "Sandbox Creation", "detail": "150 per day instead of 1"},
+            {"title": "Notification Operations", "detail": "7,500 per day instead of 50"},
+        ]
+
+    def test_max_other_truncates_the_ranking(self) -> None:
+        assert _multiplier_bullets(set(), 3) == TOP_MULTIPLIER_BULLETS
+
+    def test_max_other_zero_yields_nothing(self) -> None:
+        assert _multiplier_bullets(set(), 0) == []
+
+    def test_seen_features_are_skipped(self) -> None:
+        assert _multiplier_bullets({"trigger_workflow_executions", "calendar_management"}, 3) == [
+            {"title": "Trigger Todo Executions", "detail": "1,500 per day instead of 5"},
+            {"title": "Web Search", "detail": "5,000 per day instead of 20"},
+            {"title": "Sandbox Creation", "detail": "150 per day instead of 1"},
+        ]
+
+    def test_a_feature_pro_does_not_cap_daily_is_not_ranked(
+        self, register_feature: RegisterFeature
+    ) -> None:
+        """pro.day == 0 means uncapped, not a 0x multiplier — pass 2 owns it."""
+        register_feature("probe_feature", title="Probe", free=(2, 10), pro=(0, 500))
+        titles = [b["title"] for b in _multiplier_bullets(set(), len(FEATURE_LIMITS))]
+        assert "Probe" not in titles
+
+    def test_a_pro_tier_capped_at_one_a_day_ranks_last(
+        self, register_feature: RegisterFeature
+    ) -> None:
+        """Ratio 0.2 is a real (if terrible) multiplier and still gets ranked."""
+        register_feature("probe_feature", title="Probe", free=(5, 50), pro=(1, 100))
+        bullets = _multiplier_bullets(set(), len(FEATURE_LIMITS))
+        assert bullets[-1] == {"title": "Probe", "detail": "1 per day instead of 5"}
+
+    def test_features_free_cannot_use_are_never_ranked(self) -> None:
+        titles = [b["title"] for b in _multiplier_bullets(set(), len(FEATURE_LIMITS))]
+        assert "Voice Mode" not in titles
+        assert "iMessage Registration" not in titles
+        assert "Chat Messages" not in titles
+
+
+@pytest.mark.unit
+class TestDeriveProBenefits:
+    """derive_pro_benefits — the full upgrade pitch, in order."""
+
+    def test_hit_feature_leads_then_pro_only_then_uncapped_then_multipliers(self) -> None:
+        assert derive_pro_benefits("generate_image") == [
+            {"title": "AI Image Generation", "detail": "45 per day instead of 1"},
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+            *TOP_MULTIPLIER_BULLETS,
+        ]
+
+    def test_hit_feature_is_never_repeated_further_down(self) -> None:
+        """Chat leads as the hit feature, so pass 2 must not pitch it again."""
+        assert derive_pro_benefits("chat_messages") == [
+            *UNCAPPED_PRO_DAY_BULLETS,
+            *PRO_ONLY_BULLETS,
+            *TOP_MULTIPLIER_BULLETS,
+        ]
+
+    def test_a_monthly_only_free_feature_is_pitched_by_month(self) -> None:
+        assert derive_pro_benefits("gaia_todo_executions") == [
+            {"title": "GAIA Todo Executions", "detail": "1,500 per month instead of 5"},
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+            *TOP_MULTIPLIER_BULLETS,
+        ]
+
+    def test_a_pro_only_hit_feature_gets_no_lead_bullet_of_its_own(self) -> None:
+        """Free has no voice allowance to compare against, so pass 1 pitches it."""
+        assert derive_pro_benefits("voice_mode") == [
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+            *TOP_MULTIPLIER_BULLETS,
+        ]
+
+    def test_unknown_hit_feature_still_returns_the_generic_pitch(self) -> None:
+        assert derive_pro_benefits("not_a_feature") == [
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+            *TOP_MULTIPLIER_BULLETS,
+        ]
+
+    def test_max_other_bounds_only_the_multiplier_tail(self) -> None:
+        assert derive_pro_benefits("generate_image", max_other=0) == [
+            {"title": "AI Image Generation", "detail": "45 per day instead of 1"},
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+        ]
+
+    def test_max_other_one_keeps_the_single_biggest_multiplier(self) -> None:
+        assert derive_pro_benefits("generate_image", max_other=1) == [
+            {"title": "AI Image Generation", "detail": "45 per day instead of 1"},
+            *PRO_ONLY_BULLETS,
+            *UNCAPPED_PRO_DAY_BULLETS,
+            TOP_MULTIPLIER_BULLETS[0],
+        ]
+
+    def test_every_bullet_is_a_title_and_detail_pair(self) -> None:
+        for bullet in derive_pro_benefits("generate_image"):
+            assert sorted(bullet) == ["detail", "title"]
+            assert bullet["title"]
+            assert bullet["detail"]

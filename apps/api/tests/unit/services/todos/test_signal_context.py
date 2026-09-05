@@ -1,7 +1,7 @@
 """Signal-matching context rendering, extracted from tracked_todo_service.
 
 Same coverage as before the extraction: the entry format the agent sees, the
-key-details cap, graceful degradation when a canvas cannot be read, and the
+key-details cap, graceful degradation when the notes facet cannot be read, and the
 regression that a stored host-side vfs_path never reaches the LLM.
 """
 
@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import FACET_NOTES, GAIA_TRACKED_LABEL
 from app.models.todo_models import TodoDocument
 from app.services.todos.signal_context import (
     _SIGNAL_CONTEXT_TODO_LIMIT,
@@ -45,7 +45,7 @@ def _todo_doc(**overrides: object) -> TodoDocument:
 def deps():
     with (
         patch(f"{_MOD}.todo_repository") as repo,
-        patch(f"{_MOD}.read_canvas", new_callable=AsyncMock) as read,
+        patch(f"{_MOD}.read_facet", new_callable=AsyncMock) as read,
     ):
         repo.list_active_tracked = AsyncMock(return_value=[])
         read.return_value = ""
@@ -66,7 +66,10 @@ class TestGetSignalMatchingContext:
 
         lines = context.split("\n")
         assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1)'
+        assert (
+            lines[1]
+            == '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
+        )
         assert USER_ID not in context
         assert "    thread: abc123" in lines[2]
         assert "    email: x@y.com" in lines[3]
@@ -74,10 +77,10 @@ class TestGetSignalMatchingContext:
         deps.repo.list_active_tracked.assert_awaited_once_with(
             USER_ID, limit=_SIGNAL_CONTEXT_TODO_LIMIT
         )
-        # The canvas is read with the todo's id and the user's id, in that order.
-        deps.read.assert_awaited_once_with(TODO_ID, USER_ID)
+        # The notes facet is read with the todo's id and the user's id, in that order.
+        deps.read.assert_awaited_once_with(TODO_ID, USER_ID, FACET_NOTES)
 
-    async def test_empty_canvas_adds_no_key_details(self, deps) -> None:
+    async def test_empty_notes_adds_no_key_details(self, deps) -> None:
         deps.repo.list_active_tracked.return_value = [_todo_doc()]
         deps.read.return_value = ""
 
@@ -85,10 +88,10 @@ class TestGetSignalMatchingContext:
 
         assert context == (
             "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
-            '- "Prepare Q3 report" [work] (ID: todo-1)'
+            '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
         )
 
-    async def test_canvas_without_key_details_section_adds_nothing(self, deps) -> None:
+    async def test_notes_without_key_details_section_adds_nothing(self, deps) -> None:
         deps.repo.list_active_tracked.return_value = [_todo_doc()]
         deps.read.return_value = "# Prepare Q3 report\n\nSome body with no key details section.\n"
 
@@ -96,7 +99,7 @@ class TestGetSignalMatchingContext:
 
         assert context == (
             "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
-            '- "Prepare Q3 report" [work] (ID: todo-1)'
+            '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
         )
 
     async def test_multiple_labels_joined_with_comma_space(self, deps) -> None:
@@ -106,14 +109,20 @@ class TestGetSignalMatchingContext:
 
         context = await get_signal_matching_context(USER_ID)
 
-        assert context.split("\n")[1] == '- "Prepare Q3 report" [work, urgent] (ID: todo-1)'
+        assert (
+            context.split("\n")[1]
+            == '- "Prepare Q3 report" [work, urgent] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
+        )
 
     async def test_no_extra_labels_renders_without_bracket(self, deps) -> None:
         deps.repo.list_active_tracked.return_value = [_todo_doc(labels=[GAIA_TRACKED_LABEL])]
 
         context = await get_signal_matching_context(USER_ID)
 
-        assert context.split("\n")[1] == '- "Prepare Q3 report" (ID: todo-1)'
+        assert (
+            context.split("\n")[1]
+            == '- "Prepare Q3 report" (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
+        )
 
     async def test_multiple_docs_joined_by_newline(self, deps) -> None:
         deps.repo.list_active_tracked.return_value = [
@@ -125,8 +134,8 @@ class TestGetSignalMatchingContext:
 
         assert context == (
             "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
-            '- "First" [work] (ID: todo-1)\n'
-            '- "Second" [work] (ID: todo-2)'
+            '- "First" [work] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)\n'
+            '- "Second" [work] (ID: todo-2, vfs: /workspace/gaia-tasks/todo-2)'
         )
 
     async def test_caps_key_details_at_five_lines(self, deps) -> None:
@@ -138,7 +147,7 @@ class TestGetSignalMatchingContext:
         indented = [line for line in context.split("\n") if line.startswith("    ")]
         assert len(indented) == 5
 
-    async def test_degrades_gracefully_when_canvas_unreadable(self, deps) -> None:
+    async def test_degrades_gracefully_when_notes_unreadable(self, deps) -> None:
         deps.repo.list_active_tracked.return_value = [_todo_doc()]
         deps.read.side_effect = RuntimeError("read failed")
 
@@ -148,11 +157,11 @@ class TestGetSignalMatchingContext:
         # A read failure degrades to no key details — the entry, and nothing after it.
         assert context == (
             "ACTIVE TRACKED TODOS (check if incoming signal relates to any):\n"
-            '- "Prepare Q3 report" [work] (ID: todo-1)'
+            '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /workspace/gaia-tasks/todo-1)'
         )
         # ...and it is surfaced on the wide event with the todo id and error text.
         (warning,) = event["warnings"]
-        assert warning["msg"] == "tracked_todo.canvas_read_failed"
+        assert warning["msg"] == "tracked_todo.notes_read_failed"
         assert warning["todo_id"] == TODO_ID
         assert warning["error"] == "read failed"
 

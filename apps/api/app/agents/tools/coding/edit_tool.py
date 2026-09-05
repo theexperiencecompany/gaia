@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import posixpath
 from typing import Annotated
 
@@ -27,6 +28,22 @@ from shared.py.wide_events import log
 
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_PATCH_BYTES = 2 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class _EditTarget:
+    """Who is editing, and the resolved workspace file the edit lands on.
+
+    Carries everything the post-write side effects need: the stream event is
+    stamped with ``session_id`` and the artifact upsert is keyed on
+    ``user_id``/``role``/``role_conv``.
+    """
+
+    user_id: str
+    session_id: str | None
+    abs_path: str
+    role: MountRole
+    role_conv: str | None
 
 
 @tool
@@ -74,14 +91,16 @@ async def edit(
         async with fs_timer(FsOps.TOOL_EDIT), acquire_sandbox(user_id) as sbx:
             return await _do_edit(
                 sbx,
-                user_id,
-                abs_path,
-                role,
-                role_conv,
-                old_string,
-                new_string,
-                replace_all,
-                session_id,
+                _EditTarget(
+                    user_id=user_id,
+                    session_id=session_id,
+                    abs_path=abs_path,
+                    role=role,
+                    role_conv=role_conv,
+                ),
+                old_string=old_string,
+                new_string=new_string,
+                replace_all=replace_all,
             )
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable ({e})"
@@ -114,16 +133,13 @@ async def _read_editable_content(sbx: AsyncSandbox, abs_path: str) -> tuple[str 
 
 async def _do_edit(
     sbx: AsyncSandbox,
-    user_id: str,
-    abs_path: str,
-    role: MountRole,
-    role_conv: str | None,
+    target: _EditTarget,
+    *,
     old_string: str,
     new_string: str,
     replace_all: bool,
-    session_id: str | None,
 ) -> str:
-    content, error = await _read_editable_content(sbx, abs_path)
+    content, error = await _read_editable_content(sbx, target.abs_path)
     if content is None:
         return error
 
@@ -142,27 +158,33 @@ async def _do_edit(
         new_content = content.replace(old_string, new_string, 1)
 
     new_bytes = new_content.encode("utf-8")
-    real_mtime = await atomic_write(sbx, abs_path, new_bytes)
+    real_mtime = await atomic_write(sbx, target.abs_path, new_bytes)
 
     safe_emit(
         {
             "file_data": {
                 "operation": "edit",
-                "path": abs_path,
+                "path": target.abs_path,
                 "size_bytes": len(new_bytes),
                 "occurrences_replaced": occurrences if replace_all else 1,
             }
         },
-        session_id=session_id,
+        session_id=target.session_id,
     )
 
     # Surface the edit live in chat when it lands under artifacts/ — same path
     # the write tool takes, so an edited artifact card updates during the turn.
     await publish_artifact_write(
-        user_id, role, role_conv, abs_path, new_content, len(new_bytes), real_mtime
+        target.user_id,
+        target.role,
+        target.role_conv,
+        target.abs_path,
+        new_content,
+        len(new_bytes),
+        real_mtime,
     )
 
     return (
-        f"Edited {abs_path} ({occurrences if replace_all else 1} "
+        f"Edited {target.abs_path} ({occurrences if replace_all else 1} "
         f"occurrence{'s' if (replace_all and occurrences > 1) else ''} replaced)"
     )

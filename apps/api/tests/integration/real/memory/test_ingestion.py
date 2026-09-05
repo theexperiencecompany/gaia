@@ -15,6 +15,7 @@ from redis.asyncio import Redis
 from app.constants.memory import CONSOLIDATION_PENDING_KEY, MemorySourceType, ReconcileOutcome
 from app.memory import consolidation
 from app.memory.engine import RetainResult, memory_engine
+from app.memory.ingestion import MemorySource
 from app.memory.schemas import ExtractedMemoryBatch
 from tests.integration.real.memory.llm import (
     FakeMemoryLLM,
@@ -46,7 +47,7 @@ async def _retain(
     return await memory_engine.retain(
         user_id,
         [{"role": "user", "content": transcript}],
-        source_type=MemorySourceType.CONVERSATION,
+        source=MemorySource(MemorySourceType.CONVERSATION),
     )
 
 
@@ -283,7 +284,7 @@ async def test_concurrent_retains_do_not_corrupt_graph_or_journal(
             memory_engine.retain(
                 memory_user,
                 [{"role": "user", "content": key}],
-                source_type=MemorySourceType.CONVERSATION,
+                source=MemorySource(MemorySourceType.CONVERSATION),
             )
             for key in batches
         ]

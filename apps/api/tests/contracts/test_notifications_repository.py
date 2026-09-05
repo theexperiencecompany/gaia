@@ -9,6 +9,7 @@ import pytest
 from app.db.repositories.notifications import NotificationRepository
 from app.models.notification.notification_models import (
     NotificationContent,
+    NotificationFilters,
     NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
@@ -58,12 +59,14 @@ class TestNotificationRepository:
         await repo.create(_record(id="a", user_id="lister"))
         await repo.create(_record(id="b", user_id="lister"))
         await repo.create(_record(id="c", user_id="other"))
-        items = await repo.list_for_user("lister")
+        items = await repo.list_for_user("lister", filters=NotificationFilters())
         assert {i.id for i in items} == {"a", "b"}
-        assert await repo.count_for_user("lister") == 2
+        assert await repo.count_for_user("lister", filters=NotificationFilters()) == 2
 
     async def test_list_filters_by_status(self, repo):
         await repo.create(_record(id="p", user_id="f", status=NotificationStatus.PENDING))
         await repo.create(_record(id="r", user_id="f", status=NotificationStatus.READ))
-        read = await repo.list_for_user("f", status=NotificationStatus.READ)
+        read = await repo.list_for_user(
+            "f", filters=NotificationFilters(status=NotificationStatus.READ)
+        )
         assert [i.id for i in read] == ["r"]

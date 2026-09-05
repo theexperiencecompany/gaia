@@ -14,7 +14,11 @@ from collections.abc import Callable
 import pytest
 
 from app.db.repositories.users import UserRepository
-from app.models.onboarding_models import SocialProfile
+from app.models.onboarding_models import (
+    OnboardingCompletion,
+    PersonalizationBundle,
+    SocialProfile,
+)
 from app.models.user_models import (
     BioStatus,
     OnboardingPhase,
@@ -130,11 +134,13 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         first = await repo.complete_onboarding(
             created.id,
-            name="New Name",
-            phase=OnboardingPhase.COMPLETED,
-            bio_status=BioStatus.COMPLETED,
-            pipeline_mode="split",
-            preferences=OnboardingPreferences(profession="eng"),
+            OnboardingCompletion(
+                name="New Name",
+                phase=OnboardingPhase.COMPLETED,
+                bio_status=BioStatus.COMPLETED,
+                pipeline_mode="split",
+                preferences=OnboardingPreferences(profession="eng"),
+            ),
         )
         assert first is not None
         assert first.name == "New Name"
@@ -143,10 +149,12 @@ class TestOnboardingWrites:
         # Gate misses on replay (onboarding already exists) → None, original untouched.
         second = await repo.complete_onboarding(
             created.id,
-            phase=OnboardingPhase.INITIAL,
-            bio_status=BioStatus.PENDING,
-            pipeline_mode="z",
-            preferences=OnboardingPreferences(),
+            OnboardingCompletion(
+                phase=OnboardingPhase.INITIAL,
+                bio_status=BioStatus.PENDING,
+                pipeline_mode="full",
+                preferences=OnboardingPreferences(),
+            ),
         )
         assert second is None
         assert (await repo.get(created.id)).onboarding["phase"] == OnboardingPhase.COMPLETED.value
@@ -155,10 +163,12 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.complete_onboarding(
             created.id,
-            phase=OnboardingPhase.INITIAL,
-            bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
-            preferences=OnboardingPreferences(profession="eng", response_style="brief"),
+            OnboardingCompletion(
+                phase=OnboardingPhase.INITIAL,
+                bio_status=BioStatus.PENDING,
+                pipeline_mode="full",
+                preferences=OnboardingPreferences(profession="eng", response_style="brief"),
+            ),
         )
         # Only `profession` is set, so exclude_unset must leave response_style alone.
         updated = await repo.update_onboarding_preferences(
@@ -173,15 +183,17 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.save_personalization(
             created.id,
-            house="explorer",
-            personality_phrase="Creative",
-            user_bio="Bio",
-            bio_status="completed",
-            account_number=42,
-            member_since="Mar 2024",
-            overlay_color="#ff0000",
-            overlay_opacity=80,
-            workflow_ids=["wf1", "wf2"],
+            PersonalizationBundle(
+                house="explorer",
+                personality_phrase="Creative",
+                user_bio="Bio",
+                bio_status="completed",
+                account_number=42,
+                member_since="Mar 2024",
+                overlay_color="#ff0000",
+                overlay_opacity=80,
+                workflow_ids=["wf1", "wf2"],
+            ),
         )
         onboarding = (await repo.get(created.id)).onboarding
         assert onboarding["house"] == "explorer"
@@ -193,15 +205,17 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.save_personalization(
             created.id,
-            house="h",
-            personality_phrase="p",
-            user_bio="b",
-            bio_status="completed",
-            account_number=1,
-            member_since="Jan 2024",
-            overlay_color="#000",
-            overlay_opacity=50,
-            workflow_ids=[],
+            PersonalizationBundle(
+                house="h",
+                personality_phrase="p",
+                user_bio="b",
+                bio_status="completed",
+                account_number=1,
+                member_since="Jan 2024",
+                overlay_color="#000",
+                overlay_opacity=50,
+                workflow_ids=[],
+            ),
         )
         assert "suggested_workflows" not in (await repo.get(created.id)).onboarding
 
@@ -229,10 +243,12 @@ class TestOnboardingWrites:
         created = await repo.create(make_user())
         await repo.complete_onboarding(
             created.id,
-            phase=OnboardingPhase.INITIAL,
-            bio_status=BioStatus.PENDING,
-            pipeline_mode="m",
-            preferences=OnboardingPreferences(),
+            OnboardingCompletion(
+                phase=OnboardingPhase.INITIAL,
+                bio_status=BioStatus.PENDING,
+                pipeline_mode="full",
+                preferences=OnboardingPreferences(),
+            ),
         )
         await repo.reset_onboarding(created.id)
         assert (await repo.get(created.id)).onboarding is None

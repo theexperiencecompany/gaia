@@ -13,10 +13,16 @@ from datetime import UTC, datetime, timedelta
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.cache import TODO_CACHE_PREFIX
-from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
+from app.constants.todos import (
+    FAILED_LABEL,
+    ONBOARDING_LABEL,
+    gaia_assigned_filter,
+    user_assigned_filter,
+)
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.todo_models import (
+    ExecutionStatus,
     SearchMode,
     SubTask,
     TodoCounts,
@@ -141,10 +147,22 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         if params.labels:
             query["labels"] = {"$in": params.labels}
 
+        # Last: the due-date clauses deliberately override the completed and
+        # text-search keys set above (an overdue query is a completed=False
+        # query, whatever else was asked for).
+        query.update(self._due_date_clause(params))
+
+        return query
+
+    def _due_date_clause(self, params: TodoSearchParams) -> dict[str, object]:
+        """The due-date half of the list filter — presence, explicit range and
+        the overdue shortcut, in increasing order of precedence."""
+        clause: dict[str, object] = {}
+
         if params.has_due_date is True:
-            query["due_date"] = {"$ne": None}
+            clause["due_date"] = {"$ne": None}
         elif params.has_due_date is False:
-            query["due_date"] = None
+            clause["due_date"] = None
 
         if params.due_date_start or params.due_date_end:
             date_query: dict[str, datetime] = {}
@@ -152,18 +170,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
                 date_query["$gte"] = params.due_date_start
             if params.due_date_end:
                 date_query["$lte"] = params.due_date_end
-            query["due_date"] = date_query
+            clause["due_date"] = date_query
 
         if params.overdue is True:
-            query["due_date"] = {"$lt": datetime.now(UTC)}
-            query["completed"] = False
+            clause["due_date"] = {"$lt": datetime.now(UTC)}
+            clause["completed"] = False
         elif params.overdue is False and params.has_due_date is not False:
-            query["$or"] = [
+            clause["$or"] = [
                 {"due_date": None},
                 {"due_date": {"$gte": datetime.now(UTC)}},
             ]
 
-        return query
+        return clause
 
     @cached_query(TodoPage)
     async def list_page(
@@ -291,9 +309,26 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         return await self._aggregate(pipeline, TodoLabelCount)
 
     async def list_active_tracked(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """A user's active (incomplete) tracked todos, most-recently-updated first."""
+        """A user's active (incomplete) GAIA-assigned todos, most-recently-updated first."""
         return await self._find(
-            {"user_id": user_id, "labels": GAIA_TRACKED_LABEL, "completed": False},
+            {"user_id": user_id, **gaia_assigned_filter(), "completed": False},
+            sort=[("updated_at", -1)],
+            limit=limit,
+        )
+
+    async def list_active_gaia_for_summary(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Active GAIA-assigned todos excluding terminal dismissed/expired proposals —
+        the context-injection summary's source (those are terminal and only
+        resurface via the rejection-strike summary)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "execution_status": {
+                    "$nin": [ExecutionStatus.DISMISSED.value, ExecutionStatus.EXPIRED.value]
+                },
+                **gaia_assigned_filter(),
+            },
             sort=[("updated_at", -1)],
             limit=limit,
         )
@@ -301,12 +336,12 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_active_gaia_tracked_since(
         self, user_id: str, *, completed_since: datetime
     ) -> list[TodoDocument]:
-        """Tracked todos that are open OR completed since ``completed_since`` — the
-        VFS materialization set for ``/workspace/gaia-tasks/``."""
+        """GAIA-assigned todos that are open OR completed since ``completed_since`` —
+        the VFS materialization set for ``/workspace/gaia-tasks/``."""
         return await self._find(
             {
                 "user_id": user_id,
-                "labels": GAIA_TRACKED_LABEL,
+                **gaia_assigned_filter(),
                 "$or": [
                     {"completed": {"$ne": True}},
                     {"completed_at": {"$gte": completed_since}},
@@ -317,12 +352,12 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def list_active_user_todos_since(
         self, user_id: str, *, completed_since: datetime
     ) -> list[TodoDocument]:
-        """Non-tracked todos that are open OR completed since ``completed_since`` —
+        """User-assigned todos that are open OR completed since ``completed_since`` —
         the VFS materialization set for ``/workspace/todos/``."""
         return await self._find(
             {
                 "user_id": user_id,
-                "labels": {"$nin": [GAIA_TRACKED_LABEL]},
+                **user_assigned_filter(),
                 "$or": [
                     {"completed": {"$ne": True}},
                     {"completed_at": {"$gte": completed_since}},
@@ -331,8 +366,8 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         )
 
     async def list_active_tracked_all_users(self, *, limit: int) -> list[TodoDocument]:
-        """Every user's active tracked todos — the maintenance sweep's scan set."""
-        return await self._find({"completed": False, "labels": GAIA_TRACKED_LABEL}, limit=limit)
+        """Every user's active GAIA-assigned todos — the maintenance sweep's scan set."""
+        return await self._find({"completed": False, **gaia_assigned_filter()}, limit=limit)
 
     async def find_active_by_composio_trigger(self, composio_trigger_id: str) -> list[TodoDocument]:
         """Every user's incomplete todos with an active subscription registered against
@@ -408,15 +443,217 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def find_due_tracked_all_users(
         self, *, now: datetime, max_retries: int, limit: int
     ) -> list[TodoDocument]:
-        """Every user's scheduled-and-due tracked todos still under their retry
+        """Every user's scheduled-and-due GAIA-assigned todos still under their retry
         budget — the executor safety net's re-enqueue candidates."""
         return await self._find(
             {
                 "scheduled_at": {"$lte": now},
                 "completed": False,
-                "labels": GAIA_TRACKED_LABEL,
+                **gaia_assigned_filter(),
                 "gaia_retry_count": {"$lt": max_retries},
             },
+            limit=limit,
+        )
+
+    # ---------------------------------------------- cross-domain finders
+    # Named queries the briefing engine, first-steps checklist, and rollout
+    # pass run against the todos domain (ownership rule: they call these,
+    # never a raw filter).
+
+    async def count_gaia_assigned(self, user_id: str) -> int:
+        """How many todos GAIA owns for this user (any status)."""
+        return await self._count({"user_id": user_id, **gaia_assigned_filter()})
+
+    async def count_gaia_completed(self, user_id: str) -> int:
+        """How many GAIA-assigned todos have ever completed for this user."""
+        return await self._count(
+            {"user_id": user_id, "completed_at": {"$ne": None}, **gaia_assigned_filter()}
+        )
+
+    async def list_gaia_completed(self, user_id: str) -> list[TodoDocument]:
+        """Every completed GAIA-assigned todo (badge checks read completed_at times)."""
+        return await self._find(
+            {"user_id": user_id, "completed_at": {"$ne": None}, **gaia_assigned_filter()}
+        )
+
+    async def has_goal_created_since(self, user_id: str, *, since: datetime) -> bool:
+        """Whether a goal lane was created at or after ``since`` (dormancy signal)."""
+        return (
+            await self._count({"user_id": user_id, "kind": "goal", "created_at": {"$gte": since}})
+            > 0
+        )
+
+    async def list_open_goals(self, user_id: str) -> list[TodoDocument]:
+        """Open goal lanes, oldest first (the nightly pass walks them in order)."""
+        return await self._find(
+            {"user_id": user_id, "kind": "goal", "completed": False},
+            sort=[("created_at", 1)],
+        )
+
+    async def list_goal_children(self, user_id: str, goal_id: str) -> list[TodoDocument]:
+        """Task todos linked to a goal lane via ``goal_id``."""
+        return await self._find({"user_id": user_id, "goal_id": goal_id})
+
+    async def list_completed_since(self, user_id: str, *, since: datetime) -> list[TodoDocument]:
+        """Todos (either assignee) completed at or after ``since`` — the look-back set."""
+        return await self._find({"user_id": user_id, "completed_at": {"$gte": since}})
+
+    async def list_open_gaia_by_status(
+        self, user_id: str, *, statuses: list[str], limit: int
+    ) -> list[TodoDocument]:
+        """GAIA-assigned todos currently in one of ``statuses``."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                **gaia_assigned_filter(),
+                "execution_status": {"$in": statuses},
+            },
+            limit=limit,
+        )
+
+    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """The user's own open todos."""
+        return await self._find(
+            {"user_id": user_id, "completed": False, **user_assigned_filter()},
+            limit=limit,
+        )
+
+    # -------------------------------------------------- GAIA lifecycle finders
+    # Named queries backing ``gaia_todo_lifecycle``'s creation gate, budgets,
+    # and rejection bookkeeping.
+
+    async def count_open_goals(self, user_id: str) -> int:
+        """How many open (incomplete) goal lanes the user has."""
+        return await self._count(
+            {"user_id": user_id, "kind": "goal", "completed": False, **gaia_assigned_filter()}
+        )
+
+    async def find_pending_proposal_by_title(self, user_id: str, title: str) -> TodoDocument | None:
+        """An already-pending proposal with this exact title (duplicate-creation guard)."""
+        return await self._find_one(
+            {
+                "user_id": user_id,
+                "execution_status": ExecutionStatus.PROPOSED.value,
+                "title": title,
+                **gaia_assigned_filter(),
+            }
+        )
+
+    async def list_budget_bucket(
+        self, user_id: str, *, statuses: list[str], limit: int
+    ) -> list[TodoDocument]:
+        """Non-goal GAIA todos currently in one of ``statuses`` (a budget bucket),
+        capped at ``limit`` — the creation gate's over-budget check."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "execution_status": {"$in": statuses},
+                "kind": {"$ne": "goal"},
+                **gaia_assigned_filter(),
+            },
+            limit=limit,
+        )
+
+    async def count_budget_bucket(self, user_id: str, *, statuses: list[str]) -> int:
+        """Count of ``list_budget_bucket`` — the post-insert budget recount."""
+        return await self._count(
+            {
+                "user_id": user_id,
+                "execution_status": {"$in": statuses},
+                "kind": {"$ne": "goal"},
+                **gaia_assigned_filter(),
+            }
+        )
+
+    async def list_expirable_proposals(
+        self, user_id: str, *, before: datetime, now: datetime
+    ) -> list[TodoDocument]:
+        """Pending proposals created before ``before`` and not an active upgrade
+        pitch — the curation pass's expiry candidates."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "execution_status": ExecutionStatus.PROPOSED.value,
+                "created_at": {"$lt": before},
+                "$and": [
+                    {"$or": [{"pitch_expires_at": None}, {"pitch_expires_at": {"$lt": now}}]},
+                    gaia_assigned_filter(),
+                ],
+            }
+        )
+
+    async def list_rejected_gaia(self, user_id: str) -> list[TodoDocument]:
+        """Dismissed/expired GAIA todos, most-recently-dismissed first — the
+        3-strike rejection summary's source."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "execution_status": {
+                    "$in": [ExecutionStatus.DISMISSED.value, ExecutionStatus.EXPIRED.value]
+                },
+                **gaia_assigned_filter(),
+            },
+            sort=[("dismissed_at", -1)],
+        )
+
+    async def retry_failed(
+        self, todo_id: str, user_id: str, *, now: datetime, user_retry_count: int
+    ) -> TodoDocument | None:
+        """Re-queue a failed todo for retry: clears the failure state and the
+        ``failed`` label, resets the executor's retry counter, and bumps the
+        user-initiated retry counter to ``user_retry_count``."""
+        return await self._apply_raw_update(
+            self._scoped_filter(todo_id, user_id),
+            {
+                "$set": {
+                    "execution_status": ExecutionStatus.QUEUED.value,
+                    "scheduled_at": now,
+                    "error_message": None,
+                    "gaia_retry_count": 0,
+                    "gaia_user_retry_count": user_retry_count,
+                },
+                "$pull": {"labels": FAILED_LABEL},
+            },
+            scope=user_id,
+        )
+
+    # -------------------------------------------------------- dashboard finders
+    # Named queries backing the Today dashboard's five saved-search sections.
+    # Deliberately uncached (unlike the aggregations above): the dashboard reads
+    # live in-flight/needs-you state on every load.
+
+    async def find_oldest_open_proposal(self, user_id: str) -> TodoDocument | None:
+        """Oldest still-open, not-yet-nudged proposed GAIA todo — the completion
+        nudge's first-choice suggestion (see ``services.todos.completion_nudge``)."""
+        results = await self._find(
+            {
+                "user_id": user_id,
+                "execution_status": ExecutionStatus.PROPOSED.value,
+                "kind": {"$ne": "goal"},
+                "nudge_shown": {"$ne": True},
+                **gaia_assigned_filter(),
+            },
+            sort=[("created_at", 1)],
+            limit=1,
+        )
+        return results[0] if results else None
+
+    async def list_open_user_todos_with_gaia_offer(
+        self, user_id: str, *, limit: int
+    ) -> list[TodoDocument]:
+        """Open user todos carrying an active, not-yet-nudged GAIA-takeover
+        offer — the completion nudge's fallback candidate pool (the caller
+        picks the highest-priority one)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "gaia_offer": {"$nin": [None, ""]},
+                "gaia_offer_dismissed": {"$ne": True},
+                "nudge_shown": {"$ne": True},
+                **user_assigned_filter(),
+            },
+            sort=[("created_at", 1)],
             limit=limit,
         )
 

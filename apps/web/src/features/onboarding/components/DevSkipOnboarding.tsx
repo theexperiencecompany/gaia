@@ -33,6 +33,7 @@ export function DevSkipOnboarding() {
         profession: "Software Developer",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         focus: "Testing GAIA in development",
+        working_on: "Testing GAIA in development",
       });
       if (res.user) setUser(userInfoToStoreUser(res.user));
       // Force completed locally so useOnboardingGuard routes to /c instead of

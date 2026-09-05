@@ -1351,6 +1351,144 @@ class TestTheWorkflowKeysTheRunStashes:
         }
 
 
+class TestTheNightShiftSuppressionKey:
+    """A night-shift prep run works silently — its result is saved to the
+    conversation but never pushed per-todo, because the morning briefing is the
+    single voice. The whole switch is one key on the live configurable that
+    ``result_delivery`` reads back by name. Spelled differently, or holding
+    anything other than ``True``, every overnight todo pings the user at 3am and
+    the run still reports success.
+    """
+
+    @staticmethod
+    async def _configurable_for(trigger: dict | None) -> dict:
+        config = _fresh_config()
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patch(
+                "app.agents.core.agent.build_agent_config",
+                new_callable=AsyncMock,
+                return_value=config,
+            ),
+            patches["log"],
+        ):
+            await _core_agent_logic(
+                request=_make_request(),
+                conversation_id="conv-1",
+                user=_make_user(),
+                options=AgentRunOptions(trigger_context=trigger),
+            )
+        configurable = dict(config["configurable"])
+        # Env-derived: present only when the machine configures a dev model
+        # override; not part of the suppression contract under test.
+        configurable.pop("dev_executor_model", None)
+        return configurable
+
+    @pytest.mark.asyncio
+    async def test_a_suppressed_run_stashes_the_flag_under_that_exact_key(self):
+        configurable = await self._configurable_for({"suppress_platform_delivery": True})
+
+        assert configurable == {
+            "thread_id": "conv-1",
+            "user_id": "user-123",
+            "model": "gpt-4o",
+            "suppress_platform_delivery": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_an_ordinary_background_run_leaves_the_key_off_entirely(self):
+        """Absent, not ``False``: delivery treats a missing key as "deliver", so
+        writing one on every run would put the decision in two places."""
+        configurable = await self._configurable_for({"active_todo_id": "todo-9"})
+
+        assert "suppress_platform_delivery" not in configurable
+
+    @pytest.mark.asyncio
+    async def test_a_daytime_run_that_says_false_is_not_suppressed(self):
+        """The tracked-todo worker writes the flag explicitly as ``False`` for
+        the daytime path. Copying that through as a written key would silence
+        exactly the runs the user is waiting on."""
+        configurable = await self._configurable_for({"suppress_platform_delivery": False})
+
+        assert "suppress_platform_delivery" not in configurable
+
+
+class TestTheHumanTurnSilentRunsSynthesise:
+    """``call_agent_silent``'s root guard. The human turn is read from
+    ``messages``, never from ``message``, so a background caller that sets only
+    ``message`` would fail the run with "No human message or selected tool".
+    Both directions are load-bearing: too shy and every such caller breaks, too
+    eager and a caller's real history is replaced by one synthesised turn — a
+    run that answers with no context and reports success.
+    """
+
+    @staticmethod
+    async def _messages_after_run(request: MessageRequestWithHistory) -> list:
+        patches = _common_patches()
+        with (
+            patches["construct"],
+            patches["get_graph"],
+            patches["build_state"],
+            patches["build_config"],
+            patches["log"],
+            patch(
+                "app.agents.core.agent.execute_graph_silent",
+                new_callable=AsyncMock,
+                return_value=("ok", {}),
+            ),
+        ):
+            await call_agent_silent(
+                request=request,
+                conversation_id="conv-1",
+                user=_make_user(),
+            )
+        return request.messages
+
+    @pytest.mark.asyncio
+    async def test_a_message_only_caller_gets_exactly_one_user_turn(self):
+        """The role is what makes it a human turn: any other value and the
+        graph still sees no user message."""
+        messages = await self._messages_after_run(
+            _make_request(message="run the digest", messages=[])
+        )
+
+        assert messages == [{"role": "user", "content": "run the digest"}]
+
+    @pytest.mark.asyncio
+    async def test_a_caller_that_built_its_own_history_keeps_it(self):
+        history = [{"role": "user", "content": "the turn the caller built"}]
+        messages = await self._messages_after_run(
+            _make_request(message="a stale summary line", messages=list(history))
+        )
+
+        assert messages == history
+
+    @pytest.mark.parametrize(
+        "attachment",
+        [
+            {"selectedTool": "web_search"},
+            {
+                "selectedWorkflow": SelectedWorkflowData(
+                    id="wf-1", title="Daily digest", description="the morning roundup", steps=[]
+                )
+            },
+        ],
+        ids=["selected-tool", "selected-workflow"],
+    )
+    @pytest.mark.asyncio
+    async def test_an_attached_tool_or_workflow_builds_the_turn_itself(self, attachment):
+        """``construct_langchain_messages`` renders the attachment into the human
+        turn, so synthesising a plain-text copy here would send it twice."""
+        messages = await self._messages_after_run(
+            _make_request(message="go", messages=[], **attachment)
+        )
+
+        assert messages == []
+
+
 class TestTheOptionsEachEntryPointDerives:
     """``call_agent`` / ``call_agent_silent`` re-pack their own arguments into a
     fresh ``AgentRunOptions`` for ``_core_agent_logic``. Every field is a run

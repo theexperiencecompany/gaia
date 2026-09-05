@@ -46,6 +46,16 @@ class NotificationSourceEnum(str, Enum):
     TODO_TRIGGER = "todo_trigger"
 
 
+class NotificationFilters(BaseModel):
+    """Optional narrowing of a user's notification list or count. Every unset
+    field is a filter the caller did not ask for, not a match on ``None``."""
+
+    status: NotificationStatus | None = None
+    channel_type: str | None = None
+    notification_type: NotificationType | None = None
+    source: NotificationSourceEnum | None = None
+
+
 class ActionType(str, Enum):
     """Kind of interaction a notification action performs when invoked."""
 

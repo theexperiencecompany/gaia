@@ -12,7 +12,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.constants.todos import GAIA_TRACKED_LABEL
 from app.db.repositories.todos import TodosRepository
 from app.models.todo_models import (
     Priority,
@@ -253,18 +252,18 @@ class TestTodosRepository(UserScopedRepositoryContract):
     # ---- tracked / system finders -----------------------------------------
 
     async def test_list_active_tracked_only_open_tracked(self, repo, make_doc):
-        await repo.create(make_doc(user_id="u", title="open", labels=[GAIA_TRACKED_LABEL]))
-        await repo.create(
-            make_doc(user_id="u", title="done", labels=[GAIA_TRACKED_LABEL], completed=True)
-        )
+        # ``assignee`` is the discriminator (unified-todo-model); the legacy
+        # gaia-tracked label is no longer consulted by the finders.
+        await repo.create(make_doc(user_id="u", title="open", assignee="gaia"))
+        await repo.create(make_doc(user_id="u", title="done", assignee="gaia", completed=True))
         await repo.create(make_doc(user_id="u", title="plain"))
         active = await repo.list_active_tracked("u", limit=10)
         assert [t.title for t in active] == ["open"]
 
-    async def test_vfs_partitions_by_tracked_label(self, repo, make_doc):
+    async def test_vfs_partitions_by_assignee(self, repo, make_doc):
         cutoff = datetime.now(UTC) - timedelta(days=7)
-        await repo.create(make_doc(user_id="u", title="tracked", labels=[GAIA_TRACKED_LABEL]))
-        await repo.create(make_doc(user_id="u", title="user", labels=[]))
+        await repo.create(make_doc(user_id="u", title="tracked", assignee="gaia"))
+        await repo.create(make_doc(user_id="u", title="user"))
         gaia = await repo.list_active_gaia_tracked_since("u", completed_since=cutoff)
         users = await repo.list_active_user_todos_since("u", completed_since=cutoff)
         assert [t.title for t in gaia] == ["tracked"]
@@ -272,11 +271,11 @@ class TestTodosRepository(UserScopedRepositoryContract):
 
     async def test_all_users_tracked_finders_span_users(self, repo, make_doc):
         now = datetime.now(UTC)
-        await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL]))
+        await repo.create(make_doc(user_id="u1", assignee="gaia"))
         await repo.create(
             make_doc(
                 user_id="u2",
-                labels=[GAIA_TRACKED_LABEL],
+                assignee="gaia",
                 scheduled_at=now - timedelta(minutes=5),
                 gaia_retry_count=0,
             )

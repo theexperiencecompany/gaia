@@ -94,17 +94,19 @@ def hash_meta_only(meta: dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def hash_body_with_meta(canvas: str, log_text: str, meta: dict[str, Any]) -> str:
-    """sha256 of canvas + log + meta, NUL-separated.
+def hash_bodies_with_meta(bodies: list[str], meta: dict[str, Any]) -> str:
+    """sha256 of the given bodies + meta, NUL-separated.
 
     Used by materializers that project a body bigger than just the
-    metadata (currently only ``gaia_tasks_vfs``).
+    metadata (currently only ``gaia_tasks_vfs``, which projects several
+    facet bodies per doc).
     """
     h = hashlib.sha256()
-    h.update(canvas.encode("utf-8"))
-    h.update(b"\x00")
-    h.update(log_text.encode("utf-8"))
-    h.update(b"\x00")
+    for body in bodies:
+        # ``"UTF-8"`` is the same codec as ``"utf-8"`` once the registry normalizes
+        # the name, so that mutation is unkillable by construction.
+        h.update(body.encode("utf-8"))  # pragma: no mutate
+        h.update(b"\x00")
     h.update(json.dumps(meta, sort_keys=True, default=str).encode("utf-8"))
     return h.hexdigest()
 
