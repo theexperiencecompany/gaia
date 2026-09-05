@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.models.user_models import OnboardingPreferences
 from app.services.onboarding.first_conversation import (
     FirstConversation,
     compose_first_conversation,
@@ -22,7 +23,9 @@ MODULE = "app.utils.seeding_utils"
 
 def _composed() -> FirstConversation:
     return with_starting_jobs(
-        compose_first_conversation(),
+        compose_first_conversation(
+            OnboardingPreferences(profession="founder", needs=[]), "telegram"
+        ),
         ["Find investors", "Fix my marketing", "Hire someone", "Write my pitch"],
     )
 

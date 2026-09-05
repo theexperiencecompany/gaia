@@ -152,7 +152,7 @@ async def _seed_first_conversation(
         # submitted, so the link is already on the document we just wrote. A user
         # who skipped that step simply gets no platform line.
         connected_platform = next(iter(linked_platforms_of(user)), None)
-        composed = compose_first_conversation()
+        composed = compose_first_conversation(preferences, connected_platform)
         # Almost always a Redis read: the answers PATCH that preceded this
         # fired the model call in the background, so the user pays for it while
         # they are still clicking. A miss costs at most two seconds, and a

@@ -162,7 +162,8 @@ SEEDED_CHIPS_RULE = """
 - You opened with "What are we starting with?" and offered these jobs as chips: {chips}.
   Their first message is almost certainly one of them, or close to one. It is a handover,
   not a question: treat it as the job it names, never ask what it meant, never treat it as
-  a search term."""
+  a search term. "Something else" means they want to name their own: ask what it is, one
+  line, nothing else."""
 
 
 def build_new_user_guidance(

@@ -41,7 +41,7 @@ from app.models.user_models import (
     UserDocument,
 )
 from app.services.analytics_service import AnalyticsEvents
-from app.services.onboarding.first_conversation import HANDOVER_LINE, OPENING_LINE
+from app.services.onboarding.first_conversation import SOMETHING_ELSE_CHIP
 from app.services.onboarding.first_question import FirstQuestion
 from app.services.onboarding.intelligence_job import (
     abort_active_intelligence_job,
@@ -185,12 +185,13 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         composed = seed.await_args.args[1]
-        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
+        assert composed.lines[1] == "Since you're an engineer, what are we starting with?"
         assert composed.follow_ups == [
             "Find investors",
             "Fix my marketing",
             "Hire someone",
             "Write my pitch",
+            SOMETHING_ELSE_CHIP,
         ]
 
     async def test_no_written_jobs_means_no_chips_rather_than_invented_ones(
@@ -207,8 +208,7 @@ class TestCompleteOnboarding:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         composed = seed.await_args.args[1]
-        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
-        assert composed.follow_ups == []
+        assert composed.follow_ups == [SOMETHING_ELSE_CHIP]
 
     async def test_successful_onboarding(
         self,
@@ -284,7 +284,7 @@ class TestCompleteOnboarding:
 
         assert seed.await_args.args[0] == sample_user_id
         composed = seed.await_args.args[1]
-        assert composed.lines == [OPENING_LINE, HANDOVER_LINE]
+        assert composed.lines[1] == "Since you're an engineer, what are we starting with?"
         mock_repo.set_first_conversation_id.assert_awaited_once_with(sample_user_id, "conv-1")
         assert result["onboarding"][GETTING_STARTED_CONVERSATION_ID_FIELD] == "conv-1"
         # The legacy holo-card field is a different conversation; the seed must
@@ -357,10 +357,15 @@ class TestCompleteOnboarding:
         mock_repo.complete_onboarding.return_value = user
         mock_repo.set_first_conversation_id = AsyncMock(return_value=None)
 
-        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")):
+        with patch(f"{SERVICE}.seed_first_conversation", AsyncMock(return_value="conv-1")) as seed:
             await complete_onboarding(sample_user_id, sample_onboarding_request)
 
         assert no_llm_question.await_args.args[2] == "telegram"
+        assert (
+            seed.await_args.args[1]
+            .lines[0]
+            .startswith("Okay, you're in. I'm on your Telegram, so text me there anytime.")
+        )
 
     async def test_a_failed_seed_still_completes_onboarding(
         self,
