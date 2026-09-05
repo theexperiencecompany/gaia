@@ -10,6 +10,7 @@ it renders in the same layout at replay (``TimeSlot.format``).
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 #: Layouts recognised in a recorded argument, most specific first. A value is
 #: matched against these with ``strptime``; the first that parses is its layout.
@@ -26,7 +27,13 @@ KNOWN_TIME_LAYOUTS: tuple[str, ...] = (
     "%Y-%m-%d",
     "%d/%m/%Y",
     "%m/%d/%Y",
+    "%B %d, %Y",
+    "%d %B %Y",
 )
+
+#: A recorded value is prose around a date at most this many words long.
+_MAX_DATE_WORDS = 4
+_WORD = re.compile(r"\S+")
 
 #: What a time placeholder renders as when no layout is recorded: the two ISO
 #: forms the evaluator has always produced.
@@ -35,10 +42,27 @@ ISO_DATETIME_LAYOUT = "%Y-%m-%dT%H:%M:%S%z"
 
 
 def detect_layout(value: object) -> str | None:
-    """The layout a recorded string argument is written in, or ``None``."""
+    """The strftime layout a recorded string argument is written in, or ``None``.
+
+    Text around the date is part of the layout: ``"Plan for September 5, 2026"``
+    is ``"Plan for %B %d, %Y"``, so a slot written from it renders the same
+    words again. Seen live (D4): the bare-date hint had the model drop the
+    words, and the replay made a todo titled by the date alone.
+    """
     if not isinstance(value, str) or not value.strip():
         return None
-    text = value.strip()
+    words = list(_WORD.finditer(value))
+    for length in range(min(_MAX_DATE_WORDS, len(words)), 0, -1):
+        for start in range(len(words) - length + 1):
+            begin, end = words[start].start(), words[start + length - 1].end()
+            layout = _layout_of(value[begin:end])
+            if layout is not None:
+                prefix, suffix = value[:begin].lstrip(), value[end:].rstrip()
+                return prefix.replace("%", "%%") + layout + suffix.replace("%", "%%")
+    return None
+
+
+def _layout_of(text: str) -> str | None:
     for layout in KNOWN_TIME_LAYOUTS:
         try:
             datetime.strptime(text, layout)

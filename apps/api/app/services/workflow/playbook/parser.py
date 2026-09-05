@@ -500,6 +500,8 @@ def _rendered_args(args: Mapping[str, Any]) -> str:
 #: What ``_check_step_reference`` hands back when there was nothing to resolve
 #: against, or the reference did not resolve; distinct from a resolved ``None``.
 _UNRESOLVED = object()
+#: The elements of an ``$ask`` source: text values the model picks at replay.
+ASK_PICK = object()
 
 
 def _check_step_reference(token: str, path: str, where: str, walk: _Walk) -> object:
@@ -623,6 +625,20 @@ def _check_item_placeholder(
                 problem=f"{token} addresses the element of a for_each, and this step is not one",
             )
         )
+    elif sample is ASK_PICK:
+        # Seen live (D3): ``$item.title`` over an $ask pick. A pick is the text
+        # the model copied from the results, so there is no field under it.
+        if path:
+            walk.issues.append(
+                PlaybookIssue(
+                    where=where,
+                    problem=(
+                        f"{token} reads a field of an $ask pick, but each pick is one text "
+                        "value; write $item on its own, or make for_each a $steps list and "
+                        "read the field off its elements"
+                    ),
+                )
+            )
     elif sample is not NO_ITEM:
         # Checked against a real element of the source, the way the replay
         # will read it. Seen live: $item.todo_id over elements carrying id.
@@ -684,7 +700,7 @@ def _check_for_each_source(step: ForEachStep, path: str, walk: _Walk) -> object:
     """
     source = step.for_each
     if isinstance(source, AskSlot):
-        return NO_ITEM
+        return ASK_PICK
     where = f"{path}.for_each"
     match = PLACEHOLDER_TOKEN.fullmatch(source)
     if match is None:  # the model validator already refused anything else
@@ -785,8 +801,8 @@ def _check_time_layout(
         )
     else:
         problem = (
-            f"{key!r} was {example!r} in this run, one bare time; {value!r} renders to a "
-            f"sentence around a time, which no tool parses. Write the whole value as "
+            f"{key!r} was {example!r} in this run; {value!r} renders its placeholder as "
+            f"ISO 8601 inside that text, which is not this layout. Write the whole value as "
             f"{_time_slot_hint(placeholder, layout)}, with the clock inside the placeholder"
         )
     walk.issues.append(PlaybookIssue(where=where, problem=problem))

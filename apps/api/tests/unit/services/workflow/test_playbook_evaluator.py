@@ -128,6 +128,11 @@ def test_a_clock_is_exact_to_the_second_whatever_the_worker_clock_read() -> None
     assert resolve_value("$now + 1h 17:45", context) == "2026-03-14T17:45:00+01:00"
 
 
+def test_a_time_slot_layout_may_carry_the_words_around_the_date() -> None:
+    slot = {"$time": "$today + 1d", "format": "Plan for %B %d, %Y"}
+    assert resolve_value(slot, _context()) == "Plan for March 15, 2026"
+
+
 def test_a_clock_in_a_time_slot_lands_on_the_exact_second() -> None:
     context = _context(now=NOW.replace(second=41, microsecond=624690))
     slot = {"$time": "$now 17:45", "format": "%H:%M:%S.%f"}

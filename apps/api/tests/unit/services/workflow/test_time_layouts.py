@@ -50,6 +50,31 @@ class TestDetectLayout:
 
 
 @pytest.mark.unit
+class TestDetectLayoutInProse:
+    """Seen live (D4): the run titled a todo "Plan for September 5, 2026"; a
+    bare-date hint had the model drop the words. The words are the layout."""
+
+    @pytest.mark.parametrize(
+        ("value", "layout"),
+        [
+            ("Plan for September 5, 2026", "Plan for %B %d, %Y"),
+            ("Due 2026-09-06 09:00:00 sharp", "Due %Y-%m-%d %H:%M:%S sharp"),
+            ("100% by 2026-09-06", "100%% by %Y-%m-%d"),
+            ("6 September 2026", "%d %B %Y"),
+        ],
+    )
+    def test_the_text_around_a_date_is_kept_as_literal_layout(
+        self, value: str, layout: str
+    ) -> None:
+        assert detect_layout(value) == layout
+        # The layout renders: the words come back around a date of that shape.
+        rendered = datetime(2026, 9, 6, 9, 0, 0, tzinfo=UTC).strftime(layout)
+        assert rendered.startswith(value.split("2026")[0].split("September")[0].split("6 ")[0])
+
+    def test_prose_without_a_date_has_no_layout(self) -> None:
+        assert detect_layout("Plan for tomorrow morning") is None
+
+
 class TestRenderIso:
     MOMENT = datetime(2026, 3, 14, 9, 30, 7, 624690, tzinfo=timezone(timedelta(hours=1)))
 

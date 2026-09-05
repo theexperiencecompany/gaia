@@ -3179,6 +3179,57 @@ result_brief: x
             result = await validate_playbook(body, USER_ID, results)
         assert result.issues == []
 
+    @pytest.mark.parametrize(
+        ("to", "refused"), [("$item.title", True), ("$item", False)], ids=["field", "whole"]
+    )
+    async def test_an_ask_pick_is_one_text_value_with_no_field_under_it(
+        self, to: str, refused: bool
+    ) -> None:
+        """Seen on the real model (D3): ``$item.title`` over an $ask pick. The
+        write accepted it and the replay stopped on the first element."""
+        body = _body(
+            f"""
+description: x
+steps:
+  - id: events
+    tool: list_events
+    args:
+      calendar_id: primary
+  - id: mail
+    tool: send_email
+    for_each:
+      $ask: the events above that mention money
+    max_items: 5
+    args:
+      to: {to}
+      subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            RecordedResult(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result={"items": [{"id": 1, "title": "rent"}]},
+            ),
+            RecordedResult(
+                tool_name="send_email", args={"to": "rent", "subject": "hi"}, result="sent"
+            ),
+        ]
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()):
+            result = await validate_playbook(body, USER_ID, results)
+        expected = [
+            (
+                "steps[1].args.to",
+                "$item.title reads a field of an $ask pick, but each pick is one text value; "
+                "write $item on its own, or make for_each a $steps list and read the field "
+                "off its elements",
+            )
+        ]
+        assert [(issue.where, issue.problem) for issue in result.issues] == (
+            expected if refused else []
+        )
+
     async def test_a_for_each_source_must_be_a_step_that_ran_not_the_element(self) -> None:
         body = _body(
             """
@@ -3302,6 +3353,38 @@ result_brief: x
                 '{"$time": "$today + 1d 09:00", "format": "%Y-%m-%d %H:%M:%S"}',
             )
         ]
+
+    async def test_words_around_the_recorded_date_are_kept_in_the_slot_to_write(self) -> None:
+        """Seen live (D4): the run titled the todo "Plan for September 5, 2026".
+        The hint carries the words, so the slot the model writes does too."""
+        refused = await self._validate(
+            self._body('"Plan for $today"'), "Plan for September 5, 2026"
+        )
+        assert [(issue.where, issue.problem) for issue in refused.issues] == [
+            (
+                "steps[0].args.subject",
+                "'subject' was 'Plan for September 5, 2026' in this run; 'Plan for $today' "
+                "renders its placeholder as ISO 8601 inside that text, which is not this "
+                'layout. Write the whole value as {"$time": "$today", "format": "Plan for '
+                '%B %d, %Y"}, with the clock inside the placeholder',
+            )
+        ]
+        accepted = await self._validate(
+            _body(
+                """
+description: x
+steps:
+  - id: mail
+    tool: send_email
+    args:
+      to: a@b.com
+      subject: {"$time": "$today", "format": "Plan for %B %d, %Y"}
+result_brief: x
+"""
+            ),
+            "Plan for September 5, 2026",
+        )
+        assert accepted.issues == []
 
     async def test_a_malformed_time_slot_is_refused_by_its_own_rule(self) -> None:
         body = _body(
