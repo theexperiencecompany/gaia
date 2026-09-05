@@ -8,7 +8,7 @@ production would reject it.
 
 from datetime import UTC, datetime
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -1928,3 +1928,88 @@ async def test_a_shape_the_body_cannot_take_is_a_refusal_not_an_exception(
     assert "max_items" in result["message"]
     assert store.documents == {}
     log.error.assert_not_called()
+
+
+@pytest.mark.unit
+class TestASubagentsCallsReachTheValidator:
+    """A handoff's children are not in the executor's state; the subagent's
+    calls are captured for the trace as they happen, and the write reads them
+    from there, so a child is checked against what the subagent really did."""
+
+    STEPS: ClassVar[list[dict[str, Any]]] = [
+        {
+            "id": "h",
+            "handoff": "gmail",
+            "steps": [
+                {"id": "events", "tool": "list_events", "args": {"calendar_id": "primary"}},
+                {
+                    "id": "again",
+                    "tool": "list_events",
+                    "args": {"calendar_id": "$steps.events.owner"},
+                },
+            ],
+        }
+    ]
+
+    def _state(self) -> dict[str, Any]:
+        call = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "h1", "name": "handoff", "args": {"subagent_id": "gmail", "task": "go"}}
+            ],
+        )
+        return {"messages": [call, ToolMessage(content="done", tool_call_id="h1")]}
+
+    async def _write(
+        self, store: _FakePlaybookStore, workflows: MagicMock, trace: list[RecordedCall]
+    ) -> dict[str, Any]:
+        registry = _FakeRegistry()
+        with (
+            patch(f"{TOOLS_MODULE}.playbook_repository", store),
+            patch(f"{TOOLS_MODULE}.workflow_repository", workflows),
+            patch(f"{TOOLS_MODULE}.drain_executor_tool_data", return_value=[]),
+            patch(f"{TOOLS_MODULE}.build_trace", return_value=trace),
+            patch(f"{PARSER_MODULE}.get_tool_registry", return_value=registry),
+            patch(
+                f"{PARSER_MODULE}.resolve_subagent_tools",
+                AsyncMock(
+                    return_value=SubagentTools(tools=registry.get_tool_dict(), initial_tool_ids=[])
+                ),
+            ),
+        ):
+            result = await write_playbook.ainvoke(
+                {**NEW_ARGS, "steps": self.STEPS, "state": self._state()}, config=_config()
+            )
+        return result if isinstance(result, dict) else json.loads(result)
+
+    async def test_the_subagents_calls_reach_the_validator_and_a_childs_result_is_readable(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        trace = [
+            RecordedCall(
+                tool_name="list_events",
+                args={"calendar_id": "primary"},
+                result_digest='{"owner": "a@b.com", "events": [{"id": 0}]}',
+                subagent_id="gmail",
+            ),
+            RecordedCall(
+                tool_name="list_events",
+                args={"calendar_id": "a@b.com"},
+                result_digest='{"owner": "a@b.com", "events": [{"id": 1}]}',
+                subagent_id="gmail",
+            ),
+        ]
+
+        result = await self._write(store, workflows, trace)
+
+        assert result["success"] is True, result
+        assert (WORKFLOW_ID, USER_ID) in store.documents
+
+    async def test_without_the_subagents_calls_the_children_are_refused(
+        self, store: _FakePlaybookStore, workflows: MagicMock
+    ) -> None:
+        result = await self._write(store, workflows, [])
+
+        assert result["success"] is False
+        assert result["error"] == "invalid_playbook"
+        assert "list_events did not run" in result["message"]

@@ -18,6 +18,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import ValidationError
 from pydantic.v1 import ValidationError as LegacyValidationError
 
+from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.constants.agents import PLAYBOOK_REPLAYED_CALLS_KEY
 from app.constants.log_tags import LogTag
 from app.db.repositories.playbooks import playbook_repository
@@ -43,6 +44,7 @@ from app.services.workflow.playbook.parser import (
     validate_playbook,
 )
 from app.services.workflow.playbook.workflow_hash import workflow_hash
+from app.services.workflow.run_trace import build_trace
 from app.utils.workflow_utils import (
     WorkflowConfigError,
     error_response,
@@ -117,6 +119,31 @@ def _answered_calls(state: Mapping[str, Any] | None) -> list[tuple[str, dict[str
     return calls
 
 
+def _subagent_results(config: RunnableConfig) -> list[RecordedResult]:
+    """The calls this run's subagents made, with their results, from the
+    stream's captured tool events.
+
+    A handoff's children are not in the executor's own state: the subagent ran
+    on its own graph, and the executor saw one message back. Its calls are
+    captured for the execution trace as they happen (``build_trace``), so the
+    validator reads them from there, digests and all, scoped to the subagent.
+    """
+    try:
+        stream_id = get_stream_id(config)
+    except WorkflowConfigError:
+        return []
+    return [
+        RecordedResult(
+            tool_name=call.tool_name,
+            args=call.args,
+            result=parse_result(call.result_digest),
+            subagent_id=call.subagent_id,
+        )
+        for call in build_trace(drain_executor_tool_data(stream_id))
+        if call.subagent_id is not None
+    ]
+
+
 def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
     """The calls a stopped replay made this fire, as results a write may freeze.
 
@@ -128,7 +155,10 @@ def _replayed_results(config: RunnableConfig) -> list[RecordedResult]:
     replayed = [RecordedCall.model_validate(item) for item in raw]
     return [
         RecordedResult(
-            tool_name=call.tool_name, args=call.args, result=parse_result(call.result_digest)
+            tool_name=call.tool_name,
+            args=call.args,
+            result=parse_result(call.result_digest),
+            subagent_id=call.subagent_id,
         )
         for call in replayed
     ]
@@ -214,8 +244,9 @@ async def write_playbook(
 
         results = _run_results(state)
         if results is not None:
-            # The replay's calls come first: they ran before anything the agent did.
-            results = [*_replayed_results(config), *results]
+            # The replay's calls come first: they ran before anything the agent
+            # did. The subagents' calls come last, in their own scopes.
+            results = [*_replayed_results(config), *results, *_subagent_results(config)]
         # On the wide event because it is the one thing a rejected-or-accepted
         # write cannot show from its outcome: whether the run's own results
         # were in hand (None: no graph state reached the tool at all).

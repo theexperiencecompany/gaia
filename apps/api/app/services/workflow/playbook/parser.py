@@ -90,6 +90,10 @@ class RecordedResult:
     tool_name: str
     args: Mapping[str, Any]
     result: object
+    #: The subagent that made the call, or ``None`` for the executor's own.
+    #: A step inside a handoff is matched only against that subagent's calls,
+    #: so a child can never consume a top-level call of the same tool.
+    subagent_id: str | None = None
 
 
 #: The authoring run's calls, in call order. The order IS part of the matching
@@ -188,6 +192,8 @@ class _Walk:
     #: is one call; two steps matched to it would replay it twice and double a
     #: side effect the run performed once.
     consumed: set[int] = field(default_factory=set)
+    #: The subagent whose steps are being walked, ``None`` at the top level.
+    scope: str | None = None
 
 
 async def _check_steps(
@@ -195,8 +201,6 @@ async def _check_steps(
     path: str,
     space: ToolSpace,
     walk: _Walk,
-    *,
-    in_handoff: bool = False,
 ) -> None:
     """Walk the steps in document order, so a reference can only resolve
     backwards: ``declared_steps`` holds exactly what ran before this node.
@@ -208,7 +212,7 @@ async def _check_steps(
     for index, step in enumerate(steps):
         here = f"{path}[{index}]"
         if not isinstance(step, HandoffStep):
-            _check_tool_step(step, here, space, walk, in_handoff=in_handoff)
+            _check_tool_step(step, here, space, walk)
         else:
             if step.id:
                 walk.handoff_ids.add(step.id)
@@ -221,9 +225,10 @@ async def _check_steps(
                     )
                 )
             else:
-                await _check_steps(
-                    step.steps, f"{here}.steps", handoff_tool_space(subagent), walk, in_handoff=True
-                )
+                outer = walk.scope
+                walk.scope = step.handoff
+                await _check_steps(step.steps, f"{here}.steps", handoff_tool_space(subagent), walk)
+                walk.scope = outer
         if step.id:
             # The runner keys its record on the id, so a second step with the
             # same id would overwrite the first's result for every later $steps.
@@ -240,7 +245,7 @@ async def _check_steps(
 
 
 def _check_tool_step(
-    step: ToolStep | ForEachStep, path: str, space: ToolSpace, walk: _Walk, *, in_handoff: bool
+    step: ToolStep | ForEachStep, path: str, space: ToolSpace, walk: _Walk
 ) -> None:
     tool_name = step.tool
     denial = tool_space_denial(tool_name, space)
@@ -248,13 +253,11 @@ def _check_tool_step(
         walk.issues.append(PlaybookIssue(where=path, problem=denial))
         return
 
-    # A handoff's children are not matched at all. The record a handoff appends
-    # (``call_record.py``) carries the subagent's tool names and args but NOT
-    # their outputs, so the run's results hold nothing for them — and matching
-    # them anyway would let a child consume a top-level call of the same tool.
-    # Said by the walk, not read off the space: a subagent without a config
-    # yields a space whose subagent_id is None, and a child is still a child.
-    if walk.results is not None and not in_handoff:
+    # Matched within the walk's scope: a top-level step against the executor's
+    # own calls, a handoff's child against that subagent's. Seen live before
+    # children were checked at all: $item.todo_id inside a todos handoff over
+    # elements carrying id, accepted, and stopped on the first replay.
+    if walk.results is not None:
         _check_recorded_call(step, tool_name, path, walk)
 
     sample = _check_for_each_source(step, path, walk) if isinstance(step, ForEachStep) else NO_ITEM
@@ -319,7 +322,7 @@ def _check_tool_step(
 def _check_recorded_call(
     step: ToolStep | ForEachStep, tool_name: str, path: str, walk: _Walk
 ) -> None:
-    """Check one top-level tool step against the call it froze in the run writing it.
+    """Check one tool step against the call it froze in the run writing it.
 
     Matching the step back to a recorded call is also what makes the ``$steps``
     references checkable: the matched result is what later steps read from.
@@ -343,7 +346,7 @@ def _unmatched_problem(tool_name: str, walk: _Walk) -> str:
     same_tool = [
         (index, call)
         for index, call in enumerate(walk.results or ())
-        if call.tool_name == tool_name
+        if call.tool_name == tool_name and call.subagent_id == walk.scope
     ]
     if not same_tool:
         return (
@@ -387,6 +390,7 @@ def _matched_call(step: ToolStep | ForEachStep, walk: _Walk) -> tuple[int, Recor
         (index, call)
         for index, call in enumerate(walk.results or ())
         if call.tool_name == step.tool
+        and call.subagent_id == walk.scope
         and index not in walk.consumed
         and all(
             key in call.args and _agrees(value, call.args[key]) for key, value in step.args.items()

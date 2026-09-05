@@ -1425,9 +1425,11 @@ result_brief: x
         assert result.issues == []
 
 
-def _call(tool_name: str, args: dict[str, Any], result: object) -> RecordedResult:
+def _call(
+    tool_name: str, args: dict[str, Any], result: object, subagent_id: str | None = None
+) -> RecordedResult:
     """One call as the authoring run made it, with what came back."""
-    return RecordedResult(tool_name=tool_name, args=args, result=result)
+    return RecordedResult(tool_name=tool_name, args=args, result=result, subagent_id=subagent_id)
 
 
 @pytest.mark.unit
@@ -2098,15 +2100,55 @@ result_brief: x
             )
         ]
 
-    async def test_a_handoff_child_never_takes_a_top_level_call_of_the_same_tool(self) -> None:
-        """The run's results hold nothing for a subagent's calls (the handoff
-        record carries their args, not their outputs), so a child is not matched
-        at all. Matching it anyway let a child consume the one recorded top-level
-        call of the same tool, and the real top-level step behind it was refused
-        as a call the run never made."""
+    async def test_a_handoff_child_is_matched_in_its_subagents_scope_not_the_executors(
+        self,
+    ) -> None:
+        """Children used to go unchecked (their results were never handed to the
+        validator), and matching them against the executor's calls let a child
+        consume the one top-level call of the same tool. Now each is matched in
+        its own scope: the child against the subagent's call, the top-level step
+        against the executor's, and a later step can read the child's result."""
         body = _body(
             """
 description: The subagent listed events, then the executor did too
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: theirs
+        tool: list_events
+        args:
+          calendar_id: primary
+  - id: mine
+    tool: list_events
+    args:
+      calendar_id: $steps.theirs.events
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "list"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1"}]},
+                subagent_id="calendar_agent",
+            ),
+            _call("list_events", {"calendar_id": "primary"}, {"events": [{"id": "e2"}]}),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert result.issues == []
+
+    async def test_a_handoff_child_the_subagent_never_called_is_refused(self) -> None:
+        """With only the executor's call on record, the child has nothing in its
+        scope: refused as a call that did not run, and the top-level call is
+        left for the step that made it."""
+        body = _body(
+            """
+description: x
 steps:
   - id: delegated
     handoff: calendar_agent
@@ -2127,7 +2169,60 @@ result_brief: x
         with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
             result = await validate_playbook(body, USER_ID, results)
 
-        assert result.issues == []
+        assert [issue.where for issue in result.issues] == ["steps[0].steps[0]"]
+        assert "did not run" in result.issues[0].problem
+
+    async def test_an_item_field_inside_a_handoff_is_checked_against_the_subagents_result(
+        self,
+    ) -> None:
+        """The D2 shape as it happened: a for_each inside a handoff over
+        elements carrying ``id``, written with a field they do not have."""
+        body = _body(
+            """
+description: x
+steps:
+  - id: delegated
+    handoff: calendar_agent
+    steps:
+      - id: events
+        tool: list_events
+        args:
+          calendar_id: primary
+      - id: mail
+        tool: send_email
+        for_each: $steps.events.events
+        max_items: 5
+        args:
+          to: $item.email
+          subject: hi
+result_brief: x
+"""
+        )
+        results = [
+            _call("handoff", {"subagent_id": "calendar_agent", "task": "mail"}, "done"),
+            _call(
+                "list_events",
+                {"calendar_id": "primary"},
+                {"events": [{"id": "e1", "title": "standup"}]},
+                subagent_id="calendar_agent",
+            ),
+            _call(
+                "send_email",
+                {"to": "a@b.com", "subject": "hi"},
+                "sent",
+                subagent_id="calendar_agent",
+            ),
+        ]
+
+        with patch(f"{MODULE}.get_tool_registry", return_value=_registry()), _handoff_space():
+            result = await validate_playbook(body, USER_ID, results)
+
+        assert [(issue.where, issue.problem) for issue in result.issues] == [
+            (
+                "steps[0].steps[1].args.to",
+                "$item.email is not in the current for_each element; its result has keys: id, title",
+            )
+        ]
 
     async def test_a_tool_the_run_called_twice_can_be_frozen_twice(self) -> None:
         """The refusal above is about cardinality, not repetition: a run that
